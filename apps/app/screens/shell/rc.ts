@@ -8,6 +8,8 @@ import { flagNotOff } from "./flag.js";
 export const RC = {
   // Sites (Publish) is on: the place, its pages and the chat's Publish sheet are all connected to core/publish (0.5).
   sites: true,
+  // VyreDrive's box-share section in Settings, This computer: off. It was built on another VPN product's file sharing and its fix-it lines send a person to that product's console. Mounted box files return with VyreDrop; the Space's own Files screen is unaffected.
+  vyreDrive: false,
   // Glass, renamed Screen Share, is 0.3.1 (user ruling): no route, button or command reaches it in 0.2.9. screens/glass, src/glass and scripts/glass-assets.mjs stay for then.
   glass: false,
   // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
@@ -17,7 +19,7 @@ export const RC = {
   typedCode: flagNotOff(process.env.EXPO_PUBLIC_VYRE_TYPED_CODE),
 };
 
-/** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
+/** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (web.vyre.run or app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
 export const claimBlocked = (): boolean =>
   Platform.OS === "web" && !macKeyAvailable() && (!RC.browserClaim || passkeyRp(typeof location !== "undefined" ? location.origin : undefined, { dev: process.env.NODE_ENV !== "production" }) === null);
 

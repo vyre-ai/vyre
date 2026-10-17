@@ -20,7 +20,7 @@ import { strip } from "../style.js";
 import { tempHome } from "../../../test/helpers.js";
 import phone, { android, listPhones, remove, testPush, adbDevices, appManifest } from "./phone.js";
 
-const BOX = "https://vyre.tail0000.ts.net";
+const BOX = "https://vyre.tail0000.wink.example";
 /** A box that serves no Android app: nothing leaves 127.0.0.1. */
 const noApp = /** @type {any} */ (async () => ({ ok: false, status: 404, json: async () => ({}) }));
 
@@ -136,7 +136,7 @@ test("phone list, test and remove: a notification device and a passkey, as JSON"
   const code = /** @type {any} */ ((await callAsPerson("presence.code", {}, { io })).data);
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = await deck("presence.enroll", { kind: "passkey", name: "alex's iPhone", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
-    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${typeof code === "string" ? code : code.code}` });
+    alg: -7, rp_id: "vyre.tail0000.wink.example", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${typeof code === "string" ? code : code.code}` });
   assert.ok(key.data, JSON.stringify(key));
 
   // list, test and remove, as JSON.

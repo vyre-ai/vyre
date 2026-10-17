@@ -25,6 +25,7 @@ jobs:
       - run: npm ci
       - run: node scripts/gen-allow.mjs
       - run: node kernel/golden/index.js --write
+      - run: node kernel/flows/golden/write.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: golden
@@ -32,3 +33,4 @@ jobs:
             kernel/golden/allow.json
             kernel/golden/presence.json
             kernel/golden/golden.json
+            kernel/flows/golden/replay.json

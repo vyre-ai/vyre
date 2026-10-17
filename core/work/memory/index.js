@@ -66,6 +66,9 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
    * @param {any} chain @param {string} resource
    */
   const mayReadLine = async (chain, resource) => {
+    // Lines filed under a project record (Recall capture after projects.of) are covered by the teammate's project grant; session-scoped lines stay the owner's own sessions only.
+    const p = parseUrn(resource);
+    if (p && p.type === "project") return mayRead(chain, resource);
     try {
       const first = chain && chain.hops && chain.hops[0] && chain.hops[0].actor;
       if (!first || first.kind !== "person" || !kernel.members || kernel.members.roleOf(first) !== "owner") return false;

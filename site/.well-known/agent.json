@@ -14,7 +14,7 @@
   },
   "install": {
     "url": "https://vyre.run/start/",
-    "note": "The Vyre app shows the user the install line and pairs the server with a code and four words. An agent runs the install line only if the user hands it that one line, for a server the agent created for them."
+    "note": "The Vyre app shows one install line. An agent can issue that line over MCP. The call waits at the Gate for one tap, and the signing key stays on the device. An agent runs the line only for a server the agent created, and only when the user hands over that one line."
   },
   "entry_point": {
     "url": "https://vyre.run/agenthome.md",

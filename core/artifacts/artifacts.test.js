@@ -284,8 +284,8 @@ test("artifacts: an added module and a project-less agent reach only what they m
   assert.equal((await call("artifacts.public.base", { base: "https://evil.example" })).error.code, "no_such_tool", "the person never sets it");
   assert.equal((await call("artifacts.public.base", { base: "https://evil.example" }, "module:bakery")).error !== undefined, true, "nor an added module");
   await assert.rejects(asVyre("artifacts.public.base", { base: "http://plain.example" }, "network"), /https origin/);
-  await asVyre("artifacts.public.base", { base: "https://studio.tail1234.ts.net:8443" }, "network");
-  assert.equal((await ok("artifacts.public.status", {})).base, "https://studio.tail1234.ts.net:8443");
+  await asVyre("artifacts.public.base", { base: "https://studio.tail1234.wink.example:8443" }, "network");
+  assert.equal((await ok("artifacts.public.status", {})).base, "https://studio.tail1234.wink.example:8443");
   assert.equal((await call("artifacts.public.set", { on: true, base: "https://evil.example" })).error.code, "bad_input", "public.set takes only on");
 });
 
