@@ -32,8 +32,23 @@ export const MIGRATIONS = [
 /**
  * @typedef {{ id: string, user: string, uid: number, display: number }} Place
  * @typedef {{ db: import("node:sqlite").DatabaseSync, pool: import("./pool.js").Pool, users: import("./agent-users.js").AgentUsers,
- *   version: string, wait?: (ms: number) => Promise<void>, held?: (agent: string) => boolean, log?: (m: string) => void, emit?: (type: string, payload: any) => void, now?: () => number }} Deps
+ *   version: string, turns?: () => number, wait?: (ms: number) => Promise<void>, held?: (agent: string) => boolean, log?: (m: string) => void, emit?: (type: string, payload: any) => void, now?: () => number }} Deps
  */
+
+/**
+ * Is this call the Space's owner, in person and nobody else? One hop on the chain, a person, whose canonical id is the kernel's owner. An admin, a member, an agent, the owner's assistant (two hops), a module and
+ * an MCP caller all fail, and so does a chain that cannot be read. A build with no kernel denies too: a packaged daemon always has one, and a dev build must not have a weaker door.
+ * @param {any} kernel ctx.kernel @param {any} meta the tool call's meta
+ */
+export async function assertOwner(kernel, meta) {
+  const deny = () => Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
+  if (!kernel || typeof kernel.chain !== "function") throw deny();
+  const chain = await kernel.chain(meta).catch(() => null);
+  const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+  if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1) throw deny();
+  const canon = typeof kernel.canonicalPerson === "function" ? (/** @type {string} */ x) => kernel.canonicalPerson(x) : (/** @type {string} */ x) => x;
+  if (!kernel.owner || canon(String(hop.actor.id)) !== canon(String(kernel.owner))) throw deny();
+}
 
 export class ComputerUpdater {
   /** @param {Deps} d */
@@ -42,6 +57,8 @@ export class ComputerUpdater {
     this.pool = d.pool;
     this.users = d.users;
     this.version = String(d.version || "0.0.0");
+    /** How many agent turns are running now. */
+    this.turns = d.turns || (() => 0);
     this.held = d.held || (() => false);
     this.log = d.log || (() => {});
     this.emit = d.emit || (() => {});
@@ -86,6 +103,35 @@ export class ComputerUpdater {
     if (!box || !box.container) return { present: false, current: true, want, have };
     const image = Boolean(have) && have.container === box.container && have.image === want.image && have.version === want.version;
     return { present: true, current: image && have.layout === want.layout, image, want, have };
+  }
+
+  /** What an update would interrupt: agent turns in progress and agents with a terminal job open. */
+  async activity() {
+    let terminals = 0;
+    for (const r of this.users.list()) { try { if ((await this.users.terminals(r.agent_id)).length) terminals++; } catch { /* nothing answers, so nothing runs */ } }
+    return { turns: this.turns(), terminals };
+  }
+
+  /**
+   * The run that starts by itself: when the computer is behind it waits until no agent is mid-turn and no terminal job is open, looking once a minute, for at most `capMs` (30 minutes).
+   * After that it updates anyway and says what it interrupted.
+   * @param {{ capMs?: number, pollMs?: number }} [o]
+   */
+  async auto(o = {}) {
+    const capMs = o.capMs ?? 30 * 60_000, pollMs = o.pollMs ?? 60_000, t0 = this.now();
+    let said = false;
+    for (;;) {
+      const s = this.status();
+      if (!s.present || s.current) return this.run();
+      const busy = await this.activity();
+      if (!busy.turns && !busy.terminals) return this.run();
+      if (this.now() - t0 >= capMs) {
+        const r = await this.run();
+        return { ...r, interrupted: busy, message: `${r.message} It waited 30 minutes for work to finish; ${busy.turns} agent turn(s) and ${busy.terminals} agent(s) with a terminal job were interrupted.` };
+      }
+      if (!said) { said = true; this.log("agent computer update waits for running agent work to finish (at most 30 minutes)"); }
+      await this.wait(pollMs);
+    }
   }
 
   /**

@@ -22,7 +22,7 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
-import { ComputerUpdater, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
@@ -296,29 +296,21 @@ export default {
     // Bring the space's computer to the image this Vyre wants (update.js). It runs by itself when the server starts after an update; the owner can run it too.
     const runningVersion = () => { try { return String(JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version); } catch { return "0.0.0"; } };
     const updater = new ComputerUpdater({ db: ctx.store.db, pool, users: agentUsers, version: runningVersion(), log: ctx.log, emit,
-      held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent) });
+      held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent),
+      turns: () => turnsRunning.size });
+    // Agent turns in progress, from the switchboard's own events (a turn that never reports its end is let go by the 30-minute cap).
+    const turnsRunning = new Set();
+    const offTurns = [ctx.events.on("thread.sent", e => { const t = e && e.payload && (e.payload.thread || e.payload.id); if (t) turnsRunning.add(String(t)); }),
+      ctx.events.on("thread.finished", e => { const t = e && e.payload && (e.payload.thread || e.payload.id); if (t) turnsRunning.delete(String(t)); })];
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
-    /** Only the Space's owner, and no agent: the update stops every agent's screen for a moment. @param {any} meta */
-    const ownerOnly = async meta => {
-      const K = ctx.kernel;
-      if (K && typeof K.chain === "function") {
-        const chain = await K.chain(meta).catch(() => null);
-        const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
-        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
-        if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1 || canon(String(hop.actor.id)) !== canon(String(K.owner))) {
-          throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
-        }
-        return;
-      }
-      if (agentClaim(String(meta && meta.caller || ""))) throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
-    };
+    const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
       obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });
     tool("computers.update.status", "Whether the Space's agent computer matches this version of Vyre: what it was made from and what this Vyre wants. Owner only.",
       obj({}), async (_i, meta) => { await ownerOnly(meta); return updater.status(); });
     // After an update the server starts on the new Vyre while the computer is still the old one: bring it along once the rest is up, never blocking the start.
     if (driver && cfg.autoUpdate !== false) {
-      const t0 = setTimeout(() => { updater.run().then(r => { if (r.updated) ctx.log(`agent computer: ${r.message}`); else if (r.state === "busy") ctx.log(`agent computer: ${r.message}`); }).catch(e => ctx.log(`agent computer update failed: ${/** @type {Error} */ (e).message}`)); }, Number(cfg.updateDelayMs ?? 20_000));
+      const t0 = setTimeout(() => { updater.auto().then(r => { if (r.updated) ctx.log(`agent computer: ${r.message}`); else if (r.state === "busy") ctx.log(`agent computer: ${r.message}`); }).catch(e => ctx.log(`agent computer update failed: ${/** @type {Error} */ (e).message}`)); }, Number(cfg.updateDelayMs ?? 20_000));
       t0.unref();
       autoUpdateTimer = t0;
     }
@@ -555,6 +547,7 @@ export default {
         if (timer) clearTimeout(timer);
         if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
         if (typeof offCreated === "function") offCreated();
+        for (const off of offTurns) if (typeof off === "function") off();
         keyboard.stop();
         shield.stop();
         fills.stop();
