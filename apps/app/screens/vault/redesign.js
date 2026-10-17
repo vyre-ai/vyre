@@ -126,3 +126,9 @@ export function originOf(site) {
   if (u.pathname !== "/" || u.search || u.hash) throw new Error("Use just the site, like https://example.com, with no page after it.");
   return u.origin;
 }
+
+/** The vault.me.update input that saves a site on a login: the merged origins go in `urls`, and the login's own `url` (often a full sign-in address) is never in it, so it is left as it was. @param {{ id: string, sites?: string[] }} item @param {string} site */
+export function siteUpdate(item, site) {
+  const o = originOf(site);
+  return { origin: o, input: { name: item.id, fields: { urls: [...new Set([...(item.sites ?? []), o])].join(" ") } } };
+}

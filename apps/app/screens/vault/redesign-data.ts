@@ -1,7 +1,7 @@
 // Where the redesigned Vault gets its items: the sample world, or the real tools. Space is the owner's vault (vault.list, vault.uses, vault.reveal, vault.put, vault.delete); Mine is the signed-in
 // member's own vault (vault.me.*). Nothing here holds a value: `read` fetches one at the click and the screen keeps it for the reveal time only.
 import type { Call } from "./source";
-import { daysLeftOf, groupOf, originOf, valueField, type VItem } from "./redesign.js";
+import { daysLeftOf, groupOf, siteUpdate, valueField, type VItem } from "./redesign.js";
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
@@ -57,7 +57,7 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
-    addSite: async (v, site) => { const o = originOf(site); const i = items.find((x) => x.id === v.id); if (i) i.sites = [...(i.sites ?? []), o]; return o; },
+    addSite: async (v, site) => { const o = siteUpdate(v, site).origin; const i = items.find((x) => x.id === v.id); if (i) i.sites = [...(i.sites ?? []), o]; return o; },
     moving: { list: async () => [{ id: "acme", name: "Northwind Bakery (client)", sub: "Shared with Billing and Dana" }, { id: "marketing", name: "Marketing", sub: "Shared with Marketing and Juno" }], move: async () => {} },
     connectionSharing: {
       load: async (v) => ({ shares: held.get(v.id) ?? [{ id: "kit", level: "use" as Level }], dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME, info: { account: "alex@juniperstudio.example.com", how: "You connected it" } }),
@@ -122,7 +122,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
-    async addSite(item, site) { const o = originOf(site); await ask("vault.me.update", { name: item.id, fields: { urls: [...new Set([...(item.sites ?? []), o])].join(" ") } }); return o; },
+    async addSite(item, site) { const u = siteUpdate(item, site); await ask("vault.me.update", u.input); return u.origin; },
     async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {

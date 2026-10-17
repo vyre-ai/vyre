@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- test(app): `siteUpdate` (redesign.js) builds the site-save call; a login's own `url` is never in it, only `urls`. Tested.
 - fix(app): saving a site on a login writes the merged origins to `urls` and leaves the login's own `url` alone. `originOf` (redesign.js) also refuses an address with a path, query or fragment; test added.
 - fix(app): the chat's "Add the site to this login" opens `/u/vault?item=<name>&site=1`, the member's own vault with that login selected. Mine now lists each login's saved sites and saves a new one (`vault.me.update` url, bare https origin only). The old link into the unrouted RealVault screen is removed.
 - refactor(kernel): the type-definition checks (kinds, roles, computed fields, names, shape) moved from `gateway/records.js` to `gateway/definition-checks.js`, outside the counted base; no behaviour change. The trusted base fell from 9842 to 9680 lines and the cap from 9842 to 9740.
