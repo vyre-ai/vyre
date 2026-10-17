@@ -39,7 +39,7 @@ test("held: the outcome reads as sent or the box's reason", () => {
 });
 
 test("held: the files on a message are listed by name and size, read only, so the approver sees them", () => {
-  const item = { kind: "send", draft: { subject: "Invoice", body: "Attached.", cc: ["juno@harlow.example"], attachments: [{ path: "/Files/invoice.pdf", name: "invoice.pdf", bytes: 2048, sha256: "ab" }, { name: "rota.txt", bytes: 300 }] } };
+  const item = { kind: "send", draft: { subject: "Invoice", body: "Attached.", cc: ["juno@harlow.example"], attachments: [{ path: "/Files/invoice.pdf", name: "invoice.pdf", size: 2048, sha256: "ab", by: "alex" }, { name: "rota.txt", bytes: 300 }] } };
   const rows = fieldsOf(item);
   const files = rows.find((r) => r.key === "attachments");
   assert.equal(files.label, "Files");

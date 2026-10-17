@@ -7,7 +7,7 @@ const ORDER = ["subject", "body", "text", "cc", "bcc", "attachments", "method", 
 
 /** The files on a held message, each with its size: the approver sees exactly what goes out. @param {any} v */
 const filesLine = (v) => (Array.isArray(v) && v.length && v.every((x) => x && typeof x === "object" && typeof x.name === "string")
-  ? v.map((x) => (typeof x.bytes === "number" ? `${x.name} (${Math.max(1, Math.round(x.bytes / 1024))} KB)` : x.name)).join(", ") : null);
+  ? v.map((x) => { const n = typeof x.size === "number" ? x.size : x.bytes; return typeof n === "number" ? `${x.name} (${Math.max(1, Math.round(n / 1024))} KB)` : x.name; }).join(", ") : null);
 
 /** The content as it will go out: what the person last edited, else the draft. @param {any} item gate.get's answer */
 export const contentOf = (item) => (item && typeof item === "object" ? item.final ?? item.draft ?? {} : {});
