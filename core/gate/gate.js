@@ -392,6 +392,11 @@ export class Gate {
     return this.get({ id });
   }
 
+  /** The held items of one sender that one module offered, with who asked: what that module needs to take back its own items. @param {string} via @param {string} module @returns {{ id: string, requester: string | null }[]} */
+  heldOf(via, module) {
+    return /** @type {any[]} */ (this.db.prepare("SELECT id, requester FROM gate_items WHERE state = 'held' AND via = ? AND sender_module = ? ORDER BY at").all(String(via), String(module))).map(r => ({ id: r.id, requester: r.requester || null }));
+  }
+
   /** A member left (removed or expired): what they asked to send and nobody answered is discarded, since no one else may answer a member's item. Returns how many. @param {string} person @param {string} reason */
   rejectAllOf(person, reason) {
     let n = 0;

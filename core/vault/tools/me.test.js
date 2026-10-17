@@ -15,12 +15,12 @@ const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per
 const PW = "a long master password";
 const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: { kind, id } });
 
-function rig(/** @type {import("node:test").TestContext} */ t) {
+function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF });
   t.after(() => people.close());
-  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => { if (m.gone) throw new Error("not a member of this Space"); return { hops: m.hops || [] }; } };
+  const kernel = { owner: OWNER, space: "spc_aaaaaaaaaaaa", hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => { if (m.gone) throw new Error("not a member of this Space"); return { hops: m.hops || [] }; }, ...kernelExtra };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const accounts = /** @type {Record<string, any>} */ ({});
   const ctx = gateTools({ kernel, call: async (/** @type {string} */ tool, /** @type {any} */ i) => (tool === "sessions.accounts.item" ? { data: accounts[i.account] && accounts[i.account].person === i.person ? accounts[i.account] : null } : { error: { code: "no_such_tool" } }), tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
@@ -146,6 +146,39 @@ test("vault.me.release hands her Dropbox token to the files module only, for the
   // a locked vault answers locked, never a value
   people.lock(BOB);
   assert.equal((await asFiles({ name: "dropbox" }, BOB)).error.code, "locked");
+});
+
+test("vault.connection.token: the hub gets a short-lived token for the owner's connection, after a second check of who is asking; the refresh token never leaves", async t => {
+  const asked = [];
+  const { call, people } = rig(t, { authorize: async (/** @type {any} */ q) => { asked.push(q); const ok = q.chain.hops.some((/** @type {any} */ h) => h.actor.id === EVE) && q.action === "vault.read"; return { effect: ok ? "allow" : "deny" }; } });
+  await call("vault.me.account.create", { password: PW }, BOB);
+  const future = String(Date.now() + 3_600_000);
+  await call("vault.me.put", { name: "clio", kind: "connection", fields: { auth_kind: "oauth", client_id: "c", token_uri: "https://auth.example.test/token", refresh_token: "REFRESH-SECRET-0001", access_token: "ACCESS-0001-abcdefghij", expires_at: future, resource: "https://mcp.example.test/mcp" } }, BOB);
+  await call("vault.me.put", { name: "pit", kind: "connection", fields: { auth_kind: "bearer", token: "PIT-TOKEN-0001-abcdefghij" } }, BOB);
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
+  const hub = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.connection.token", input, who, { caller: "module:mcp", ...extra });
+  // the owner of the connection, alone in the chain: the stored access token, never the refresh token
+  const own = (await hub({ owner: BOB, connection: "clio" }, BOB)).data;
+  assert.equal(own.access_token, "ACCESS-0001-abcdefghij"); assert.equal(own.token_type, "Bearer"); assert.equal(own.resource, "https://mcp.example.test/mcp");
+  assert.ok(!JSON.stringify(own).includes("REFRESH-SECRET"), "the refresh token never leaves");
+  assert.equal((await hub({ owner: BOB, connection: "pit" }, BOB)).data.access_token, "PIT-TOKEN-0001-abcdefghij");
+  // only the mcp module asks
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.connection.token", { owner: BOB, connection: "clio" }, BOB, { caller })).error?.code, "denied", caller);
+  // a colleague is asked of the kernel: allowed only with a grant for a read; a write needs vault.call
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, EVE)).data.access_token, "ACCESS-0001-abcdefghij");
+  assert.equal(asked.at(-1).resource, "vyre://spc_aaaaaaaaaaaa/vault/" + BOB + "/item/clio");
+  assert.equal((await hub({ owner: BOB, connection: "clio", write: true }, EVE)).error.code, "denied");
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, "per_" + "z".repeat(26))).error.code, "denied");
+  // an assistant acting for the owner is not the owner alone: it needs a grant too
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+  // not a connection, no such one, the Space owner, a bad name
+  assert.equal((await hub({ owner: BOB, connection: "claude" }, BOB)).error.code, "not_found");
+  assert.match((await hub({ owner: BOB, connection: "nope" }, BOB)).error.message, /no item named nope/);
+  assert.equal((await hub({ owner: OWNER, connection: "clio" }, OWNER)).error.code, "denied");
+  assert.equal((await hub({ owner: "bob", connection: "clio" }, BOB)).error.code, "bad_input");
+  // a locked vault answers locked, never a value
+  people.lock(BOB);
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, BOB)).error.code, "locked");
 });
 
 test("vault.me.lend gives a member their own key for their own turn: the person is the turn's chain, the account must be theirs, the vault unlocked, and the value goes nowhere but the reply", async t => {
