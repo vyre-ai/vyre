@@ -7,15 +7,16 @@
  * hold each connection (the vault refuses otherwise). The approver is read from the task's assigned_by here, never from an agent's or
  * a member's input. With no approver nothing is lent and the agent runs on its own access.
  * @param {{ callModule?: (tool: string, input: any) => Promise<any>, clock: () => number }} o
- * @param {any} t the task
+ * With a `thread`, the lease is held to that job's thread (the unbound one ends in the same step).
+ * @param {any} t the task @param {string} [thread]
  */
-export async function lendConnections(o, t) {
+export async function lendConnections(o, t, thread) {
   const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : "";
   if (!approver || !o.callModule) return;
   let named;
   try { named = await o.callModule("flows.kit.credentials", { task: String(t.id) }); } catch { return; }   // no approved Kit version names credentials for it: nothing to lend
   if (!named || !Array.isArray(named.credentials) || !named.credentials.length) return;
-  await o.callModule("vault.connections.lend", { task: String(t.id), agent: String(t.doer.id), connections: named.credentials, until: o.clock() + 24 * 3600 * 1000, approver });
+  await o.callModule("vault.connections.lend", { task: String(t.id), agent: String(t.doer.id), connections: named.credentials, until: o.clock() + 24 * 3600 * 1000, approver, ...(thread ? { thread } : {}) });
 }
 
 /** End whatever was lent for a task that closed or expired. @param {{ callModule?: (tool: string, input: any) => Promise<any> }} o @param {string} id */

@@ -40,3 +40,12 @@ test("ending a task ends its lend, and a task that lent nothing ends quietly", a
   await endConnections({ callModule: async () => { throw new Error("none lent"); } }, "t2");
   await endConnections({}, "t3");
 });
+
+test("with the job's thread the lend names it, so the lease is held to that thread; without one it names none", async () => {
+  const a = rig(["gmail"]);
+  await lendConnections(a.o, task({ kind: "person", id: "alex" }), "job-1");
+  assert.equal(a.calls.find(c => c.tool === "vault.connections.lend").input.thread, "job-1");
+  const b = rig(["gmail"]);
+  await lendConnections(b.o, task({ kind: "person", id: "alex" }));
+  assert.equal("thread" in b.calls.find(c => c.tool === "vault.connections.lend").input, false);
+});

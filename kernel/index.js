@@ -300,12 +300,12 @@ export async function createKernel(cfg) {
         keep: (/** @type {string} */ w, /** @type {string} */ v) => (w === "key" || w === "code" ? cfg.sealer.service.put({ name: `spaces.${cfg.space}.bundle${w}`, value: v }) : Promise.reject(new KernelError("bad_input", "key or code"))),
         take: (/** @type {string} */ w) => (w === "key" || w === "code" ? cfg.sealer.service.get({ name: `spaces.${cfg.space}.bundle${w}` }) : Promise.reject(new KernelError("bad_input", "key or code"))), id: { space: cfg.space, owner: ownerRef.id } }) } : {}),
       ...(needs.reach === true ? {
-        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
+        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread) => {
           if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
           const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
           if (!def || !(def.risk === "read" || AGENT_ACTIONS.includes(action))) throw new KernelError("not_allowed", "only a read or the use of a credential can be asked this way");
           try {
-            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true });
+            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true, ...(typeof thread === "string" && /^[A-Za-z0-9_.:-]{1,120}$/.test(thread) ? { thread } : {}) });
             const e = (await gateway.authorize({ chain, action, resource, ...(origin ? { origin } : {}) })).effect;
             return full ? e : e === "allow";
           } catch { return false; }
