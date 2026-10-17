@@ -33,6 +33,7 @@ const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narro
   [/^stream\./, "as", "shim", "read only when the kernel is off (the legacy-label shim); with the kernel on the chain's person wins (core/stream/group.js personOf)"],
   [/^undo\.list$/, "actor", "lookup", "a filter on whose actions to list"],
   [/^(google|microsoft)\.members\.email$/, "person", "target", "the member whose work email the firm key may act as; owner only, checked from the kernel's chain in the tool (requireOwner), never from this field"],
+  [/^records\.audit$/, "person", "lookup", "a filter on whose changes to show; only an owner or an admin reads the audit, judged by the kernel from the caller's own chain"],
   [/^roles\.assign$/, "person", "target", "the person who is given a role; an owner or admin only, and the kernel's grants check the caller's own chain may set that role"],
   [/^roles\.tools$/, "person", "lookup", "whose tools to list: the caller's own by default, anyone's only for an owner or admin (refused for others in the tool)"],
   [/^work\.project\.level$/, "person", "target", "the person whose seat on the project changes; person-only reach, and the project team engine checks the caller's own chain may set it"],

@@ -16,10 +16,6 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
-### Members and custom record types
-
-A row of a record type your Space defined itself, linked to a project, is readable only by that project's team, as matters, tasks and files are. A row linked to two projects is readable by either team. A row linked to no project is still readable by every member, so link sensitive rows to a project.
-
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.

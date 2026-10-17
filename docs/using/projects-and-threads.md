@@ -186,6 +186,10 @@ permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `thr
 `threads.asks`, `threads.answer` and `threads.stop`. For every flag, see
 [Drive a running session](cli.md#drive-a-running-session).
 
+## Records linked to a project
+
+A record of a type your Space defined (an Asset, a Debt, a Beneficiary) can link to a project, or to a type that holds work, such as a Matter. A row that fills such a link is private to that project: the project's owner, the people on its team, and the Space's owners and admins can open, list, search and count it. A member who is not on the project does not see it anywhere, and a total on the project counts only the rows that member may read. A row that links to no project is read as before. A member can link a row only to a project they are on, and not as a Viewer.
+
 ## Teammates in a project
 
 A **teammate** is a role in one project, like `design` or `backend`, with its own notes. It belongs to
