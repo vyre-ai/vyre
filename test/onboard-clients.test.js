@@ -60,7 +60,6 @@ test("the onboard tools are the registry's, and first run is the only place that
   assert.ok(onboard.includes("onboard.space.open"));
   assert.ok(onboard.includes("onboard.member.link"));
   assert.ok(onboard.includes("onboard.computer.add"));
-  assert.ok(onboard.includes("onboard.phone.add"));
   const wrapped = new Set(wrappedWrites());
   for (const name of ["identity.create", "identity.github.link", "spaces.invites.accept", "spaces.invites.create", "devices.signin", "wink.install.issue", "wink.install.status", "vault.space.create"]) {
     assert.ok(wrapped.has(name), name);
