@@ -43,12 +43,14 @@ async function fetchJson(url) {
  * @param {{ registryPages: any[], plugins: { repo: string, sha: string, found: any[] }[], registry: string, today: string }} p
  */
 export function buildSnapshot(p) {
-  const fromRegistry = p.registryPages.flatMap(parseRegistryPage);
+  // The registry lists tens of thousands of servers, most of them nobody's product. A snapshot a person reviews keeps the ones a vendor published on its own domain; the plugin repos' entries are all kept.
+  const allRegistry = p.registryPages.flatMap(parseRegistryPage);
+  const fromRegistry = allRegistry.filter(e => e.verified);
   const perPlugin = p.plugins.map(x => parsePlugins({ repo: x.repo, sha: x.sha }, x.found));
   return {
     v: 1,
     generated: p.today,
-    sources: { registry: { url: p.registry, entries: fromRegistry.length }, plugins: p.plugins.map((x, i) => ({ repo: x.repo, sha: x.sha, servers: perPlugin[i].length })) },
+    sources: { registry: { url: p.registry, seen: allRegistry.length, kept: fromRegistry.length }, plugins: p.plugins.map((x, i) => ({ repo: x.repo, sha: x.sha, servers: perPlugin[i].length })) },
     entries: mergeEntries(fromRegistry, ...perPlugin),
   };
 }
