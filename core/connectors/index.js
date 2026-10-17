@@ -39,6 +39,14 @@ export default {
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
 
     const curated = catalogFrom(ctx.config);
+    // Who is asking: a member's id when the call carries a claim the Vault names as a member's (her connection is hers), "" for the owner and for work with no claim (the home's own).
+    const memberOf = async (/** @type {any} */ meta) => {
+      const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
+      if (!claims) return "";
+      const w = await ctx.call("vault.me.who", {}, { relay: true });
+      if (w.error) throw fail(w.error.message, w.error.code || "denied");
+      return w.data && w.data.kind === "member" ? String(w.data.person) : "";
+    };
     const conn = connections({
       db: ctx.store.db,
       catalog: curated,
@@ -50,6 +58,11 @@ export default {
         if (old && old.origin !== "module:connectors") throw fail(`the vault already has an item named ${item} that Vyre's connectors did not make; rename or delete it first`, "exists");
         const r = await ctx.call("vault.put", { name: item, kind, description, fields, hosts, grants: grants || ["mcp", "connectors"] });
         if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
+      },
+      // A member's connection item: in HER vault, as a connection that names its server (the Vault forces who made it).
+      saveMine: async (item, fields) => {
+        const r = await ctx.call("vault.me.connect.put", { name: item, fields }, { relay: true });
+        if (r.error) throw fail(`could not save the sign-in in your vault: ${r.error.message}`, r.error.code || "vault");
       },
       addServer: async input => data(await ctx.call("mcp.add", input)),
       testServer: async name => data(await ctx.call("mcp.test", { name })),
@@ -86,14 +99,14 @@ export default {
       effect: "read",
       description: "Every app Vyre can connect: id, label, group, who can use it, sign-in setup, and which of the person's connections use it.",
       input: obj({ group: str, all: { type: "boolean", description: "also list the vendors checked and ruled out, each with the reason" } }),
-      run: input => conn.catalog(input),
+      run: async (input, meta) => conn.catalog(input, { member: await memberOf(meta) }),
     });
 
     ctx.tool("connectors.list", {
       effect: "read",
       description: "The person's connections: name, the app, how it signs in, and when it was made.",
       input: obj({}),
-      run: () => conn.list(),
+      run: async (_, meta) => conn.list({ member: await memberOf(meta) }),
     });
 
     ctx.tool("connectors.connect", {
@@ -101,7 +114,7 @@ export default {
       description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `scope` { projects, agents } is who may use it, the shape a server carries; left out, a server is open to every project and agent and a credential (Microsoft, personal Google) is for you and the assistant only. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
       input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, scope: { type: "object" }, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
-      run: (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || ""), by: meta && meta.person && meta.person.id ? String(meta.person.id) : "" }),
+      run: async (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || ""), by: meta && meta.person && meta.person.id ? String(meta.person.id) : "", member: await memberOf(meta) }),
     });
 
     ctx.tool("connectors.connect.finish", {
@@ -109,7 +122,7 @@ export default {
       description: "Finish a sign-in with the whole address the browser landed on (for a browser on another device).",
       input: obj({ id: str, url: str }, ["id", "url"]),
       callers: PEOPLE,
-      run: input => conn.finish(input),
+      run: async (input, meta) => conn.finish(input, { member: await memberOf(meta) }),
     });
 
     ctx.tool("connectors.connect.cancel", {
@@ -117,7 +130,7 @@ export default {
       description: "Cancel an open sign-in.",
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
-      run: input => conn.cancel(input),
+      run: async (input, meta) => conn.cancel(input, { member: await memberOf(meta) }),
     });
 
     ctx.tool("connectors.needs-reconnect", {
@@ -384,7 +397,7 @@ export default {
       description: "Disconnect an app: its server leaves the hub. The vault item stays; the vault removes items.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: input => conn.disconnect(input),
+      run: async (input, meta) => conn.disconnect(input, { member: await memberOf(meta) }),
     });
 
     // The # picker's connector kind (platform's core/mentions calls these two: search as the asking person,

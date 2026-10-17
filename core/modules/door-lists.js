@@ -18,6 +18,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
+  "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
   "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
@@ -97,10 +99,10 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
   "computers.takeover", "computers.watch",
-  "connectors.calendar.today", "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.connection.approve",
+  "connectors.calendar.today", "connectors.connection.approve",
   "connectors.connection.check", "connectors.connection.create", "connectors.connection.decline", "connectors.connection.delete", "connectors.connection.export",
   "connectors.connection.get", "connectors.connection.import", "connectors.connection.list", "connectors.connection.proposals", "connectors.connection.propose",
-  "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", "connectors.disconnect", "connectors.list",
+  "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", 
   "connectors.logging", "connectors.mention.search", "connectors.operation.run", "connectors.scope", "connectors.site.attention", "connectors.site.connect",
   "connectors.site.limits", "connectors.site.limits.set", "connectors.site.list", "connectors.site.operations", "connectors.site.propose", "connectors.site.resume",
   "connectors.site.rollback", "connectors.site.rows", "connectors.site.sync",
