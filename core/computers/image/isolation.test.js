@@ -413,11 +413,11 @@ test("isolation (static): agentd's control channel is a unix socket; the one TCP
   assert.equal((main.match(/\.listen\(/g) || []).length, 2, "the control socket and the relay, nothing else");
   assert.match(main, /relay\.listen\(o\.relayPort \?\? RELAY_PORT\)/);
   assert.match(relay, /o\.tickets\.take\(/, "a connection is joined to a screen only through a ticket");
-  assert.match(relay, /\.\.\.asAgent\(u\), "\/usr\/bin\/python3", "-I", PIPE/, "the pipe runs as the agent, with no argument");
+  assert.match(relay, /\.\.\.asAgent\(u\), "\/usr\/bin\/python3", "-I", PIPE/, "the pipe runs as the agent, with one fixed word and no path");
   assert.match(relay, /plain\(sock\.remoteAddress\) !== want\) return void sock\.destroy\(\)/, "only vyred's pinned address is let in, before a byte is read");
   assert.match(fs.readFileSync(path.join(HERE_DIR, "computerd", "index.js"), "utf8"), /gate\.pin\(req\.socket\.remoteAddress\); publishPeer\(gate\.pinned\)/, "computerd writes the pin the relay reads");
-  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py \/opt\/agentd\//, "both helpers are in the image, root's");
-  assert.match(relay, /"\/usr\/bin\/python3", "-I", TERM, u\.session/, "a terminal runs as the agent with only its checked name");
+  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-chrome\.py \/opt\/agentd\//, "both helpers are in the image, root's");
+  assert.match(relay, /"\/usr\/bin\/python3", "-I", TERM, String\(u\.session\)/, "a terminal runs as the agent with only its checked name");
   assert.doesNotMatch(relay, /vnc\.sock|socketOf/, "the relay never names a socket: the pipe builds it from its uid");
 });
 

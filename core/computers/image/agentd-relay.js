@@ -18,6 +18,7 @@ const plain = (/** @type {unknown} */ a) => String(a || "").replace(/^::ffff:/, 
 export const peerFromFile = (/** @type {string} */ file = PEER_FILE) => () => { try { return fs.readFileSync(file, "utf8").trim() || null; } catch { return null; } };
 export const PIPE = "/opt/agentd/agentd-pipe.py";
 export const TERM = "/opt/agentd/agentd-term.py";
+export const KINDS = Object.freeze(["vnc", "cdp", "term"]);
 export const SESSION_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const TICKET_RE = /^[A-Za-z0-9_-]{32,64}$/;
 export const TICKET_MS = 30_000;
@@ -26,22 +27,24 @@ const hash = (/** @type {string} */ t) => crypto.createHash("sha256").update(t).
 /** Single-use tickets held in memory, by hash. A ticket opens an agent's screen, or one terminal (a tmux session) of that agent. */
 export class Tickets {
   /** @param {() => number} [now] */
-  constructor(now = Date.now) { this.now = now; /** @type {Map<string, { u: { user: string, uid: number, display: number }, session: string | null, expires: number }>} */ this.map = new Map(); }
-  /** @param {string} ticket @param {{ user: string, uid: number, display: number }} u @param {string | null} [session] a terminal's name; none means the screen */
-  add(ticket, u, session = null) {
+  constructor(now = Date.now) { this.now = now; /** @type {Map<string, { u: { user: string, uid: number, display: number }, kind: string, session: string | null, expires: number }>} */ this.map = new Map(); }
+  /** @param {string} ticket @param {{ user: string, uid: number, display: number }} u @param {"vnc" | "cdp" | "term"} [kind] the agent's screen, its Chrome's debugging pipe, or one terminal @param {string | null} [session] a terminal's name */
+  add(ticket, u, kind = "vnc", session = null) {
+    if (!KINDS.includes(kind)) throw new Error("not a ticket kind");
+    if ((kind === "term") !== (session !== null)) throw new Error("a terminal ticket names its terminal, and no other ticket does");
     if (!TICKET_RE.test(ticket)) throw new Error("not a ticket");
     if (session !== null && !SESSION_RE.test(session)) throw new Error("not a terminal name");
     const t = this.now();
     for (const [k, v] of this.map) if (v.expires <= t) this.map.delete(k);
     if (this.map.size >= 256) throw new Error("too many tickets waiting");
-    this.map.set(hash(ticket), { u, session, expires: t + TICKET_MS });
+    this.map.set(hash(ticket), { u, kind, session, expires: t + TICKET_MS });
   }
   /** Spend a ticket: the agent (and terminal) it names, or null when unknown, used or expired. @param {string} ticket */
   take(ticket) {
     if (!TICKET_RE.test(ticket)) return null;
     const k = hash(ticket), v = this.map.get(k);
     this.map.delete(k);
-    return v && v.expires > this.now() ? { ...v.u, session: v.session } : null;
+    return v && v.expires > this.now() ? { ...v.u, kind: v.kind, session: v.session } : null;
   }
 }
 
@@ -76,7 +79,8 @@ export function createRelay(o) {
       const rest = buf.subarray(nl + 1);
       if (!u || (open.get(u.uid) || 0) >= maxPerAgent) return void sock.destroy();
       open.set(u.uid, (open.get(u.uid) || 0) + 1);
-      const child = spawn(u.session ? [...asAgent(u, {}, { TERM: "xterm-256color" }), "/usr/bin/python3", "-I", TERM, u.session] : [...asAgent(u), "/usr/bin/python3", "-I", PIPE]);
+      // the helper and its one fixed word come from the ticket's kind, never from text the ticket carried
+      const child = spawn(u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color" }), "/usr/bin/python3", "-I", TERM, String(u.session)] : [...asAgent(u), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"]);
       let done = false;
       const finish = () => { if (done) return; done = true; open.set(u.uid, Math.max(0, (open.get(u.uid) || 1) - 1)); try { child.stdin?.end(); } catch {} try { sock.destroy(); } catch {} };
       child.on("error", finish); child.on("exit", finish); sock.on("close", finish);

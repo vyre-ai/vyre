@@ -70,14 +70,14 @@ export const longRunning = argv => Object.assign(argv, { detach: true });
  */
 export function planStartScreen(u, lim = {}) {
   check(u);
-  const home = homeOf(u.user);
   const D = `:${u.display}`;
   const as = (/** @type {Record<string, string>} */ env = {}) => asAgent(u, lim, env);
   return [
     longRunning([...as(), "/usr/bin/Xvnc", D, "-geometry", lim.size || "1440x900", "-depth", "24", "-rfbport", "-1", "-rfbunixpath", socketOf(u), "-rfbunixmode", "0600",
       "-rfbauth", `${RUN}/${u.user}/vnc.pass`, "-SecurityTypes", "VncAuth", "-AlwaysShared"]),
     longRunning([...as({ DISPLAY: D }), "/usr/bin/fluxbox"]),
-    longRunning([...as({ DISPLAY: D }), "/usr/bin/chromium", `--user-data-dir=${home}/.chrome`, "--no-first-run", "--restore-last-session", `--disk-cache-dir=${home}/.cache/chrome`]),
+    // Chrome is started by a holder that runs as the agent and keeps Chrome's debugging pipe (no TCP debug port): agentd-chrome.py, with no argument. Its profile (home/.chrome) is the agent's own and survives sleep.
+    longRunning([...as({ DISPLAY: D }), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
   ];
 }
 

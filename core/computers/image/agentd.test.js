@@ -37,7 +37,8 @@ test("the screen is its own display on a unix socket (no TCP port), the password
   assert.equal(socketOf(U), "/var/lib/vyre/agents/ag20000/vnc.sock");
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /password=|-passwd/i);
   assert.match(wm.join(" "), /DISPLAY=:20 \/usr\/bin\/fluxbox$/);
-  assert.match(chrome.join(" "), /--user-data-dir=\/home\/ag20000\/\.chrome/);
+  assert.match(chrome.join(" "), /DISPLAY=:20 \/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py$/, "Chrome is started by the holder as the agent, with no argument and no debug port");
+  assert.doesNotMatch(planStartScreen(U).flat().join(" "), /remote-debugging-port|--user-data-dir/, "no TCP debug port, and no flag to steer from outside the holder");
 });
 
 test("the long-running steps are marked in the plan, and the others are not", () => {

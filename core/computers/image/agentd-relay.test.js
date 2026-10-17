@@ -38,7 +38,7 @@ test("a good ticket joins the viewer to the agent's pipe, run as that agent's ui
   assert.equal(w.spawned.length, 1);
   const argv = w.spawned[0].join(" ");
   assert.match(argv, /^\/usr\/bin\/setpriv --reuid=20003 --regid=20003 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs /);
-  assert.ok(argv.endsWith(`/usr/bin/python3 -I ${PIPE}`), "no argument names a socket: the pipe builds it from its own uid");
+  assert.ok(argv.endsWith(`/usr/bin/python3 -I ${PIPE} vnc`), "one fixed word, never a path: the pipe builds the socket from its own uid");
   s.destroy();
 });
 
@@ -96,7 +96,7 @@ test("agentd takes a ticket only for a real agent triple, and only with its bear
   t.after(() => server.close());
   const call = (token, body) => callAgentd({ socket, token, action: "ticket", body: JSON.stringify(body) });
   assert.equal((await call("t".repeat(40), { ...U, ticket: T1 })).status, 200);
-  assert.deepEqual(tickets.take(T1), { ...U, session: null });
+  assert.deepEqual(tickets.take(T1), { ...U, kind: "vnc", session: null });
   assert.equal((await call("x".repeat(40), { ...U, ticket: T1 })).status, 401);
   assert.equal((await call("t".repeat(40), { user: "root", uid: 0, display: 0, ticket: T1 })).status, 400);
   assert.equal((await call("t".repeat(40), { ...U, uid: 20004, ticket: T1 })).status, 400, "a user that is not the uid's");
@@ -119,20 +119,20 @@ test("a peer that is not vyred's address is closed before it can send a ticket; 
     const s = await connect(w.port, `${T1}\n`);
     assert.equal(await closes(s), true);
     assert.equal(w.spawned.length, 0, "no process");
-    assert.deepEqual(w.tickets.take(T1), { ...U, session: null }, "the ticket was never read, so it is not spent");
+    assert.deepEqual(w.tickets.take(T1), { ...U, kind: "vnc", session: null }, "the ticket was never read, so it is not spent");
   }
 });
 
 test("a terminal ticket starts the terminal helper as that agent with the session name as its one argument; a bad name is never registered", async t => {
   const w = await world(t);
-  w.tickets.add(T1, U, "work-1");
+  w.tickets.add(T1, U, "term", "work-1");
   const s = await connect(w.port, `${T1}\n`);
   await new Promise(r => setTimeout(r, 100));
   const argv = w.spawned[0].join(" ");
   assert.match(argv, /^\/usr\/bin\/setpriv --reuid=20003 --regid=20003 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs /);
   assert.ok(argv.endsWith("/usr/bin/python3 -I /opt/agentd/agentd-term.py work-1"));
   s.destroy();
-  for (const bad of ["", "a b", "x;rm", "../x", "a".repeat(41)]) assert.throws(() => w.tickets.add(T2, U, bad), /not a terminal name/, bad);
+  for (const bad of ["", "a b", "x;rm", "../x", "a".repeat(41)]) assert.throws(() => w.tickets.add(T2, U, "term", bad), /not a terminal name/, bad);
 });
 
 test("the terminal helper takes one checked name and builds the agent's tmux socket from its own uid", () => {
@@ -159,6 +159,43 @@ test("agentd lists an agent's terminals through tmux run as that agent, only for
   assert.equal((await call("terminals", U, "x".repeat(40))).status, 401);
   assert.equal((await call("terminals", { user: "root", uid: 0, display: 0 })).status, 400);
   assert.equal((await call("ticket", { ...U, ticket: T1, session: "work" })).status, 200);
-  assert.deepEqual(tickets.take(T1), { ...U, session: "work" });
+  assert.deepEqual(tickets.take(T1), { ...U, kind: "term", session: "work" });
   assert.equal((await call("ticket", { ...U, ticket: T2, session: "a b" })).status, 400);
+});
+
+test("a debugging ticket starts the pipe with the word cdp and can only be a cdp one; the kinds are a closed list and never mix", async t => {
+  const w = await world(t);
+  w.tickets.add(T1, U, "cdp");
+  const s = await connect(w.port, `${T1}\n`);
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(w.spawned[0].join(" ").endsWith(`/usr/bin/python3 -I ${PIPE} cdp`));
+  s.destroy();
+  assert.throws(() => w.tickets.add(T2, U, "root"), /not a ticket kind/);
+  assert.throws(() => w.tickets.add(T2, U, "cdp", "work"), /names its terminal/);
+  assert.throws(() => w.tickets.add(T2, U, "term"), /names its terminal/);
+  w.tickets.add(T2, U, "vnc");
+  assert.equal(w.tickets.take(T2).kind, "vnc", "a screen ticket is a screen ticket and cannot be spent as the other");
+});
+
+test("agentd registers a cdp ticket only as exactly that kind, and the holder's limits are pinned", async t => {
+  const tickets = new Tickets();
+  const server = createAgentd({ token: "t".repeat(40), tickets, run: async () => {} });
+  const socket = path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-cdp-")), "a.sock");
+  await new Promise(r => server.listen(socket, () => r(undefined)));
+  t.after(() => server.close());
+  const call = body => callAgentd({ socket, token: "t".repeat(40), action: "ticket", body: JSON.stringify(body) });
+  assert.equal((await call({ ...U, ticket: T1, kind: "cdp" })).status, 200);
+  assert.equal(tickets.take(T1).kind, "cdp");
+  assert.equal((await call({ ...U, ticket: T1, kind: "pipe" })).status, 400);
+  assert.equal((await call({ ...U, ticket: T1, kind: "cdp", session: "work" })).status, 400);
+  const py = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
+  assert.match(py, /uid < 20000 or uid > 20063 or uid != os\.getuid\(\) or len\(sys\.argv\) != 1/);
+  assert.match(py, /"--remote-debugging-pipe"/);
+  assert.doesNotMatch(py, /remote-debugging-port|os\.environ|getenv|shell=True/);
+  assert.match(py, /MAX_MSG = 16 \* 1024 \* 1024/);
+  assert.match(py, /MAX_PENDING = /);
+  assert.match(py, /IDLE = 600/);
+  assert.match(py, /RUN \+ "\/cdp\.sock"/);
+  assert.match(py, /os\.chmod\(SOCK, 0o600\)/);
+  assert.match(py, /else:\n\s+c\.close\(\)/, "a second client is refused, never allowed to replace the first");
 });

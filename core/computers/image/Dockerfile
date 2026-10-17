@@ -135,7 +135,7 @@ RUN for n in $(seq 20000 20063); do \
       && chown "$n:$n" "/home/ag$n" "/var/lib/vyre/agents/ag$n" && chmod 0700 "/home/ag$n" "/var/lib/vyre/agents/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents && chmod 0711 /var/lib/vyre/agents
-COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py /opt/agentd/
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-chrome.py /opt/agentd/
 RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
     && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
     && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
@@ -144,7 +144,7 @@ COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 # agentd's code is root's: neither agentctl nor an agent can write a file it runs.
 RUN chmod 0755 /usr/local/bin/agentd-vncpass \
     && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
-    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/package.json
+    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
 COPY computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R a+rX,go-w /opt/computerd && chmod 0755 /usr/local/bin/entrypoint.sh /opt/computerd/atspi.py

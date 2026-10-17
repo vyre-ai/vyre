@@ -56,7 +56,9 @@ export function createAgentd(o) {
           planCreate(u);
           const session = body.session === undefined || body.session === null ? null : String(body.session);
           if (session !== null && !SESSION_RE.test(session)) throw new Error("not a terminal name");
-          tickets.add(String(body.ticket), u, session);
+          if (body.kind !== undefined && body.kind !== "cdp") throw new Error("not a ticket kind");
+          if (body.kind === "cdp" && session !== null) throw new Error("a debugging ticket names no terminal");
+          tickets.add(String(body.ticket), u, session !== null ? "term" : body.kind === "cdp" ? "cdp" : "vnc", session);
           return send(200, { ok: true });
         }
         if (action === "terminals") return send(200, { sessions: parseTerminals(await out(planTerminals(u))) });
