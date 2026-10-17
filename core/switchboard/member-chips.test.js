@@ -40,3 +40,17 @@ test("the owner's own turn still resolves chips and #Names", async () => {
   assert.ok(heard.some((/** @type {any} */ t) => t.kind === "vault"));
   assert.ok(calls.some(c => c.startsWith("mentions.search")));
 });
+
+test("a chat turn hears its picks as its asker: the daemon reads a record under the asker's chain, a member's turn skips what the owner's access would answer, and the words record no ask", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  const sb = rig(calls);
+  /** @type {any[]} */ const asked = [];
+  sb.deps.recordTags = async (/** @type {any[]} */ chips, /** @type {any} */ turn) => { asked.push(turn); return { chips: chips.filter(c => c.kind !== "record"), tags: chips.filter(c => c.kind === "record").map(c => ({ kind: "record", id: c.id, name: "Jane", hint: null, hosts: [], note: "n", outside: true })) }; };
+  let heardActs = 0;
+  sb.hearActs = async () => { heardActs++; };
+  const heard = await Switchboard.prototype.ingress.call(sb, "t1", "use #owner-secret please", "deck", "u1", CHIPS, [], "module:stream", null, { memberTurn: true, asker: "per_bob" });
+  assert.deepEqual(heard.map((/** @type {any} */ t) => t.kind).sort(), ["account", "record"]);
+  assert.equal(asked[0].asker, "per_bob", "the picks are read for the asker");
+  assert.equal(heardActs, 0, "a chat turn's words are never heard as the owner's asks");
+  assert.equal(calls.some(c => /mentions\.search|vault|drive|github/.test(c)), false, calls.join(" "));
+});

@@ -434,6 +434,7 @@
   "needs": {
     "daemon": [
       "kernelSession",
+      "turnRecordTags",
       "chatFor",
       "sandbox",
       "credentials",

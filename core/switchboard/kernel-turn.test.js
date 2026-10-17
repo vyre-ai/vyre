@@ -263,3 +263,62 @@ test("a chat message queued behind a turn survives a restart and then runs under
   const turn = await until(turnOf, "the queued message's own turn to be open", 20_000);
   assert.deepEqual([turn.person, turn.chat], [owner, chat.id], "under its own asker, in its chat");
 });
+
+// A chat turn's words reach the Switchboard as module:stream, so the call carries no person: the asker is the id the stream names, which the kernel has checked is in the chat. Chips on such a turn
+// resolve as that asker. A record or a whole-object pick is read under the asker's OWN chain (a member sees only what a member may see); a vault, Drive or GitHub chip and a #Name would answer
+// under the owner's access, so they are heard only for the home's own owner. (The stream's calls are module:stream; nothing here is a person's surface.)
+const TYPE = { name: "client", label: "Client", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "budget", kind: "number", label: "Budget", hidden_from: ["member"] }] };
+
+async function chipChat(t, who) {
+  const root = tempHome(t);
+  const d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const BOB = "per_" + "b".repeat(26);
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  await d.kernel.gateway.records.define(ownerChain, { add_types: [TYPE] });
+  const rec = await d.kernel.gateway.records.create(ownerChain, "client", { name: "Jane Harlow", budget: 5000 });
+  const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
+  const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
+  const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(r.data, JSON.stringify(r));
+  await fin(r.data.id, 1);
+  const send = async (asker, mentions, text = "look at these") => {
+    const before = (await events(r.data.id)).filter(e => e.type === "thread.finished").length;
+    const sent = await d.registry.call("threads.send", { thread: r.data.id, text, surface: "deck", chat: chat.id, asker, mentions }, "module:stream");
+    assert.ok(sent.data && !sent.error, JSON.stringify(sent));
+    await fin(r.data.id, before + 1);
+    return (await events(r.data.id)).filter(e => e.type === "thread.mentioned");
+  };
+  return { d, owner, BOB, rec, send, thread: r.data.id };
+}
+
+test("a member's chat turn tags a record they may read, as themselves, and nothing the owner's access would answer", { timeout: 90_000 }, async t => {
+  const { BOB, rec, send } = await chipChat(t);
+  const mentioned = await send(BOB, [{ kind: "record", id: rec.urn }, { kind: "vault", id: "owner-secret" }, { kind: "drive", id: "owner-file" }, { kind: "github", id: "owner/repo" }], "use #owner-secret and the file");
+  const kinds = mentioned.flatMap(e => (e.payload.mentions || []).map(m => m.kind));
+  assert.deepEqual(kinds, ["record"], `only the record, read under the member's chain: ${JSON.stringify(mentioned)}`);
+});
+
+test("a member's chat turn with a record that is not there, or one from another Space, tags nothing", { timeout: 90_000 }, async t => {
+  const { BOB, send } = await chipChat(t);
+  const mentioned = await send(BOB, [{ kind: "record", id: "vyre://spc_bbbbbbbbbbbb/client/abc" }, { kind: "record", id: "vyre://nonsense" }]);
+  assert.deepEqual(mentioned, [], "plain words, never a tag");
+});
+
+test("the owner's own chat turn tags a record too (chips resolve in a chat for the person who asked)", { timeout: 90_000 }, async t => {
+  const { owner, rec, send } = await chipChat(t);
+  const mentioned = await send(owner, [{ kind: "record", id: rec.urn }]);
+  assert.deepEqual(mentioned.flatMap(e => (e.payload.mentions || []).map(m => m.kind)), ["record"]);
+});
+
+test("a chat turn's words never record what the owner asked for (hearActs is a person's own surface only)", { timeout: 90_000 }, async t => {
+  const { d, BOB, send } = await chipChat(t);
+  await send(BOB, [], "open a PR and merge it");
+  const said = await d.registry.call("vault.said.list", {}, "module:switchboard");
+  assert.ok(said.error || !(said.data && (Array.isArray(said.data) ? said.data : said.data.said || []).length), `nothing was recorded as said for a member's chat words: ${JSON.stringify(said).slice(0, 200)}`);
+});

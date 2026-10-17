@@ -2571,10 +2571,10 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    await this.hearActs(id, text, uuid, pasted, rec.project);
-    if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
+    if (!(turn && turn.asker)) await this.hearActs(id, text, uuid, pasted, rec.project);   // a chat turn's words never record what the owner asked for: only a person's own surface does
+    if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
-    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
+    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length) return [];
     const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
     const tags = [...resolved, ...picked.tags];
@@ -4078,7 +4078,7 @@ export default {
       // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
       chatFor: ctx.chatFor || null,
       // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
-      recordTags: (/** @type {any[]} */ chips) => recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() }),
+      recordTags: (/** @type {any[]} */ chips, /** @type {any} */ turn) => (turn && turn.asker ? (ctx.turnRecordTags ? ctx.turnRecordTags({ asker: turn.asker, space: turn.space || null, chips }) : recordTags(chips, { kernel: ctx.kernel, chain: null })) : recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() })),
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
@@ -4527,7 +4527,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta, { memberTurn: Boolean(kt && ctx.kernel && !(await isStaffPerson(ctx.kernel, String(kt.asker)))) }) : [];
+        const heard = (mine || (kt && sb.knows(i.thread) && !sb.sentBefore(uuid))) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta, { memberTurn: Boolean(kt && !(ctx.kernel && sb.canon(String(kt.asker)) === sb.canon(String(ctx.kernel.owner)))), ...(kt ? { asker: kt.asker, ...(kt.space ? { space: kt.space } : {}) } : {}) }) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
