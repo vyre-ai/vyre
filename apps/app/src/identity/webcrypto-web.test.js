@@ -125,3 +125,19 @@ test("the key bytes kept for a refused verify are a copy: the caller overwriting
     assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("copy mE")), false, "a tampered message still does not");
   }
 });
+
+test("a browser whose own Ed25519 answers false for a good signature is sent to the fallback, which answers right both ways", async () => {
+  const real = crypto.webcrypto.subtle;
+  const g = { crypto: { subtle: {
+    importKey: async (f, data, algo, ...r) => (String(algo.name || algo).toUpperCase() === "ED25519" ? { opaque: true } : real.importKey(f, data, algo, ...r)),
+    verify: async (algo, ...r) => (String(algo.name || algo).toUpperCase() === "ED25519" ? false : real.verify(algo, ...r)),
+    digest: (...a) => real.digest(...a),
+  } } };
+  assert.equal(await ed25519Works(g), false, "before the fallback: the browser's own answers false for the known good signature");
+  installEd25519Fallback(g);
+  assert.equal(await ed25519Works(g), true, "after: the self-test finds the browser's answers wrong and the fallback answers");
+  const { pub, sig } = sign(Buffer.from("trust the vector"));
+  const key = await g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("trust the vector")), true);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("trust the vectoR")), false);
+});

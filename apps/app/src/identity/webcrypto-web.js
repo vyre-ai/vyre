@@ -28,17 +28,31 @@ export function installEd25519Fallback(g) {
   const nativeImport = subtle.importKey.bind(subtle), nativeVerify = subtle.verify.bind(subtle);
   // A WebKit that imports an Ed25519 key but refuses to verify with it (found in the Mac app's window): the public key's bytes are kept beside the browser's own key, so a refusal of the verify can be answered.
   const rawOf = new WeakMap();
+  // A copy of the bytes, never a view of the caller's buffer: the caller may overwrite or reuse it after the import.
+  const own = (/** @type {any} */ data) => (data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)) : data);
+  // The browser's own Ed25519 is trusted only if it answers the known vector right (the good signature true, the tampered one false), checked once, before the first Ed25519 key is imported. A WebKit that answers
+  // false for a good signature (found in the Mac app's window) or refuses outright is sent, whole, to the fallback. A browser that fails the check for some other reason (a thrown error that is not "not supported")
+  // keeps its own answers, and the error reaches the caller as it always did.
+  /** @type {Promise<boolean> | null} */ let nativeBroken = null;
+  const brokenNative = () => nativeBroken || (nativeBroken = (async () => {
+    try {
+      const k = await nativeImport("raw", hex(VECTOR.pub), { name: "Ed25519" }, false, ["verify"]);
+      const good = await nativeVerify({ name: "Ed25519" }, k, hex(VECTOR.sig), new Uint8Array(0));
+      const bad = await nativeVerify({ name: "Ed25519" }, k, hex(VECTOR.sig), new Uint8Array([1]));
+      return !(good === true && bad === false);
+    } catch (e) { return unsupported(e); }
+  })());
   subtle.importKey = async (/** @type {any} */ format, /** @type {any} */ data, /** @type {any} */ algo, /** @type {any[]} */ ...rest) => {
     if (!isEd(algo) || format !== "raw") return nativeImport(format, data, algo, ...rest);
+    if (await brokenNative()) return { [FALLBACK]: await methods.importKey("raw", own(data), algo) };
     try {
       const key = await nativeImport(format, data, algo, ...rest);
-      // A copy of the bytes, never a view of the caller's buffer: the caller may overwrite or reuse it after the import.
-      try { rawOf.set(key, data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)) : (() => { throw new Error("not bytes"); })()); } catch { /* not keepable */ }
+      try { rawOf.set(key, own(data)); } catch { /* not keepable */ }
       return key;
     }
     catch (e) {
       if (!unsupported(e)) throw e;
-      return { [FALLBACK]: await methods.importKey("raw", data, algo) };
+      return { [FALLBACK]: await methods.importKey("raw", own(data), algo) };
     }
   };
   subtle.verify = async (/** @type {any} */ algo, /** @type {any} */ key, /** @type {any} */ sig, /** @type {any} */ msg) => {
