@@ -99,10 +99,24 @@ try {
   // (3) strangers and the other agent
   const refused = await new Promise(resolve => { const s = net.connect(RELAY_PORT, ip); const got = []; s.on("data", c => got.push(c)); s.on("close", () => resolve(Buffer.concat(got).length)); s.on("error", () => resolve(-1)); s.on("connect", () => s.write("x".repeat(40) + "\n")); setTimeout(() => resolve(-2), 5000); });
   check(refused === 0, "a bad ticket gets no byte back", refused);
-  const otherSock = shOk(["exec", "-u", "20001", CONTAINER, "python3", "-c", "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/vyre/agents/ag20000/cdp.sock')"]);
-  check(/ERR/.test(otherSock) && /ermission/.test(otherSock), "agent B's uid cannot open agent A's debugging socket", otherSock.slice(-120));
-  const otherProfile = shOk(["exec", "-u", "20001", CONTAINER, "ls", "/var/lib/vyre/agents/ag20000/home/.chrome"]);
-  check(/ERR/.test(otherProfile) && /ermission/.test(otherProfile), "agent B's uid cannot read agent A's Chrome profile", otherProfile.slice(-120));
+  // the browser is its own uid (agb21000 for agent 20000): the agent's own shell, and the other agent, can reach none of its socket, profile or memory
+  const denied = (out) => /ERR/.test(out) && /ermission denied|not permitted|No such file/i.test(out);
+  for (const uid of [20000, 20001]) {
+    const sock = shOk(["exec", "-u", String(uid), CONTAINER, "python3", "-c", "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/vyre/browsers/agb21000/cdp.sock')"]);
+    check(denied(sock), `uid ${uid} cannot open agent A's browser debugging socket`, sock.slice(-100));
+    const prof = shOk(["exec", "-u", String(uid), CONTAINER, "ls", "/var/lib/vyre/browsers/agb21000/profile"]);
+    check(denied(prof), `uid ${uid} cannot read agent A's Chrome profile`, prof.slice(-100));
+  }
+  const pid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 21000 -x chromium | head -1"]);
+  check(/^\d+$/.test(pid), "agent A's Chrome runs as the browser uid 21000", pid);
+  for (const [what, cmd] of [["environment", `cat /proc/${pid}/environ`], ["open files", `ls /proc/${pid}/fd`], ["memory map", `cat /proc/${pid}/maps`], ["memory", `head -c 16 /proc/${pid}/mem`]]) {
+    const out = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `${cmd} 2>&1`]);
+    check(/ermission denied|not permitted|No such/i.test(out) || out === "", `the agent's shell cannot read its browser's ${what}`, out.slice(0, 80));
+  }
+  const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);
+  check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
+  const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
+  check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", "ok");
   await b.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");
   console.log("agent computer proof: all checks passed");
