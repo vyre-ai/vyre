@@ -12,6 +12,8 @@
 export const MEMBER_MAY = Object.freeze(new Set([
   // A member's own held items (what their agent asked to send from their mailbox): the handler shows and answers only the items they asked for, never the owner's or another member's (core/gate/requester.js).
   "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.revise",
+  // A member's own provisioned Microsoft account (the app and the address): the handler gives a member only theirs and the owner the firm app.
+  "microsoft.accounts",
   // A member may give a permission for their own agent over their own mailbox (the handler limits them to agents they made and connections they hold) and list or end their own.
   "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
@@ -140,7 +142,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "google.accounts", "google.add", "google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today",
   "google.calendar.update", "google.connect", "google.connect.cancel", "google.connect.finish", "google.drive.read", "google.drive.search", "google.find", "google.mail.draft", "google.mail.read",
   "google.mail.search", "google.mail.send", "google.members.email", "google.open", "google.remove", "google.test",
-  "microsoft.accounts", "microsoft.add", "microsoft.calendar.create", "microsoft.calendar.list", "microsoft.check", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.mail.send", "microsoft.members.email", "microsoft.remove",
+  "microsoft.add", "microsoft.calendar.create", "microsoft.calendar.list", "microsoft.check", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.mail.send", "microsoft.members.email", "microsoft.remove",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
   "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",
   "identity.card", "identity.create", "identity.discover", "identity.github.link", "identity.lock", "identity.migrate", "identity.status", "identity.unlock",
