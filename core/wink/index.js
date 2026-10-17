@@ -280,23 +280,14 @@ export function createWink(inject = {}) {
         // gate "server": the scanner completes its own adoption (wink.server.adopt), and the person at the server answers there
       } catch (err) { ctx.log(`wink: a waiting pairing could not be let go: ${/** @type {Error} */ (err).message}`); }
     });
-    const registerDevice = async (/** @type {any} */ p) => {
-      // Only a pairing the owner's screen confirmed (a window) is registered. A ring, a code, a bare ticket or any other way in adds nothing.
-      if (p.via !== "window") return null;
-      const identity = await owner1();
-      const existing = pairing.devices.get(String(p.id));
-      if (existing && !existing.removed) return existing;
-      const dev = pairing.devices.add({ id: String(p.id), identity, kind: "computer", name: String(p.name || "a device"), fingerprint: String(p.fingerprint || ""), target: { kind: "identity", id: identity } });
-      ctx.events.emit("wink.joined", { device: p.id, flow: "W2", kind: "computer" });
-      return dev;
-    };
     // A grant an older build wrote for a device becomes a registry row once: a device is never a member of a space (it belongs to the identity).
     const adoptDevice = (/** @type {string} */ identity, /** @type {any} */ x) => {
       const sub = x.subject.actor;
       const who = String(x.reason || "").split(", ");
       if (!pairing.devices.get(sub.id)) pairing.devices.add({ id: sub.id, identity, kind: /** @type {any} */ (FLOW_KIND)[String(x.source).slice(5)] || "computer", name: who[0], fingerprint: who[1], target: { kind: "identity", id: identity } });
     };
-    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await registerDevice(e.payload || e); await grants(); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
+    // Nothing registers a device from the relay's device.paired event: a device becomes the person's only through a server pairing the owner decided (wink.server.adopt). The event only wakes the grants.
+    const offPaired = ctx.events.on("device.paired", async () => { try { await grants(); } catch (err) { ctx.log(`wink: grants after a pairing failed: ${/** @type {Error} */ (err).message}`); } });
     const offRemoved = ctx.events.on("device.removed", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {

@@ -11,7 +11,7 @@ import { deviceIdOf } from "../../lib/caller.js";
 
 export const DEVICE_ADMIN = Object.freeze(new Set([
   // pairing windows and tickets: they make a new device
-  "relay.pair.first", "relay.pair.start", "relay.pair.ticket", "relay.pair.window.open", "relay.pair.window.close", "relay.pair.window.confirm", "relay.pair.window.reject", "relay.pair.window.renew", "relay.pair.window.ping",
+  "relay.pair.first", "relay.pair.start", "relay.pair.ticket", 
   // the devices themselves
   "relay.devices.mark", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust", "relay.devices.ask-trust", "relay.devices.drop", "relay.devices.drop-server", "relay.devices.admit-server", "relay.devices.clear-leftover",
   "relay.enable", "relay.disable", "relay.join", "relay.web.pin", "relay.web.release",

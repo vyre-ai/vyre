@@ -976,7 +976,6 @@
  "test/redteam/presence.test.js": 7,
  "test/redteam/scope.test.js": 4,
  "test/redteam/vault.test.js": 14,
- "test/relay-window.test.js": 7,
  "test/release-key.test.js": 5,
  "test/release-lineage.test.js": 6,
  "test/release-verify-workflow.test.js": 3,
