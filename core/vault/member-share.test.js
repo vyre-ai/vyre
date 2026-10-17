@@ -8,7 +8,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
@@ -33,8 +32,17 @@ async function world(t) {
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   // the members' own vaults, as a stand-in: Ben is unlocked and holds one login; a locked vault throws
   const items = new Map([[BEN, new Map([[LABEL, { name: LABEL, kind: "login", fields: { username: USER, password: PASS } }], ["a-note", { name: "a-note", kind: "note", fields: { text: "x" } }]])], [CY, new Map()]]);
-  let locked = false;
-  v.access.members.people = { get: async (/** @type {string} */ id, /** @type {{ name: string }} */ { name }) => { if (locked) throw Object.assign(new Error("locked"), { code: "locked" }); const it = items.get(id)?.get(name); if (!it) throw new Error(`no item named ${name}`); return structuredClone(it); } };
+  let locked = false, lentLocked = false;
+  /** What each member lends, as PeopleVaults.lent keeps it (sealed under her lend key; a stand-in here: the real one is tested in people.test.js and against a real daemon in member-share-owner.test.js). */
+  const lentStore = new Map([[BEN, new Map()], [CY, new Map()]]);
+  v.access.members.people = {
+    get: async (/** @type {string} */ id, /** @type {{ name: string }} */ { name }) => { if (locked) throw Object.assign(new Error("locked"), { code: "locked" }); const it = items.get(id)?.get(name); if (!it) throw new Error(`no item named ${name}`); return structuredClone(it); },
+    lent: (/** @type {string} */ id) => ({
+      get: async (/** @type {string} */ name) => { const it = lentStore.get(id)?.get(name); if (!it) throw Object.assign(new Error("no lent item"), { code: "not_found" }); return structuredClone(it); },
+      put: async (/** @type {string} */ name, /** @type {any} */ it) => { lentStore.get(id)?.set(name, structuredClone(it)); return { name }; },
+      remove: async (/** @type {string} */ name) => { if (lentLocked) throw Object.assign(new Error("locked"), { code: "locked" }); return { removed: Boolean(lentStore.get(id)?.delete(name)) }; },
+    }),
+  };
   await v.key();
   const calls = /** @type {any[]} */ ([]);
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
@@ -45,7 +53,7 @@ async function world(t) {
   const share = (/** @type {any} */ over = {}, who = BEN) => M.share({ item: LABEL, agent: "juno", origin: ORIGIN, ...over }, as(who));
   const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN) => agentFill(d, { agent, item: ref, origin });
   const everything = () => JSON.stringify({ events, audit: db.prepare("SELECT * FROM vault_audit").all(), calls, items: v.list().items });
-  return { v, rig, db, M, items, setLocked: (/** @type {boolean} */ b) => { locked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
+  return { v, rig, db, M, items, lentStore, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
 }
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
@@ -79,11 +87,12 @@ test("only the member, explicitly, for a login of theirs with a password, for a 
   await assert.rejects(w.share(), e => /** @type {any} */ (e).code === "locked");
   w.setLocked(false);
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0, "none of these left a copy behind");
+  assert.equal(w.lentStore.get(BEN).size, 0);
   // Cy has no such login; Ben's is not Cy's to share
   await assert.rejects(w.share({}, CY), /no item named/);
 });
 
-test("the copy is not an item of the Space's vault: no list, row, field or audit line of the owner's shows it, and the file is sealed under a key of its own", async t => {
+test("the copy is not an item of the Space's vault: it sits in the member's own lend folder, and nothing of the owner's shows it: no list, row, field, table, audit line or file", async t => {
   const w = await world(t);
   const r = await w.share();
   const ref = r.shared.ref;
@@ -91,13 +100,14 @@ test("the copy is not an item of the Space's vault: no list, row, field or audit
   assert.equal(w.v.list({ filter: "mc-" }).items.length, 0);
   assert.ok(!w.v.row(ref), "no row by that name");
   assert.ok(!w.db.prepare("SELECT 1 FROM vault_items WHERE name = ? OR description LIKE ?").get(ref, `%${LABEL}%`));
+  assert.equal(w.lentStore.get(BEN).get(ref).fields.password, PASS, "it is in Ben's own lend folder");
+  assert.equal(w.lentStore.get(BEN).get(ref).description, LABEL, "and the name he gave the login is there too, sealed with it");
+  assert.equal(w.lentStore.get(CY).size, 0);
+  const table = JSON.stringify(w.db.prepare("SELECT * FROM vault_member_copies").all());
+  assert.ok(!table.includes(PASS) && !table.includes(LABEL) && !table.includes(USER), "the record that finds the share holds neither the value nor the login's name");
   for (const text of [w.everything()]) { assert.ok(!text.includes(PASS), "no password in audit, events or calls"); assert.ok(!text.includes(USER)); assert.ok(!text.includes(LABEL), "nor the member's name for the login"); }
-  // on disk: nothing under the Space's vault folder holds the password, and the copy does not open under the Space's key
-  const walk = (/** @type {string} */ d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const walk = (/** @type {string} */ d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
   for (const f of walk(path.join(w.home, "vault"))) assert.ok(!fs.readFileSync(f).includes(Buffer.from(PASS)), f);
-  const file = path.join(w.home, "vault", "member-copies", ref + ".bin");
-  const b = fs.readFileSync(file), vk = (await w.v.key()).export();
-  assert.throws(() => { const de = crypto.createDecipheriv("aes-256-gcm", vk, b.subarray(0, 12)); de.setAAD(Buffer.from(ref)); de.setAuthTag(b.subarray(b.length - 16)); de.update(b.subarray(12, b.length - 16)); de.final(); }, "the Space's key alone does not open it");
   assert.equal((await w.v.access.copies.fields(ref)).password, PASS, "only the store's own path opens it");
 });
 
@@ -119,19 +129,19 @@ test("the agent's fill needs the grant every time: another agent, another site, 
   for (let i = 0; i < 6000; i++) w.rig.clock();
   await assert.rejects(w.fill(exp), e => /** @type {any} */ (e).code === "not_found", "an expired share is no login at all");
   assert.ok(!w.db.prepare("SELECT 1 FROM vault_member_copies WHERE ref = ?").get(exp), "and its copy was deleted when it was found out");
-  assert.ok(!fs.existsSync(path.join(w.home, "vault", "member-copies", exp + ".bin")));
+  assert.ok(!w.lentStore.get(BEN).has(exp), "and the sealed copy");
   w.v.clock = real;
 });
 
 test("every way a share ends deletes its copy: unshare, the login changed, the login removed, the member leaving", async t => {
   const w = await world(t);
   const count = () => Number(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n);
-  const files = () => { const d = path.join(w.home, "vault", "member-copies"); return fs.existsSync(d) ? fs.readdirSync(d).length : 0; };
+  const files = () => w.lentStore.get(BEN).size;
   // unshare
   const a = (await w.share()).shared.ref;
   assert.equal(count(), 1); assert.equal(files(), 1);
   assert.deepEqual(await w.M.unshare({ item: LABEL }, w.as(BEN)), { ended: 1 });
-  assert.equal(count(), 0); assert.equal(files(), 0, "the file is gone with the row");
+  assert.equal(count(), 0); assert.equal(files(), 0, "the sealed copy is gone with the row");
   await denied(w.fill(a));
   // the login changed: the copy follows it, so the agent signs in with the new password
   const b = (await w.share()).shared.ref;
@@ -165,4 +175,19 @@ test("a share is Ben's alone: Cy cannot list, end or use it, and sharing twice i
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 1);
   assert.equal((await w.share()).shared.ref, ref, "the same share again is the same copy");
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 1);
+});
+
+test("a copy that cannot be reached to delete (her vault is locked and no sealed key is held) is never used meanwhile, and the next sweep deletes it", async t => {
+  const w = await world(t);
+  const ref = (await w.share()).shared.ref;
+  w.setLentLocked(true);
+  assert.deepEqual(await w.M.unshare({ item: LABEL }, w.as(BEN)), { ended: 1 });
+  assert.equal(w.db.prepare("SELECT gone FROM vault_member_copies WHERE ref = ?").get(ref).gone, 1, "the row stays, marked for deletion");
+  assert.ok(w.lentStore.get(BEN).has(ref), "the sealed copy could not be reached yet");
+  await assert.rejects(w.fill(ref), e => /** @type {any} */ (e).code === "not_found", "and it is not used");
+  assert.deepEqual(await w.M.list(w.as(BEN)).then(l => l.shares), [], "nor listed");
+  w.setLentLocked(false);
+  await w.v.access.copies.sweep();
+  assert.ok(!w.lentStore.get(BEN).has(ref), "deleted at the next chance");
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0);
 });

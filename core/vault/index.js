@@ -528,7 +528,7 @@ export default {
     vault.access.members.people = people;
     people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
     memberShareTools.register({ access: vault.access, tool });
-    setTimeout(() => { try { vault.access.copies.sweep(); } catch { /* the vault is closed */ } }, 5000).unref?.();
+    setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
