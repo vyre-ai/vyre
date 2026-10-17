@@ -18,7 +18,7 @@ async function world(t) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const socket = path.join(dir, "agentd.sock"), tokenFile = path.join(dir, "token");
   fs.writeFileSync(tokenFile, "t".repeat(40), { mode: 0o400 });
-  const server = startAgentd({ socket, tokenFile, run: async argv => { ran.push(argv); if (/** @type {any} */ (argv).input !== undefined) files["stdin"] = /** @type {any} */ (argv).input; } });
+  const server = startAgentd({ socket, tokenFile, relayPort: 0, run: async argv => { ran.push(argv); if (/** @type {any} */ (argv).input !== undefined) files["stdin"] = /** @type {any} */ (argv).input; } });
   await new Promise(r => server.on("listening", () => r(null)));
   t.after(() => server.close());
   // the same call vyred makes with `docker exec`, here run in-process against the real unix socket
