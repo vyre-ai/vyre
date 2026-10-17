@@ -82,12 +82,13 @@ async function boot(t, o = {}) {
 test("computers: the manifest loads on the box with its tools and the glass stream declared", async t => {
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
-  assert.deepEqual(tools.sort(), ["computers.checkout", "computers.get", "computers.giveback",
+  assert.deepEqual(tools.sort(), ["computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
+    "computers.checkout", "computers.exec", "computers.get", "computers.giveback",
     "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list",
     "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
     "computers.pause", "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
-    "computers.takeover", "computers.watch"]);
+    "computers.takeover", "computers.update", "computers.update.status", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -291,7 +292,7 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   assert.equal(w.width, 1440);
   assert.equal(w.height, 900);
   assert.equal(w.path, `/v1/streams/computers/glass?ticket=${encodeURIComponent(w.ticket)}`);
-  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop", slow: false });
+  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop", slow: false, perAgent: false });
   assert.equal(s.h.pool.redeem(w.ticket), null);
   const late = (await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data;
   s.clock.t += 30_000;
