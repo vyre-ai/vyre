@@ -5,7 +5,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, SectionLabel, Sheet, Switch, Tabs, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { useRouter } from "expo-router";
+import { ComputerTab } from "./ComputerTab";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
@@ -17,7 +19,7 @@ import { ChatTags } from "../../screens/tags/RecordTags";
 import { ForkRows, TasksPage, ContextPage, TranscriptPage, BackPage } from "../../screens/chat-tools/ChatToolsSheet";
 import { ChatFiles } from "../../screens/chat-tools/ChatFiles";
 import { driveSource } from "../../screens/drive/file-source";
-import { EFFORTS, effortLabel, modeLabel, modesOf, taskLive } from "../../screens/chat-tools/model.ts";
+import { EFFORTS, effortLabel, modeLabel, modesOf, subagentsOf, taskLive, type Task } from "../../screens/chat-tools/model.ts";
 
 export type PanelPage = "file" | "root" | "project" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "files";
 const TITLES: Record<PanelPage, string> = { file: "File", root: "In this chat", project: "Move to a project", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript and recall", back: "Go back", files: "Files" };
@@ -106,8 +108,19 @@ export function ChatPanel(p: ChatPanelProps) {
   const here = p.info.runsOn === "mac" ? "This Mac" : "The server";
   const there = p.info.runsOn === "mac" ? "the server" : "this Mac";
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
+  // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
+  const router = useRouter();
+  const [tab, setTab] = useState<"details" | "library" | "computer">("details");
+  const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
+  const [helpers, setHelpers] = useState<Task[] | null>(null);
+  useEffect(() => {
+    if (!p.open || tab !== "library") return;
+    let on = true;
+    chatTools.tasks(p.thread).then((t) => { if (on) setHelpers(subagentsOf(t)); }).catch(() => { if (on) setHelpers([]); });
+    return () => { on = false; };
+  }, [p.open, tab, p.thread]);
 
-  const root = (
+  const details = (
     <View style={{ gap: 4 }}>
       <SectionLabel first meta={String(p.participants.length)}>People</SectionLabel>
       {p.participants.map((x) => (
@@ -123,6 +136,11 @@ export function ChatPanel(p: ChatPanelProps) {
           )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
         </View>
       ) : <Row dense title="Add a teammate" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
+
+      {agents.length ? <>
+        <SectionLabel>{agents.length === 1 ? "Agent" : "Agents"}</SectionLabel>
+        {agents.map((a) => <Row key={a.id} dense lead={<Face name={a.name} family="assistant" size={32} id={a.id} />} title={a.name} sub="Its work, routines, instructions and models" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(a.name)}?tab=activity` as never); }} accessibilityLabel={`${a.name}: open its page`} />)}
+      </> : null}
 
       <SectionLabel>About</SectionLabel>
       <ChatTags chat={p.chat} thread={p.thread} />
@@ -165,6 +183,22 @@ export function ChatPanel(p: ChatPanelProps) {
       {p.noFork ? null : <ForkRows otherPlace={p.otherPlace} onFork={() => void run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
         onForkTo={(to) => void run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />}
       {p.projectSlug && p.session ? <Row dense lead={<Icon name="undo" size={20} />} title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => p.onPage("back")} /> : null}
+    </View>
+  );
+
+  const library = (
+    <View style={{ gap: 4 }}>
+      <SectionLabel first>Files</SectionLabel>
+      <ChatFiles chat={p.chat} />
+      <SectionLabel>Subagents</SectionLabel>
+      {helpers === null ? <Text tone="muted">Looking.</Text> : helpers.length ? helpers.map((t) => <Row key={t.id} dense lead={<Icon name="users" size={20} />} title={t.title} sub={t.status} chevron onPress={() => p.onPage("tasks")} />) : <Text tone="muted">Helpers this chat starts to work for it show here.</Text>}
+    </View>
+  );
+  const tabs: ["details" | "library" | "computer", string][] = [["details", "Details"], ["library", "Library"], ...(agents.length ? [["computer", "Computer"] as ["computer", string]] : [])];
+  const root = (
+    <View style={{ gap: 8 }}>
+      <Tabs items={tabs} value={tab} onChange={setTab} />
+      {tab === "library" ? library : tab === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} /> : details}
     </View>
   );
 
