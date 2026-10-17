@@ -8,7 +8,7 @@ import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state
 import { SAMPLE_EVENTS, SAMPLE_ITEMS, type Event } from "./sample-redesign";
 
 export type Scope = "space" | "mine";
-export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean };
+export type Loaded = { items: VItem[]; locked: boolean; /** Mine only: the member has not made a vault yet. */ noAccount?: boolean; /** Space only: the space's own vault key is not made yet (it is made the first time something is saved with approval). */ noSpaceVault?: boolean };
 /** What the Add sheet saves: the tool to call (vault.put, vault.me.put, or an SSH tool) and its input, built by add-model.js. */
 export type AddCall = { tool: string; input: Record<string, unknown> };
 
@@ -70,6 +70,19 @@ export function realData(call: Call): VaultData {
       shared: [],
     };
   };
+  /** The space's id when its own vault key is not made yet, else null. A server that cannot say leaves the screen as it was. */
+  let noVaultSpace = "";
+  async function spaceVaultId(): Promise<string | null> {
+    noVaultSpace = "";
+    try {
+      const me = await ask<{ space?: string }>("records.me");
+      const space = String(me?.space ?? "");
+      if (!/^spc_[a-z2-7]{8,}$/.test(space)) return null;
+      const st = await ask<{ exists?: boolean }>("vault.space.status", { space });
+      if (st?.exists === false) { noVaultSpace = space; return space; }
+    } catch { /* leave it */ }
+    return null;
+  }
   const fieldsOf: Record<string, string[]> = {};
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
   return {
@@ -78,7 +91,7 @@ export function realData(call: Call): VaultData {
       if (scope === "space") {
         const r = await ask<{ items?: ListRow[]; locked?: boolean }>("vault.list");
         for (const i of r.items ?? []) fieldsOf[i.name] = i.fields;
-        return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked) };
+        return { items: (r.items ?? []).map(spaceItem), locked: Boolean(r.locked), ...((await spaceVaultId()) === null ? {} : { noSpaceVault: true }) };
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
@@ -98,7 +111,11 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
-    async add(_scope, req) { await ask(req.tool, req.input); },
+    async add(scope, req) {
+      await ask(req.tool, req.input);
+      // The first thing saved in a space whose vault key was left for later: the key is made now, and the server asks for the person's approval (Touch ID or a passkey) in its own way. Saving has already worked.
+      if (scope === "space" && noVaultSpace) { const space = noVaultSpace; noVaultSpace = ""; await ask("vault.space.create", { space }).catch(() => {}); }
+    },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
       if (scope !== "space") return [];

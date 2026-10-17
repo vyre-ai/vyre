@@ -1040,5 +1040,6 @@
  "core/work/member-projects.test.js": 11,
  "core/work/member-files.test.js": 8,
  "apps/app/src/real/place-tag.test.js": 5,
- "test/finish-owner.test.js": 1
+ "test/finish-owner.test.js": 1,
+ "core/vault/space-create-presence.test.js": 1
 }
