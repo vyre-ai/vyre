@@ -60,7 +60,7 @@ A Space is one kernel with its own people, roles, grants and records. The `space
 - `work.project.members` lists a project's team and levels for a caller who may read the project.
 - See authority (agent doc "authority") and tools (agent doc "tools").
 
-## Extend it
+## Limits and extension points
 
 In 0.5 a member can read every row of a custom record type, even a row linked to a project the member is not on. Tasks and files follow the project's team. 0.6 plans per-record privacy for custom types. A Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly. Renaming a project on a team server changes the short name that keys its folder group, so the next session there is refused until a re-key step ships. What sessions read from a member's vault is covered in [Vault](./vault.md).
 

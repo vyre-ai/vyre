@@ -17,6 +17,7 @@ import { anthropicKind } from "../../lib/credential-shapes.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
+import { registerFirstRun } from "./first-run.js";
 
 export const STEPS = ["you", "claude", "pair", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -163,6 +164,29 @@ export default {
       return r.data;
     };
     const tryCall = (tool, input) => call(tool, input).catch(e => ({ __error: e.message }));
+    ctx.store.migrate(["CREATE TABLE IF NOT EXISTS onboard_flow (person TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL, updated INTEGER NOT NULL)"]);
+    const flow = {
+      load: (person) => {
+        const id = String(person || "");
+        if (!id) return null;
+        try {
+          const row = ctx.store.db.prepare("SELECT payload FROM onboard_flow WHERE person = ?").get(id);
+          return row ? JSON.parse(String(row.payload)) : null;
+        } catch { return null; }
+      },
+      save: (person, payload) => {
+        const id = String(person || "");
+        if (!id) return;
+        ctx.store.db.prepare("INSERT INTO onboard_flow (person, payload, updated) VALUES (?, ?, ?) ON CONFLICT(person) DO UPDATE SET payload = excluded.payload, updated = excluded.updated")
+          .run(id, JSON.stringify(payload), Date.now());
+      },
+      clear: (person) => {
+        const id = String(person || "");
+        if (!id) return;
+        try { ctx.store.db.prepare("DELETE FROM onboard_flow WHERE person = ?").run(id); } catch { /* empty */ }
+      },
+    };
+    registerFirstRun(ctx, { save, flow, adapters: () => ctx.registry.providers.keys() });
     const mark = (step, s) => skipped().has(step) && s.state !== "done" ? { ...s, state: "skipped" } : s;
     // ADR 0039: onboard now loads on a Solo machine too (so onboard.machine and, on tailnet's
     // branch, onboard.join can reach it), but the six-step box wizard below assumes box things
@@ -176,15 +200,22 @@ export default {
     const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
-      const [version, names, recall, wink, accounts] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status"), tryCall("sessions.accounts.list", { provider: "claude" })]);
+      const [version, names, recall, wink, accountsRelay] = await Promise.all([claudeVersion(), tryCall("names.status"), tryCall("recall.status"), tryCall("network.wink.status"), tryCall("sessions.accounts.list", { provider: "claude" })]);
       const n = names.__error ? null : names;
+      /** @type {any[]} */
+      let accounts = Array.isArray(accountsRelay) ? accountsRelay : [];
+      if (!accounts.length && accountsRelay && accountsRelay.__error) {
+        const who = personOrPage(caller) ? String(caller) : "local";
+        const listed = await ctx.call("sessions.accounts.list", { provider: "claude" }, who);
+        if (!listed.error && Array.isArray(listed.data)) accounts = listed.data;
+      }
 
       const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: heldAddress() ? (ob().person || null) : ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
       // Claude can be signed in two ways: the Claude step's own token (ob().claude), or an account the sign-in tool made (the setup page's "Sign in to your AI", `vyre sessions`). Both count: a doctor that read only
       // the first said "not signed in" right after the page had signed Claude in (IR-17).
-      const acct = (Array.isArray(accounts) ? accounts : []).find((/** @type {any} */ a) => a && a.provider === "claude" && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
+      const acct = accounts.find((/** @type {any} */ a) => a && a.provider === "claude" && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
         signedIn: Boolean(auth) || Boolean(acct), via: auth === "api-key" ? "api-key" : auth ? "setup-token" : acct ? (acct.kind === "api-key" ? "api-key" : "account") : null };
       if (claude.auth || acct) claude.state = "done";
@@ -274,7 +305,7 @@ export default {
         host: os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
-        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
+        current, finished: ob().firstRun === "open" ? false : Boolean(ob().finished), ...(ob().firstRun === "open" ? { firstRun: "open" } : {}), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: a vyre.run claim, or the person's own domain. */
@@ -318,18 +349,19 @@ export default {
 
     ctx.tool("onboard.machine", {
       effect: "write",
-      description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
+      needsYou: true,
+      description: "Choose server or device for this computer. An assistant's call waits for your one tap.",
       // "device" stays in the type (checkInput has no per-caller schema, and removing it would
       // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
       // run() guard below, not the schema, is what actually stops a person or an agent choosing
       // it -- reviewer, 28 Sep round 2.
-      input: obj({ machine: { type: "string", enum: ["solo", "server", "device"] } }, ["machine"]),
+      input: obj({ machine: { type: "string", enum: ["server", "device"] } }, ["machine"]),
       // Reviewer, 28 Sep: this tool changes which modules load, so it is the person's own action,
       // never an agent's or a third-party module's. "onboard" is the pre-owner loopback session
       // (only reachable through a one-time link cli/local/capsule minted). "module" stays in the
       // allowlist only so the two specific callers below can reach run() at all; which of them
       // may do what is checked there, by the exact caller string, not by this coarse kind.
-      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module", "mcp", "harness"],
       // Moving TO server turns on the eight box-only modules -- a real network-facing change --
       // so it needs an actual presence proof, EXCEPT the very first choice on a real box, before
       // any owner exists: that's already proven by the one-time link only cli/local/capsule can
@@ -349,7 +381,7 @@ export default {
         } else if (raw.startsWith("module:")) {
           // Any other module reaching this tool may only ever set device (above); solo and
           // server are the person's own choice, whoever is asking on their behalf.
-          throw Object.assign(new Error("only a person chooses solo or server"), { code: "denied" });
+          throw Object.assign(new Error("only a person chooses server"), { code: "denied" });
         }
         // machine's own default (config/index.js defaults()) already covers "no choice made
         // yet"; this tool only ever records an actual choice, so calling it with the value
@@ -358,6 +390,20 @@ export default {
         // The launchd/keep-awake service (`vyre server here`'s own installer) lands separately;
         // this tool records the choice now so onboarding and Settings have something to call.
         return { machine: ctx.config.machine, service: null };
+      },
+    });
+
+    ctx.tool("onboard.windows", {
+      effect: "write",
+      needsYou: true,
+      description: "Ask to enrol this Windows computer. An assistant's call waits for your one tap and changes nothing until you approve.",
+      input: obj({ label: { type: "string", maxLength: 60 }, name: { type: "string" }, type: { type: "string" }, fingerprint: { type: "string" } }, ["label"]),
+      callers: ["cli", "local", "deck", "capsule", "onboard", "mcp", "harness"],
+      run: async ({ label }) => {
+        const l = String(label ?? "").trim();
+        if (!l || l.length > 60 || /[\u0000-\u001f]/.test(l)) throw Object.assign(new Error("the computer's name is one line of up to 60 characters"), { code: "bad_input" });
+        save({ onboard: { windows: { label: l, at: new Date().toISOString() } } });
+        return { recorded: true, label: l, next: "Open Vyre on that PC and approve the device there. Nothing on the device changes until you do." };
       },
     });
 
@@ -380,7 +426,7 @@ export default {
 
     ctx.tool("onboard.claude", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
+      description: "Store Claude's sign-in in the Vault: a setup token or an API key. The value is never returned.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
@@ -441,7 +487,11 @@ export default {
       run: async ({ action = "status", node, becomeDevice = false }, meta) => {
         const { caller } = meta;
         joinOwnerOnly(caller, meta, "adding a device or a server");
-        if (action === "relay") return call("relay.pair.start");
+        if (action === "relay") {
+          const r = await ctx.call("relay.pair.start", {}, String(caller));
+          if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+          return r.data;
+        }
         if (action === "verify") {
           const health = await call("link.health", node ? { node } : {});
           if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });

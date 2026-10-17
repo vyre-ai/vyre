@@ -31,10 +31,10 @@ test("the fingerprint is the one the inviter's space shows: sha-256 of the tag, 
   assert.notEqual(spaceFingerprint("spc_x", "KEY"), spaceFingerprint("spc_x", "KEZ"));
 });
 
-test("install.ts joins from this app when it holds the name, and from the box otherwise; the app's own side is in team-join.ts", () => {
+test("install.ts joins and reads an invite through the onboard tools, the same ones every client calls; the app's own side is in team-join.ts", () => {
   const install = fs.readFileSync(new URL("./install.ts", import.meta.url), "utf8");
-  assert.match(install, /previewInvite = async \(link: string\) => \{ const t = await import\("\.\/team-join"\); return \(await t\.holdsName\(\)\) \? t\.previewTeamInvite\(link\) : tool<any>\("spaces\.invites\.preview"/);
-  assert.match(install, /acceptInvite = async \(link: string\) => \{ const t = await import\("\.\/team-join"\); return \(await t\.holdsName\(\)\) \? t\.acceptTeamInvite\(link\) : tool<any>\("spaces\.invites\.accept"/);
+  assert.match(install, /previewInvite = async \(link: string\) => tool<any>\("onboard\.join\.read", \{ link \}\)/);
+  assert.match(install, /acceptInvite = async \(link: string\) => tool<any>\("onboard\.space\.join", \{ link \}\)/);
   const join = fs.readFileSync(new URL("./team-join.ts", import.meta.url), "utf8");
   assert.match(join, /openServerPeer: peer\.openServerPeer/);
   assert.match(join, /signPresence: \(req\) => yes\.signer\.signPresence/);

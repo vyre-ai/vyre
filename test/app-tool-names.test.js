@@ -29,6 +29,12 @@ test("every tool a screen's source file sends exists on the server", () => {
   assert.ok(have.size > 500, "the server's tools were read");
   // names the app sends that are not registry tools: the door's own call names (chat, accounts, sidebar, member rows spelled differently) and the stream's
   const OTHER = new Set(["files.list", "files.read", "files.upload"]);
+  // Tools the page answers itself when it has no daemon (apps/app/src/host/host-core.js): the first run's sign-in and space-name steps. Not registry tools, so each must be a key of that host's table.
+  const hostSrc = fs.readFileSync(path.join(ROOT, "apps/app/src/host/host-core.js"), "utf8");
+  for (const n of ["onboard.signin", "onboard.signin.github", "onboard.signin.unlock", "onboard.space.name"]) {
+    assert.ok(hostSrc.includes(`"${n}": async`), `${n} is answered by the page host`);
+    OTHER.add(n);
+  }
   /** @type {string[]} */ const missing = [];
   const CALL = /\b(?:ask|call|callT|tool|read|write)\w*\(\s*"([a-z][a-z0-9]*(?:\.[a-z][a-z0-9_-]*)+)"/g;
   for (const f of walk(path.join(ROOT, "apps/app/screens")).filter(f => /source\.(ts|js)$|real\.(ts|js)$/.test(f) && !/\.test\.|mock/.test(f))) {

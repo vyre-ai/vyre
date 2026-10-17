@@ -61,6 +61,19 @@ test("resolveTags before the mentions mechanism exists: vault is a provider on i
   assert.deepEqual(await resolveTags({ names: ["x"], thread: "t", said: "u", call: async () => { throw new Error("locked"); } }), []);
 });
 
+test("resolveTags: mentions.search with no hit still tries a vault item by exact name", async () => {
+  const seen = [];
+  const call = async (tool, input) => {
+    seen.push([tool, input]);
+    if (tool === "mentions.search") return { data: [] };
+    if (tool === "vault.mention.resolve") return input.id === "GHLapikey" ? { data: { name: "GHLapikey", hosts: ["a.test"], note: "use it" } } : { error: { code: "not_found" } };
+    return { error: { code: "no_such_tool" } };
+  };
+  const tags = await resolveTags({ names: ["GHLapikey", "Nothing"], thread: "t", said: "u", call });
+  assert.deepEqual(tags.map(t => t.name), ["GHLapikey"]);
+  assert.deepEqual(seen.filter(([t]) => t === "vault.mention.resolve").map(([, i]) => i.id).sort(), ["GHLapikey", "Nothing"]);
+});
+
 test("resolveTags: a module refused mentions.search (person-only) still tags a typed vault name by vault.mention.resolve, and chips go through mentions.resolve", async () => {
   const seen = [];
   const call = async (tool, input) => {

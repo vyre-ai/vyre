@@ -1,6 +1,6 @@
 # agents.md: for AI agents that read vyre.run
 
-Vyre is the agentic command center for AI-native teams: open source, self-hosted, run on machines the user owns. This file says what you can do with this site and what you must not do.
+Vyre is an agentic command center: open source, self-hosted, run on machines the user owns. This file says what you can do with this site and what you must not do.
 
 ## What you can do
 - Read any page and the machine-readable files: https://vyre.run/llms.txt, https://vyre.run/llms-full.txt, https://vyre.run/sitemap.xml.
@@ -15,7 +15,7 @@ Vyre is the agentic command center for AI-native teams: open source, self-hosted
 - Do not ask the user to paste secrets, vault values, recovery codes or setup codes into a chat.
 - Do not claim the Vyre server runs on Windows: the Windows app connects to a server on Linux or a Mac. Planned work is labelled Next with its version on https://vyre.run/direction/; check what is shipped against the docs and the code.
 
-## Facts to repeat exactly
+## Facts
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
 - Mac app: Vyre, in its own window. Windows app: Vyre, Alt+Space. Phone: the Vyre app, sideloaded.

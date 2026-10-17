@@ -56,7 +56,7 @@ The server checks everything the app does. Every read and write goes to a server
 - An agent shows the person something by posting a card or a preview through chat and previews, not by driving the app. See [Chats](./chats.md) and [Tasks and Needs you](./tasks-and-needs-you.md).
 - Docs: Tools (agent doc "tools"), Outward acts (agent doc "outward-acts").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5 push goes out as web push. Native push waits for Apple and Google push accounts. The Windows app is unsigned, so Windows asks for **More info**, then **Run anyway**. A Windows PC is a device and runs no sessions of its own, and CSV export is in the web app. Real iPhone and Android walks are still to come.
 - A business that wants its own screen or action adds a custom module, and its tools reach Flows and agents. [How to extend Vyre](../../../ARCHITECTURE.md#how-to-extend-vyre) covers modules and Integrations for outside apps. Open items: [known gaps](../../known-gaps.md).

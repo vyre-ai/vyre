@@ -1,5 +1,5 @@
 {
- "_comment": "The tools a HOSTED key (the public /mcp door) may use, by exact name, with the reason each is safe for a leaked key. Read by core/modules/agent-reach.js hostedKeyMay. test/hosted-keys.test.js holds the set over the registry equal to this file, so a new, renamed or removed tool fails CI until someone places it here or in test/hosted-refused.json.",
+ "_comment": "The tools a HOSTED key (the public /mcp door) may use, by exact name. allow is the work surface. gate is the exact outward setup tools a hosted key may propose; each one is held for the person's tap. Both lists are the only declaration. Read by core/modules/agent-reach.js hostedKeyMay. test/hosted-keys.test.js holds the set over the registry equal to this file, so a new, renamed or removed tool fails CI until someone places it here or in test/hosted-refused.json.",
  "allow": {
   "approvals.items": "lists what waits for the person; answering stays the person's",
   "approvals.pending": "lists what waits for the person; answering stays the person's",
@@ -126,15 +126,36 @@
   "threads.history": "reads the person's chats and their history",
   "threads.lineage": "reads the person's chats and their history",
   "threads.list": "reads the person's chats and their history",
+  "threads.recall-sessions": "lists thread ids for a person when relaying member-scoped recall; read-only",
   "threads.send": "sends a message into one of the person's own chats; the chat gate judges it",
   "work.chat.create": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.get": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.link": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.list": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.pin": "reads or starts a chat the person is in, or names and pins it",
+  "work.chat.prefs": "reads or sets the person's mute and list-pin for chats on every device; nothing leaves the team",
   "work.chat.pinned": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.rename": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.span": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.title": "reads or starts a chat the person is in, or names and pins it"
+ },
+ "gate": {
+  "identity.create": "an agent proposes the username; the card is held and the person enters the master password on their device",
+  "identity.migrate": "an agent proposes wrapping an existing identity; the person enters the master password on their device",
+  "identity.github.link": "an agent proposes linking GitHub; the person's tap applies it and the vault stays locked",
+  "identity.discover": "an agent proposes listing the username; the person's tap applies it",
+  "devices.signin": "an agent proposes signing a computer in; the person enters the master password on their device",
+  "spaces.owner.transfer": "an agent proposes handing a space to another member; the person's tap applies it",
+  "spaces.create": "an agent proposes a new space; the person's tap applies it",
+  "spaces.invites.create": "an agent proposes an invite; the person's tap applies it",
+  "spaces.members.add": "an agent proposes adding a member; the person's tap applies it",
+  "spaces.members.transfer": "an agent proposes handing a space over; the person's tap applies it",
+  "spaces.members.set-role": "an agent proposes a role change; the person's tap applies it",
+  "spaces.members.remove": "an agent proposes removing a member; the person's tap applies it and the space vault rotates",
+  "spaces.devices.enrol": "an agent proposes adding a computer or phone; the person's tap applies it",
+  "vault.space.create": "an agent proposes a space vault; the person's tap applies it and the key stays wrapped",
+  "vault.space.grant": "an agent proposes wrapping the space vault to a member; the person's tap applies it",
+  "vault.space.rotate": "an agent proposes rotating the space vault; the person's tap applies it",
+  "vault.space.put": "an agent proposes storing a space vault item; the person enters the value on their device"
  }
 }

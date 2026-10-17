@@ -1,11 +1,11 @@
-// The onboarding prototype (mock build only): /onboard. The real first run (InstallScreen) is untouched.
+// First run at /onboard: Identity, optional AI sign-in, a space, then Ready. Every step calls a registry tool.
 import { ThemeProvider } from "@vyre/ui";
-import { OnboardFlow } from "../screens/onboard/OnboardFlow";
+import { FirstRun } from "../screens/first-run/FirstRun";
 
 export default function Onboard() {
   return (
     <ThemeProvider>
-      <OnboardFlow />
+      <FirstRun />
     </ThemeProvider>
   );
 }

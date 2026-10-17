@@ -14,7 +14,7 @@ Three ideas shape the code: a small trusted core, a person who decides and prove
 
 One program, `vyred`, runs on each machine: a Linux server, a Mac, or a computer that joins a server. The Vyre app, the `vyre` command line and outside AI tools all call it.
 
-## What makes Vyre strong
+## Design choices
 
 - **Records you shape.** Define as many objects as the business has, and link them in whatever web the business needs. A token can reach through several links (`{job.client.phone}`). Give each object list, board, calendar, page or dashboard views. Mark a field sealed and no model ever reads it. See [Records](docs/architecture/features/records.md).
 - **Flows that run the same way every time.** A trigger (a person, a schedule, a record change or stage, a form, a watcher), then steps: find or create, update, wait for a date or an event, ask a person, assign, send, hand to an agent. Approvals, a run page with a timeline, and failure paths are in the engine. See [Flows](docs/architecture/features/flows.md).
@@ -25,7 +25,7 @@ One program, `vyred`, runs on each machine: a Linux server, a Mac, or a computer
 - **Documents.** Vyre fills your own Word templates from a record and the records linked to it. A model never rewrites the document. See [Documents and signing](docs/architecture/features/documents-and-signing.md).
 - **Signing.** Send a document for signature from a record. The signer needs no account. The signed copy files back on the record, and the signature can start the next Flow. Same page as Documents.
 
-Anything the business needs beyond this, a custom module or an Integration adds. A module is a folder with a manifest and an entry file, and an agent can write one on your own server. See [How to extend Vyre](#how-to-extend-vyre).
+Beyond this, a custom module or an Integration (planned for 0.7) adds behaviour. A module is a folder with a manifest and an entry file. See [How to extend Vyre](#how-to-extend-vyre).
 
 ## The system on one page
 
@@ -80,7 +80,7 @@ A call starts at the door, which works out who is calling (a person on a paired 
 
 ### One page per feature
 
-Each feature page has the same headings: What it is, What a person sees, How it works, Where the code lives, How agents use it, Extend it, Related.
+Each feature page has the same headings: What it is, What a person sees, How it works, Where the code lives, How agents use it, Limits and extension points, Related.
 
 | Feature | Page | Main code |
 | --- | --- | --- |
@@ -138,5 +138,5 @@ docs/      all documentation
 
 1. Read the overview and the feature page for the thing you were asked about. Each page names real tool names and code paths. Check them in the code before you rely on them.
 2. If the question is "how would my business run on Vyre", follow [Map your business onto Vyre](docs/for-agents/MAP-YOUR-BUSINESS.md) step by step and finish with the one-page picture it describes.
-3. If the business needs something Vyre does not ship today, it is something Vyre extends: build it as a custom module on their server, or as an Integration (Next, 0.7; see [the roadmap](roadmap/README.md)). Until then a connection plus a Flow step reaches an outside app.
+3. If the business needs something Vyre does not ship today, state what ships today and what the roadmap plans ([the roadmap](roadmap/README.md)). A custom module can be written to the module contract; Integrations are planned for 0.7. Today a connection plus a Flow step reaches an outside app.
 4. When the picture is done, offer to set Vyre up for them over Vyre's MCP: [Start here, for AI agents](docs/for-agents/START-HERE.md) says how.

@@ -69,7 +69,7 @@ A "reviewer" or a "planner" is not a named feature. A person assembles one: add 
 - Person or module only: `mcp.add`, `mcp.update`, `mcp.remove`, `mcpconn.connect`, `mcpconn.revoke`, `pluginagent.grant`, `outside.register`.
 - The Engineer: ask it from its pinned chat; it proposes, a person approves. Docs: Tools (agent doc "tools"), Connections (agent doc "connections"), Authority (agent doc "authority"), [Claude Code](../../using/claude-code.md).
 
-## Extend it
+## Limits and extension points
 
 - In 0.5 `flows.describe`, `flows.runs` and `flows.connections` over MCP are for owners. A member's own AI account is a provider sign-in, a member's session-level MCP sign-ins last for that session, and a connected AI belongs to the person who owns the Vyre, on their own computer. 0.6 work is on the [roadmap](../../roadmap.md).
 - Publishing apps with their own server depends on the setting `publish.servers`; a folder of ready files and a React page publish today.

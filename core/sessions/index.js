@@ -504,7 +504,7 @@ export default {
         throw Object.assign(new Error(/** @type {any} */ (e).name === "AbortError" ? "the service did not answer in time" : "could not reach the service to check the key"), { code: "bad_input" });
       } finally { clearTimeout(timer); }
     };
-    tool("sessions.accounts.key", "Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault (bound to that address) and never returned or shown again; the key is sent only to that host, which is looked up again on every turn and refused if it points at a private, tailnet or metadata address. Removing the account removes the key. Only the person (or their own words) adds one.",
+    tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
       { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");

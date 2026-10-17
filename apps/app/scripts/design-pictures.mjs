@@ -2,7 +2,7 @@
 // design-refs/. A picture that changed is a design change: it writes before, after and diff images and exits 1, and the screen's owner says yes (--update) or no. The rules checker runs on
 // every render: no sideways scroll, text of 12 or more (the uppercase section labels are the system's own micro size), touch targets of 44 on a phone, no console errors.
 //
-//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 10]
+//   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 12]
 // Surfaces: app (1280, full form), phone (390, compact), chat (390, glance). Themes: dark, paper. Files: <refs>/<id>/<surface>-<theme>.png.
 // Needs `playwright` resolvable (PW_FROM, as shots.mjs does) and a web export of the app built with EXPO_PUBLIC_VYRE_MOCK=1.
 import fs from "node:fs";
@@ -17,7 +17,7 @@ const dist = path.resolve(flag("--dist", "dist-mock"));
 const refs = path.resolve(flag("--refs", "../../design-refs"));
 const only = (flag("--only", "") || "").split(",").filter(Boolean);
 const surfaceOnly = (flag("--surface", "") || "").split(",").filter(Boolean);
-const budgetMb = Number(flag("--budget-mb", "10"));
+const budgetMb = Number(flag("--budget-mb", "12"));
 const update = bool("--update");
 const [out] = args;
 if (!out) { console.error("usage: design-pictures <out> [--dist d] [--refs d] [--only ids] [--surface names] [--update]"); process.exit(2); }
@@ -58,6 +58,15 @@ const compare = (page, a, b) => page.evaluate(async ([x, y]) => {
   return { same: changed / (A.width * A.height) < 0.0005, changed, diff: c.toDataURL("image/png").split(",")[1] };
 }, [a.toString("base64"), b.toString("base64")]);
 
+/** In the page: is the picture one colour all over (nothing drawn)? */
+const blank = (page, png) => page.evaluate(async (b64) => {
+  const im = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+  const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, im.width, im.height).data;
+  for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2]) return false;
+  return true;
+}, png.toString("base64"));
+
 /** The rules, in the page: what a person would see broken. */
 const rules = (page, phone) => page.evaluate((phone) => {
   const bad = [];
@@ -96,7 +105,11 @@ const shoot = async (cur, s, t, id) => {
       await page.waitForTimeout(400);
       const el = page.locator("#fixture");
       if (!(await el.count())) return { missing: true };
-      return { after: await el.screenshot(), rules: await rules(page, s.name !== "app") };
+      // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same. A picture of a single colour is a blank render, never a baseline: it fails the run.
+      let after = await el.screenshot();
+      for (let i = 0; i < 20; i++) { await page.waitForTimeout(250); const next = await el.screenshot(); const still = next.equals(after); after = next; if (still) break; }
+      if (await blank(page, after)) throw Object.assign(new Error(`blank render: ${id} ${s.name} ${t.name}`), { blank: true });
+      return { after, rules: await rules(page, s.name !== "app") };
     } catch (e) {
       if (attempt >= 2) throw e;
       await cur.ctx.close().catch(() => {});

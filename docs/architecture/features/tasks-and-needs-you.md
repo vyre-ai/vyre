@@ -77,7 +77,7 @@ A Playbook is a project template. It lists stages, the tasks of each stage and w
 - An agent writes a Playbook with `work.template.define` and tests it with `work.template.test`. Only an owner or admin puts it live.
 - See authority (agent doc "authority") and tools (agent doc "tools").
 
-## Extend it
+## Limits and extension points
 
 - In 0.5, an agent step has no deadline. A session that ends without finishing is marked stuck, and one that never ends is not timed out. 0.6 plans a due time with a failure path (R051-03), and credentials lent to a woken agent for one job, use only (R051-02).
 - A "For each" step takes up to 50 items in the editor, and a longer list is cut without a note on the run page.

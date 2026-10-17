@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { moveBeforeJoin } from "../../lib/group-join.js";
 import { collectIfHeavy } from "../../lib/gc-nudge.js";
 import { readers, personOf as personOfChain, shareFile, unshareFile } from "./shares.js";
 import { createTimeline } from "./timeline.js";
@@ -28,6 +29,7 @@ import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createMemberProjects } from "./member-projects.js";
 import { createMemberFiles } from "./member-files.js";
 import { createPersistent } from "./persistent.js";
+import { createChatPrefs } from "./chat-prefs.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
@@ -235,6 +237,16 @@ export default {
       input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => unshareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
     chatTool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
+    /** @type {any} */ let chatPrefs = null;
+    const chatPrefsOf = () => chatPrefs || (chatPrefs = createChatPrefs({ db: ctx.store.db }));
+    chatTool("work.chat.prefs", { description: "Your mute and list-pin for chats: which chats are quiet and which sit at the top of your list, on every device.",
+      input: obj({ chat: { type: "string" }, muted: { type: "boolean" }, pinned: { type: "boolean" } }), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const c = await chainOf(extra);
+        if (i.chat === undefined) return chatPrefsOf().get(c);
+        return chatPrefsOf().set(c, i);
+      } });
+    ctx.tool("work.chat.prefs.muted", { description: "Whether a person muted a chat (for notifications). Internal.", internal: true, callers: ["module"],
+      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { kernelOf(); return { muted: chatPrefsOf().isMuted(String(i.person), String(i.chat)) }; } });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),
@@ -757,6 +769,8 @@ export default {
         ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
+        // A chat with more than one person always runs on the server: a chat running on a computer moves there first (one line in the chat, no question); nothing is added if it cannot move.
+        await moveBeforeJoin({ kernel: kernelOf(), chain, members: () => ctx.call("spaces.members.list", {}, { relay: true }), move: i => ctx.call("runner.group-move", i), chat: String(input.chat), add: input.add_people });
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },

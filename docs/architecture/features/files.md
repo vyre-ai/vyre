@@ -46,7 +46,7 @@ The Files screen has five tabs (apps/app/screens/drive/tabs.js): **Space**, **Sh
 ## How agents use it
 Read tools are open to models as the person they work for: `files.drive.space.list`, `files.drive.space.read`, `files.drive.versions`, `files.linked.list`, `files.linked.ls`, `files.linked.read`, `files.linked.search`, `files.search`, `files.stat`, `files.preview`. Writes that leave or change a source (`files.drive.upload`, `files.drive.link.create`, `files.linked.write`, `files.linked.rename`, `files.linked.delete`, `files.linked.link`, `files.drive.share`) belong to person callers, and several are declared outward, so they are held for a yes. `files.drive.restore` and `files.linked.unlink` need the person. See computers-and-files (agent doc "computers-and-files").
 
-## Extend it
+## Limits and extension points
 - In 0.5, a Viewer's AI reads a project's records and files through Vyre and does not open the project's folder directly.
 - A Google Doc, Sheet or Slides file in a linked folder is read as text and is not written back as bytes (core/files/linked-gdrive.js).
 - Files that a shell command changes are not recorded, and the Gate does not watch shell file changes. Agents write through the `files.*` tools to get versions and holds.
