@@ -512,7 +512,9 @@ export class Hub {
     if (own && input.transport === "stdio") throw bad("a connection a person makes is a remote server: http or sse");
     const label = String(input.name || "");
     const n = normalize(own ? { ...input, name: personKey(label, /** @type {string} */ (o.owner)) } : input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor, own });
-    if (this.row(n.name)) throw fail("conflict", `there is already a server ${own ? label : n.name}; mcp.update changes it`);
+    // Never overwrite: a key that already exists is refused, whoever owns it (six hex digits can collide, and one person's connection must never replace another's).
+    const had = this.row(n.name);
+    if (had) throw fail("conflict", own && had.owner !== o.owner ? `${label} cannot be used; choose another name` : `there is already a server ${own ? label : n.name}; mcp.update changes it`);
     const now = this.now();
     this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated, owner, connection, label)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(n.name, n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url, JSON.stringify(n.headers),
