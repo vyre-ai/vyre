@@ -30,7 +30,7 @@ const fakeSource = `export default { async start(ctx) {
   if (tools === "spaces") {
     // A box-shaped home: it holds no identity of its own (the owner's key lives in their app), so "who is this device" cannot be answered; who is in which space can.
     t("spaces.self", async () => { throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" }); });
-    t("spaces.merge-list", async i => pf().members[i.person] ? ({ spaces: [{ space: pf().space.id, name: pf().space.name }] }) : ({ spaces: [] }));
+    t("spaces.merge-list", async i => ({ spaces: [...(pf().members[i.person] ? [{ space: pf().space.id, name: pf().space.name }] : []), ...(i.home === true && pf().homeMembers?.[i.person] ? [{ space: "spc_homehomehome", name: "tess.vyre.run" }] : [])] }));
     t("spaces.membership", async i => pf().members[i.person] || null);
   } else if (tools === "vault") {
     t("vault.release", async i => { const v = pf().vault[i.name]; if (v === undefined) throw new Error("no such item"); return { value: v }; });
@@ -849,4 +849,16 @@ test("publish: a member does not see a hold on a site they cannot read", async t
   assert.deepEqual((await seen("per_alex")).sort(), [mine.task, theirs.task].sort(), "the project's people see both");
   assert.deepEqual(await seen("per_sam"), [theirs.task], "a member off the project sees only the Space's site");
   assert.deepEqual((await seen("per_kit")).sort(), [mine.task, theirs.task].sort(), "a Space admin sees any project's hold");
+});
+
+test("publish: the home's own Space is the person's Space only when they have no other: a person with a Space of their own still publishes there, a one-Space install publishes in the home, a non-member of both is refused", async t => {
+  const b = await boxRegistry(t);
+  b.pf.homeMembers = { per_alex: true, per_solo: true };
+  const own = await b.call("publish.create", DRAFT);
+  assert.ok(!own.error, `a person in the home and a Space of their own is not "in more than one space": ${JSON.stringify(own.error)}`);
+  b.pf.actAs["*"] = "per_solo";
+  const solo = await b.call("publish.create", { ...DRAFT, name: "solo" });
+  assert.ok(!solo.error, `a one-Space install publishes in the home: ${JSON.stringify(solo.error)}`);
+  b.pf.actAs["*"] = "per_stranger";
+  assert.equal((await b.call("publish.create", { ...DRAFT, name: "nobody" })).error?.code, "forbidden", "a non-member of the home or of any Space is refused");
 });

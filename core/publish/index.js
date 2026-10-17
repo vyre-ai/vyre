@@ -145,11 +145,15 @@ export default {
       // The spaces this person is in, from the spaces module's own member lists (spaces.merge-list), not from "who is this device": a server that hosts a team's space holds no identity of its own (the owner's
       // key lives in their app), and the person who is calling is the chain's person all the same.
       const person = String(first.actor.id);
-      const r = await call("spaces.merge-list", { person, home: true });   // Publish works in the home's own Space for its member: on a one-server install that is the person's only Space
+      const r = await call("spaces.merge-list", { person });
       if (r.missing) throw refuse("your Space is still being set up, try again in a moment. If you have not made one yet, create it first with spaces.create", "no_space");
-      const list = /** @type {{ space: string, name: string }[]} */ ((r.data && Array.isArray(r.data.spaces)) ? r.data.spaces : []);
-      if (!list.length) throw refuse("you are not a member of a space on this server", "forbidden");
+      const spacesOf = (/** @type {any} */ x) => /** @type {{ space: string, name: string }[]} */ ((x.data && Array.isArray(x.data.spaces)) ? x.data.spaces : []);
+      let list = spacesOf(r);
       const want = input && input.space ? String(input.space) : null;
+      // The home's own Space is internal and stays out of the list while the person has a Space of their own to publish in. When they have none (a one-server install, where their only Space IS the home), or they name a Space that is not
+      // in the list, the home is asked for too: spaces.merge-list lists it only for Publish and only for a member of it.
+      if (!list.length || (want && !list.some(s => s.space === want || s.name === want))) { const h = await call("spaces.merge-list", { person, home: true }); if (!h.missing && spacesOf(h).length) list = spacesOf(h); }
+      if (!list.length) throw refuse("you are not a member of a space on this server", "forbidden");
       const row = want ? list.find(s => s.space === want || s.name === want) : list.length === 1 ? list[0] : null;
       if (!row) throw refuse(want ? "you are not a member of that space" : "you are in more than one space here: say which with `space`", want ? "forbidden" : "no_space");
       if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
