@@ -40,7 +40,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
   "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.me.connect.put"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -105,6 +105,25 @@ export function register({ ctx, people, tool }) {
       return { person: id, value };
     },
   });
+  // Who is asking, for the modules that make a row for the asker (mcp.add): the Space owner, or the one member in the chain. Nothing else: an assistant in the chain, two people, an unreadable
+  // chain or a model's label all answer denied, so a caller that cannot be named is never treated as the owner. The person is the chain's, never the input's.
+  ctx.tool("vault.me.who", {
+    internal: true,
+    description: "Who this call is made for: { kind: \"owner\" } or { kind: \"member\", person }. Only the mcp and connectors modules ask.",
+    input: obj({}),
+    run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
+      if (!["module:mcp", "module:connectors"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const K = ctx.kernel;
+      let c;
+      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read"), { code: "denied" }); }
+      const hops = c && Array.isArray(c.hops) ? c.hops : [];
+      if (hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind !== "person")) throw Object.assign(new Error("an assistant is not a person: ask as yourself"), { code: "denied" });
+      const ids = [...new Set(hops.filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)))];
+      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is"), { code: "denied" });
+      return String(K.owner) === ids[0] ? { kind: "owner" } : { kind: "member", person: ids[0] };
+    },
+  });
+
   // The connectors module stores a finished sign-in as an item of kind "connection" in the vault of the person who signed in, never in the owner's and never for a person the input names. The person
   // is the chain's; connected_by is set here from it, so a caller cannot label a connection as another person's. A new connection is made, an existing one of the same name is updated (a refresh).
   const CONNECTION_KINDS = ["oauth", "bearer", "api_key"];

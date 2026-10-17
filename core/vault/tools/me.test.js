@@ -298,3 +298,16 @@ test("the sealed key is a connection key: by cryptography it opens connection it
   people.destroy(BOB);
   assert.equal(openMemberKey(sealRoot, BOB), null);
 });
+
+test("vault.me.who names the owner or the one member in the chain, to the mcp and connectors modules only, and refuses what it cannot name", async t => {
+  const { call } = rig(t);
+  const who = (/** @type {string | null} */ p, /** @type {any} */ extra = {}) => call("vault.me.who", {}, p, { caller: "module:mcp", ...extra });
+  assert.deepEqual((await who(BOB)).data, { kind: "member", person: BOB });
+  assert.deepEqual((await who(OWNER)).data, { kind: "owner" });
+  assert.deepEqual((await who(BOB, { caller: "module:connectors" })).data, { kind: "member", person: BOB });
+  assert.deepEqual((await who(BOB, { hops: [hop("person", BOB)], person: EVE })).data, { kind: "member", person: BOB }, "a person field changes nothing");
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await who(BOB, { caller })).error?.code, "denied", caller);
+  assert.equal((await who(null)).error.code, "denied");
+  assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("person", EVE)] })).error.code, "denied");
+  assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+});
