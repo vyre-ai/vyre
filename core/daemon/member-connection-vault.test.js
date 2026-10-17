@@ -93,8 +93,8 @@ test("a locked member's connection still works for the hub, and the server's sea
   step("his token and his note are not on the disk in the clear", !disk.includes(BEN_TOKEN) && !disk.includes("ORDINARY-NOTE-0001"));
 });
 
-test("an unshare and the deletion of a connection discard what the grantee left waiting at the Gate, at once", { timeout: 280_000 }, async t => {
-  const { as } = await rig(t);
+test("an unshare, the deletion of a connection and the maker leaving the Space discard what the grantee left waiting at the Gate, at once", { timeout: 280_000 }, async t => {
+  const { as, d } = await rig(t);
   const step = (/** @type {string} */ name, /** @type {any} */ ok) => assert.ok(ok, name);
   step("Ben makes a vault", (await as("ben", "vault.me.account.create", { password: PW })).data);
   const conn = await as("ben", "connectors.connect", { preset: "tokvendor", token: BEN_TOKEN });
@@ -102,14 +102,16 @@ test("an unshare and the deletion of a connection discard what the grantee left 
   const item = ((await as("ben", "vault.me.list")).data.items || []).find((/** @type {any} */ i) => i.kind === "connection");
   step("his connection item", item);
   const benRow = ((await as("ben", "mcp.servers")).data || []).find((/** @type {any} */ s) => s.owner === BEN);
-  const heldOf = async () => ((await as("owner", "gate.held", {})).data || []).filter((/** @type {any} */ h) => String(h.via || h.sender || "").startsWith(`mcp:${benRow.name}`));
+  // what the hub's own sender (mcp:<row>) is holding at the Gate: the Gate's gate.held-of, asked as the module that offered it, answers { id, requester } for each
+  const heldOf = async () => ((await d.registry.call("gate.held-of", { via: `mcp:${benRow.name}` }, "module:mcp", {})).data || []);
   const send = () => as("cy", "mcp.call", { server: benRow.name, tool: "send_message", arguments: { to: "x@example.test", text: "hello" } });
 
   // shared at Fill in, Cy's outward call waits at the Gate; taking the share back discards it
   step("Ben shares it with Cy at Fill in", (await as("ben", "vault.me.connection.share", { name: item.name, kind: "person", subject: CY, level: "use" })).data);
   const first = await send();
   step("Cy's send is held, not sent: " + JSON.stringify(first.error || first.data), first.data && first.data.held);
-  step("it waits at the Gate", (await heldOf()).length >= 1);
+  const waiting = await heldOf();
+  step("it waits at the Gate, asked by Cy (so the check can fail)", waiting.length === 1 && waiting[0].requester === CY);
   step("Ben takes the share back", (await as("ben", "vault.me.connection.share", { name: item.name, kind: "person", subject: CY, level: null })).data);
   step("what Cy left waiting is gone at once", (await heldOf()).length === 0);
   step("and her next call is refused", (await send()).error);
@@ -120,4 +122,23 @@ test("an unshare and the deletion of a connection discard what the grantee left 
   step("Ben deletes the connection", (await as("ben", "vault.me.remove", { name: item.name })).data);
   step("what was waiting is gone", (await heldOf()).length === 0);
   step("the share went with it: her call is refused", (await send()).error);
+});
+
+test("the maker leaving the Space ends what she shared and discards what was waiting for it", { timeout: 280_000 }, async t => {
+  const { as, d, K } = await rig(t);
+  const step = (/** @type {string} */ name, /** @type {any} */ ok) => assert.ok(ok, name);
+  step("Ben makes a vault", (await as("ben", "vault.me.account.create", { password: PW })).data);
+  step("Ben connects", (await as("ben", "connectors.connect", { preset: "tokvendor", token: BEN_TOKEN })).data?.step === "connected");
+  const item = ((await as("ben", "vault.me.list")).data.items || []).find((/** @type {any} */ i) => i.kind === "connection");
+  const benRow = ((await as("ben", "mcp.servers")).data || []).find((/** @type {any} */ s) => s.owner === BEN);
+  const heldOf = async () => ((await d.registry.call("gate.held-of", { via: `mcp:${benRow.name}` }, "module:mcp", {})).data || []);
+  step("Ben shares it with Cy at Fill in", (await as("ben", "vault.me.connection.share", { name: item.name, kind: "person", subject: CY, level: "use" })).data);
+  const sent = await as("cy", "mcp.call", { server: benRow.name, tool: "send_message", arguments: { to: "x@example.test", text: "hello" } });
+  step("Cy's send is held: " + JSON.stringify(sent.error || sent.data), sent.data && sent.data.held);
+  step("it waits at the Gate, asked by Cy", (await heldOf()).some((/** @type {any} */ h) => h.requester === CY));
+  const gone = await as("owner", "spaces.members.remove", { space: K.id.space, person: BEN });
+  step("the owner removes Ben from the Space: " + JSON.stringify(gone.error || ""), !gone.error);
+  await new Promise(r => setTimeout(r, 500));
+  step("what was waiting for his connection is gone", (await heldOf()).length === 0);
+  step("Cy's next call is refused", (await as("cy", "mcp.call", { server: benRow.name, tool: "send_message", arguments: { to: "x@example.test", text: "again" } })).error);
 });

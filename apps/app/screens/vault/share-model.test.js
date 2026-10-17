@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 // The share sheet's rules, without a screen: which levels each grantee may hold, which agents are offered, what the notes say, and what is left to add. The words are the owner's: Fill in, Read, Edit and rotate.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LEVELS, allowedLevels, levelWord, offeredAgents, candidates, loginNotes, connectionNote, groupSub, nameOf } from "./share-model.js";
+import { LEVELS, copyWarning, allowedLevels, levelWord, offeredAgents, candidates, loginNotes, connectionNote, groupSub, nameOf } from "./share-model.js";
 
 const people = [{ id: "chris", kind: "person", name: "Chris" }, { id: "dana", kind: "person", name: "Dana" }];
 const agents = [{ id: "kit", kind: "agent", name: "Kit", instructors: ["alex", "chris", "dana"] }, { id: "juno", kind: "agent", name: "Juno", instructors: ["alex"] }, { id: "atlas", kind: "agent", name: "Atlas", instructors: ["chris"] }];
@@ -65,4 +65,12 @@ test("a name for any id, including Everyone", () => {
   assert.equal(nameOf("chris", { people, groups, agents }), "Chris");
   assert.equal(nameOf("everyone", { people, groups, agents }), "Everyone in the Space");
   assert.equal(nameOf("nope", { people, groups, agents }), "nope");
+});
+
+test("a share that lets someone see the value says they can copy it, and that taking it back does not undo that", () => {
+  const line = "They can see and copy this. Taking it back later doesn't undo that; rotate it if you need to.";
+  assert.equal(copyWarning([{ id: "chris", level: "reveal" }]), line);
+  assert.equal(copyWarning([{ id: "chris", level: "use" }, { id: "dana", level: "edit" }]), line);
+  assert.equal(copyWarning([{ id: "kit", level: "use" }]), null, "Fill in shows nothing, so there is nothing to copy");
+  assert.equal(copyWarning([]), null);
 });

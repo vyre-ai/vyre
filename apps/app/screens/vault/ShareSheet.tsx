@@ -6,7 +6,7 @@ import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Field, IconTile, Row, Segmented, Sheet, Text, markRef, showToast } from "@vyre/ui";
 import { Footnote, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
-import { LEVELS, LEVEL_HELP, allowedLevels, candidates, groupSub, levelWord, loginNotes, nameOf } from "./share-model.js";
+import { LEVELS, LEVEL_HELP, allowedLevels, candidates, copyWarning, groupSub, levelWord, loginNotes, nameOf } from "./share-model.js";
 
 export type Level = "use" | "reveal" | "edit";
 export type Who = { id: string; kind: "person" | "group" | "agent"; name: string; sub?: string; people?: string[]; agents?: string[]; instructors?: string[]; names?: Record<string, string> };
@@ -53,6 +53,7 @@ export function ShareSheet({ open, onClose, title, shares, dir, me, onAdd, onLev
           ) : <Text tone="muted">Only you. Nobody else can use this until you give access.</Text>}
         </Sec>
         {notes.length ? <Footnote icon="shield">{notes.join(" ")}</Footnote> : null}
+        {copyWarning(shares) ? <Footnote icon="info">{copyWarning(shares)}</Footnote> : null}
         <Field name="Find a person, group or agent" value={q} onChangeText={setQ} placeholder="Search" />
         {connection ? null : section("People", pool.people)}
         {connection ? null : section("Groups", pool.groups)}

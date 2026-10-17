@@ -31,6 +31,9 @@ export function candidates({ people, groups, agents, shares, me, q = "", everyon
   };
 }
 
+/** The line under a share list when anyone on it can see the value (Read, or Edit and rotate): what they see they can copy. @param {{ level: string }[]} shares */
+export const copyWarning = shares => (shares.some(s => s.level === "reveal" || s.level === "edit") ? "They can see and copy this. Taking it back later doesn't undo that; rotate it if you need to." : null);
+
 /** Joins names as "A", "A and B", "A, B and C". @param {string[]} xs */
 export const joinNames = xs => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 const first = (/** @type {string} */ n) => String(n).split(" ")[0];
