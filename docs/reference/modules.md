@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 43 | 4 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 43 | 5 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 15 | 1 | cli |
@@ -134,7 +134,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Runs on: `box`, `local`
 - Requires: `threads`
 - Tools: [43](tools.md#agents), 13 of them only for other modules
-- Emits: [4 events](events.md#agents)
+- Emits: [5 events](events.md#agents)
 - Shows on: cli
 - Needs daemon: `credentials`, `agentActor`
 - Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read"],"types":[{"name":"agent","label":"Agent","icon":"IconRobot","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"uid","kind":"text","label":"Id","unique":true,"hidden_from":["member","manager","temp"]},{"name":"kind","kind":"choice","label":"Kind","options":["assistant","agent"]},{"name":"owner","kind":"text","label":"Owner"},{"name":"builtin","kind":"boolean","label":"Built in"},{"name":"model","kind":"text","label":"Model"},{"name":"folder","kind":"text","label":"Folder"},{"name":"projects","kind":"text","label":"Projects"},{"name":"users","kind":"text","label":"Who may use it"},{"name":"tags","kind":"text","label":"Tags","hidden_from":["member","manager","temp"]}]}],"membership":true,"mints":[{"prefix":"agent","actions":["agents.use","agents.edit"]}]}`
