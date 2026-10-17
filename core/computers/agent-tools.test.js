@@ -101,7 +101,7 @@ test("the level of the agent is asked as the PERSON behind the call (a relayed c
   await call(w, "computers.agent.status", { agent: "ads" });
   assert.deepEqual(w.asked, ["agents.level ads relay"], "agents.level refuses a caller that is not a person, so the call carries the person");
   const fs = await import("node:fs");
-  const registry = fs.readFileSync(new URL("../modules/index.js", import.meta.url), "utf8");
+  const registry = fs.readFileSync(new URL("../modules/relay-allowed.js", import.meta.url), "utf8");
   assert.match(registry, /computers: \["agents\.level"\]/, "RELAY_ALLOWED lets the computers module relay the person to agents.level and to nothing else");
   const src = fs.readFileSync(new URL("./agent-tools.js", import.meta.url), "utf8");
   assert.match(src, /d\.call\("agents\.level", \{ agent \}, \{ relay: true \}\)/);

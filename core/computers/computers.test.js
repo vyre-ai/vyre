@@ -35,7 +35,7 @@ async function boot(t, o = {}) {
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box",
       computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100, browse: "desktop" } : o.computers,
       ...(o.glass ? { glass: o.glass } : {}),
-      modules: { disable: o.agents === false ? ["agents"] : [] } }));
+      modules: { disable: [...(o.agents === false ? ["agents"] : []), ...(o.vault === false ? ["vault"] : [])] } }));
   }
   const prevEnv = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   process.env.VYRE_CLAUDE_BIN = FAKE_CLAUDE;
@@ -82,12 +82,13 @@ async function boot(t, o = {}) {
 test("computers: the manifest loads on the box with its tools and the glass stream declared", async t => {
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
-  assert.deepEqual(tools.sort(), ["computers.checkout", "computers.get", "computers.giveback",
+  assert.deepEqual(tools.sort(), ["computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
+    "computers.checkout", "computers.exec", "computers.get", "computers.giveback",
     "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list",
     "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
     "computers.pause", "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
-    "computers.takeover", "computers.watch"]);
+    "computers.takeover", "computers.update", "computers.update.status", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -291,7 +292,7 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   assert.equal(w.width, 1440);
   assert.equal(w.height, 900);
   assert.equal(w.path, `/v1/streams/computers/glass?ticket=${encodeURIComponent(w.ticket)}`);
-  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop", slow: false });
+  assert.deepEqual(s.h.pool.redeem(w.ticket), { agent: "kit", surface: "glass:laptop", slow: false, perAgent: false });
   assert.equal(s.h.pool.redeem(w.ticket), null);
   const late = (await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data;
   s.clock.t += 30_000;
@@ -487,15 +488,27 @@ test("computers: the admin tools are a person's alone: an agent and a module are
   assert.notEqual((await s.kit("computers.handback.status")).error, undefined, "its status is the person's too");
 });
 
-test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {
+test("computers: computers.member.add makes the member-token key on first need (the vault keeps it), adds the member and reloads computerd", async t => {
   const s = await boot(t);
+  // computerd is not running in this test: its reload answers at once instead of retrying a connection that nothing listens on
+  /** @type {string[]} */ const reloads = [];
+  s.h.pool._helperFetch = async (/** @type {URL} */ url) => { reloads.push(url.pathname); return /** @type {any} */ ({ ok: true, status: 200, json: async () => ({ agents: 1, revoked: [] }) }); };
   const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
-  assert.ok(r.error, "add succeeded with no vault running to derive a token from");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.computer, "browser-abc123");
+  assert.deepEqual(s.h.pool.members("browser-abc123").map((/** @type {any} */ m) => m.agent_id), ["kit-1"], "the member was added");
+  assert.deepEqual(reloads, ["/agents/reload"], "computerd was told to read its new identity file");
+  // a second add finds the key already there and does not make another
+  const again = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-2", name: "bob" });
+  assert.equal(again.error, undefined, JSON.stringify(again.error));
+  assert.deepEqual(s.h.pool.members("browser-abc123").map((/** @type {any} */ m) => m.agent_id).sort(), ["kit-1", "kit-2"]);
+});
+
+test("computers: with no vault module running, computers.member.add fails at the vault with a readable message and leaves no row or member behind", async t => {
+  const s = await boot(t, { vault: false });
+  const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
+  assert.ok(r.error, "add succeeded with no vault running to keep a token key in");
   assert.match(r.error.message, /vault/i);
-  // ensure() itself (seedMembersBeforeStart, before the container ever starts) is what hits the
-  // vault. Since 29 Sep (reviewer LOW 2) a failed add for a brand-new member leaves no trace: the
-  // row it made for this call is rolled back, not left half-built for the next attempt to trip
-  // over -- a retry after fixing the vault starts from nothing, same as the very first try.
   assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
   assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
 });
