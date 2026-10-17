@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar, agentdTokenTar, allowAgentdTokenTar, AGENTD_TOKEN } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A one-request fake Engine: capture the create body it was actually sent, nothing else. */
@@ -354,4 +354,38 @@ test("every deviation from the agentd exec is refused: another command or argume
   for (const [what, make] of cases) assert.equal(allowAgentdExec(OK_LABELS, make(EXEC())).ok, false, what);
   assert.equal(allowAgentdExec({ "run.vyre": "1" }, EXEC()).ok, false, "a container that is not ours");
   assert.equal(allowAgentdExec({ "com.example.app": "postgres" }, EXEC()).ok, false, "someone else's container");
+});
+
+// ---- agentd's token file: exactly one tar, in agentctl's own directory ----
+const TOKEN = "A".repeat(43);
+const fix = (/** @type {Buffer} */ buf, /** @type {(b: Buffer) => void} */ f) => { const b = Buffer.from(buf); f(b); return b; };
+/** a header with its checksum made right again after a change */
+const resum = (/** @type {Buffer} */ b) => { let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); return b; };
+
+test("agentd's token tar is accepted exactly as made, and the file, owner and mode are agentctl's", () => {
+  const tar = agentdTokenTar(TOKEN);
+  assert.deepEqual(allowAgentdTokenTar(tar), { ok: true });
+  assert.equal(AGENTD_TOKEN.dir, "/var/lib/vyre/agentd");
+  assert.deepEqual([AGENTD_TOKEN.uid, AGENTD_TOKEN.gid, AGENTD_TOKEN.mode], [1004, 1004, 0o400]);
+  assert.throws(() => agentdTokenTar("short"), /not in the expected shape/);
+  assert.throws(() => agentdTokenTar(`${TOKEN}\nextra`), /not in the expected shape/);
+});
+
+test("every deviation from agentd's token tar is refused: another name, owner, mode, a bad checksum, a longer body, extra blocks, or a .boot tar", () => {
+  const tar = agentdTokenTar(TOKEN);
+  const cases = [
+    ["another name", resum(fix(tar, b => b.write("other\0\0\0\0", 0, 9, "ascii")))],
+    ["root as owner", resum(fix(tar, b => b.write("0000000\0", 108, 8, "ascii")))],
+    ["an agent's uid", resum(fix(tar, b => b.write((20000).toString(8).padStart(7, "0") + "\0", 108, 8, "ascii")))],
+    ["a writable mode", resum(fix(tar, b => b.write("0000600\0", 100, 8, "ascii")))],
+    ["a bad checksum", fix(tar, b => { b[0] ^= 1; })],
+    ["a symlink entry", resum(fix(tar, b => b.write("2", 156, 1, "ascii")))],
+    ["a body that is not a token", fix(tar, b => b.write("not a token with spaces!!!!!!!!!!!!!!!!!!!!!", 512, 43, "ascii"))],
+    ["bytes after the end blocks", Buffer.concat([tar, Buffer.alloc(512)])],
+    ["a byte in the end blocks", fix(tar, b => { b[1600] = 1; })],
+    ["a .boot tar", bootTar({ computerd_token: "t".repeat(40), vnc_password: "abcdefgh" })],
+    ["nothing", Buffer.alloc(0)],
+  ];
+  for (const [what, buf] of /** @type {Array<[string, Buffer]>} */ (cases)) assert.equal(allowAgentdTokenTar(buf).ok, false, what);
+  assert.equal(allowBootTar(tar).ok, false, ".boot's check refuses the agentd tar too");
 });

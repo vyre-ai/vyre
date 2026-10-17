@@ -371,6 +371,46 @@ export function allowBootTar(buf) {
   return { ok: true };
 }
 
+// ---- agentd's token, as a file in agentctl's own directory ------------------------------------
+//
+// The same archive-API PUT as .boot, to /var/lib/vyre/agentd, one file called token, owned by agentctl (1004), mode 0400, one line of token characters. allowAgentdTokenTar accepts
+// exactly what agentdTokenTar makes and nothing else (not .boot's name, not another owner or mode, nothing after it but the end blocks).
+export const AGENTD_TOKEN = Object.freeze({ dir: "/var/lib/vyre/agentd", name: "token", uid: 1004, gid: 1004, mode: 0o400 });
+const AGENTD_TOKEN_BODY = /^[A-Za-z0-9_-]{43,128}\n$/;
+
+/** @param {string} token @returns {Buffer} */
+export function agentdTokenTar(token) {
+  const body = Buffer.from(`${token}\n`, "ascii");
+  if (!AGENTD_TOKEN_BODY.test(body.toString("ascii"))) throw new Error("agentd's token is not in the expected shape");
+  const h = Buffer.alloc(512);
+  h.write(AGENTD_TOKEN.name, 0, 100, "ascii");
+  octal(h, 100, 8, AGENTD_TOKEN.mode); octal(h, 108, 8, AGENTD_TOKEN.uid); octal(h, 116, 8, AGENTD_TOKEN.gid);
+  octal(h, 124, 12, body.length); octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156); h.write("0", 156, 1, "ascii"); h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0; for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  return Buffer.concat([h, body, Buffer.alloc((512 - (body.length % 512)) % 512), Buffer.alloc(1024)]);
+}
+
+/** @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowAgentdTokenTar(buf) {
+  const no = why => ({ ok: /** @type {false} */ (false), why });
+  if (!Buffer.isBuffer(buf) || buf.length !== 2048) return no("not a one-file tar of the expected size");
+  const h = buf.subarray(0, 512);
+  const str = (off, len) => h.subarray(off, off + len).toString("ascii").replace(/\0.*$/s, "");
+  const num = (off, len) => parseInt(str(off, len).trim() || "x", 8);
+  if (str(0, 100) !== AGENTD_TOKEN.name || str(345, 155) !== "") return no(`the file must be ${AGENTD_TOKEN.name}`);
+  if (str(156, 1) !== "0") return no("the entry must be a regular file");
+  if (num(100, 8) !== AGENTD_TOKEN.mode || num(108, 8) !== AGENTD_TOKEN.uid || num(116, 8) !== AGENTD_TOKEN.gid) return no("wrong owner or mode");
+  let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+  if (num(148, 8) !== sum) return no("bad header checksum");
+  const size = num(124, 12);
+  if (!(size > 0 && size < 512)) return no("wrong size");
+  if (!AGENTD_TOKEN_BODY.test(buf.subarray(512, 512 + size).toString("ascii"))) return no("the contents are not agentd's token");
+  for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after the token must be the end blocks");
+  return { ok: true };
+}
+
 // ---- a shared computer's per-agent identity, as a second file next to .boot ------------------
 //
 // AGENT_TOKENS_FILE (computerd/index.js's own identifyClient, agent-browsers.md level 2): one

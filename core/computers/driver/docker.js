@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
-import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar, AGENTD_EXEC, allowAgentdExec } from "./policy.js";
+import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar, AGENTD_EXEC, AGENTD_TOKEN, agentdTokenTar, allowAgentdExec } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -266,8 +266,17 @@ export class DockerDriver {
   }
 
   /**
+   * agentd's token, as /var/lib/vyre/agentd/token (0400, agentctl), through the same archive-API write .boot gets; the entrypoint starts agentd only when the file is there.
+   * @param {string} id @param {string} token
+   */
+  async seedAgentd(id, token) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENTD_TOKEN.dir)}`, agentdTokenTar(token));
+  }
+
+  /**
    * Run agentd's client in the computer (the one exec policy.js allows): `input` goes on standard input, the answer comes back on standard output. Errors never carry the input.
-   * @param {string} id @param {string} input @returns {Promise<{ code: number, stdout: string }>}
+   * @param {string} id @param {string} input @returns {Promise<{ stdout: string }>}
    */
   async execIn(id, input) {
     const c = await this.own(id);
@@ -307,8 +316,8 @@ export class DockerDriver {
       req.on("response", res => { res.resume(); finish(new Error(`docker exec start: status ${res.statusCode}`)); });
       req.end(payload);
     });
-    const info = /** @type {any} */ (await this.must("GET", `/exec/${execId}/json`));
-    return { code: info && typeof info.ExitCode === "number" ? info.ExitCode : 1, stdout: String(stdout) };
+    // The proxy never answers an exec inspection, so there is no exit code to read: the client prints {"status","body"} and that is the answer.
+    return { stdout: String(stdout) };
   }
 
   async start(id) { await this.own(id); await this.must("POST", `/containers/${encodeURIComponent(id)}/start`, undefined, [304]); }

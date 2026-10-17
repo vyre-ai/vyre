@@ -11,7 +11,7 @@ import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { BOOT, bootTar, allowBootTar, AGENT_TOKENS, agentTokensTar, allowAgentTokensTar } from "../computers/driver/policy.js";
+import { BOOT, bootTar, allowBootTar, AGENT_TOKENS, agentTokensTar, allowAgentTokensTar, allowAgentdExec, AGENTD_EXEC, AGENTD_TOKEN, agentdTokenTar, allowAgentdTokenTar } from "../computers/driver/policy.js";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -59,7 +59,11 @@ async function engine(t) {
     ["run.vyre.computers-home-ann", { Name: "run.vyre.computers-home-ann", Labels: mine("bob") }],
     ["vyre_vyre-home", { Name: "vyre_vyre-home", Labels: { "run.vyre": "1" } }],
   ]);
-  const execs = new Map([["ex1", { ContainerID: "kitfull0001" }], ["ex2", { ContainerID: "db1" }]]);
+  const AGENTD_PC = { user: "agentctl", entrypoint: "/opt/agentd/client", arguments: [] };
+  const execs = new Map([["ex1", { ContainerID: "kitfull0001" }], ["ex2", { ContainerID: "db1" }],
+    ["exA", { ContainerID: "kitfull0001", Running: false, ExitCode: null, ProcessConfig: AGENTD_PC }], ["exB", { ContainerID: "kitfull0001", Running: true, ExitCode: null, ProcessConfig: AGENTD_PC }],
+    ["exC", { ContainerID: "db1", Running: false, ExitCode: null, ProcessConfig: AGENTD_PC }], ["exD", { ContainerID: "kitfull0001", Running: false, ExitCode: null, ProcessConfig: { ...AGENTD_PC, user: "root" } }],
+    ["exE", { ContainerID: "kitfull0001", Running: false, ExitCode: null, ProcessConfig: AGENTD_PC }]]);
   const server = http.createServer(async (req, res) => {
     let raw = "";
     for await (const c of req) raw += c;
@@ -107,9 +111,23 @@ async function engine(t) {
     if (/^\/containers\/[^/]+\/(start|stop|pause|unpause)$/.test(p) || (req.method === "DELETE" && /^\/containers\/[^/]+$/.test(p))) return send(204);
     send(404, { message: "page not found" });
   });
+  /** @type {string[]} what the Engine received on an upgraded start: the request line, the body and the standard input after it */
+  const tunneled = [];
+  server.on("upgrade", (req, sock, head) => {
+    let got = head.toString("utf8");
+    tunneled.push(`${req.method} ${req.url} content-length=${req.headers["content-length"]}`);
+    sock.write("HTTP/1.1 101 UPGRADED\r\nContent-Type: application/vnd.docker.raw-stream\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n");
+    sock.on("data", c => { got += c; });
+    sock.on("end", () => {
+      tunneled.push(got);
+      const out = Buffer.from(req.url.includes("/exA/") ? "ok" : "x".repeat(70 * 1024));
+      const hd = Buffer.alloc(8); hd[0] = 1; hd.writeUInt32BE(out.length, 4);
+      sock.end(Buffer.concat([hd, out]));
+    });
+  });
   await new Promise(r => server.listen(socket, () => r(undefined)));
   t.after(() => { server.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  return { socket, seen };
+  return { socket, seen, tunneled };
 }
 
 const BEARER = "test-bearer-token";
@@ -143,7 +161,7 @@ async function proxy(t, policy = stub, bearer = BEARER) {
     req.end(data || undefined);
   });
   const sent = () => e.seen.filter(s => !(s.method === "GET" && /\/(json|volumes\/[^/]+)$/.test(new URL(s.url, "http://d").pathname)));
-  return { call, seen: e.seen, sent, logs, port };
+  return { call, seen: e.seen, sent, logs, port, tunneled: e.tunneled };
 }
 
 const CREATE = () => ({
@@ -456,4 +474,91 @@ test("dockerproxy: at most four /events streams at once; a closed one frees its 
   for (let i = 0; i < 40 && !ok; i++) { await new Promise(r => setTimeout(r, 50)); const r = await px.call("GET", "/v1.43/events?since=100"); ok = r.status === 200; }
   assert.ok(ok, "a place is free again once a stream closes");
   for (const h of held) h.destroy();
+});
+
+
+// ---- agentd's one exec: created in one exact shape, upgraded only for that exec, tunnelled with caps (sec53, 18 Oct 2026) ----
+const agentdPolicy = { ...stub, allowAgentdExec, AGENTD_EXEC, AGENTD_TOKEN, allowAgentdTokenTar };
+const AGENTD_CREATE = () => ({ AttachStdin: true, AttachStdout: true, AttachStderr: false, Tty: false, Cmd: ["/opt/agentd/client"], User: "agentctl" });
+const START = '{"Detach":false,"Tty":false}';
+
+/** @param {number} port @param {string} urlPath @param {{ headers?: Record<string, string>, body?: string, stdin?: string }} [o] @returns {Promise<{ status: number, text: string }>} */
+function upgrade(port, urlPath, o = {}) {
+  return new Promise(resolve => {
+    const body = o.body ?? START;
+    const req = http.request({ host: "127.0.0.1", port, method: "POST", path: urlPath, headers: { authorization: `Bearer ${BEARER}`, connection: "Upgrade", upgrade: "tcp", "content-type": "application/json", "content-length": Buffer.byteLength(body), ...(o.headers || {}) } });
+    req.on("upgrade", (res, sock) => {
+      let text = ""; sock.on("data", c => { text += c; });
+      sock.on("close", () => resolve({ status: 101, text }));
+      sock.write(o.stdin ?? ""); sock.end();
+    });
+    req.on("response", res => { let text = ""; res.on("data", c => { text += c; }); res.on("end", () => resolve({ status: res.statusCode || 0, text })); });
+    req.on("error", () => resolve({ status: 0, text: "" }));
+    req.end(body);
+  });
+}
+
+test("dockerproxy: agentd's exec is created in one exact shape and re-serialised from the policy's own constants; every deviation is refused", async t => {
+  const p = await proxy(t, agentdPolicy);
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", AGENTD_CREATE())).status, 201);
+  const forwarded = p.seen.find(s => s.method === "POST" && s.url.endsWith("/containers/kitfull0001/exec"));
+  assert.deepEqual(JSON.parse(forwarded ? forwarded.raw : "{}"), AGENTD_CREATE());
+  const bad = [{ ...AGENTD_CREATE(), Cmd: ["/bin/sh"] }, { ...AGENTD_CREATE(), Cmd: ["/opt/agentd/client", "x"] }, { ...AGENTD_CREATE(), Env: ["A=b"] }, { ...AGENTD_CREATE(), Tty: true },
+    { ...AGENTD_CREATE(), WorkingDir: "/" }, { ...AGENTD_CREATE(), Privileged: true }, { ...AGENTD_CREATE(), AttachStderr: true }, { ...AGENTD_CREATE(), DetachKeys: "x" }];
+  for (const b of bad) assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", b)).status, 403, JSON.stringify(b));
+  assert.equal((await p.call("POST", "/v1.43/containers/db1/exec", AGENTD_CREATE())).status, 403, "not a computer");
+  const before = p.seen.length;
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { ...AGENTD_CREATE(), User: "1000:1000" })).status, 403, "an agent-uid exec still may not keep stdin");
+  assert.ok(p.seen.slice(before).every(s => !s.url.endsWith("/exec") || s.method === "GET"), "nothing refused reached the Engine");
+  // a policy with no agentd exec refuses the shape outright
+  const none = await proxy(t, stub);
+  assert.equal((await none.call("POST", "/v1.43/containers/kitfull0001/exec", AGENTD_CREATE())).status, 403);
+});
+
+test("dockerproxy: an agentd exec is started only by an upgrade, and only an agentd exec is ever upgraded", async t => {
+  const p = await proxy(t, agentdPolicy);
+  assert.equal((await p.call("POST", "/v1.43/exec/exA/start", { Detach: false, Tty: false })).status, 403, "a plain start of an agentd exec");
+  for (const id of ["ex1", "ex2", "exB", "exC", "exD", "nope"]) {
+    const r = await upgrade(p.port, `/v1.43/exec/${id}/start`);
+    assert.notEqual(r.status, 101, `${id} must not be upgraded`);
+  }
+  assert.notEqual((await upgrade(p.port, "/v1.43/exec/exA/start", { headers: { authorization: "Bearer wrong" } })).status, 101, "wrong bearer");
+  assert.notEqual((await upgrade(p.port, "/v1.43/exec/exA/start?x=1")).status, 101, "a query");
+  assert.notEqual((await upgrade(p.port, "/v1.43/exec/exA/start", { body: '{"Detach":true,"Tty":false}' })).status, 101, "another start body");
+  assert.deepEqual(p.tunneled, [], "none of them reached the Engine's attach");
+  const none = await proxy(t, stub);
+  assert.notEqual((await upgrade(none.port, "/v1.43/exec/exA/start")).status, 101, "a policy with no agentd exec upgrades nothing");
+});
+
+test("dockerproxy: agentd's upgrade is tunnelled with the proxy's own start body, standard input after it, and the answer back", async t => {
+  const p = await proxy(t, agentdPolicy);
+  const r = await upgrade(p.port, "/v1.43/exec/exA/start", { stdin: '{"action":"stop","body":{}}' });
+  assert.equal(r.status, 101);
+  assert.match(r.text, /ok$/);
+  assert.equal(p.tunneled[0], "POST /v1.43/exec/exA/start content-length=28");
+  assert.ok(p.tunneled[1].endsWith('{"action":"stop","body":{}}'), "standard input reached the Engine");
+  assert.ok(p.tunneled[1].includes(START), "with the proxy's own start body first");
+});
+
+test("dockerproxy: more than 16 KB of standard input, or more than 64 KB of answer, ends the tunnel", async t => {
+  const p = await proxy(t, agentdPolicy);
+  const big = await upgrade(p.port, "/v1.43/exec/exA/start", { stdin: "x".repeat(17 * 1024) });
+  assert.ok(!big.text.endsWith("ok"), "no answer to an oversized request");
+  const loud = await upgrade(p.port, "/v1.43/exec/exE/start");
+  assert.ok(loud.text.length < 70 * 1024, `the answer was cut at the cap (got ${loud.text.length} bytes)`);
+});
+
+test("dockerproxy: agentd's token tar goes only to agentd's directory, and only that exact tar; .boot's directory still takes only .boot", async t => {
+  const p = await proxy(t, agentdPolicy);
+  const put = (q, buf) => p.call("PUT", `/v1.43/containers/kitfull0001/archive?path=${encodeURIComponent(q)}`, buf, { "content-type": "application/x-tar" });
+  const tar = agentdTokenTar("A".repeat(43));
+  assert.equal((await put(AGENTD_TOKEN.dir, tar)).status, 200);
+  const sent = p.seen.find(s => s.method === "PUT");
+  assert.ok(sent && decodeURIComponent(sent.url).endsWith(`path=${AGENTD_TOKEN.dir}`), "forwarded to agentd's directory, not .boot's");
+  assert.equal((await put(AGENTD_TOKEN.dir, bootTar({ computerd_token: "t".repeat(40), vnc_password: "abcdefgh" }))).status, 403, "a .boot tar into agentd's directory");
+  assert.equal((await put(BOOT.dir, tar)).status, 403, "agentd's tar into .boot's directory");
+  assert.equal((await put("/var/lib/vyre/agents", tar)).status, 403, "any other directory");
+  assert.equal((await put(AGENTD_TOKEN.dir, Buffer.concat([tar, Buffer.alloc(512)]))).status, 403, "a longer tar");
+  const old = await proxy(t, stub);
+  assert.equal((await old.call("PUT", `/v1.43/containers/kitfull0001/archive?path=${encodeURIComponent(AGENTD_TOKEN.dir)}`, tar, { "content-type": "application/x-tar" })).status, 403, "a policy with no agentd token file");
 });
