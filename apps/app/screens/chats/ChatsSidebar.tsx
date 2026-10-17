@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
 import { allowsMock, ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
@@ -102,11 +103,12 @@ export function ChatsSidebar() {
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
   };
   return (
-    <>
+    // one View, so the closed sheets are not seven children of a parent that spaces its children
+    <View>
       {sheets}
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
       {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
-    </>
+    </View>
   );
 }
