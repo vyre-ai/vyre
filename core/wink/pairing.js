@@ -829,6 +829,8 @@ export function createPairing(o) {
       input: obj({ identity: str }, ["identity"]),
       run: async (input, meta1 = {}) => {
         if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
+        ctx.log("wink: setup-offer entered");
+        try {
         const to = String((input && input.identity) || "").trim();
         if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
         if (!/^per_[a-z2-7]{26}$/.test(to)) throw fail("denied", "That is not a person id. Pair again from the Vyre app.");
@@ -841,7 +843,9 @@ export function createPairing(o) {
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr({});
+        ctx.log("wink: setup-offer answered with a ticket");
         return { qr: made.qr, expires: made.expires };
+        } catch (/** @type {any} */ e) { ctx.log(`wink: setup-offer refused (${String(e && e.code || "no code")})`); throw e; }
       },
     });
 
@@ -1044,6 +1048,9 @@ export function createPairing(o) {
      * straight to pair-challenge and start-paired. A web device gets the session and nothing more. A failure here leaves the device paired with no session, never a failed pairing.
      * @param {string} device @param {any} input @param {string} identity @param {{ kind: string, id: string }} target @param {any} confirmed
      */
+    // One line per step of a first adoption (the device id and the step name only, nothing secret), so a pairing that stalls on this server says which step it is in.
+    const stepLog = (/** @type {string} */ device, /** @type {string} */ step) => ctx.log(`wink: pairing ${device}: ${step}`);
+    let lastEntry = "";
     const recordOwnerDevice = async (device, input, identity, target, confirmed, proven, proofKind = null, /** @type {{ key: string, eid: string, name: string | null } | null} */ enclaveKey = null) => {
       const kind = String(input.deviceKind || "");
       if (!["phone", "computer", "web"].includes(kind)) return false;
@@ -1064,6 +1071,7 @@ export function createPairing(o) {
         }
         /** @type {any} */ let adopted;
         try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}), ...(presenceKeyFor(device, confirmed, input) ? { presence_key: presenceKeyFor(device, confirmed, input) } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
+        stepLog(device, `kernel owner adopt answered${adopted && adopted.error ? ` (${adopted.error.code})` : ""}`);
         if (adopted && adopted.error && adopted.error.code !== "no_such_tool") {
           ctx.log(`wink: the kernel refused ${identity} as this home's owner (${adopted.error.code}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }
@@ -1076,14 +1084,17 @@ export function createPairing(o) {
         // The first pairing of a server with no owner: nobody can give presence yet, so the grant needs none. What stands for the confirmation is the three-word pick at this server's own terminal
         // (this code runs only after it) and the verified identity proof. The key the paired session is bound to is the device's own presence key when it offered one, else this pairing itself.
         const pk = /** @type {any} */ (await ctx.call("relay.device.presence", { id: device }).catch(() => null));
+        stepLog(device, "relay device presence read");
         const keyId = pk && pk.data && pk.data.key ? String(pk.data.key) : `pairing:${device}`;
         // A ticket the relay did not gate (a server's typed code) was never confirmed through the relay's pending door, so its key comes from what the device offered in its hello.
         if (!(confirmed && confirmed.key) && pk && pk.data && typeof pk.data.public_key === "string") confirmed = { ...(confirmed || {}), key: pk.data.public_key, alg: pk.data.alg, storage: pk.data.storage };
         if (!(confirmed && confirmed.key)) ctx.log(`wink: ${device} offered no device key in its pairing hello (presenceKey: { public_key: P-256 SPKI base64url, alg: -7 }), so it cannot be given a paired session`);
         session = await openPairedSession(device, identity, { keyId }, { ...(confirmed || {}), ...(input.keyStorage && !(confirmed && confirmed.storage) ? { storage: input.keyStorage } : {}) });
+        stepLog(device, `paired session ${session ? "opened" : "not opened"}`);
         // (the home's owner was decided above, before this device had any row or session)
         const space = await Promise.resolve(o.space()).catch(() => "");
         if (space) await ctx.call("spaces.devices.enrolled", { device, space }).catch(() => null);
+        stepLog(device, "device enrolment recorded");
       } catch (e) { session = false; ctx.log(`wink: could not record ${device} as the owner's device: ${/** @type {Error} */ (e).message}`); }
       return session;
     };
@@ -1100,6 +1111,7 @@ export function createPairing(o) {
       const to = meta.get("pair_to");
       const pr = input.pairing && typeof input.pairing === "object" ? input.pairing : {};
       let a = askLive();
+      { const phase = `${pr.cancel === true ? "cancel" : typeof pr.reveal === "string" && pr.reveal ? "reveal" : "first"}/${a ? a.state : "no ask"}`; if (lastEntry !== `${caller}:${phase}`) { lastEntry = `${caller}:${phase}`; stepLog(caller.slice(7), `first adopt entered (${phase})`); } }
       if (!a && expiredFor === caller) { expiredFor = null; dropLater(caller); throw fail("expired", words("pairExpired")); }
       if (a && a.caller !== caller) { dropLater(caller); throw fail("busy", words("pairBusy")); }
       expiredFor = null;
@@ -1107,7 +1119,7 @@ export function createPairing(o) {
       try {
         if (!a) {
           let proven = "";
-          if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
+          if (to) { try { proven = await proveIdentity(to, input, caller); stepLog(caller.slice(7), "identity proof checked"); } catch (e) { dropLater(caller); throw e; } }
           // A proof offered on a server with no --pair-to is checked too (SP-1): the claimed identity must be the one the key speaks for. No proof is the words check alone.
           // Becoming an owner always needs the proof (lead, 4 Oct, G-2): the three words confirm the DEVICE to the person here, the proof confirms the IDENTITY to this server. A missing proof, another
           // identity's, and a names directory out of reach each refuse in their own words, and nothing is owned. (`requireProof: false` is a unit-test seam.)
@@ -1115,7 +1127,7 @@ export function createPairing(o) {
             const claimed = input.owner && input.owner.kind === "identity" ? String(input.owner.id) : String(input.identity || "");
             if (!claimed) { dropLater(caller); throw fail("denied_no_proof", words("pairNeedsIdentity")); }
             if (typeof o.identityEntry !== "function") { dropLater(caller); throw fail("denied", words("pairCannotProve")); }
-            try { proven = await proveIdentity(claimed, input, caller, true); } catch (e) { dropLater(caller); throw e; }
+            try { proven = await proveIdentity(claimed, input, caller, true); stepLog(caller.slice(7), "identity proof checked"); } catch (e) { dropLater(caller); throw e; }
           }
           const fresh = !to && !o.pairWordsFor;
           // The owner typed back the ack of the typed code this device came in by: that is the yes, so no three words are asked (single use; the QR and long-code paths ask them)
@@ -1155,15 +1167,18 @@ export function createPairing(o) {
         if (mine.state === "no") throw fail("denied", words("pairRefused"));
         // the relay makes the app's device only now, after the person's check (X-1); the answer to this call still reaches the app over the waiting channel
         const confirmed = await confirmPending(caller.slice(7));
+        stepLog(caller.slice(7), "relay confirmed the device");
         // a proven identity is the owner's identity; what the caller said about itself is not
         // what the server verified about this pairing's owner proof (set when the proof checked out, before adoption consumes it)
         const ownerProofKind = proofKinds.get(caller) || null;
         const ownerEnclave = enclaveKeys.get(caller) || null; enclaveKeys.delete(caller);
         const adopted = await applyAdopt(mine.proven ? { ...mine.input, identity: mine.proven } : mine.input, caller, Boolean(meta.get("owner")));
+        stepLog(caller.slice(7), "owner record written");
         // `session` says whether the device now has its paired session, so an app does not wait for one that is not coming (G-3)
         /** @type {boolean} */ let session;
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
         try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind, ownerEnclave); } catch (e) { clearOwner(); throw e; }
+        stepLog(caller.slice(7), `device recorded (session ${session ? "open" : "not open"})`);
         return { ...adopted, session };
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)

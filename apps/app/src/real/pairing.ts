@@ -187,7 +187,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
-  run.catch((e: Error) => { failed = e; wake(); });
+  // A server that already knows who it pairs to (the app-led install: setup-offer names the identity) answers the first call with its owner and asks for no words, so the pairing can end without
+  // words ever showing: ready() must also come back when the pairing is over, or the screen waits for words that are never made.
+  run.then(() => wake(), (e: Error) => { failed = e; wake(); });
   return {
     kind: "watch",
     async ready() { await seen; if (failed) throw failed; },
@@ -196,6 +198,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
+      try { console.info("vyre:stage step pair: adopted, opening the paired session"); } catch { /* no console */ }
       // paired but the server made no session for this device (pairServer says session:false): say so in a code the install page words (no_session), pairing stays saved
       const noSession = (r as { session?: boolean }).session === false;
       await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
