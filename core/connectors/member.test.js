@@ -29,7 +29,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   const tokenOf = async (/** @type {any} */ c, /** @type {any} */ o = {}) => (await K.surfaces.open(c, o)).token;
   const tokens = { owner: await tokenOf(ownerChain), ben: await tokenOf(benChain), cy: await tokenOf(cyChain), kit: await tokenOf(benChain, { agent: "kit", thread: "t-1" }) };
   /** The app: a person's surface with the person's own token. */
-  const as = (/** @type {"owner" | "ben" | "cy"} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, who === "owner" ? "cli" : "deck", { token: tokens[who] });
+  const as = (/** @type {"owner" | "ben" | "cy"} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, who === "owner" ? "cli" : (tool.startsWith("mcp.") ? "module:connectors" : "deck"), { token: tokens[who] });   // the door keeps mcp.* to the owner: a member reaches her hub row through the module that makes her connections
   const forged = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "deck", { token: "forged-token-that-no-session-made" });
   const kit = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "mcp:agent:kit", { token: tokens.kit, thread: "t-1", agent: "kit" });
   const db = d.registry.deps.db;
