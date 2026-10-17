@@ -12,8 +12,11 @@ export async function personOnChain(K, meta) {
   } catch { return null; }
 }
 
-/** Whether an item belongs to a member: it has a requester and that is not the owner. @param {any} row @param {any} K */
-export const isMemberItem = (row, K) => Boolean(row && typeof row.requester === "string" && row.requester && row.requester !== (K && K.owner));
+/** Whether an item belongs to a member: it has a requester and that is not the owner (an item asked under the owner's id from before it adopted its identity is still the owner's). @param {any} row @param {any} K */
+export const isMemberItem = (row, K) => Boolean(row && typeof row.requester === "string" && row.requester && canon(row.requester, K) !== (K && K.owner));
+
+/** A person id kept from before the owner adopted an identity opens as the identity (the kernel's canonicalPerson); any other id is as given. @param {string} id @param {any} K */
+const canon = (id, K) => (K && typeof K.canonicalPerson === "function" ? K.canonicalPerson(id) : id);
 
 /**
  * May the person on this call see and answer the item? A member's item: only its requester. Any other item (the owner's own, or one with no requester): the owner and the admins, and a module (the internal

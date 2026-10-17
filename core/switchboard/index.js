@@ -2279,7 +2279,7 @@ export class Switchboard {
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
-    this.live.delete(id);
+    this.live.delete(id); this.turnAsker.delete(id);   // the turn that was running is over (stopped or crashed too): nobody is its asker any more, so a stale asker never covers the next turn
     if (this.once.has(id) && !this.reverting.has(id)) {
       this.endHop(id, this.once.get(id).back);
       // said once, in words: that person's turn did not finish, and the chat is back on its usual account
@@ -2365,9 +2365,9 @@ export class Switchboard {
    * longer be taken back.
    */
   turnEnded(id, st, project) {
-    st.turn = null;
+    const ran = Boolean(st.turn); st.turn = null;
     this.resumeTried.delete(id);
-    this.turnAsker.delete(id);
+    if (ran && (!this.live.has(id) || this.live.get(id) === st)) this.turnAsker.delete(id);   // only a turn that ran, and is the one running now, clears its asker: a stopped turn's late finish, or a launch with queued rows and no turn yet (resumeQueued), never wipes the asker of the turn about to be written
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
@@ -2445,7 +2445,7 @@ export class Switchboard {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
-    const taken = rows.filter(r => mark.run(now, r.id).changes);
+    const taken = rows.filter(r => mark.run(now, r.id).changes);   if (taken.length) { if (kt0 && kt0.chat) this.turnAsker.set(id, kt0.asker || null); else this.turnAsker.delete(id); }   // a queued turn is its own asker's from the moment it is handed over, as a direct send is (nobody's when it carries no verified asker)
     if (!taken.length) { this.drainDone(id, true, lock); return; }
     // The turn is announced to the stream (its member starts answering for this asker) only once the asker's own kernel session is open: a reply that opened before it would find none.
     const announce = () => { for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project); };
