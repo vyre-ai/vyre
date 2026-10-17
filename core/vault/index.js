@@ -43,6 +43,7 @@ import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import * as agentFillTools from "./tools/agent-fill.js";
+import * as memberShareTools from "./tools/member-share.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
@@ -523,11 +524,17 @@ export default {
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     meTools.register({ ctx, people, tool });
+    // A login a member shares with an agent (member-share.js): their vault opens it, the share tools keep a copy for the agent's Chrome, and the copy follows the login: changed, removed or the member gone, it is refreshed or deleted.
+    vault.access.members.people = people;
+    people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
+    memberShareTools.register({ access: vault.access, tool });
+    setTimeout(() => { try { vault.access.copies.sweep(); } catch { /* the vault is closed */ } }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
       ctx.events.on("member.removed", (/** @type {any} */ e) => { try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
       for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
     } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.

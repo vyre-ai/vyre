@@ -18,12 +18,13 @@
 //     kernel that was there when the module started and is gone at a call refuses (only a home that ran no kernel at start is left open: it has no members). A test lists every registered vault tool.
 
 import { ME_TOOLS, ME_MODULE_TOOLS } from "./tools/me.js";
+import { SHARE_TOOLS } from "./tools/member-share.js";
 
 /**
  * The vault tool names a non-owner person may call. Only vault.me.* (tools/me.js): a member's own vault, whose tools take the person from the kernel chain and refuse the owner and anyone but one member. A member reaches nothing of the owner's vault. A name is added here deliberately, one at a time.
  * @type {Set<string>}
  */
-export const MEMBER_ALLOWED = new Set([...ME_TOOLS, ...ME_MODULE_TOOLS]);
+export const MEMBER_ALLOWED = new Set([...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARE_TOOLS]);
 
 /** The names of the tools that were registered through the gate (so a test can tell one that slipped past). */
 export const GATED = new Set();
