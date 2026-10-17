@@ -8,7 +8,7 @@ import path from "node:path";
 import { createEgress } from "./egress.js";
 import { plan, seatbeltProfile } from "./sandbox.js";
 import { pidsUnder } from "./proctree.js";
-import { rig, waitFor, findOnDisk, SKIP, sleep, procState, LINUX, PLUGIN_FLAG, HARNESS_MARK, SCRATCH, rm, upstream, get } from "./runner-test-lib.js";
+import { rig, waitFor, findOnDisk, SKIP, sleep, procState, LINUX, PLUGIN_FLAG, HARNESS_MARK, SCRATCH, rm, upstream, get } from "./testing/runner-test-lib.js";
 import { fakeSpace } from "./testing/fake-space.js";
 test("runner: handing a session over freezes it, flushes the last turn, tells the server why, and only then ends it", { skip: SKIP || false, timeout: 90_000 }, async t => {
   /** @type {any} */ let seen = null;

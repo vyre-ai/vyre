@@ -28,7 +28,7 @@ function setup(t, { level = "edit" } = {}) {
   registerAgentTools({ tool: (name, _d, _i, run) => tools.set(name, run), users, callers: ["deck"], held: () => held,
     terminal: (agent, session) => { ran.push(`terminal ${agent} ${session}`); return { ticket: "tt", path: "/term?ticket=tt" }; },
     watch: (agent, slow) => { ran.push(`ticket ${agent}${slow ? " slow" : ""}`); return { ticket: "tk", path: "/glass?ticket=tk", width: 1280, height: 800 }; },
-    call: async (tool, input) => { asked.push(`${tool} ${input.agent}`); return tool === "agents.level" ? { data: { agent: input.agent, level } } : { error: { code: "no_such_tool", message: tool } }; } });
+    call: async (tool, input, opts) => { asked.push(`${tool} ${input.agent}${opts && opts.relay === true ? " relay" : ""}`); return tool === "agents.level" ? { data: { agent: input.agent, level } } : { error: { code: "no_such_tool", message: tool } }; } });
   return { users, tools, ran, asked, hold: (/** @type {boolean} */ v) => { held = v; } };
 }
 const call = (w, name, input) => /** @type {any} */ (w.tools.get(name))(input, {});
@@ -94,4 +94,15 @@ test("terminals are listed for someone who may use the agent; opening one needs 
   assert.equal((await call(use, "computers.agent.terminals", { agent: "ads" })).terminals.length, 0, "no place yet, so nothing to list");
   await assert.rejects(() => call(use, "computers.agent.terminal.open", { agent: "ads", session: "work" }), /cannot change that agent/);
   assert.ok(!use.ran.some(x => x.startsWith("terminal")), "no ticket for someone who may only use the agent");
+});
+
+test("the level of the agent is asked as the PERSON behind the call (a relayed call), never as the computers module, and the registry lets exactly that relay through", async t => {
+  const w = setup(t, { level: "use" });
+  await call(w, "computers.agent.status", { agent: "ads" });
+  assert.deepEqual(w.asked, ["agents.level ads relay"], "agents.level refuses a caller that is not a person, so the call carries the person");
+  const fs = await import("node:fs");
+  const registry = fs.readFileSync(new URL("../modules/index.js", import.meta.url), "utf8");
+  assert.match(registry, /computers: \["agents\.level"\]/, "RELAY_ALLOWED lets the computers module relay the person to agents.level and to nothing else");
+  const src = fs.readFileSync(new URL("./agent-tools.js", import.meta.url), "utf8");
+  assert.match(src, /d\.call\("agents\.level", \{ agent \}, \{ relay: true \}\)/);
 });

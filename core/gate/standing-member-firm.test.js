@@ -53,7 +53,7 @@ test("a member's standing permission lets their own agent send from their own ma
   const covered = await mail(BEN);
   assert.equal(covered.data && covered.data.sent, true, JSON.stringify(covered));
   assert.equal(posts().length, 1);
-  assert.equal(posts()[0].path, "/v1.0/users/ben@firm.test/sendMail", "from Ben's own mailbox");
+  assert.equal(posts()[0].path, "/v1.0/users/ben%40firm.test/sendMail", "from Ben's own mailbox");
 
   // the same agent in Cy's turn is still held, for Cy, and nothing is sent from Cy's mailbox
   const cys = await mail(CY);

@@ -15,7 +15,7 @@ const hintOf = (/** @type {any} */ i) => `${i.kind}${i.description ? " · " + St
 export function register({ ctx, people, internal }) {
   /** The asker, once she is a member and not the owner; the caller must be the Switchboard. @param {any} input @param {any} meta */
   const asker = async (input, meta) => {
-    if (String((meta && meta.caller) || "") !== "module:threads") throw denied("only the Switchboard (the threads module) resolves a member's chip");
+    if (String((meta && meta.caller) || "") !== "module:threads") throw denied("only the chat module (threads) resolves a member's chip");
     const id = String((input && input.asker) || "");
     if (!PERSON.test(id)) throw bad("name the person who asked");
     if (String(ctx.kernel && ctx.kernel.owner) === id) throw denied("the owner's chips are the owner's vault");

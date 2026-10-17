@@ -213,7 +213,7 @@ test("up --keep-link on a server (vyre update): accepted, and it only reports wh
   assert.equal(await up(["--keep-link", "--json"], f.deps), 0);
   const o = JSON.parse(f.lines[0]);
   assert.equal(o.paired, false);
-  assert.match(o.pairing, /wink\.server\.code/);
+  assert.match(o.pairing, /install command from the Vyre app/);
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */

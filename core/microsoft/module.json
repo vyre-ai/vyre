@@ -21,7 +21,7 @@
     "tools": [
       {
         "name": "microsoft.accounts",
-        "reach": "person",
+        "reach": "anyone",
         "effect": "read"
       },
       {
@@ -93,7 +93,8 @@
   "watches": {
     "emits": [
       "microsoft.added",
-      "microsoft.removed"
+      "microsoft.removed",
+      "microsoft.sent"
     ]
   },
   "needs": {

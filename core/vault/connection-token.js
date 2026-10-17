@@ -80,7 +80,7 @@ export class ConnectionTokens {
     // A pasted token (PAT, PIT, an agent key) is the value itself; it expires only when its owner replaces it.
     if (f.auth_kind === "bearer" || f.auth_kind === "api_key") {
       const v = f.token || f.value;
-      if (!v) throw Object.assign(new Error(`${name} holds no token`), { code: "needs_reconnect" });
+      if (!v) throw Object.assign(new Error(`${name} holds no token: connect it again under Connections`), { code: "needs_reconnect" });
       return { access_token: v, token_type: "Bearer", expires_at: null, resource: f.resource || null };
     }
     throw Object.assign(new Error(`${name} has no sign-in kind (auth_kind): connect it again`), { code: "needs_reconnect" });

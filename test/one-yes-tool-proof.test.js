@@ -40,7 +40,7 @@ test("a software-key proof over the call opens relay.enable on a development bui
   for (const tool of TOOLS) {
     assert.equal((await at(tool, {})).error?.code, "presence_required", `${tool}: no proof, no way in`);
     // a proof for another tool, or another input, is not this call's yes
-    const other = sign(TOOLS.find(x => x !== tool) || "relay.enable");
+    const other = sign(TOOLS.find(x => x !== tool) || "relay.disable");   // (with one moment left in TOOLS, "another tool" is a different name, never the same tool's own proof)
     assert.equal((await at(tool, {}, other)).error?.code, "presence_required", `${tool}: another tool's proof`);
     const good = sign(tool);
     const r = await at(tool, {}, good);

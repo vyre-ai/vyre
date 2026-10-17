@@ -807,7 +807,8 @@ export default {
     // memory.correct stays the person's; an agent reaches corrections only through this tool.
     /** The project the calling thread belongs to, from the thread's own record (threads.get); null when the call names no thread or the thread is in no project. @param {string} caller @param {any} extra */
     const chatProjectOf = async (caller, extra) => {
-      const id = typeof extra.thread === "string" && extra.thread ? extra.thread : (/^(?:mcp|harness):thread:([A-Za-z0-9_-]{1,64})$/.exec(caller) || [])[1];
+      // the thread is the one vyred verified for this call (meta.thread), never one parsed out of a caller label
+      const id = typeof extra.thread === "string" && extra.thread ? extra.thread : null;
       if (!id) return null;
       try {
         const r = await ctx.call("threads.get", { thread: String(id), limit: 1 });
@@ -833,6 +834,9 @@ export default {
         if (out.dropped) return out;
         // A correction the person made in this chat is also the agent's lesson: filed as the agent's own write (kind correction) in the project the chat is in, so the agent's Memory pane and the project's both show it. With no project it shows from memory.corrections' heard list.
         // The project is the one the CHAT is in, as the Switchboard recorded it, never one the agent names: an agent that could name it would file its "lesson" into any project's memory.
+        // only a named agent has a lesson to file: a plain session (the person's own Claude Code, no agent) files nothing
+        const w = whoNow();
+        if (!(w ? w.agent !== null : /^(?:mcp|harness):agent:/.test(caller))) return out;
         const project = await chatProjectOf(caller, extra);
         if (!project) return out;
         if (!target) return out;

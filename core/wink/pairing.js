@@ -947,7 +947,9 @@ export function createPairing(o) {
       if (!["phone", "computer", "web"].includes(kind)) {
         // The app did not say what it is, but the pick at the server is still the owner's confirmation of THIS device: it is recorded as one of theirs (a computer, under the name it gave), so the server's status names it.
         // No session is granted and no key is enrolled for a device of unknown kind: it goes no further than the pairing it is already in.
-        try { const at = devices.get(device); if (!at || at.removed) devices.add({ id: device, identity, kind: "computer", name: cleanName(input.deviceName, 64) || "a device", target }); }
+        // (the name keeps an apostrophe, as the device gave it: "Alex's iPhone"; control characters and markup are still dropped)
+        const given = String(input.deviceName || "").replace(/[^\p{L}\p{N} ._@:'\u2019-]/gu, "").replace(/ {2,}/g, " ").trim().slice(0, 64);
+        try { devices.add({ id: device, identity, kind: "computer", name: given || "a device", target }); }
         catch (e) { ctx.log(`wink: could not record ${device} as the owner's device: ${/** @type {Error} */ (e).message}`); }
         return false;
       }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRunner } from "./runner.js";
 import { fakeSpace } from "./testing/fake-space.js";
-import { tmp, rm } from "./runner-test-lib.js";
+import { tmp, rm } from "./testing/runner-test-lib.js";
 
 test("a chase that is still waiting when the lease is taken again does not unmount the workspace", async t => {
   const base = tmp(), mount = tmp();

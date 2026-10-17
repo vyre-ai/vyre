@@ -147,14 +147,14 @@ test("a member's own send and invite go out at once from their own mailbox, neve
   const out = await s.member("microsoft.mail.send", { to: ["Dana@Harlow.example"], cc: ["kit@harlow.example"], subject: "Refund R-9", body: "Hello Dana", from: "bob@firm.test", mailbox: "bob@firm.test" });
   assert.deepEqual({ sent: out.sent, from: out.from, to: out.to }, { sent: true, from: "alice@firm.test", to: ["dana@harlow.example"] });
   const post = s.g.requests.find(r => r.method === "POST");
-  assert.equal(post.path, "/v1.0/users/alice@firm.test/sendMail", "always the member's own mailbox, whatever the input says");
+  assert.equal(post.path, "/v1.0/users/alice%40firm.test/sendMail", "always the member's own mailbox, whatever the input says");
   assert.equal(post.body.message.subject, "Refund R-9"); assert.equal(post.body.message.body.content, "Hello Dana");
   assert.deepEqual(post.body.message.toRecipients, [{ emailAddress: { address: "dana@harlow.example" } }]);
   assert.equal(post.body.saveToSentItems, true);
   const ev = await s.member("microsoft.calendar.create", { title: "Call Dana", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", time_zone: "Europe/London", attendees: ["dana@harlow.example"] });
   assert.equal(ev.created, true); assert.deepEqual(ev.attendees, ["dana@harlow.example"]);
   const evPost = s.g.requests.filter(r => r.method === "POST").at(-1);
-  assert.equal(evPost.path, "/v1.0/users/alice@firm.test/events");
+  assert.equal(evPost.path, "/v1.0/users/alice%40firm.test/events");
   assert.equal(evPost.body.attendees[0].emailAddress.address, "dana@harlow.example");
   assert.equal(evPost.body.start.timeZone, "Europe/London");
   assert.ok(!JSON.stringify([out, ev, s.events]).includes(s.g.secret));
@@ -203,7 +203,7 @@ test("the Gate's release sends exactly what the requester approved, from the req
   const out = await release();
   assert.equal(out.sent, true); assert.equal(out.from, "alice@firm.test");
   const post = s.g.requests.find(r => r.method === "POST");
-  assert.equal(post.path, "/v1.0/users/alice@firm.test/sendMail"); assert.equal(post.body.message.subject, "Refund R-9");
+  assert.equal(post.path, "/v1.0/users/alice%40firm.test/sendMail"); assert.equal(post.body.message.subject, "Refund R-9");
   // the owner removes Alice's attested email before a second item is approved: that one is not sent
   s.people.chain = ["p-alice", "agent:kit"];
   const { held: h2 } = await s.tools.get("microsoft.mail.send").run({ to: ["dana@harlow.example"], subject: "Second", body: "x" }, { token: "t", caller: "mcp:agent:kit" });

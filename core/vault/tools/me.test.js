@@ -191,7 +191,7 @@ test("vault.me.lend gives a member their own key for their own turn: the person 
   await call("vault.me.account.create", { password: PW }, EVE);
   await call("vault.me.put", { name: "bob-claude", kind: "setup-token", fields: { value: "sk-ant-bob-0001" } }, BOB);
   accounts.acct_bob = { person: BOB, item: "bob-claude", kind: "setup-token", provider: "claude" };
-  const lend = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.lend", input, who, { caller: "module:switchboard", ...extra });
+  const lend = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.lend", input, who, { caller: "module:threads", ...extra });
   const has = (/** @type {any} */ input, /** @type {string | null} */ who, caller = "module:sessions") => call("vault.me.has", input, who, { caller });
   assert.equal((await has({ name: "bob-claude" }, BOB)).data.has, true, "the add-time check");
   assert.equal((await has({ name: "bob-claude" }, EVE)).data.has, false, "not in her vault");
@@ -210,7 +210,7 @@ test("vault.me.lend gives a member their own key for their own turn: the person 
   assert.equal((await lend({ account: "acct_bob" }, OWNER)).error.message, ME_REFUSAL);
   assert.equal((await lend({ account: "acct_bob" }, null)).error.code, "denied");
   assert.equal((await lend({ account: "acct_bob" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error?.code, "denied", "an agent's job never uses a member's key");
-  for (const caller of ["module:files", "module:sessions", "module:mcp", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.lend", { account: "acct_bob" }, BOB, { caller })).error?.code, "denied", caller);
+  for (const caller of ["module:switchboard", "module:files", "module:sessions", "module:mcp", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.lend", { account: "acct_bob" }, BOB, { caller })).error?.code, "denied", caller);
   // a member who has left the Space has no chain in it: a thread resumed on their account gets no value and no other credential
   const gone = await lend({ account: "acct_bob" }, BOB, { gone: true });
   assert.equal(gone.error.code, "denied");

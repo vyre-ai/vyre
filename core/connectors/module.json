@@ -39,7 +39,7 @@
       "connectors.mention.search",
       "connectors.mention.resolve",
       "connectors.persist",
-      "connectors.needs-reconnect",
+      { "name": "connectors.needs-reconnect", "reach": "modules", "effect": "write" },
       { "name": "connectors.site.connect", "reach": "person", "effect": "write" },
       { "name": "connectors.site.propose", "reach": "anyone", "effect": "write" },
       { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
