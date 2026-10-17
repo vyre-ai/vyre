@@ -11,7 +11,7 @@ export type Section = {
   divider: string;
   collapsed: boolean;
 };
-export type FlowChat = { id: string; title: string; flowName: string; sections: Section[]; runs: number; last: number; lastState: WakeState; needsYou: number };
+export type FlowChat = { id: string; title: string; flowName: string; /** The agent of the newest wake: the one a person's message in this chat wakes. */ agent: string; sections: Section[]; runs: number; last: number; lastState: WakeState; needsYou: number };
 
 const s = (v: unknown): string => (typeof v === "string" ? v : "");
 const STATE: Record<WakeState, string> = { running: "Running", waiting: "Waiting on you", done: "Done", failed: "Failed", paused: "Paused" };
@@ -66,7 +66,7 @@ export function flowChats(list: unknown, o: { zone?: string; open?: ReadonlySet<
     });
     const flowName = ws.map((w) => w.m.flowName).filter(Boolean).pop() || flow;
     const named = [...ws].reverse().map((w) => s(w.row.name)).find((n) => n.startsWith("Flow:"));
-    out.push({ id: flow, flowName, title: named || `Flow: ${newest.m.stepName || newest.m.step || "step"} - ${flowName}`, sections, runs: new Set(ws.map((w) => w.m.run)).size, last: Math.max(...ws.map((w) => Number(w.row.last ?? 0))), lastState: sections[sections.length - 1].state, needsYou: sections.filter((x) => x.needsYou).length });
+    out.push({ id: flow, flowName, agent: s(newest.row.agent), title: named || `Flow: ${newest.m.stepName || newest.m.step || "step"} - ${flowName}`, sections, runs: new Set(ws.map((w) => w.m.run)).size, last: Math.max(...ws.map((w) => Number(w.row.last ?? 0))), lastState: sections[sections.length - 1].state, needsYou: sections.filter((x) => x.needsYou).length });
   }
   return out.sort((a, b) => b.last - a.last);
 }

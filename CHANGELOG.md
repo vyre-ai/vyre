@@ -40,6 +40,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - refactor(kernel): the forgetting of task words (`scrubTexts`) moves to `kernel/tasks/scrub.js`, outside the trusted base (it decides no grant). The deadline lines fit and the base cap goes down to 9819; nothing was raised.
 - test(vault): a task lease is refused at use once its task is withdrawn, before the lease is taken back (the kernel rig takes a `taskOpen`).
 - fix(flows): at an agent step's deadline, a one-tap card the session asked for (a device, an invite, a vault reveal) is cancelled with its outward cards, not only the held sends. The deadline tests now prove the stop uses the thread the wake recorded.
+- fix(agents): `agents.flow-say` has its reach-anyone reason, and a run that is not recent says how to pick one.
+- feat(flows): a person writing in a Flow's chat wakes the Flow's agent for them, as them, with the Flow and its recent runs as context (new tool `agents.flow-say`); the wake joins the chat as one more divider, and "Reply to this run" narrows it to that run. The three wakes of one Flow are one chat with three dividers.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).

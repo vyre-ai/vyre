@@ -44,6 +44,12 @@
         "effect": "write"
       },
       {
+        "name": "agents.flow-say",
+        "summary": "write in a Flow's chat: wake the Flow's agent for you, as you, with the Flow and its recent runs as context",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "agents.rollover",
         "reach": "anyone",
         "effect": "write"
