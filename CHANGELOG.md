@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(app): the run page has Retry on the latest version (flows.retry with version latest, owner key); core/flows/owner-tools.test.js pins reach and agent refusal for pause, resume, access, rollback and kit remove.
+
 - feat(app): `/u/mail` (Compose button) and `/u/mail/compose` (New email, back once held).
 
 - feat(app): `screens/mail/ComposeMail.tsx` is the compose screen: To, Cc, Bcc, Subject, the words and Files from the Space Drive; Send holds the mail at the Gate (`mail.send`).
