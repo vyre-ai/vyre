@@ -9,9 +9,17 @@ const THUMB = `data:image/svg+xml;base64,${typeof btoa === "function" ? btoa(svg
 const settle = (a: string): S => { const s = (W[a] ??= { state: "none", since: 0, last: 0 }); if (s.state === "waking" && now() - s.since > 3000) { s.state = "live"; } return s; };
 const shape = (s: S) => ({ state: s.state, lastActive: s.last, display: s.state === "live" ? 1 : null, ...(s.state === "live" ? { thumbnail: THUMB } : {}) });
 
+let upToDate = false;
+const IMG = "ghcr.io/vyre-ai/agent-computer";
+const updateStatus = () => ({ present: true, current: upToDate, image: upToDate, want: { image: `${IMG}:0.6.0`, version: "0.6.0", layout: 2 }, have: { image: upToDate ? `${IMG}:0.6.0` : `${IMG}:0.5.4`, version: upToDate ? "0.6.0" : "0.5.4", layout: upToDate ? 2 : 1, container: "c1", at: now() } });
+
 export const mockComputerTools: Record<string, (i: any) => unknown> = {
+  "system.info": () => ({ host: "juniper-box", role: "box", version: "0.6.0", platform: "linux", node: "v22.11.0" }),
+  "computers.update.status": () => updateStatus(),
+  "computers.update": () => { if (upToDate) return { updated: false, state: "current", message: "The agent computer already matches this version of Vyre." }; upToDate = true; return { updated: true, state: "updated", message: "The agent computer was updated. 2 agents had their screens closed." }; },
   "computers.agent.status": (i) => shape(settle(String(i.agent))),
   "computers.agent.wake": (i) => { const s = settle(String(i.agent)); if (s.state === "asleep" || s.state === "none") { s.state = "waking"; s.since = now(); } s.last = now(); return shape(s); },
+  "computers.agent.reset": (i) => { const s = settle(String(i.agent)); s.state = "asleep"; return shape(s); },
   "computers.agent.sleep": (i) => { const s = settle(String(i.agent)); s.state = "asleep"; return shape(s); },
   "gate.standing.list": (i) => ({ permissions: String(i.agent) === "juno" ? [{ id: "g1", agent: "juno", resource: "vyre://spc/outbox/send/gmail", to: { patterns: ["*@northwind.example"] }, daily_cap: 20 }, { id: "g2", agent: "juno", resource: "vyre://spc/outbox/spend/meta", to: { patterns: ["Meta Ads"] }, max_amount: 200, daily_amount: 500 }].filter((p) => !gone.has(p.id)) : [] }),
   "gate.standing.revoke": (i) => { gone.add(String(i.id)); return { revoked: String(i.id) }; },

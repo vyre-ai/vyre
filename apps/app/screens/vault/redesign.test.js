@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PROVIDER_GROUP, ALL, inNav, navCounts, navEmpty, groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
+import { originOf, siteUpdate, PROVIDER_GROUP, ALL, inNav, navCounts, navEmpty, groupOf, daysLeftOf, valueField, REVEAL_MS, healthOf, summaryOf, visible, groupsOf, breakage, share, unshare, GROUPS } from "./redesign.js";
 
 const v = (o) => ({ id: "x", sp: "juniper", group: "Logins", name: "Gmail", detail: "a@b", secret: "s", usedBy: [], shared: [], lastUsedDays: 1, ...o });
 
@@ -98,4 +98,22 @@ test("an empty pick says why", () => {
   assert.equal(navEmpty({ kind: "group", group: "Messaging" }), "Nothing in Messaging yet.");
   assert.equal(navEmpty({ kind: "shared" }), "Nobody has shared an item with you.");
   assert.equal(navEmpty(ALL), "");
+});
+
+test("the Sites box saves a bare https origin and refuses the rest before any call", () => {
+  assert.equal(originOf("https://Example.com"), "https://example.com");
+  assert.equal(originOf("example.com"), "https://example.com");
+  assert.equal(originOf(" https://a.example:8443/ "), "https://a.example:8443");
+  for (const bad of ["http://example.com", "https://example.com/login", "https://example.com/?x=1", "https://user:pw@example.com", "https://user@example.com", "ftp://example.com", "javascript:alert(1)", "https://", "not a site", ""]) assert.throws(() => originOf(bad), bad);
+});
+
+test("saving a site on a login keeps its own url: only urls is written, with every origin", () => {
+  // the login was saved with url=https://a.example/login, which the list shows as the site https://a.example
+  const u = siteUpdate({ id: "clio", sites: ["https://a.example"] }, "b.example");
+  assert.deepEqual(Object.keys(u.input.fields), ["urls"]);
+  assert.equal(u.input.fields.urls, "https://a.example https://b.example");
+  assert.equal(u.input.name, "clio");
+  assert.equal(u.origin, "https://b.example");
+  assert.equal(siteUpdate({ id: "clio", sites: ["https://a.example"] }, "https://a.example").input.fields.urls, "https://a.example");
+  assert.throws(() => siteUpdate({ id: "clio" }, "http://b.example"));
 });

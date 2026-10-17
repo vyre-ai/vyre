@@ -87,6 +87,8 @@ export type ChatScreenProps = {
   about?: Partial<AboutInfo>;
   /** Open "About this chat" at first (shots). */
   initialAbout?: boolean;
+  /** The panel's tab when it opens first (the sample build's ?tab=computer, for a picture). */
+  initialTab?: "details" | "library" | "computer";
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
   /** The project this chat is in, for the header (a name, never an id). */
@@ -150,7 +152,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
-  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">("details");
+  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">(p.initialTab ?? "details");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
@@ -524,6 +526,7 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          groupChat={sharedChat}
           canStop={meta.canStop}
           stopping={meta.stopping}
           onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}

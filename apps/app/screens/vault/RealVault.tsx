@@ -57,6 +57,7 @@ export default function RealVault() {
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState<"items" | "sharing" | "browsers" | "health" | "import">("items");
   const [editing, setEditing] = useState(false);
+  // Linked from a chat ("Add the site to this login"): open that item, on its edit sheet.
   const [ssh, setSsh] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});
   const [shown, setShown] = useState<{ key: string; value: string } | null>(null);

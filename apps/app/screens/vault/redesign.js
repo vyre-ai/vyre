@@ -11,7 +11,7 @@ export const GROUPS = /** @type {const} */ (["Apps you connected", "AI models", 
 /** Sharing levels. "use" lets an agent or flow use the item without seeing it; "edit" also lets the person change it. */
 export const LEVELS = /** @type {const} */ ({ use: { label: "Can use", help: "Uses it without seeing the value." }, edit: { label: "Can edit", help: "Can also change or replace it." } });
 
-/** @typedef {{ id: string, sp: string, group: string, kind?: string, sharedWithMe?: boolean, name: string, detail: string, secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
+/** @typedef {{ id: string, sp: string, group: string, kind?: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
 
 /** @param {VItem} v @returns {'expiring'|'expired'|'unused'|'ok'} */
 export function healthOf(v) {
@@ -117,3 +117,18 @@ export function daysLeftOf(expires, now = Date.now()) {
 
 /** The field to reveal for an item: the secret-like one first. @param {string[]} fields */
 export const valueField = (fields) => ["secret", "value", "password", "token", "key", "api_key"].find((f) => fields.includes(f)) ?? fields[0] ?? "value";
+
+/** A site as the Vault saves it: a bare https origin. Anything else is refused here, before a call. @param {string} site */
+export function originOf(site) {
+  let u;
+  try { u = new URL(/^[a-z]+:\/\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); } catch { throw new Error("That is not a web address."); }
+  if (u.protocol !== "https:" || u.username || u.password) throw new Error("Use a secure address that starts with https.");
+  if (u.pathname !== "/" || u.search || u.hash) throw new Error("Use just the site, like https://example.com, with no page after it.");
+  return u.origin;
+}
+
+/** The vault.me.update input that saves a site on a login: the merged origins go in `urls`, and the login's own `url` (often a full sign-in address) is never in it, so it is left as it was. @param {{ id: string, sites?: string[] }} item @param {string} site */
+export function siteUpdate(item, site) {
+  const o = originOf(site);
+  return { origin: o, input: { name: item.id, fields: { urls: [...new Set([...(item.sites ?? []), o])].join(" ") } } };
+}

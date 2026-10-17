@@ -100,3 +100,15 @@ export function auditLines(a: any): { ok: boolean; lines: string[] } {
   if (ok) lines.push(`Only your paired Macs can reach them.${a?.checked != null ? ` Checked ${plural(a.checked, "online device")}.` : ""}`);
   return { ok, lines };
 }
+
+/** The agent computer's image and version, and whether it matches this Vyre (computers.update.status, owner only). Null when the box did not answer, so the section is left out. */
+export function computerView(s: any): { rows: [string, string][]; line: string; canUpdate: boolean } | null {
+  if (!s || typeof s !== "object" || !s.want || typeof s.want !== "object") return null;
+  const name = (v: unknown) => String(v || "").split("/").pop() || "";
+  const have = s.have && typeof s.have === "object" ? s.have : null;
+  const rows: [string, string][] = [["Image", name(s.want.image)], ["Vyre version", String(s.want.version || "")]];
+  if (have) rows.push(["Made from", `${name(have.image)} (Vyre ${String(have.version || "?")})`]);
+  if (!s.present) return { rows, line: "This Space has no agent computer yet. It is made from the current image the first time an agent needs it.", canUpdate: false };
+  if (s.current) return { rows, line: "The computer matches this version of Vyre.", canUpdate: false };
+  return { rows, line: "A newer image is ready. Updating closes every agent's screen, then replaces the computer. Logins and files stay. A terminal job that is running ends.", canUpdate: true };
+}

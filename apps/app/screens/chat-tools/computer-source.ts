@@ -10,5 +10,7 @@ export const agentComputer = {
     return r.error ? { problem: said(r.error) } : { view: computerOf(r.data) };
   },
   async wake(agent: string): Promise<string | null> { const r = await callT("computers.agent.wake", { agent }); return r.error ? said(r.error) : null; },
+  /** Empty this agent's home (its Chrome logins, files and terminal state): the right to edit the agent. */
+  async reset(agent: string): Promise<string | null> { const r = await callT("computers.agent.reset", { agent }); return r.error ? said(r.error) : null; },
   async sleep(agent: string): Promise<string | null> { const r = await callT("computers.agent.sleep", { agent }); return r.error ? said(r.error) : null; },
 };

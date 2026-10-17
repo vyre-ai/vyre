@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { AiMark, AnsweringControl, Chip, ChipToken, Icon, PickerList, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
+import { AiMark, AnsweringControl, Button, Chip, ChipToken, Icon, PickerList, Row, Sheet, Text, Tip, optionId, useUiTheme, type IconName, type PickerItem } from "@vyre/ui";
 import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveActive, pickerKey, removeToken, toggleAnswering, tokensIn } from "@vyre/ui/lib/picker-model.js";
 import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
 import { useMentionNodes } from "./useMentionNodes";
@@ -43,6 +43,8 @@ export type ComposerProps = {
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
   /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
   onTyping?: () => void;
+  /** A chat with other people in it: a # pick is shared with all of them, and the picker says so. */
+  groupChat?: boolean;
   /** A turn is running and can be stopped: the send button becomes a stop square while the box is empty. */
   canStop?: boolean; stopping?: boolean; onStop?: () => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
@@ -265,6 +267,7 @@ export function ChatComposer(p: ComposerProps) {
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
     if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
+    // One of her own vault items is a named pill: it grants nothing.
     if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
     const r = pick(text, trig, o.pick);
     setText(r.text);
@@ -403,7 +406,9 @@ export function ChatComposer(p: ComposerProps) {
   const nested = !pop && !!nestRoot;
   const crumbs = nested && nestPath.length ? [trig?.kind === "person" ? "Mention" : "Tag", ...crumbsOf(nestRoot, nestPath)] : undefined;
   const nestFooter = nested ? nestHint(nestPath.length, nestList[active]) : null;
-  const footer = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? (pm ? "AI answers only when you @mention it. Change it in chat settings." : "Applies to the next message. Right opens a model") : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
+  const footerBase = pop === "files" ? "Right opens Vyre Files. Drop or paste works too" : pop === "vyrefiles" ? "Type to search. Left goes back" : pop === "plus" ? "Type to filter. Up and Down, Enter, Esc" : pop === "answering" ? (pm ? "AI answers only when you @mention it. Change it in chat settings." : "Applies to the next message. Right opens a model") : pop === "model" ? "Left goes back" : nestFooter ?? (trig?.kind === "command" ? "@ who · # what · Up and Down, Enter, Esc" : "@ people and AIs · # records · / commands · Esc");
+  // In a chat with several people, what the picker puts in front of the chat's agent is read by all of them: say so where the pick is made.
+  const footer = p.groupChat && !pop && (trig?.kind === "record" || nested) ? `Everyone in this chat sees what you pick. ${footerBase}` : footerBase;
   const header = pop === "files" || pop === "vyrefiles" ? "Files" : pop === "answering" ? "Answering" : pop === "model" ? "Model" : trig?.kind === "command" ? "Commands" : trig?.kind === "person" ? "Mention" : trig?.kind === "record" ? "Tag" : undefined;
   const aiMenu = pm || slots.length > 1 || !!p.models?.length;
 

@@ -1,7 +1,7 @@
 // Where the redesigned Vault gets its items: the sample world, or the real tools. Space is the owner's vault (vault.list, vault.uses, vault.reveal, vault.put, vault.delete); Mine is the signed-in
 // member's own vault (vault.me.*). Nothing here holds a value: `read` fetches one at the click and the screen keeps it for the reveal time only.
 import type { Call } from "./source";
-import { daysLeftOf, groupOf, valueField, type VItem } from "./redesign.js";
+import { daysLeftOf, groupOf, siteUpdate, valueField, type VItem } from "./redesign.js";
 import type { ListRow, UseRow } from "./real-model";
 import { kvGet, kvSet } from "../../src/state/member-key-kv";
 import { createMine, deviceKeyStore, hasMine, unlockMine } from "../../src/state/member-key.js";
@@ -38,6 +38,8 @@ export interface VaultData {
   connectionSharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; info?: { account: string; how: string } }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
+  /** Mine only: save the site a login signs in to (vault.me.update merges the url field), so an agent can be lent it. Returns the bare origin saved. */
+  addSite?(item: VItem, site: string): Promise<string>;
 }
 
 export function sampleData(): VaultData {
@@ -55,6 +57,7 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
+    addSite: async (v, site) => { const o = siteUpdate(v, site).origin; const i = items.find((x) => x.id === v.id); if (i) i.sites = [...(i.sites ?? []), o]; return o; },
     moving: { list: async () => [{ id: "acme", name: "Northwind Bakery (client)", sub: "Shared with Billing and Dana" }, { id: "marketing", name: "Marketing", sub: "Shared with Marketing and Juno" }], move: async () => {} },
     connectionSharing: {
       load: async (v) => ({ shares: held.get(v.id) ?? [{ id: "kit", level: "use" as Level }], dir: { people: PEOPLE, groups: GROUPS0, agents: AGENTS }, me: ME, info: { account: "alex@juniperstudio.example.com", how: "You connected it" } }),
@@ -103,8 +106,8 @@ export function realData(call: Call): VaultData {
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
-        const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number }[] }>("vault.me.list");
-        const own = r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; });
+        const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number; sites?: string[] }[] }>("vault.me.list");
+        const own = r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, ...(i.kind === "login" ? { sites: i.sites ?? [] } : {}), secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; });
         // What the firm key lets her act as (her Google account): listed beside her apps, read only, nothing stored in her vault.
         const prov = await ask<{ accounts: { app: string; account: string }[] }>("vault.me.provisioned").catch(() => ({ accounts: [] as { app: string; account: string }[] }));
         const provided: VItem[] = prov.accounts.map((a) => ({ id: `provisioned:${a.app}`, sp: "mine", kind: "provisioned", group: "Apps you connected", name: a.app, detail: `Acts as ${a.account}`, secret: "", daysLeft: null, lastUsedDays: undefined, usedBy: [], shared: [] }));
@@ -123,6 +126,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
+    async addSite(item, site) { const u = siteUpdate(item, site); await ask("vault.me.update", u.input); return u.origin; },
     async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
