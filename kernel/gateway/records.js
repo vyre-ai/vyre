@@ -1313,8 +1313,7 @@ export function createRecords(cfg) {
       try { keep = await store.get(m.type, m.keep); } catch (e) { throw mapError(e); }
       if (!keep) throw new KernelError("not_found", "no such record");
       // fields still holding what the merge put there go back; ones someone edited since stay as they are
-      const back = {}, edited = [];
-      const once = writeOnceNames((await store.types().catch(() => [])).find((/** @type {any} */ t) => t.name === m.type));
+      const back = {}, edited = [], once = writeOnceNames((await store.types().catch(() => [])).find((/** @type {any} */ t) => t.name === m.type));
       for (const [k, v] of Object.entries(m.merged)) { if (once.has(k)) { edited.push(k); continue; } if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
       if (Object.keys(back).length) await api.update(chain, m.type, m.keep, back, keep.version);
       const restored = await api.restore(chain, m.type, m.drop);
