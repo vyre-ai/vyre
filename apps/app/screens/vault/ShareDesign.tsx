@@ -20,10 +20,18 @@ const PEOPLE: Who[] = [
   { id: "dana", kind: "person", name: "Dana Whitfield", sub: "Member" },
   { id: "iris", kind: "person", name: "Iris Chen", sub: "Member" },
 ];
+/** Who can instruct each agent (ask it to do things). The signed-in member can share with an agent only if they are one of them. */
+const INSTRUCTORS: Record<string, string[]> = { kit: ["alex", "chris", "dana"], juno: ["alex"], atlas: ["chris"] };
+const ME = "alex";
+const NAMES: Record<string, string> = { alex: "you", chris: "Chris", dana: "Dana", iris: "Iris" };
 const AGENTS: Who[] = [
   { id: "kit", kind: "agent", name: "Kit", sub: "Billing agent" },
   { id: "juno", kind: "agent", name: "Juno", sub: "Intake agent" },
+  { id: "atlas", kind: "agent", name: "Atlas", sub: "Research agent" },
 ];
+const others = (id: string) => (INSTRUCTORS[id] ?? []).filter((x) => x !== ME).map((x) => NAMES[x] ?? x);
+const joinNames = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const mayInstruct = (w: Who) => w.kind !== "agent" || (INSTRUCTORS[w.id] ?? []).includes(ME);
 type Group = { id: string; name: string; people: string[]; agents: string[] };
 const GROUPS0: Group[] = [
   { id: "billing", name: "Billing", people: ["chris", "dana"], agents: ["kit"] },
@@ -49,13 +57,13 @@ function ShareRow({ w, level, onLevel, onRemove, fixed }: { w: Who; level: Level
 }
 
 /** The share sheet: who has it, then people, groups and agents to add. `title` is the thing shared; `everyone` adds the Space-wide row for a whole vault. */
-function ShareSheet({ open, onClose, title, shares, setShares, groups, everyone, levels }: {
-  open: boolean; onClose: () => void; title: string; shares: Share[]; setShares: (f: (s: Share[]) => Share[]) => void; groups: Group[]; everyone?: boolean; levels?: Level[];
+function ShareSheet({ open, onClose, title, shares, setShares, groups, everyone, levels, login }: {
+  open: boolean; onClose: () => void; title: string; shares: Share[]; setShares: (f: (s: Share[]) => Share[]) => void; groups: Group[]; everyone?: boolean; levels?: Level[]; login?: boolean;
 }) {
   const [q, setQ] = useState("");
   const has = new Set(shares.map((s) => s.id));
   const pool = useMemo(() => {
-    const all: Who[] = [...PEOPLE, ...groups.map((g) => whoOf(g.id, groups)!), ...(everyone ? [whoOf("everyone", groups)!] : []), ...AGENTS];
+    const all: Who[] = [...PEOPLE, ...groups.map((g) => whoOf(g.id, groups)!), ...(everyone ? [whoOf("everyone", groups)!] : []), ...AGENTS.filter(mayInstruct)];
     return all.filter((w) => !has.has(w.id) && (!q || w.name.toLowerCase().includes(q.toLowerCase())));
   }, [q, shares, groups, everyone]);
   const add = (w: Who) => { setShares((s) => [...s, { id: w.id, level: "use" }]); showToast(`${w.name} can now fill in ${title}.`); };
@@ -64,7 +72,7 @@ function ShareSheet({ open, onClose, title, shares, setShares, groups, everyone,
     if (!xs.length) return null;
     return (
       <Sec title={label}>
-        <Card flush>{xs.map((w) => <Row key={w.id} dense lead={<Lead w={w} />} title={w.name} sub={w.sub} end={<Button kind="secondary" size="sm" icon="plus" label="Add" onPress={() => add(w)} />} />)}</Card>
+        <Card flush>{xs.map((w) => <Row key={w.id} dense lead={<Lead w={w} />} title={w.name} sub={w.kind === "agent" ? (others(w.id).length ? `${w.sub}. ${joinNames(others(w.id))} can also instruct it` : `${w.sub}. Only you instruct it`) : w.sub} end={<Button kind="secondary" size="sm" icon="plus" label="Add" onPress={() => add(w)} />} />)}</Card>
         {note ? <Footnote icon="info">{note}</Footnote> : null}
       </Sec>
     );
@@ -78,10 +86,15 @@ function ShareSheet({ open, onClose, title, shares, setShares, groups, everyone,
               onLevel={(l) => setShares((xs) => xs.map((x) => (x.id === s.id ? { ...x, level: l } : x)))} onRemove={() => { setShares((xs) => xs.filter((x) => x.id !== s.id)); showToast(`${w.name} no longer has ${title}.`); }} />; })}</Card>
           ) : <Text tone="muted">Only you. Nobody else can use this until you give access.</Text>}
         </Sec>
+        {login && shares.some((x) => AGENTS.some((a) => a.id === x.id)) ? (
+          <Footnote icon="shield">
+            {"Your agent can use this login while you're away."}{shares.filter((x) => others(x.id).length).map((x) => ` ${joinNames(others(x.id))} can also instruct ${whoOf(x.id, groups)!.name}, so they can ask it to use this login.`).join("")}
+          </Footnote>
+        ) : null}
         <Field name="Find a person, group or agent" value={q} onChangeText={setQ} placeholder="Search" />
         {section("People", "person")}
         {section("Groups", "group")}
-        {section("Agents", "agent", "Agents can only fill in. They use it without ever seeing the value, and every use is logged.")}
+        {section("Agents", "agent", "Agents can only fill in. They use it without ever seeing the value, and every use is logged. Only agents you can instruct are listed.")}
         <Footnote icon="shield">Anything an agent sends, pays or deletes still waits for a yes. You can take access back at any time.</Footnote>
         <View className="flex-row gap-s2"><Button kind="primary" label="Done" onPress={onClose} /></View>
       </View>
@@ -92,10 +105,10 @@ function ShareSheet({ open, onClose, title, shares, setShares, groups, everyone,
 const TONE = { ok: "ok", warn: "warn", err: "err", plain: "plain" } as const;
 type Item = { id: string; name: string; sub: string; group: "Apps" | "Logins" | "Keys"; app?: { account: string; how: string; state: "ok" | "warn" | "err"; stateWord: string }; shares: Share[] };
 const ITEMS0: Item[] = [
-  { id: "clio", name: "Clio", sub: "alex@riverafirm.example", group: "Apps", app: { account: "alex@riverafirm.example", how: "You connected it", state: "ok", stateWord: "Connected" }, shares: [{ id: "kit", level: "use" }] },
-  { id: "google", name: "Google Workspace", sub: "Acts as alex@riverafirm.example", group: "Apps", app: { account: "alex@riverafirm.example", how: "Provided by the firm key. Only your own mailbox, calendar and Drive", state: "ok", stateWord: "Provisioned" }, shares: [] },
-  { id: "notion", name: "Notion", sub: "Rivera Law workspace", group: "Apps", app: { account: "Rivera Law", how: "You connected it", state: "warn", stateWord: "Connect again" }, shares: [] },
-  { id: "gmail", name: "Gmail", sub: "intake@riverafirm.example", group: "Logins", shares: [{ id: "billing", level: "use" }, { id: "chris", level: "reveal" }] },
+  { id: "clio", name: "Clio", sub: "alex@juniperstudio.example.com", group: "Apps", app: { account: "alex@juniperstudio.example.com", how: "You connected it", state: "ok", stateWord: "Connected" }, shares: [{ id: "kit", level: "use" }] },
+  { id: "google", name: "Google Workspace", sub: "Acts as alex@juniperstudio.example.com", group: "Apps", app: { account: "alex@juniperstudio.example.com", how: "Provided by the firm key. Only your own mailbox, calendar and Drive", state: "ok", stateWord: "Provisioned" }, shares: [] },
+  { id: "notion", name: "Notion", sub: "Juniper Studio workspace", group: "Apps", app: { account: "Juniper Studio", how: "You connected it", state: "warn", stateWord: "Connect again" }, shares: [] },
+  { id: "gmail", name: "Gmail", sub: "intake@juniperstudio.example.com", group: "Logins", shares: [{ id: "billing", level: "use" }, { id: "chris", level: "reveal" }, { id: "kit", level: "use" }] },
   { id: "stripe", name: "Stripe (read only)", sub: "rk_live_...", group: "Keys", shares: [{ id: "kit", level: "use" }] },
   { id: "resend", name: "Resend", sub: "Email sending", group: "Keys", shares: [] },
 ];
@@ -146,12 +159,12 @@ function ItemsPart({ groups, first }: { groups: Group[]; first?: string }) {
                   onLevel={(l) => set((xs) => xs.map((x) => (x.id === s.id ? { ...x, level: l } : x)))} onRemove={() => set((xs) => xs.filter((x) => x.id !== s.id))} />; })}</Card>
               ) : <Text tone="muted">Only you.</Text>}
               <View className="flex-row gap-s2 pt-s2"><Button kind="secondary" size="sm" icon="share" label="Share" onPress={() => setOpen(true)} /></View>
-              {isApp ? <Footnote icon="shield">Their agent can act in {cur.name} as you, and only fill in. Anything that sends or changes data still waits for your yes.</Footnote> : null}
+              {isApp ? <Footnote icon="shield">{(() => { const ag = cur.shares.map((x) => whoOf(x.id, groups)!).filter((w) => w.kind === "agent").map((w) => w.name); return `${ag.length ? joinNames(ag) : "An agent you share it with"} can act in ${cur.name} as you, and only fill in. Anything that sends or changes data still waits for your yes.`; })()}</Footnote> : null}
             </Sec>
           </View>
         </Card>
       </View>
-      <ShareSheet open={open} onClose={() => setOpen(false)} title={cur.name} shares={cur.shares} setShares={set} groups={groups} levels={isApp ? ["use"] : undefined} />
+      <ShareSheet open={open} onClose={() => setOpen(false)} title={cur.name} shares={cur.shares} setShares={set} groups={groups} levels={isApp ? ["use"] : undefined} login={!isApp && cur.group === "Logins"} />
     </View>
   );
 }
@@ -197,8 +210,8 @@ function GroupsPart({ groups, setGroups, first }: { groups: Group[]; setGroups: 
 type Vlt = { id: string; name: string; sub: string; count: number; shares: Share[]; mine?: boolean };
 const VAULTS0: Vlt[] = [
   { id: "mine", name: "Personal", sub: "Only you can open it", count: 7, shares: [], mine: true },
-  { id: "space", name: "Rivera Law keys", sub: "The firm's own keys and logins", count: 24, shares: [{ id: "everyone", level: "use" }] },
-  { id: "acme", name: "Acme Co. (client)", sub: "Everything for this client, apart from the rest", count: 9, shares: [{ id: "billing", level: "use" }, { id: "dana", level: "edit" }] },
+  { id: "space", name: "Juniper Studio keys", sub: "The firm's own keys and logins", count: 24, shares: [{ id: "everyone", level: "use" }] },
+  { id: "acme", name: "Northwind Bakery (client)", sub: "Everything for this client, apart from the rest", count: 9, shares: [{ id: "billing", level: "use" }, { id: "dana", level: "edit" }] },
   { id: "marketing", name: "Marketing", sub: "Ad accounts and email sending", count: 12, shares: [{ id: "marketing", level: "reveal" }, { id: "juno", level: "use" }] },
 ];
 
@@ -241,7 +254,7 @@ function VaultsPart({ groups, first }: { groups: Group[]; first?: string }) {
       {cur ? <ShareSheet open title={cur.name} onClose={() => setOpen(null)} shares={cur.shares} setShares={setShares} groups={groups} everyone /> : null}
       <Sheet open={making} onClose={() => setMaking(false)} title="New vault">
         <View className="gap-s4">
-          <Field name="Vault name" value={name} onChangeText={setName} placeholder="Acme Co. (client)" />
+          <Field name="Vault name" value={name} onChangeText={setName} placeholder="Northwind Bakery (client)" />
           <Segmented<string> label="Who starts with access" options={[["me", "Only me"], ["all", "Everyone in the Space"]]} value={start} onChange={setStart} />
           <Text tone="label">You can share it with people, groups and agents afterwards, one at a time or all at once.</Text>
           <View className="flex-row gap-s2"><Button kind="primary" label="Make vault" onPress={make} disabled={!name.trim()} /><Button kind="ghost" label="Cancel" onPress={() => setMaking(false)} /></View>
