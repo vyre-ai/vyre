@@ -140,14 +140,16 @@ export function classify(tool, mode, alias) {
   const one = ws.length === 1;
   const writes = ws.some(w => WRITE_WORDS.includes(w)) || (one && WRITE_WORDS.some(w => w.length > 2 && flat.startsWith(w))) || WRITE_STEMS.some(s => flat.includes(s));
   const reads = ws.some(w => READ_VERBS.includes(w)) || (one && READ_VERBS.some(v => flat.startsWith(v)));
-  const hint = Boolean(tool.annotations && tool.annotations.readOnlyHint === true);
-  const kind = ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
+  // B7: the server's own annotations can only make a call stricter. destructiveHint is held and is a delete; readOnlyHint is
+  // never read as permission, because a server writes its own hint and a write with a plain name ("apply_changes") must stay held.
+  const destructive = Boolean(tool.annotations && tool.annotations.destructiveHint === true);
+  const kind = destructive || ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
     : ws.some(w => PAY_WORDS.includes(w)) || /payment|refund|purchase|transfer/.test(flat) ? "spend" : "send";
   if (mode === "off") return { outward: true, kind, off: true };
   if (sends(tool.name) || (alias && sends(alias.slice(alias.indexOf("__") + 2)))) return { outward: true, kind, off: false };
-  if (mode === "read") return { outward: false, kind, off: false };
+  if (mode === "read") return { outward: destructive, kind, off: false };
   if (mode === "write") return { outward: true, kind, off: false };
-  return { outward: !((reads || hint) && !writes), kind, off: false };
+  return { outward: destructive || !(reads && !writes), kind, off: false };
 }
 
 /** Where an outward call goes, and which argument said so. @param {any} args @param {string} server */
