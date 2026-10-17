@@ -97,6 +97,7 @@ test("links.js: a path that follows no link reads nothing", async () => {
 
 test("a linked record is read under the lesser of the Flow's chain and the chain of whoever started the run", async () => {
   const { w, chain, urn } = await setup();
+  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   // the Flow's own chain may read every kin; the member who starts it may not read Sam
@@ -118,6 +119,7 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
 
 test("an event-triggered run reads a linked record under the lesser of the Flow's chain and the chain of the person whose change fired it", async () => {
   const { w, chain, urn } = await setup();
+  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
