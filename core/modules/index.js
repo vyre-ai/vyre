@@ -10,6 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { RELAY_ALLOWED } from "./relay-allowed.js";
 import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
@@ -630,25 +631,6 @@ const RELAY = Symbol("vyre.relay");
  * Which first-party module may relay the person it is acting for, and to which tools (a name, or a prefix ending in a dot). The Personal to My Cloud upgrade runs as the person in both Spaces: the spaces
  * module relays them to the chat and memory ports, and those relay them on to the per-member storage. Nothing else is open, and a relay needs a running call that has a person.
  */
-const RELAY_ALLOWED = Object.freeze({
-  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
-  memory: ["spaces.storage."],
-  work: ["spaces.storage.", "vault.uses.for", "spaces.members.list"], // vault.uses.for: the timeline asks, as the person looking; spaces.members.list: the names of those a person adds to a chat, asked as that person
-  publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
-  providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
-  // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
-  term: ["threads.get"],
-  // a team member's own MCP servers (mcp.mine.*) live in the member's own vault store: the mcp module asks it as the member, and the vault tool resolves the person from the relayed claim
-  mcp: ["vault.me.store.", "vault.me.who"],
-  // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
-  appmods: ["flows.kit.propose"],
-  // a connection a person makes: the connectors module asks vault.me.who for the person it connects for (core/connectors/who.js), as that person's call
-  connectors: ["vault.me.who"],
-  // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
-  import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
-  mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
-  ...FIRST_RUN_RELAY,
-});
 
 export class Registry {
   /**
