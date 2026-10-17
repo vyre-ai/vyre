@@ -132,10 +132,10 @@ shardTest("a browser whose identity is a passkey pairs a fresh server: the owner
   assert.equal(st.owner_proof, "passkey");
 });
 
-shardTest("a pick with no deviceKind makes a device row (named a device, as the app said nothing of itself) and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
+shardTest("a pick with no deviceKind makes a device row named as given and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
   const f = await pairFreshServer(t, { kind: "" });
   const { w, done } = f;
-  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "a device", "the app said no kind and no name, so the device is recorded under the plain name");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "Alex's iPhone", "the device is recorded under the name it gave");
   // (the relay's own provisional row from the pairing may exist; it is not the owner's paired device, and the checks below show it opens nothing)
   assert.notEqual((await deviceRow(w, done.device))?.ownerPaired, true, "the relay does not hold it as the owner's paired device");
   const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;

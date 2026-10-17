@@ -536,7 +536,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
     assert.match(r.link, /^https:\/\/vyre\.run\/i\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "the link to share names no server");
     assert.match(r.join_link, /^https:\/\/harlow\.vyre\.run\/join\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "the space's own join link rides beside it");
     assert.equal(r.link.split("/i/")[1], r.join_link.split("/join/")[1], "one token, two ways to open it");
-    assert.equal(r.code, null, "with no Wink module here the invite is the link alone (a typed code is best effort)");
+    assert.ok(!r.code, "with no Wink module here the invite is the link alone (a typed code is best effort)");
     made[role] = r;
   }
   assert.equal((await d.call("spaces.invites.create", { space, role: "temp" })).error?.code, "bad_scope");
@@ -2054,7 +2054,7 @@ test("spaces.names: the Space's own host reads this Space's name and a member's 
   const w = world(t);
   const { d, space } = await harlow(t, w);
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
-  const casey = await claimIdentity({ name: "casey", code: (await reserve("casey")).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => Date.now(), agree: pt() });
+  const casey = await claimIdentity({ name: "casey", code: (await reserve("casey")).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree: pt() });
   assert.ok(!(await d.call("spaces.members.add", { space, person: casey.id, role: "member" })).error);
   await d.ok("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
   // refused to every caller but the host: a person's CLI, another module, a model

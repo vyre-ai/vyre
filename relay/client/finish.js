@@ -53,7 +53,7 @@ export async function adoptServer(paired, o) {
   // The proof that the identity's own key stands behind this pairing: its signature over this pairing's box and relay device and ticket tag (so it is good for this pairing only, PI-3); a phone's key adds its Face ID signature `esig`.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
   if (!proof && o.signIdentity) proof = await o.signIdentity(await pairToProofMessage(String(paired.box), String(paired.device), o.ticket));
-  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), ...(o.keySigner ? { keySigner: o.keySigner } : {}), ...(o.keyRp ? { keyRp: o.keyRp } : {}) };
+  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind } : {}), ...(deviceName ? { deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), ...(o.keySigner ? { keySigner: o.keySigner } : {}), ...(o.keyRp ? { keyRp: o.keyRp } : {}) };
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;
