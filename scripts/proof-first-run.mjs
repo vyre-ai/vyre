@@ -381,6 +381,8 @@ try {
     await look("New agent form", "11-new-agent", /New agent/i, 60_000, async () => { await drv.go("/u/settings/assistants/new"); });
     await drv.fill("Name", "walker");
     await drv.fill("Job", "Answer questions about the Space.");
+    // an agent works in at least one project: the Personal project is there on a space with a record store; with none listed yet the form says so, and the create is tried anyway
+    try { await drv.turnOn("Personal"); } catch { /* no project listed yet */ }
     await drv.click("Create");
     await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
     await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await open("Agents", "/u/agents", false); });
@@ -418,6 +420,8 @@ try {
   await run.step(S("coming back again: the recovery key opens the identity too"), async () => {
     await drv.reopen();
     await drv.waitFor("Welcome back", 60_000);
+    // as in the password step: only once the unlock screen is above the splash
+    await until(() => drv.fieldReady("Master password"), 60_000, "the unlock screen showing above the splash");
     await drv.click("Use my recovery key");
     await drv.fill("Recovery key", recoveryKey);
     await drv.click("Unlock");
