@@ -4,12 +4,13 @@
 /** @typedef {{ state: "asleep" | "waking" | "live", lastActive: number, thumbnail: string }} ComputerView */
 
 const STATES = ["asleep", "waking", "live"];
+const IMAGE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,/;
 
-/** The agent computer's status (computers.agent.status) as the tab shows it. A state the box does not name reads as asleep; a thumbnail is kept only when it is an image data URL. @param {any} d @returns {ComputerView} */
+/** The agent computer's status (computers.agent.status) as the tab shows it. A state the box does not name, and "none" (not on the computer yet), read as asleep; a thumbnail is kept only when it is an image data URL. @param {any} d @returns {ComputerView} */
 export function computerOf(d) {
   const state = STATES.includes(d?.state) ? d.state : "asleep";
-  const t = typeof d?.thumbnail === "string" && /^data:image\/(png|jpeg|webp);base64,/.test(d.thumbnail) ? d.thumbnail : "";
-  return { state, lastActive: Number(d?.last_active) || 0, thumbnail: t };
+  const t = typeof d?.thumbnail === "string" && IMAGE.test(d.thumbnail) ? d.thumbnail : "";
+  return { state, lastActive: Number(d?.lastActive) || 0, thumbnail: t };
 }
 
 /** The line under the screen. @param {ComputerView} v @param {string} name */

@@ -5,10 +5,12 @@ import assert from "node:assert/strict";
 import { computerOf, computerWords, computerActions, DOCK } from "./computer-model.js";
 
 test("the box's answer becomes one of three states; anything else reads as asleep", () => {
-  assert.equal(computerOf({ state: "live", last_active: 5, thumbnail: "data:image/png;base64,AAAA" }).state, "live");
+  assert.equal(computerOf({ state: "live", lastActive: 5, thumbnail: "data:image/png;base64,AAAA" }).state, "live");
   assert.equal(computerOf({ state: "waking" }).state, "waking");
   assert.equal(computerOf({ state: "asleep" }).state, "asleep");
   assert.equal(computerOf({ state: "stopped" }).state, "asleep");
+  assert.equal(computerOf({ state: "none" }).state, "asleep");
+  assert.equal(computerOf({ state: "live", lastActive: 7 }).lastActive, 7);
   assert.equal(computerOf(null).state, "asleep");
   assert.equal(computerOf(undefined).state, "asleep");
 });
