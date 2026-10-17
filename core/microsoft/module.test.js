@@ -13,16 +13,16 @@ allowLoopbackForTests();
 
 const mail = (id, subject) => ({ id, subject, from: { emailAddress: { name: "Zed", address: "zed@x.test" } }, receivedDateTime: "2026-10-01T00:00:00Z", bodyPreview: "hello", webLink: "https://o/" + id, body: { content: "body of " + id }, toRecipients: [], ccRecipients: [] });
 
-async function setup(t) {
+async function setup(t, { secret, staff } = {}) {
   const g = await startFakeGraph(t, { users: {
     "alice@firm.test": { mail: [mail("AAAAA1", "alice mail")], events: [{ id: "EV123456", subject: "alice event", start: { dateTime: "2026-10-14T09:00:00" }, end: { dateTime: "2026-10-14T10:00:00" } }], files: [{ id: "FILE12345", name: "plan.txt", file: { mimeType: "text/plain" }, content: "alice plan", webUrl: "https://o/f" }] },
     "bob@firm.test": { mail: [mail("BBBBB1", "bob mail")] },
     "owner@firm.test": { mail: [mail("OOOOO1", "owner mail")] },
-  }, staff: ["alice@firm.test", "bob@firm.test", "owner@firm.test"] });
+  }, staff: staff || ["alice@firm.test", "bob@firm.test", "owner@firm.test"] });
   const db = new DatabaseSync(":memory:");
   const tools = new Map(); const events = [];
   const people = { chain: [] };
-  const ctx = { store: { db, migrate: ms => { for (const m of ms) db.exec(m); } }, vault: { fetch: async (item, o) => ({ tenant_id: g.tenant, client_id: g.clientId, client_secret: g.secret, token_uri: g.tokenUri })[o?.field] ?? "" },
+  const ctx = { store: { db, migrate: ms => { for (const m of ms) db.exec(m); } }, vault: { fetch: async (item, o) => ({ tenant_id: g.tenant, client_id: g.clientId, client_secret: secret ?? g.secret, token_uri: g.tokenUri })[o?.field] ?? "" },
     tool: (n, d) => tools.set(n, d), events: { emit: (...a) => events.push(a) }, log() {},
     kernel: { owner: "p-owner", chain: async () => ({ hops: people.chain.map(id => ({ actor: { kind: "person", id } })) }) } };
   await mod.start(ctx);
@@ -64,7 +64,7 @@ test("no work email recorded, or outside the firm domain, or no app: refused in 
 
 test("only the owner adds the app, removes it or sets emails; a member (self or other) is refused", async t => {
   const s = await setup(t);
-  for (const [name, input] of [["microsoft.add", { name: "firm", domain: "firm.test", item: "k" }], ["microsoft.remove", { name: "firm" }], ["microsoft.members.email", { person: "p-alice", email: "owner@firm.test" }], ["microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }], ["microsoft.members.email", {}], ["microsoft.accounts", {}]])
+  for (const [name, input] of [["microsoft.add", { name: "firm", domain: "firm.test", item: "k" }], ["microsoft.remove", { name: "firm" }], ["microsoft.members.email", { person: "p-alice", email: "owner@firm.test" }], ["microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }], ["microsoft.members.email", {}], ["microsoft.accounts", {}], ["microsoft.check", {}]])
     await assert.rejects(s.member(name, input), e => e.code === "denied" && /owner/.test(e.message), name);
   await addFirm(s);
   await assert.rejects(s.cli("microsoft.members.email", { person: "p-alice", email: "a@evil.test" }), /outside the firm/);
@@ -98,4 +98,38 @@ test("nothing is written or sent: only GET reaches Graph", async t => {
   await s.member("microsoft.mail.search", { q: "a" }); await s.member("microsoft.drive.search", { q: "a" });
   assert.ok(s.g.requests.every(r => r.method === "GET"));
   for (const n of s.tools.keys()) assert.ok(!/send|draft|create|update|delete/.test(n), n);
+});
+
+test("microsoft.check names the first missing step, in order, and never reads a message or shows the secret", async t => {
+  const s = await setup(t);
+  let r = await s.cli("microsoft.check");
+  assert.equal(r.ok, false); assert.equal(r.steps[0].step, "app"); assert.match(r.next, /microsoft\.add/);
+  await addFirm(s);
+  r = await s.cli("microsoft.check");
+  assert.equal(r.steps.at(-1).step, "people"); assert.match(r.next, /microsoft\.members\.email/);
+  await attest(s);
+  r = await s.cli("microsoft.check");
+  assert.equal(r.ok, true, JSON.stringify(r)); assert.match(r.next, /set up/);
+  assert.ok(s.g.requests.every(q => q.method === "GET" && !/\/messages/.test(q.path || q.url || "")), "only inbox-folder reads reach Graph");
+  assert.ok(!JSON.stringify(r).includes(s.g.secret));
+});
+
+test("microsoft.check: a wrong secret stops at the sign-in step and says how to fix it; a mailbox outside the staff group names the access policy", async t => {
+  const bad = await setup(t, { secret: "not-the-secret" });
+  await addFirm(bad); await attest(bad);
+  let r = await bad.cli("microsoft.check");
+  assert.equal(r.ok, false); assert.match(r.steps.find(x => !x.ok).step, /^secret:/); assert.match(r.next, /client_secret/);
+  assert.ok(!r.steps.some(x => /^mailbox:/.test(x.step)), "no mailbox is tried while the app cannot sign in");
+  const out = await setup(t, { staff: ["alice@firm.test"] });
+  await addFirm(out); await attest(out);
+  r = await out.cli("microsoft.check");
+  assert.equal(r.ok, false);
+  const blocked = r.steps.filter(x => !x.ok);
+  assert.deepEqual(blocked.map(x => x.step), ["mailbox:p-owner"], "alice is in the staff group; the owner is not");
+  assert.match(blocked[0].fix, /ApplicationAccessPolicy/);
+});
+
+test("microsoft.check is the owner's alone", async t => {
+  const s = await setup(t);
+  await assert.rejects(s.member("microsoft.check"), e => e.code === "denied" && /owner/.test(e.message));
 });

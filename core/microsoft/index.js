@@ -9,7 +9,8 @@ import { Credentials } from "../../lib/connectors/auth.js";
 import { scopeFor, requireOwner, emailProblem } from "../../lib/member-scope.js";
 import { MIGRATIONS, check, store, memberEmails, EMAIL } from "./accounts.js";
 import { forMember } from "./member-account.js";
-import { graph, tools as graphTools } from "./graph.js";
+import { graph, tools as graphTools, GRAPH_SCOPE } from "./graph.js";
+import { checkSetup } from "./check.js";
 
 const str = { type: "string" }, int = { type: "integer" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -23,7 +24,8 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const accounts = store(ctx.store.db), emails = memberEmails(ctx.store.db), now = () => Date.now();
     const creds = new Credentials({ fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}), log: (m, f) => ctx.log(m, f) });
-    const g = graphTools(graph({ creds }));
+    const gr = graph({ creds });
+    const g = graphTools(gr);
     const memberOf = id => emails.get(id);
     /** Who attested an email, for the audit trail: the person on the call's chain, else the call's own label. */
     const attester = async meta => {
@@ -89,6 +91,12 @@ export default {
         emails.set(person, email, await attester(meta), now());
         return { person, email: String(email).toLowerCase() };
       }),
+    });
+
+    ctx.tool("microsoft.check", {
+      description: "Check the firm Microsoft 365 setup in order and name the first step that is missing: the app, its sign-in, each recorded work email, and whether the tenant lets the app read that mailbox. Reads only (one token request per app and one inbox-folder read per person). Owner only.",
+      input: obj({}), callers: PEOPLE,
+      run: safe(async (_, meta) => { await requireOwner(ctx.kernel, meta); return checkSetup({ accounts, emails, creds, request: gr.request, derive: forMember, scopes: [GRAPH_SCOPE] }); }),
     });
 
     ctx.tool("microsoft.mail.search", {
