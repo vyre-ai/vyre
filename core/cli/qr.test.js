@@ -13,7 +13,7 @@ const hash = m => crypto.createHash("sha256").update(m.map(r => r.map(b => (b ? 
 
 test("qr: a box address matches the encoder this file was checked against, and a relay pair URL fits", () => {
   // The matrix an independent encoder (segno 1.6.6, its byte-aligned padding byte removed as in core/vault/qr.test.js) gives for this address at mask 5, the mask this encoder picks:
-  // regenerated 18 Oct 2026 when the fixture host changed from a Tailscale name to tail0000.wink.example. Hashing the independent encoder's modules gives the same value.
+  // regenerated 18 Oct 2026 when the fixture host became tail0000.wink.example. Hashing the independent encoder's modules gives the same value.
   const short = qr("https://vyre.tail0000.wink.example/");
   assert.equal(short.length, 29, "version 3");
   assert.equal(hash(short), "4c98c805a86898c8");
