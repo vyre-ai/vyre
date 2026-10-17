@@ -143,7 +143,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     try { rows = await q({ field: "state", op: "eq", value: "approved" }); } catch { return []; }
     // a personal skill is kept under its person's id; one made before the owner claimed their identity still names the old id, which the kernel maps to the identity
     const canon = (() => { try { const K = kernel(); return typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => String(K.canonicalPerson(x)) : (/** @type {string} */ x) => x; } catch { return (/** @type {string} */ x) => x; } })();
-    return visibleFor(rows.map((/** @type {any} */ r) => ({ ...r.data, id: r.id, ...(r.data.level === "personal" && typeof r.data.scope === "string" ? { scope: canon(r.data.scope) } : {}) })), who);
+    return visibleFor(rows.map((/** @type {any} */ r) => ({ ...r.data, id: r.id, ...(r.data.level === "personal" && typeof r.data.scope === "string" ? { scope: canon(r.data.scope) } : {}) })), who && who.person ? { ...who, person: canon(String(who.person)) } : who);
   }
   async function get(/** @type {string} */ name, /** @type {string} */ level, /** @type {string} */ scope, /** @type {number} */ version) {
     const rec = (await history(name, level, level === "space" ? "" : scope)).find((/** @type {any} */ r) => r.data.version === version);
