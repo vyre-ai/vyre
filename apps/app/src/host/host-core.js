@@ -49,7 +49,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
 let lastTrace = "";
 /** What a server answers when an act needs the person's own approval. */
-const PRESENCE_CODES = ["presence_required", "needs_presence", "on_phone", "software_key", "held"];
+const PRESENCE_CODES = ["presence_required"];
 const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; try { if (typeof console !== "undefined") console.info(`vyre:stage step ${line}`); } catch { /* no console */ } };
 
 export function createHost(o) {
@@ -187,7 +187,7 @@ export function createHost(o) {
               // the person can give (the answer says so), and nothing is lost by making it later.
               if (x && PRESENCE_CODES.includes(String(x.code))) { w.vaultPending = true; trace(`poll: the vault waits for an approval (${String(x.code)})`); }
               else if (!x || x.code !== "exists") {
-                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || "The space vault could not be made.").slice(0, 300) };
+                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || `The space vault could not be made. The server said: ${String((x && x.code) || "nothing")}.`).slice(0, 300) };
                 return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true };
               }
             }
