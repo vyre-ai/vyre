@@ -30,7 +30,7 @@ async function world(t, { image = "vyre/computer:0.6", version = "0.6.0" } = {})
   const behaviour = { createUser: /** @type {null | ((u: any) => Promise<void>)} */ (null), terminals: /** @type {Array<{ name: string, windows: number }>} */ ([]) };
   const ctl = {
     createUser: async (/** @type {any} */ u) => { asked.push(["createUser", u.agentId]); if (behaviour.createUser) await behaviour.createUser(u); },
-    removeUser: async () => {}, wipeHome: async () => {},
+    removeUser: async () => {}, wipeAgentHome: async () => {},
     startScreen: async (/** @type {any} */ u) => { asked.push(["startScreen", u.agentId]); },
     stopScreen: async (/** @type {any} */ u) => { asked.push(["stopScreen", u.agentId]); },
     terminals: async () => behaviour.terminals,
