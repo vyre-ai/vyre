@@ -323,12 +323,22 @@ try {
     await drv.reopen();
     await drv.waitFor("Welcome back", 60_000);
     await drv.shot("06-unlock");
-    await drv.fill("Master password", "zebra quartz mango pillow");
-    await drv.click("Unlock");
-    await drv.waitFor("not your master password", 120_000);
-    await drv.fill("Master password", PASSWORD);
-    await drv.click("Unlock");
-    await until(async () => !(await drv.text()).includes("Welcome back"), 120_000, "the master password opening the identity");
+    // The unlock screen's words are in the page while the app's splash is still drawn over it (the 06 picture shows the splash on a slow machine): a field typed into under the splash takes nothing. So each
+    // attempt is tried again a few times (typing the same thing twice into a refused or empty field changes nothing), and only the last failure is reported.
+    let refused = false;
+    for (let attempt = 0; attempt < 4 && !refused; attempt++) {
+      await drv.fill("Master password", "zebra quartz mango pillow");
+      await drv.click("Unlock");
+      refused = await drv.waitFor("not your master password", 30_000).then(() => true, () => false);
+    }
+    if (!refused) await drv.waitFor("not your master password", 30_000);
+    let opened = false;
+    for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+      await drv.fill("Master password", PASSWORD);
+      await drv.click("Unlock");
+      opened = await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the master password opening the identity").then(() => true, () => false);
+    }
+    if (!opened) await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the master password opening the identity");
   }, { needs: [S("the server names this identity its owner")] });
 
   await run.step(S("coming back again: the recovery key opens the identity too"), async () => {
