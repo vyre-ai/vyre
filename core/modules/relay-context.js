@@ -4,8 +4,6 @@
 
 /** Modules that relay the asking person on the person's own surface. First-run and pair-install run before a session token exists, so onboard and identity relay from the surface itself. */
 export const FIRST_RUN_RELAY = Object.freeze({
-  // the agent computer asks which level the person on the call holds on an agent (use, edit), to judge the call it serves.
-  computers: ["agents.level"],
   // mentions replays the asking person's session to each provider's search/resolve (ingress tags, # picker).
   mentions: ["vault.mention.search", "vault.mention.resolve"],
   identity: ["spaces.identity.create", "vault.master.install", "spaces.identity.self", "spaces.identity.device", "spaces.identity.published-key"], // identity.create claims the name; vault.master.install installs the held key

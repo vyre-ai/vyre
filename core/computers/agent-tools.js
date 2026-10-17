@@ -21,17 +21,18 @@ const AGENT = /^[a-z][a-z0-9._-]{1,80}$/;
 /**
  * Returns `mayUse` (the agents module's level check) and `place` (the agent's place on the computer, made on first use) for the one path that needs them besides these tools: the agent's endpoint.
  * @param {{ tool: (name: string, description: string, input: any, run: (i: any, meta: any) => Promise<any>, extra?: any) => void,
- *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any, opts?: { relay?: boolean }) => Promise<any>, callers: string[],
+ *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any) => Promise<any>, callers: string[],
  *   held?: (agent: string) => boolean, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
  */
 export function registerAgentTools(d) {
   /** @param {"use" | "edit"} need @param {string} agent */
   const mayUse = async (need, agent) => {
-    const r = await d.call("agents.level", { agent }, { relay: true });   // the agents module judges the PERSON behind this call, so it is relayed (RELAY_ALLOWED, core/modules/relay-context.js)
+    const r = await d.call("agents.level", { agent });
     if (r && r.error) throw Object.assign(new Error(r.error.message || "no access to that agent"), { code: r.error.code || "denied" });
     const level = r && r.data && r.data.level;
     const ok = need === "edit" ? level === "edit" : level === "edit" || level === "use";
-    if (!ok) throw Object.assign(new Error(need === "edit" ? "you cannot change that agent, so you cannot do that on its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
+    // someone with no access at all hears that first; someone who may use the agent but not change it hears what needs the edit level
+    if (!ok) throw Object.assign(new Error(need === "edit" && level === "use" ? "you cannot change that agent, so you cannot do that on its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
   };
   /** @param {any} i */
   const agentOf = i => {
