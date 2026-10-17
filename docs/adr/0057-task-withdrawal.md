@@ -2,7 +2,7 @@
 title: "ADR 0057: A Flow step's due time withdraws its task"
 summary: When the due time of an agent or task step passes, the Flows service ends the task so nobody can hand it in late. It ends as skipped, marked withdrawn, in one write, and is never reopened.
 audience: builders
-owner: flows
+owner: docs
 status: stable
 ---
 
