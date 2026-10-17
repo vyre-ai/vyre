@@ -30,8 +30,10 @@ test("agents.flow-say refuses an assistant and an MCP session, and runs for a pe
     assert.ok(r.error, `${who} ran: ${JSON.stringify(r).slice(0, 160)}`);
     assert.equal(r.error.code, "denied", `${who}: ${JSON.stringify(r.error).slice(0, 160)}`);
   }
-  const person = await d.registry.call("agents.flow-say", INPUT, "cli");
-  assert.ok(person.error, "no such Flow");
-  assert.notEqual(person.error.code, "denied", "a person is not refused for who they are: " + JSON.stringify(person.error).slice(0, 160));
-  assert.equal(person.error.code, "not_found", JSON.stringify(person.error));
+  for (const surface of ["cli", "deck"]) {
+    const person = await d.registry.call("agents.flow-say", INPUT, surface);
+    assert.ok(person.error, "no such Flow");
+    assert.notEqual(person.error.code, "denied", `a person on ${surface} is not refused for who they are: ` + JSON.stringify(person.error).slice(0, 160));
+    assert.equal(person.error.code, "not_found", `${surface}: ` + JSON.stringify(person.error));
+  }
 });
