@@ -37,8 +37,8 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.list": { tool: "records.serve", call: "list", keys: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], types: [] },
   "records.get": { tool: "records.serve", call: "get", keys: ["urn"], types: [] },
   "records.events": { tool: "records.serve", call: "events", keys: ["record", "task", "since", "limit"], types: [] },
-  // the admin audit: only an owner or an admin gets an answer (the tool refuses every other member); the door lets through the filters only, never a page size or window
-  "records.audit": { tool: "records.serve", call: "audit", keys: ["record", "person", "project", "type", "since", "limit"], types: [] },
+  // the admin audit: only an owner or an admin gets an answer (the tool refuses every other member); the door lets through the filters only, never a page size or window; "changed_by" and "in_project" are the audit's person and project filters under names that are not identity keys (the tool refuses every member but an owner or admin)
+  "records.audit": { tool: "records.serve", call: "audit", keys: ["record", "changed_by", "in_project", "type", "since", "limit"], types: [] },
   "records.create": { tool: "records.serve-create", call: "create", keys: ["type", "data"], types: [] },
   "records.update": { tool: "records.serve-update", call: "update", keys: ["urn", "patch", "base_version"], types: [] },
   "tasks.list": { tool: "tasks.serve", call: "list", keys: ["record", "doer", "checker", "state", "limit"], types: [] },

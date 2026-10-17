@@ -265,7 +265,7 @@ export default {
     // ---- the member door: a team member's daily work on records, run as her, in the team's Space (core/work/member-tools.js) ----
     // The input keys each call takes: anything else is dropped before the tool sees it, so a member's call cannot name a Space, a proof or a chain. The kernel judges every record under her chain.
     const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
-      me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"], audit: ["record", "person", "project", "type", "since", "limit"],
+      me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"], audit: ["record", "changed_by", "in_project", "type", "since", "limit"],
       create: ["type", "data"], update: ["urn", "patch", "base_version"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
@@ -275,6 +275,8 @@ export default {
       if (!op) throw refuse("no such call; use one of the calls this tool names in its input", "not_found");
       const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
       const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
+      // the audit's two filters cross the door under names that are not identity keys; the tool reads them as person and project
+      if (i.call === "audit") { if ("changed_by" in clean) { clean.person = clean.changed_by; delete clean.changed_by; } if ("in_project" in clean) { clean.project = clean.in_project; delete clean.in_project; } }
       const d = await door.open({}, extra);
       // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
       const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
