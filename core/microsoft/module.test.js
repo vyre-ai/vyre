@@ -229,6 +229,11 @@ test("microsoft.accounts as a member: only their own provisioned account, the ap
   assert.deepEqual(await s.member("microsoft.accounts"), mine, "and Alice still sees only hers");
   // an assistant acting for Alice reads Alice's, not the owner's
   assert.deepEqual(await as(["p-alice", "agent:kit"], "mcp:agent:kit"), mine);
+  // an admin is not the owner: requireOwner has always refused an admin the firm app's list, so an admin is served as a member is (their own provisioned account, if one is recorded) and still cannot read or change the firm app
+  await s.cli("microsoft.members.email", { person: "p-ada", email: "ada@firm.test" });
+  assert.deepEqual(await as(["p-ada"]), [{ app: "firm", email: "ada@firm.test", domain: "firm.test" }], "an admin sees their own account, not the firm app");
+  s.people.chain = ["p-ada"];
+  await assert.rejects(s.tools.get("microsoft.add").run({ name: "x", domain: "firm.test", item: "k" }, { token: "t", caller: "device:abc" }), e => e.code === "denied" && /owner/.test(e.message), "and cannot change it");
   // no firm app, or a call with no person: nothing for a member, the owner's list for the owner
   await s.cli("microsoft.remove", { name: "firm" });
   assert.deepEqual(await s.member("microsoft.accounts"), []);
