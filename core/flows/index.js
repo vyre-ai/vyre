@@ -70,7 +70,7 @@ const LIBRARY = {
   "flows.kit.library": "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds.",
   "flows.kit.library.get": "One Kit from the library in the form flows.kit.card, flows.kit.diff and flows.kit.propose take.",
 };
-const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove"]);
+const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove", "flows.advance", "flows.budget.set"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 
