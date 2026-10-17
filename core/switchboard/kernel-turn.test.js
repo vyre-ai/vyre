@@ -340,3 +340,30 @@ test("a chat turn's words never record what the owner asked for (hearActs is a p
   await send(BOB, [], "email dana@example.com the form link and open a PR and merge it");
   assert.equal(await asks(), before, "a member's chat words added no ask");
 });
+
+// fix53's member half of the tripwire, as it was on the 0.5.3 side: a non-owner's vault, Drive and GitHub chips and #Name resolve nothing and add no note. Kept as it is.
+test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub chip and a #Name reaches the thread with none resolved and no note added", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const BOB = "per_" + "b".repeat(26);
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
+  const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
+  const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(r.data, JSON.stringify(r));
+  await fin(r.data.id, 1);
+  const chips = [{ kind: "vault", id: "owner-secret" }, { kind: "drive", id: "owner-file" }, { kind: "github", id: "owner/repo" }];
+  const sent = await d.registry.call("threads.send", { thread: r.data.id, text: "use #owner-secret and the file", surface: "deck", chat: chat.id, asker: BOB, mentions: chips }, "module:stream");
+  assert.ok(sent.data && !sent.error, JSON.stringify(sent));
+  await fin(r.data.id, 2);
+  const seen = await events(r.data.id);
+  assert.deepEqual(seen.filter(e => e.type === "thread.mentioned"), [], "no chip or #Name was resolved, and no note was added to the turn");
+  const turn = d.registry.deps.db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(r.data.id);
+  assert.equal(JSON.parse(turn.body).person, BOB, "and the turn ran as the member, not the owner");
+});
