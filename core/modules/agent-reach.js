@@ -267,7 +267,6 @@ export const PERSON_ONLY = new Map([
   ["computers.agent.terminal.open", "controls the person's own machine: opens a terminal that types as an agent"],
   ["computers.agent.terminals", "reads the person's own machine: the names of an agent's terminals"],
   ["computers.agent.watch", "controls the person's own machine: opens an agent's screen and hands back a one-use ticket to watch it"],
-  ["computers.update", "controls the person's own machine: remakes the computers from the image this Vyre uses"],
   ["computers.handback.set", "controls the person's own machine: its network and hand-back"],
   ["computers.member.add", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.dispose", "needs the person's Face ID or presence: who may use a computer"],

@@ -274,12 +274,6 @@ export class DockerDriver {
     await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENTD_TOKEN.dir)}`, agentdTokenTar(token));
   }
 
-  /** The image reference a computer was made from. @param {string} id @returns {Promise<string | null>} */
-  async imageOf(id) {
-    const c = await this.guard(id);
-    return c && c.Config && c.Config.Image ? String(c.Config.Image) : null;
-  }
-
   /**
    * Put the state volume's folders (the agents', their browsers', the X cookie and downloads folders) in a computer whose volume was made before the image had them. Directories only, owners and modes fixed in
    * policy.js; the same call is a no-op on a volume that has them. Before the first start.

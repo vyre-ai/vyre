@@ -68,9 +68,6 @@ export class FakeDriver {
     this.calls.push({ op: "seed", id });
   }
 
-  /** The image a container was made from. @param {string} id */
-  async imageOf(id) { const c = this.containers.get(id); return c ? String(c.spec.image) : null; }
-
   /** The folder layout put into the container's state volume (directories only; not logged as a call, so the order other tests pin stays). @param {string} id */
   async migrateLayout(id) {
     const c = this.must(id);
