@@ -67,6 +67,12 @@ const auth = oauth ? "subscription"
  * send first, because the SDK sends there what the CLI takes as flags: those are added to argv as
  * the flags they stand for, so a test reads one launch the same way from either driver.
  */
+// What a launch was handed, as hashes only (a test compares them; the log never holds a value): the credential that came on its descriptor, and every environment value long enough to be one.
+const sha = v => crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16);
+const credFd = Number(process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR || process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR || 0);
+let credSha = null;
+if (credFd > 2) { try { credSha = sha(fs.readFileSync(credFd, "utf8").trim()); } catch { /* no descriptor to read */ } }
+const envShas = Object.values(process.env).filter(v => typeof v === "string" && v.length >= 8).map(sha);
 let logged = false;
 function logLaunch(init = {}) {
   if (logged || !process.env.FAKE_CLAUDE_LOG) return;
@@ -75,7 +81,7 @@ function logLaunch(init = {}) {
   if (typeof init.appendSystemPrompt === "string") extra.push("--append-system-prompt", init.appendSystemPrompt);
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
-  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, oauth, rival: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"].filter(k => process.env[k]), env_model: process.env.ANTHROPIC_MODEL || null, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
+  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ pid: process.pid, credSha, envShas, argv: [...argv, ...extra], auth, oauth, rival: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"].filter(k => process.env[k]), env_model: process.env.ANTHROPIC_MODEL || null, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
     projects: process.env.VYRE_PROJECTS || null, connectors: argv.includes("--strict-mcp-config") ? [] : ["claude.ai Gmail", "claude.ai Google Drive", "claude.ai Claude Docs"], git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
@@ -612,8 +618,9 @@ async function turn(prompt, uuid = null) {
     const text = `side=${process.env.G01_SIDE || "mac"} pid=${process.pid} earlier=${JSON.stringify(before)}`;
     await say(text); return result(true, text);
   }
-  await say(`echo: ${p}`);
-  return result(true, `echo: ${p}`);
+  const tag = process.env.FAKE_CLAUDE_ECHO_PID ? ` [pid ${process.pid}]` : "";   // a test that must know which process answered
+  await say(`echo: ${p}${tag}`);
+  return result(true, `echo: ${p}${tag}`);
 }
 
 let queue = Promise.resolve();
