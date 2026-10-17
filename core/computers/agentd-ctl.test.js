@@ -4,18 +4,30 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAgentd } from "./image/agentd-server.js";
-import { agentdCtl, vncPasswordFor } from "./agentd-ctl.js";
+import fs from "node:fs";
+import path from "node:path";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { startAgentd } from "./image/agentd-main.js";
+import { callAgentd } from "./image/agentd-client.js";
+import { agentdCtl, execTransport, vncPasswordFor } from "./agentd-ctl.js";
 
 async function world(t) {
   /** @type {string[][]} */ const ran = [];
   /** @type {Record<string, string>} */ const files = {};
-  const server = createAgentd({ token: "tok", run: async argv => { ran.push(argv); if (/** @type {any} */ (argv).input !== undefined) files["stdin"] = /** @type {any} */ (argv).input; } });
-  await new Promise(r => server.listen(0, "127.0.0.1", () => r(null)));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-agentd-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const socket = path.join(dir, "agentd.sock"), tokenFile = path.join(dir, "token");
+  fs.writeFileSync(tokenFile, "t".repeat(40), { mode: 0o400 });
+  const server = startAgentd({ socket, tokenFile, run: async argv => { ran.push(argv); if (/** @type {any} */ (argv).input !== undefined) files["stdin"] = /** @type {any} */ (argv).input; } });
+  await new Promise(r => server.on("listening", () => r(null)));
   t.after(() => server.close());
-  const url = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
-  const ctl = agentdCtl({ url, token: "tok", vncKey: async () => "k".repeat(32) });
-  return { ctl, ran, files, url };
+  // the same call vyred makes with `docker exec`, here run in-process against the real unix socket
+  const exec = async (/** @type {string[]} */ argv, /** @type {string} */ input) => {
+    const res = await callAgentd({ socket, token: "t".repeat(40), action: argv[argv.length - 1], body: input });
+    return { code: res.status >= 200 && res.status < 300 ? 0 : 1, stdout: res.text };
+  };
+  const ctl = agentdCtl({ transport: execTransport(exec), vncKey: async () => "k".repeat(32) });
+  return { ctl, ran, files, socket, tokenFile, exec: (/** @type {string} */ action, /** @type {any} */ body, /** @type {string} */ token = "t".repeat(40)) => callAgentd({ socket, token, action, body: JSON.stringify(body) }) };
 }
 const U = { agentId: "ads", user: "ag20000", uid: 20000, display: 20 };
 
@@ -43,15 +55,26 @@ test("the VNC password reaches a helper that runs as the agent, on standard inpu
   assert.ok(w.ran[0].join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && w.ran[0].includes("/usr/local/bin/agentd-vncpass"), "run as the agent, before Xvnc starts");
 });
 
-test("a wrong token or a body outside the agent ranges is refused and runs nothing", async t => {
+test("agentd listens on a unix socket that only root can open: mode 0600, no TCP port, and the token is not in its environment", async t => {
   const w = await world(t);
-  const bad = await fetch(`${w.url}/agents/create`, { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" });
-  assert.equal(bad.status, 401);
+  assert.equal(fs.statSync(w.socket).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(w.socket).isSocket(), true);
+  assert.ok(!Object.values(process.env).some(v => v === "t".repeat(40)), "the token came from the file, not the environment");
+});
+
+test("a wrong token or a body outside the agent ranges is refused and runs nothing, and an action that is not one is not even sent", async t => {
+  const w = await world(t);
+  assert.equal((await w.exec("create", {}, "nope")).status, 401);
   for (const body of [{ user: "root", uid: 0, display: 20 }, { user: "ag20000", uid: 1000, display: 20 }, { user: "ag20000", uid: 20000, display: 3 }, { user: "ag20001", uid: 20000, display: 20 }]) {
-    const r = await fetch(`${w.url}/agents/create`, { method: "POST", headers: { authorization: "Bearer tok" }, body: JSON.stringify(body) });
-    assert.equal(r.status, 400, JSON.stringify(body));
+    assert.equal((await w.exec("create", body)).status, 400, JSON.stringify(body));
   }
-  assert.equal((await fetch(`${w.url}/agents/shell`, { method: "POST", headers: { authorization: "Bearer tok" }, body: "{}" })).status, 404);
+  await assert.rejects(() => w.exec("shell", {}), /not an agentd action/);
   assert.equal(w.ran.length, 0);
-  await assert.rejects(() => agentdCtl({ url: w.url, token: "wrong", vncKey: async () => "k" }).createUser(U), /could not create \(401/);
+});
+
+test("a token file that holds no token stops agentd from starting", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-agentd-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "token"), "short");
+  assert.throws(() => startAgentd({ socket: path.join(dir, "s.sock"), tokenFile: path.join(dir, "token") }), /holds no token/);
 });

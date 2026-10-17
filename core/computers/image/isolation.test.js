@@ -402,3 +402,11 @@ test("isolation (static): agentd starts nothing as root: every agent process goe
   assert.match(agentd, /"--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs"/);
   assert.match(agentd, /"--clear-groups"/);
 });
+
+test("isolation (static): agentd has no TCP listener: it listens on a unix socket and the screen is a unix socket too", () => {
+  const main = fs.readFileSync(path.join(HERE_DIR, "agentd-main.js"), "utf8");
+  const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
+  assert.match(main, /server\.listen\(socket\)/);
+  assert.doesNotMatch(main + server, /listen\(\s*(\d+|process\.env\.[A-Z_]*PORT)|0\.0\.0\.0|127\.0\.0\.1/, "no port, no address");
+  assert.match(fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8"), /"-rfbport", "-1", "-rfbunixpath"/);
+});

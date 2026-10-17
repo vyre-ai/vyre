@@ -18,7 +18,7 @@
 import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
 import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
-import { agentdCtl } from "./agentd-ctl.js";
+import { agentdCtl, execTransport } from "./agentd-ctl.js";
 import { registerAgentTools } from "./agent-tools.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -207,13 +207,14 @@ export default {
     };
 
     // The agents of the space's one computer: a Linux user each, a screen woken on demand and closed after 5 idle minutes (agent-users.js).
-    // agentd inside the computer does the work; its address and token come from config and the vault, and until they are set the Computer tab says so.
-    const NOT_SET = "the agent computer is not set up on this machine: set computers.agentd.url in config.json and put its token in the vault";
-    const agentd = (cfg.agentd && typeof cfg.agentd === "object") ? cfg.agentd : {};
+    // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
+    // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
+    const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
     const lazy = name => async u => {
-      if (!agentd.url) throw new Error(NOT_SET);
-      const token = await ctx.vault.fetch(String(agentd.tokenItem || "vyre-agentd-token"));
-      const ctl = agentdCtl({ url: String(agentd.url), token: String(token), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      const driver = pool.driver;
+      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function") throw new Error(NOT_SET);
+      const exec = (/** @type {string[]} */ argv, /** @type {string} */ input) => /** @type {any} */ (driver).execIn(argv, input);
+      const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
       return /** @type {any} */ (ctl)[name](u);
     };
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(), emit,

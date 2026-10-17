@@ -11,19 +11,15 @@ export const vncPasswordFor = (key, agentId) => {
   return crypto.createHmac("sha256", derived).update(`agent-vnc\n${agentId}`).digest("base64url").slice(0, 24);
 };
 
-/** @param {{ url: string, token: string, vncKey: () => Promise<string>, fetch?: typeof fetch, limits?: () => { memoryMb?: number, procs?: number, size?: string } }} deps @returns {import("./agent-users.js").Ctl} */
+/**
+ * @param {{ transport: (action: string, body: any) => Promise<{ status: number, json: any }>, vncKey: () => Promise<string>, limits?: () => { memoryMb?: number, procs?: number, size?: string } }} deps
+ * @returns {import("./agent-users.js").Ctl}
+ */
 export function agentdCtl(deps) {
-  const f = deps.fetch || fetch;
   /** @param {string} action @param {any} body */
   const post = async (action, body) => {
-    const r = await f(new URL(`/agents/${action}`, deps.url), {
-      method: "POST", headers: { authorization: `Bearer ${deps.token}`, "content-type": "application/json" },
-      body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
-    });
-    if (!r.ok) {
-      const j = /** @type {any} */ (await r.json().catch(() => null));
-      throw new Error(`the agent computer could not ${action} (${r.status}${j && j.error ? `: ${j.error.message}` : ""})`);
-    }
+    const r = await deps.transport(action, body);
+    if (r.status < 200 || r.status >= 300) throw new Error(`the agent computer could not ${action} (${r.status}${r.json && r.json.error ? `: ${r.json.error.message}` : ""})`);
   };
   return {
     createUser: u => post("create", { user: u.user, uid: u.uid, display: u.display }),
@@ -33,3 +29,13 @@ export function agentdCtl(deps) {
     wipeHome: u => post("wipe", { user: u.user, uid: u.uid, display: u.display }),
   };
 }
+
+/**
+ * vyred's way into agentd: `exec(argv, input)` runs a command in the computer (docker exec -i, the exact shape policy.js allows) and returns its status and output. The body goes on standard input.
+ * @param {(argv: string[], input: string) => Promise<{ code: number, stdout: string }>} exec
+ */
+export const execTransport = exec => async (action, body) => {
+  const r = await exec(["node", "/opt/agentd/agentd-client.js", action], JSON.stringify(body));
+  let json = null; try { json = JSON.parse(r.stdout); } catch { /* not json */ }
+  return { status: r.code === 0 ? 200 : (json && json.error ? 400 : 502), json };
+};

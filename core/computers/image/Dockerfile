@@ -135,7 +135,8 @@ RUN for n in $(seq 20000 20063); do \
       && chown "$n:$n" "/home/ag$n" "/var/lib/vyre/agents/ag$n" && chmod 0700 "/home/ag$n" "/var/lib/vyre/agents/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents && chmod 0711 /var/lib/vyre/agents
-COPY agentd.js agentd-server.js /opt/agentd/
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js /opt/agentd/
+RUN printf '{"type":"module"}\n' > /opt/agentd/package.json
 COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 RUN chmod 0755 /usr/local/bin/agentd-vncpass
 COPY computerd /opt/computerd
