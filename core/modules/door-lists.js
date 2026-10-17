@@ -109,7 +109,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
   "computers.takeover", "computers.update", "computers.update.status", "computers.watch",
-  "connectors.calendar.today", "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.connection.approve",
+  "connectors.calendar.today", "connectors.connection.approve",
   "connectors.connection.check", "connectors.connection.create", "connectors.connection.decline", "connectors.connection.delete", "connectors.connection.export",
   "connectors.connection.get", "connectors.connection.import", "connectors.connection.list", "connectors.connection.proposals", "connectors.connection.propose",
   "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", 

@@ -22,6 +22,7 @@ import { Gate, MIGRATIONS, KINDS } from "./gate.js";
 import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
 import { personOnChain, mayHandle, fromModule } from "./requester.js";
+import { chainPerson } from "../../lib/member-scope.js";
 import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
@@ -360,7 +361,7 @@ export default {
 
     // ---- standing permissions for agents: kernel grants (action gate.act-standing, subject the agent, conditions to / rate / max_amount / daily_amount), checked by the kernel's standingFor ----
     const PERSON_DOORS = ["cli", "local", "deck", "capsule", "device", "tailnet"];
-    const needK = () => { const K = ctx.kernel; if (!K || !K.mint || typeof K.standingFor !== "function") throw Object.assign(new Error("a standing permission is a kernel grant, and this build has no kernel"), { code: "unavailable" }); return K; };
+    const needK = () => { const K = ctx.kernel; if (!K || !K.mint || typeof K.standingFor !== "function") throw Object.assign(new Error("a standing permission is a kernel grant, and this build has no kernel: ask the owner to update Vyre to a build that has one"), { code: "unavailable" }); return K; };
     /** The person on this call and whether they may grant or take back a permission for this agent: an owner, an admin, or the agent's own owner. */
     const grantor = async (/** @type {any} */ K, /** @type {any} */ meta, /** @type {string} */ agentName) => {
       const chain = await K.chain(meta);
@@ -406,12 +407,12 @@ export default {
         if (i.expires !== undefined) { if (!(Number(i.expires) > Date.now())) throw Object.assign(new Error("an expiry is in the future"), { code: "bad_input" }); conditions.when = { expires: Number(i.expires) }; }
         // nobody grants a connection they do not have themselves
         const via = i.via ? String(i.via) : "";
-        if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it"), { code: "denied" });
+        if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it: ask the owner to share it with you first"), { code: "denied" });
         // a member (not an owner or admin) gives one only for their own mailbox or a connection they hold, never for the Space's own sender or for "any"
         if (!["owner", "admin"].includes(K.roleOf(person)) && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
-        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}`), { code: "not_found" });
+        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)} (agents.list shows the agents you can instruct)`), { code: "not_found" });
         const id = await K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(uid), space: K.space } }, actions: ["gate.act-standing"], resource: { prefix: `vyre://${K.space}/outbox/${i.kind}${via ? `/${via}` : ""}` }, conditions, source: `gate:standing:${agentName}:${person}`, reason: "a person's standing permission for an agent" });
         return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount, currency: conditions.currency }), ...(i.follow_lists === true && lists.length ? { following: lists, warning: `Anyone who can edit these lists can change who ${agentName} sends to.` } : {}) };
       },
@@ -422,8 +423,8 @@ export default {
       callers: PERSON_DOORS,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
-        const chain = await K.chain(meta);
-        const me = chain && chain.hops && chain.hops[0] && chain.hops[0].actor.kind === "person" ? String(chain.hops[0].actor.id) : "";
+        // the one person on the verified chain (lib/member-scope.js); a member sees only the permissions they gave, staff see all
+        const me = (await chainPerson(K, meta)) || "";
         const staff = ["owner", "admin"].includes(K.roleOf(me));
         const rows = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => !i.agent || String(g.source).split(":")[2] === String(i.agent));
         const out = [];
@@ -444,7 +445,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };
