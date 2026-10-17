@@ -44,6 +44,13 @@ unset VYRE_HOME
 - A patch is `x.y.z`. It is cut from the release tag, carries fixes only, and merges back into `main` and into any open release branch.
 - Work that was parked and not finished is kept under `refs/archive/<branch name>` and listed on the `archive` branch.
 
+## What CI runs, and when
+
+- A pull request runs only the test files its change can reach through imports (`scripts/ci-select.mjs`). A change that reaches every test (a lockfile, a `package.json`, a workflow, `kernel/core`, the module loader, the test runner) or a file most tests import runs the whole suite. A changed code file that no test reaches fails the run with "no test covers <file>": add a test.
+- `main`, `integrate/**`, `release/**`, the train and a release tag run the whole suite, balanced across shards by `test/test-timings.json`. The Mac, Windows, Android, first-run and picture jobs run in full on those branches and on a pull request only when their own paths change.
+- A release tag starts the node suite, the pictures, the first-run proof and every build at once, in one run, and publishes when all of them are green.
+- A pull request into a release or integration branch gets its generated files (docs reference, agent docs, architecture map) regenerated and committed for it; the golden lists never are.
+
 ## Where things live
 
 | Folder | What is in it |
