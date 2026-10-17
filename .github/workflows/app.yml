@@ -206,7 +206,7 @@ jobs:
   android:
     needs: detect
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest   # the hosted image carries the Android SDK; the self-hosted runners do not
     timeout-minutes: 60
     permissions:
       contents: write  # the release on main

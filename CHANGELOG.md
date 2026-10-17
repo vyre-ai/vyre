@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci: the Android build runs on GitHub's hosted runner, which has the Android SDK; the self-hosted runners do not.
 - fix(spaces): a vyre.run/i link opens when its token is longer than 400 characters (a scoped role invite with a chain pin). parseInvite now reads tokens up to the daemon's own 4096 limit; before, the daemon refused its own shared links as "does not open a space" (core/spaces/spaces.test.js invites).
 - docs: removed the sentence that `<name>.vyre.run` redirects to a person's `vyre.run/u/<name>` (nothing does; one namespace means a label is a person's or a space's, and `<name>.vyre.run` is a space's address). Source `docs/for-agents/START-HERE.md` and `docs/using/master-password.md`; the agent pages are regenerated.
 - fix(first-run): a space is named by the person, never by a default. Leaving the name empty used to make the label "space", which the first person in the world would hold and everyone after would be told is taken. Create a space now has a required Space name field with a suggestion built from the username that the directory says is free, a taken name shows "That name is taken. <free name> is free, or type another." before anything is installed, and if the directory refuses the name after the server is paired, the waiting screen offers a field to pick another and tries the claim again on the same server. The daemon's `onboard.space.open` and the page host's refuse an empty name.
