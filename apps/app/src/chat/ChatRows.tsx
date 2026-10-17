@@ -160,6 +160,8 @@ export function UserText({ text, pending, tone }: { text: string; pending: boole
 
 /** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
 function StreamText({ store, k, text, done, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
+  // Before the first word arrives the bubble holds only the caret, so it never shows as an empty grey blob.
+  if (!text) return done ? null : <Caret />;
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
   return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} tail={showsCaret({ done }) ? <Caret /> : undefined} />;
@@ -435,6 +437,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         if (!fo.first) return null;
         return <Frame wide={wide} indent={wide}><FanoutSet store={store} fanout={fo.fanout} wide={wide} renderText={(key) => { const x = store.item(key); return x ? <StreamText store={store} k={key} text={x.text} done={x.done} ctx={ctx} /> : null; }} /></Frame>;
       }
+      // A turn that said nothing (it only ran tools) has no bubble.
+      if (!String(it.text ?? "").trim() && it.done) return null;
       const w = whoOf(store, k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>

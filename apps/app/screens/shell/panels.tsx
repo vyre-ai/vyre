@@ -61,7 +61,7 @@ const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
 
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
-  chats: { title: "Chat", icon: "chat", search: "Search chats, agents and people", empty: "" },
+  chats: { title: "Chat", icon: "chat", search: "Search", empty: "" },
   records: { title: "Records", icon: "records", empty: "" },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
