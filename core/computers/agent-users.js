@@ -41,7 +41,9 @@ export const userNameOf = uid => `ag${uid}`;
  *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void> }} Ctl
+ *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
+ *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
+ *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
 
 export class AgentUsers {
@@ -112,6 +114,23 @@ export class AgentUsers {
     if (!r || r.state !== "live") throw new Error(`${id}'s screen is not on`);
     if (typeof this.ctl.screenTicket !== "function") throw new Error("this computer cannot open a screen to an agent");
     await this.ctl.screenTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
+    this.touchNow(id);
+  }
+
+  /** The agent's terminals (tmux sessions; they outlive the screen). @param {string} id */
+  async terminals(id) {
+    const r = this.row(id);
+    if (!r) return [];
+    if (typeof this.ctl.terminals !== "function") throw new Error("this computer cannot list terminals");
+    return this.ctl.terminals({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
+  }
+
+  /** Register a one-use ticket for one terminal of this agent. @param {string} id @param {string} ticket @param {string} session */
+  async terminalTicket(id, ticket, session) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.terminalTicket !== "function") throw new Error("this computer cannot open a terminal");
+    await this.ctl.terminalTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket, session);
     this.touchNow(id);
   }
 

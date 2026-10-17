@@ -23,6 +23,8 @@ function setup(t, extra = {}) {
     startScreen: async (/** @type {any} */ u) => { if (extra.failStart) throw new Error("no screen"); ran.push(`start :${u.display} ${u.user}`); },
     stopScreen: async (/** @type {any} */ u) => { ran.push(`stop :${u.display} ${u.user}`); },
     wipeHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
+    terminals: async (/** @type {any} */ u) => [{ name: `t-${u.user}`, windows: 1 }],
+    terminalTicket: async (/** @type {any} */ u, /** @type {string} */ ticket, /** @type {string} */ session) => { ran.push(`term ${u.user} ${session} ${ticket}`); },
     screenTicket: async (/** @type {any} */ u, /** @type {string} */ ticket) => { ran.push(`ticket ${u.user} ${ticket}`); },
   };
   const users = new AgentUsers({ db, ctl, now: () => clock.t, emit: type => events.push(type), ...extra.deps });
@@ -135,4 +137,14 @@ test("a screen ticket is registered for a live agent only, under that agent's ow
   await users.screenTicket("ads", "t".repeat(32));
   assert.deepEqual(ran.filter(x => x.startsWith("ticket")), [`ticket ag20000 ${"t".repeat(32)}`]);
   assert.equal(users.row("ads").last_active, clock.t);
+});
+
+test("terminals are the agent's own, listed and ticketed under its own user; an agent with no place has none and cannot be ticketed", async t => {
+  const { users, ran } = setup(t);
+  assert.deepEqual(await users.terminals("ads"), []);
+  await assert.rejects(() => users.terminalTicket("ads", "t".repeat(32), "work"), /no place/);
+  await users.add("ads", "Ads"); await users.add("kit", "Kit");
+  assert.deepEqual(await users.terminals("kit"), [{ name: "t-ag20001", windows: 1 }]);
+  await users.terminalTicket("ads", "t".repeat(32), "work");
+  assert.deepEqual(ran.filter(x => x.startsWith("term")), [`term ag20000 work ${"t".repeat(32)}`]);
 });

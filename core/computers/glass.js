@@ -132,6 +132,8 @@ export class Glass {
     const redeemed = this.pool.redeem(url.searchParams.get("ticket"));
     if (!redeemed) { reject(socket, 403, "Forbidden"); return; }
     const { agent, surface } = redeemed;
+    // a terminal's ticket opens the terminal stream and nothing else
+    if (String(surface).startsWith("terminal:")) { reject(socket, 403, "Forbidden"); return; }
     this.log(`glass: ${agent}/${surface} opening`);
     // The viewer's link is relayed or slow (glass.open asked link.health): pace its frames.
     const slow = Boolean(/** @type {any} */ (redeemed).slow);

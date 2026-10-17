@@ -264,6 +264,8 @@ export const PERSON_ONLY = new Map([
   ["computers.agent.status", "reads the person's own machine: whether an agent's screen is open"],
   ["computers.agent.sleep", "controls the person's own machine: closes an agent's screen"],
   ["computers.agent.wake", "controls the person's own machine: opens an agent's screen"],
+  ["computers.agent.terminal.open", "controls the person's own machine: opens a terminal that types as an agent"],
+  ["computers.agent.terminals", "reads the person's own machine: the names of an agent's terminals"],
   ["computers.agent.watch", "controls the person's own machine: opens an agent's screen and hands back a one-use ticket to watch it"],
   ["computers.handback.set", "controls the person's own machine: its network and hand-back"],
   ["computers.member.add", "needs the person's Face ID or presence: who may use a computer"],

@@ -5,6 +5,8 @@
 //   computers.agent.wake {agent}    -> the same, after the screen is up (a live agent only counts as used)
 //   computers.agent.sleep {agent}   -> the same, after the screen is closed
 //   computers.agent.watch {agent, slow?} -> { ticket, path, width, height }; wakes the agent, and the one-use ticket opens ITS screen in Glass (needs use of the agent)
+//   computers.agent.terminals {agent} -> { terminals: [{ name, windows }] }; the agent's tmux sessions (needs use of the agent)
+//   computers.agent.terminal.open {agent, session} -> { ticket, path }; a one-use ticket for ONE terminal; it types as the agent, so it needs the right to edit the agent
 //   computers.agent.reset {agent}   -> the same; empties THIS agent's home (needs the right to edit the agent)
 //
 // Who may call: someone with access to the agent. The agents module decides that and says it in one tool, `agents.level` (edit, use or none), judged against the
@@ -18,7 +20,7 @@ const AGENT = /^[a-z][a-z0-9._-]{1,80}$/;
 /**
  * @param {{ tool: (name: string, description: string, input: any, run: (i: any, meta: any) => Promise<any>, extra?: any) => void,
  *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any) => Promise<any>, callers: string[],
- *   held?: (agent: string) => boolean, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
+ *   held?: (agent: string) => boolean, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
  */
 export function registerAgentTools(d) {
   /** @param {"use" | "edit"} need @param {string} agent */
@@ -51,6 +53,19 @@ export function registerAgentTools(d) {
       if (!d.watch) throw new Error("this machine cannot open an agent's screen");
       await place(a); await d.users.wake(a);
       return d.watch(a, i.slow === true, String(i.surface || ""));
+    }, { callers: d.callers });
+
+  d.tool("computers.agent.terminals", "The agent's terminals (its tmux sessions), by name. They outlive the screen. Needs access to the agent.",
+    obj({ agent: str }, ["agent"]), async i => { const a = agentOf(i); await mayUse("use", a); return { terminals: await d.users.terminals(a) }; }, { callers: d.callers });
+
+  d.tool("computers.agent.terminal.open", "A one-use ticket (30 s) to open one terminal of the agent in Glass; a new name makes the terminal. Typing there is typing as the agent, so it needs the right to edit the agent.",
+    obj({ agent: str, session: str }, ["agent", "session"]), async i => {
+      const a = agentOf(i); await mayUse("edit", a);
+      const session = String(i.session || "");
+      if (!/^[A-Za-z0-9_.-]{1,40}$/.test(session)) throw Object.assign(new Error("a terminal name is 1 to 40 letters, digits, dots, dashes or underscores"), { code: "bad_input" });
+      if (!d.terminal) throw new Error("this machine cannot open an agent's terminal");
+      await place(a);
+      return d.terminal(a, session);
     }, { callers: d.callers });
 
   d.tool("computers.agent.sleep", "Close an agent's screen and Chrome now. Its terminal jobs and files stay. Needs access to the agent.",

@@ -24,6 +24,8 @@
       {"name": "computers.agent.wake", "effect": "write", "reach": "person"},
       {"name": "computers.agent.sleep", "effect": "write", "reach": "person"},
       {"name": "computers.agent.watch", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.terminals", "effect": "read", "reach": "person"},
+      {"name": "computers.agent.terminal.open", "effect": "write", "reach": "person"},
       {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
       {"name": "computers.endpoint", "reach": "modules"},
       {"name": "computers.may-act", "reach": "modules"},
@@ -47,7 +49,7 @@
       "computer.member-added", "computer.member-removed", "computer.member-rotated"
     ]
   },
-  "shows": { "streams": ["glass", "browser-glass"], "cli": ["computers"], "deck": ["panel:glass"] },
+  "shows": { "streams": ["glass", "browser-glass", "terminal"], "cli": ["computers"], "deck": ["panel:glass"] },
   "needs": { "vault": ["vyre-shared-computer-member-key", "vyre-agent-browser-profile-key"] },
   "teaches": {},
   "settings": [

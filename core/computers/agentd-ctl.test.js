@@ -87,3 +87,14 @@ test("a screen ticket goes to agentd as the agent's triple and the ticket, nothi
   await /** @type {any} */ (ctl).screenTicket({ agentId: "ads", user: "ag20001", uid: 20001, display: 21 }, "t".repeat(32));
   assert.deepEqual(sent, [["ticket", { user: "ag20001", uid: 20001, display: 21, ticket: "t".repeat(32) }]]);
 });
+
+test("terminals are asked for as the agent's triple and come back as a list; a terminal ticket carries the session", async () => {
+  /** @type {any[]} */ const sent = [];
+  const ctl = agentdCtl({ transport: async (a, b) => { sent.push([a, b]); return a === "terminals" ? { status: 200, json: { sessions: [{ name: "work", windows: 1 }] } } : { status: 200, json: { ok: true } }; }, vncKey: async () => "k".repeat(32) });
+  const u = { agentId: "ads", user: "ag20001", uid: 20001, display: 21 };
+  assert.deepEqual(await /** @type {any} */ (ctl).terminals(u), [{ name: "work", windows: 1 }]);
+  await /** @type {any} */ (ctl).terminalTicket(u, "t".repeat(32), "work");
+  assert.deepEqual(sent, [["terminals", { user: "ag20001", uid: 20001, display: 21 }], ["ticket", { user: "ag20001", uid: 20001, display: 21, ticket: "t".repeat(32), session: "work" }]]);
+  const bad = agentdCtl({ transport: async () => ({ status: 502, json: null }), vncKey: async () => "k" });
+  await assert.rejects(() => /** @type {any} */ (bad).terminals(u), /could not list terminals/);
+});

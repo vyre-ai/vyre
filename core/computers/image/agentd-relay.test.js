@@ -96,7 +96,7 @@ test("agentd takes a ticket only for a real agent triple, and only with its bear
   t.after(() => server.close());
   const call = (token, body) => callAgentd({ socket, token, action: "ticket", body: JSON.stringify(body) });
   assert.equal((await call("t".repeat(40), { ...U, ticket: T1 })).status, 200);
-  assert.deepEqual(tickets.take(T1), U);
+  assert.deepEqual(tickets.take(T1), { ...U, session: null });
   assert.equal((await call("x".repeat(40), { ...U, ticket: T1 })).status, 401);
   assert.equal((await call("t".repeat(40), { user: "root", uid: 0, display: 0, ticket: T1 })).status, 400);
   assert.equal((await call("t".repeat(40), { ...U, uid: 20004, ticket: T1 })).status, 400, "a user that is not the uid's");
@@ -119,6 +119,46 @@ test("a peer that is not vyred's address is closed before it can send a ticket; 
     const s = await connect(w.port, `${T1}\n`);
     assert.equal(await closes(s), true);
     assert.equal(w.spawned.length, 0, "no process");
-    assert.deepEqual(w.tickets.take(T1), U, "the ticket was never read, so it is not spent");
+    assert.deepEqual(w.tickets.take(T1), { ...U, session: null }, "the ticket was never read, so it is not spent");
   }
+});
+
+test("a terminal ticket starts the terminal helper as that agent with the session name as its one argument; a bad name is never registered", async t => {
+  const w = await world(t);
+  w.tickets.add(T1, U, "work-1");
+  const s = await connect(w.port, `${T1}\n`);
+  await new Promise(r => setTimeout(r, 100));
+  const argv = w.spawned[0].join(" ");
+  assert.match(argv, /^\/usr\/bin\/setpriv --reuid=20003 --regid=20003 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs /);
+  assert.ok(argv.endsWith("/usr/bin/python3 -I /opt/agentd/agentd-term.py work-1"));
+  s.destroy();
+  for (const bad of ["", "a b", "x;rm", "../x", "a".repeat(41)]) assert.throws(() => w.tickets.add(T2, U, bad), /not a terminal name/, bad);
+});
+
+test("the terminal helper takes one checked name and builds the agent's tmux socket from its own uid", () => {
+  const py = fs.readFileSync(new URL("./agentd-term.py", import.meta.url), "utf8");
+  assert.match(py, /os\.geteuid\(\)/);
+  assert.match(py, /"\/var\/lib\/vyre\/agents\/ag%d\/tmux\.sock" % uid/);
+  assert.match(py, /\[A-Za-z0-9_\.-\]\{1,40\}/);
+  assert.doesNotMatch(py, /os\.environ\[(?!"TERM")|getenv|shell=True|os\.system/);
+  assert.match(py, /uid < 20000 or uid > 20063/);
+});
+
+test("agentd lists an agent's terminals through tmux run as that agent, only for a real triple, and registers a terminal ticket with its session", async t => {
+  const tickets = new Tickets();
+  /** @type {string[][]} */ const asked = [];
+  const server = createAgentd({ token: "t".repeat(40), tickets, run: async () => {}, out: async argv => { asked.push(argv); return "work 2\nbad name here 1\nlogs 1\n"; } });
+  const socket = path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-term-")), "a.sock");
+  await new Promise(r => server.listen(socket, () => r(undefined)));
+  t.after(() => server.close());
+  const call = (action, body, token = "t".repeat(40)) => callAgentd({ socket, token, action, body: JSON.stringify(body) });
+  const r = await call("terminals", U);
+  assert.equal(r.status, 200);
+  assert.deepEqual(JSON.parse(r.text), { sessions: [{ name: "work", windows: 2 }, { name: "logs", windows: 1 }] }, "a line that is not a session is dropped");
+  assert.match(asked[0].join(" "), /^\/usr\/bin\/setpriv --reuid=20003 .* --no-new-privs -- .* \/usr\/bin\/tmux -S \/var\/lib\/vyre\/agents\/ag20003\/tmux\.sock list-sessions -F /);
+  assert.equal((await call("terminals", U, "x".repeat(40))).status, 401);
+  assert.equal((await call("terminals", { user: "root", uid: 0, display: 0 })).status, 400);
+  assert.equal((await call("ticket", { ...U, ticket: T1, session: "work" })).status, 200);
+  assert.deepEqual(tickets.take(T1), { ...U, session: "work" });
+  assert.equal((await call("ticket", { ...U, ticket: T2, session: "a b" })).status, 400);
 });

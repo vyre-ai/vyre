@@ -19,12 +19,14 @@ function setup(t, { level = "edit" } = {}) {
     createUser: async (/** @type {any} */ u) => { ran.push(`create ${u.user}`); }, removeUser: async () => {},
     startScreen: async (/** @type {any} */ u) => { ran.push(`start ${u.user}`); }, stopScreen: async (/** @type {any} */ u) => { ran.push(`stop ${u.user}`); },
     wipeHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
+    terminals: async () => [{ name: "work", windows: 2 }],
   };
   const users = new AgentUsers({ db, ctl });
   /** @type {Map<string, (i: any, m: any) => Promise<any>>} */ const tools = new Map();
   /** @type {string[]} */ const asked = [];
   let held = false;
   registerAgentTools({ tool: (name, _d, _i, run) => tools.set(name, run), users, callers: ["deck"], held: () => held,
+    terminal: (agent, session) => { ran.push(`terminal ${agent} ${session}`); return { ticket: "tt", path: "/term?ticket=tt" }; },
     watch: (agent, slow) => { ran.push(`ticket ${agent}${slow ? " slow" : ""}`); return { ticket: "tk", path: "/glass?ticket=tk", width: 1280, height: 800 }; },
     call: async (tool, input) => { asked.push(`${tool} ${input.agent}`); return tool === "agents.level" ? { data: { agent: input.agent, level } } : { error: { code: "no_such_tool", message: tool } }; } });
   return { users, tools, ran, asked, hold: (/** @type {boolean} */ v) => { held = v; } };
@@ -80,4 +82,16 @@ test("watching an agent wakes it and hands back a ticket for that agent alone; a
   const none = setup(t, { level: "none" });
   await assert.rejects(() => call(none, "computers.agent.watch", { agent: "ads" }), /cannot use that agent/);
   assert.deepEqual(none.ran, [], "no place, no screen and no ticket");
+});
+
+test("terminals are listed for someone who may use the agent; opening one needs the right to edit, a good name, and hands back a one-use ticket", async t => {
+  const w = setup(t);
+  await call(w, "computers.agent.wake", { agent: "ads" });
+  assert.deepEqual(await call(w, "computers.agent.terminals", { agent: "ads" }), { terminals: [{ name: "work", windows: 2 }] });
+  assert.deepEqual(await call(w, "computers.agent.terminal.open", { agent: "ads", session: "work" }), { ticket: "tt", path: "/term?ticket=tt" });
+  for (const bad of ["", "a b", "x;y", "../x", "a".repeat(41)]) await assert.rejects(() => call(w, "computers.agent.terminal.open", { agent: "ads", session: bad }), /terminal name/, bad);
+  const use = setup(t, { level: "use" });
+  assert.equal((await call(use, "computers.agent.terminals", { agent: "ads" })).terminals.length, 0, "no place yet, so nothing to list");
+  await assert.rejects(() => call(use, "computers.agent.terminal.open", { agent: "ads", session: "work" }), /cannot change that agent/);
+  assert.ok(!use.ran.some(x => x.startsWith("terminal")), "no ticket for someone who may only use the agent");
 });

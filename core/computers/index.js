@@ -136,6 +136,24 @@ export default {
         return { host: h.host, port: RELAY_PORT, password, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
       },
     };
+    /** The agent's terminal for the terminal stream: a one-use ticket with the relay (agentd-relay.js), which starts the terminal as the agent. */
+    const agentTerminal = {
+      openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        await pool.pin(SHARED_COMPUTER_ID);
+        const hello = crypto.randomBytes(24).toString("base64url");
+        await agentUsers.terminalTicket(agent, hello, session);
+        screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+        let released = false;
+        return { host: h.host, port: RELAY_PORT, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+      },
+    };
+    try {
+      const { Terminal } = await import("./terminal.js");
+      const terminal = new Terminal({ pool, screen: agentTerminal, log: ctx.log });
+      ctx.upgrade("terminal", (req, socket, head, info) => terminal.handle(req, socket, head, info));
+    } catch (e) { ctx.log(`terminal not available: ${/** @type {Error} */ (e).message}`); }
     try {
       const { Glass } = await import("./glass.js");
       glass = new Glass({ pool, keyboard, log: ctx.log, screen: agentScreen });
@@ -243,6 +261,10 @@ export default {
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
     registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+      terminal: (agent, session) => {
+        const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
+        return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
+      },
       watch: (agent, slow, surface) => {
         const ticket = pool.ticket(agent, isSurface(surface) ? surface : "glass:viewer", { slow, perAgent: true });
         const { w, h } = pool.size(agent);

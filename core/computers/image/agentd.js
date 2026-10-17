@@ -127,3 +127,19 @@ export async function execute(steps, run, o = {}) {
 
 /** Steps that are fine to fail: stopping what is not running. @param {string[]} argv */
 export const tolerant = argv => argv.includes("/usr/bin/pkill");
+
+/** Listing an agent's tmux sessions, as the agent: one line per session, "name windows". The socket is the agent's own, in its own run folder. @param {{ user: string, uid: number, display: number }} u */
+export function planTerminals(u) {
+  check(u);
+  return [...asAgent(u), "/usr/bin/tmux", "-S", `${RUN}/${u.user}/tmux.sock`, "list-sessions", "-F", "#{session_name} #{session_windows}"];
+}
+
+/** @param {string} text @returns {Array<{ name: string, windows: number }>} */
+export function parseTerminals(text) {
+  const out = [];
+  for (const line of String(text).split("\n")) {
+    const m = /^([A-Za-z0-9_.-]{1,40}) (\d{1,3})$/.exec(line.trim());
+    if (m) out.push({ name: m[1], windows: Number(m[2]) });
+  }
+  return out.slice(0, 50);
+}

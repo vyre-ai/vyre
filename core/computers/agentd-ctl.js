@@ -30,6 +30,14 @@ export function agentdCtl(deps) {
     wipeHome: u => post("wipe", { user: u.user, uid: u.uid, display: u.display }),
     /** register a one-use ticket for a viewer's connection to the relay (agentd-relay.js) */
     screenTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket }),
+    /** register a one-use ticket for one terminal (a tmux session of the agent) */
+    terminalTicket: (u, ticket, session) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, session }),
+    /** the agent's tmux sessions */
+    terminals: async u => {
+      const r = await deps.transport("terminals", { user: u.user, uid: u.uid, display: u.display });
+      if (r.status < 200 || r.status >= 300 || !r.json || !Array.isArray(r.json.sessions)) throw new Error(`the agent computer could not list terminals (${r.status})`);
+      return r.json.sessions;
+    },
   };
 }
 
