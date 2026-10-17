@@ -12,7 +12,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
-import { kernelRig, SPACE, OWNER } from "./kernel-rig.js";
+import { kernelRig, SPACE } from "./kernel-rig.js";
 import { SaidIntents } from "./said.js";
 import { agentFill } from "./agent-fill.js";
 import { ACCESS_LEVELS } from "../../kernel/seal/uses.js";
@@ -36,18 +36,16 @@ async function world(t) {
   const calls = /** @type {any[]} */ ([]);
   /** A stand-in for the browser: the connection opens and then stops, so a started fill shows as the stop and a refused one as a refusal. */
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
-  const d = { vault: v, said: new SaidIntents(v), log: (m) => { console.log("[fill-log] " + m); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
+  const d = { vault: v, said: new SaidIntents(v), log: () => {}, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
     calls.push({ name, input });
     if (name === "computers.fill.begin") return { data: { fill: "fill-1", cdpUrl: "http://127.0.0.1:9", token: "" } };
     return { data: { agent: input.agent, ended: true } };
   } };
   const urn = await v.access.urn("northwind-app");
-  console.log("[fill-diag] urn", urn, "uid kit", rig.uid("kit"), "K.agentMay is", typeof rig.K.agentMay);
   /** A share of the login with an agent, as the sharing tools make it: the actions of a level, on the login's own address. */
   const share = (/** @type {string} */ agent, /** @type {readonly string[]} */ actions = ACCESS_LEVELS.use, over = {}) =>
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
-  const diag = async () => { const r = await rig.gw.authorize({ chain: rig.assistant(rig.uid("kit"), OWNER, "t"), action: "vault.fill", resource: urn, origin: ORIGIN }).catch(e => ({ threw: String(e && e.message) })); console.log("[fill-diag] agentMay", await rig.K.agentMay(rig.uid("kit"), "vault.fill", urn, ORIGIN, true).catch(e => String(e && e.message)), "authorize", JSON.stringify(r), "grants", JSON.stringify((await rig.gw.grants.list(rig.owner(), {}).catch(e => String(e))).slice ? (await rig.gw.grants.list(rig.owner(), {})).slice(-2) : "n/a")); };
-  const fill = async (/** @type {string} */ agent, /** @type {any} */ extra = {}) => { if (agent === "kit") await diag(); return agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra }); };
+  const fill = (/** @type {string} */ agent, /** @type {any} */ extra = {}) => agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra });
   const began = () => calls.filter(c => c.name === "computers.fill.begin").length;
   return { v, rig, db, events, calls, share, fill, began };
 }
@@ -78,12 +76,12 @@ test("only a level that includes Fill in lets an agent fill: Read-only or API us
   const lacking = await w.share("juno", ["vault.read", "vault.call"]);
   await refused(w.fill("juno"));
   await w.rig.gw.grants.revoke(w.rig.owner(), lacking.id, "wrong level", { presence: { n: 1 } });
-  for (const level of /** @type {const} */ (["use", "reveal", "edit"])) {
-    const g = await w.share("juno", /** @type {any} */ (ACCESS_LEVELS)[level] || ACCESS_LEVELS.reveal);
-    await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", `${level} lets it start`);
-    await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
-    await refused(w.fill("juno"));
-  }
+  // an agent holds the Fill in level (use) and nothing above it: the kernel refuses to give an assistant a credential to show, change, delete, share or rotate
+  const g = await w.share("juno", ACCESS_LEVELS.use);
+  await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", "use lets it start");
+  await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
+  await refused(w.fill("juno"));
+  for (const level of /** @type {const} */ (["reveal", "edit"])) await assert.rejects(w.share("juno", ACCESS_LEVELS[level]), /never to show, change, delete, share or rotate it/, `${level} cannot be given to an agent`);
 });
 
 test("a fill goes only where the login is for: another origin, a lookalike and no origin the login names are refused even with a share", async t => {
@@ -116,7 +114,10 @@ test("only a login can be filled; the value never reaches the agent: not in the 
   await assert.rejects(agentFill({ vault: w.v, said: new SaidIntents(w.v), log: () => {}, call: async () => ({ data: {} }) }, { agent: "juno", item: "graph-api" }), e => /** @type {any} */ (e).code === "not_found");
   let seen = "";
   try { await w.fill("juno"); } catch (e) { seen = String(/** @type {Error} */ (e).message); }
-  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls });
+  // the only place the values go is the computer's scrub list (computers.fill.begin registers them so the agent's own view of the page never shows them): not to the agent, not to a log
+  const begin = w.calls.find(c => c.name === "computers.fill.begin");
+  assert.ok(begin && begin.input.values.includes(PASS), "the exact values are registered for scrubbing");
+  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls.filter(c => c.name !== "computers.fill.begin") });
   assert.ok(!all.includes(PASS), "the password is nowhere an agent or a log can read it");
   assert.ok(!all.includes("alex@northwind.example"), "nor the username");
 });
