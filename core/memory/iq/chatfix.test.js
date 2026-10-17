@@ -159,7 +159,8 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   assert.equal(named.data.filed?.project, "harlow", JSON.stringify(named.data));
   assert.equal((await call("memory.writes", { project: "northwind" }, "deck")).data.writes.length, 0, "nothing reached the project the agent named");
   // The person's typed turn applies at once, as theirs, with its source and the decision updated.
-  const ok = await heard(3, {});
+  // (memory.heard files a lesson only for a named agent: the person's turn applies the same whoever passes it on, and the lesson is that agent's)
+  const ok = await heard(3, {}, "Render", JUNO);
   assert.equal(ok.data.applied, true, JSON.stringify(ok));
   // The applied correction is also a lesson: filed in the project the chat is in, with the chat and the turn it came from.
   assert.ok(ok.data.filed?.id, JSON.stringify(ok.data));
