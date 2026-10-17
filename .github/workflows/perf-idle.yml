@@ -8,6 +8,10 @@ on:
         description: "The tag, branch or commit to measure (empty: the dispatched ref)"
         required: false
         default: ""
+      runner:
+        description: "hosted (a quiet GitHub runner, the default) or self (the shared self-hosted runners, as the node job uses)"
+        required: false
+        default: "hosted"
   push:
     branches: ["work/launch-perf-idle"]
 permissions:
@@ -18,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner == 'self' && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
       - name: Check the ref
@@ -35,6 +39,6 @@ jobs:
         run: |
           git log -1 --format='measuring %h %s'
           for i in 1 2 3; do
-            echo "=================== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
+            echo "=================== run $i (node ${{ matrix.node }}, runner $RUNNER_NAME, load $(cut -d' ' -f1-3 /proc/loadavg))"
             node scripts/perf-check 2>&1 || true
           done
