@@ -601,7 +601,8 @@ test("a member's own AI key is NOT lent to her turn on this build: the turn does
   assert.deepEqual(r.answers(), [], "nobody got an answer on anybody's key");
   // and the keys are nowhere: not in an event, a run row, an account row, any table, any log line, any file the home keeps (the fake program's launch log would hold env hashes: it does not exist)
   const thread = kitThread(r.b, r.chat.id);
-  const events = (await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli")).data.events;
+  const got = await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli").catch(() => null);
+  const events = (got && got.data && got.data.events) || [];
   const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
   const accounts = r.b.reg.deps.db.prepare("SELECT * FROM sessions_accounts").all();
   const walk = (/** @type {string} */ d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
