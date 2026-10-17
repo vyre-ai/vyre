@@ -87,7 +87,7 @@ test("exec wire: the plan and the input reach the runner, the answer comes back,
 function tools(/** @type {any} */ t, level = "edit") {
   const db = open(path.join(tempHome(t), "t.db"));
   t.after(() => db.close());
-  migrate(db, "agentusers", MIGRATIONS);
+  migrate(db, "computers", MIGRATIONS);
   /** @type {any[]} */ const ran = [];
   const ctl = { createUser: async () => {}, removeUser: async () => {}, startScreen: async () => {}, stopScreen: async () => {}, wipeHome: async () => {},
     exec: async (/** @type {any} */ u, /** @type {any} */ req) => { ran.push([u.user, req]); return { code: 0, signal: null, stdout: "", stderr: "", truncated: false }; } };
