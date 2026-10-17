@@ -10,6 +10,7 @@ import { asPerson, ensureAgent } from "../../lib/project-reach.js";
 import { exactOrigin } from "./agents.js";
 import { hostsOf } from "./native.js";
 import { credentialUrn } from "../../kernel/contracts/index.js";
+import { ConnectionTokens, connectionUrn } from "./connection-token.js";
 
 /** Requests an assistant made, waiting for a person (vault.pending, vault.approve). Appended to the vault's MIGRATIONS. */
 export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
@@ -37,27 +38,18 @@ export class Access {
   }
 
   /**
-   * The address of a person's connection item: the Space owner's (no `owner`) lives in the owner's personal vault. A member's own vault has no address yet, so another owner is not found and nothing is allowed.
-   * @param {string | undefined | null} owner @param {string} connection @returns {Promise<string | null>}
-   */
-  async connectionAddress(owner, connection) {
-    if (owner || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return null;
-    return this.urn(String(connection));
-  }
-
-  /**
-   * Whether the verified caller of this turn may use a connection at a level: the kernel's answer for the caller's own chain on the item's address (`vault.read` to see it and run read tools, `vault.call` for
-   * an outward tool). Allow or not; an unknown item, a missing kernel or any error is not.
+   * Whether the verified caller of this turn may use a connection at a level (`vault.read` to see it and run read tools, `vault.call` for an outward tool): allow or not; an unknown item, a missing kernel or
+   * any error is not. The Space owner's own (no `owner`) is an item of the owner's vault, judged by the kernel on its address. A member's is judged by the one rule the token tool applies as its second gate
+   * (connection-token.js): the member alone in the chain, or the kernel's allow on the connection's address.
    * @param {{ owner?: string, connection: string, level: string }} i @param {any} meta
    */
   async mayUseConnection({ owner, connection, level }, meta) {
     try {
       const K = this.need();
-      if (level !== "read" && level !== "call") return false;
-      const resource = await this.connectionAddress(owner, connection);
-      if (!resource) return false;
+      if ((level !== "read" && level !== "call") || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(connection))) return false;
+      if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
-      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource })).effect === "allow";
+      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
     } catch { return false; }
   }
 

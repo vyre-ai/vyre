@@ -22,6 +22,7 @@
 // it with fakes and a fake clock.
 
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { McpError } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
@@ -381,6 +382,7 @@ function normalizePolicy(t) {
 
 // ---- the hub ----
 
+const LEVEL = new AsyncLocalStorage();
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
@@ -401,6 +403,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
+ *   connectionToken?: (c: { owner: string, connection: string, write: boolean }) => Promise<{ access_token: string, token_type?: string }>,
  *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call" }, who: Who) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
@@ -774,7 +777,12 @@ export class Hub {
   }
 
   /** Call a tool on a running (or started) server, with one retry after a 401 or a lost session. */
-  async run(name, tool, args, { agent = null, released = null } = {}) {
+  async run(name, tool, args, opts = {}) {
+    // a call released from the Gate is an outward one: the token asked for it is the write kind
+    return LEVEL.run({ write: opts.released != null }, () => this.runInner(name, tool, args, opts));
+  }
+
+  async runInner(name, tool, args, { agent = null, released = null } = {}) {
     const t0 = this.now();
     const s = this.state(name);
     s.inflight++;
@@ -879,6 +887,19 @@ export class Hub {
     }
   }
 
+  /**
+   * The header for a person's connection: an access token from the Vault's token tool, asked at the moment of the request, for the verified chain of the call in progress (the Vault checks it again). The
+   * refresh token never comes here. The token is remembered for scrubbing.
+   * @param {any} r
+   */
+  async connectionHeaders(r) {
+    if (typeof this.deps.connectionToken !== "function") throw fail("failed", "this hub has no way to reach a person's connection");
+    const t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write) });
+    if (!t || typeof t.access_token !== "string" || !t.access_token) throw fail("unauthorized", "the connection gave no token; reconnect it");
+    this.creds.track(t.access_token);
+    return { authorization: `${t.token_type || "Bearer"} ${t.access_token}` };
+  }
+
   /** Connect with the credential built for this server only: env for its child, a header per request. */
   async open(r, s) {
     /** @type {any} */
@@ -889,7 +910,7 @@ export class Hub {
       const env = { ...r.vars, ...(await this.creds.env(r.env)) };
       client = await this.deps.connect({ transport: "stdio", command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) }, { ...opts, env });
     } else {
-      const headers = async () => ({ ...r.headers, ...(await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
+      const headers = async () => ({ ...r.headers, ...(r.owner ? await this.connectionHeaders(r) : await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
       client = await this.deps.connect({ transport: /** @type {"http"|"sse"} */ (r.transport), url: r.url }, { ...opts, headers });
     }
     return client;

@@ -13,6 +13,7 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
 import { register } from "./request.js";
 import { kernelRig, SPACE } from "./kernel-rig.js";
+import { connectionUrn } from "./connection-token.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -221,7 +222,14 @@ test("a connection may be used by the caller's own chain at the level the kernel
   assert.equal(await may(rig.person("per_ben"), "call"), true);
   assert.equal(await may(rig.person("per_ben"), "admin"), false, "an unknown level is no");
   assert.equal(await may(rig.person("per_ben"), "read", { connection: "../x" }), false, "a bad item name is no");
-  assert.equal(await may(rig.person("per_ben"), "read", { owner: "per_cy" }), false, "a member's own vault has no address yet: no, never the owner's item");
+  // a member's own connection: they alone use it; anyone else needs the kernel's allow on the connection's address
+  const theirs = (who, level) => may(who, level, { owner: "per_ben" });
+  assert.equal(await theirs(rig.person("per_ben"), "call"), true, "the member uses their own connection");
+  assert.equal(await theirs(rig.person("per_cy"), "read"), false, "a colleague with no grant does not");
+  assert.equal(await theirs(rig.owner(), "read"), false, "nor does the Space owner: it is not their item");
+  await rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "person", id: "per_cy", space: SPACE } }, actions: ["vault.read"], resource: { prefix: connectionUrn(SPACE, "per_ben", "clio-token") }, conditions: {}, source: "vault:share" }, { presence: { n: Math.random() } });
+  assert.equal(await theirs(rig.person("per_cy"), "read"), true, "a share at read reaches it");
+  assert.equal(await theirs(rig.person("per_cy"), "call"), false, "and not an outward tool");
 });
 
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {

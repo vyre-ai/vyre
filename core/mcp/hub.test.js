@@ -458,3 +458,31 @@ test("a person's connection is used by whoever the Vault says holds its item, at
   await hub.add({ name: "plain", transport: "http", url });
   assert.ok((await hub.servers(as("bob"))).some(s => s.name === "plain"), "a row with no owner is unchanged: a person sees it");
 });
+
+test("a person's connection reaches its server with an access token the Vault hands over at the moment of the request, never a stored header, and the token is scrubbed from what comes back", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp", TOKEN = "fixture-access-token-abcdef123456";
+  const asked = [];
+  const { hub, db } = fakeHub({
+    mayUseConnection: async () => true,
+    connectionToken: async c => { asked.push(c); return { access_token: TOKEN, token_type: "Bearer" }; },
+  });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  const key = personKey("clio", A);
+  const r = await hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" });
+  const text = JSON.stringify(r);
+  assert.ok(!text.includes(TOKEN), "the token is scrubbed from the result");
+  assert.ok(asked.length >= 1 && asked.every(a => a.owner === A && a.connection === "clio-alice" && a.write === false), "a read asks for the read kind of token, for the row's owner and item");
+  // a call released from the Gate is an outward one: the write kind
+  asked.length = 0;
+  await hub.run(key, "send_message", { text: "hi" }, { released: "h1" });
+  assert.ok(asked.length >= 1 && asked.every(a => a.write === true), "a released outward call asks for the write kind");
+  // a Vault that refuses refuses the call, with its own code
+  const bad = fakeHub({ mayUseConnection: async () => true, connectionToken: async () => { throw Object.assign(new Error("reconnect it"), { code: "needs_reconnect" }); } });
+  await bad.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await assert.rejects(bad.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), e => e.code === "needs_reconnect");
+  // a hub with no token source cannot connect a person's row
+  const none = fakeHub({ mayUseConnection: async () => true });
+  await none.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await assert.rejects(none.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), /no way to reach/);
+  assert.ok(db);
+});
