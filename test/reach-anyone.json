@@ -2613,10 +2613,6 @@
    "module": "onboard",
    "reason": "read-only: whether this device already has an identity; ownerWrite refuses models"
   },
-  "onboard.phone.add": {
-   "module": "onboard",
-   "reason": "ownerWrite refuses mcp and agents; presence when the server is owned"
-  },
   "onboard.space.current": {
    "module": "onboard",
    "reason": "ownerWrite refuses mcp and agents; chooses the active space during setup"

@@ -43,14 +43,8 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
   };
   const addPhone = () => {
     setBusy(true);
-    tool<{ spaces?: { id?: string; name?: string }[]; current?: string | null }>("onboard.space.list", {})
-      .then((list) => {
-        const rows = Array.isArray(list?.spaces) ? list.spaces : [];
-        const hit = rows.find((s) => s.id && s.id === list?.current) || rows[0];
-        if (!hit) throw Object.assign(new Error("Create or join a space first."), { code: "no_space" });
-        return tool<{ link?: string }>("onboard.phone.add", { space: hit.name || hit.id });
-      })
-      .then((r) => { if (live.current) { setPhoneLink(String(r?.link || "")); setSaid(""); finish(); } })
+    tool<{ link?: string; qr?: string }>("wink.phone.open", {})
+      .then((r) => { if (live.current) { setPhoneLink(String(r?.link || r?.qr || "")); setSaid(""); finish(); } })
       .catch((e) => { if (live.current) setSaid(said(e)); })
       .finally(() => { if (live.current) setBusy(false); });
   };
