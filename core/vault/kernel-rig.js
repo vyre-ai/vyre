@@ -47,7 +47,7 @@ export async function kernelRig(o = {}) {
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { const who = person === undefined ? OWNER : (typeof person === "string" && person !== OWNER && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && gs.roleOf({ kind: "person", id: person, space: SPACE }) ? person : null); if (who === null) return false; const e = (await gw.authorize({ chain: assistant(agent, who, thread || "t"), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
+      try { const who = person === undefined ? OWNER : (typeof person === "string" && person !== OWNER && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && gs.roleOf({ kind: "person", id: person, space: SPACE }) ? person : null); if (who === null) return false; const e = (await gw.authorize({ chain: assistant(agent, who, thread || "t"), action, resource, ...(origin ? { origin } : {}), ...(thread ? { thread } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
