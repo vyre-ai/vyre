@@ -54,7 +54,7 @@ async function world(t) {
   const asAgentOf = (/** @type {string} */ p, a = "juno") => ({ chain: rig.assistant(rig.uid(a), p) });
   const M = v.access.members;
   const share = (/** @type {any} */ over = {}, who = BEN) => M.share({ item: LABEL, agent: "juno", origin: ORIGIN, ...over }, as(who));
-  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN) => agentFill(d, { agent, item: ref, origin });
+  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN, thread = undefined) => agentFill(d, { agent, item: ref, origin, ...(thread ? { thread } : {}) });
   const everything = () => JSON.stringify({ events, audit: db.prepare("SELECT * FROM vault_audit").all(), calls, items: v.list().items });
   return { v, rig, db, M, items, lentStore, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
 }
@@ -217,4 +217,56 @@ test("a copy that cannot be brought up to date with its login is deleted with it
   assert.ok(!w.lentStore.get(BEN).has(ref));
   assert.equal((await w.rig.K.mint.list({ source: "vault:member-share:" })).length, 0, "and no grant");
   await assert.rejects(w.fill(ref), e => /** @type {any} */ (e).code === "not_found", "and the agent cannot use it");
+});
+
+test("tagging a login in a chat lends it to that chat's agent for that chat only: another chat of the same agent, another agent and a fill with no chat get nothing, and the end call takes back only the loan", async t => {
+  const w = await world(t);
+  const M = w.M;
+  const lent = await M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-1"] });
+  const ref = lent.shared.ref;
+  assert.equal(lent.notice, NOTICE);
+  assert.ok(lent.shared.expires - w.rig.clock() <= 3_600_000 + 60_000, "short by default: the end call is the normal end, the clock the backstop");
+  await stops(w.fill(ref, "juno", ORIGIN, "chat-1"));
+  await denied(w.fill(ref, "juno", ORIGIN, "chat-2"));
+  await denied(w.fill(ref, "juno", ORIGIN));
+  await denied(w.fill(ref, "kit", ORIGIN, "chat-1"));
+  await denied(w.fill(ref, "juno", OTHER, "chat-1"));
+  assert.equal(w.calls.filter(c => c.name === "computers.fill.begin").length, 1, "only the chat's own fill reached the computer");
+  // the agent is told of it in that chat only
+  assert.deepEqual((await w.v.access.listFor("juno", "chat-1")).filter(x => x.kind === "login").map(x => x.name), [ref]);
+  assert.deepEqual((await w.v.access.listFor("juno", "chat-2")).filter(x => x.kind === "login"), []);
+  assert.deepEqual((await w.v.access.listFor("juno")).filter(x => x.kind === "login"), []);
+  // her ordinary share of the same login is a different copy, and ending the turn leaves it
+  const ordinary = (await w.share()).shared.ref;
+  assert.notEqual(ordinary, ref);
+  assert.equal(await M.endFor(BEN, "chat-1"), 1);
+  await denied(w.fill(ref, "juno", ORIGIN, "chat-1"));
+  await stops(w.fill(ordinary));
+  // and unsharing the ordinary share leaves a loan to another chat
+  const again = (await M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-3"] })).shared.ref;
+  assert.deepEqual(await M.unshare({ item: LABEL }, w.as(BEN)), { ended: 1 }, "only the ordinary share");
+  await stops(w.fill(again, "juno", ORIGIN, "chat-3"));
+  assert.equal(await M.endFor(BEN, "chat-3"), 1);
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0);
+  assert.equal(w.lentStore.get(BEN).size, 0);
+});
+
+test("a loan is a member's own login, for one chat, short, and the same checks as a share: not the Space owner, not a note, not a locked vault", async t => {
+  const w = await world(t);
+  const M = w.M;
+  const ok = { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-1"] };
+  await assert.rejects(M.shareAs("per_owner", ok), e => e.code === "denied");
+  await assert.rejects(M.shareAs("ben", ok), e => e.code === "denied");
+  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: [] }), /one chat/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["a", "b"] }), /one chat/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["bad chat!"] }), /one chat/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, expires: w.rig.clock() + 2 * 86_400_000 }), /within a day/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, item: "a-note" }), /only a login/);
+  await assert.rejects(M.shareAs(BEN, { ...ok, agent: "assistant" }), /default assistant/);
+  w.setLocked(true);
+  await assert.rejects(M.shareAs(BEN, ok), e => e.code === "locked");
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0, "none of these left a copy");
+  // an agent she does not instruct herself is fine for a loan: it is that chat's agent and the grant holds in that chat only
+  w.setLocked(false);
+  await M.shareAs(BEN, { ...ok, agent: "team" });
 });
