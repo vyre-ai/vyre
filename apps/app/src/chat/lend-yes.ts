@@ -57,13 +57,14 @@ export function lendSignerFor(o: { device: YesDevice; person: string; space: str
 }
 
 /**
- * Tagging a login that has several saved sites: she says which one. `sites` are the origins the Vault listed for the item (names only, no value); one site or none needs no choice (the Vault uses the one it
- * has, or says "which site?"). The origin she picks must be one of the list, and it is signed into her yes with the rest: the Vault checks the same set. Returns the yes and the origin to carry on the chip,
- * or null when she closed the picker or the prompt.
+ * Tagging one of her own items. `sites` are the origins the Vault listed for a login (names only, no value), or null for an item that has none to list (a connection, an API key). A login with no saved
+ * site cannot be lent: the answer says so (needsSite) and nothing is signed, and the composer offers to open the item so she can add the site. One site needs no choice (the Vault uses it). Several: she
+ * picks one, it must be in the list, and it is signed into her yes with the rest, which the Vault checks as the same set. Null when she closed the picker or the prompt.
  */
-export async function lendWithSite(f: Omit<LendFields, "origin">, sites: readonly string[], choose: (sites: readonly string[]) => Promise<string | null>): Promise<{ yes: string; origin?: string } | null> {
+export async function lendWithSite(f: Omit<LendFields, "origin">, sites: readonly string[] | null, choose: (sites: readonly string[]) => Promise<string | null>): Promise<{ yes: string; origin?: string } | { needsSite: true } | null> {
+  if (sites && sites.length === 0) return { needsSite: true };
   let origin: string | undefined;
-  if (sites.length > 1) {
+  if (sites && sites.length > 1) {
     const picked = await choose(sites);
     if (!picked || !sites.includes(picked)) return null;
     origin = picked;

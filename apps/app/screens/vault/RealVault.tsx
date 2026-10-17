@@ -1,5 +1,6 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Menu, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
@@ -57,6 +58,9 @@ export default function RealVault() {
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState<"items" | "sharing" | "browsers" | "health" | "import">("items");
   const [editing, setEditing] = useState(false);
+  // Linked from a chat ("Add the site to this login"): open that item, on its edit sheet.
+  const link = useLocalSearchParams<{ item?: string; edit?: string }>();
+  useEffect(() => { if (typeof link.item === "string" && rows?.some((r) => r.name === link.item)) { setSel(link.item); if (link.edit === "1") setEditing(true); } }, [rows, link.item, link.edit]);
   const [ssh, setSsh] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});
   const [shown, setShown] = useState<{ key: string; value: string } | null>(null);

@@ -85,14 +85,22 @@ test("a login with several sites: the origin signed is the one she picked, and a
   setLendSigner(null);
 });
 
-test("one site or none needs no choice and signs no origin: the Vault uses the address it has, or asks which site", async () => {
+test("one site, or an item that lists none, needs no choice and signs no origin: the Vault uses the address it has, or asks which site", async () => {
   const seen = [];
   setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
   let asked = 0;
   const choose = async () => { asked++; return null; };
   assert.deepEqual(await lendWithSite(F, ["https://app.clio.com"], choose), { yes: "yes" });
-  assert.deepEqual(await lendWithSite(F, [], choose), { yes: "yes" });
+  assert.deepEqual(await lendWithSite(F, null, choose), { yes: "yes" }, "an item with no sites to list (a connection, a key) signs no origin");
   assert.equal(asked, 0);
   assert.deepEqual(seen, [F, F]);
+  setLendSigner(null);
+});
+
+test("a login with no saved site cannot be lent: nothing is signed, and the answer says a site is needed", async () => {
+  const seen = [];
+  setLendSigner(async (op, fields) => { seen.push(fields); return "yes"; });
+  assert.deepEqual(await lendWithSite(F, [], async () => "https://x.example"), { needsSite: true });
+  assert.equal(seen.length, 0);
   setLendSigner(null);
 });
