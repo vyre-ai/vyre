@@ -143,7 +143,7 @@ await walk("new person creates a space and waits", async (t) => {
   await t.absent("Face ID");
 });
 
-await walk("ready can add a computer and a phone", async (t) => {
+await walk("ready can add a computer (a phone signs in with the one sign-in line, so there is no phone step)", async (t) => {
   await identity(t);
   await t.pick("Join a space");
   await t.type("Invite link", "https://vyre.run/i/abcdefgh");
@@ -157,10 +157,7 @@ await walk("ready can add a computer and a phone", async (t) => {
   await t.type("Master password", PASS);
   await t.press("Add this computer");
   await t.at("You're in");
-  await t.pick("Add a phone");
-  await t.at("Add your phone");
-  await t.press("Add your phone");
-  await t.sees("https://vyre.run/i/samplephone");
+  await t.absent("Add a phone");
   await t.absent("Face ID");
 });
 
