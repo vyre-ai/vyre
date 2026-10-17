@@ -18,7 +18,7 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ### A member's own AI account in chats
 
-A member's own AI account isn't used for their chats yet; those chats run on the space's AI account if it has one, otherwise the turn stops with a clear message. No one's key ever reaches another person. Fixed in the next update. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
+A member who has added her own AI account can't chat yet: her turn stops with a clear message, because her own key isn't lent to her chats yet. A member without one chats on the space's AI account if it has one. No one's key ever reaches another person. Fixed in the next update. The owner isn't affected, because the owner's accounts are the space's. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
 
 ### Long runs of rows you may not see
 
