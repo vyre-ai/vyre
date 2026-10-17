@@ -172,7 +172,12 @@ test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no
     if (["node_modules", ".git"].includes(e.name)) continue;
     const f = path.join(d, e.name);
     if (e.isDirectory()) walk(f);
-    else if (/\.(m?js|json)$/.test(e.name) && !/test\.m?js$/.test(e.name) && /(from|import\()\s*["'][^"']*(vault-wipe|seal\/wipe)|\bwipeHome\(|\bwipeSealDir\(/.test(fs.readFileSync(f, "utf8"))) hits.push(path.relative(ROOT, f));
+    else if (/\.(m?js|json)$/.test(e.name) && !/test\.m?js$/.test(e.name)) {
+      const src = fs.readFileSync(f, "utf8");
+      // the agent computer's `wipeHome` is a port that resets one agent's Linux home folder: a different thing with the same word, so only an IMPORT of the vault's wipe counts there
+      const inComputers = path.relative(ROOT, f).split(path.sep).slice(0, 2).join("/") === "core/computers";
+      if (/(from|import\()\s*["'][^"']*(vault-wipe|seal\/wipe)/.test(src) || (!inComputers && /\bwipeHome\(|\bwipeSealDir\(/.test(src))) hits.push(path.relative(ROOT, f));
+    }
   } };
   for (const d of ["core", "kernel", "modules", "local", "web", "relay", "lib"]) if (fs.existsSync(path.join(ROOT, d))) walk(path.join(ROOT, d));
   assert.deepEqual(hits.sort(), ["kernel/seal/wipe.js", "lib/vault-wipe.js"]);

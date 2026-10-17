@@ -177,6 +177,8 @@ const TASK_CALLS = {
   // reads, or kernel-internal bookkeeping with no person to speak of
   // the boot-time move of task words onto records: it takes no chain, runs as the tasks module's own chain and writes nothing a caller names
   internal: ["migrate"],
+  // the Flows service ends a task its step gave when the step's due time has passed: judged by the grant tasks.withdraw, which only that service holds (the authorizer refuses everyone else), so no person's ownership or actor rule applies
+  grant: ["withdraw"],
   read: ["get", "list", "needsYou", "card", "facts", "approvalFor", "kitApproval", "approvedAct", "useApproval", "approved", "scrubTexts"],
 };
 
