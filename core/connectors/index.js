@@ -59,15 +59,15 @@ export default {
         const r = await ctx.call("vault.me.connect.put", { name: item, fields }, { relay: true });
         if (r.error) throw fail(`could not save the sign-in in your vault: ${r.error.message}`, r.error.code || "vault");
       },
-      addServer: async input => data(await ctx.call("mcp.add", input)),
+      addServer: async input => data(await ctx.call("mcp.add", input, { relay: true })),   // as the person who connects: a member's row is hers (mcp.add reads the person from the relayed chain)
       testServer: async name => data(await ctx.call("mcp.test", { name })),
       // A member's hub row is listed under its key; her label is the name she knows it by. The owner's own row is the one with no owner, so a member's row of the same name is never mistaken for it.
       hasServer: async (name, member) => {
         const list = data(await ctx.call("mcp.servers", {}));
         return (Array.isArray(list) ? list : list.servers || []).find(s => (member ? s.owner === member && s.label === name : s.name === name && !s.owner)) || null;
       },
-      updateServer: async input => { data(await ctx.call("mcp.update", input)); },
-      removeServer: async name => data(await ctx.call("mcp.remove", { name })),
+      updateServer: async input => { data(await ctx.call("mcp.update", input, { relay: true })); },
+      removeServer: async name => data(await ctx.call("mcp.remove", { name }, { relay: true })),
       // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.
       putCredential: async (name, { config, secret, description }, as) => {
         const r = await ctx.call("vault.put", { name, kind: "api-credential", description, fields: { config: JSON.stringify(config), ...(secret ? { secret } : {}) } }, { as });

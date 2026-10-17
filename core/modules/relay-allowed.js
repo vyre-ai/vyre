@@ -17,7 +17,7 @@ export const RELAY_ALLOWED = Object.freeze({
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
   appmods: ["flows.kit.propose"],
   // a connection a person makes: the connectors module asks vault.me.who for the person it connects for (core/connectors/who.js), as that person's call
-  connectors: ["vault.me.who", "vault.me.connect.put"],   // a member's sign-in keeps her connection in her own vault, asked as her (core/connectors/index.js saveMine)
+  connectors: ["vault.me.who", "vault.me.connect.put", "mcp.add", "mcp.update", "mcp.remove"],   // a member's sign-in keeps her connection in her own vault, asked as her (core/connectors/index.js saveMine)
   // the person's sessions are filed into their projects as the person who chose them (the import tools run for the person or for their vouched AI key); undone as the same person when the upload cannot start
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   // the computers module asks agents.level what the person behind the call may do with an agent (use or edit), as that person: agents.level judges the relayed person and refuses a caller that is not one

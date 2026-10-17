@@ -6,6 +6,7 @@
 //   const k = createKernel({ space, owner: "per_owner", owner_uid: process.getuid(), key });          // in memory, a first owner, everything wired
 //   const k = createKernel({ space, ..., store, log, grants: { forSubject, get }, members: { has } }); // your own store, log or grants (a test rig)
 //   k.gateway.records / .events / .grants / .seal / .audit / .tasks   k.chains.fromFacts(...)   k.log   k.store   k.limits
+import { ROLE_RANK } from "./contracts/index.js";
 import { defineExtending } from "../lib/types-extend.js";
 import { createCredentialHeld } from "../lib/credential-held.js";
 import { createGateway } from "./gateway/index.js";
@@ -413,7 +414,7 @@ export async function createKernel(cfg) {
           const issuer = String(g.source).split(":")[3] || "";
           const role = issuer ? grantsStore.roleOf({ kind: "person", id: issuer, space: cfg.space }) : null;
           if (!(role === "owner" || role === "admin" || (issuer && q.agentOwner === issuer))) continue;
-          if (!(await mayUseVia(issuer, q.via)) || (/^(?:microsoft:|google-firm:)/.test(q.via) ? issuer !== String(first.actor.id) : !/^(?:mail|google):[A-Za-z0-9_.-]{1,80}$/.test(q.via) && !/^(?:owner|admin)$/.test(String(grantsStore.roleOf({ kind: "person", id: String(first.actor.id), space: cfg.space }))))) continue;   // firm-key mailbox (microsoft:, google-firm:): its issuer's own turns only; the Space's static sender: staff turns only
+          if (!(await mayUseVia(issuer, q.via)) || (/^(?:microsoft:|google-firm:)/.test(q.via) ? issuer !== String(first.actor.id) : !/^(?:mail|google):[A-Za-z0-9_.-]{1,80}$/.test(q.via) && !(ROLE_RANK[String(grantsStore.roleOf({ kind: "person", id: String(first.actor.id), space: cfg.space }))] >= ROLE_RANK.admin))) continue;   // firm-key mailbox (microsoft:, google-firm:): its issuer's own turns only; the Space's static sender: staff turns only
           if (!(await toAllows(c.to, q.to, (l, a) => listHas(l, a, q.via)))) continue;
           if (q.kind === "spend") {
             const amount = Number(q.amount);
