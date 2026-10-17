@@ -459,16 +459,23 @@ shardTest("wink: sharing a computer is a node.host grant with limits, and only f
   assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
   const dev = (await w.call("wink.access")).data.devices.find(x => x.id === r.paired.device);
   assert.equal(dev.offers.compute, true);
+  // the member's side was set by the person who shared (the proven caller); anyone who is not the owner cannot share a computer at all, so cannot set it
+  for (const caller of ["mcp:agent:kit", "hook", "anonymous"]) {
+    const refused = await w.call("wink.share", { device: r.paired.device, cpu: 0.5, hours_day: 8, awake: true, on_power: true }, caller);
+    assert.ok(refused.error, `${caller} cannot share a computer`);
+  }
 });
 
 shardTest("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
   const { w, device } = await pairComputer(t);
   const r = { paired: { device } };
-  const dev = (await w.call("wink.access")).data.devices[0];
+  // (the server's own "self" row is listed beside the devices that paired; it is not one of them)
+  const listed = async () => (await w.call("wink.access")).data.devices.filter(x => x.id !== "self");
+  const dev = (await listed()).find(x => x.id === device);
   const out = await w.call("wink.remove", { device: dev.id });
   assert.ok(out.data?.removed, JSON.stringify(out.error));
   assert.match(out.data.prompt, /stop reaching your server at once/);
-  assert.equal((await w.call("wink.access")).data.devices.length, 0);
+  assert.equal((await listed()).length, 0);
   assert.equal(typeof out.data.closed, "boolean", "it says whether the connections were closed");
   assert.ok(w.events.some(e => e[0] === "wink.removed" && e[1].device === r.paired.device));
   assert.equal((await w.call("wink.remove", { device: dev.id })).error?.code, "not_found");
@@ -525,13 +532,15 @@ shardTest("paired session ends, on the real kernel: sign-out-everywhere (wink as
 
 shardTest("wink: a device.paired event alone registers no device (ring, code, ticket, a window or no way named); only a server pairing the owner decided makes one", async t => {
   const { w, device } = await pairComputer(t);
-  const before = (await w.call("wink.access")).data.devices.map(d => d.id).sort();
+  // (the server's own "self" row, written by the adoption, is not a device that paired)
+  const paired = async () => (await w.call("wink.access")).data.devices.map(d => d.id).filter(id => id !== "self").sort();
+  const before = await paired();
   assert.deepEqual(before, [device]);
   for (const via of ["ring", "code", "ticket", "window", undefined]) {
     w.d.events.emit("device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
   }
   await new Promise(r => setTimeout(r, 500));
-  assert.deepEqual((await w.call("wink.access")).data.devices.map(d => d.id).sort(), before, "no device row for any of them");
+  assert.deepEqual(await paired(), before, "no device row for any of them");
   for (const gone of ["wink.phone.open", "wink.code.open", "devices.signin", "onboard.phone.add"]) {
     assert.equal(w.d.registry.tools.has(gone), false, `${gone} is not a tool any more`);
   }
