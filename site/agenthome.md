@@ -143,7 +143,7 @@ The token path is optional, and only if the person offers it. Tell them first th
 
 Then work through the tools Vyre's MCP offers: `tools_find` ranks tools for an intent, and `tools_call` runs one under the person's own limits. In Claude Code, the prompt `/mcp__vyre__setup-vyre` walks you through it; elsewhere, call `mcpconn_guide` and follow it. A key can make projects, agents, record types, templates and Playbooks as the person could in the app. Vyre's built-in Engineer agent drafts record types, Flows and Playbooks as cards that one yes from the person applies, and each applied change is a version that can be rolled back. Anything that leaves the team waits at the Gate. Creating a space, inviting people, adding computers and phones, signing in, transferring ownership and setting up the vault are the same: you propose, and the person's one tap applies. The master password and the recovery key are entered on the person's device. A vault value is supplied into the request at use time, and you get the result.
 
-**Step 8. The phone (the person, optional).** In the app, Add your phone. Android takes `Vyre-android.apk` from the latest release. The iPhone app is built from source with Xcode until it is on the App Store.
+**Step 8. The phone (the person, optional).** Install the app, then open Vyre on the phone and sign in with the Vyre's address, the person's username and master password. Android takes `Vyre-android.apk` from the latest release. The iPhone app is built from source with Xcode until it is on the App Store.
 
 If setup stops, https://vyre.run/docs/get-started/troubleshooting.md has the message each failure prints and the command that fixes it.
 

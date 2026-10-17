@@ -112,7 +112,7 @@ Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, R
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
 5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. The server installs Vyre and pairs itself.
-6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
+6. On your phone: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet. Open Vyre on the phone and sign in with your Vyre's address, your username and your master password.
 
 ## What it costs
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it.
@@ -475,7 +475,7 @@ Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays 
 Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.
 
 ### Does it work on my phone?
-Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), scan the code your computer shows, and check that both screens show the same words.
+Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), then open Vyre on the phone and sign in with your Vyre's address, your username and your master password.
 
 ### Where does my data live?
 Records, chats, files and the vault stay on your server and your computers. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.

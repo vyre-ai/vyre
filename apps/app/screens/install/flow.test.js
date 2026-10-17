@@ -32,7 +32,6 @@ test("the note says what happened", () => {
 
 test("back from the add-a-server step goes to the space's name; there is no server-less step", () => {
   assert.equal(backOf("cmd"), "create");
-  assert.equal(backOf("scanwords"), "scan");
   assert.equal(backOf("where"), null, "no where step");
   assert.equal(backOf("here"), null, "no on-this-computer step");
   assert.equal(backOf("recovery"), null);
@@ -113,8 +112,6 @@ test("a server that is not yet the person's is never quoted: an unknown code wit
 test("Back from the recovery steps returns to the choice they came from", () => {
   assert.equal(backOf("have"), "name");
   assert.equal(backOf("recover"), "have");
-  assert.equal(backOf("scan"), "name");
-  assert.equal(backOf("scan", { have: true }), "have");
 });
 
 test("a server that belongs to someone else says whose, in our own words, whatever code it came with", () => {
