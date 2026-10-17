@@ -1141,7 +1141,7 @@ export class FlowRunner {
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
     const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
     const load = async () => {
-      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.trigger && ctx.run.trigger.by) }); }
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.started_by || (ctx.run.trigger && ctx.run.trigger.by)) }); }
       catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
     };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
