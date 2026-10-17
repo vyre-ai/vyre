@@ -170,7 +170,7 @@ export default {
 
     // A member's own servers are rows of the hub, hers by owner (a per-person key), reached through the one vyre entry with the token added per call. They are not config handed to a harness. A token she pastes
     // becomes a connection item in her own vault (vault.me.connect.put), and the row names it; older entries kept in her store are moved the first time she lists (legacyRows), then removed.
-    const memberOnly = async (/** @type {any} */ meta) => { const p = await callerMember(meta); if (!p) throw Object.assign(new Error("these are a member's own servers: add one with mcp.mine.add, or ask the Space's owner to add a server with mcp.add"), { code: "denied" }); return p; };
+    const memberOnly = async (/** @type {any} */ meta) => { const p = await callerMember(meta); if (!p) throw Object.assign(new Error("these are a member's own servers: ask the Space's owner to add a server for everyone"), { code: "denied" }); return p; };
     const rowsOf = (/** @type {string} */ person) => hub.rows().filter((/** @type {any} */ r) => r.owner === person);
     const moveLegacy = async (/** @type {string} */ person) => {
       let entries;

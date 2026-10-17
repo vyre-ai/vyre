@@ -19,6 +19,7 @@ const ALLOWED = new Set([
   "lib/publish/flow.js",         // APPROVER_ROLES and the ask's role list: who approves a preview
   "core/vault/shared.js",        // the vault's own sharing roles (owner, admin, member, read-only): access levels of a vault, not Space roles (INVENTORY.md decision 1)
   "apps/app/screens/assistants/create-card-model.ts",   // MAKERS: who may make an assistant
+  "kernel/index.js",             // the trusted base is held to a line cap (kernel/size.test.js) and may not take an import for one comparison: standingFor tests "owner or admin" for the Space's static sender as it already does for the issuer
 ]);
 
 /** @param {string} dir @param {string[]} out */

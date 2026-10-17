@@ -48,7 +48,9 @@ test("seed a session, a teammate in a later session recalls its decision from th
 
   const created = await ask("projects.create", { name: "Harlow Legal", home: cwd });
   assert.ok(!created.error, "projects.create: " + JSON.stringify(created.error));
-  const ref = await ask("work.project.ref", { project: "harlow-legal" });
+  // the project record is made by the work module when it hears project.created, a moment after projects.create answers: wait for it, bounded
+  let ref = await ask("work.project.ref", { project: "harlow-legal" });
+  for (let n = 0; n < 150 && !ref.data; n++) { await new Promise(r => setTimeout(r, 100)); ref = await ask("work.project.ref", { project: "harlow-legal" }); }
   assert.ok(ref.data, "work.project.ref: " + JSON.stringify(ref.error) + " after projects.create answered " + JSON.stringify(created.data));
   const projUrn = ref.data.urn;
   assert.ok(projUrn, "the project record exists");

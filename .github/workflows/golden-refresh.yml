@@ -31,9 +31,16 @@ jobs:
       # The site pages are generated from scripts/gen-site.mjs. Regenerate them here and keep only the pages that really changed: the generator stamps today's date into the sitemap and the dated lines, which is not a change.
       - run: |
           node scripts/gen-site.mjs
-          git checkout -- site/sitemap.xml 2>/dev/null || true
+          # the sitemap is kept only when a page was added or removed; a run that changes nothing but the lastmod stamps puts it back
+          if [ -z "$(git diff -U0 -- site/sitemap.xml | grep '^[+-]' | grep -v '^+++' | grep -v '^---' | grep -v '<lastmod>')" ]; then git checkout -- site/sitemap.xml 2>/dev/null || true; fi
           git diff --name-only -- site | tee site-changed.txt
           tar czf site-gen.tgz -T site-changed.txt || true
+      # the generated copies (scripts/sync-copies.mjs) are written here too; the files that changed travel in copies-gen.tgz
+      - run: |
+          node scripts/sync-copies.mjs
+          node scripts/gen-surface-lists.mjs
+          git diff --name-only -- local apps/app/src/store-core apps/app/src/real/member-routes.generated.js core/computers/image/computerd relay/client | tee copies-changed.txt
+          tar czf copies-gen.tgz -T copies-changed.txt || true
       - run: node kernel/golden/index.js --write
       - run: node kernel/flows/golden/write.mjs
       - uses: actions/upload-artifact@v4
@@ -48,5 +55,8 @@ jobs:
             docs/index.json
             docs/reference
             docs/agents
+            docs/architecture/map.md
             site-changed.txt
             site-gen.tgz
+            copies-changed.txt
+            copies-gen.tgz

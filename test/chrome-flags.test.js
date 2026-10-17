@@ -24,6 +24,7 @@ const EXEMPT = {
   "core/computers/image/computerd/cdpmux.test.js": "a fake CDP endpoint; launches nothing",
   "core/computers/image/entrypoint.sh": "runs inside the agent's container, never on a Mac",
   "core/computers/image/isolation.test.js": "reads the container's launch line; launches nothing",
+  "core/computers/image/agentd.test.js": "asserts that the container's start plan names no debug port and no profile flag; launches nothing",
   "core/computers/image/Dockerfile": "the container image",
   "core/computers/image/computerd/testing/fake-chrome.js": "a stand-in for the container's Chrome; launches nothing real",
 };

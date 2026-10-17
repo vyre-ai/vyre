@@ -137,6 +137,13 @@ test("slack: the same message already waiting at the Gate is that item again, ne
   assert.equal(other.held.id, "itm_7", "other words are another message");
 });
 
+/** The owner's own surface at the Gate. With the kernel on, a call with no person on its chain gets nothing of the Gate (core/gate/requester.js), so the owner's gate calls here carry the owner's token, as the local socket's do in the daemon. */
+async function ownerGate(/** @type {any} */ d, /** @type {string} */ tool, /** @type {any} */ input = {}) {
+  const K = d.kernel;
+  const token = K ? (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token : undefined;
+  return d.registry.call(tool, input, "cli", { proof: { method: "touchid" }, ...(token ? { token } : {}) });
+}
+
 // ---- The whole path, in a real vyred ----------------------------------------------------------
 
 const SLACK_TOOLS = [
@@ -175,10 +182,10 @@ test("slack: words to a held message, nothing sent until the person approves, th
   assert.equal(await def.presence.summary({ id: held.held.id }), "Approve something held at the Gate");
   assert.equal(await def.presence.summary({ id: "no-such-item" }), "Approve something held at the Gate", "an id that does not exist reads the same");
 
-  const out = await capsule("gate.approve", { id: held.held.id });
+  const out = await ownerGate(d, "gate.approve", { id: held.held.id });
   assert.equal(out.data && out.data.state, "sent", JSON.stringify(out));
   assert.deepEqual(lines(), [`call slack_post_message ${JSON.stringify({ channel_id: "C0001GENERAL", text: "the ovens are in" })}`]);
-  assert.notEqual((await capsule("gate.approve", { id: held.held.id })).data?.state, "sent", "an approved item is released once");
+  assert.notEqual((await ownerGate(d, "gate.approve", { id: held.held.id })).data?.state, "sent", "an approved item is released once");
   assert.equal(lines().length, 1);
 });
 
@@ -207,7 +214,7 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
   assert.equal(retried.again, true);
 
   // Approve, and drop the server once the post has reached it, before it answers.
-  const approving = capsule("gate.approve", { id: held.held.id });
+  const approving = ownerGate(d, "gate.approve", { id: held.held.id });
   const end = Date.now() + 5000;
   while (!posts().length && Date.now() < end) await new Promise(r => setTimeout(r, 20));
   assert.equal(posts().length, 1, "the post reached the server");
@@ -216,7 +223,7 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
   const out = (await approving).data;
   assert.equal(out.state, "failed", JSON.stringify(out));
   assert.equal(out.reached, "maybe", "the hub says the post may have reached Slack");
-  const item = (await cli("gate.get", { id: held.held.id })).data;
+  const item = (await ownerGate(d, "gate.get", { id: held.held.id })).data;
   assert.equal(item.state, "held", "the approved message waits at the Gate with its error, never dropped");
   assert.ok(item.error);
 
@@ -230,9 +237,9 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
 
   // It went out: settle it as sent, with what Slack showed. Only a person or the item's own module.
   assert.equal((await d.registry.call("gate.settle", { id: held.held.id, outcome: "sent" }, "module:apps")).error.code, "failed");
-  const settled = await capsule("gate.settle", { id: held.held.id, outcome: "sent", evidence: { ts: sent.ts } });
+  const settled = await ownerGate(d, "gate.settle", { id: held.held.id, outcome: "sent", evidence: { ts: sent.ts } });
   assert.deepEqual(settled.data, { id: held.held.id, state: "sent", settled: true }, JSON.stringify(settled));
-  assert.equal((await cli("gate.held")).data.length, 0);
-  assert.notEqual((await capsule("gate.approve", { id: held.held.id })).data?.state, "sent");
+  assert.equal((await ownerGate(d, "gate.held")).data.length, 0);
+  assert.notEqual((await ownerGate(d, "gate.approve", { id: held.held.id })).data?.state, "sent");
   assert.equal(posts().length, 1);
 });
