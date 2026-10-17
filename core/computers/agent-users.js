@@ -161,6 +161,11 @@ export class AgentUsers {
     });
   }
 
+  /** The computer was remade or is not running: no screen or Chrome exists in it, whatever the rows said. Nothing is asked of the computer. */
+  asleepAll() {
+    for (const r of this.list()) if (r.state !== "asleep") { this.set(r.agent_id, { state: "asleep" }); this.emit("computer.agent-asleep", { agent: r.agent_id, why: "computer not running" }); }
+  }
+
   /** Put to sleep every live agent that has been idle long enough. `held(id)` is true while a person watches or has taken over. @param {(id: string) => boolean} [held] @returns {Promise<string[]>} */
   async sweep(held = () => false) {
     const t = this.now();

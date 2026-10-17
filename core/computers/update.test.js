@@ -9,7 +9,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Pool, MIGRATIONS } from "./pool.js";
 import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
-import { ComputerUpdater, assertOwner, LAYOUT, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, trackTurns, LAYOUT, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import { FakeDriver } from "./driver/fake.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { tempHome } from "../../test/helpers.js";
@@ -341,4 +341,36 @@ test("update: after 30 minutes the automatic run updates anyway and says what it
   assert.equal(c.t, 30 * 60_000);
   assert.deepEqual(r.interrupted, { turns: 2, terminals: 0 });
   assert.match(r.message, /2 agent turn\(s\)/);
+});
+
+// ---- the global "any agent busy" signal ---------------------------------------------------
+
+test("update: turns in progress are counted from the thread events, across threads", () => {
+  /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
+  const on = (/** @type {string} */ p, /** @type {(e: any) => void} */ fn) => { handlers.set(p, fn); return () => { handlers.delete(p); }; };
+  const turns = trackTurns(on);
+  const send = (/** @type {string} */ p, /** @type {string} */ thread) => /** @type {any} */ (handlers.get(p))({ payload: { thread } });
+  assert.equal(turns.size(), 0);
+  send("thread.sent", "a"); send("thread.sent", "b"); send("thread.sent", "a");
+  assert.equal(turns.size(), 2, "two threads, whatever the number of sends");
+  send("thread.finished", "a");
+  assert.equal(turns.size(), 1);
+  send("thread.finished", "b");
+  assert.equal(turns.size(), 0);
+  turns.stop();
+  assert.equal(handlers.size, 0, "the listeners are removed on stop");
+});
+
+// ---- after vyred starts --------------------------------------------------------------------
+
+test("reconcile: when the computer is gone after a restart, every agent reads asleep", async t => {
+  const w = await world(t);
+  await w.users.wake("ads");
+  assert.equal(w.users.row("ads").state, "live");
+  // the container vanished while vyred was down
+  w.driver.containers.clear();
+  await w.pool.reconcile();
+  assert.equal(w.pool.row(SHARED_COMPUTER_ID).container, null);
+  w.users.asleepAll();
+  assert.ok(w.users.list().every(r => r.state === "asleep"));
 });

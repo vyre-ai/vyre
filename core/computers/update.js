@@ -50,6 +50,18 @@ export async function assertOwner(kernel, meta) {
   if (!kernel.owner || canon(String(hop.actor.id)) !== canon(String(kernel.owner))) throw deny();
 }
 
+/**
+ * The global "any agent mid-turn" signal: the switchboard's own events, kept as a set of thread ids. A turn that never reports its end stays in the set, which is why the automatic update caps its wait.
+ * @param {(pattern: string, fn: (e: any) => void) => () => void} on ctx.events.on
+ * @returns {{ size: () => number, stop: () => void }}
+ */
+export function trackTurns(on) {
+  const running = new Set();
+  const idOf = (/** @type {any} */ e) => { const p = e && e.payload; const t = p && (p.thread || p.id); return t ? String(t) : null; };
+  const offs = [on("thread.sent", e => { const t = idOf(e); if (t) running.add(t); }), on("thread.finished", e => { const t = idOf(e); if (t) running.delete(t); })];
+  return { size: () => running.size, stop: () => { for (const off of offs) if (typeof off === "function") off(); } };
+}
+
 export class ComputerUpdater {
   /** @param {Deps} d */
   constructor(d) {

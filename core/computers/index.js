@@ -22,7 +22,7 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
-import { ComputerUpdater, assertOwner, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import { ComputerUpdater, assertOwner, trackTurns, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
@@ -281,6 +281,8 @@ export default {
       // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
       emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
+    // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
+    { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
     const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
@@ -297,11 +299,8 @@ export default {
     const runningVersion = () => { try { return String(JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version); } catch { return "0.0.0"; } };
     const updater = new ComputerUpdater({ db: ctx.store.db, pool, users: agentUsers, version: runningVersion(), log: ctx.log, emit,
       held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent),
-      turns: () => turnsRunning.size });
-    // Agent turns in progress, from the switchboard's own events (a turn that never reports its end is let go by the 30-minute cap).
-    const turnsRunning = new Set();
-    const offTurns = [ctx.events.on("thread.sent", e => { const t = e && e.payload && (e.payload.thread || e.payload.id); if (t) turnsRunning.add(String(t)); }),
-      ctx.events.on("thread.finished", e => { const t = e && e.payload && (e.payload.thread || e.payload.id); if (t) turnsRunning.delete(String(t)); })];
+      turns: () => turnsRunning.size() });
+    const turnsRunning = trackTurns(ctx.events.on);
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
     const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
@@ -547,7 +546,7 @@ export default {
         if (timer) clearTimeout(timer);
         if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
         if (typeof offCreated === "function") offCreated();
-        for (const off of offTurns) if (typeof off === "function") off();
+        turnsRunning.stop();
         keyboard.stop();
         shield.stop();
         fills.stop();
