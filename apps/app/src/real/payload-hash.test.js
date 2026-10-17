@@ -1,5 +1,5 @@
 // @ts-check
-// payload-hash.js has no node:crypto (the Android and web bundles cannot resolve it): its own sha-256 and base64url are held to node's, byte for byte, here.
+// payload-hash.js has no node:crypto (the Android and web bundles cannot resolve it): its sha-256 (@noble/hashes) and its base64url are held to node's, byte for byte, here.
 import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
