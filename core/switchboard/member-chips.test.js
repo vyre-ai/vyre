@@ -14,6 +14,7 @@ function rig(calls) {
     deps: {
       call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
         calls.push(`${tool}:${input && (input.kind || input.id || input.q) || ""}`);
+        if (tool === "vault.me.mention.resolve") return { error: { code: "not_found", message: "not in their own vault" } };
         if (tool === "mentions.search") return { data: [{ kind: "vault", id: "owner-secret", name: "owner-secret" }] };
         return { data: { name: String(input.id), note: "ok", outside: true } };
       },
