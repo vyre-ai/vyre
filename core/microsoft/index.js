@@ -7,7 +7,7 @@
 // Reads, plus two writes that a member makes from their OWN mailbox with their own hands: a message and an event (Graph mails the invite). Those are never held: they are the person's own act (Option A, 17 Oct;
 // ruling 18 Oct). A send an AGENT makes in the member's turn is refused until the Gate holds it for that member (step 2); the owner never approves a member's mail. Nothing runs in the background.
 import { Credentials } from "../../lib/connectors/auth.js";
-import { scopeFor, requireOwner, emailProblem } from "../../lib/member-scope.js";
+import { scopeFor, requireOwner, emailProblem, isOwnAct } from "../../lib/member-scope.js";
 import { MIGRATIONS, check, store, memberEmails, EMAIL } from "./accounts.js";
 import { forMember } from "./member-account.js";
 import { graph, tools as graphTools, GRAPH_SCOPE } from "./graph.js";
@@ -102,15 +102,7 @@ export default {
       run: safe(async (_, meta) => { await requireOwner(ctx.kernel, meta); return checkSetup({ accounts, emails, creds, request: gr.request, derive: forMember, scopes: [GRAPH_SCOPE] }); }),
     });
 
-    /**
-     * Whether this call is the person's own act: the verified chain holds persons only. An agent anywhere in it (the assistant, a teammate, a Flow's agent) makes the act the agent's, and a chain that cannot be read
-     * or holds no person is nobody's own.
-     */
-    const ownAct = async meta => {
-      let hops = [];
-      try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : null; hops = c && Array.isArray(c.hops) ? c.hops : []; } catch { hops = []; }
-      return hops.length > 0 && hops.every(h => h && h.actor && h.actor.kind === "person");
-    };
+    const ownAct = meta => isOwnAct(ctx.kernel, meta);
     const AGENT_REFUSAL = "an agent cannot send or invite from your mailbox yet: it will wait for your own approval once that is open. Write it yourself, or ask for a draft in your own Outlook.";
     const addrs = (v, what, max = 50) => {
       if (!Array.isArray(v) || v.length > max || !v.every(a => typeof a === "string" && EMAIL.test(a) && a.length <= 254)) throw fail(`${what} must be up to ${max} email addresses`);

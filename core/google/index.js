@@ -34,7 +34,7 @@ import { parse, parseRowId, eventRow, mailRow, whenText } from "./find.js";
 import { connector } from "./connect.js";
 import { drive } from "./drive.js";
 import { driveSeam, strip } from "./drive-seam.js";
-import { scopeFor, requireOwner, emailProblem } from "./member-scope.js";
+import { scopeFor, requireOwner, emailProblem, isOwnAct } from "./member-scope.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 const str = { type: "string" };
@@ -55,6 +55,7 @@ const CONTENT = {
   start: "ISO time (an invite)", end: "ISO time? (an invite)", where: "string? (an invite)", description: "string? (an invite)", time_zone: "IANA zone? (an invite)",
 };
 
+const AGENT_REFUSAL = "an agent cannot send or invite from your mailbox yet: it will wait for your own approval once that is open. Write it yourself, or ask for a draft in your own Gmail.";
 const clamp = (v, lo, hi, dflt) => (Number.isInteger(v) ? Math.min(hi, Math.max(lo, v)) : dflt);
 const named = v => (typeof v === "string" && v ? v : undefined);
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -107,8 +108,10 @@ export default {
     // `on_behalf`, checked against the Switchboard (connectors/behalf.js); from anyone else that
     // field is ignored, so neither a model nor a home module can file a send under another thread.
     const hold = async (acct, to, content, input, meta) => {
-      // A send as a member from the firm key waits on rc1-d's ruling on who approves it: until then it is refused, never routed to the owner's Gate.
-      if (acct.member) throw fail("sending from a firm-key mailbox is not open yet: draft it and send it from Gmail", "denied");
+      // A send as a member from the firm key (ruling, 18 Oct 2026, from the owner's Option A of 17 Oct): the member's OWN send from their own mailbox is never held (see sendAsMember); a send their AGENT makes
+      // waits at the member's own Gate, showing the from-address, unless a standing permission they gave covers it, and the owner never approves a member's mail. That Gate does not hold items per person yet,
+      // so until it does the agent's send is refused here in words, never routed to the owner's Gate.
+      if (acct.member) throw fail(AGENT_REFUSAL, "denied");
       const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
       const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.name}`, to, content,
@@ -365,6 +368,7 @@ export default {
           ctx.events.emit("google.scheduled", { account: acct.name, op: "create" });
           return { event };
         }
+        if (acct.member && await isOwnAct(ctx.kernel, meta)) { const event = await cal.write(acct, { op: "create", fields, attendees: to, sendUpdates: "all" }); ctx.events.emit("google.sent", { account: acct.name, what: "invite" }); return { event }; }
         const id = await hold(acct, to, heldEvent("create", input), input, meta);
         return { held: id, message: `Held at the Gate: the invite goes to ${to.join(", ")} from ${acct.email} once the user approves it in Vyre. Nothing was created yet.` };
       }),
@@ -386,6 +390,7 @@ export default {
           ctx.events.emit("google.scheduled", { account: acct.name, op: "update" });
           return { event };
         }
+        if (acct.member && await isOwnAct(ctx.kernel, meta)) { const event = await cal.write(acct, { op: "update", event_id: input.id, fields, attendees: to, sendUpdates: "all" }); ctx.events.emit("google.sent", { account: acct.name, what: "invite" }); return { event }; }
         const id = await hold(acct, to, heldEvent("update", input), input, meta);
         return { held: id, message: `Held at the Gate: the updated invite goes to ${to.join(", ")} from ${acct.email} once the user approves it in Vyre. Nothing was changed yet.` };
       }),
@@ -479,6 +484,8 @@ export default {
       run: safe(async (input, meta) => {
         const acct = forWrite(visible(), named(input.account));
         const { to, c } = mailContent(input);
+        // a member's own send from their own mailbox goes out at once; it is their own act, so it is not held
+        if (acct.member && await isOwnAct(ctx.kernel, meta)) { const out = await gm.send(acct, to, c); ctx.events.emit("google.sent", { account: acct.name, what: "email" }); return out; }
         const id = await hold(acct, to, c, input, meta);
         return { held: id, message: `Held at the Gate: "${c.subject}" to ${to.join(", ")} from ${acct.email} goes out once the user approves it in Vyre.` };
       }),
