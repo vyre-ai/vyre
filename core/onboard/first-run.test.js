@@ -366,6 +366,18 @@ test("a person poll names the server's space in the directory, once, on the serv
   assert.equal(calls.filter((c) => c.name === "spaces.publish-server-space").length, 1, "published once for this install line");
 });
 
+test("a person poll on the daemon that redeemed its own install line names its own space (local) and says online", async () => {
+  const status = { issued: true, owned: true, locked: true, local: true, space: "spc_aaaaaaaaaa", server: null, expires: Math.floor(Date.now() / 1000) + 1800 };
+  const { tools, calls } = harness({ status });
+  const opened = await tools.get("onboard.space.open").run({ kind: "linux", name: "juniper" }, { caller: "cli" });
+  const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
+  assert.equal(polled.online, true, JSON.stringify(polled));
+  const published = calls.filter((c) => c.name === "spaces.publish-server-space");
+  assert.equal(published.length, 1);
+  assert.deepEqual(published[0].input, { local: true, name: "juniper" });
+  assert.equal(calls.some((c) => c.name === "spaces.servers"), false);
+});
+
 test("a person poll that is refused the name does not say online and says what to do; an agent's poll publishes nothing", async () => {
   const status = { issued: true, owned: true, locked: true, space: "spc_aaaaaaaaaa", server: "srv_mine", expires: Math.floor(Date.now() / 1000) + 1800 };
   const refused = harness({ status, publish: () => { throw Object.assign(new Error("someone else has that name"), { code: "taken" }); } });

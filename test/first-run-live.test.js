@@ -56,16 +56,13 @@ test("creating a space on a live daemon returns the space id and makes that spac
   assert.equal(status.data.space, d.kernel.id.space);
   const polled = await call("onboard.space.poll", { id: opened.data.id });
   assert.ok(!polled.error, JSON.stringify(polled.error));
-  // This test redeems the install line on the daemon itself, so no pairing of a server was started for it: the space and its vault are made, and the name is NOT published (the directory is told only the server this
-  // install line paired, never one guessed), so the poll says the server has not finished connecting instead of "online".
-  assert.equal(polled.data.online, false);
-  assert.equal(polled.data.failed, true);
-  assert.equal(polled.data.code, "pair");
+  assert.equal(polled.data.online, true);
+  assert.equal(polled.data.space, status.data.space);
   const vault = await call("vault.space.status", { space: status.data.space });
   assert.ok(!vault.error, JSON.stringify(vault.error));
   assert.equal(vault.data.exists, true);
   assert.equal(vault.data.generation, 1);
   const again = await call("onboard.space.poll", { id: opened.data.id });
   assert.ok(!again.error, JSON.stringify(again.error));
-  assert.equal(again.data.online, false, "still no server paired by this line");
+  assert.equal(again.data.online, true);
 });

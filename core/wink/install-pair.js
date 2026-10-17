@@ -194,6 +194,8 @@ export function registerInstallPair(o) {
       const row = o.meta.get("install_client");
       const ownerHere = o.meta.get("owner");
       let lockedNow = Boolean(o.meta.get("install_setup_locked"));
+      // this daemon redeemed the line itself (the line ran on this computer, which is therefore the server): the caller names its own space here, not a paired server's
+      const redeemedHere = lockedNow && Boolean(o.meta.get("owner"));
       // A computer that made an install line is not the server the line is for. Its own owner record says nothing about that server: only a redeem here (the line ran on this computer) or the server's own answer does.
       const owner = row && !lockedNow ? null : ownerHere;
       const person = owner && owner.identity ? String(owner.identity) : (row && row.person) || null;
@@ -212,7 +214,7 @@ export function registerInstallPair(o) {
       // The server THIS line paired, by the pairing this line started (not the newest server): what a caller names when it acts on that server.
       const link = o.meta.get("install_pairing");
       const server = row && link && typeof link.id === "string" && typeof o.serverOf === "function" ? o.serverOf(link.id) : null;
-      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null, server };
+      return { issued: Boolean(row && row.exp * 1000 > now()), expires: row ? row.exp : null, os: row ? row.os : null, owned, person, locked: lockedNow, space: space || null, server, local: redeemedHere && !server };
     },
   });
 
