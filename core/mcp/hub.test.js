@@ -491,3 +491,20 @@ test("hub pin: a server stored before pinning is held when its live text differs
   assert.equal(moved.cache, null);
   await hub.stop();
 });
+
+test("hub: a refused sign-in is reported once per failure, for an OAuth row with a vault item only", async () => {
+  const asked = [];
+  const { hub } = fakeHub({ needsReconnect: async item => { asked.push(item); } });
+  await hub.add({ name: "signed", transport: "http", url: URL1, auth: { type: "oauth", item: "signed-auth" } });
+  await hub.add({ name: "keyed", transport: "http", url: "https://mcp.other.example/mcp", auth: { type: "bearer", item: "keyed-token" } });
+  const tick = () => new Promise(r => setImmediate(r));
+  hub.markReconnect("signed", new McpError("unauthorized", "401"));
+  await tick();
+  assert.deepEqual(asked, ["signed-auth"]);
+  hub.markReconnect("signed", new McpError("rpc", "bad request"));
+  hub.markReconnect("keyed", new McpError("unauthorized", "401"));
+  hub.markReconnect("gone", new McpError("unauthorized", "401"));
+  await tick();
+  assert.deepEqual(asked, ["signed-auth"], "another failure, a bearer row and a row that is not there are not reported");
+  await hub.stop();
+});

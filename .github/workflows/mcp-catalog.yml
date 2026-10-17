@@ -1,4 +1,4 @@
-# The app catalog is a reviewed weekly snapshot (core/mcp/catalog.snapshot.json). Once a week this pulls the official MCP registry and the Claude plugin repos and, when the entries changed, opens a pull
+# The app catalog is a reviewed weekly snapshot (lib/connector-presets/catalog.snapshot.json). Once a week this pulls the official MCP registry and the Claude plugin repos and, when the entries changed, opens a pull
 # request with the diff: a person reads every new entry before it can appear in the app. It never pushes to a protected branch and never merges. Run it by hand with workflow_dispatch.
 name: mcp-catalog
 on:
@@ -34,12 +34,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- core/mcp/catalog.snapshot.json; then echo "the catalog did not change"; exit 0; fi
+          if git diff --quiet -- lib/connector-presets/catalog.snapshot.json; then echo "the catalog did not change"; exit 0; fi
           branch="catalog/$(date -u +%Y-%m-%d)"
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
           git checkout -b "$branch"
-          git add core/mcp/catalog.snapshot.json
+          git add lib/connector-presets/catalog.snapshot.json
           git commit -m "chore(catalog): the weekly app catalog snapshot"
           git push origin "$branch"
           gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \

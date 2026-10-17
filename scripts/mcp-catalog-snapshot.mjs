@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Pull the official MCP registry and the Claude plugin repos into the committed catalog snapshot (core/mcp/catalog.snapshot.json). The weekly workflow (.github/workflows/mcp-catalog.yml) runs this and opens a pull
+// Pull the official MCP registry and the Claude plugin repos into the committed catalog snapshot (lib/connector-presets/catalog.snapshot.json). The weekly workflow (.github/workflows/mcp-catalog.yml) runs this and opens a pull
 // request with the diff, so a person reads every new entry before it can appear in the app. Run by hand the same way:
-//   node scripts/mcp-catalog-snapshot.mjs --out core/mcp/catalog.snapshot.json --diff-md /tmp/diff.md --plugins claude-plugins-official=/path/to/checkout@<sha> --plugins knowledge-work-plugins=/path@<sha>
+//   node scripts/mcp-catalog-snapshot.mjs --out lib/connector-presets/catalog.snapshot.json --diff-md /tmp/diff.md --plugins claude-plugins-official=/path/to/checkout@<sha> --plugins knowledge-work-plugins=/path@<sha>
 // The snapshot is only rewritten when its entries changed (the date does not count), and a pull that finds under half of the entries it had is refused unless --force names it.
 import fs from "node:fs";
 import path from "node:path";
@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** @param {string[]} argv */
 function args(argv) {
   /** @type {{ out: string, diffMd: string, registry: string, plugins: { repo: string, dir: string, sha: string }[], force: boolean, today: string }} */
-  const o = { out: path.join(ROOT, "core", "mcp", "catalog.snapshot.json"), diffMd: "", registry: REGISTRY, plugins: [], force: false, today: new Date().toISOString().slice(0, 10) };
+  const o = { out: path.join(ROOT, "lib", "connector-presets", "catalog.snapshot.json"), diffMd: "", registry: REGISTRY, plugins: [], force: false, today: new Date().toISOString().slice(0, 10) };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--out") o.out = path.resolve(argv[++i]);

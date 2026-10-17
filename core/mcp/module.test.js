@@ -434,7 +434,7 @@ test("mcp.catalog: a person searches the reviewed catalog and sees which entries
   const all = (await v.cli("mcp.catalog", {})).data;
   assert.equal(all.total, 2);
   assert.equal(all.generated, "2026-10-19");
-  assert.deepEqual(all.entries.map(e => [e.id, e.connected, e.oneClick]), [["com.northwind/notes", false, true], ["com.northwind/orders", false, false]]);
+  assert.deepEqual(all.entries.map(e => [e.id, e.connected, e.oneClick]), [["com.northwind/notes", false, false], ["com.northwind/orders", false, false]]);
   assert.equal((await v.cli("mcp.add", { name: "notes", transport: "http", url: http.url })).data.test.ok, true);
   assert.deepEqual((await v.cli("mcp.catalog", { connected: true })).data.entries.map(e => e.id), ["com.northwind/notes"]);
   assert.deepEqual((await v.cli("mcp.catalog", { query: "orders" })).data.entries.map(e => e.id), ["com.northwind/orders"]);

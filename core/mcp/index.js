@@ -25,8 +25,8 @@ import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
-import fs from "node:fs";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
+import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
 const str = { type: "string" };
@@ -59,6 +59,8 @@ export default {
       if (r.error) ctx.log(`could not offer the Gate sender mcp:${name}: ${r.error.message}`);
     };
 
+    const curated = catalogFrom(ctx.config);
+    const fromSnapshot = snapshotCatalog(loadSnapshot(ctx.config), curated);
     const hub = new Hub({
       db: ctx.store.db, creds, connect,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
@@ -84,7 +86,10 @@ export default {
       },
       idle: Number.isInteger(opts.idle) ? opts.idle : undefined,
       httpHosts: Array.isArray(opts.httpHosts) ? opts.httpHosts.map(String) : [],
-      boundFor: catalogFrom(ctx.config).boundFor,
+      // A credential named after a curated vendor, or after a preset made from the catalog snapshot, goes only to that preset's host.
+      boundFor: item => curated.boundFor(item) || fromSnapshot.boundFor(item),
+      // A sign-in the vendor refused after a fresh token: the connectors module marks the connection so the person is asked to connect again.
+      needsReconnect: item => ctx.call("connectors.needs-reconnect", { item }),
       lineage: async thread => {
         const r = await ctx.call("threads.lineage", { thread });
         const d = r && r.data;
@@ -126,22 +131,16 @@ export default {
     const MINE = [...PERSON_SURFACES, "device", "web"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
     const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input, { relay: true })));
     // The app catalog: a reviewed weekly snapshot (scripts/mcp-catalog-snapshot.mjs opens the pull request, a person merges it). Read from the file the build carries; none is an empty catalog.
-    let snapshot = /** @type {any} */ (null);
-    const catalog = () => {
-      if (snapshot) return snapshot;
-      try { snapshot = JSON.parse(fs.readFileSync(typeof opts.catalog === "string" ? opts.catalog : new URL("./catalog.snapshot.json", import.meta.url), "utf8")); } catch { snapshot = { entries: [] }; }
-      return snapshot;
-    };
+    const snapshot = loadSnapshot(ctx.config);
     ctx.tool("mcp.catalog", {
       effect: "read",
       description: "Search the reviewed app catalog of hosted MCP servers by words or category; each entry says its sign-in kind and whether you are connected.",
       input: obj({ query: str, category: str, connected: { type: "boolean" }, verified: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } }),
       run: async (input, meta) => {
-        const snap = catalog();
         // "connected" means a server this caller may use (the same scope as mcp.servers): a member does not learn which apps the owner connected beyond what her sessions can reach.
         const w = who(meta), memo = {}, connectedKeys = new Set();
         for (const r of hub.rows()) if (r.url && await hub.inScope(r, w, memo)) connectedKeys.add(urlKey(r.url));
-        return { ...searchCatalog(Array.isArray(snap.entries) ? snap.entries : [], input || {}, connectedKeys), generated: snap.generated || null };
+        return { ...searchCatalog(snapshot.entries, input || {}, connectedKeys), generated: snapshot.generated };
       },
     });
 

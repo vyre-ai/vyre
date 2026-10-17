@@ -790,6 +790,7 @@ export class Hub {
       return this.cap(this.creds.scrubAll(result));
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
+      this.markReconnect(name, e);
       throw this.scrubbed(e, { reached: asked && !NOT_REACHED.has(code) ? "maybe" : "no" });
     } finally {
       s.inflight--;
@@ -857,6 +858,7 @@ export class Hub {
       return client;
     } catch (e) {
       const err = this.scrubbed(e);
+      this.markReconnect(name, e);
       s.state = "failed";
       s.error = cut(this.lastLine(s.lastClient) || err.message, 300);
       if (budget) s.crashes.push(this.now());
@@ -864,6 +866,18 @@ export class Hub {
       this.deps.log?.(`${name} failed to start: ${cut(err.message, 200)}`);
       throw err;
     }
+  }
+
+  /**
+   * A sign-in the vendor refused even after the one retry with a fresh token (the retry is in start and run): the connection that made it is marked, so the person is asked to connect again.
+   * Only an OAuth row with a vault item can be one. The report never blocks or changes the error the caller gets.
+   * @param {string} name @param {any} e
+   */
+  markReconnect(name, e) {
+    if (e?.code !== "unauthorized" || !this.deps.needsReconnect) return;
+    const r = this.row(name);
+    if (!r || !r.auth || r.auth.type !== "oauth" || !r.auth.item) return;
+    Promise.resolve().then(() => this.deps.needsReconnect(r.auth.item)).catch(() => {});
   }
 
   /** Connect with the credential built for this server only: env for its child, a header per request. */

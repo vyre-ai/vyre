@@ -73,6 +73,8 @@ Vyre keeps a fingerprint of the first tool list a server gives. When you add a s
 
 `mcp.catalog` searches a reviewed list of hosted MCP servers by words or category, and says for each whether you are already connected. The list is a weekly snapshot of the official MCP registry and the Claude plugin repositories: a person reads every new entry in a pull request before it appears. An entry marked verified was published under its vendor's own domain. Anything else is listed as inferred and does not get a one-click connect. The catalog's connected mark covers only the servers your own sessions may use.
 
+An entry the vendor published on its own domain, and that signs in with OAuth, can be connected from the catalog: Vyre registers itself with the vendor's server as it signs you in, so there is no app of your own to make. The sign-in can only go to the server's own address; a vendor that signs in somewhere else is refused with the reason, and you can add it by its address instead. The sign-in is kept as one vault item that names the server, the catalog entry and who connected it. If the vendor later stops accepting it, the connection is marked, and its entry in `connectors.list` says it needs to be connected again.
+
 This review applies to the servers in the Space's hub. The servers a member brings for her own account live in her own vault and run on her side, so they are not part of it.
 
 ## Hold and approve a send
