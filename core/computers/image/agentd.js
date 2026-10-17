@@ -193,19 +193,13 @@ export function parseTerminals(text) {
 const EXEC_FORBIDDEN = /^(PATH|HOME|USER|LOGNAME|SHELL|DISPLAY|XAUTHORITY|IFS|ENV|BASH_ENV|LD_.*|DYLD_.*|PYTHON.*|NODE_OPTIONS|PERL.*|RUBY.*)$/;
 export const EXEC_LIMITS = Object.freeze({ argc: 64, argvBytes: 4096, stdinBytes: 8192, envCount: 16, envValueBytes: 1024, timeoutMs: 25_000, defaultTimeoutMs: 20_000, stdoutBytes: 16 * 1024, stderrBytes: 8 * 1024 });
 
-/**
- * Run a command as the agent: its uid, no groups, no capabilities, no new privileges, the usual memory and process limits, a clean environment (HOME, USER, PATH, LANG, the agent's display and cookie, and
- * the named variables the caller asked for, none of the forbidden names), in a folder under the agent's own home. Nothing is passed through a shell.
- * @param {{ user: string, uid: number, display: number }} u
- * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number }} [lim]
- * @returns {string[]}
- */
-export function planExec(u, req, lim = {}) {
+/** Check a request to run a command as the agent (shared by the one-shot exec and the streaming run): the argv, the folder and the extra variables, exactly as planExec and the run helper use them. @param {{ user: string, uid: number, display: number }} u @param {{ argv?: any, cwd?: any, env?: any }} req @param {number} [maxArgvBytes] @returns {{ argv: string[], cwd: string, env: Record<string, string> }} */
+export function validateRun(u, req, maxArgvBytes = EXEC_LIMITS.argvBytes) {
   check(u);
   const argv = req.argv;
   if (!Array.isArray(argv) || argv.length < 1 || argv.length > EXEC_LIMITS.argc || argv.some(x => typeof x !== "string" || x.includes("\0"))) throw new Error("a command is 1 to 64 text arguments");
   if (!/^\/[A-Za-z0-9_.\/+-]{1,200}$/.test(argv[0]) || argv[0].includes("..")) throw new Error("the command must be an absolute path");
-  if (argv.reduce((n, x) => n + Buffer.byteLength(x) + 1, 0) > EXEC_LIMITS.argvBytes) throw new Error("the command is too long");
+  if (argv.reduce((n, x) => n + Buffer.byteLength(x) + 1, 0) > maxArgvBytes) throw new Error("the command is too long");
   const home = homeOf(u.user);
   const cwd = req.cwd === undefined || req.cwd === null ? home : String(req.cwd);
   if (!/^\/[A-Za-z0-9_.\/ +@=-]{1,300}$/.test(cwd) || cwd.split("/").includes("..") || !(cwd === home || cwd.startsWith(home + "/"))) throw new Error("the folder must be inside the agent's home");
@@ -217,7 +211,22 @@ export function planExec(u, req, lim = {}) {
     if (typeof v !== "string" || v.includes("\0") || Buffer.byteLength(v) > EXEC_LIMITS.envValueBytes) throw new Error(`the value of ${k} is not usable`);
     env[k] = v;
   }
+  return { argv, cwd, env };
+}
+
+/**
+ * Run a command as the agent: its uid, no groups, no capabilities, no new privileges, the usual memory and process limits, a clean environment (HOME, USER, PATH, LANG, the agent's display and cookie, and
+ * the named variables the caller asked for, none of the forbidden names), in a folder under the agent's own home. Nothing is passed through a shell.
+ * @param {{ user: string, uid: number, display: number }} u
+ * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number }} [lim]
+ * @returns {string[]}
+ */
+export function planExec(u, req, lim = {}) {
+  const { argv, cwd, env } = validateRun(u, req);
   const b = browserOf(u);
   // the fixed variables are laid over the caller's, never the reverse
   return [...asAgent(u, lim, { ...env, DISPLAY: `:${u.display}`, XAUTHORITY: b.xauth }), "/usr/bin/env", "-C", cwd, ...argv];
 }
+
+/** A streaming run (a harness session) may carry a longer command line than a one-shot exec. */
+export const RUN_ARGV_BYTES = 10_000;

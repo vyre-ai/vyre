@@ -44,6 +44,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
+ *   runTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, spec: { argv: string[], cwd?: string, env?: Record<string, string> }): Promise<void>,
  *   exec?(u: { agentId: string, user: string, uid: number, display: number }, req: { argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }): Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
@@ -125,6 +126,15 @@ export class AgentUsers {
     if (!r || r.state !== "live") throw new Error(`${id}'s Chrome is not up`);
     if (typeof this.ctl.cdpTicket !== "function") throw new Error("this computer cannot reach an agent's Chrome");
     await this.ctl.cdpTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
+    this.touchNow(id);
+  }
+
+  /** Register a one-use ticket with the relay to run one command as this agent and stream it; the agent's place is made if needed, and the screen need not be up. @param {string} id @param {string} ticket @param {{ argv: string[], cwd?: string, env?: Record<string, string> }} spec */
+  async runTicket(id, ticket, spec) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.runTicket !== "function") throw new Error("this computer cannot run a session as an agent");
+    await this.ctl.runTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket, spec);
     this.touchNow(id);
   }
 

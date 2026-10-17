@@ -31,6 +31,7 @@
       {"name": "computers.update", "effect": "write", "reach": "person"},
       {"name": "computers.update.status", "effect": "read", "reach": "person"},
       {"name": "computers.endpoint", "reach": "modules"},
+      {"name": "computers.run.open", "reach": "modules"},
       {"name": "computers.may-act", "reach": "modules"},
       {"name": "computers.helper", "reach": "modules"},
       {"name": "computers.shield", "reach": "modules"},

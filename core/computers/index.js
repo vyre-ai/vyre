@@ -25,6 +25,7 @@ import { registerAgentTools } from "./agent-tools.js";
 import { ComputerUpdater, assertOwner, trackTurns, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
+import { makeAgentRun } from "./agent-run.js";
 import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -460,6 +461,18 @@ export default {
         const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
         return { helper: ep.helper };
       }, { internal: true });
+
+    const agentRun = makeAgentRun({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place,
+      ticket: (agent, hello, spec) => agentUsers.runTicket(agent, hello, spec),
+      where: async () => {
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        // the relay lets in vyred's address only: have the computer pin this vyred's address first
+        await pool.pin(SHARED_COMPUTER_ID);
+        return { host: h.host, port: RELAY_PORT };
+      } });
+    tool("computers.run.open", "Start a command as an agent's own Linux user inside its computer, as a stream: answers { host, port, hello } for agentd's relay. Connect, send hello, then use frames (stdin down; stdout, stderr and exit up). For a harness session; the caller is the agent's own session, or needs the right to edit the agent.",
+      obj({ agent: str, argv: { type: "array", items: str }, cwd: str, env: { type: "object" } }, ["argv"]), async (i, { caller }) => agentRun(i, caller), { internal: true });
 
     tool("computers.may-act", "May the agent's hands act now? Refused while paused or taken over, with who has the keyboard; while shielded, refused for reads too.",
       obj({ agent: str, tool: str, read: { type: "boolean" } }), async (i, { caller }) => {
