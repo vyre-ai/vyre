@@ -55,15 +55,19 @@ test("no MCP tool result contains a vault value, and a device card names the dev
     assert.equal(r.error && r.error.code, "denied", name);
   }
   const facts = { url: "https://juniper.vyre.run", password: "correct horse battery", name: "Desk", type: "windows", fingerprint: "ab12cd34ef56" };
-  const held = await d.registry.call("onboard.computer.add", facts, "mcp");
-  assert.equal(held.error && held.error.code, "held_for_approval", JSON.stringify(held));
-  assert.match(held.error.line, /Desk/);
-  assert.match(held.error.line, /windows/);
-  assert.match(held.error.line, /ab12cd34ef56/);
-  assert.match(held.error.line, /assistant/i);
-  assert.doesNotMatch(held.error.line, /horse/);
+  // onboard.computer.add takes the master password, so a model never reaches it: refused, not held for a card, and the password never comes back.
+  const refused = await d.registry.call("onboard.computer.add", facts, "mcp");
+  assert.equal(refused.error && refused.error.code, "denied", JSON.stringify(refused));
+  assert.equal(JSON.stringify(refused).includes("horse"), false);
   const bare = await d.registry.call("onboard.computer.add", { url: "https://juniper.vyre.run", password: "correct horse battery" }, "mcp");
-  assert.equal(bare.error && bare.error.code, "bad_input");
+  assert.equal(bare.error && bare.error.code, "denied");
+  // the words a card for adding a computer uses still name the device and never the password
+  const cardLine = lineOfOp("onboard.computer.add", facts, "An assistant (mcp)");
+  assert.match(cardLine, /Desk/);
+  assert.match(cardLine, /windows/);
+  assert.match(cardLine, /ab12cd34ef56/);
+  assert.match(cardLine, /assistant/i);
+  assert.doesNotMatch(cardLine, /horse/);
   const line = lineOfOp("onboard.windows", { name: "Desk", type: "windows", fingerprint: "ab12cd34ef56", label: "Desk" }, "An assistant (mcp)");
   assert.match(line, /An assistant \(mcp\)/);
   assert.match(line, /Desk/);

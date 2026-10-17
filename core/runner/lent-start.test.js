@@ -84,3 +84,32 @@ test("a late continuation of an earlier take-over does not clear what a later ta
   await new Promise(r => setTimeout(r, 50));
   assert.deepEqual(w.home.book.pendingResume().map(r => r.session), ["s1"], "take-over 2 is still owed its own");
 });
+
+test("a stale stop from an earlier stint does not forget the row of the stint now running (the chat went to the server and came back)", async t => {
+  const w = world(t);
+  const c = chain("per_a", "dev_1");
+  await w.home.start(c, { session: "s1", lease: "L1" });
+  assert.equal((await w.home.release(c, { session: "s1", epoch: 1, reason: "you" })).moved, true);
+  w.home.book.bringBack("s1", "per_a");
+  await w.home.start(c, { session: "s1", lease: "L2" });
+  const now = w.home.book.get("s1");
+  assert.deepEqual([now.where, now.epoch], ["mac", 3]);
+  // the first stint's process was slow to end: its stop arrives now, naming epoch 1
+  assert.deepEqual(await w.home.stop(c, { session: "s1", epoch: 1 }), { stopped: false, stale: true });
+  assert.equal(w.home.book.get("s1")?.where, "mac", "the row of the running stint is still there");
+  assert.ok(w.home.rows().some(r => r.session === "s1"), "and so is its lent entry");
+  // the running stint's own stop still ends it
+  assert.deepEqual(await w.home.stop(c, { session: "s1", epoch: 3 }), { stopped: true });
+  assert.equal(w.home.book.get("s1"), null);
+});
+
+test("a started session is not forgotten when its thirty-second reservation runs out", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const w = world(t);
+  const c = chain("per_a", "dev_1");
+  w.tick(5000); await w.home.beat(c, { sessions: [], well: true });
+  assert.equal(w.home.placeNew({ session: "s1", person: "per_a" }).where, "mac", "the place is reserved for the new chat");
+  await w.home.start(c, { session: "s1", lease: "L1" });   // the computer starts it
+  t.mock.timers.tick(31_000);
+  assert.equal(w.home.book.get("s1")?.where, "mac", "a slow turn keeps its row: the reservation only guards a place nobody started");
+});

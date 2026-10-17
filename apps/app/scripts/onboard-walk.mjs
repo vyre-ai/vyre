@@ -131,6 +131,11 @@ await walk("new person creates a space and waits", async (t) => {
   await t.at("Where should it run?");
   if (await t.enabled("Show the command")) throw new Error("the command waits until a place is chosen");
   await t.pick("Linux server");
+  await t.type("Space name", "x");
+  await t.sees("Name your space");
+  if (await t.enabled("Show the command")) throw new Error("the command waits until the space has a valid name");
+  await t.type("Space name", "alex-studio");
+  await t.sees("alex-studio.vyre.run");
   await t.press("Show the command");
   await t.at("Waiting for it to come online");
   await t.sees("curl -fsSL vyre.run/i | sh");
@@ -138,7 +143,7 @@ await walk("new person creates a space and waits", async (t) => {
   await t.absent("Face ID");
 });
 
-await walk("ready can add a computer and a phone", async (t) => {
+await walk("ready can add a computer (a phone signs in with the one sign-in line, so there is no phone step)", async (t) => {
   await identity(t);
   await t.pick("Join a space");
   await t.type("Invite link", "https://vyre.run/i/abcdefgh");
@@ -152,10 +157,7 @@ await walk("ready can add a computer and a phone", async (t) => {
   await t.type("Master password", PASS);
   await t.press("Add this computer");
   await t.at("You're in");
-  await t.pick("Add a phone");
-  await t.at("Add your phone");
-  await t.press("Add your phone");
-  await t.sees("https://vyre.run/i/samplephone");
+  await t.absent("Add a phone");
   await t.absent("Face ID");
 });
 

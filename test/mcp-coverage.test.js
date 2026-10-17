@@ -21,7 +21,6 @@ const EXPECTED = Object.freeze([
   "onboard.machine",
   "onboard.member.link",
   "onboard.person.lookup",
-  "onboard.phone.add",
   "onboard.space.join",
   "onboard.space.open",
   "onboard.space.poll",

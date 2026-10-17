@@ -6,7 +6,10 @@
 //   identity.signin.ack        your own act ("It was me"): the device stops being listed for you.
 // Everything is in memory, like the sessions: a restart or the one-hour expiry ends the sessions, so the card only ever shows live ones, and a card that outlives its session answers "already signed out".
 import { loginService } from "../../lib/login-door.js";
+import { isPerson, isOwnerDevice, isDevice, onTailnet, isSpaceMember } from "../../lib/caller.js";
 
+/** The owner at this computer: lib/caller.js says the caller is a person (never a model, an agent or a thread label), and it is not a paired device, a tailnet node or a space member, which are persons reached over a network. */
+const onThisComputer = (/** @type {any} */ meta) => isPerson(meta) && !isOwnerDevice(meta) && !isDevice(meta) && !onTailnet(meta) && !isSpaceMember(meta);
 const DEVICE = /^[A-Za-z0-9_-]{8,64}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -28,7 +31,13 @@ export function registerSignins(ctx, o) {
 
   /** The person this call is, from the kernel's chain for it: exactly one hop that is a person. Never a label, never an input. */
   const personOf = async (/** @type {any} */ meta) => {
-    if (!ctx.kernel || typeof ctx.kernel.chain !== "function") { const f = o.fallbackPerson && o.fallbackPerson(); if (f) return f; throw refuse("This is for a signed-in person.", "person_required"); }
+    if (!ctx.kernel || typeof ctx.kernel.chain !== "function") {
+      // development builds only (production has the kernel): the home's person answers for the owner's own local surfaces, exactly these labels and nothing a network caller can carry
+      const local = Boolean(meta) && typeof meta === "object" && meta.person === undefined && onThisComputer(meta);
+      const f = local && o.fallbackPerson && o.fallbackPerson();
+      if (f) return f;
+      throw refuse("This is for a signed-in person.", "person_required");
+    }
     const chain = await ctx.kernel.chain(meta).catch(() => null);
     const hop = chain && Array.isArray(chain.hops) && chain.hops.length === 1 ? chain.hops[0] : null;
     if (!hop || !hop.actor || hop.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(hop.actor.id))) throw refuse("This is for a signed-in person.", "person_required");
@@ -47,7 +56,7 @@ export function registerSignins(ctx, o) {
     },
     revoke: async (/** @type {string} */ person, /** @type {string} */ device) => {
       const svc = service();
-      if (!svc) throw refuse("No sign-in door is open on this home.", "unavailable");
+      if (!svc) throw refuse("No sign-in door is open on this home. Ask the owner to turn on sign-in from other devices.", "unavailable");
       const r = svc.revokeDeviceOfPerson(person, device);
       vouched.delete(`${person}:${device}`);
       say("signin.revoked", device);
@@ -82,9 +91,9 @@ export function registerSignins(ctx, o) {
   // chain's one person hop that the door authenticated, never an input; the server's own Space only, like the skill library's.
   const memberPerson = (/** @type {any} */ extra) => {
     if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
-    if (ctx.kernel && ctx.kernel.space && String(extra.in_space) !== String(ctx.kernel.space)) throw refuse("This is for people of this server's own team.", "not_allowed");
+    if (ctx.kernel && ctx.kernel.space && String(extra.in_space) !== String(ctx.kernel.space)) throw refuse("This is for people of this server's own team. Ask the owner of this server to invite you.", "not_allowed");
     const h = extra.in_space_chain.hops && extra.in_space_chain.hops.length === 1 ? extra.in_space_chain.hops[0] : null;
-    if (!h || !h.actor || h.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(h.actor.id))) throw refuse("not found", "not_found");
+    if (!h || !h.actor || h.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(h.actor.id))) throw refuse("not found. Ask the owner of this server to add you to its team.", "not_found");
     return String(h.actor.id);
   };
   const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);

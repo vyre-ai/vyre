@@ -22,7 +22,7 @@ const HANDS_VALUE = new Set([
 ]);
 /** Adding a device. The schema must name name, type and fingerprint so the card can show them. */
 const DEVICE_ADD = new Set([
-  "onboard.computer.add", "onboard.phone.add", "onboard.windows",
+  "onboard.computer.add", "onboard.windows",
   "spaces.devices.enrol", "spaces.devices.restore", "wink.phone.open", "wink.pair.server", "devices.signin",
 ]);
 /** @param {string} caller */

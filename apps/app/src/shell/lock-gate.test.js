@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_LOCK_MINUTES, LOCK_CHOICES, UNREACHABLE, applyCover, createIdleLock, lockMinutes, lockView, lockWanted, statusFailure, unlockInput, unlockRefusal } from "./lock-gate.js";
+import { coverExempt, DEFAULT_LOCK_MINUTES, LOCK_CHOICES, UNREACHABLE, applyCover, createIdleLock, lockMinutes, lockView, lockWanted, statusFailure, unlockInput, unlockRefusal } from "./lock-gate.js";
 
 /** A clock and a timer a test moves by hand. */
 function clock() {
@@ -146,4 +146,11 @@ test("covering the app makes everything under it inert and hidden, and uncoverin
   applyCover(el, false);
   assert.equal(attrs.size, 0);
   applyCover(null, true);
+});
+
+test("the cover is lifted only for the proof fixture of a build made for the proof, never in a release", () => {
+  assert.equal(coverExempt({ proofBuild: true, path: "/two-servers-proof" }), true);
+  assert.equal(coverExempt({ proofBuild: true, path: "/two-servers-proof/extra" }), true);
+  assert.equal(coverExempt({ proofBuild: false, path: "/two-servers-proof" }), false, "a release build covers it like any page");
+  for (const path of ["/", "/u/now", "/two-servers-proofs", "/onboard", "/gallery"]) assert.equal(coverExempt({ proofBuild: true, path }), false, path);
 });

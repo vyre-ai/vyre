@@ -23,7 +23,6 @@ const SAMPLE = {
   "onboard.person.create": { username: "alex", password: PASS, confirm: PASS },
   "onboard.computer.add": { url: "https://juniper.vyre.run", username: "alex", password: PASS, name: "desk-mac", type: "computer", fingerprint: "abcd12345678" },
   "onboard.member.link": { role: "member", ttlDays: 7, space: "juniper" },
-  "onboard.phone.add": { space: "juniper", name: "iphone", type: "phone", fingerprint: "abcd12345678" },
   "onboard.space.join": { link: "https://vyre.run/i/abcdefghijk" },
   "onboard.space.open": { kind: "linux", name: "juniper" },
   "onboard.space.current": { space: "juniper" },
@@ -39,8 +38,11 @@ test("onboard write tools are outward in module.json", () => {
   assert.deepEqual(names, Object.keys(SAMPLE).sort(), "keep SAMPLE in sync with outward writes");
 });
 
+/** The two writes only a person's own surfaces reach (core/onboard/first-run.js PERSON_ONLY): an agent session is refused outright, not held. */
+const PERSON_ONLY_TOOLS = new Set(["onboard.person.create", "onboard.computer.add"]);
+
 for (const tool of outwardOnboardWrites()) {
-  test(`each login-able adapter is held on ${tool}`, async (t) => {
+  test(`each login-able adapter is ${PERSON_ONLY_TOOLS.has(tool) ? "refused" : "held"} on ${tool}`, async (t) => {
     const root = tempHome(t);
     const d = await start({ root, log: () => {} });
     t.after(() => d.stop());
@@ -48,9 +50,16 @@ for (const tool of outwardOnboardWrites()) {
     for (const id of loginAdapters(d.registry.providers.keys())) {
       const caller = sessionCaller(id, { agent: "kit" });
       const r = await d.registry.call(tool, input, caller);
-      assert.equal(r.error && r.error.code, "held_for_approval", `${id}: ${JSON.stringify(r.error)}`);
+      if (PERSON_ONLY_TOOLS.has(tool)) {
+        // a master password is typed on the person's device: an agent's session never reaches the tool, so there is no card and no value
+        assert.equal(r.error && r.error.code, "denied", `${id}: ${JSON.stringify(r.error)}`);
+        assert.match(String(r.error && r.error.message), /not available to mcp callers/);
+      } else {
+        assert.equal(r.error && r.error.code, "held_for_approval", `${id}: ${JSON.stringify(r.error)}`);
+        assert.doesNotMatch(String(r.error && r.error.line || ""), /horse|battery|SECRET/i);
+      }
       assert.equal(r.data, undefined);
-      assert.doesNotMatch(String(r.error && r.error.line || ""), /horse|battery|SECRET/i);
+      assert.doesNotMatch(JSON.stringify(r), /horse|battery|SECRET/i);
     }
   });
 }

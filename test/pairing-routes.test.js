@@ -48,7 +48,6 @@ const EXCLUDE = {
   "spaces.server.install": "the space-creation code exchange; the adopting line is spaces.pair.install",
   "spaces.bundle.enrol": "a space bundle on this device, not an identity enrol",
   "onboard.pair": "a read of whether pairing is done; the adopt is wink.server.adopt",
-  "onboard.phone.add": "an invite link for the phone during first run; not a server owner adopt",
   "wink.storage.pair": "a storage offer, not an owner adopt",
   "link.pair": "a box link; it does not adopt a space owner",
   "link.pair.approve": "a box link; it does not adopt a space owner",

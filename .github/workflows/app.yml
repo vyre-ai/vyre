@@ -98,7 +98,9 @@ jobs:
           cache: npm
           cache-dependency-path: apps/app/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npx expo export -p web --output-dir dist
+      # The release export starts from nothing: an empty output folder and a cleared Metro cache. Expo inlines EXPO_PUBLIC_* at transform time and its cache does not key on them, so on a runner that keeps its
+      # workspace a transform cached by an earlier proof export (EXPO_PUBLIC_VYRE_PROOF=1, same source file) would put the proof's fake wire into this "release" bundle and fail the check below on leftovers.
+      - run: rm -rf dist && npx expo export -p web --output-dir dist --clear
       - name: Playwright (outside the repo), for the render check
         run: |
           echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
@@ -206,7 +208,7 @@ jobs:
   android:
     needs: detect
     if: needs.detect.outputs.present == 'true' && needs.detect.outputs.run == 'true'
-    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest   # the hosted image carries the Android SDK; the self-hosted runners do not
     timeout-minutes: 60
     permissions:
       contents: write  # the release on main

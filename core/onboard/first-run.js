@@ -13,7 +13,7 @@ import { resolveInstallOnline } from "../../lib/install-online.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { loginAdapters } from "../../lib/agent-adapters.js";
 import { canAssign } from "../../lib/spaces/members.js";
-import { commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
+import { SPACE_NAME_SAY, commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { modelCaller } from "../modules/needs-you-hold.js";
 import { httpFetch } from "../../lib/http.js";
@@ -326,7 +326,8 @@ export function registerFirstRun(ctx, io) {
       const { held, personId } = await heldOf(meta);
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
-      const label = usernameOf(name) || "space";
+      const label = usernameOf(name);
+      if (!label) throw bad(SPACE_NAME_SAY.required);
       const issued = await personCall("wink.install.issue", { os: place });
       const command = issued && typeof issued.line === "string" ? issued.line : "";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");
@@ -459,20 +460,6 @@ export function registerFirstRun(ctx, io) {
         servers.push(t.server);
       }
       return { url: typed || servers[0] || null, username: who, github: github === true, added: missing.length === 0, servers, missing, live: lives.length > 0 && lives.every(Boolean), devices };
-    },
-  });
-
-  ctx.tool("onboard.phone.add", {
-    effect: "write",
-    description: "Add this person's phone as one of their own devices. Returns the link and the typed code the phone uses, good for one phone and five minutes. It is not an invite to a space.",
-    input: obj({ space: str, name: str, type: str, fingerprint: str }),
-    callers: [...OPEN],
-    run: async (_input, meta) => {
-      // A phone is a device of this identity (wink.phone.open: a QR and a code, one phone, five minutes). It is never a member invite, which would add a second person.
-      const opened = await personCall("wink.phone.open", {});
-      const link = String((opened && (opened.link || opened.qr)) || "");
-      if (!link) throw bad("The phone link did not come back. Try again.");
-      return { link, role: "device", expires: opened.expires ?? null, ...(opened.code ? { code: String(opened.code) } : {}) };
     },
   });
 

@@ -20,7 +20,7 @@ const ALLOWED = new Map([
   ["core/computers/", LOCAL], ["core/previews/index.js", LOCAL + " (an agent's server on a port of this box)"], ["core/previews/client/", BROWSER], ["core/dockerproxy/proxy.js", LOCAL], ["core/appmods/index.js", LOCAL], ["core/appmods/proxy.js", LOCAL], ["core/wink/control/", LOCAL], ["core/wink/node/shim.js", LOCAL],
   ["core/relay/bridge.js", LOCAL + " (the relay channel's own connection)"], ["core/daemon/app-sw.js", BROWSER], ["core/switchboard/index.js", "functions named fetch that read a credential, not HTTP"],
   ["kernel/storage/pool.js", "`fetch(id)` reads a blob from the pool, not HTTP"], ["core/names/directory.js", PARAM], ["lib/identity/directory.js", PARAM], ["lib/acme/acme.js", PARAM], ["lib/connectors/", PARAM],
-  ["core/vault/health.js", PARAM], ["core/sessions/drivers/openrouter.js", PARAM + " (the pinned API client in lib/api-endpoint.js)"],
+  ["core/onboard/github-subject.js", PARAM + " (GitHub's device-code, token, user and revoke calls; core/onboard/first-run.js hands it lib/http.js httpFetch)"], ["core/vault/health.js", PARAM], ["core/sessions/drivers/openrouter.js", PARAM + " (the pinned API client in lib/api-endpoint.js)"],
   ["core/runner/egress.js", "this IS the sandbox's egress proxy, which decides with lib/netguard.js"], ["core/runner/runner.js", LOCAL + " (a preview request to the dev server inside this computer's own sandbox: its unix socket or loopback)"], ["lib/http.js", "the one client"],
   ["core/resilience/node.js", "dials the person's own vyred (a unix socket, or the LAN, tailnet or relay address they paired), never a public service"],
   ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
@@ -39,7 +39,7 @@ const ALLOWED = new Map([
   // other runtimes
   ["apps/app/", BROWSER], ["web/", BROWSER], ["relay/app/", BROWSER], ["relay/client/", BROWSER + " (the device client; the Windows capsule ships it alone)"], ["modules/vault-extension/", BROWSER],
   ["local/hands-chrome-mac/", BROWSER + " (the extension) or " + HARNESS], ["core/resilience/web.js", BROWSER], ["core/appmods/browser-probe.cjs", BROWSER + " (a probe page)"],
-  ["names/worker/", WORKER], ["relay/worker/", WORKER], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
+  ["names/worker/", WORKER], ["relay/worker/", WORKER], ["relay/web/", WORKER + " (web.vyre.run: its `fetch(req, env)` is the Worker handler, not a call)"], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
   // test support
   [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS], ["core/runner/testing/", HARNESS], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
 ]);

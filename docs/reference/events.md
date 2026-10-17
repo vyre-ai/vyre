@@ -881,7 +881,7 @@ Listens for: `link.unpaired`
 | `vault.secretkey-changed` | `acct`, `why` |
 | `vault.shared-created` | `vault` |
 | `vault.shared-joined` | `role`, `vault` |
-| `vault.space.used` | not found in the source (the type is built at run time) |
+| `vault.space-used` | `by`, `host`, `item`, `ok`, `space`, `status` |
 | `vault.ssh-approved` | `expires`, `host`, `name` |
 | `vault.sync-conflicted` | `name`, `vault` |
 | `vault.unlinked` | `name`, `to` |

@@ -106,7 +106,11 @@ function matched(key, take) {
   return false;
 }
 
-/** A vault pass id in an event payload (`pass.created`, `pass.revoked`, …): the field is named `pass`, not a password. @param {string} key @param {string} val */
+/**
+ * A vault pass id in an event payload (`pass.created`, `pass.revoked`, …): the field is named `pass`, not a password.
+ * @param {string} key
+ * @param {string} val
+ */
 function eventPassId(key, val) {
   return key === "pass" && /^p_[A-Za-z0-9_-]+$/.test(val);
 }

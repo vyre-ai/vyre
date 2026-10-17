@@ -27,8 +27,7 @@ for (const kind of LENT_PROCESS_PROVIDERS) {
     const beat = (/** @type {boolean} */ well) => c.beat({ sessions: r.home.book.get("s1")?.where === "mac" ? [{ session: "s1", epoch: c.epochOf("s1"), turn: 3 }] : [], well, auto: true });
     // the session runs on the computer and completes three turns, each synced as it happens
     await c.spec({ session: "s1", chat: r.chat });
-    for (const n of [1, 2, 3]) await c.sync.appendTranscript("s1", [{ seq: n, line: `turn ${n}` }]);
-    await c.sync.putCheckpoint("s1", { turn: 3, seq: 3, manifest: {}, state: {} });
+    for (const n of [1, 2, 3]) { await c.sync.appendTranscript("s1", [{ seq: n, line: `turn ${n}` }]); await c.sync.putCheckpoint("s1", { turn: n, seq: n, manifest: {}, state: {} }); }   // a checkpoint follows the last: one turn at a time
     assert.deepEqual((await beat(true)).fenced, []);
     // the network drops: nothing is heard for a lapse, and the home takes the session by itself
     r.c.t += LAPSE_MS + 1;

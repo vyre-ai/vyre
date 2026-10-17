@@ -186,10 +186,11 @@ test("sign in with GitHub: the directory lists the spaces for a valid assertion,
   assert.equal(w.posts.some((p) => JSON.stringify(p).includes(PASSWORD)), false);
 });
 
-test("GitHub sign-in with no link, or a cancelled GitHub window, says so in the words and keeps nothing", async (t) => {
+test("GitHub sign-in with no directory list asks for a space address, and a cancelled GitHub window says so in the words and keeps nothing", async (t) => {
   const w = spaceWorld(t);
   const bad = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now, github: { start: async () => ({ ok: true, session: {}, user: { id: 1, login: "x" } }), assert: async () => "wrong" } });
-  await assert.rejects(() => bad.call("onboard.signin.github"), (e) => e.code === "not_linked" && /not linked/.test(e.message));
+  // The directory refuses the assertion (not linked) and no space address was typed: there is nothing to log in to, and the words ask for the address.
+  await assert.rejects(() => bad.call("onboard.signin.github"), (e) => e.code === "needs_space" && /address of a space/.test(e.message));
   const cancelled = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now, github: { start: async () => ({ ok: false, code: "denied" }), assert: async () => "x" } });
   await assert.rejects(() => cancelled.call("onboard.signin.github"), (e) => e.code === "denied" && /cancelled/.test(e.message));
   await assert.rejects(() => cancelled.call("onboard.signin.unlock", { password: PASSWORD }), (e) => e.code === "expired");
