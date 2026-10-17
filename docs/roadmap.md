@@ -33,21 +33,21 @@ Plan and acceptance tests: [roadmap/0.6.md](../roadmap/0.6.md).
 - [ ] R051-01 One chat per Flow, with a divider per run.
 - [ ] R051-02 Credentials lent to a woken agent for one job, use only.
 - [ ] R051-03 Agent step deadlines that stop the agent, with a timeout path.
-- [ ] R051-04 Failure panel on every step in the Flows editor.
+- [x] R051-04 Failure panel on every step in the Flows editor.
 - [ ] R051-05 Flows split into a library behind a golden replay.
-- [ ] R051-06 Per-record privacy for custom record types.
-- [ ] R051-07 Write-once fields and totals.
-- [ ] R051-08 Flow email with CC, BCC and attachments.
-- [ ] R051-09 An audit screen for admins: who changed what on a record.
-- [ ] R051-10 Members add a token or API key as their own AI account.
+- [x] R051-06 Per-record privacy for custom record types.
+- [x] R051-07 Write-once fields and totals.
+- [x] R051-08 Flow email with CC, BCC and attachments.
+- [x] R051-09 An audit screen for admins: who changed what on a record.
+- [x] R051-10 Members add a token or API key as their own AI account.
 - [ ] R051-11 Load-flake hardening, so every test is green under load.
 - [ ] R051-12 Flows composer and dates follow-ups.
 - [ ] R051-13 Flow text and lists: brace escape, list fields, For each limit.
 - [ ] R051-14 Flows over MCP for members.
-- [ ] R051-15 Agent wake hardening.
+- [x] R051-15 Agent wake hardening.
 - [ ] R051-16 Security follow-ups from review.
-- [ ] R051-17 Mentions follow-ups.
-- [ ] R051-18 Docs re-check of known gaps.
+- [x] R051-17 Mentions follow-ups.
+- [x] R051-18 Docs re-check of known gaps.
 
 ## 0.7
 Plan and acceptance tests: [roadmap/0.7.md](../roadmap/0.7.md).

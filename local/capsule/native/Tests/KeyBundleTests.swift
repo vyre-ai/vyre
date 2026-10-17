@@ -36,6 +36,7 @@ let keyBundleSuite = Suite("key bundle") { t in
         t.ok(first.set(.enclave, handle))
         t.ok(first.set(.agree, handle))
         t.ok(first.set(.presence, handle))
+        t.ok(first.set(.relay, handle))
         let before = backing.reads
         let next = KeyBundle(backing: backing)
         for slot in KeyBundle.Slot.allCases { t.ok(next.get(slot) != nil, slot.rawValue) }
@@ -105,7 +106,8 @@ let keyBundleSuite = Suite("key bundle") { t in
         a.forgetAll()
         t.eq(a.get(.seed), nil)
         t.eq(backing.read(), nil)
-        t.eq(old.deleted.count, 4)
+        // the stand-in lists an older item for every slot, so every one of them is taken away (the relay slot has no older item in the real Keychain; the stand-in asks the same of all)
+        t.eq(old.deleted.count, KeyBundle.Slot.allCases.count)
     }
 
     t.test("bytes that are not a bundle of this version read as no keys") {

@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Icon, Text } from "@vyre/ui";
 import { call } from "../../src/api/box";
 import { afterCheck, signinCards, type SignInCard } from "../../src/real/signin-again.js";
+import { dayTimeOf } from "../../src/time/show.js";
 
 /** One card, drawn from its words and buttons (the gallery draws it from a sample). */
 export function SignInView({ card, busy, hint, onPress }: { card: SignInCard; busy: boolean; hint: string; onPress: (i: number) => void }) {
@@ -13,9 +14,10 @@ export function SignInView({ card, busy, hint, onPress }: { card: SignInCard; bu
       <View className="gap-s2">
         <View className="flex-row items-center gap-s2"><Icon name="warning" tone="label" /><Text strong>{card.title}</Text></View>
         {card.detail ? <Text tone="label">{card.detail}</Text> : null}
+        {card.id.startsWith("signins:") && card.at ? <Text tone="label">{dayTimeOf(card.at)}</Text> : null}
         {hint ? <Text tone="label">{hint}</Text> : null}
         <View className="flex-row flex-wrap gap-s2 pt-s1">
-          {card.buttons.map((b, i) => <Button key={b.label} kind={i === 0 ? "primary" : "secondary"} label={busy && i === 0 ? "Checking" : b.label} disabled={busy} onPress={() => onPress(i)} />)}
+          {card.buttons.map((b, i) => <Button key={b.label} kind={i === 0 ? "primary" : "secondary"} label={busy && i === 0 ? (b.tool === "identity.signin.revoke" ? "Signing out" : "Checking") : b.label} disabled={busy} onPress={() => onPress(i)} />)}
         </View>
       </View>
     </Card>

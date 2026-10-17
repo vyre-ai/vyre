@@ -83,7 +83,7 @@ if git cat-file -e "$tag:scripts/install/i.sh" 2>/dev/null; then
   git show "$tag:scripts/install/i.sh" >"$out/i.sh"
   ipath=/i.sh
 else ipath=/install.sh; fi
-printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
+printf '/box /box/install-box.sh 200\n/i %s 200\n/i/* /invite/ 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
 [ -z "$tgz_redirect" ] || printf '/box/vyre.tgz https://github.com/vyre-ai/vyre/releases/download/%s/vyre.tgz 302\n' "$tag" >>"$out/_redirects"
 
 # The docs, at /docs: docs/ plus ARCHITECTURE.md, DEVELOPMENT-RULES.md and roadmap/, from main's checkout (they follow main like the pages do), each page as HTML

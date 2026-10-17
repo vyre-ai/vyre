@@ -324,7 +324,6 @@ export function screens(root) {
       file: fs.existsSync(path.join(root, `deck/views/${view}.js`)) ? `deck/views/${view}.js` : "deck/js/app.js", page: SCREEN_PAGES[view] || DECK_VIEWS_PAGE });
   }
   if (fs.existsSync(path.join(root, "web/onboard/index.html"))) out.push({ name: "/onboard", label: "Onboarding", routes: ["/onboard"], file: "web/onboard/index.html", page: SCREEN_PAGES.onboard });
-  if (fs.existsSync(path.join(root, "web/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "web/onboard/passkey", page: "concepts/presence.md#enroll-your-keys" });
   return out.sort((a, b) => byName(a.name, b.name));
 }
 

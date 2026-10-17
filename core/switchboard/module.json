@@ -167,6 +167,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.recall-sessions",
+        "reach": "modules"
+      },
+      {
         "name": "threads.busy",
         "reach": "modules"
       },
@@ -231,6 +235,11 @@
         "name": "threads.commands",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "threads.slash",
+        "reach": "anyone",
+        "effect": "write"
       },
       {
         "name": "threads.tasks",

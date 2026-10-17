@@ -97,7 +97,7 @@ const ownerUnknown = () => Object.assign(new Error("This server cannot tell just
  * @param {any} sb @param {any} rec the thread's record @param {any} o the launch options @param {string} id
  */
 export async function memberAccount(sb, rec, o, id) {
-  const asker = o.kernelTurn && o.kernelTurn.asker, owner = ownerOf(sb);
+  const asker = (o.kernelTurn && o.kernelTurn.asker) || o.person, owner = ownerOf(sb);
   if (!asker || owner === null || isOwner(sb, owner, asker) || o.agent) return o;
   const provider = rec.provider || o.provider || "claude";
   // An account the launch already names must serve this person: the owner's, or another member's, is "no account" to them whatever the input says.

@@ -989,7 +989,7 @@ shardTest("M1 invites to a space on its server: the home's one-use challenge is 
   // a development build answers the home's challenge with the person's software key and the invite is made in the one call
   spacesHooks.buildRoot = undefined;
   const made1 = await dcall("spaces.invites.create", { space: id, role: "member" });
-  assert.ok(!made1.error && /\/join\/inv_/.test(made1.data.link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
+  assert.ok(!made1.error && /\/i\/inv_/.test(made1.data.link) && /\/join\/inv_/.test(made1.data.join_link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
   // a sealed value from M1 goes to the SERVER's sealing process (the record keeps only the reference)
   const PERSON = { name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
   const def = await dcall("records.define", { space: id, diff: { add_types: [PERSON] } });

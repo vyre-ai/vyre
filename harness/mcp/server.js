@@ -23,7 +23,8 @@ import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
-import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
+import { sessionCaller } from "../../lib/agent-adapters.js";
+import { offeredTool } from "./offered.js";
 import { canonical } from "../../lib/tool-names.js";
 import { ALIASES } from "./memory-tools.js";
 import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind, CORE } from "./core-tools.js";
@@ -46,7 +47,7 @@ const HELD = "(held for approval) ";
 // not the assistant is not even offered the tools that drive other sessions; and recall.search
 // is held inside the folders of the agent's projects.
 const AGENT = process.env.VYRE_AGENT || "";
-const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
+const CALLER = sessionCaller(process.env.VYRE_PROVIDER || "claude", AGENT ? { agent: AGENT } : {});
 /**
  * Claude Code on this computer (core/pluginagent): once the person has granted it, the home holds plugin-agent.json ({ agent, key }, mode 0600) and this server calls as that agent with the key, so vyred
  * binds every call to the agent's own kernel token. Read on each call (the grant can come while a session runs), and never inside a session Vyre started (its own socket binds it). No file: a plain "mcp".
@@ -64,7 +65,7 @@ function ident() {
     } catch { /* not connected (yet) */ }
     try {
       const j = JSON.parse(fs.readFileSync(path.join(home(), "plugin-agent.json"), "utf8"));
-      if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: `mcp:agent:${j.agent}`, headers: { "x-vyre-agent-key": j.key } };
+      if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: sessionCaller(process.env.VYRE_PROVIDER || "claude", { agent: String(j.agent) }), headers: { "x-vyre-agent-key": j.key } };
     } catch { /* not granted (yet) */ }
   }
   return { caller: CALLER };
@@ -76,11 +77,10 @@ function askOnce() {
   asked = true;
   call("pluginagent.ask", {}, { caller: CALLER }).catch(() => null);
 }
-const DRIVES = /^(threads|agents)\./;
 // Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
-// them from any session, so listing them only spends the model's context.
-const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name)
-  && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
+// them from any session, so listing them only spends the model's context. A surface tool the
+// person approves with one tap is listed, because the call waits and changes nothing until then.
+const offered = (/** @type {{ name: string, needsYou?: boolean, surface?: boolean }} */ t) => offeredTool(t);
 /** @param {string} tool @param {any} input */
 function scoped(tool, input) {
   const projects = process.env.VYRE_PROJECTS;
@@ -262,7 +262,7 @@ async function handle(msg) {
         instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Only a short core is listed. Every other tool you may use is reached in two steps: tools_find with what you are about to do (it returns the best three with a ready call), then tools_call with the name. A tool you were told to run with tools_call is not missing. When several calls depend on each other, send them in one tools_run (later steps read earlier results by expression); a large result comes back as a handle and a summary, and results_read gets the part you need. Facts from memory come with their source; say where a fact came from when you use one. " +
           "When the user asks what you know about them or their work, ask memory_ask, when it is offered, before saying you do not know. " +
           "A memory_search result names a session and a turn; memory_turn reads the turns around it word for word, so quote a past turn from there, not from a summary. " +
-          "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +
+          "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: tell them their coding agent can read only this session's project until they allow broader recall in Vyre (pluginagent.pending when they use Claude Code on this machine). " +
           "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
     // The person's own AI sets Vyre up from the work on this computer: one prompt, the same words as the pluginagent.setup.guide tool (Codex and others that ignore prompts read the tool).
