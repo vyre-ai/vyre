@@ -399,3 +399,20 @@ test("a server that asks for the person's approval before it makes the space vau
   assert.equal(done.vaultPending, true);
   assert.equal((await host.call("onboard.space.list")).spaces.length, 1);
 });
+
+test("a page with no daemon offers the AI sign-in once its space is online, and forwards it to the paired server without anything secret coming back", async (t) => {
+  const { pp, host } = await ready(t);
+  assert.deepEqual((await host.call("onboard.agent.list", {})).providers.map((p) => p.id), ["claude", "codex", "grok"]);
+  await assert.rejects(() => host.call("onboard.agent.signin", { provider: "claude", label: "Claude" }), (e) => e.code === "no_server", "no server yet, no sign-in");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  pp.call = async (name, input, box) => { if (name === "sessions.accounts.signin") { pp.seen.calls.push({ name, input, box }); return { flow: "fl_1", step: "code", url: "https://login.example/x", code: "ABCD", token: "SECRET-TOKEN", apiKey: "SECRET-KEY" }; } return first(name, input, box); };
+  await assert.rejects(() => host.call("onboard.agent.signin", { provider: "mystery" }), (e) => /does not support/.test(e.message));
+  const r = await host.call("onboard.agent.signin", { provider: "claude", label: "Claude" });
+  assert.deepEqual([r.flow, r.url, r.code], ["fl_1", "https://login.example/x", "ABCD"]);
+  assert.ok(!("token" in r) && !("apiKey" in r), "nothing secret is returned");
+  const sent = pp.seen.calls.filter((c) => c.name === "sessions.accounts.signin").pop();
+  assert.deepEqual([sent.box, sent.input.provider, sent.input.label], ["boxA", "claude", "Claude"], "it goes to the paired server");
+});
