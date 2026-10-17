@@ -57,3 +57,30 @@ test("a member removing their connection sends the vendor's revoke to the vendor
   step("the server that is not the vendor heard nothing", bystander.revocations.length === 0 && !bystander.calls.some((/** @type {any} */ c) => c.path === "/revoke"));
   step("the owner is untouched: no connection of Ben's in the owner's list or hub", !((await asOwner("mcp.servers")).data || []).some((/** @type {any} */ x) => x.owner) && !JSON.stringify((await asOwner("connectors.list")).data || []).includes("fakevendor"));
 });
+
+test("a member removing a connection whose vendor named no revocation address is told so in the answer, and nothing is sent to the vendor", { timeout: 240_000 }, async t => {
+  const auth = await startFakeAuthServer(t, { dcr: true });   // no revocation address in its discovery document
+  const mcp = await startFakeMcpHttp(t, { protectedBy: auth.origin, requireAuth: h => Boolean(h) && auth.tokens.has(String(h).replace(/^Bearer /, "")) });
+  const root = tempHome(t);
+  const preset = { id: "fakevendor", label: "Fake Vendor", group: "work", url: mcp.url, transport: "http", who: "Anyone.", evidence: "dcr-registered", oauth: { client: "dcr" } };
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, connectors: { presets: [preset] } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const K = d.kernel, OWNER = K.id.owner;
+  const chain = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
+  await K.gateway.grants.setRole(chain(OWNER), { person: BEN, role: "member" }, { presence: proof() });
+  const ben = (await K.surfaces.open(chain(BEN), {})).token;
+  const asBen = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: ben, person: { id: "ps-ben", kind: "passkey" } });
+  assert.ok((await asBen("vault.me.account.create", { password: PW })).data);
+  const s = await asBen("connectors.connect", { preset: "fakevendor" });
+  assert.equal(s.data?.step, "open", JSON.stringify(s.error || s.data));
+  const done = await asBen("connectors.connect.finish", { id: s.data.id, url: auth.consent(s.data.url) });
+  assert.equal(done.data?.step, "connected", JSON.stringify(done.error || done.data));
+  const gone = await asBen("connectors.disconnect", { name: "fakevendor" });
+  assert.equal(gone.error, undefined, JSON.stringify(gone.error));
+  assert.equal(gone.data.removed, true);
+  assert.equal(gone.data.revoked, false, "the answer says the vendor was not told: " + JSON.stringify(gone.data));
+  assert.match(gone.data.why, /named no revocation address/);
+  assert.equal(auth.revocations.length, 0);
+  assert.ok(!auth.calls.some((/** @type {any} */ c) => c.path === "/revoke"));
+});
