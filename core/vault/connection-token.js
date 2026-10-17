@@ -6,6 +6,9 @@
 // Two gates. The hub checks the grant first. This checks again, for the verified chain of the call: the owner's own person, with no assistant in the chain, uses their own connection; anyone else
 // (a colleague, an assistant) needs the kernel to allow `vault.read` (a read tool) or `vault.call` (any other) on the connection's address. No kernel answer means no.
 //
+// The level is the hub's discipline, not a limit on the token: `write` is chosen by the hub from its own classification of the tool, and the access token it returns is the same bearer for a read and a
+// write, so a grantee at Fill in is held to reads and held calls by the hub and the Gate, not by the token. Nothing here lets a caller widen that.
+//
 // What it does not do: reveal, list or change a connection (vault.me.* does, for the person alone), or serve the Space owner, whose connections are ordinary items of the owner's vault.
 
 import { Credentials } from "../../lib/connectors/auth.js";
@@ -30,8 +33,8 @@ export class ConnectionTokens {
     if (c) return c;
     const people = this.people;
     c = new Credentials({
-      fetchItem: async (item, field) => { const it = await people.get(owner, { name: item }); return it.fields[field || "value"]; },
-      save: async (item, fields) => { await people.update(owner, { name: item, fields }); },
+      fetchItem: async (item, field) => { const it = await people.service(owner).get(item); return it.fields[field || "value"]; },
+      save: async (item, fields) => { await people.service(owner).update(item, fields); },
       now: this.now, ...(this.fetch ? { fetch: this.fetch } : {}),
     });
     this.creds.set(owner, c);
@@ -65,14 +68,13 @@ export class ConnectionTokens {
     const K0 = this.kernelOf();
     if (String(K0 && K0.owner) === owner) throw denied("the Space owner's connections are items of the owner's vault, not a member's");
     if (!(await this.allowed(owner, name, input.write === true, meta))) throw denied("this call may not use that connection");
-    // An unlocked vault, or "locked": the person opens it on a device of theirs. No fallback to another vault.
-    const it = await this.people.get(owner, { name });
-    if (it.kind !== "connection") throw Object.assign(new Error(`${name} is not a connection`), { code: "not_found" });
+    // The person's unlocked vault, else the sealed server copy of their key, else "locked". No fallback to another vault, and only connection items are ever opened this way.
+    const it = await this.people.service(owner).get(name);
     const f = it.fields;
     const num = (/** @type {any} */ v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
     if (f.auth_kind === "oauth") {
       const access_token = await this.credentials(owner).token({ type: "oauth", item: name });
-      const after = (await this.people.get(owner, { name })).fields;
+      const after = (await this.people.service(owner).get(name)).fields;
       return { access_token, token_type: "Bearer", expires_at: num(after.expires_at), resource: after.resource || f.resource || null };
     }
     // A pasted token (PAT, PIT, an agent key) is the value itself; it expires only when its owner replaces it.

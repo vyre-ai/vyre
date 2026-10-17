@@ -65,6 +65,20 @@ crashes three times in five minutes stays stopped until you restart it (**Restar
 `vyre connect list` shows every connection. `vyre connect test mcp tracker` tries one now.
 `vyre connect remove mcp tracker` disconnects it and leaves its vault items where they are.
 
+## When a server changes what its tools say
+
+Vyre keeps a fingerprint of the first tool list a server gives. When you add a server fresh, that first list is taken as it is: Vyre cannot know you read it. For a server that was already in use, the list you were already using is the one kept. The descriptions are text a model reads, so a server could change them after you approved it. If a later list differs, Vyre holds that server: its tools are not offered, and a call is refused with `tools_changed`. `mcp.servers` shows what changed for you to read, and `mcp.repin { name, seen }` approves exactly the list you read. A model cannot approve it. `seen` is the whole fingerprint, not a shortened form. If the server changes again before you approve, the approval is refused and you read the new change.
+
+## Find an app in the catalog
+
+`mcp.catalog` searches a reviewed list of hosted MCP servers by words or category, and says for each whether you are already connected. The list is a weekly snapshot of the official MCP registry and the Claude plugin repositories: a person reads every new entry in a pull request before it appears. An entry marked verified was published under its vendor's own domain: anyone who owns a domain counts as a vendor in that sense, so the weekly pull request is the human check, and the app's name for the entry shows whose server it is. The first catalog is 17 rows a person reviewed against each vendor's own documents; the weekly pull request adds to them, and a row a reviewer marked anything but one-click stays out of one-tap connect. Anything else is listed as inferred and does not get a one-click connect. The catalog's connected mark covers only the servers your own sessions may use.
+
+An entry the vendor published on its own domain, whose server a probe found registers a client by itself, can be connected from the catalog (an owner or an admin connects it for the Space; a member connects it for herself, into her own vault, and it is hers alone until she shares it): Vyre registers itself with the vendor's server as it signs you in, so there is no app of your own to make. The sign-in can only go to the server's own address; a vendor that signs in somewhere else is refused with the reason, and you can add it by its address instead. The sign-in is kept as one vault item that names the server, the catalog entry and who connected it. If the vendor later stops accepting it, the connection is marked, and its entry in `connectors.list` says it needs to be connected again.
+
+A member signs in the same way, but she finishes the sign-in with the address the browser lands on, and an app that needs your team's own developer app stays with an owner or an admin.
+
+This review applies to the servers in the Space's hub. The servers a member brings for her own account live in her own vault and run on her side, so they are not part of it.
+
 ## Hold and approve a send
 
 The hub reads each tool's name. A tool is a read when its name is plainly a read (`list`, `get`,

@@ -11,6 +11,7 @@ import { exactOrigin } from "./agents.js";
 import { hostsOf } from "./native.js";
 import { credentialUrn } from "../../kernel/contracts/index.js";
 import { ConnectionTokens, connectionUrn } from "./connection-token.js";
+import { MemberShare } from "./member-share.js";
 
 /** Requests an assistant made, waiting for a person (vault.pending, vault.approve). Appended to the vault's MIGRATIONS. */
 export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
@@ -24,7 +25,7 @@ const SOURCE = "vault:agent";
 
 export class Access {
   /** @param {import("./vault.js").Vault} vault @param {any} ctx the vault module's ctx */
-  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; /** @type {Promise<void> | null} */ this.converting = null; }
+  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; this.members = new MemberShare(this); /** @type {Promise<void> | null} */ this.converting = null; }
 
   /** The kernel's side of the vault, or null in a build with no kernel (then no login is lent to an agent). */
   get K() { const k = this.ctx && this.ctx.kernel; return k && k.grants && k.vault ? k : null; }
@@ -283,6 +284,8 @@ export class Access {
       for (const h of ok ? [] : it.hosts || []) if ((await this.effectFor(name, it.name, "vault.fill", h)) !== "deny") { ok = true; break; }
       if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
     }
+    // The logins members shared with this agent: a reference to fill with and the label the member gave it, never a value. They are not items of the Space's vault, so the owner's lists never show them.
+    try { const uid = await this.uidOf(name); if (uid) for (const c of this.copies.forAgent(uid)) out.push({ name: c.ref, kind: "login", label: c.label, origin: c.origin }); } catch { /* the agents module is not running yet */ }
     return out;
   }
 
@@ -345,6 +348,11 @@ export class Access {
     const uid = await this.uidOf(agent);
     return uid ? K.agentMay(uid, "vault.fill", await this.urn(r.name), o) : false;
   }
+
+  /** The copies members shared with agents (member-copies.js): only agentFill and the member's own share tools open them. */
+  get copies() { return this.members.copies; }
+  /** May this agent sign in with this member's copy at this origin? The kernel's grant, asked every time. @param {any} copy @param {string} origin */
+  allowedCopy(copy, origin) { return this.members.allowedCopy(copy, origin); }
 
   /**
    * Carry over the agent logins the vault stored itself before the one grant model: each row that passes its check becomes the kernel grant it always was (same agent, login, origin and expiry),
