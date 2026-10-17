@@ -284,6 +284,17 @@ export default {
       },
     });
 
+    ctx.tool("gate.held-of", {
+      internal: true,
+      description: "The held items of a sender this module offered, with who asked: { via } -> [{ id, requester }]. A module sees only its own sender's items, to take them back (gate.reject).",
+      input: obj({ via: str }, ["via"]),
+      run: (input, { caller }) => {
+        const c = String(caller || "");
+        if (!c.startsWith("module:")) throw Object.assign(new Error("only a module asks what is held for its own sender"), { code: "denied" });
+        return gate.heldOf(input.via, c.slice(7));
+      },
+    });
+
     ctx.tool("gate.offer", {
       internal: true,
       description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
