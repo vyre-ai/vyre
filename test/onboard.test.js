@@ -239,11 +239,11 @@ test("onboard: join verify forwards to link.health, unknown without a node to na
   assert.equal(notOnline.error, undefined, JSON.stringify(notOnline.error));
 });
 
-test("onboard: join relay refuses with words and the next step: Devices, Add a device", async t => {
+test("onboard: join relay refuses with words and the next step: sign in on the device again", async t => {
   const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
   const r = await call("onboard.join", { action: "relay" }, { root });
   assert.equal(r.data, undefined);
-  assert.match(String(r.error?.message), /Devices, Add a device/);
+  assert.match(String(r.error?.message), /Sign in on the device again with your space address, your username and your master password/);
 });
 
 test("onboard: join is the owner's alone — an agent with a valid presence proof is still refused, not just ungated", async t => {
@@ -256,7 +256,7 @@ test("onboard: join is the owner's alone — an agent with a valid presence proo
   // The owner's own surfaces get the refusal in words, not a denial.
   const own = await call("onboard.join", { action: "relay" }, { root, caller: "deck" });
   assert.notEqual(own.error?.code, "denied");
-  assert.match(String(own.error?.message), /Devices, Add a device/);
+  assert.match(String(own.error?.message), /Sign in on the device again with your space address, your username and your master password/);
 });
 
 test("onboard: join status and verify never need presence; relay always does", async t => {

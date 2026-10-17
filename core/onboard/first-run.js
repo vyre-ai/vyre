@@ -369,6 +369,13 @@ export function registerFirstRun(ctx, io) {
             const x = /** @type {any} */ (e);
             const code = String((x && x.code) || "claim");
             const taken = code === "taken" || code === "name_taken";
+            // the directory refused the name: the provisional space `open` listed for it is not a space, so it is not listed any more (a name that was only held here, with no server, and not the one showing)
+            if (taken) {
+              const provisional = spaceKey("", row.name);
+              held.spaces = held.spaces.filter((sp) => !(sp.id === provisional && !sp.server));
+              if (held.current === provisional) held.current = held.spaces[0] ? held.spaces[0].id : null;
+              persist(personId, held);
+            }
             return { id, online: false, expired: false, failed: true, code, canRename: false, kind: row.kind, expiresAt: row.expiresAt, message: taken ? "That name was taken a moment ago. Go back, pick another name and show a new command." : String((x && x.message) || "The space could not be named.").slice(0, 300) };
           }
         }

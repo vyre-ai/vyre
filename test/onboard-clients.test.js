@@ -85,7 +85,6 @@ test("each onboarding door calls an onboard tool, and the native shells open tha
     "apps/app/screens/first-run/real.js",
     "apps/app/src/real/install.ts",
     "apps/app/screens/devices/RealInvite.tsx",
-    "apps/app/screens/devices/RealAdd.tsx",
   ];
   for (const rel of doors) {
     const names = clientCalls(path.join(ROOT, rel)).filter((n) => onboard.has(n));

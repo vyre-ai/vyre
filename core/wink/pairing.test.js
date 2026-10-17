@@ -415,7 +415,7 @@ test("a server's QR is a fresh 128-bit ticket seed: minted at the relay, drawn a
   assert.match(a.art, /\u2588|\u2580|\u2584/);
   const b = await w.call("wink.server.code", { qr: true });
   assert.notEqual(parseServerQr(b.qr).seed.toString(), q.seed.toString(), "a new secret every time");
-  assert.equal((await w.call("wink.server.code", {})).qr, undefined, "no qr unless asked");
+  assert.ok((await w.call("wink.server.code", {})).qr, "the ticket text is returned whether or not the drawing was asked for");
   assert.equal(w.minted.length, 2);
   for (const [n, e] of w.events) assert.ok(!JSON.stringify(e).includes(a.qr), `${n} never carries the QR`);
 });

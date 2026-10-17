@@ -65,8 +65,9 @@ test("what is missing: a phone or browser with no Vyre, a Mac with no phone, and
 
 test("each landing screen has one line and one action, and none says server or install line", () => {
   for (const c of [...Object.values(EMPTY), ...Object.values(GAP), WAITING]) {
-    assert.ok(c.title && c.line && c.action && (c.route === "refresh" || c.route.startsWith("/")));
-    assert.doesNotMatch(`${c.title} ${c.line} ${c.action}`, /server|install line|terminal|command/i);
+    // one action, or none when the line is all there is to say (the Mac that is told how a phone signs in has nothing to press)
+    assert.ok(c.title && c.line && (c.action ? c.route === "refresh" || String(c.route).startsWith("/") : c.route === undefined));
+    assert.doesNotMatch(`${c.title} ${c.line} ${c.action ?? ""}`, /server|install line|terminal|command/i);
   }
 });
 
