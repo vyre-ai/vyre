@@ -25,7 +25,8 @@ async function world(t) {
   const exec = async (/** @type {string} */ input) => {
     const req = JSON.parse(input);
     const res = await callAgentd({ socket, token: "t".repeat(40), action: req.action, body: JSON.stringify(req.body) });
-    return { code: res.status >= 200 && res.status < 300 ? 0 : 1, stdout: res.text };
+    let body = null; try { body = JSON.parse(res.text); } catch { /* none */ }
+    return { stdout: JSON.stringify({ status: res.status, body }) };
   };
   const ctl = agentdCtl({ transport: execTransport(exec), vncKey: async () => "k".repeat(32) });
   return { ctl, ran, files, socket, tokenFile, exec: (/** @type {string} */ action, /** @type {any} */ body, /** @type {string} */ token = "t".repeat(40)) => callAgentd({ socket, token, action, body: JSON.stringify(body) }) };

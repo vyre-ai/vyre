@@ -20,13 +20,14 @@ export function callAgentd(o) {
   });
 }
 
-/** The client vyred runs with `docker exec -i` as agentctl: the request is {"action", "body"} on standard input, the answer is agentd's JSON on standard output, exit 0 for 2xx. */
+/** The client vyred runs with `docker exec -i` as agentctl: the request is {"action", "body"} on standard input, the answer is {"status", "body"} on standard output (the exec has no exit code to read through the proxy). */
 export async function main() {
   const raw = await new Promise(r => { let b = ""; process.stdin.on("data", c => { b += c; if (b.length > 16 * 1024) process.exit(2); }); process.stdin.on("end", () => r(b)); });
   /** @type {any} */ let req;
   try { req = JSON.parse(String(raw)); } catch { process.stderr.write("the request is not JSON\n"); process.exit(2); }
   const res = await callAgentd({ socket: SOCKET, token: fs.readFileSync(TOKEN_FILE, "utf8").trim(),
     action: String(req && req.action || ""), body: JSON.stringify(req && req.body || {}) });
-  process.stdout.write(res.text);
-  process.exit(res.status >= 200 && res.status < 300 ? 0 : 1);
+  let body = null; try { body = JSON.parse(res.text); } catch { /* not json */ }
+  process.stdout.write(JSON.stringify({ status: res.status, body }));
+  process.exit(0);
 }
