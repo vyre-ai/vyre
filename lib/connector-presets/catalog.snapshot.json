@@ -1,0 +1,524 @@
+{
+ "v": 1,
+ "generated": "2026-10-17",
+ "sources": {
+  "reviewed": {
+   "file": "lib/mcp-catalog.reviewed.json",
+   "reviewer": "mcp6",
+   "rows": 17
+  }
+ },
+ "entries": [
+  {
+   "id": "asana",
+   "name": "Asana",
+   "vendor": "Asana",
+   "description": "Tasks and projects",
+   "category": "work",
+   "url": "https://mcp.asana.com/v2/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "developers.asana.com (client must support OAuth and Streamable HTTP) and mcp.asana.com AS metadata read 2026-10-17; the Claude host failed DCR for Asana in one session",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developers.asana.com/docs/using-asanas-mcp-server"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.asana.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.asana.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.asana.com/register; not called. Runtime conflict: the host failed DCR this session"
+   },
+   "verdict": "conditional"
+  },
+  {
+   "id": "atlassian",
+   "name": "Atlassian (Jira, Confluence)",
+   "vendor": "Atlassian",
+   "description": "Jira and Confluence",
+   "category": "dev",
+   "url": "https://mcp.atlassian.com/v1/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "auth.atlassian.com AS metadata read 2026-10-17: no registration endpoint, token auth none, S256; the MCP path is from Atlassian's support pages (summary)",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://auth.atlassian.com/.well-known/oauth-authorization-server"
+    },
+    {
+     "source": "vendor-doc",
+     "ref": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/set-up-atlassian-rovo-mcp-server"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://auth.atlassian.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no registration endpoint: a client id must come from Atlassian"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "box",
+   "name": "Box",
+   "vendor": "Box",
+   "description": "Files and Box AI",
+   "category": "files",
+   "url": "https://mcp.box.com",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "developer.box.com remote guide read 2026-10-17: an admin creates the OAuth credentials; the protected resource names api.box.com; the AS metadata request returned 401",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developer.box.com/guides/box-mcp/remote/"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.box.com/.well-known/oauth-protected-resource"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://api.box.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "an admin registers the client in the Admin Console"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "calendly",
+   "name": "Calendly",
+   "vendor": "Calendly",
+   "description": "Scheduling and bookings",
+   "category": "work",
+   "url": "https://mcp.calendly.com",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "vendor doc developer.calendly.com (OAuth 2.1 PKCE with dynamic registration) and calendly.com AS metadata read 2026-10-17; the preset file records a loopback redirect refused on 30 Sep",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developer.calendly.com/calendly-mcp-server"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://calendly.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://calendly.com/",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://calendly.com/oauth/register; not called"
+   },
+   "verdict": "conditional"
+  },
+  {
+   "id": "canva",
+   "name": "Canva",
+   "vendor": "Canva",
+   "description": "Designs and brand kits",
+   "category": "marketing",
+   "url": "https://mcp.canva.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "mcp.canva.com AS metadata read 2026-10-17; the /mcp path comes from a third-party listing, not Canva's docs",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.canva.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.canva.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.canva.com/register; not called"
+   },
+   "verdict": "conditional"
+  },
+  {
+   "id": "dropbox",
+   "name": "Dropbox",
+   "vendor": "Dropbox",
+   "description": "Files and Dash search",
+   "category": "files",
+   "url": "https://mcp.dropbox.com/mcp",
+   "transport": "http",
+   "auth": "unknown",
+   "headers": [],
+   "verified": true,
+   "basis": "help.dropbox.com read 2026-10-17: no app needed for Claude and Claude Code; an app is needed for other MCP clients. The metadata requests were rate limited, so the probe did not run",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://help.dropbox.com/integrations/connect-dropbox-mcp-server"
+    }
+   ],
+   "probe": {
+    "result": "unprobed",
+    "issuer": null,
+    "registration": null,
+    "checked": "2026-10-17",
+    "reason": "rate limited (429) on both discovery documents; retry in the weekly run"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "figma",
+   "name": "Figma",
+   "vendor": "Figma",
+   "description": "Design files and components",
+   "category": "design",
+   "url": "https://mcp.figma.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "developers.figma.com (remote server URL, sign-in on first connect) and mcp.figma.com AS metadata read 2026-10-17; preset file says Figma limits its server to its own catalog",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developers.figma.com/docs/figma-mcp-server/remote-server-installation/"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.figma.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://api.figma.com/v1/oauth/mcp",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration advertised, but it issues a client secret only, and the vendor limits apps to its catalog"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "gohighlevel",
+   "name": "GoHighLevel",
+   "vendor": "HighLevel",
+   "description": "CRM, contacts, pipelines, messaging",
+   "category": "crm",
+   "url": "https://services.leadconnectorhq.com/mcp/",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [
+    "locationId"
+   ],
+   "verified": true,
+   "basis": "vendor help article (Claude endpoint is /mcp/anthropic/v2, a client-specific one) and services.leadconnectorhq.com AS metadata read 2026-10-17; Private Integration Token is the other route",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://help.gohighlevel.com/support/solutions/articles/155000008360-highlevel-mcp-multi-account-support-for-claude"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://services.leadconnectorhq.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://services.leadconnectorhq.com/mcp",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://services.leadconnectorhq.com/mcp/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "google-gmail",
+   "name": "Gmail (Google Workspace)",
+   "vendor": "Google",
+   "description": "Gmail, read and compose",
+   "category": "google",
+   "url": "https://gmailmcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "developers.google.com configure page and accounts.google.com discovery read 2026-10-17: no registration endpoint; the client is a Web application the person makes, with the AI-agent option",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developers.google.com/workspace/guides/configure-mcp-servers"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://accounts.google.com/.well-known/openid-configuration"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://accounts.google.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no registration endpoint; the person's own Google Cloud client, and the Workspace Developer Preview Program"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "hubspot",
+   "name": "HubSpot",
+   "vendor": "HubSpot",
+   "description": "CRM contacts, companies, deals",
+   "category": "crm",
+   "url": "https://mcp.hubspot.com",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [
+    "Private App token"
+   ],
+   "verified": true,
+   "basis": "mcp.hubspot.com AS metadata read 2026-10-17: no registration endpoint, client_secret_post only; HubSpot's developer doc says DCR is not supported",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.hubspot.com/.well-known/oauth-authorization-server"
+    },
+    {
+     "source": "vendor-doc",
+     "ref": "https://developers.hubspot.com/docs/apps/developer-platform/add-features/mcp-server.md"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://mcp.hubspot.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no registration endpoint; the client is the person's own HubSpot app"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "linear",
+   "name": "Linear",
+   "vendor": "Linear",
+   "description": "Issues, projects and docs",
+   "category": "dev",
+   "url": "https://mcp.linear.app/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "vendor doc linear.app/docs/mcp (OAuth 2.1 with dynamic client registration, Streamable HTTP) and mcp.linear.app AS metadata read 2026-10-17",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://linear.app/docs/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.linear.app/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.linear.app",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.linear.app/register named; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "meta-ads",
+   "name": "Meta Ads",
+   "vendor": "Meta",
+   "description": "Ad accounts, campaigns and insights (reported beta)",
+   "category": "marketing",
+   "url": "https://mcp.facebook.com/ads",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "resource metadata and AS metadata read 2026-10-17 (AS at www.facebook.com/ads); rollout and eligibility are third-party reports",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://www.facebook.com/.well-known/oauth-authorization-server/ads"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://www.facebook.com/ads",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.facebook.com/.well-known/register/ads; not called"
+   },
+   "verdict": "conditional"
+  },
+  {
+   "id": "microsoft-learn",
+   "name": "Microsoft Learn docs",
+   "vendor": "Microsoft",
+   "description": "Public Microsoft documentation search (no user data)",
+   "category": "docs",
+   "url": "https://learn.microsoft.com/api/mcp",
+   "transport": "http",
+   "auth": "none",
+   "headers": [],
+   "verified": true,
+   "basis": "Microsoft Learn support page (summary): Streamable HTTP, no authentication, no charge; this is docs only, not Outlook, Teams or SharePoint",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://learn.microsoft.com/training/support/mcp"
+    }
+   ],
+   "probe": {
+    "result": "no-oauth",
+    "issuer": null,
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no authentication required"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "notion",
+   "name": "Notion",
+   "vendor": "Notion",
+   "description": "Pages, databases and docs",
+   "category": "work",
+   "url": "https://mcp.notion.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "vendor doc developers.notion.com (Claude Code command, OAuth flow) and mcp.notion.com AS metadata read 2026-10-17; owner-created MCP token on Business and Enterprise (vendor FAQ)",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://developers.notion.com/guides/mcp/get-started-with-mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.notion.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.notion.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.notion.com/register; not called. First resource-metadata read returned a garbled issuer, so the AS document was read directly"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "sentry",
+   "name": "Sentry",
+   "vendor": "Sentry",
+   "description": "Errors and releases",
+   "category": "dev",
+   "url": "https://mcp.sentry.dev/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "docs.sentry.io (Streamable HTTP with OAuth, per search summary) and mcp.sentry.dev AS metadata read 2026-10-17",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.sentry.dev/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.sentry.dev",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.sentry.dev/oauth/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "slack",
+   "name": "Slack",
+   "vendor": "Slack",
+   "description": "Channels, messages and search",
+   "category": "chat",
+   "url": "https://mcp.slack.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "mcp.slack.com AS metadata read 2026-10-17 (no registration endpoint); docs.slack.dev says no DCR and a registered Slack app for MCP clients",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://docs.slack.dev/ai/slack-mcp-server/"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.slack.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://mcp.slack.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no registration endpoint; Vyre would need its own Slack app"
+   },
+   "verdict": "blocked"
+  },
+  {
+   "id": "stripe",
+   "name": "Stripe",
+   "vendor": "Stripe",
+   "description": "Payments, invoices, customers (agent API key or OAuth)",
+   "category": "finance",
+   "url": "https://mcp.stripe.com",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "vendor doc docs.stripe.com/mcp (OAuth or agent API key as bearer) and access.stripe.com AS metadata read 2026-10-17; key migration deadline 30 Nov 2026",
+   "sources": [
+    {
+     "source": "vendor-doc",
+     "ref": "https://docs.stripe.com/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://access.stripe.com/.well-known/oauth-authorization-server/mcp"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://access.stripe.com/mcp",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://access.stripe.com/mcp/oauth2/register; not called"
+   },
+   "verdict": "one-click"
+  }
+ ]
+}

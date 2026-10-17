@@ -22,6 +22,7 @@
 // it with fakes and a fake clock.
 
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { McpError } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
@@ -37,9 +38,25 @@ export const MIGRATIONS = [
   // One meaning of "no scope": the person and the assistant only. A server stored before that has an explicit open scope
   // (the old default was written out on every row); any row without one is kept open, so nothing that works breaks.
   `UPDATE mcp_servers SET scope = '{"projects":"*","agents":"*"}' WHERE scope IS NULL OR scope = '' OR scope = '{}' OR scope = 'null';`,
+  // A connection a person made for themselves: `owner` is that person's id (null for the Space owner's own rows, as before), `connection` the item in their vault that holds the token, `label` the
+  // name they gave it. The row's `name` stays the one key everything else in the hub uses; for a person's row it is personKey(label, owner), so two people can each have a "clio".
+  `ALTER TABLE mcp_servers ADD COLUMN owner TEXT; ALTER TABLE mcp_servers ADD COLUMN connection TEXT; ALTER TABLE mcp_servers ADD COLUMN label TEXT;`,
+  // Description pinning: the hash of the tool list a person reviewed (tools_pin), and, when the live list later differs, the hash and the list itself held for review (pin_seen, tools_seen).
+  `ALTER TABLE mcp_servers ADD COLUMN tools_pin TEXT;`,
+  `ALTER TABLE mcp_servers ADD COLUMN pinned_at INTEGER;`,
+  `ALTER TABLE mcp_servers ADD COLUMN pin_seen TEXT;`,
+  `ALTER TABLE mcp_servers ADD COLUMN tools_seen TEXT;`,
 ];
 
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
+/** The person's id as the kernel writes it. */
+const PERSON = /^per_[A-Za-z0-9_-]{1,64}$/;
+/** The key of a row a person made: their label, cut to leave room, and six hex digits of their id, so two people can each connect "clio" and the key still fits a server name. @param {string} label @param {string} person */
+export const personKey = (label, person) => {
+  if (!NAME.test(String(label || ""))) throw bad("a server name is a lowercase letter, then up to 31 lowercase letters, digits or dashes");
+  if (!PERSON.test(String(person || ""))) throw bad("a connection belongs to a person");
+  return `${String(label).slice(0, 25).replace(/-+$/, "")}-${crypto.createHash("sha256").update(String(person)).digest("hex").slice(0, 6)}`;
+};
 /** Vault item names, as core/vault/vault.js. */
 const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -136,14 +153,16 @@ export function classify(tool, mode, alias) {
   const one = ws.length === 1;
   const writes = ws.some(w => WRITE_WORDS.includes(w)) || (one && WRITE_WORDS.some(w => w.length > 2 && flat.startsWith(w))) || WRITE_STEMS.some(s => flat.includes(s));
   const reads = ws.some(w => READ_VERBS.includes(w)) || (one && READ_VERBS.some(v => flat.startsWith(v)));
-  const hint = Boolean(tool.annotations && tool.annotations.readOnlyHint === true);
-  const kind = ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
+  // B7: the server's own annotations can only make a call stricter. destructiveHint is held and is a delete; readOnlyHint is
+  // never read as permission, because a server writes its own hint and a write with a plain name ("apply_changes") must stay held.
+  const destructive = Boolean(tool.annotations && tool.annotations.destructiveHint === true);
+  const kind = destructive || ws.some(w => DELETE_WORDS.includes(w)) || /delete|remove|destroy|purge/.test(flat) ? "delete"
     : ws.some(w => PAY_WORDS.includes(w)) || /payment|refund|purchase|transfer/.test(flat) ? "spend" : "send";
   if (mode === "off") return { outward: true, kind, off: true };
   if (sends(tool.name) || (alias && sends(alias.slice(alias.indexOf("__") + 2)))) return { outward: true, kind, off: false };
-  if (mode === "read") return { outward: false, kind, off: false };
+  if (mode === "read") return { outward: destructive, kind, off: false };
   if (mode === "write") return { outward: true, kind, off: false };
-  return { outward: !((reads || hint) && !writes), kind, off: false };
+  return { outward: destructive || !(reads && !writes), kind, off: false };
 }
 
 /** Where an outward call goes, and which argument said so. @param {any} args @param {string} server */
@@ -250,7 +269,7 @@ function ownServer(command, args) {
 /**
  * The stored row for an add or update, checked. Refuses anything that would put a value in the
  * table: a sensitive header, an env value that is not a vault item, a credential in a url.
- * @param {any} i @param {{ httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null) }} [opts]
+ * @param {any} i @param {{ httpHosts?: string[], own?: boolean, boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null) }} [opts]
  */
 export function normalize(i, opts = {}) {
   if (!NAME.test(String(i.name || ""))) throw bad("a server name is a lowercase letter, then up to 31 lowercase letters, digits or dashes");
@@ -293,7 +312,7 @@ export function normalize(i, opts = {}) {
       out.vars[k] = v;
     }
   }
-  out.auth = normalizeAuth(i.auth, out);
+  out.auth = normalizeAuth(i.auth, out, opts.own === true);
   if (out.url && out.auth.item) {
     // A connector preset's own prefix wins over the older hand-listed ones (google-gmail before google-).
     const lower = String(out.auth.item).toLowerCase();
@@ -308,7 +327,7 @@ export function normalize(i, opts = {}) {
   return out;
 }
 
-function normalizeAuth(a, out) {
+function normalizeAuth(a, out, own = false) {
   const stdio = out.transport === "stdio";
   const envRefs = Object.keys(out.env).length > 0;
   if (a === undefined || a === null) a = { type: envRefs ? "env" : "none" };
@@ -324,6 +343,14 @@ function normalizeAuth(a, out) {
     return { type: "env" };
   }
   if (stdio) throw bad(`${a.type} auth is for http and sse servers; a stdio server takes env`);
+  if (a.connection !== undefined) {
+    // A person's own connection: the token is an item in THEIR vault, reached only by the hub's token tool. No item name, no header: the hub adds the token at the boundary.
+    if (!own) throw bad("auth.connection is for a connection a person made for themselves");
+    if (!["oauth", "bearer"].includes(a.type) || a.item !== undefined) throw bad("a connection takes auth { type: oauth | bearer, connection } and no item");
+    if (typeof a.connection !== "string" || !ITEM.test(a.connection) || looksSecret(a.connection)) throw bad("auth.connection must name an item in your vault");
+    return { type: a.type, connection: a.connection };
+  }
+  if (own) throw bad("a person's connection names its item with auth.connection");
   if (typeof a.item !== "string" || !ITEM.test(a.item) || looksSecret(a.item)) throw bad("auth.item must name a vault item");
   const r = { type: a.type, item: a.item };
   if (a.field !== undefined) { if (typeof a.field !== "string" || !a.field) throw bad("auth.field must be a field name"); r.field = a.field; }
@@ -362,9 +389,35 @@ function normalizePolicy(t) {
 
 // ---- the hub ----
 
+const LEVEL = new AsyncLocalStorage();
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
+
+/**
+ * The hash of a tool list as a person reviews it: each tool's name, description, input schema and annotations, in name order. A server's tool text is third-party text a model reads, so a list
+ * that differs from the reviewed one is held (the "rug pull" a server could do after it was approved).
+ * @param {any[]} tools
+ */
+export function pinOf(tools) {
+  const rows = (tools || []).map(t => ({ name: String(t.name), description: String(t.description || ""), inputSchema: t.inputSchema || { type: "object" }, annotations: t.annotations || null }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
+/** What changed between the reviewed tool list and the one held: tool names with the old and new description, for the person to read as data. @param {any[]} was @param {any[]} now */
+export function pinChanges(was, now) {
+  const a = new Map((was || []).map(t => [t.name, t])), b = new Map((now || []).map(t => [t.name, t]));
+  const text = (/** @type {any} */ t) => cut(String(t.description || ""), 500);
+  const out = [];
+  for (const [n, t] of b) {
+    const o = a.get(n);
+    if (!o) out.push({ tool: n, kind: "added", now: text(t) });
+    else if (pinOf([o]) !== pinOf([t])) out.push({ tool: n, kind: "changed", was: text(o), now: text(t) });
+  }
+  for (const [n, o] of a) if (!b.has(n)) out.push({ tool: n, kind: "removed", was: text(o) });
+  return out.slice(0, 100);
+}
 // A module's own call (the kernel's own "module:<name>" label, ctx.call - never a caller-
 // forgeable claim the way an agent's own caller string is) is scoped like the person too, same
 // as always; this guards it against smuggling an agent: or thread: claim behind "module:" the
@@ -382,6 +435,8 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
+ *   connectionToken?: (c: { owner: string, connection: string, write: boolean }) => Promise<{ access_token: string, token_type?: string }>,
+ *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call" }, who: Who) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
 
@@ -433,7 +488,8 @@ export class Hub {
     return { name: r.name, transport: r.transport, command: r.command, args: json(r.args, []), cwd: r.cwd, url: r.url,
       headers: json(r.headers, {}), env: json(r.env, {}), vars: json(r.vars, {}), auth: json(r.auth, { type: "none" }),
       scope: json(r.scope, { projects: "*", agents: "*" }), tools: json(r.tools, {}), idle: r.idle,
-      cache: json(r.tools_cache, null), cachedAt: r.cached_at, lastUsed: r.last_used, added: r.added, updated: r.updated };
+      cache: json(r.tools_cache, null), cachedAt: r.cached_at, pin: r.tools_pin || null, pinnedAt: r.pinned_at || null, pinSeen: r.pin_seen || null, toolsSeen: json(r.tools_seen, null), lastUsed: r.last_used, added: r.added, updated: r.updated,
+      owner: r.owner || null, connection: r.connection || null, label: r.label || null };
   }
 
   rows() { return this.db.prepare("SELECT name FROM mcp_servers ORDER BY name").all().map(r => this.row(r.name)); }
@@ -455,12 +511,15 @@ export class Hub {
     const s = this.live.get(r.name);
     const base = { name: r.name, transport: r.transport, state: s ? s.state : "stopped", tools: r.cache ? this.visibleTools(r).length : null,
       ...(s && s.error ? { error: s.error } : {}), lastUsed: r.lastUsed || null,
-      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope };
+      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope,
+      ...(r.owner ? { owner: r.owner, label: r.label || r.name } : {}),
+      ...(r.pinSeen ? { held: "tools_changed" } : {}) };
     if (!full) return base;
     const origin = r.url ? (() => { const u = new URL(r.url); return u.origin + u.pathname; })() : null;
     return { ...base, ...(r.command ? { command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) } : {}), ...(origin ? { url: origin } : {}),
       headers: Object.keys(r.headers), env: r.env, vars: Object.keys(r.vars), policy: r.tools, idle: r.idle ?? this.deps.idle ?? DEFAULT_IDLE,
-      cachedAt: r.cachedAt || null, added: r.added, updated: r.updated };
+      cachedAt: r.cachedAt || null, added: r.added, updated: r.updated,
+      ...(r.pin ? { pin: r.pinSeen ? { state: "changed", seen: r.pinSeen, changes: pinChanges(r.cache || [], r.toolsSeen || []) } : { state: "pinned", at: r.pinnedAt } } : {}) };
   }
 
   // ---- management ----
@@ -480,13 +539,25 @@ export class Hub {
     return { granted: true };
   }
 
-  async add(input) {
-    const n = normalize(input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
-    if (this.row(n.name)) throw fail("conflict", `there is already a server ${n.name}; mcp.update changes it`);
+  /**
+   * Add a server. `o.owner` is a person's id, given by the caller that read it from the kernel's chain (never from the input), and makes the row that person's own: remote servers only, the token an item in
+   * their vault (auth.connection), and the row's key personKey(name, owner) so it cannot collide with another person's.
+   * @param {any} input @param {{ owner?: string }} [o]
+   */
+  async add(input, o = {}) {
+    if (input && (input.owner !== undefined || input.connection !== undefined || input.label !== undefined)) throw bad("owner, connection and label are not inputs: a connection belongs to the person who made the call");
+    const own = o.owner !== undefined;
+    if (own && input.transport === "stdio") throw bad("a connection a person makes is a remote server: http or sse");
+    const label = String(input.name || "");
+    const n = normalize(own ? { ...input, name: personKey(label, /** @type {string} */ (o.owner)) } : input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor, own });
+    // Never overwrite: a key that already exists is refused, whoever owns it (six hex digits can collide, and one person's connection must never replace another's).
+    const had = this.row(n.name);
+    if (had) throw fail("conflict", own && had.owner !== o.owner ? `${label} cannot be used; choose another name` : `there is already a server ${own ? label : n.name}; mcp.update changes it`);
     const now = this.now();
-    this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(n.name, n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url, JSON.stringify(n.headers),
-      JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, now, now);
+    this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated, owner, connection, label)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(n.name, n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url, JSON.stringify(n.headers),
+      JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, now, now,
+      own ? o.owner : null, own ? /** @type {any} */ (n.auth).connection : null, own ? label : null);
     await this.deps.offer?.(n.name);
     this.deps.emit("mcp.added", { name: n.name, transport: n.transport, auth: n.auth.type });
     // Fill the tool cache now, so the first session lists tools without a spawn. A server whose
@@ -502,12 +573,12 @@ export class Hub {
     if (input.transport && input.transport !== r.transport) {
       for (const k of ["command", "args", "cwd", "url", "headers", "env", "vars", "auth"]) if (input[k] === undefined) delete merged[k];
     }
-    const n = normalize(merged, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
+    const n = normalize(merged, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor, own: Boolean(r.owner) });
     const how = ["transport", "command", "args", "cwd", "url", "headers", "env", "vars", "auth"];
     const changed = Object.keys(input).filter(k => k !== "name");
     const reconnect = how.some(k => JSON.stringify(n[k]) !== JSON.stringify(r[k]));
     this.db.prepare(`UPDATE mcp_servers SET transport = ?, command = ?, args = ?, cwd = ?, url = ?, headers = ?, env = ?, vars = ?, auth = ?, scope = ?,
-      tools = ?, idle = ?, updated = ?${reconnect ? ", tools_cache = NULL, cached_at = NULL" : ""} WHERE name = ?`).run(n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url,
+      tools = ?, idle = ?, updated = ?${reconnect ? ", tools_cache = NULL, cached_at = NULL, tools_pin = NULL, pinned_at = NULL, pin_seen = NULL, tools_seen = NULL" : ""} WHERE name = ?`).run(n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url,
       JSON.stringify(n.headers), JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, this.now(), n.name);
     // A new command, url or credential is a different connection: the running one stops, and the
     // old tool list is dropped, since it may not be the same server any more.
@@ -581,6 +652,9 @@ export class Hub {
    * @param {any} r @param {Who} who @param {{ agentProjects?: any, project?: any }} memo
    */
   async inScope(r, who, memo) {
+    // A person's connection has no scope list: whoever may use it is whoever the Vault says holds its item (a grant), the person who made it included. Neither the person shortcut nor a #tag reaches it.
+    // Rows with no owner are the Space owner's older ones and keep the scope rule below. No new row may be made without an owner once members connect: add() takes the owner from the verified caller, never from input.
+    if (r.owner) return this.mayUse(r, who, "read");
     if (who.person) return true;
     // A #tag in the person's own turn: this thread (or one it came from) may use this server, whatever its scope says.
     if (who.thread && this.threadGrants.has(r.name)) {
@@ -606,6 +680,16 @@ export class Hub {
     return Boolean(project && projects.includes(project));
   }
 
+  /**
+   * Whether the verified caller holds a person's connection at this level: "read" (see it, run its read tools) or "call" (run an outward tool, which is still held at the Gate). The Vault answers from the kernel
+   * with the call's own chain; no answer, an error or a hub with no way to ask is no.
+   * @param {any} r @param {Who} who @param {"read"|"call"} level
+   */
+  async mayUse(r, who, level) {
+    if (typeof this.deps.mayUseConnection !== "function") return false;
+    try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level }, who)) === true; } catch { return false; }
+  }
+
   async projectOf(who, memo) {
     if (memo.project === undefined) memo.project = who.thread && this.deps.threadProject ? await this.deps.threadProject(who.thread).catch(() => null) : null;
     return memo.project;
@@ -613,6 +697,7 @@ export class Hub {
 
   /** A server's cached tools after the person's policy, with names and classification. */
   visibleTools(r) {
+    if (r.pinSeen) return [];   // its tool text changed since a person reviewed it: nothing is offered until they approve what it says now
     const cache = Array.isArray(r.cache) ? r.cache : [];
     const names = aggregate(r.name, cache.map(t => String(t.name)));
     const pol = r.tools || {};
@@ -664,6 +749,7 @@ export class Hub {
     const r = this.row(server);
     const memo = {};
     if (!r || !(await this.inScope(r, who, memo))) throw fail("denied", `no MCP server ${String(server).slice(0, 40)} that this ${who.agent ? `agent (${who.agent})` : "session"} may use`);
+    if (r.pinSeen) throw this.changedError(r);
     let t = r.cache ? this.findTool(r, tool) : null;
     const names = r.cache ? aggregate(r.name, r.cache.map(x => String(x.name))) : new Map();
     const cached = [...names].some(([raw, agg]) => raw === tool || agg === tool || agg === `${r.name}__${tool}`);
@@ -675,6 +761,7 @@ export class Hub {
       t = this.findTool(this.must(r.name), tool);
     }
     if (!t) throw fail("not_found", `${r.name} has no tool ${String(tool).slice(0, 80)} that is on`);
+    if (r.owner && (t.outward || input.hold === true) && !(await this.mayUse(r, who, "call"))) throw fail("denied", `${t.tool} on ${r.name} sends or changes something, and you may only read through this connection`);
     if (t.outward) return this.hold(r, t, args, who, memo);
     if (input.hold === true) return this.hold(r, { ...t, kind: t.kind || "send" }, args, who, memo);
     return this.run(r.name, t.tool, args, { agent: who.agent });
@@ -682,9 +769,11 @@ export class Hub {
 
   async hold(r, t, args, who, memo) {
     if (!this.deps.request) throw fail("failed", "the Gate is not running, so an outward call cannot be held");
-    const { to } = target(args, r.name);
+    const { to, key } = target(args, r.name);
     const project = who.thread ? await this.projectOf(who, memo) : null;
-    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
+    // B8: with no recipient argument, `to` is only the server's name for the person to see. That is not a destination, so the
+    // Gate must not match it to a standing permission or an intent (gate/index.js reads `unnamed`).
+    const held = await this.deps.request({ kind: t.kind, via: `mcp:${r.name}`, to, ...(key === null ? { unnamed: true } : {}), content: { server: r.name, tool: t.tool, arguments: args, summary: `${t.tool} on ${r.name}` },
       ...(who.thread ? { thread: who.thread } : {}), ...(project ? { project } : {}), ...(who.agent ? { agent: who.agent } : {}) });
     this.deps.emit("mcp.held", { server: r.name, tool: t.tool, id: held.id, kind: t.kind, agent: who.agent || null }, who.thread ? { thread: who.thread, ...(project ? { project } : {}) } : undefined);
     return { held: held.id, message: held.message };
@@ -727,7 +816,13 @@ export class Hub {
   }
 
   /** Call a tool on a running (or started) server, with one retry after a 401 or a lost session. */
-  async run(name, tool, args, { agent = null, released = null } = {}) {
+  async run(name, tool, args, opts = {}) {
+    // a call released from the Gate is an outward one: the token asked for it is the write kind
+    return LEVEL.run({ write: opts.released != null }, () => this.runInner(name, tool, args, opts));
+  }
+
+  async runInner(name, tool, args, { agent = null, released = null } = {}) {
+    { const held = this.row(name); if (held && held.pinSeen) throw this.changedError(held); }   // an approved call waits for the same review
     const t0 = this.now();
     const s = this.state(name);
     s.inflight++;
@@ -756,6 +851,7 @@ export class Hub {
       return this.cap(this.creds.scrubAll(result));
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
+      this.markReconnect(name, e);
       throw this.scrubbed(e, { reached: asked && !NOT_REACHED.has(code) ? "maybe" : "no" });
     } finally {
       s.inflight--;
@@ -823,6 +919,7 @@ export class Hub {
       return client;
     } catch (e) {
       const err = this.scrubbed(e);
+      this.markReconnect(name, e);
       s.state = "failed";
       s.error = cut(this.lastLine(s.lastClient) || err.message, 300);
       if (budget) s.crashes.push(this.now());
@@ -830,6 +927,31 @@ export class Hub {
       this.deps.log?.(`${name} failed to start: ${cut(err.message, 200)}`);
       throw err;
     }
+  }
+
+  /**
+   * The header for a person's connection: an access token from the Vault's token tool, asked at the moment of the request, for the verified chain of the call in progress (the Vault checks it again). The
+   * refresh token never comes here. The token is remembered for scrubbing.
+   * @param {any} r
+   */
+  async connectionHeaders(r) {
+    if (typeof this.deps.connectionToken !== "function") throw fail("failed", "this hub has no way to reach a person's connection");
+    const t = await this.deps.connectionToken({ owner: r.owner, connection: r.connection, write: Boolean((LEVEL.getStore() || {}).write) });
+    if (!t || typeof t.access_token !== "string" || !t.access_token) throw fail("unauthorized", "the connection gave no token; reconnect it");
+    this.creds.track(t.access_token);
+    return { authorization: `${t.token_type || "Bearer"} ${t.access_token}` };
+  }
+
+  /**
+   * A sign-in the vendor refused even after the one retry with a fresh token (the retry is in start and run): the connection that made it is marked, so the person is asked to connect again.
+   * Only an OAuth row with a vault item can be one. The report never blocks or changes the error the caller gets.
+   * @param {string} name @param {any} e
+   */
+  markReconnect(name, e) {
+    if (e?.code !== "unauthorized" || !this.deps.needsReconnect) return;
+    const r = this.row(name);
+    if (!r || !r.auth || r.auth.type !== "oauth" || !(r.auth.item || r.auth.connection)) return;
+    Promise.resolve().then(() => this.deps.needsReconnect(r.auth.item || r.auth.connection)).catch(() => {});
   }
 
   /** Connect with the credential built for this server only: env for its child, a header per request. */
@@ -842,22 +964,57 @@ export class Hub {
       const env = { ...r.vars, ...(await this.creds.env(r.env)) };
       client = await this.deps.connect({ transport: "stdio", command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) }, { ...opts, env });
     } else {
-      const headers = async () => ({ ...r.headers, ...(await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
+      const headers = async () => ({ ...r.headers, ...(r.owner ? await this.connectionHeaders(r) : await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
       client = await this.deps.connect({ transport: /** @type {"http"|"sse"} */ (r.transport), url: r.url }, { ...opts, headers });
     }
     return client;
   }
 
-  /** Store the tool list when it differs from the cache. */
+  /**
+   * Store the tool list when it differs from the cache. The first list a server gives is the one the person reviewed (they connected it, or an older cache they already used), and its hash is pinned. A later
+   * list that hashes differently is not adopted: it is held with the server, its tools are withdrawn, and `mcp.repin` takes what the person read.
+   */
   async refresh(name, tools) {
     const clean = (tools || []).filter(t => t && typeof t.name === "string" && t.name).slice(0, 1000)
       .map(t => ({ name: t.name, description: typeof t.description === "string" ? cut(t.description, 2000) : "", inputSchema: isObj(t.inputSchema) ? t.inputSchema : { type: "object" },
         ...(isObj(t.annotations) ? { annotations: t.annotations } : {}) }));
     const r = this.must(name);
-    const next = JSON.stringify(clean);
-    if (JSON.stringify(r.cache) === next) return;
-    this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ? WHERE name = ?").run(next, this.now(), name);
-    this.deps.emit("mcp.refreshed", { name, tools: clean.length });
+    const next = JSON.stringify(clean), pin = pinOf(clean);
+    const reviewed = r.pin || (Array.isArray(r.cache) ? pinOf(r.cache) : null);
+    if (reviewed === null || (reviewed === pin && !r.pinSeen && JSON.stringify(r.cache) !== next)) {
+      this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = COALESCE(pinned_at, ?), pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(next, this.now(), pin, this.now(), name);
+      this.deps.emit("mcp.refreshed", { name, tools: clean.length });
+      return;
+    }
+    if (reviewed === pin) {
+      // the reviewed text is back (or never left): any held change is dropped, and a pin missing from an older row is written
+      if (r.pinSeen || !r.pin) this.db.prepare("UPDATE mcp_servers SET tools_pin = ?, pinned_at = COALESCE(pinned_at, ?), pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(pin, this.now(), name);
+      return;
+    }
+    if (r.pinSeen === pin) return;   // already held for exactly this list
+    this.db.prepare("UPDATE mcp_servers SET tools_pin = COALESCE(tools_pin, ?), pinned_at = COALESCE(pinned_at, ?), pin_seen = ?, tools_seen = ? WHERE name = ?").run(reviewed, this.now(), pin, next, name);
+    const ch = pinChanges(r.cache || [], clean);
+    this.deps.emit("mcp.tools-changed", { name, added: ch.filter(c => c.kind === "added").length, removed: ch.filter(c => c.kind === "removed").length, changed: ch.filter(c => c.kind === "changed").length });
+    this.deps.log?.(`${name}: its tool descriptions changed since they were reviewed, so its tools are held`);
+  }
+
+  /** The refusal for a server whose tool text changed since a person reviewed it. @param {any} r */
+  changedError(r) {
+    return fail("tools_changed", `${r.name} changed what its tools say since you reviewed them, so they are held. Read the change in mcp.servers, then approve it with mcp.repin { name: "${r.name}", seen: "${r.pinSeen}" } or remove the server.`);
+  }
+
+  /**
+   * A person approves the tool text that was held: exactly the list they read (the one stored with the hold, never a fresh listing), named by its FULL hash (a prefix is not enough: a server could search for a
+   * second list that starts the same) so a second change in between is not taken by mistake.
+   * @param {{ name: string, seen: string }} input
+   */
+  async repin({ name, seen }) {
+    const r = this.must(name);
+    if (!r.pinSeen) throw fail("bad_state", `${r.name} has no changed tool text waiting for you`);
+    if (!seen || String(seen) !== r.pinSeen) throw fail("conflict", `${r.name}'s tools changed again since you read them: read mcp.servers and approve what it shows now`);
+    this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = ?, pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(JSON.stringify(r.toolsSeen || []), this.now(), r.pinSeen, this.now(), name);
+    this.deps.emit("mcp.repinned", { name });
+    return this.view(this.must(name));
   }
 
   /** The server went away on its own. */

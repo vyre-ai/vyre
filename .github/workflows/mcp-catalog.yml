@@ -1,0 +1,46 @@
+# The app catalog is a reviewed weekly snapshot (lib/connector-presets/catalog.snapshot.json). Once a week this pulls the official MCP registry and the Claude plugin repos and, when the entries changed, opens a pull
+# request with the diff: a person reads every new entry before it can appear in the app. It never pushes to a protected branch and never merges. Run it by hand with workflow_dispatch.
+name: mcp-catalog
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: mcp-catalog
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Fetch the plugin repos
+        run: |
+          git clone --depth 1 https://github.com/anthropics/claude-plugins-official "$RUNNER_TEMP/official"
+          git clone --depth 1 https://github.com/anthropics/knowledge-work-plugins "$RUNNER_TEMP/work"
+      - name: Pull the snapshot
+        run: |
+          official_sha="$(git -C "$RUNNER_TEMP/official" rev-parse HEAD)"
+          work_sha="$(git -C "$RUNNER_TEMP/work" rev-parse HEAD)"
+          node scripts/mcp-catalog-snapshot.mjs --diff-md "$RUNNER_TEMP/diff.md" \
+            --plugins "claude-plugins-official=$RUNNER_TEMP/official@$official_sha" \
+            --plugins "knowledge-work-plugins=$RUNNER_TEMP/work@$work_sha"
+      - name: Open the review pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- lib/connector-presets/catalog.snapshot.json; then echo "the catalog did not change"; exit 0; fi
+          branch="catalog/$(date -u +%Y-%m-%d)"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add lib/connector-presets/catalog.snapshot.json
+          git commit -m "chore(catalog): the weekly app catalog snapshot"
+          git push origin "$branch"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "App catalog: the weekly snapshot" --body-file "$RUNNER_TEMP/diff.md"
