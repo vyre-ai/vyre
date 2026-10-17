@@ -26,10 +26,11 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: node scripts/gen-allow.mjs
-      - run: node kernel/golden/index.js --write
       # The generated docs are built here, on the platform CI checks them on, because a Mac builds some entries (documents.*) differently.
       - run: node scripts/gen-agent-docs.mjs && node scripts/gen-docs-reference && node scripts/gen-architecture-map.mjs
+      - run: node kernel/golden/index.js --write
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: golden
           path: |
