@@ -36,12 +36,13 @@ async function world(t) {
   const calls = /** @type {any[]} */ ([]);
   /** A stand-in for the browser: the connection opens and then stops, so a started fill shows as the stop and a refused one as a refusal. */
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
-  const d = { vault: v, said: new SaidIntents(v), log: () => {}, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
+  const d = { vault: v, said: new SaidIntents(v), log: (m) => { console.log("[fill-log] " + m); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
     calls.push({ name, input });
     if (name === "computers.fill.begin") return { data: { fill: "fill-1", cdpUrl: "http://127.0.0.1:9", token: "" } };
     return { data: { agent: input.agent, ended: true } };
   } };
   const urn = await v.access.urn("northwind-app");
+  console.log("[fill-diag] urn", urn, "uid kit", rig.uid("kit"), "K.agentMay is", typeof rig.K.agentMay);
   /** A share of the login with an agent, as the sharing tools make it: the actions of a level, on the login's own address. */
   const share = (/** @type {string} */ agent, /** @type {readonly string[]} */ actions = ACCESS_LEVELS.use, over = {}) =>
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
