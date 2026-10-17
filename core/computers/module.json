@@ -27,6 +27,8 @@
       {"name": "computers.agent.terminals", "effect": "read", "reach": "person"},
       {"name": "computers.agent.terminal.open", "effect": "write", "reach": "person"},
       {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
+      {"name": "computers.update", "effect": "write", "reach": "person"},
+      {"name": "computers.update.status", "effect": "read", "reach": "person"},
       {"name": "computers.endpoint", "reach": "modules"},
       {"name": "computers.may-act", "reach": "modules"},
       {"name": "computers.helper", "reach": "modules"},
@@ -46,7 +48,7 @@
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
       "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
       "computer.shielded", "computer.unshielded", "computer.joined", "computer.left",
-      "computer.member-added", "computer.member-removed", "computer.member-rotated"
+      "computer.member-added", "computer.member-removed", "computer.member-rotated", "computer.updated"
     ]
   },
   "shows": { "streams": ["glass", "browser-glass", "terminal"], "cli": ["computers"], "deck": ["panel:glass"] },

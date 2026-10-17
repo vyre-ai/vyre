@@ -272,6 +272,8 @@ export const PERSON_ONLY = new Map([
   ["computers.member.dispose", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.remove", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.member.rotate", "needs the person's Face ID or presence: who may use a computer"],
+  ["computers.update", "controls the person's own machine: replaces the agent computer with one on this version of Vyre, keeping the agents' files"],
+  ["computers.update.status", "reads the person's own machine: whether the agent computer matches this version of Vyre"],
   ["computers.resume", "controls the person's own machine"],
   ["connectors.site.connect", "makes a website Connection from what was learned: the person's own act"],
   ["connectors.site.sync", "changes which learned operations a website Connection exposes: the person's own act"],
