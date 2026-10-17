@@ -42,9 +42,14 @@ export class ConnectionTokens {
   }
 
   /** Whether this chain may use the owner's connection. @param {string} owner @param {string} name @param {boolean} write @param {any} meta */
-  async allowed(owner, name, write, meta) {
+  async allowed(owner, name, write, meta, as) {
     const K = this.kernelOf();
     if (!K || typeof K.chain !== "function") return false;
+    // The MCP hub names the member the call is for (its tool took it from the verified chain, one person and no agent): her own connection is hers, one shared with her is the kernel's answer about her.
+    if (typeof as === "string" && as) {
+      if (as === owner) return true;
+      try { return Boolean(K.vault && typeof K.vault.personMay === "function" && await K.vault.personMay(as, write ? "vault.call" : "vault.read", connectionUrn(K.space, owner, name))); } catch { return false; }
+    }
     let chain;
     try { chain = await K.chain(meta || {}); } catch { return false; }
     const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
@@ -67,7 +72,7 @@ export class ConnectionTokens {
     if (!PERSON.test(owner) || !ITEM.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
     const K0 = this.kernelOf();
     if (String(K0 && K0.owner) === owner) throw denied("the Space owner's connections are items of the owner's vault, not a member's");
-    if (!(await this.allowed(owner, name, input.write === true, meta))) throw denied("this call may not use that connection");
+    if (!(await this.allowed(owner, name, input.write === true, meta, input.as))) throw denied("this call may not use that connection");
     // The person's unlocked vault, else the sealed server copy of their key, else "locked". No fallback to another vault, and only connection items are ever opened this way.
     const it = await this.people.service(owner).get(name);
     const f = it.fields;

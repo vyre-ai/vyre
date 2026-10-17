@@ -199,7 +199,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   ctx.tool("vault.connection.token", {
     internal: true,
     description: "An access token for one person's app connection, for the MCP hub: { owner, connection, write? } -> { access_token, token_type, expires_at, resource }. Only the mcp module asks; the asker's chain is checked again.",
-    input: obj({ owner: str, connection: str, write: { type: "boolean" } }, ["owner", "connection"]),
+    input: obj({ owner: str, connection: str, write: { type: "boolean" }, as: str }, ["owner", "connection"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       return tokens.token(input || {}, meta);

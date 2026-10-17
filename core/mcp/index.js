@@ -276,7 +276,7 @@ export default {
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await rowName(input.name, meta)); },
+      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await rowName(input.name, meta), { who: who(meta) }); },
     });
 
     ctx.tool("mcp.restart", {
