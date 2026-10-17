@@ -215,7 +215,8 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const owner = String(input && input.owner || ""), name = String(input && input.connection || "");
       if (!revokeAllowed(owner, input && input.as)) throw Object.assign(new Error("only the person who made a connection takes it away: ask them to remove it"), { code: "denied" });
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(owner) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
-      const out = await revokeAtVendor({ people }, { owner, connection: name });
+      // the connection's own fields (its revocation address and refresh token) are read the way the token tool reads them, by the connection key or the server's sealed copy; the person-facing get shows no secret and would never name the address
+      const out = await revokeAtVendor({ people: { get: (/** @type {string} */ id, /** @type {{ name: string }} */ q) => people.service(id).get(q.name) } }, { owner, connection: name });
       return out;
     },
   });
