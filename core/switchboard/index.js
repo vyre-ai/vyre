@@ -39,7 +39,7 @@ import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.j
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
-import { recordTags } from "./record-tags.js";
+import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
@@ -2572,12 +2572,12 @@ export class Switchboard {
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
-    if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
+    const ownVault = turn && turn.memberTurn && turn.asker ? await memberVaultTags({ call: this.deps.call.bind(this.deps), asker: turn.asker, thread: id, said: uuid, chips, names: mentionsOf(text, pasted) }) : [];   // a member's own vault, never the owner's if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
-    if (!names.length && !picked.chips.length && !picked.tags.length) return [];
+    if (!names.length && !picked.chips.length && !picked.tags.length && !ownVault.length) return [];
     const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
-    const tags = [...resolved, ...picked.tags];
+    const tags = [...resolved, ...picked.tags, ...ownVault];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
   }
