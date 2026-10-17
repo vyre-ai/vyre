@@ -56,7 +56,7 @@ PY
 echo "SCAN done"
 `;
 
-/** One scan run. `how` builds the child's env and stdio. @param {{ env?: Record<string, string>, fd3?: string, loginFile?: boolean, viaSpawnSession?: boolean }} o */
+/** One scan run. `how` builds the child's env and stdio. @param {{ env?: Record<string, string>, fd3?: string, loginFile?: boolean, viaSpawnSession?: boolean, spawnOpts?: Record<string, any> }} o */
 async function scan(o) {
   const api = await fakeApi([() => ({ type: "tool_use", id: "t1", name: "Bash", input: { command: "sh ./scan.sh", description: "scan" } }), () => ({ type: "text", text: "done" })]);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-cred-scan-"));
@@ -68,7 +68,7 @@ async function scan(o) {
   const env = { PATH: process.env.PATH || "/usr/bin:/bin", HOME: home, CLAUDE_CONFIG_DIR: cfg, ANTHROPIC_BASE_URL: api.url, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", ...(o.env || {}) };
   const args = ["-p", "scan", "--dangerously-skip-permissions", "--max-turns", "3"];
   /** @type {any} */ let child;
-  if (o.viaSpawnSession) child = spawnSession(CLAUDE, args, { cwd: work, env });
+  if (o.viaSpawnSession) child = spawnSession(CLAUDE, args, { cwd: work, env, ...(o.spawnOpts || {}) });
   else if (o.fd3 !== undefined) { child = spawn(CLAUDE, args, { cwd: work, env, stdio: ["ignore", "pipe", "pipe", "pipe"] }); child.stdio[3].end(o.fd3); }
   else child = spawn(CLAUDE, args, { cwd: work, env, stdio: ["ignore", "pipe", "pipe"] });
   if (child.stdin && typeof child.stdin.end === "function") child.stdin.end();
@@ -125,6 +125,18 @@ test("Vyre's launch hands a setup token over on file descriptor 3, so no tool re
 test("BAR: Vyre's launch hands a setup token over where no tool of the session can read it", { skip: SKIP, timeout: 150_000 }, async () => {
   const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true });
   assert.ok(clean(r), JSON.stringify(r));
+});
+
+// ---- A MEMBER'S LENT KEY (vault.me.lend: core/switchboard/member-key.js puts the member's own key or setup token in the launch environment for that one turn) -------------------------------------------------
+// The same launch, on the two paths that carry a session elsewhere: the box fallback of a chat placed on a person's computer (lentSpawn answers null: nothing could start there) and a launch that offers a sandbox
+// spawner (it is handed no credential, so the plain launch below it is what the test measures). A tool of the session must read the lent key nowhere. A leak here is a red BAR, never a flipped expectation.
+test("BAR: a member's lent setup token, on the box fallback of a chat placed on a person's computer, is read nowhere by a tool of the session", { skip: SKIP, timeout: 150_000 }, async () => {
+  const r = await scan({ env: { CLAUDE_CODE_OAUTH_TOKEN: SECRET }, viaSpawnSession: true, spawnOpts: { lentSpawn: () => null } });
+  assert.ok(clean(r), JSON.stringify(r));
+});
+test("BAR: a member's lent API key, on the box fallback of a chat placed on a person's computer, is read nowhere by a tool of the session", { skip: SKIP, timeout: 150_000 }, async () => {
+  const r = await scan({ env: { ANTHROPIC_API_KEY: SECRET }, viaSpawnSession: true, spawnOpts: { lentSpawn: () => null } });
+  assert.equal(r.env, 0, JSON.stringify(r)); assert.equal(r.environ, 0, JSON.stringify(r)); assert.equal(r.fd, 0, JSON.stringify(r));
 });
 
 // ---- A SESSION IN THE HOME SANDBOX (bwrap: the path of a Linux install without the packaged box's own-uid confinement) -------------------------------------------------------------------------------
