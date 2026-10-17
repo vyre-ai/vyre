@@ -265,6 +265,9 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
+    // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.
+    "identity.vault.install": async () => ({ installed: false, reason: "no_vault" }),
+
     "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
     // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and

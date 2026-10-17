@@ -207,7 +207,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
       if (noSession) { const { usePeer } = await import("./peer"); usePeer(false); throw Object.assign(new Error("Paired, but this device has no sign-in with the server yet."), { code: "no_session" }); }
       // From now on this device reaches the server over the peer wire (src/real/peer.ts); the paired session is opened first, as the server asks.
       (await import("./peer")).usePeer(true);
-      await openPairedSession(r).catch((e: Error) => { throw new Error(`Paired, but this browser could not sign in to the server: ${e.message}`); });
+      await openPairedSession(r).catch((e: Error) => { throw Object.assign(new Error(`Paired, but this browser could not sign in to the server: ${e.message}`), { code: (e as { code?: string }).code, name: e.name }); });
       void import("./space-list-app").then((m) => m.recordPaired({ relay: r.relay, route: r.route, box: r.box, name: r.name })).catch(() => {});
       // the Spaces of every server are asked again, so the switcher and the routing know the new one
       void import("./space-servers").then((m) => m.refreshSpaceServers()).catch(() => {});
@@ -245,13 +245,13 @@ export async function afterPaired(r: { relay: string; route: string; box: string
 
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
-  const { startPaired, channelCall } = await import("../auth/paired");
-  const { pairedKey } = await import("../auth/paired-key");
-  const { relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
-  const ch = await channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
+  // Each step has its own code, so a window that cannot open the paired session says which step (the first-run trail carries the code and the error's name, never its text).
+  const at = async <T>(code: string, f: () => Promise<T>): Promise<T> => { try { return await f(); } catch (e) { throw Object.assign(new Error((e as Error)?.message || code), { code, name: (e as Error)?.name || "Error" }); } };
+  const { startPaired, channelCall, pairedKey, relayCrypto, relayKeyStore, about, deviceName } = await at("paired_load", async () => ({ ...(await import("../auth/paired")), ...(await import("../auth/paired-key")), ...(await import("../api/relay")) }));
+  const ch = await at("paired_channel", () => channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about }));
   try {
-    const key = await pairedKey();
-    const s = await startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() });
-    await key.keep(r.route, s.token);
+    const key = await at("paired_key", () => pairedKey());
+    const s = await at("paired_start", () => startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() }));
+    await at("paired_keep", () => key.keep(r.route, s.token));
   } finally { ch.close(); }
 }

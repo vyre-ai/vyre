@@ -60,6 +60,9 @@ test("first run on a page with no daemon: create an identity, lock, and open it 
   await host.call("identity.unlock", { password: PASSWORD });
   assert.equal((await host.call("identity.status")).unlocked, true);
   assert.ok(host.signer());
+  // the unlock screen asks the vault to take the key right after a good password: a page answers that there is none, instead of failing the unlock
+  assert.equal(host.has("identity.vault.install"), true);
+  assert.deepEqual(await host.call("identity.vault.install", {}), { installed: false, reason: "no_vault" });
   await host.call("identity.lock");
   await host.call("identity.unlock", { recovery: made.recoveryKey.toUpperCase() });
   assert.equal((await host.call("identity.status")).unlocked, true);
