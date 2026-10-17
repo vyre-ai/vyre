@@ -85,8 +85,10 @@ test("every registered session adapter gets the same caller, the same secret fil
   assert.equal(row.agent, "kit");
   const bareAsk = await d.registry.call("gate.request", { ...ask, content: { ...ask.content, url: "https://hooks.example.test/y" } }, sessionCaller(adapters[0]));
   assert.equal(bareAsk.error, undefined, JSON.stringify(bareAsk.error));
-  const rowsBare = await d.registry.call("gate.held", {}, "local");
-  assert.equal(rowsBare.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === bareAsk.data.id).agent, null);
+  const rowsBare = await d.registry.call("gate.held", {}, "local", ownerMeta);
+  const bareRow = (rowsBare.data || []).find((/** @type {{ id: string, agent: string|null }} */ r) => r.id === bareAsk.data.id);
+  assert.ok(bareRow, `the bare ask ${bareAsk.data.id} is in the owner's list: ${JSON.stringify(rowsBare).slice(0, 400)}`);
+  assert.equal(bareRow.agent, null);
 
   // Browser profiles: computers.list keeps an ordinary agent on its own computer, and a bare mcp may not name one.
   for (const name of ["kit", "pax"]) {
