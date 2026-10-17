@@ -23,8 +23,8 @@ const PROJECTS = [
   { slug: "harlow", name: "Harlow Legal", home: `${W}/harlow-site`, workspaces: [], threads: 0, picked: 0, picks: [] },
   { slug: "northwind", name: "Northwind Bakery", home: `${W}/northwind`, workspaces: [], threads: 0, picked: 0, picks: [] },
 ];
-const AGENTS = [{ name: "juno", kind: "agent", projects: ["harlow"] }, { name: "kit", kind: "agent", projects: ["northwind"] }];
-const JUNO = "mcp:agent:juno";
+const AGENTS = [{ name: "pia", kind: "assistant" }, { name: "juno", kind: "agent", projects: ["harlow"] }, { name: "kit", kind: "agent", projects: ["northwind"] }];
+const JUNO = "mcp:agent:juno", PIA = "mcp:agent:pia";   // pia is the assistant: only the assistant keeps the person's own facts, so only her pass-on applies; juno reaches harlow alone and only suggests
 const THREAD = "5f1c2d3e-0000-4000-8000-0000000000aa";
 let n = 0;
 const S = (dir, start, ...turns) => ({ id: `99999999-eeee-4000-8000-${String(++n).padStart(12, "0")}`, cwd: `${W}/${dir}`, start, turns: turns.map(([role, text]) => ({ role, text })) });
@@ -158,8 +158,12 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   const named = await heard(4, { project: "northwind", room: "northwind" }, "Fly", JUNO);
   assert.equal(named.data.filed?.project, "harlow", JSON.stringify(named.data));
   assert.equal((await call("memory.writes", { project: "northwind" }, "deck")).data.writes.length, 0, "nothing reached the project the agent named");
-  // The person's typed turn applies at once, as theirs, with its source and the decision updated.
-  const ok = await heard(3, {});
+  // The person's own turn, passed on by an agent that is not the assistant (juno reaches harlow alone), stays a suggestion: only the assistant keeps the person's own facts.
+  const notMine = await heard(3, {}, "Render", JUNO);
+  assert.equal(notMine.data.applied, false, JSON.stringify(notMine));
+  // The person's typed turn applies at once, as theirs, with its source and the decision updated, when the assistant passes it on
+  // (memory.heard also files a lesson only for a named agent, so the assistant is the one that is named).
+  const ok = await heard(3, {}, "Render", PIA);
   assert.equal(ok.data.applied, true, JSON.stringify(ok));
   // The applied correction is also a lesson: filed in the project the chat is in, with the chat and the turn it came from.
   assert.ok(ok.data.filed?.id, JSON.stringify(ok.data));

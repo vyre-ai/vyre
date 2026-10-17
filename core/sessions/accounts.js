@@ -250,8 +250,10 @@ export class Accounts {
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    // an agent's job runs on the agent's own access, never on a member's own key or token: those are for that member's own turns
-    const listed = this.list(provider, i.job === true ? undefined : i.person).filter(a => !(i.job === true && a.person && a.kind !== "login"));
+    // an agent's job runs on the agent's own access, never on a member's own key or token: those are for that member's own turns. A member's own sign-in (a login) named for a job the member asked for
+    // (a Flow's chat, agents.flow-say: `account` and `person` both given) is the one exception, because it is their own turn.
+    const forThem = i.job === true && Boolean(i.account) && Boolean(i.person);
+    const listed = this.list(provider, i.job === true && !forThem ? undefined : i.person).filter(a => !(i.job === true && a.person && a.kind !== "login"));
     // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
     const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);

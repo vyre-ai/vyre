@@ -18,7 +18,7 @@ function setup(t, { level = "edit" } = {}) {
   const ctl = {
     createUser: async (/** @type {any} */ u) => { ran.push(`create ${u.user}`); }, removeUser: async () => {},
     startScreen: async (/** @type {any} */ u) => { ran.push(`start ${u.user}`); }, stopScreen: async (/** @type {any} */ u) => { ran.push(`stop ${u.user}`); },
-    wipeHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
+    wipeAgentHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
     terminals: async () => [{ name: "work", windows: 2 }],
   };
   const users = new AgentUsers({ db, ctl });

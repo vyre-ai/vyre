@@ -78,6 +78,13 @@ export async function renameSpace(id, name) {
   catch (e) { return fail(e); }
 }
 
+/** "Not your server? Remove it": the paired server and the space made with it are forgotten here. @param {string} space */
+export async function removeSpace(space) {
+  if (MOCK) return mock.removeSpace(space);
+  try { return done(await tool("onboard.space.remove", { space })); }
+  catch (e) { return fail(e); }
+}
+
 /** @param {string} id */
 export async function pollSpace(id) {
   if (MOCK) return mock.pollSpace(id);

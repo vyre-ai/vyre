@@ -10,6 +10,7 @@
 // Where IndexedDB is refused (a private window), both live in memory for the page: the person
 // signs in again on the next load, and nothing weaker is written anywhere.
 
+import { tokenOrigin } from "./token-origin";
 import { noteStorageRefused } from "./notice.js";
 import { memorySlot, newKey, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
 
@@ -158,7 +159,7 @@ export async function personKey(): Promise<CryptoKeyPair> {
 
 /** The person session for `box` in this browser. `onSignIn` hears every request for one. */
 export function webPerson(box: string, onSignIn?: () => void): PersonSession {
-  const origin = new URL(box).origin;
+  const origin = tokenOrigin(box);
   return personSession({
     box: origin,
     stores: { key: keySlot(), token: idbSlot<string>("token:" + origin) },
@@ -171,10 +172,10 @@ export function webPerson(box: string, onSignIn?: () => void): PersonSession {
 
 /** Keep a person token for `box` (the paired session's token, made by presence.person.start-paired) where webPerson reads it. */
 export async function keepToken(box: string, token: string): Promise<void> {
-  await idbSlot<string>("token:" + new URL(box).origin).save(token);
+  await idbSlot<string>("token:" + tokenOrigin(box)).save(token);
 }
 
 /** Is there a person token kept for `box`? (A browser that paired over the relay holds one; nothing else is asked.) */
 export async function hasToken(box: string): Promise<boolean> {
-  try { return Boolean(await idbSlot<string>("token:" + new URL(box).origin).load()); } catch { return false; }
+  try { return Boolean(await idbSlot<string>("token:" + tokenOrigin(box)).load()); } catch { return false; }
 }

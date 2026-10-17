@@ -40,7 +40,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   removeUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   wipeAgentHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
@@ -203,7 +203,7 @@ export class AgentUsers {
     if (!r) throw new Error(`${id} has no place on this computer`);
     await this.sleep(id, "reset");
     return this.serial(id, async () => {
-      await this.ctl.wipeHome({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
+      await this.ctl.wipeAgentHome({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
       this.emit("computer.agent-reset", { agent: id });
       return this.row(id);
     });

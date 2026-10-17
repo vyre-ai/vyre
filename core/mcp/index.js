@@ -109,7 +109,7 @@ export default {
 
     for (const r of hub.rows()) await offer(r.name);
 
-    const who = (meta) => whoFrom(meta.caller, meta);
+    const who = (meta) => ({ ...whoFrom(meta.caller, meta), me: () => callerMember(meta) });   // me: the member the verified call names ("" for the owner and for home work), read only when a person's connection is asked about
 
     ctx.tool("mcp.servers", {
       effect: "read",
@@ -214,7 +214,7 @@ export default {
       description: "Remove one of your own MCP servers.",
       input: obj({ name: str }, ["name"]),
       callers: MINE,
-      run: async ({ name }, meta) => { const person = await memberOnly(meta); await hub.remove({ name: ownRow(hub, personKey, String(name), person) }); try { await mine().remove(String(name)); } catch { /* none kept */ } return { removed: true }; },
+      run: async ({ name }, meta) => { const person = await memberOnly(meta); await hub.remove({ name: ownRow(hub, personKey, String(name), person) }, who(meta)); try { await mine().remove(String(name)); } catch { /* none kept */ } return { removed: true }; },
     });
 
     // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.
@@ -255,7 +255,7 @@ export default {
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove({ ...input, name: await rowName(input.name, meta) }); },
+      run: async (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove({ ...input, name: await rowName(input.name, meta) }, who(meta)); },
     });
 
     ctx.tool("mcp.repin", {

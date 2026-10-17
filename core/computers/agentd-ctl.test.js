@@ -38,7 +38,7 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   await w.ctl.createUser(U);
   await w.ctl.startScreen(U);
   await w.ctl.stopScreen(U);
-  await w.ctl.wipeHome(U);
+  await w.ctl.wipeAgentHome(U);
   await w.ctl.removeUser(U);
   assert.ok(w.ran.some(a => a.includes("/usr/bin/mkdir") && a.includes("/var/lib/vyre/agents/ag20000/home")));
   assert.ok(w.ran.some(a => a.includes("/usr/bin/Xvnc")));

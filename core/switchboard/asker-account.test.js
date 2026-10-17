@@ -168,3 +168,21 @@ test("a live session started for one member is never reused for another member's
   await refused(askerOver(sb({ accounts: [{ id: "bens", provider: "claude", person: BEN }], rec: onBens, login: true }), "t", { asker: ANA }));
   await assert.rejects(memberAccount(sb(world), { provider: "claude", account: "bens", project: null, agent: null }, { kernelTurn: { chat: "c", asker: ANA }, account: "bens" }, "t"), (/** @type {any} */ e) => e.code === "account_unavailable");
 });
+
+test("trustedLaunch: account and person, like for_person, are kept only from a first-party module; an added module cannot name another person's login", () => {
+  const input = { agent: "kit", purpose: "job", account: "bobs-login-id", person: "per_bob", for_person: "per_bob" };
+  const added = trustedLaunch(input, { firstParty: false, caller: "module:added-thing" });
+  assert.equal(added.account, undefined, "an added module's account is dropped");
+  assert.equal(added.person, undefined, "and its person");
+  assert.equal(added.for_person, undefined);
+  const mine = trustedLaunch(input, { firstParty: true, caller: "module:agents" });
+  assert.deepEqual([mine.account, mine.person, mine.for_person], ["bobs-login-id", "per_bob", "per_bob"], "the agents module keeps them");
+  assert.equal(trustedLaunch(input, { firstParty: true, caller: "cli" }).account, undefined, "a first-party flag without a module caller is not enough");
+});
+
+test("checkLaunch: an account named for a person it is for must be that person's own", async () => {
+  const none = sb();
+  await assert.rejects(checkLaunch(none, { agent: "kit", account: "a1", for_person: BEN, person: ANA }, null, OWNER), /not that person's own/, "another person's account");
+  await assert.rejects(checkLaunch(none, { agent: "kit", account: "a1", for_person: BEN }, null, OWNER), /not that person's own/, "no person named with it");
+  assert.equal(await checkLaunch(none, { agent: "kit", account: "a1", for_person: BEN, person: BEN }, null, OWNER), BEN, "the same person: judged as before (a named account is memberAccount's)");
+});

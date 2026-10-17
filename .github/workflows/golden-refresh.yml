@@ -38,7 +38,8 @@ jobs:
       # the generated copies (scripts/sync-copies.mjs) are written here too; the files that changed travel in copies-gen.tgz
       - run: |
           node scripts/sync-copies.mjs
-          git diff --name-only -- local apps/app/src/store-core core/computers/image/computerd relay/client | tee copies-changed.txt
+          node scripts/gen-surface-lists.mjs
+          git diff --name-only -- local apps/app/src/store-core apps/app/src/real/member-routes.generated.js core/computers/image/computerd relay/client | tee copies-changed.txt
           tar czf copies-gen.tgz -T copies-changed.txt || true
       - run: node kernel/golden/index.js --write
       - run: node kernel/flows/golden/write.mjs
