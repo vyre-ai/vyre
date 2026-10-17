@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(app): the sample world answers `system.info`, so Settings, This computer no longer shows "This did not load" in the preview.
 - feat(app): Settings, This computer has an Agent computer section for the owner (image, Vyre version, what it was made from, "Update now" via `computers.update`, status via `computers.update.status`; left out when the box does not answer). The screen share view warns on take-over: "Typing a password here shows it to this agent. Save it in your Vault and let Vyre fill it instead." (until fix53's Xvnc change lands). The Computer tab links to the agent's files in Vyre Files (`/u/files?agent=<name>`; comp6 links the folders). Sample world: mock update tools and `?control=1`.
 - fix(app): for 0.6 the # picker keeps the named pill for her own vault items (it grants nothing); the `#Vault.<Name>` text moves to 0.7 (work/0.7/chat6/refs).
 - refactor(app): vault references replace the turn lend. Picking one of her own vault items in the composer writes the plain text `#Vault.<Name>` and makes no chip and no yes. Removed `lend-yes.ts` and its test, the "Which site?" picker, the no-site button and the lend wiring in `ChatScreen` (DESIGN-vault-references.md).

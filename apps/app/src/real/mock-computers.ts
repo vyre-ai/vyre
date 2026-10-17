@@ -14,6 +14,7 @@ const IMG = "ghcr.io/vyre-ai/agent-computer";
 const updateStatus = () => ({ present: true, current: upToDate, image: upToDate, want: { image: `${IMG}:0.6.0`, version: "0.6.0", layout: 2 }, have: { image: upToDate ? `${IMG}:0.6.0` : `${IMG}:0.5.4`, version: upToDate ? "0.6.0" : "0.5.4", layout: upToDate ? 2 : 1, container: "c1", at: now() } });
 
 export const mockComputerTools: Record<string, (i: any) => unknown> = {
+  "system.info": () => ({ host: "juniper-box", role: "box", version: "0.6.0", platform: "linux", node: "v22.11.0" }),
   "computers.update.status": () => updateStatus(),
   "computers.update": () => { if (upToDate) return { updated: false, state: "current", message: "The agent computer already matches this version of Vyre." }; upToDate = true; return { updated: true, state: "updated", message: "The agent computer was updated. 2 agents had their screens closed." }; },
   "computers.agent.status": (i) => shape(settle(String(i.agent))),
