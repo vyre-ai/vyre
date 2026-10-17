@@ -392,6 +392,9 @@ const busyAs = async (d, ctxt, asker) => {
   assert.ok(sent.data && !sent.error, JSON.stringify(sent));
   // busy: the demo turn waits on its Edit ask, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
   await until(async () => {
+    // the turn running is THIS asker's: a stopped turn's Edit ask or asker may still be listed for a moment, and the vault is asked who asked the turn running now (threads.turn-asker, the vault's alone)
+    const who = await d.registry.call("threads.turn-asker", { thread: ctxt.thread }, "module:vault");
+    if (!who.data || who.data.asker !== asker) return false;
     if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
     const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 1 }, "cli")).data.thread.status;
     return st === "working" || st === "waiting";
