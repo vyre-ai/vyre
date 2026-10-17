@@ -313,6 +313,12 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
 /** The saved launch options of a thread (threads_runs.opts). */
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
+/** The person a Flow job acts as, as the thread's stored options keep it. The record a caller holds (record()) is a mapped row with no `opts`, so the stored row is read: without this the job's kernel session was asked for no `runas` and was made as the home's owner. */
+const runasOf = (/** @type {any} */ sb, /** @type {string} */ id, /** @type {any} */ rec) => {
+  const held = optsOf(rec).runas;
+  if (typeof held === "string" && held) return held;
+  try { const r = optsOf(sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).runas; return typeof r === "string" && r ? r : ""; } catch { return ""; }
+};
 
 /**
  * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name alone (the same name a card shows):
@@ -1193,7 +1199,7 @@ export class Switchboard {
     const t0 = Date.now();
     if (!this.renewSeq) this.renewSeq = new Map();
     const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
-    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(optsOf(rec).runas ? { runas: optsOf(rec).runas } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(runasOf(this, id, rec) ? { runas: runasOf(this, id, rec) } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
     // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.
