@@ -161,7 +161,7 @@ export default {
     };
 
     ctx.tool("microsoft.mail.send", {
-      description: "Send an email from your own Microsoft 365 mailbox, as you: { to: [addresses], cc?: [addresses], subject, body (plain text) }. It goes out at once, because it is your own send; an agent's send is not allowed yet.",
+      description: "Send an email from your own Microsoft 365 mailbox, as you: { to: [addresses], cc?: [addresses], subject, body (plain text) }. It goes out at once, because it is your own send; an agent's or a model's send is held at your Gate until you approve it (or a standing permission you gave covers it), and nothing is sent before.",
       input: obj({ to: { type: "array", items: str }, cc: { type: "array", items: str }, subject: str, body: str }, ["to", "subject", "body"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
         const own = await ownAct(meta);
@@ -179,7 +179,7 @@ export default {
     });
 
     ctx.tool("microsoft.calendar.create", {
-      description: "Put an event on your own Microsoft 365 calendar: { title, start, end (ISO times), time_zone? (IANA, default UTC), where?, description?, attendees?: [addresses] }. Microsoft mails the invite to each attendee at once, because it is your own act; an agent's is not allowed yet.",
+      description: "Put an event on your own Microsoft 365 calendar: { title, start, end (ISO times), time_zone? (IANA, default UTC), where?, description?, attendees?: [addresses] }. Microsoft mails the invite to each attendee at once, because it is your own act; an agent's or a model's invite with guests is held at your Gate until you approve it (or a standing permission covers it); an agent's event with no guests is not made.",
       input: obj({ title: str, start: str, end: str, time_zone: str, where: str, description: str, attendees: { type: "array", items: str } }, ["title", "start", "end"]), callers: WITH_MODELS,
       run: safe(async (input, meta) => {
         const own = await ownAct(meta);

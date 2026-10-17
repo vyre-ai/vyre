@@ -178,6 +178,19 @@ test("an agent's send or invite in a member's turn is held for that member, from
   assert.equal(s.items.size, 2);
 });
 
+test("a model or MCP caller is held, not run: whatever the caller label, a chain with an agent in it holds the send and the invite at the member's own Gate and nothing reaches Graph", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  const posts = () => s.g.requests.filter(r => r.method === "POST").length;
+  for (const caller of ["mcp", "harness", "mcp:agent:kit", "cli:agent:kit", "session:mcp:agent:kit", "session:harness:agent:kit"]) {
+    s.people.chain = ["p-alice", "agent:kit"];
+    const mail = await s.tools.get("microsoft.mail.send").run({ to: ["dana@harlow.example"], subject: `Refund via ${caller}`, body: "Hello Dana" }, { token: "t", caller });
+    assert.ok(mail.held && !mail.sent, `${caller}: the send is held, not sent`);
+    const inv = await s.tools.get("microsoft.calendar.create").run({ title: `Call via ${caller}`, start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", attendees: ["dana@harlow.example"] }, { token: "t", caller });
+    assert.ok(inv.held && !inv.created, `${caller}: the invite is held, not created`);
+  }
+  assert.equal(posts(), 0, "nothing reached Graph for any model or MCP caller");
+});
+
 test("the Gate's release sends exactly what the requester approved, from the requester's mailbox if it is still theirs; a revoke wins", async t => {
   const s = await setup(t); await addFirm(s); await attest(s);
   s.people.chain = ["p-alice", "agent:kit"];
