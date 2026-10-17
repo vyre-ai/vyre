@@ -44,6 +44,10 @@ export const MEMBER_TOOLS = Object.freeze({
   "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
   "tasks.move": { tool: "tasks.serve-work", call: "move", keys: ["id", "to", "reason", "suggested_fix"], types: [] },
   "tasks.submit": { tool: "tasks.serve-work", call: "submit", keys: ["id", "evidence"], types: [] },
+  // a member's new-device sign-ins on the team's server (core/identity/signins.js): the card on Now, "Not me, sign it out" and "It was me"; the device id is the only input, the person is the door's authenticated chain
+  "identity.signins": { tool: "identity.signins.serve", call: "pending", keys: [], types: [] },
+  "identity.revoke": { tool: "identity.signins.serve-write", call: "revoke", keys: ["device"], types: [] },
+  "identity.ack": { tool: "identity.signins.serve-write", call: "ack", keys: ["device"], types: [] },
   // a member's own projects (core/work/member-projects.js): she starts her own, blank or from an installed template; a template record is read inside the call by the work module, what it makes is made under her chain
   // a member's project files (core/work/member-files.js): list, read and upload in one project's files area; the folder is built from the project record, a name is a plain name, a size and a count cap, nothing else of Drive
   // a member's own Flows (core/flows/member.js): Flows belong to the Space; any member drafts, a version runs on the authority of whoever approved it, and she approves her own with any trigger

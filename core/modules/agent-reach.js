@@ -15,7 +15,7 @@ export const PERSON_ONLY = new Map([
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
   ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],
   ["identity.lock", "locks the unlocked session: the person's own act"],
-  ["identity.signins.pending", "lists the devices that signed in to the person's own space: read by the Needs you list, never by an assistant"],
+  ["identity.signins.pending", "lists the devices that signed in to the person's own space: the person's own list, never an assistant's"],
   ["identity.signin.revoke", "signs a device out of the person's own space: the person's own act"],
   ["identity.signin.ack", "vouches for a device that signed in to the person's own space: the person's own act"],
   ["mcp.mine.list", "lists the person's own MCP servers: the person's own vault and accounts; an assistant never reads or changes the servers and tokens a person brought (member-mcp)"],

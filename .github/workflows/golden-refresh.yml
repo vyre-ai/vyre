@@ -11,7 +11,7 @@ permissions:
 jobs:
   refresh:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-update]') }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       VYRE_NO_DIALOGS: "1"
@@ -21,11 +21,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      - run: |
+          command -v bwrap >/dev/null || sudo apt-get -o DPkg::Lock::Timeout=300 install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: npm ci
       - run: node scripts/gen-allow.mjs
       - run: node kernel/golden/index.js --write
       - run: node kernel/flows/golden/write.mjs
+      # The generated docs are built here, on the platform CI checks them on, because a Mac builds some entries (documents.*) differently.
+      - run: node scripts/gen-agent-docs.mjs && node scripts/gen-docs-reference && node scripts/gen-architecture-map.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: golden
@@ -34,3 +38,6 @@ jobs:
             kernel/golden/presence.json
             kernel/golden/golden.json
             kernel/flows/golden/replay.json
+            docs/index.json
+            docs/reference
+            docs/agents

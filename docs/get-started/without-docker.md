@@ -94,8 +94,9 @@ account that ran sudo. Add `--dry-run` to see every change without making one.
 4. Runs `systemctl daemon-reload`, `systemctl enable vyre.service` and
    `systemctl restart vyre.service`.
 
-Then pair it from your Vyre app: `vyre call wink.server.code '{"qr":true}'` on the server shows the
-QR code and the long code, and you pick the three words the app shows. Pairing is described in
+Then pair it from your Vyre app: choose **Create a space**, pick **Linux** or **Mac**, and run the
+one command it shows. The command carries a single-use pair code made from your identity, good for
+30 minutes, and the server adopts you when it comes online. Pairing is described in
 [Your private network](../concepts/network.md#pairing-a-device).
 
 Without Docker there is no Headscale or node program in the package, so the network reports

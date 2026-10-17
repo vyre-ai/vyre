@@ -25,7 +25,7 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
 /** The rows of the member door's one table (core/work/member-tools.js MEMBER_TOOLS), generated from it (scripts/gen-surface-lists.mjs): a row is reached under the SAME name as the registry tool the app calls, with the Store's own input keys, except the few names below. Not a row, so refused in words (flows) or left on her own home (records.define, tasks.decide and the planner need her presence or an admin): everything else. */
 import { MEMBER_ROWS } from "./member-routes.generated.js";
 /** The app tools whose door call is spelled differently (a call name has no dot after its group). */
-const ALIASES = { "work.template.list": "work.templates", "work.project.create": "work.project-create", "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run" };
+const ALIASES = { "work.template.list": "work.templates", "work.project.create": "work.project-create", "flows.test.save": "flows.test-save", "flows.test.remove": "flows.test-remove", "flows.test.list": "flows.test-list", "flows.test.run": "flows.test-run", "identity.signins.pending": "identity.signins", "identity.signin.revoke": "identity.revoke", "identity.signin.ack": "identity.ack" };
 const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(MEMBER_ROWS.map((t) => [t, t])), ...ALIASES });
 
 /** The team-door call for a tool, or null when this tool is not one a member reaches that way. The one map of the app's member routes: a row for a group (flows, work) is added here when its member tool exists on the door (core/work/member-tools.js MEMBER_TOOLS). @param {string} tool @returns {string | null} */
