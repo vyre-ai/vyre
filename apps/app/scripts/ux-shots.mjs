@@ -18,7 +18,7 @@ const { chromium } = require("playwright");
 const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/records/contact", "u/records/matter", "u/calendar", "u/drive", "u/sites",
   "u/flows", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules",
-  "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/add", "u/wink/invite", "u/wink/lend", "onboard"];
+  "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard"];
 const SIZES = [{ n: "phone", w: 390, h: 844 }, { n: "tablet", w: 820, h: 1180 }, { n: "desktop", w: 1280, h: 800 }];
 const THEMES = ["dark", "paper"];
 const FOCUS_ROUTES = ["u/now", "u/projects", "u/records/contact", "u/spaces", "u/access", "u/drive", "u/vault", "u/flows", "u/kits", "u/settings"];

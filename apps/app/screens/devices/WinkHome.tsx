@@ -5,17 +5,16 @@ import { Page } from "../places/Frame";
 import { useDevices } from "./state";
 
 const VERBS: { id: string; icon: IconName; title: string; body: string; href: string }[] = [
-  { id: "add", icon: "plus", title: "Add", body: "A phone or a computer of yours. A phone gets a link; a computer signs in with your username and master password.", href: "/u/wink/add" },
   { id: "invite", icon: "share", title: "Invite", body: "Someone to a space. They read one card and tap Join.", href: "/u/wink/invite" },
   { id: "lend", icon: "laptop", title: "Share a computer", body: "Lend a computer to a space. One card, two yeses: the space allows it and you allow it.", href: "/u/wink/lend" },
 ];
 
-/** Wink: the one way anything joins. Three verbs, one setting. */
+/** Wink: invite and share. Two verbs, one setting. */
 export function WinkHome() {
   const router = useRouter();
   const { faster, setFaster } = useDevices();
   return (
-    <Page title="Wink" sub="The one way anything joins. Scan a code or paste a long one, then confirm the same three words on both screens." back="/u/settings">
+    <Page title="Wink" sub="Invite someone to a space, or share a computer with one." back="/u/settings">
       <View className="flex-row flex-wrap gap-s3">
         {VERBS.map((v) => (
           <Card key={v.id} className="min-w-menu flex-1 gap-s2">

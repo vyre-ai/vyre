@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Card, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { deviceSub, spacesLine } from "./wink.js";
@@ -14,8 +14,7 @@ export function DevicesScreen() {
   useEffect(() => { void load(); }, [load]);
   const devices = items.filter((i) => i.kind === "Device");
   return (
-    <Page title="Devices" sub="Each device joins each space on its own." back="/u/settings"
-      actions={<Button kind="primary" icon="plus" label="Add a device" onPress={() => router.push("/u/wink/add" as never)} />}>
+    <Page title="Devices" sub="Each device joins each space on its own." back="/u/settings">
       <PlaceTag of="home" />
       {devices.length ? (
         <Card flush>
