@@ -155,7 +155,8 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
     // (the relay's provisional row may name it a device on the channel; what it may reach is the question, and the owner's tool surface is refused)
     // Three outcomes stay apart: a 403, a 400 or a stream reset is a refusal; a request nobody answers shows nothing unless a control request on the same channel, to a path the device may
     // reach (a plain peer stream gets its 400), is answered inside the same window; no answer to the control means the channel is dead and the refusal is not shown.
-    const ask = (/** @type {any} */ h) => new Promise(res => { const st = r.channel.open(h); st.onhead = (/** @type {any} */ x) => res({ status: x && x.status }); st.onreset = () => res({ status: 0, reset: true }); setTimeout(() => res({ timeout: true }), 4000); });
+    /** @type {number[]} */ const toolHeads = [];
+    const ask = (/** @type {any} */ h) => new Promise(res => { const st = r.channel.open(h); st.onhead = (/** @type {any} */ x) => { if (h.path === "/v1/tools") toolHeads.push(x && x.status); res({ status: x && x.status }); }; st.onreset = () => res({ status: 0, reset: true }); setTimeout(() => res({ timeout: true }), 4000); });
     const tools = /** @type {any} */ (await ask({ method: "GET", path: "/v1/tools" }));
     if (tools.timeout) {
       const control = /** @type {any} */ (await ask({ peer: "wink", space: "home" }));
@@ -163,6 +164,9 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
     } else {
       assert.ok(tools.status === 403 || tools.status === 400 || tools.reset, `GET /v1/tools is refused (${tools.status})`);
     }
+    // (the tool request's stream stays open after the window: an answer that comes late must not be a success either)
+    await new Promise(res => setTimeout(res, 500));
+    assert.ok(!toolHeads.some(c => c >= 200 && c < 300), `GET /v1/tools never got a 2xx head (${toolHeads.join(",")})`);
   }
 });
 
