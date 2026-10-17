@@ -88,6 +88,14 @@ test("an origin the chip names is passed with her yes, and no origin means none 
 
 test("a login whose site the Vault cannot tell stays a pill that says why, and lends nothing", async () => {
   const [tag] = await memberVaultTags({ call: lendRig([], { error: { code: "bad_input", message: "which site does the agent sign in to? this login has several saved: pick one when you tag it" } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
-  assert.match(tag.note, /could not tell which site/);
+  assert.match(tag.note, /several sites and none was picked/);
   assert.equal(JSON.stringify(tag).includes("pick one when you tag it\""), false, "the Vault's own words are not echoed into the thread");
+});
+
+test("the other lend refusals each say one plain thing and keep the pill", async () => {
+  const note = async (error) => (await memberVaultTags({ call: lendRig([], { error }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] }))[0].note;
+  assert.match(await note({ code: "bad_input", message: "save the site on this login first" }), /no saved site/);
+  assert.match(await note({ code: "presence_required", message: "x" }), /your yes did not check/);
+  assert.match(await note({ code: "denied", message: "x" }), /not allowed/);
+  assert.equal(await note({ code: "boom", message: "x" }), null);
 });
