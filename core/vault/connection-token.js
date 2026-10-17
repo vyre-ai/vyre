@@ -49,11 +49,13 @@ export class ConnectionTokens {
     try { chain = await K.chain(meta || {}); } catch { return false; }
     const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
     const persons = new Set(hops.filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)));
+    console.error("DBG allowed", owner, name, JSON.stringify(hops.map((/** @type {any} */ h) => h && h.actor)), String(meta && meta.caller), typeof (meta && meta.token));
     const assisted = hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind !== "person");
     if (!assisted && persons.size === 1 && persons.has(owner)) return true;
     if (typeof K.authorize !== "function" || !K.space) return false;
     try {
       const r = await K.authorize({ chain, action: write ? "vault.call" : "vault.read", resource: connectionUrn(K.space, owner, name) });
+      console.error("DBG authorize", r && r.effect, r && r.reason);
       return Boolean(r && r.effect === "allow");
     } catch { return false; }
   }
