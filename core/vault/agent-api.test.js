@@ -314,6 +314,7 @@ test("a lease held to a job's thread works in that thread only: another session 
   const until = rig.clock() + 3_600_000;
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner });
   console.log("[diag2] grants", JSON.stringify((await rig.gw.grants.list(rig.owner(), {})).filter(g => String(g.source).startsWith("vault:")).map(g => ({ s: g.source, sub: g.subject.actor && g.subject.actor.id, a: g.actions, r: g.resource.prefix, c: g.conditions }))), "urn", await v.access.urn("conn-cn1"));
+  { const res = `vyre://${SPACE}/vault/${await rig.gs.personalVault()}/connection/cn1`; console.log("[diag3]", JSON.stringify({ other: await rig.K.agentMay(rig.uid("kit"), "vault.read", res, undefined, true, "other"), none: await rig.K.agentMay(rig.uid("kit"), "vault.read", res, undefined, true, undefined), direct: await rig.gw.authorize({ chain: rig.assistant(rig.uid("kit"), "per_owner", "other"), action: "vault.read", resource: res }) })); }
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" })).kind, "read", "before the job has a thread, the lease is the agent's in any session");
   assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "job-1" }), { lent: 1, already: 0 }, "held to the job's thread");
   const live = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1" && g.status === "active");
