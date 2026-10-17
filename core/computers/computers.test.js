@@ -35,7 +35,7 @@ async function boot(t, o = {}) {
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box",
       computers: o.computers === undefined ? { driver: "fake", sweepMs: 0, waitMs: 100, browse: "desktop" } : o.computers,
       ...(o.glass ? { glass: o.glass } : {}),
-      modules: { disable: o.agents === false ? ["agents"] : [] } }));
+      modules: { disable: [...(o.agents === false ? ["agents"] : []), ...(o.vault === false ? ["vault"] : [])] } }));
   }
   const prevEnv = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   process.env.VYRE_CLAUDE_BIN = FAKE_CLAUDE;
@@ -502,6 +502,15 @@ test("computers: computers.member.add makes the member-token key on first need (
   const again = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-2", name: "bob" });
   assert.equal(again.error, undefined, JSON.stringify(again.error));
   assert.deepEqual(s.h.pool.members("browser-abc123").map((/** @type {any} */ m) => m.agent_id).sort(), ["kit-1", "kit-2"]);
+});
+
+test("computers: with no vault module running, computers.member.add fails at the vault with a readable message and leaves no row or member behind", async t => {
+  const s = await boot(t, { vault: false });
+  const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
+  assert.ok(r.error, "add succeeded with no vault running to keep a token key in");
+  assert.match(r.error.message, /vault/i);
+  assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
+  assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
 });
 
 test("computers: the person renames an agent's computer, it shows in the list and tells the surfaces, and an agent cannot", async t => {
