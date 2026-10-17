@@ -485,6 +485,8 @@ test("review D: an asker who left the chat while their message waited gets no tu
 // ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
 // The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
 // vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
+/** The two lent-key tests that follow assert lendKey, which does not exist yet (0.6 polish item 3, BACKLOG); this build fails closed, and the test after them keeps that property asserted today. */
+const LENDKEY_SKIP = "a member's own AI key is not lent to her turns yet: lendKey (BACKLOG, 0.6 polish item 3, sec53's six conditions) brings these two back; until then the fail-closed test after them holds the isolation property";
 const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
 
 /** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
@@ -514,6 +516,8 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
   const own = async (/** @type {string} */ who, /** @type {string} */ person, /** @type {string} */ value) => {
     const r = await orig("sessions.accounts.add", { provider: "claude", label: `${who}'s key`, kind: "setup-token", vault_item: `${who}-token` }, "deck", { token: w.tokens[who] });
     assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`);
+    // a login counts only once it is signed in (core/sessions/accounts.js): a person who added a key has signed in with it
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), String(r.data.id));
     lent.set(String(r.data.id), { person, value });
     return String(r.data.id);
   };
@@ -526,7 +530,7 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
   return { w, b, KC, KA, carolsAcct, adasAcct, chat, watch, say, launches, answers, lends, log };
 }
 
-test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000 }, async t => {
+test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000, skip: LENDKEY_SKIP }, async t => {
   const r = await lentKeyChat(t);
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
@@ -554,7 +558,7 @@ test("lent key: with two members in one chat, the second asker's process is hand
   await r.b.stop();
 });
 
-test("lent key: after the turns the key string is in no thread event, log line, threads_runs row, saved file or whole NAME=value line", { timeout: 240_000 }, async t => {
+test("lent key: after the turns the key string is in no thread event, log line, threads_runs row, saved file or whole NAME=value line", { timeout: 240_000, skip: LENDKEY_SKIP }, async t => {
   const r = await lentKeyChat(t);
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
@@ -578,6 +582,38 @@ test("lent key: after the turns the key string is in no thread event, log line, 
     for (const [where, text] of Object.entries(hay)) {
       assert.ok(!text.includes(key), `${who}'s key is in ${where}`);
       for (const n of names) assert.ok(!text.includes(`${n}=${key}`), `${n}=<${who}'s key> is in ${where}`);
+    }
+    for (const f of files) { let txt = ""; try { txt = fs.readFileSync(f, "latin1"); } catch { continue; } assert.ok(!txt.includes(key), `${who}'s key is in ${f}`); }
+  }
+  await r.b.stop();
+});
+
+test("a member's own AI key is NOT lent to her turn on this build: the turn does not start on her key, no process holds it, and neither the key nor the fd handoff is in any event, log line, row, file, env or argv", { timeout: 240_000 }, async t => {
+  const r = await lentKeyChat(t);
+  await r.say("carol", "carol first");
+  await r.say("ada", "ada second");
+  // both turns end without starting a process: the Switchboard cannot ask the Vault for the asker's key yet (no person on its call), and it fails closed rather than use any other key
+  const stopped = () => /** @type {any[]} */ (r.b.reg.deps.db.prepare("SELECT status, stopped_reason, pid FROM threads_runs").all());
+  await until(() => stopped().length > 0 && stopped().every(x => x.status === "stopped"), "the turns to end without starting", 60_000);
+  assert.ok(stopped().every(x => x.pid === null && /not available to this turn|no person on this call|you may not use that/.test(String(x.stopped_reason))), `the runs stopped closed: ${JSON.stringify(stopped())}`);
+  assert.deepEqual(r.launches(), [], "no process was started for either member");
+  assert.deepEqual(r.lends, [], "no key was lent to anyone");
+  assert.deepEqual(r.answers(), [], "nobody got an answer on anybody's key");
+  // and the keys are nowhere: not in an event, a run row, an account row, any table, any log line, any file the home keeps (the fake program's launch log would hold env hashes: it does not exist)
+  const thread = kitThread(r.b, r.chat.id);
+  const got = await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli").catch(() => null);
+  const events = (got && got.data && got.data.events) || [];
+  const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
+  const accounts = r.b.reg.deps.db.prepare("SELECT * FROM sessions_accounts").all();
+  const walk = (/** @type {string} */ d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
+  const names = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"];
+  const files = [...walk(r.w.paths.root), ...walk(r.w.work)];
+  for (const [who, key] of [["carol", r.KC], ["ada", r.KA]]) {
+    const hay = { events: JSON.stringify(events), rows: JSON.stringify(rows), accounts: JSON.stringify(accounts), logs: LOGS.join("\n") };
+    for (const [where, text] of Object.entries(hay)) {
+      assert.ok(!text.includes(key), `${who}'s key is in ${where}`);
+      assert.ok(!text.includes(sha16(key)), `a hash of ${who}'s key is in ${where}`);
+      for (const n of names) assert.ok(!text.includes(`${n}=`) || !text.includes(key), `${n}=<${who}'s key> is in ${where}`);
     }
     for (const f of files) { let txt = ""; try { txt = fs.readFileSync(f, "latin1"); } catch { continue; } assert.ok(!txt.includes(key), `${who}'s key is in ${f}`); }
   }

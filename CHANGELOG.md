@@ -2,8 +2,9 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## 0.6
+## 0.6.0-rc.1
 
+- fix(ci): found what stopped all six runners of a CI host at once (five times on 17 Oct). core/previews/supervisor.test.js gave its fake child pid 1, and the supervisor stopped it with process.kill(-pid, SIGTERM), which for pid 1 is kill(-1): every process of the runner user, so all six runners of the host, their listeners and jobs. Recorded by auditd on vyre-ci-4 at 19:06:33 (kill, a0=-1, SIGTERM, from the test file's node process) and by the kernel signal tracer. New lib/group-kill.js (killGroup, groupPid) signals a group only for an integer pid above 1; core/previews/supervisor.js and core/previews/thumb.js (which did kill(-(child.pid || 0)): kill(0) is the caller's own group, the runner service's too) use it. Tests: lib/group-kill.test.js and a supervisor test, both with process.kill stubbed so they cannot signal anything. The other process.kill(-pid) sites are listed in team/BACKLOG.md for 0.6.1.
 - ci(golden-refresh): the generated-copies tarball covers every file scripts/gen-surface-lists.mjs writes under apps/app/src/real (member-routes.generated.js and space-tools.generated.js), not one named file, so test/surface-lists.test.js can go green from the runner's output.
 
 - fix(device-tests): from work/0.6/fix53/device-tests 2d855aef5, signed by sec53 where it touches a security path: relay/client/finish.js always sends deviceName (a kind-less pick keeps its name); agents.flow-say drops the "mobile" caller; skills.decline is open to WHO_CAN as allow.json says; publish-server-space's refusal names a next step; skills and flows asks in lib/tools-asks-bank.js; test fixes (peer, spaces, one-person-surfaces list, the timings file no longer names the scan test, web/js/api.js comment).
