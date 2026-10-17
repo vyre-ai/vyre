@@ -206,7 +206,7 @@ export default {
           const { via: _via, ...mark } = covered;
           // a card is the PERSON's yes (their own client), never an agent's: an agent's send is judged by its standing permission or held, whatever card its call rode on
           // the card is the person's yes to this send, not a way round who may use the connection: a requester who could not use it herself (the kernel's own check, as gate.standing.add) is held for its owner, and the card is not spent
-          const mayUse = !by.requester || !ctx.kernel || typeof ctx.kernel.mayUseConnection !== "function" || await Promise.resolve(ctx.kernel.mayUseConnection(String(by.requester), String(input.via))).then(Boolean, () => false);
+          const mayUse = !by.requester || !ctx.kernel || (typeof ctx.kernel.mayUseConnection === "function" && await Promise.resolve(ctx.kernel.mayUseConnection(String(by.requester), String(input.via))).then(Boolean, () => false));   // a kernel whose handle cannot answer is no
           const r = mayUse ? await ctx.call("approvals.cover", mark).catch(() => null) : null;
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
