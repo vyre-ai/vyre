@@ -10,6 +10,10 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A member's own held items (what their agent asked to send from their mailbox): the handler shows and answers only the items they asked for, never the owner's or another member's (core/gate/requester.js).
+  "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.revise",
+  // A member may give a permission for their own agent over their own mailbox (the handler limits them to agents they made and connections they hold) and list or end their own.
+  "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
@@ -18,6 +22,9 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
+  "mcp.repin",
+  "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
   "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
@@ -70,7 +77,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
-  "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "about.text",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -97,10 +103,10 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
   "computers.takeover", "computers.watch",
-  "connectors.calendar.today", "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.connection.approve",
+  "connectors.calendar.today", "connectors.connection.approve",
   "connectors.connection.check", "connectors.connection.create", "connectors.connection.decline", "connectors.connection.delete", "connectors.connection.export",
   "connectors.connection.get", "connectors.connection.import", "connectors.connection.list", "connectors.connection.proposals", "connectors.connection.propose",
-  "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", "connectors.disconnect", "connectors.list",
+  "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", 
   "connectors.logging", "connectors.mention.search", "connectors.operation.run", "connectors.scope", "connectors.site.attention", "connectors.site.connect",
   "connectors.site.limits", "connectors.site.limits.set", "connectors.site.list", "connectors.site.operations", "connectors.site.propose", "connectors.site.resume",
   "connectors.site.rollback", "connectors.site.rows", "connectors.site.sync",
@@ -121,7 +127,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.linked.mentions.resolve",
   "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
   "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
-  "gate.approve", "gate.get", "gate.held", "gate.reject", "gate.request", "gate.revise", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
+  "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
   "github.project.add-repo", "github.project.detect", "github.project.issue.get", "github.project.issue.list", "github.project.local-init", "github.project.of",
@@ -134,7 +140,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "google.accounts", "google.add", "google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today",
   "google.calendar.update", "google.connect", "google.connect.cancel", "google.connect.finish", "google.drive.read", "google.drive.search", "google.find", "google.mail.draft", "google.mail.read",
   "google.mail.search", "google.mail.send", "google.members.email", "google.open", "google.remove", "google.test",
-  "microsoft.accounts", "microsoft.add", "microsoft.calendar.list", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.members.email", "microsoft.remove",
+  "microsoft.accounts", "microsoft.add", "microsoft.calendar.create", "microsoft.calendar.list", "microsoft.check", "microsoft.drive.read", "microsoft.drive.search", "microsoft.mail.read", "microsoft.mail.search", "microsoft.mail.send", "microsoft.members.email", "microsoft.remove",
   "hands-desktop.act", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.tree",
   "hooks.close", "hooks.delivery", "hooks.enable", "hooks.list", "hooks.open", "hooks.status",
   "identity.card", "identity.create", "identity.discover", "identity.github.link", "identity.lock", "identity.migrate", "identity.status", "identity.unlock",
@@ -145,7 +151,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "link.macs", "link.pair.approve", "link.pair.deny", "link.pair.poll", "link.pair.request", "link.peers", "link.pending", "link.rename", "link.reply", "link.serve",
   "link.status", "link.unpair",
   "mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "mail.test",
-  "mcp.add", "mcp.call", "mcp.remove", "mcp.repin", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
+  "mcp.add", "mcp.call", "mcp.remove", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
   "memory.backup.restore", "memory.backup.run", "memory.backup.status", "memory.contradictions", "memory.correct", "memory.corrections", "memory.curate", "memory.device",
   "memory.follow", "memory.heard", "memory.identity.enroll", "memory.identity.grant", "memory.identity.lock", "memory.identity.move", "memory.identity.revoke",
   "memory.identity.status", "memory.identity.unlock.begin", "memory.identity.unlock.finish", "memory.markers", "memory.me", "memory.merge", "memory.mute",
@@ -282,7 +288,7 @@ export const PLUMBING = Object.freeze(new Set([
 /**
  * Owner-scoped group tools (GROUP_OF, group not in SCOPED_GROUPS) that a member's named agent may pass the member door for. Each must be outward or ask-first and is held at the Gate as that member, never run as the owner. Every other tool in those groups stays door-refused for a member's agent.
  */
-export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send"]));
+export const MEMBER_NAMED_AGENT_GROUP = Object.freeze(new Set(["mail.send", "google.mail.send", "microsoft.mail.send"]));
 
 export const MEMBER_OUTWARD = Object.freeze({
   "onboard.agent.signin": "the person's yes: signing an AI provider into the person's own vault is held for one tap when an assistant asks; her own call from her device needs only her.",
@@ -314,8 +320,8 @@ export const MEMBER_MAY_COUNT = MEMBER_MAY.size;
  * Left out on purpose until each is scoped to the person: the planner's event tools (agenda, get, update, delete, done, snooze, dismiss, calendar.*), which show any person's events.
  */
 export const TOOL_GROUPS = Object.freeze({
-  mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send"]),
-  calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "connectors.calendar.today"]),
+  mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send", "microsoft.mail.send"]),
+  calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "microsoft.calendar.create", "connectors.calendar.today"]),
   documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
     "documents.signing.waiting", "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",

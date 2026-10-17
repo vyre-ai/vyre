@@ -14,11 +14,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** @param {string[]} argv */
 function args(argv) {
-  /** @type {{ out: string, diffMd: string, registry: string, plugins: { repo: string, dir: string, sha: string }[], force: boolean, today: string }} */
-  const o = { out: path.join(ROOT, "lib", "connector-presets", "catalog.snapshot.json"), diffMd: "", registry: REGISTRY, plugins: [], force: false, today: new Date().toISOString().slice(0, 10) };
+  /** @type {{ out: string, reviewed: string, diffMd: string, registry: string, plugins: { repo: string, dir: string, sha: string }[], force: boolean, today: string }} */
+  const o = { out: path.join(ROOT, "lib", "connector-presets", "catalog.snapshot.json"), reviewed: path.join(ROOT, "lib", "mcp-catalog.reviewed.json"), diffMd: "", registry: REGISTRY, plugins: [], force: false, today: new Date().toISOString().slice(0, 10) };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--out") o.out = path.resolve(argv[++i]);
+    else if (a === "--reviewed") o.reviewed = path.resolve(argv[++i]);
     else if (a === "--diff-md") o.diffMd = path.resolve(argv[++i]);
     else if (a === "--registry") o.registry = argv[++i];
     else if (a === "--force") o.force = true;
@@ -83,7 +84,11 @@ async function main() {
   const plugins = o.plugins.map(x => ({ repo: x.repo, sha: x.sha, found: readPluginRepo(x.dir) }));
   const next = buildSnapshot({ registryPages, plugins, registry: o.registry, today: o.today });
   // A person's review stands: a row with a verdict stays whole (and stays even if no source lists it now), and a row already probed keeps its answer until a reviewer re-probes it.
-  next.entries = carryReviewed(prev && Array.isArray(prev.entries) ? prev.entries : [], next.entries);
+  const reviewedFile = (() => { try { return JSON.parse(fs.readFileSync(o.reviewed, "utf8")); } catch { return null; } })();
+  const fromFile = reviewedFile && Array.isArray(reviewedFile.entries) ? reviewedFile.entries : [];
+  const fileIds = new Set(fromFile.map(e => e.id));
+  // the reviewed file is the reviewers' own list: its rows replace the same ids in the committed snapshot
+  next.entries = carryReviewed([...(prev && Array.isArray(prev.entries) ? prev.entries : []).filter(e => !fileIds.has(e.id)), ...fromFile], next.entries);
   next.entries = await annotateProbes(next.entries, url => probeServer(url));
   const d = decide(prev, next, o.force);
   if (!d.write) { console.log(`catalog ${d.why}`); if (d.why.startsWith("refused")) process.exit(1); return; }

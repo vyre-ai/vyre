@@ -42,6 +42,7 @@ export class PeopleVaults {
     /** The Space's state folder, where the sealed server copies of members' keys are kept; null keeps none (tests, a build with no server). @type {string | null} */ this.sealRoot = sealRoot;
     this.dir = dir; this.config = config; this.emit = emit; this.log = log; this.testKdf = testKdf; this.clock = clock; this.idleMs = idleMs;
     /** @type {Map<string, { vault: Vault, db: any, last: number, sk: string | null, queue: Promise<any> }>} */ this.open = new Map();
+    /** Told when an item of a person's changes or goes (the shares of a login are refreshed or ended from it). Never throws into the change. @type {(id: string, name: string) => Promise<any>} */ this.onItem = async () => {};
   }
 
   /** Throws unless this is a person id; the id becomes a folder name. @param {string} id */
@@ -441,6 +442,7 @@ export class PeopleVaults {
     if (!it) throw new Error(`no item named ${name}`);
     const next = fields === undefined ? it.fields : { ...it.fields, ...PeopleVaults.clean(fields) };
     this.write(id, it.fileId, { name, kind: it.kind, description: description === undefined ? it.description : String(description).slice(0, 500), updated: this.clock() }, next);
+    await this.onItem(id, name);
     return { name, kind: it.kind, created: false };
   }
 
@@ -465,7 +467,7 @@ export class PeopleVaults {
   /** @param {string} id @param {{ name: string }} input */
   async remove(id, { name }) {
     const it = this.all(id).find(i => i.name === name);
-    if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); return { removed: name }; }
+    if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); await this.onItem(id, name); return { removed: name }; }
     const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
     if (!c) throw new Error(`no item named ${name}`);
     fs.rmSync(path.join(this.connDir(id), c.fileId + ".json"), { force: true });

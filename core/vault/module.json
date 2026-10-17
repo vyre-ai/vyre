@@ -21,6 +21,7 @@
       { "name": "vault.connection.token", "reach": "modules" },
       { "name": "vault.me.connect.put", "reach": "modules" },
       { "name": "vault.me.who", "reach": "modules" },
+      { "name": "vault.connection.revoke", "reach": "modules" },
       { "name": "vault.granted", "reach": "modules" },
       { "name": "vault.inject", "effect": "write", "reach": "anyone" },
       { "name": "vault.totp", "effect": "write", "reach": "anyone" },
@@ -144,6 +145,9 @@
       { "name": "vault.me.connection.shares", "effect": "read", "reach": "person" },
       { "name": "vault.me.shared.request", "effect": "write", "reach": "person" },
       { "name": "vault.me.update", "effect": "write", "reach": "person" },
+      { "name": "vault.me.share.agent", "effect": "write", "reach": "person" },
+      { "name": "vault.me.unshare.agent", "effect": "write", "reach": "person" },
+      { "name": "vault.me.shares", "effect": "read", "reach": "person" },
       { "name": "vault.me.store.get", "effect": "read", "reach": "anyone" },
       { "name": "vault.me.store.put", "effect": "write", "reach": "anyone" },
       { "name": "vault.me.store.list", "effect": "read", "reach": "anyone" },
@@ -315,7 +319,7 @@
       }
     }
   },
-  "needs": { "kernel": { "reach": true, "membership": true, "mints": [{ "prefix": "vault", "actions": ["vault.use", "vault.edit"] }] } },
+  "needs": { "kernel": { "reach": true, "membership": true, "mints": [{ "prefix": "vault", "actions": ["vault.use", "vault.edit", "vault.fill"] }] } },
   "teaches": {
     "tips": [
       {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},
