@@ -48,7 +48,7 @@ export function AddServerCard({ onDone }: { onDone: () => void }) {
         <Text tone="muted">Waiting for your server. This screen updates when it is ready.</Text>
         {state.lines.length ? <Text mono size="caption">{state.lines[state.lines.length - 1]}</Text> : null}
       </>) : null}
-      {stage === "found" && state.box ? (<>
+      {stage === "found" && state.box && state.box.words.length ? (<>
         <Text>Your server is ready. It shows four words. Are these the same?</Text>
         <Text strong size="title">{state.box.words.join("  ")}</Text>
         {state.note ? <Banner tone="warn">{state.note}</Banner> : null}
@@ -57,7 +57,7 @@ export function AddServerCard({ onDone }: { onDone: () => void }) {
           <Button kind="ghost" label="Not the same" onPress={() => run.current?.denyWords()} />
         </View>
       </>) : null}
-      {stage === "pairing" ? (<><Text tone="muted">Connecting to your server.</Text>{state.note ? <Banner tone="warn">{state.note}</Banner> : null}</>) : null}
+      {stage === "pairing" || (stage === "found" && state.box && !state.box.words.length) ? (<><Text tone="muted">Connecting to your server.</Text>{state.note ? <Banner tone="warn">{state.note}</Banner> : null}</>) : null}
       {stage === "done" ? <Text>Your server is connected.</Text> : null}
       {stage === "stopped" ? (<>
         <Banner tone="warn">{state.error?.message}</Banner>
