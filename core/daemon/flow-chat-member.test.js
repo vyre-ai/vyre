@@ -82,7 +82,10 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   assert.ok(secret, "the owner's skill exists");
   const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
-  const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer");
+  const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
+    const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {}).slice(0, 3500);
+    throw new Error(`${e.message}; the thread: ${g}; the log: ${logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-20).join(" || ")}; the fake claude's log: ${(() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").slice(-1500); } catch { return "none"; } })()}`);
+  });
   assert.ok(said.includes("rows"), "an ordinary read in the job answers");
   assert.ok(!said.includes("OWNER-PRIVATE-TEXT"), "the owner's private skill never reaches the member's job");
 
