@@ -220,6 +220,7 @@ test("release.yml: the Android APK is built in this run, checked, required in di
   assert.match(yml, /TAG: \$\{\{ github\.event_name == 'push' && github\.ref_name \|\| inputs\.tag \}\}\n        run: \|\n          VERSION=\$\{TAG#v\}/, "its version is the tag's, the same expression prepare uses");
   const job = yml.slice(yml.indexOf("\n  android:\n"), yml.indexOf("\n  # Join the per-arch digests"));
   assert.match(job, /assembleRelease/);
+  assert.ok(!/cache: gradle|--build-cache|actions\/cache/.test(job), "no restored cache feeds the APK the release key signs (sec53)");
   assert.ok(!/secrets\./.test(job) && !/environment:/.test(job), "the Android job holds no secret and no environment");
   assert.match(job, /Vyre-android\.apk/);
   assert.match(job, /check-apk-nothing-central/);
