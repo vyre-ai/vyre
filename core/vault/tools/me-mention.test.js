@@ -19,7 +19,7 @@ function rig(over = /** @type {any} */ ({})) {
     connection: { lendTurn: async (/** @type {string} */ ...a) => { lent.push(["connection", ...a]); return {}; }, endTurn: async (/** @type {string} */ o, /** @type {string} */ t) => { ended.push(["connection", o, t]); return 1; } } };
   /** @type {Map<string, any>} */ const defs = new Map();
   register({ ctx, people: /** @type {any} */ (people), internal: (n, _d, _i, run) => reg.set(n, { run }), define: (n, d) => { defs.set(n, d); reg.set(n, { run: d.run }); }, now: () => 1_000_000, lend: over.lend === null ? {} : lend });
-  const ask = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:switchboard") => reg.get(tool).run(input, { caller });
+  const ask = (/** @type {string} */ tool, /** @type {any} */ input, caller = "module:threads") => reg.get(tool).run(input, { caller });
   return { ask, locked, reg, lent, ended, defs };
 }
 
@@ -44,9 +44,9 @@ test("a locked vault answers in plain words the chat can show", async () => {
   await assert.rejects(ask("vault.me.mention.resolve", { asker: BOB, id: "passport", thread: "t" }), { code: "locked" });
 });
 
-test("only the Switchboard asks, and only about a member: not the owner, not a stranger, not another module or a model", async () => {
+test("only the Switchboard (module:threads) asks, no other module, and only about a member: not the owner, not a stranger, not another module or a model", async () => {
   const { ask } = rig();
-  for (const caller of ["module:sessions", "module:files", "cli", "mcp", "mcp:agent:kit", "device:abcdef"]) await assert.rejects(ask("vault.me.mention.search", { asker: BOB }, caller), { code: "denied" }, caller);
+  for (const caller of ["module:switchboard", "module:sessions", "module:assistant", "module:mentions", "module:files", "module:threadsx", "cli", "mcp", "mcp:agent:kit", "device:abcdef"]) await assert.rejects(ask("vault.me.mention.search", { asker: BOB }, caller), { code: "denied" }, caller);
   await assert.rejects(ask("vault.me.mention.search", { asker: OWNER }), { code: "denied" }, "the owner's chips are the owner's vault");
   await assert.rejects(ask("vault.me.mention.search", { asker: "per_stranger" }), { code: "denied" });
   await assert.rejects(ask("vault.me.mention.search", { asker: "bob" }), { code: "bad_input" });
@@ -76,8 +76,8 @@ test("what is not lent: another member's item, the owner's, a key, a passkey; a 
   await assert.rejects(ask("vault.me.mention.lend", { asker: OWNER, thread: "t", agent: "kit", id: "passport" }), { code: "denied" });
   for (const agent of ["assistant", "Kit; rm", "", "x".repeat(60)]) await assert.rejects(ask("vault.me.mention.lend", { ...L, id: "passport", agent }), { code: "bad_input" }, agent);
   await assert.rejects(ask("vault.me.mention.lend", { ...L, id: "passport", thread: "bad thread!" }), { code: "bad_input" });
-  for (const c of ["module:sessions", "cli", "mcp", "mcp:agent:kit"]) await assert.rejects(ask("vault.me.mention.lend", { ...L, id: "passport" }, c), { code: "denied" }, c);
-  for (const c of ["module:sessions", "cli", "mcp"]) await assert.rejects(ask("vault.me.mention.end", { asker: BOB, thread: "t" }, c), { code: "denied" }, c);
+  for (const c of ["module:switchboard", "module:sessions", "module:assistant", "module:mentions", "cli", "mcp", "mcp:agent:kit"]) await assert.rejects(ask("vault.me.mention.lend", { ...L, id: "passport" }, c), { code: "denied" }, c);
+  for (const c of ["module:switchboard", "module:sessions", "module:assistant", "cli", "mcp"]) await assert.rejects(ask("vault.me.mention.end", { asker: BOB, thread: "t" }, c), { code: "denied" }, c);
   assert.equal(lent.length, 0, "nothing was lent by any refused call");
 });
 
