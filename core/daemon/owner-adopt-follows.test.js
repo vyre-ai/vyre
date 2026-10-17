@@ -45,8 +45,10 @@ test("adopt changes the owner, and the owner's rows follow: agents, planner, pro
 
   // ---- after: the owner's own surface (built under the new id), and the pre-adoption token
   const names = (/** @type {any} */ r, /** @type {string} */ key) => { const list = r && r.data ? (Array.isArray(r.data) ? r.data : r.data[key] || []) : []; return JSON.stringify(list); };
-  for (const [label, meta] of /** @type {[string, any][]} */ ([["owner surface", cli()], ["pre-adoption token", { token }]])) {
-    const caller = label === "owner surface" ? "cli" : "deck";
+  const newChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-new", person: NEW, path: "direct", session: "s" });
+  const newToken = (await d.kernel.surfaces.open(newChain, {})).token;
+  for (const [label, meta] of /** @type {[string, any][]} */ ([["owner surface", { token: newToken }], ["pre-adoption token", { token }]])) {
+    const caller = "deck";
     const c = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, caller, meta);
     if (!agent.error) { const r = await c("agents.list"); need(`${label}: agents.list shows census`, !r.error && names(r, "agents").includes("census"), r.error || names(r, "agents")); }
     if (!proj.error) { const r = await c("projects.list"); need(`${label}: projects.list shows census-project`, !r.error && names(r, "projects").includes("census-project"), r.error || names(r, "projects")); }
