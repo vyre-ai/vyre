@@ -39,7 +39,7 @@ async function boxRegistry(t, { modules = [] } = {}) {
 
 /** Pair a peer (kind "mac" or "device"), approved from the box's own socket. Returns its link_peers id and name. */
 async function paired(call, { name = "alex-mac", stableId = "nPEER0001", kind } = {}) {
-  const peer = { stableId, node: `${name}.tail0000.ts.net` };
+  const peer = { stableId, node: `${name}.tail0000.wink.example` };
   const req = await call("link.pair.request", { name, ...(kind ? { kind } : {}) }, "tailnet:owner", { peer });
   assert.ok(!req.error, JSON.stringify(req.error));
   const approved = await call("link.pair.approve", { code: req.data.code.replace("-", "") }, "cli");
@@ -544,11 +544,11 @@ test("sync: a companion core uploads only with a token its own key signed for th
   const core = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const id = crypto.randomUUID();
   db.prepare("INSERT INTO link_peers (id, name, key_hash, paired_at, kind, parent, core_pub) VALUES (?, 'alex pc core', ?, ?, 'companion', ?, ?)").run(id, crypto.randomBytes(16).toString("hex"), Date.now(), APP, core);
-  const info = (await call("link.companion.hello", { token: "c1.bad" }, "tailnet:owner", { peer: { stableId: "nPC", node: "pc.ts.net" } }));
+  const info = (await call("link.companion.hello", { token: "c1.bad" }, "tailnet:owner", { peer: { stableId: "nPC", node: "pc.wink.example" } }));
   assert.equal(info.error?.code, "denied", "a malformed token is refused");
   const consent = await call("sync.consent", { machine: "alex pc core", on: true }, "cli");
   assert.ok(!consent.error, JSON.stringify(consent.error));
-  const peer = { stableId: "nPC", node: "pc.ts.net" };
+  const peer = { stableId: "nPC", node: "pc.wink.example" };
   const { tokenMessage, boxId } = await import("../link/companion.js");
   const boxPubKey = (await import("../link/assert.js")).boxKey(root).publicKey;
   const sign = (tool, input) => {

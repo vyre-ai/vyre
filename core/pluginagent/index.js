@@ -96,7 +96,7 @@ export default {
     });
 
     ctx.tool("pluginagent.grant", {
-      description: "The person lets Claude Code on a computer read their memory and every project's sessions, once. Registers the agent, adds it to the Space (a kernel act that needs the person's presence) and writes its key where only this OS user can read it. It never becomes the person.",
+      description: "Let Claude Code on this computer read your memory and project sessions, once. It never becomes you.",
       input: obj({ id: { type: "string", maxLength: 40 } }),
       callers: PEOPLE,
       presence: { summary: async () => `Let Claude Code on ${computerName()} read your memory and the sessions of your projects` },
@@ -130,7 +130,7 @@ export default {
     });
 
     ctx.tool("pluginagent.revoke", {
-      description: "The person takes Claude Code's reach on this computer away: the key stops working at once, the agent is removed, and it does not ask again until the person turns it back on (pluginagent.on).",
+      description: "Take away Claude Code's reach on this computer. The key stops at once and the agent is removed.",
       input: obj(), callers: PEOPLE,
       presence: { summary: async () => "Take away Claude Code's reach to your memory and sessions on this computer" },
       run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
@@ -159,7 +159,7 @@ export default {
     });
 
     ctx.tool("pluginagent.decline", {
-      description: "The person says no to Claude Code's request (the card's Don't allow): the waiting ask ends and Claude Code does not ask again until the person turns it back on (pluginagent.on).",
+      description: "Say no to Claude Code's request. It does not ask again until you turn the request back on.",
       input: obj(), callers: PEOPLE,
       run: async () => {
         db.prepare("UPDATE pluginagent_asks SET state = 'declined' WHERE state = 'waiting'").run();
@@ -170,7 +170,7 @@ export default {
     });
 
     ctx.tool("pluginagent.on", {
-      description: "The person turns Claude Code's request back on after a decline or a revoke (from Access): the next time it runs here it asks again. Grants nothing by itself.",
+      description: "Turn Claude Code's request back on after a decline or a revoke. Grants nothing by itself.",
       input: obj(), callers: PEOPLE,
       run: async () => { setState("off", null); return { on: true }; },
     });

@@ -198,7 +198,8 @@ export const TYPES = {
   },
   http: {
     kinds: ["send", "spend", "delete"],
-    content: { method: "GET|POST|PUT|PATCH|DELETE", url: "one of the sender's hosts", headers: "object? ({{vault}} goes here)", body: "string? ({{vault}} may go here)" },
+    content: { method: "GET|POST|PUT|PATCH|DELETE", url: "one of the sender's hosts", headers: "object? ({{vault}} goes here)", body: "string? ({{vault}} may go here)", payee: "string? (one address the money or message goes to; a standing permission matches it)", amount: "number? (a payment's amount)", currency: "string? (a payment's currency, such as USD)" },
+    recipients: (to, c) => (c && typeof c.payee === "string" && c.payee ? [c.payee] : []),
     check(to, c, s) { checkRequest(c, s.hosts || []); },
     summary: (to, c) => cut(`${String(c.method || "GET").toUpperCase()} ${c.url}`, 120),
     async send(to, c, s, deps) {

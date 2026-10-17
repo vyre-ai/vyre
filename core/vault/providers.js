@@ -42,8 +42,6 @@ const LIST = [
     capabilities: ["files", "other"], help: "https://github.com/settings/connections/applications", next: { tool: "github.connect", input: { name: "" } } },
   { name: "cloudflare", label: "Cloudflare", kinds: ["api-key"], how: "field", fields: [key("API token", "^[A-Za-z0-9_-]{30,}$")],
     capabilities: ["other"], help: "https://dash.cloudflare.com/profile/api-tokens" },
-  { name: "tailscale", label: "Tailscale", kinds: ["api-key"], how: "field", fields: [key("API key", "^tskey-[A-Za-z0-9-]{10,}$")],
-    capabilities: ["other"], help: "https://login.tailscale.com/admin/settings/keys" },
   { name: "twilio", label: "Twilio", kinds: ["api-key"], how: "field",
     fields: [key("Auth token", "^[A-Za-z0-9]{32}$"), { name: "sid", label: "API key id (only if you sign in with an API key; it starts with SK)", secret: false, optional: true, pattern: "^SK[0-9a-f]{32}$" },
       { name: "account", label: "Account number (starts with AC)", secret: false, optional: true, pattern: "^AC[0-9a-fA-F]{32}$" },

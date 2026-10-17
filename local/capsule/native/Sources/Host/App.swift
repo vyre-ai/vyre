@@ -84,6 +84,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         VyreAppWindow.shared.identity = MacIdentity(store: BundleSeedStore(bundle: keys))
         VyreAppWindow.shared.enclave = MacEnclave(store: BundleHandleStore(bundle: keys, slot: .enclave))
         VyreAppWindow.shared.agreement = MacAgree(store: BundleHandleStore(bundle: keys, slot: .agree))
+        VyreAppWindow.shared.relayKey = MacRelayKey(store: BundleHandleStore(bundle: keys, slot: .relay))
         VyreAppWindow.shared.vyredUp = { [weak self] in self?.health.vyredUp ?? false }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.

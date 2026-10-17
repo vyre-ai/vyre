@@ -14,12 +14,12 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORD = /tailscale|\bts\.net\b|taildrop|taildrive|tsnet/i;
-const SKIP_DIRS = new Set([".git", "node_modules", "dist", "dist-ios", "dist-web", "ssh-none", "reference"]);
+const SKIP_DIRS = new Set([".git", "node_modules", "dist", "dist-ios", "dist-web", "ssh-none", "reference", ".build", "app-web"]);
 const TEXT = /\.(js|mjs|cjs|ts|tsx|json|md|html|css|sh|yml|yaml|go|mod|txt|swift|kt|rs|toml|plist|service|socket)$|^(Dockerfile|vyre)$/;
 
 const PERMANENT = [
   /^wink\/forwarder\//, /^core\/wink\/node\//, /^core\/wink\/control\//, /^scripts\/spike-wink\//,
-  /^docs\/(adr|design|work|proposals|releases)\//, /^docs\/(nav|index)\.json$/, /^CHANGELOG\.md$/, /^site\/CHANGELOG\.md$/, /^release\/notes\//,
+  /^docs\/(adr|design|work|proposals|releases)\//, /^docs-site\//, /^docs\/(nav|index)\.json$/, /^CHANGELOG\.md$/, /^site\/CHANGELOG\.md$/, /^release\/notes\//,
   /^lib\/sanitize\.js$/, /^lib\/credential-shapes\.js$/, /^test\/allowed-dependencies\.json$/, /^local\/hands-chrome-mac\/extension\/shared\/sk\/credential-shapes\.js$/, /^apps\/app\/src\/store-core\/credential-shapes\.js$/,
   /^lib\/api-endpoint\.js$/, /^core\/mcp\/hub\.js$/, /^core\/vault\/api-request\.js$/, /^core\/spawner\/wall\.js$/, /^packages\/module-sdk\//,
   /^core\/names\/rules\.js$/, /^core\/memory\/lexicon\.js$/, /^core\/network\/other-vpn\.js$/, /^test\/no-tailscale\.test\.js$/, /^NOTICE$/,

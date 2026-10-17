@@ -321,7 +321,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let v = FakeVyred()
         let m = MainActor.assumeIsolated { () -> CapsuleModel in
             let m = CapsuleModel(home: vyScratch("iq-src-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
-            m.catalog = VyreCatalog(box: "https://box.example.ts.net:8443")
+            m.catalog = VyreCatalog(box: "https://box.example.wink.example:8443")
             m.askedMemory = MemoryAnswer(text: "which car do I drive", answer: "A blue Volvo XC40.", answerKind: .memory,
                                         sources: [MemorySource(kind: .quote, role: "user", session: "s1", seq: 4, name: "Insurance renewal", quote: "I drive a Volvo", age: "")])
             m.askedMemory?.iq = true
@@ -330,7 +330,7 @@ let iqAskSuite = Suite("iq ask") { t in
         var opened: URL?
         let ok = MainActor.assumeIsolated { m.openSource(0, opener: { opened = $0; return true }) }
         t.eq(ok, true)
-        t.eq(opened?.absoluteString, "https://box.example.ts.net:8443/chat/thread/s1?seq=4")
+        t.eq(opened?.absoluteString, "https://box.example.wink.example:8443/chat/thread/s1?seq=4")
         // No server paired: says so, opens nothing.
         MainActor.assumeIsolated { m.catalog = VyreCatalog() }
         let none = MainActor.assumeIsolated { m.openSource(0, opener: { _ in true }) }

@@ -22,6 +22,15 @@ async function callPending(conn, tool, input) {
 }
 
 /**
+ * The bytes the identity signs to own a server (core/wink/pairing.js pairToMessage with the tag): "vyre-wink-pair-to-v1", the server's box key (base64url), this device's id on it and the ticket's
+ * tag, one per line. The Mac and Windows shells read exactly this shape before they sign it (Host/SignSummary.swift, native-win identity.rs pair_to_summary); a change here is a change there.
+ * @param {string} box @param {string} device @param {string} ticket @returns {Promise<Uint8Array>}
+ */
+export async function pairToProofMessage(box, device, ticket) {
+  return new TextEncoder().encode(`vyre-wink-pair-to-v1\n${box}\n${device}\n${await ticketTag(ticket)}`);
+}
+
+/**
  * A server's waiting pairing: wink.server.adopt. The first call carries the claimed owner, its proof and the pairing's commit; the server answers with its nonce; the app reveals its own, both derive
  * the same three words, and the person at the server picks them (a typed code's ack is that pick already, so the owner comes back at once).
  * @param {{ box: string, device: string, route: string, name?: string }} paired what pairTicket answered
@@ -40,7 +49,7 @@ export async function adoptServer(paired, o) {
   const owner = { kind: o.owner.kind || "identity", id: o.owner.id, ...(o.owner.name ? { name: String(o.owner.name).slice(0, 64) } : {}), ...(/** @type {any} */ (o.owner).vyre ? { vyre: String(/** @type {any} */ (o.owner).vyre).slice(0, 253) } : {}), ...(/** @type {any} */ (o.owner).pin ? { pin: /** @type {any} */ (o.owner).pin } : {}) };
   // The proof that the identity's own key stands behind this pairing: its signature over this pairing's box and relay device and ticket tag (so it is good for this pairing only, PI-3); a phone's key adds its Face ID signature `esig`.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
-  if (!proof && o.signIdentity) proof = await o.signIdentity(new TextEncoder().encode(`vyre-wink-pair-to-v1\n${paired.box}\n${paired.device}\n${await ticketTag(o.ticket)}`));
+  if (!proof && o.signIdentity) proof = await o.signIdentity(await pairToProofMessage(String(paired.box), String(paired.device), o.ticket));
   const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), ...(o.keySigner ? { keySigner: o.keySigner } : {}), ...(o.keyRp ? { keyRp: o.keyRp } : {}) };
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;

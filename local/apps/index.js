@@ -89,7 +89,7 @@ export default {
 
     ctx.tool("apps.list", {
       effect: "read",
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
       description: "Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it: connector, intents, script, or ax for its UI); actions and nests (has things inside to pick) when Vyre has words for the app. Filter with q; names that start with q come first.",
       input: { type: "object", properties: { q: str, limit: { type: "integer", description: `Most rows, default 20, at most ${LIST_MAX}.` } } },
       async run({ q = "", limit = 20 }) {
@@ -108,7 +108,7 @@ export default {
 
     ctx.tool("apps.targets", {
       effect: "read",
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (what is installed and what is in the person's notes are theirs)
       description: "Things inside one app a person can pick: notes in Notes, lists in Reminders. Each has an id to pass back in args. Empty for an app with none.",
       input: { type: "object", required: ["app"], properties: { app: str, q: str, limit: { type: "integer", description: "Most rows, default 20." } } },
       async run({ app, q = "", limit = 20 }) {
@@ -329,7 +329,7 @@ export default {
       description: "Do one thing in an app that sends, posts or pays as the person. Every call needs a person's proof, shown the preview (\"WhatsApp → juno: running late\"). Returns said and the action's data.",
       input: actInput,
       // Listed so a first-party module may call it (the floor asks every non-module caller for a person's proof); a model that asks is held for a person.
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"],
       presence: {
         summary: async (/** @type {any} */ input) => {
           const a = registry.find(input && input.app);

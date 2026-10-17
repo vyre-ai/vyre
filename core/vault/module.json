@@ -182,13 +182,24 @@
       { "name": "vault.api.send", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.fetch.public", "reach": "modules" },
       { "name": "vault.credential.tokens", "reach": "modules" },
+      { "name": "vault.person.browser-profile-key", "reach": "modules" },
+      { "name": "vault.space.browser-profile-key", "reach": "modules" },
       { "name": "vault.forward", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.forward.file", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.service.forward", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.service.catalog", "reach": "modules" },
       { "name": "vault.provider.set", "effect": "write", "reach": "person" },
       { "name": "vault.provider.remove", "effect": "write", "reach": "person" },
-      { "name": "vault.provider.status", "effect": "read", "reach": "person" }
+      { "name": "vault.provider.status", "effect": "read", "reach": "person" },
+      { "name": "vault.master.install", "effect": "write", "reach": "modules" },
+      { "name": "vault.space.create", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.status", "effect": "read", "reach": "person" },
+      { "name": "vault.space.attention", "effect": "read", "reach": "anyone" },
+      { "name": "vault.space.grant", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.put", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.list", "effect": "read", "reach": "person" },
+      { "name": "vault.space.rotate", "effect": "write", "reach": "person", "outward": true },
+      { "name": "vault.space.use", "effect": "write", "reach": "anyone" }
     ]
   },
   "mentions": [
@@ -196,6 +207,7 @@
   ],
   "watches": {
     "emits": [
+      "vault.space.used",
       "vault.item-added",
       "vault.item-changed",
       "vault.item-deleted",

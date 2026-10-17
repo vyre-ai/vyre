@@ -140,7 +140,7 @@ as_vyre chmod 0660 "${CHROME_LOG}" || exit 1
 # ---- the three homes -------------------------------------------------------------------------
 # The agent's home is group-writable (setgid, so new folders keep the group) for computerd's
 # Files; the agent can undo that for any folder it wants private.
-as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox"'
+as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox" "$HOME/Downloads"'
 as_vyre sh -c 'umask 077; mkdir -p "$HOME/.vnc"'
 # browser's own subtree (the Chrome profile, downloads) is pre-made by the Dockerfile with its
 # final ownership already on it -- a fresh volume copies that as-is, so nothing here needs to
@@ -298,22 +298,10 @@ fi
 # child's own pipe -- computerd opens its own ends (computerd/index.js, CHROME_IN/CHROME_OUT) and
 # never touches Chrome's process, uid or a capability of its own.
 
-# Checked once, here, rather than passed to Chrome's argv unvalidated: vyred passes the proxy
-# script as a data: URL only when the setting is on and lists a site (config glass.egress,
-# core/computers/egress.js); WebRTC is kept off UDP that bypasses the proxy, or a listed site
-# could still learn this box's own address from a STUN reply.
-PAC="${VYRE_PROXY_PAC:-}"
-if [ -n "${PAC}" ] && ! printf '%s' "${PAC}" | grep -Eq '^data:application/x-ns-proxy-autoconfig;base64,[A-Za-z0-9+/]+=*$'; then
-  log "VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists"
-  exit 1
-fi
-
 chrome_once() {
   # The profile lives on the home volume; a container that was killed (or a Chrome that crashed)
   # leaves its Singleton locks behind, and the next one then refuses to start with "profile in use".
   as_browser sh -c 'for f in SingletonLock SingletonSocket SingletonCookie; do rm -f "$HOME/chromium/$f"; done'
-  local pac_args=()
-  if [ -n "${PAC}" ]; then pac_args=("--proxy-pac-url=${PAC}" "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"); fi
   # --ambient-caps=-all --bounding-set=-all on top of --inh-caps=-all (the reviewer, 28 Sep): even
   # though nothing here ever raises an ambient capability for this shell to begin with, Chrome is
   # the one process in this container that renders untrusted content, so it gets the belt as well
@@ -335,7 +323,7 @@ chrome_once() {
       --no-sandbox --test-type --disable-gpu --disable-dev-shm-usage --force-renderer-accessibility \
       --disable-extensions --password-store=basic --remote-debugging-pipe \
       "--user-data-dir=${CHROME_PROFILE}" "--window-size=${SCREEN%x*},${SCREEN#*x}" --start-maximized \
-      "${pac_args[@]}" about:blank
+      about:blank
 }
 chrome_loop() {
   while true; do
@@ -379,6 +367,6 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     AGENT_TOKENS_FILE="${VYRE_HOME}/.agent-tokens" \
-    AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
+    AGENT_DOWNLOADS="${AGENT_HOME}/Downloads" \
     VYRE_FREEZE_FD=9 VNC_SOCKET="${VNC_SOCKET}" \
   node /opt/computerd/index.js

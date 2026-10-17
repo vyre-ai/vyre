@@ -13,6 +13,7 @@
 
 import { expandConnections } from "./connection-step.js";
 import { runCases } from "./cases.js";
+import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
 import { linksFor, withLinks } from "./links.js";
@@ -24,7 +25,7 @@ import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
-import { recordTrigger, eventPatterns, fieldPasses, onRecordChange } from "./triggers.js";
+import { recordTrigger, typeMatches, triggerScope, onRecordChange } from "./triggers.js";
 import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
@@ -35,6 +36,7 @@ import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
 import { standingFor } from "./standing-run.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
+import { hiddenField } from "../../lib/secret-keys.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
@@ -85,12 +87,11 @@ function failOf(e) {
  */
 export function showable(v) {
   if (v === undefined) return undefined;
-  const SECRET_KEY = /secret|token|password|passwd|api[_-]?key|authorization|cookie|private/i;
   const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
     if (depth > 6) return "\u2026";
     if (typeof x === "string") return redactText(x);
     if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, SECRET_KEY.test(k) && typeof y !== "object" ? "[hidden]" : walk(y, depth + 1)]));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, hiddenField(k, y) ? "[hidden]" : walk(y, depth + 1)]));
     return x;
   };
   const out = walk(v, 0);
@@ -1170,10 +1171,12 @@ export class FlowRunner {
         if (!items) {
           const list = ev(s.over);
           items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-          await this.#mark(ctx, key, { status: "started", output: { items } });
+          // a list longer than the limit is cut, and the ledger says so (the run page shows "cut at 50 of 200"); recorded once with the items, so a replay says the same
+          await this.#mark(ctx, key, { status: "started", output: { items, ...(Array.isArray(list) && list.length > items.length ? { total: list.length, cut: true } : {}) } });
         }
         for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-        return { count: items.length };
+        const was = (this.#led(ctx, key) || {}).output || {};
+        return { count: items.length, ...(was.cut ? { cut: true, total: was.total } : {}) };
       });
       return;
     }
@@ -1684,7 +1687,10 @@ export class FlowRunner {
       const id = recordId(val(s.record));
       if (!id) throw new StepFail("bad_input", `step ${s.id}: no record to act on`);
       const cur = await this.k.records.get(chain, s.type, id);
-      if (!cur) throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      if (!cur) {
+        if (s.kind === "remove") return { record: { id, type: s.type }, removed: true, already_gone: true };
+        throw new StepFail("not_found", `step ${s.id}: that record is gone`);
+      }
       if (cur.labels && (cur.labels.trust === "external" || cur.labels.trust === "untrusted")) ctx.run.tainted = true;
       if (s.kind === "remove") { const r = await this.k.records.remove(chain, s.type, id, cur.version, kernelOpts); return { record: plain(r), removed: true }; }
       const patch = s.kind === "stage" ? { [stageField ? stageField.name : "stage"]: s.to } : val(s.set);
@@ -1758,7 +1764,14 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
       const t = res.task || {};
-      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
+      // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
+      let values;
+      if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
+        const read = readForm(s.form, t.answer);
+        if (!read.ok) throw new StepFail("invalid_answer", `step ${s.id}: ${read.message}`);
+        values = read.values;
+      }
+      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(values ? { values } : {}), ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
     const who = s.kind === "agent" ? s.assistant : s.to;
     const need = { action: "ask.request", resource: `vyre://${ctx.cat.space}/task/*` };
@@ -2035,22 +2048,6 @@ export class FlowRunner {
 }
 
 // ---------------------------------------------------------------------- helpers
-
-/** Does an event pattern (`noun.past-verb`, `noun.*`) match a type? @param {string} pattern @param {string} type */
-export const typeMatches = (pattern, type) => pattern === type || (pattern.endsWith(".*") && type.startsWith(pattern.slice(0, -1)));
-
-/**
- * Does this event trigger this Flow? Returns the scope the Flow reads (`trigger` and `event`), or null. An error in the condition is "no".
- * @param {any} t the Flow's trigger @param {any} env an event envelope
- */
-export function triggerScope(t, env) {
-  let scope = null;
-  if (t.on === "event" && eventPatterns(t).some(e => typeMatches(e, env.type)) && fieldPasses(t, env)) scope = { trigger: env.data ?? {}, event: env };
-  else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
-  if (!scope) return null;
-  if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
-  return scope;
-}
 
 /** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
 const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });

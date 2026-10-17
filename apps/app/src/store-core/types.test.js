@@ -11,7 +11,7 @@ import { viewDefOf } from "./view-defs.js";
 test("types: the five sample types, and Matter has the stages the prototype has", () => {
   assert.deepEqual(types.map(t => t.name), ["contact", "matter", "project", "trip", "template"]);
   assert.deepEqual(typeByName("matter")?.fields.find(f => f.kind === "stage")?.options, MATTER_STAGES);
-  assert.deepEqual(MATTER_STAGES, ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.deepEqual(MATTER_STAGES, ["Intake", "Kickoff", "Design", "Review", "Launch", "Closed"]);
   assert.ok(typeByName("contact")?.fields.some(f => f.kind === "sealed" && f.seal), "a contact has sealed fields, and a sealed field says how");
   for (const t of types) for (const f of t.fields) assert.ok(/** @type {readonly string[]} */ (FIELD_KINDS).includes(f.kind), `${t.name}.${f.name} is a kernel kind`);
 });
