@@ -55,3 +55,11 @@ test("a moment takes a yes in its forms, a reveal's yes may be reused for five m
   assert.notEqual((await at("relay.disable", {})).error?.code, "presence_required");
   fs.rmSync(path.join(root, "b.vyre"), { force: true });
 });
+
+test("the lend of a member's own item to the chat's agent is a vault yes with its own sentence", async () => {
+  const { MOMENT_OPS } = await import("../lib/one-yes-ops.js");
+  const { lineOfOp, opFitsMoment } = await import("../lib/one-yes.js");
+  assert.ok(MOMENT_OPS.vault.includes("vault.me.mention.lend"));
+  assert.equal(opFitsMoment("vault", "vault.me.mention.lend", false), true);
+  assert.equal(lineOfOp("vault.me.mention.lend", { asker: "per_x", id: "clio", thread: "t", agent: "kit" }, "this phone"), 'let "kit" use "clio" for this turn, without seeing it');
+});
