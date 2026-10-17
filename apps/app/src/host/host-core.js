@@ -8,7 +8,7 @@
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
-import { commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
+import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
@@ -313,7 +313,8 @@ export function createHost(o) {
       const { k, ports, key } = await spaceCtx();
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
-      const label = usernameOf(name) || "space";
+      const label = usernameOf(name);
+      if (!label) throw bad(SPACE_NAME_SAY.required);
       stopRuns();
       const random = o.random || ((n) => crypto.getRandomValues(new Uint8Array(n)));
       const run = createAddServer({
