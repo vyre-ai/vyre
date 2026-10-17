@@ -488,7 +488,7 @@ export function createRunner(o) {
         if (lease.state !== "open" && !driver.isMounted(dir)) return;
         await sleep(50);
       }
-      throw Object.assign(new Error("the workspace did not finish locking"), { code: "timeout" });
+      throw Object.assign(new Error("the workspace did not finish locking: send your message again in a moment, and if it keeps happening ask the owner of this server"), { code: "timeout" });
     },
     get lease() { return lease; },
     get dir() { return dir; },

@@ -18,12 +18,13 @@ import { startDaemonServer } from "../../../../scripts/lib/proof/server-daemon.m
 import { mintPairCode } from "../../../../relay/client/pair-install.js";
 import * as setupClient from "../../../../relay/client/setup.js";
 import { connectSetup } from "../../../../relay/client/setupchannel.js";
-import { openChannel, request } from "../../../../relay/client/client.js";
+import { openChannel, request, connect as relayConnect } from "../../../../relay/client/client.js";
+import { openServerPeer } from "../../../../relay/client/peerclient.js";
 import { webCrypto } from "../../../../relay/client/webcrypto.js";
 import { nodeCrypto, fileKeyStore } from "../../../../relay/client/nodecrypto.js";
 import { utf8 } from "../../../../relay/client/bytes.js";
 import { pairServer } from "../../../../relay/client/serverpair.js";
-import { claimServerSpace } from "../../identity/claim-space.js";
+import { claimServerSpace } from "../identity/claim-space.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_TEST_SELF_RESERVE = "1";
@@ -41,10 +42,12 @@ test("a really paired server makes the poll say online, and the directory then h
   const keyStore = fileKeyStore(path.join(dir, "relay-device-key.json"));
   const relayCrypto = nodeCrypto();
   /** @type {any} */ let server = null;
-  t.after(async () => { if (server) await server.stop(); });
+  t.after(async () => { try { if (peer) peer.close(); } catch { /* closed */ } if (server) await server.stop(); });
   /** The server's own tools, as its operator (the paired owner's signed session is the same registry behind the relay). */
   // (Operator calls: see the header; the owner-only refusal is test/one-space-name.test.js.)
-  const onServer = async (/** @type {string} */ name, /** @type {any} */ input) => server.operator(name, input);
+  // Until the app has paired, the server's operator; after, the paired device itself over the peer wire, which is how the app reaches its server (the server runs each call as this device's paired session, whose person is the owner).
+  /** @type {any} */ let peer = null;
+  const onServer = async (/** @type {string} */ name, /** @type {any} */ input) => (peer ? peer.call(name, input) : server.operator(name, input));
 
   /** @type {any} */ const ports = {
     client: setupClient,
@@ -60,6 +63,15 @@ test("a really paired server makes the poll say online, and the directory then h
         signIdentity: async (/** @type {Uint8Array} */ m) => ({ eid: who.key.eid, sig: b64u(await who.key.sign(m)) }),
         name: "Host test", crypto: relayCrypto, keyStore, presenceKey, about: { kind: "web" }, pollMs: 100, deviceKind: "computer", keyStorage: "software",
       }));
+      // The paired session, as the app's openPairedSession makes it: the challenge the server gave this device, signed by the key reported at pairing, then the peer wire the app's calls travel on.
+      const conn = relayConnect({ relay: paired.relay || ins.relay, route: paired.route, box: paired.box, name: "Host test", crypto: relayCrypto, keyStore, about: { kind: "web" } });
+      const channel = async (/** @type {string} */ tool, /** @type {any} */ input) => (await (await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })).json());
+      const ask = await channel("presence.person.pair-challenge", {});
+      const nodeSign = (await import("node:crypto")).sign;
+      const sig = nodeSign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ask.data && ask.data.challenge}`), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" });
+      const started = await channel("presence.person.start-paired", { sig: b64u(sig) });
+      if (!(started.data && started.data.token)) throw new Error(`the paired session did not start: ${JSON.stringify(started.error || started)}`);
+      peer = await openServerPeer(conn);
       return { box: typeof paired.box === "string" ? paired.box : b64u(paired.box), route: paired.route, relay: paired.relay || ins.relay, name: paired.name || "" };
     },
     claim: async (/** @type {any} */ who, /** @type {any} */ o) => {
@@ -100,14 +112,16 @@ test("a really paired server makes the poll say online, and the directory then h
   assert.match(String(polled.space), /^spc_[a-z2-7]{12}$/);
   assert.equal(polled.server.address, `https://${label}.vyre.run`);
   // The server really belongs to this identity now.
-  const owner = await onServer("spaces.owner.status", {});
-  assert.equal(owner && owner.identity, made.id);
+  // (No tool names the owner to an operator: the kernel's own log line does.)
+  const claimed = [...server.logs.join("\n").matchAll(/the owner is now the claimed identity (per_[a-z2-7]+)/g)].map((m) => m[1]);
+  assert.equal(claimed[claimed.length - 1], made.id);
   // And the directory holds the space's name, signed by this identity: the address a sign-in from another device resolves.
   const res = await fetch(`${ins.names}/v1/ids/resolve?name=${label}`);
   const body = /** @type {any} */ (await res.json());
   assert.equal(res.status, 200, JSON.stringify(body));
   assert.equal(body.data.kind, "space");
-  assert.equal(body.data.id, polled.space);
+  // The directory's record is named by the space's own chain id (the one this identity's signed genesis makes); the server's id for the space is inside the sealed record, and is what the app keeps.
+  assert.match(String(body.data.id), /^spc_[a-z2-7]{26}$/);
   // The person's own list in the directory (what GitHub sign-in reads) has the space too: the call was made as the identity's signed act.
   const list = await host.call("onboard.space.list", {});
   assert.deepEqual(list.spaces.map((s) => [s.name, s.role]), [[label, "owner"]]);
