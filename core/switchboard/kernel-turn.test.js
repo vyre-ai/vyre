@@ -24,7 +24,7 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true });
   asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -70,7 +70,7 @@ test("a turn keeps its asker for its whole run: another person's message mid-tur
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true });
   asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -105,7 +105,7 @@ async function chatDaemon(t, root) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts, { recursive: true });
   if (!fs.existsSync(path.join(root, "config.json"))) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  return asOwner(await start({ root, presence: present, log: () => {}, kernel: true }), root);
+  return asOwner(await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true }), root);
 }
 
 test("a dormant thread that the stream sends to comes back with THIS turn's chat and asker, not the thread's default session", { timeout: 90_000 }, async t => {
@@ -387,6 +387,7 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
 });
 
 // What an ask or a lent item covers is the turn's asker, not the chat. The fake Claude's "demo" prompt keeps a turn busy (it asks to edit and waits), so a turn is RUNNING while the vault is asked.
+const LOGS = /** @type {string[]} */ ([]);
 const busyAs = async (d, ctxt, asker) => {
   const sent = await d.registry.call("threads.send", { thread: ctxt.thread, text: "demo", surface: "deck", chat: ctxt.chat, asker }, "module:stream");
   assert.ok(sent.data && !sent.error, JSON.stringify(sent));
@@ -402,7 +403,7 @@ const busyAs = async (d, ctxt, asker) => {
       if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
       return st.thread.status === "working" || st.thread.status === "waiting";
     }, `${asker}'s turn to be busy`);
-  } catch (e) { throw new Error(`${/** @type {Error} */ (e).message}; last seen: ${seen}`); }
+  } catch (e) { throw new Error(`${/** @type {Error} */ (e).message}; last seen: ${seen}; switchboard log: ${LOGS.slice(-12).join(" | ")}`); }
 };
 const endTurn = async (d, ctxt) => {
   await d.registry.call("threads.stop", { thread: ctxt.thread }, "cli");
