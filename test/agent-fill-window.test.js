@@ -74,5 +74,5 @@ test("a failed fill closes its tab: the wrong origin, and a form that submits by
   assert.ok(g.asked.some(a => a.tool === "computers.fill.end"), "the window is ended either way");
   // what the agent can see: the thrown error and what the fill told the computer when it ended. computers.fill.begin carries the values ON PURPOSE (the computer scrubs them from everything the agent's DevTools return),
   // so it is not part of what the agent sees.
-  assert.ok(!JSON.stringify([g.e, g.asked.filter(a => a.tool !== "computers.fill.begin")]).includes(SECRET));
+  assert.ok(!JSON.stringify([String(/** @type {any} */ (g.e).message), g.e, g.asked.filter(a => a.tool !== "computers.fill.begin")]).includes(SECRET));
 });
