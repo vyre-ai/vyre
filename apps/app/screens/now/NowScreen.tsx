@@ -13,13 +13,11 @@ import { VaultHealthCard } from "./VaultHealthCard";
 import { useSpaces } from "../shell/state";
 import { CreateAssistantCard } from "../assistants/CreateAssistantCard";
 import { createCardSource } from "../assistants/create-card-source";
-import { CREATE_ASSISTANT, shouldShow, type AgentRow } from "../assistants/create-card-model";
+import { type AgentRow } from "../assistants/create-card-model";
 import { callT } from "../../src/real/call-tool";
 import { loadSnoozed } from "../../src/state/snooze";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
-import { GetStarted } from "./GetStarted";
 import { RecordsSetup } from "./RecordsSetup";
-import { getStarted } from "./get-started.js";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
@@ -42,22 +40,19 @@ export default function NowScreen() {
   const canEdit = !real || !mine || mine === "owner" || mine === "admin";
   useEffect(() => { if (real) void members.load(); }, [real]);
   useEffect(() => { void loadSnoozed(); }, []);
-  // a new box with a phone to add and an assistant to make shows one "Get started" card, not an amber banner over a full-width card
   const setup = useSetupBanner();
   const gap = useGap() ?? setup;
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   useEffect(() => { if (!real) return; let live = true; void createCardSource(callT).agents().then((a) => { if (live) setAgents(a); }); return () => { live = false; }; }, [real]);
-  const started = real ? getStarted(gap, shouldShow(agents, mine) ? CREATE_ASSISTANT : null) : null;
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(world, go);
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       {real ? <RecordsSetup /> : null}
-      {started ? <GetStarted title={started.title} steps={started.steps} /> : null}
-      {real && !started ? <GapNotice gap={gap} /> : null}
+      {real ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}
       {real ? <VaultHealthCard /> : null}
-      {real && !started && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
+      {real && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
       {real ? <AwayCard /> : null}
       {real ? <SignInAgain /> : null}
       {real ? <WaitingOnYou /> : null}

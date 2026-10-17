@@ -15,7 +15,7 @@ import { useHidden, useNeeds } from "../../src/state/needs";
 import type { Need } from "../../src/state/needs";
 
 /** What is missing on this device (no Vyre to talk to, or no phone to approve), as one banner with the one action. */
-export function GapNotice({ gap }: { gap: { title?: string; line?: string; action: string; route: string } | null }) {
+export function GapNotice({ gap }: { gap: { title?: string; line?: string; action?: string; route?: string } | null }) {
   const router = useRouter();
   if (!gap) return null;
   return (
@@ -23,7 +23,7 @@ export function GapNotice({ gap }: { gap: { title?: string; line?: string; actio
       <View className="gap-s2">
         <Text strong>{gap.title}</Text>
         <Text>{gap.line}</Text>
-        <View className="flex-row"><Button size="sm" label={gap.action} onPress={() => router.push(gap.route as never)} /></View>
+        {gap.action && gap.route ? <View className="flex-row"><Button size="sm" label={gap.action} onPress={() => router.push(gap.route as never)} /></View> : null}
       </View>
     </Banner>
   );

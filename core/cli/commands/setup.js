@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre setup`: the way back into setup (#11): `sudo vyre setup` prints where setup stands, in the same ten steps the page draws, read from the list the
+// `vyre setup`: the way back into setup (#11): `sudo vyre setup` prints where setup stands, in the same nine steps the page draws, read from the list the
 // box holds (onboard.setup), and the one place to continue. `--new-link` makes a fresh one-time link to carry on from if the page was closed.
 // A server holds no name (spec 0.3.0 part 10): there is no `--name` here any more; a space's name is made in the app, and the app tells the server to serve it.
 

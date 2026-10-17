@@ -143,20 +143,17 @@ await walk("new person creates a space and waits", async (t) => {
   await t.absent("Face ID");
 });
 
-await walk("ready can add a computer (a phone signs in with the one sign-in line, so there is no phone step)", async (t) => {
+await walk("ready tells a phone or another computer how to sign in, and offers no Add a computer or Add a phone choice", async (t) => {
   await identity(t);
   await t.pick("Join a space");
   await t.type("Invite link", "https://vyre.run/i/abcdefgh");
   await t.press("Continue");
   await t.press("Join");
   await t.at("You're in");
-  await t.pick("Add a computer");
-  await t.at("Add your computer");
-  await t.type("Space address", "https://juniper.vyre.run");
-  await t.type("Username", "alex");
-  await t.type("Master password", PASS);
-  await t.press("Add this computer");
-  await t.at("You're in");
+  await t.sees("On your phone or another computer, open Vyre and sign in with");
+  await t.absent("Add a computer");
+  await t.absent("Add your computer");
+  await t.absent("Add this computer");
   await t.absent("Add a phone");
   await t.absent("Face ID");
 });

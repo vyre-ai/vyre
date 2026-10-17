@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FIRST, firstChoices, installLine, ADD_PHONE, EMPTY, WAITING, GAP, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, installLine, EMPTY, WAITING, GAP, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -38,11 +38,14 @@ test("a browser's pairing goes back to its own screen, and the not-set-up screen
 });
 
 test("the empty-state actions open the routes that exist", () => {
-  assert.equal(startStep("phone"), "addphone");
-  assert.equal(startStep("connect"), "scan");
-  assert.equal(GAP.mac.route, "/onboard?path=phone");
-  assert.equal(GAP.phone.route, "/onboard?path=computer");
-  assert.equal(GAP.web.route, "/onboard?path=computer");
+  assert.equal(startStep("phone"), "name", "no Add your phone step is left to open");
+  assert.equal(startStep("connect"), "name", "nor a scan step");
+  assert.equal(GAP.mac.action, undefined, "the Mac's line says how a phone signs in; there is nothing to press");
+  assert.equal(GAP.mac.route, undefined);
+  assert.match(GAP.mac.line, /sign in with this Vyre's address, your username and your master password/);
+  assert.equal(GAP.phone.route, "/onboard");
+  assert.equal(GAP.web.route, "/onboard");
+  for (const g of Object.values(GAP)) assert.doesNotMatch(JSON.stringify(g), /Scan|Add your phone|path=phone|path=computer/);
 });
 
 test("what is missing: a phone or browser with no Vyre, a Mac with no phone, and nothing once connected", () => {
@@ -84,7 +87,6 @@ test("a browser that cannot reach the Vyre says This browser, a phone says Your 
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {
   for (const s of [NO_VYRE.line, NO_VYRE.share]) assert.doesNotMatch(s, /curl|\| sh/);
-  assert.equal(ADD_PHONE.skip, "Not now");
 });
 
 test("who it is for: three answers, and a space for one person has nobody to invite", () => {
