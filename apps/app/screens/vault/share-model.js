@@ -6,9 +6,12 @@ export const LEVELS = /** @type {const} */ ([["use", "Fill in"], ["reveal", "Rea
 export const levelWord = (/** @type {string} */ l) => (LEVELS.find(x => x[0] === l) || [l, l])[1];
 export const LEVEL_HELP = { use: "Uses it, never sees it", reveal: "Also sees the value", edit: "Also changes it, rotates the key" };
 
-/** The levels one grantee may hold. An agent, and anyone on an app connection, only Fill in. @param {"person"|"group"|"agent"} kind @param {{ connection?: boolean }} [o] */
-export function allowedLevels(kind, { connection = false } = {}) {
-  return kind === "agent" || connection ? ["use"] : LEVELS.map(l => l[0]);
+/** The levels one grantee may hold. An agent, and anyone on an app connection, only Fill in. @param {"person"|"group"|"agent"} kind @param {{ connection?: boolean, levels?: string[] }} [o] */
+export function allowedLevels(kind, { connection = false, levels } = {}) {
+  const all = LEVELS.map(l => l[0]);
+  if (kind === "agent" || connection) return ["use"];
+  // `levels` is what this box can honour for a person or a group (the real tools offer only what works for members; the sample world offers all three).
+  return levels && levels.length ? all.filter(l => levels.includes(l)) : all;
 }
 
 /** The agents a member may share with: those she may instruct. No member named (the owner's view) means all. An agent with no instructor list is offered. @param {any[]} agents @param {string | null} me */

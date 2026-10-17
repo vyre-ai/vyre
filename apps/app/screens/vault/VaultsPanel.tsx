@@ -9,8 +9,8 @@ import { nameOf } from "./share-model.js";
 
 export type Vlt = { id: string; name: string; sub: string; count: number; shares: Share[]; mine?: boolean };
 
-export function VaultsPanel({ vaults, dir, me, onCreate, onAdd, onLevel, onRemove, onRemoveVault, openFirst }: {
-  vaults: Vlt[]; dir: Directory; me: string | null;
+export function VaultsPanel({ vaults, dir, me, levels, onCreate, onAdd, onLevel, onRemove, onRemoveVault, openFirst }: {
+  vaults: Vlt[]; dir: Directory; me: string | null; levels?: Level[];
   onCreate: (name: string, everyone: boolean) => Promise<void> | void;
   onAdd: (vault: string, w: Who) => Promise<void> | void; onLevel: (vault: string, id: string, l: Level) => Promise<void> | void; onRemove: (vault: string, id: string) => Promise<void> | void;
   onRemoveVault?: (id: string) => Promise<void> | void; openFirst?: "share" | "new";
@@ -47,7 +47,7 @@ export function VaultsPanel({ vaults, dir, me, onCreate, onAdd, onLevel, onRemov
         ))}
       </View>
       <View className="self-start"><Button kind="secondary" size="sm" icon="plus" label="New vault" onPress={() => setMaking(true)} /></View>
-      {cur ? <ShareSheet open title={cur.name} onClose={() => setOpen(null)} shares={cur.shares} dir={dir} me={me} everyone
+      {cur ? <ShareSheet open title={cur.name} onClose={() => setOpen(null)} shares={cur.shares} dir={dir} me={me} levels={levels} everyone
         onAdd={(w) => void Promise.resolve(onAdd(cur.id, w)).catch(fail)} onLevel={(id, l) => void Promise.resolve(onLevel(cur.id, id, l)).catch(fail)} onRemove={(id) => void Promise.resolve(onRemove(cur.id, id)).catch(fail)} /> : null}
       <Sheet open={making} onClose={() => setMaking(false)} title="New vault">
         <View className="gap-s4">

@@ -31,7 +31,7 @@ export interface VaultData {
   access?(item: VItem): Promise<{ rows: { who: string; level: "use" | "edit" }[]; people: { id: string; name: string }[] }>;
   setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
   /** Space: who an item is shared with (people, groups and agents at Fill in, Read, Edit and rotate), the directory to pick from, and one change (vault.access.get and vault.access.set). */
-  sharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
+  sharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; levels?: Level[] }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Mine: who one of the member's app connections is shared with (a person, a group or an agent she may instruct, at Fill in only), and one change (vault.me.connection.*). `info` says what it connects to. */
   connectionSharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; info?: { account: string; how: string } }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
@@ -153,7 +153,8 @@ export function realData(call: Call): VaultData {
           groups: (r.teams ?? []).map((t) => ({ id: t.id, kind: "group", name: t.name, people: t.people ?? [], agents: t.agents ?? [] })),
           agents: (r.agents ?? []).map((a) => ({ id: a.id, kind: "agent", name: a.name })),
         };
-        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null };
+        // Read and Edit and rotate are not hidden by the tools but cannot be used by a member yet, so this box offers Fill in only and a share made earlier at another level still shows as it is.
+        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null, levels: ["use"] };
       },
       async set(item, w, level) { await ask("vault.access.set", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
     },

@@ -19,9 +19,9 @@ const Lead = ({ w }: { w: Who }) => (w.kind === "group" ? <IconTile name="users"
 const subOf = (w: Who) => (w.kind === "group" ? (w.id === "everyone" ? "All members" : groupSub({ people: w.people ?? [], agents: w.agents ?? [] })) : w.sub ?? "");
 
 /** One holder: who, what they hold, and the level picker. An agent, or anyone on an app connection, has one level. */
-export function ShareRow({ w, level, onLevel, onRemove, connection }: { w: Who; level: Level; onLevel: (l: Level) => void; onRemove: () => void; connection?: boolean }) {
+export function ShareRow({ w, level, onLevel, onRemove, connection, levels }: { w: Who; level: Level; onLevel: (l: Level) => void; onRemove: () => void; connection?: boolean; levels?: Level[] }) {
   const phone = usePhone();
-  const allowed = allowedLevels(w.kind, { connection }) as Level[];
+  const allowed = ((): Level[] => { const a = allowedLevels(w.kind, { connection, levels }) as Level[]; return a.includes(level) || w.kind === "agent" || connection ? a : [...a, level]; })();
   const sub = w.kind === "agent" ? "Agent. Fills in without ever seeing it" : LEVEL_HELP[level];
   const remove = <Button kind="ghost" size="sm" label="Remove" onPress={onRemove} />;
   const seg = <Segmented<Level> label={`${w.name}'s access`} fill={phone} options={allowed.map((l) => [l, levelWord(l)] as [Level, string])} value={level} onChange={onLevel} />;
@@ -31,9 +31,9 @@ export function ShareRow({ w, level, onLevel, onRemove, connection }: { w: Who; 
 }
 
 /** The share sheet. `title` is the thing shared; `everyone` adds the Space-wide row (a whole vault); `login` adds the agent note; `me` is who is signed in (the agents offered are those she may instruct). */
-export function ShareSheet({ open, onClose, title, shares, dir, me, onAdd, onLevel, onRemove, everyone, connection, login }: {
+export function ShareSheet({ open, onClose, title, shares, dir, me, onAdd, onLevel, onRemove, everyone, connection, login, levels }: {
   open: boolean; onClose: () => void; title: string; shares: Share[]; dir: Directory; me: string | null;
-  onAdd: (w: Who) => void; onLevel: (id: string, l: Level) => void; onRemove: (id: string) => void; everyone?: boolean; connection?: boolean; login?: boolean;
+  onAdd: (w: Who) => void; onLevel: (id: string, l: Level) => void; onRemove: (id: string) => void; everyone?: boolean; connection?: boolean; login?: boolean; levels?: Level[];
 }) {
   const [q, setQ] = useState("");
   const pool = candidates({ people: dir.people, groups: dir.groups, agents: dir.agents, shares, me, q, everyone });
@@ -49,7 +49,7 @@ export function ShareSheet({ open, onClose, title, shares, dir, me, onAdd, onLev
       <View className="gap-s4">
         <Sec title="Who has it">
           {shares.length ? (
-            <Card flush>{shares.map((s) => { const w = find(s.id, dir); return <ShareRow key={s.id} w={w} level={s.level} connection={connection} onLevel={(l) => onLevel(s.id, l)} onRemove={() => { onRemove(s.id); showToast(`${w.name} no longer has ${title}.`); }} />; })}</Card>
+            <Card flush>{shares.map((s) => { const w = find(s.id, dir); return <ShareRow key={s.id} w={w} level={s.level} connection={connection} levels={levels} onLevel={(l) => onLevel(s.id, l)} onRemove={() => { onRemove(s.id); showToast(`${w.name} no longer has ${title}.`); }} />; })}</Card>
           ) : <Text tone="muted">Only you. Nobody else can use this until you give access.</Text>}
         </Sec>
         {notes.length ? <Footnote icon="shield">{notes.join(" ")}</Footnote> : null}

@@ -15,7 +15,7 @@ const EMPTY: Directory = { people: [], groups: [], agents: [] };
 export type Api = NonNullable<VaultData["sharing"]>;
 /** `api` is the Space's sharing of an item, or (connection) a member's own app connection, which is shared at Fill in only. */
 export function ItemSharing({ api: sharing, item, connection }: { api: Api; item: VItem; connection?: boolean }) {
-  const [state, setState] = useState<{ shares: Share[]; dir: Directory; me: string | null } | null>(null);
+  const [state, setState] = useState<{ shares: Share[]; dir: Directory; me: string | null; levels?: Level[] } | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(false);
   const load = useCallback(() => { sharing.load(item).then((s) => { setState(s); setErr(""); }).catch((e) => setErr(String((e as Error)?.message || "That did not load."))); }, [sharing, item]);
@@ -28,12 +28,12 @@ export function ItemSharing({ api: sharing, item, connection }: { api: Api; item
   return (
     <View className="gap-s2">
       {err ? <Text tone="muted">{err}</Text> : null}
-      {shares.length ? <Card flush>{shares.map((s) => <ShareRow key={s.id} w={whoOf(s.id)} level={s.level} connection={connection} onLevel={(l) => void change(s.id, l)} onRemove={() => void change(s.id, null)} />)}</Card> : <Text tone="muted">{state ? "Only you." : "Loading."}</Text>}
+      {shares.length ? <Card flush>{shares.map((s) => <ShareRow key={s.id} w={whoOf(s.id)} level={s.level} connection={connection} levels={state?.levels} onLevel={(l) => void change(s.id, l)} onRemove={() => void change(s.id, null)} />)}</Card> : <Text tone="muted">{state ? "Only you." : "Loading."}</Text>}
       <View className="flex-row gap-s2 pt-s2"><Button kind="secondary" size="sm" icon="share" label="Share" onPress={() => setOpen(true)} disabled={!state} /></View>
       {connection
         ? <Footnote icon="shield">{connectionNote(item.name, shares, dir.agents)}</Footnote>
-        : <Footnote icon="info">Fill in works for API keys now: a member uses one without seeing it. Read and Edit and rotate reach members in the next update.</Footnote>}
-      <ShareSheet open={open} onClose={() => setOpen(false)} title={item.name} shares={shares} dir={dir} me={state?.me ?? null} connection={connection} login={!connection && item.group === "Logins"}
+        : null}
+      <ShareSheet open={open} onClose={() => setOpen(false)} title={item.name} shares={shares} dir={dir} me={state?.me ?? null} levels={state?.levels} connection={connection} login={!connection && item.group === "Logins"}
         onAdd={(w) => void change(w.id, "use")} onLevel={(id, l) => void change(id, l)} onRemove={(id) => void change(id, null)} />
     </View>
   );

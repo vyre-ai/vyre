@@ -36,7 +36,7 @@ export function VaultsScreen() {
   const set = (vault: string, id: string, level: Level | null) => data.share(vault, { id, kind: kind(find(id)) }, level).then(reload);
   return (
     <Frame title="Vaults" sub="Each one kept apart, shared as a whole." back="/u/vault">
-      <VaultsPanel vaults={world.vaults} dir={world.dir} me={MOCK ? ME : null}
+      <VaultsPanel vaults={world.vaults} dir={world.dir} me={MOCK ? ME : null} levels={MOCK ? undefined : ["use"]}
         onCreate={async (name, everyone) => { await data.create(name, everyone); reload(); }}
         onAdd={(v, w) => set(v, w.id, "use")} onLevel={(v, id, l) => set(v, id, l)} onRemove={(v, id) => set(v, id, null)} onRemoveVault={async (id) => { await data.remove(id); reload(); }} />
     </Frame>
