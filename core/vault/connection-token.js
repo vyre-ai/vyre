@@ -20,6 +20,9 @@ const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 /** The address a grant on a person's connection is made on and checked against. One helper, so the share (V-blocks), the hub's check (C3) and this tool name the same thing. */
 export const connectionUrn = (/** @type {string} */ space, /** @type {string} */ owner, /** @type {string} */ name) => `vyre://${space}/vault/${owner}/item/${name}`;
 
+/** Whether a connection may be revoked at the vendor on behalf of `as`: revoking is its owner's own act and a share never allows it; no `as` is the hub's own pre-checked removal. */
+export const revokeAllowed = (/** @type {string} */ owner, /** @type {unknown} */ as) => as === undefined || (typeof as === "string" && as === owner);
+
 export class ConnectionTokens {
   /** @param {{ people: import("./people.js").PeopleVaults, kernel: any | (() => any), fetch?: any, now?: () => number }} d */
   constructor({ people, kernel, fetch, now = Date.now }) {
@@ -42,9 +45,15 @@ export class ConnectionTokens {
   }
 
   /** Whether this chain may use the owner's connection. @param {string} owner @param {string} name @param {boolean} write @param {any} meta */
-  async allowed(owner, name, write, meta) {
+  async allowed(owner, name, write, meta, as) {
     const K = this.kernelOf();
     if (!K || typeof K.chain !== "function") return false;
+    // The MCP hub names the member the call is for (its tool took it from the verified chain, one person and no agent): her own connection is hers, one shared with her is the kernel's answer about her.
+    if (as !== undefined) {
+      if (typeof as !== "string" || !PERSON.test(as) || String(K.owner) === as) return false;   // a named person is a member of the Space, never the Space owner and never a stored or made-up value
+      if (as === owner) return true;
+      try { return Boolean(K.vault && typeof K.vault.personMay === "function" && await K.vault.personMay(as, write ? "vault.call" : "vault.read", connectionUrn(K.space, owner, name))); } catch { return false; }
+    }
     let chain;
     try { chain = await K.chain(meta || {}); } catch { return false; }
     const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
@@ -67,7 +76,7 @@ export class ConnectionTokens {
     if (!PERSON.test(owner) || !ITEM.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
     const K0 = this.kernelOf();
     if (String(K0 && K0.owner) === owner) throw denied("the Space owner's connections are items of the owner's vault, not a member's");
-    if (!(await this.allowed(owner, name, input.write === true, meta))) throw denied("this call may not use that connection");
+    if (!(await this.allowed(owner, name, input.write === true, meta, input.as))) throw denied("this call may not use that connection");
     // The person's unlocked vault, else the sealed server copy of their key, else "locked". No fallback to another vault, and only connection items are ever opened this way.
     const it = await this.people.service(owner).get(name);
     const f = it.fields;
