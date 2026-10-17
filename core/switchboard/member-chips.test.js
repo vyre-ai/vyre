@@ -54,3 +54,14 @@ test("a chat turn hears its picks as its asker: the daemon reads a record under 
   assert.equal(heardActs, 0, "a chat turn's words are never heard as the owner's asks");
   assert.equal(calls.some(c => /mentions\.search|vault|drive|github/.test(c)), false, calls.join(" "));
 });
+
+test("the owner's own words in a chat are heard for asks, as before; a member's are not", async () => {
+  for (const [memberTurn, expected] of [[false, 1], [true, 0]]) {
+    const sb = rig([]);
+    sb.deps.recordTags = async (/** @type {any[]} */ chips) => ({ chips, tags: [] });
+    let heardActs = 0;
+    sb.hearActs = async () => { heardActs++; };
+    await Switchboard.prototype.ingress.call(sb, "t1", "email Dana", "deck", "u1", [], [], "module:stream", null, { memberTurn, asker: memberTurn ? "per_bob" : "per_owner" });
+    assert.equal(heardActs, expected, memberTurn ? "a member's chat words record no ask" : "the owner's chat words are heard");
+  }
+});

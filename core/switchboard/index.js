@@ -2571,7 +2571,7 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    if (!(turn && turn.asker)) await this.hearActs(id, text, uuid, pasted, rec.project);   // a chat turn's words never record what the owner asked for: only a person's own surface does
+    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
     if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
