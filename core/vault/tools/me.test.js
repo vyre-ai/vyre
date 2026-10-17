@@ -192,10 +192,16 @@ test("vault.me.lend gives a member their own key for their own turn: the person 
   await call("vault.me.put", { name: "bob-claude", kind: "setup-token", fields: { value: "sk-ant-bob-0001" } }, BOB);
   accounts.acct_bob = { person: BOB, item: "bob-claude", kind: "setup-token", provider: "claude" };
   const lend = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.lend", input, who, { caller: "module:switchboard", ...extra });
-  assert.equal((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:sessions" })).data.has, true, "the add-time check");
-  assert.equal((await call("vault.me.has", { person: EVE, name: "bob-claude" }, null, { caller: "module:sessions" })).data.has, false, "not in her vault");
-  assert.equal((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:switchboard" })).error.code, "denied", "only the sessions module asks");
-  assert.equal(JSON.stringify((await call("vault.me.has", { person: BOB, name: "bob-claude" }, null, { caller: "module:sessions" })).data).includes("sk-ant"), false, "never a value");
+  const has = (/** @type {any} */ input, /** @type {string | null} */ who, caller = "module:sessions") => call("vault.me.has", input, who, { caller });
+  assert.equal((await has({ name: "bob-claude" }, BOB)).data.has, true, "the add-time check");
+  assert.equal((await has({ name: "bob-claude" }, EVE)).data.has, false, "not in her vault");
+  assert.equal((await has({ name: "bob-claude" }, BOB, "module:switchboard")).error.code, "denied", "only the sessions module asks");
+  assert.equal(JSON.stringify((await has({ name: "bob-claude" }, BOB)).data).includes("sk-ant"), false, "never a value");
+  // the person is the chain's: a `person` in the input changes nothing, either way
+  assert.equal((await has({ person: BOB, name: "bob-claude" }, EVE)).data.has, false, "Eve asking about Bob's item by naming Bob is asked about Eve's own vault");
+  assert.equal((await has({ person: EVE, name: "bob-claude" }, BOB)).data.has, true, "Bob naming Eve is still asked about Bob's own vault");
+  assert.equal((await has({ person: BOB, name: "bob-claude" }, OWNER)).error.message, ME_REFUSAL, "the owner is refused, whoever the input names");
+  assert.equal((await has({ person: BOB, name: "bob-claude" }, null)).error.code, "denied", "a call with no person on its chain gets nothing, whoever the input names");
   assert.deepEqual((await lend({ account: "acct_bob" }, BOB)).data, { value: "sk-ant-bob-0001" });
   // the account names the person: another member's turn, even naming the account or a person, gets nothing
   assert.equal((await lend({ account: "acct_bob", person: BOB }, EVE)).error.code, "denied");

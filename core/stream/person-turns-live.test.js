@@ -10,6 +10,8 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -478,4 +480,106 @@ test("review D: an asker who left the chat while their message waited gets no tu
   const row = b.reg.deps.db.prepare("SELECT via, delivered_at FROM threads_inbox WHERE thread = ? AND text = 'my question'").get(thread);
   assert.equal(row && row.via, "dropped", "the row is marked dropped, not delivered");
   await b.stop();
+});
+
+// ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
+// The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
+// vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
+const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
+
+/** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
+async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
+  const w = await world(t);
+  const log = path.join(w.work, "fake-claude.log");
+  Object.assign(process.env, { FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_ECHO_PID: "1" });
+  t.after(() => { delete process.env.FAKE_CLAUDE_LOG; delete process.env.FAKE_CLAUDE_ECHO_PID; });
+  const b = await world0(w, t);
+  const KC = `sk-ant-oat01-carol-${crypto.randomBytes(12).toString("hex")}`, KA = `sk-ant-oat01-ada-${crypto.randomBytes(12).toString("hex")}`;
+  /** @type {Map<string, { person: string, value: string }>} */ const lent = new Map();
+  /** @type {{ account: string, person: string }[]} */ const lends = [];
+  const orig = b.reg.call.bind(b.reg);
+  b.reg.call = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => {
+    if (tool === "vault.me.has") return { data: { has: true } };
+    if (tool === "vault.me.lend") {
+      const chain = await w.k.kernelFor({ name: "vault" }).chain(meta || {});
+      const hop = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
+      const person = hop ? String(hop.actor.id) : "";
+      const a = lent.get(String(input && input.account));
+      if (!a || a.person !== person) return { error: { code: "denied", message: "that account is not yours" } };
+      lends.push({ account: String(input.account), person });
+      return { data: { value: a.value } };
+    }
+    return orig(tool, input, caller, meta);
+  };
+  const own = async (/** @type {string} */ who, /** @type {string} */ person, /** @type {string} */ value) => {
+    const r = await orig("sessions.accounts.add", { provider: "claude", label: `${who}'s key`, kind: "setup-token", vault_item: `${who}-token` }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`);
+    lent.set(String(r.data.id), { person, value });
+    return String(r.data.id);
+  };
+  const carolsAcct = await own("carol", CAROL, KC), adasAcct = await own("ada", ADA, KA);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watch = await b.watch("carol", chat.id);
+  const say = async (/** @type {string} */ who, /** @type {string} */ text) => { const r = await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work }); assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); };
+  const launches = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
+  const answers = () => [...textOf(watch.frames).matchAll(/echo: (.*?) \[pid (\d+)\]/g)].map(m => ({ text: m[1], pid: Number(m[2]) }));
+  return { w, b, KC, KA, carolsAcct, adasAcct, chat, watch, say, launches, answers, lends, log };
+}
+
+test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000 }, async t => {
+  const r = await lentKeyChat(t);
+  await r.say("carol", "carol first");
+  await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
+  const first = r.launches();
+  assert.equal(first.length, 1, "one process, carol's");
+  assert.equal(first[0].credSha, sha16(r.KC), "carol's key went to carol's process on its descriptor");
+  assert.ok(!first[0].envShas.includes(sha16(r.KC)), "and is in no environment value of it");
+  // carol's process is alive and idle (the idle close is minutes away); ada asks now
+  await r.say("ada", "ada second");
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
+  const all = r.launches();
+  assert.equal(all.length, 2, "ada's turn started a process of its own");
+  const second = all[1];
+  assert.notEqual(second.pid, first[0].pid, "a different process");
+  assert.equal(second.credSha, sha16(r.KA), "ada's process was handed ada's key");
+  assert.ok(!second.envShas.includes(sha16(r.KC)) && second.credSha !== sha16(r.KC), "and nothing of carol's key: not on its descriptor, not in any environment value");
+  assert.ok(!second.envShas.includes(sha16(r.KA)), "ada's key is not in her process's environment either");
+  // (c) the answer to ada came from the second process, not from carol's live one
+  const adas = r.answers().find(a => a.text === "ada second");
+  assert.equal(adas && adas.pid, second.pid);
+  assert.notEqual(adas && adas.pid, first[0].pid, "carol's live, idle process did not run ada's turn");
+  assert.deepEqual(r.answers().filter(x => x.pid === first[0].pid).map(x => x.text), ["carol first"], "carol's process never received ada's turn");
+  // each key was lent to its own person, once, for that person's own turn
+  assert.deepEqual(r.lends.map(l => [l.person, l.account]), [[CAROL, r.carolsAcct], [ADA, r.adasAcct]]);
+  await r.b.stop();
+});
+
+test("lent key: after the turns the key string is in no thread event, log line, threads_runs row, saved file or whole NAME=value line", { timeout: 240_000 }, async t => {
+  const r = await lentKeyChat(t);
+  await r.say("carol", "carol first");
+  await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
+  await r.say("ada", "ada second");
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
+  const thread = kitThread(r.b, r.chat.id);
+  const events = (await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli")).data.events;
+  const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
+  const accounts = r.b.reg.deps.db.prepare("SELECT * FROM sessions_accounts").all();
+  /** every text the home keeps: the files under its folder (the fake claude's own launch log holds hashes only) */
+  const walk = (/** @type {string} */ d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
+  /** every table of every database file the home keeps, as text (the module databases and the registry's own) */
+  const tablesOf = (/** @type {string} */ file) => { const db = new DatabaseSync(file, { readOnly: true }); try { return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((/** @type {any} */ x) => `${file}:${x.name}=${JSON.stringify(db.prepare(`SELECT * FROM "${String(x.name).replace(/"/g, '""')}"`).all(), (_k, v) => typeof v === "bigint" ? String(v) : v)}`).join("\n"); } catch { return ""; } finally { db.close(); } };
+  const dbFiles = [...walk(r.w.paths.root), ...walk(r.w.work)].filter(f => /\.(db|sqlite3?)$/.test(f));
+  assert.ok(dbFiles.length > 0, "there are database files to search");
+  const everyTable = dbFiles.map(tablesOf).join("\n");
+  const names = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"];
+  const files = [...walk(r.w.paths.root), ...walk(r.w.work)].filter(f => f !== r.log);
+  for (const [who, key] of [["carol", r.KC], ["ada", r.KA]]) {
+    const hay = { events: JSON.stringify(events), rows: JSON.stringify(rows), accounts: JSON.stringify(accounts), "every table of every database": everyTable, logs: LOGS.join("\n") };
+    for (const [where, text] of Object.entries(hay)) {
+      assert.ok(!text.includes(key), `${who}'s key is in ${where}`);
+      for (const n of names) assert.ok(!text.includes(`${n}=${key}`), `${n}=<${who}'s key> is in ${where}`);
+    }
+    for (const f of files) { let txt = ""; try { txt = fs.readFileSync(f, "latin1"); } catch { continue; } assert.ok(!txt.includes(key), `${who}'s key is in ${f}`); }
+  }
+  await r.b.stop();
 });

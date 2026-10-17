@@ -104,12 +104,11 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   // only when the account row is theirs and their vault is unlocked. The value goes into the session's environment and nowhere else: never an event, a log line, an error or an audit row.
   ctx.tool("vault.me.has", {
     internal: true,
-    description: "Whether a member's own vault holds an AI key or setup token by this name: { person, name } -> { has }. Only the sessions module asks, at the moment a member adds the account. Never a value.",
-    input: obj({ person: str, name: str }, ["person", "name"]),
+    description: "Whether a member's own vault holds an AI key or setup token by this name: { name } -> { has }. Only the sessions module asks, at the moment a member adds the account, and the person is the one on the call's verified chain, never the input (a `person` in the input is ignored). Never a value.",
+    input: obj({ person: str, name: str }, ["name"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:sessions") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
-      const person = String(input.person || "");
-      if (!person || person === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const person = await memberOf(ctx.kernel, meta);   // the chain's person, as lend does; the owner and a chain that cannot be named are refused there
       let items; try { items = await people.list(person, {}); } catch { throw Object.assign(new Error("unlock your own vault first, then add the account"), { code: "denied" }); }
       return { has: (items.items || items).some((/** @type {any} */ x) => x.name === String(input.name) && AI_KINDS.includes(String(x.kind))) };
     },
