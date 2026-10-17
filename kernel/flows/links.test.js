@@ -101,7 +101,8 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
   const real = w.kernel.records.get;
   // the Flow's own chain may read every kin; the member who starts it may not read Sam
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
-  w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
+  // Bob's chain is the stand-in whose reads are cut off above; anyone else (Alex) is a real member of the Space and reads as the kernel says
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
   const flow = { format: 1, name: "read_kin", label: "Read kin", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "put", kind: "create", type: "payment", set: { amount: 1, client: { expr: "trigger.kin.name" } } }] };
   const { id } = await install(w, flow);
   const asAlex = w.kernel.as(ALEX), asBob = w.kernel.as({ kind: "person", id: "per_bob" });
@@ -121,7 +122,8 @@ test("an event-triggered run reads a linked record under the lesser of the Flow'
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
-  w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
+  // Bob's chain is the stand-in whose reads are cut off above; anyone else (Alex) is a real member of the Space and reads as the kernel says
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
   await install(w, copyFlow("trigger.after.spouse.name"));
   // a change by Bob, who may not read Sam, fires the Flow: it stops; the same change by Alex goes through
   await w.kernel.records.create(w.kernel.as({ kind: "person", id: "per_bob" }), "kin", { name: "Main", spouse: urn(sam) });
