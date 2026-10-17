@@ -41,7 +41,6 @@ import { createIdentityOps } from "../core/spaces/identity-ops.js";
 import { hooks as spacesHooks } from "../core/spaces/index.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
-process.env.VYRE_WINK_TYPED_CODE = "1";
 // A ring ticket is gated once the Wink module is up (X-1); the shared test helpers switch that off for tests of the relay's own pairing, and this file is the one that tests it.
 delete process.env.VYRE_TEST_UNGATED_RING;
 // The older tests pair with the three words alone; owning a server needs the identity proof in a real build (the proof tests below turn this off).
@@ -266,9 +265,6 @@ shardTest("BR-2 over the relay: a browser's channel is web:<id> (it may ask to b
 
 shardTest("X-1, real daemon and relay: a server's scanner nobody answers leaves nothing behind when the time runs out, and the ticket is spent", async t => {
   const w = await world(t, { pendingMs: 1500 });
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  process.env.VYRE_WINK_TYPED_CODE = "0";
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const scan = parseServerQr(made.qr);
   const r = await redeem(t, w, scan.seed, "Eve's app");
@@ -329,9 +325,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   t.after(() => { if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; });
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  process.env.VYRE_WINK_TYPED_CODE = "0";
-  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
