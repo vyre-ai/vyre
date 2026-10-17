@@ -59,7 +59,10 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   // shared with him: the agent wakes, and the job's kernel session is Ben's, never the owner's
   const ok = await asBen("agents.flow-say", { agent: "juno", flow: open, text: "Why did run 8 fail?" });
   assert.ok(ok.data && ok.data.thread, JSON.stringify(ok.error));
-  const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session");
+  const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session").catch(async (/** @type {any} */ e) => {
+    const g = JSON.stringify((await asOwner("threads.get", { thread: ok.data.thread, limit: 30 })).data || {}).slice(0, 1500);
+    throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}`);
+  });
   assert.equal(s.runas, BEN, "the job acts as the member who wrote");
   assert.notEqual(s.runas, OWNER, "never as the owner");
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
