@@ -13,6 +13,7 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
+  "spaces.publish-server-space": "the owner names their own server's space in the names directory from the first-run screen (reach person; an agent cannot call it); the name is the one the owner just chose, and the directory record is the owner's own claim, signed by their identity",
   "appmods.publish.install": "runs the owner's own built image as a site's server; module-only (Publish), called inside the held decision that makes the site public (deploy.publish is the outward act and carries the person's yes; a nested outward call would need a second card for the same act)",
   "appmods.publish.run": "runs an already approved job once; module-only (Publish), called by publish.job.run, which only the people who may put the job live can use",
   "appmods.publish.stop": "stops a site's server; module-only (Publish), taking a site down needs no yes",
