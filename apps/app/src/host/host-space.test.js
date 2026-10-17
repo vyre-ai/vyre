@@ -371,3 +371,20 @@ test("a space made here and the same space signed in to from another device are 
     assert.equal(row.server, `https://${row.name}.vyre.run`);
   }
 });
+
+test("a slow claim is not started twice: polls that arrive while it runs share its answer and the name is claimed once", async (t) => {
+  const { pp, host } = await ready(t);
+  let release = () => {};
+  const gate = new Promise((r) => { release = r; });
+  const claim = pp.claim;
+  pp.claim = async (who, o) => { await gate; return claim(who, o); };
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  // three screens' worth of asking at once while the claim is held; the claim is let go a moment after the server is paired
+  const timer = setTimeout(release, 400);
+  try {
+    const done = await Promise.all([1, 2, 3].map(() => until(host, open.id, (r) => r.online)));
+    assert.ok(done.every((r) => r.online));
+  } finally { clearTimeout(timer); release(); }
+  assert.equal(pp.seen.claims.length, 1, "the name was claimed once");
+});
