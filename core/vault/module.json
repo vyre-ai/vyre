@@ -147,6 +147,7 @@
       { "name": "vault.named.access.get", "effect": "read", "reach": "person" },
       { "name": "vault.named.access.set", "effect": "write", "reach": "person" },
       { "name": "vault.me.vaults", "effect": "read", "reach": "person" },
+      { "name": "vault.me.provisioned", "effect": "read", "reach": "person" },
       { "name": "vault.me.shared.list", "effect": "read", "reach": "person" },
       { "name": "vault.me.connection.share", "effect": "write", "reach": "person" },
       { "name": "vault.me.connection.shares", "effect": "read", "reach": "person" },

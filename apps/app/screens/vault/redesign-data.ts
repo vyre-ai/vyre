@@ -104,7 +104,11 @@ export function realData(call: Call): VaultData {
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
         const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number }[] }>("vault.me.list");
-        return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
+        const own = r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", kind: i.kind, group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; });
+        // What the firm key lets her act as (her Google account): listed beside her apps, read only, nothing stored in her vault.
+        const prov = await ask<{ accounts: { app: string; account: string }[] }>("vault.me.provisioned").catch(() => ({ accounts: [] as { app: string; account: string }[] }));
+        const provided: VItem[] = prov.accounts.map((a) => ({ id: `provisioned:${a.app}`, sp: "mine", kind: "provisioned", group: "Apps you connected", name: a.app, detail: `Acts as ${a.account}`, secret: "", daysLeft: null, lastUsedDays: undefined, usedBy: [], shared: [] }));
+        return { locked: false, items: [...provided, ...own] };
       } catch (e) {
         if ((e as { code?: string }).code === "locked") return { items: [], locked: true };
         throw e;
