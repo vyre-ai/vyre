@@ -21,6 +21,11 @@ export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
 /** What was converted once, by key (a credential's scope): so a conversion is made and logged once. Appended to the vault's MIGRATIONS. */
 export const CONVERSIONS_MIGRATION = `CREATE TABLE vault_conversions (key TEXT PRIMARY KEY, at INTEGER NOT NULL, note TEXT);`;
 
+/** An item's place in a named vault (vault.named.*): the kernel vault's id, null for the Space's own. Appended to the vault's MIGRATIONS. */
+export const NAMED_MIGRATION = `ALTER TABLE vault_items ADD COLUMN named TEXT;`;
+/** The row signature covers the vault link only when there is one, so a row from before keeps its signature, and a link added, changed or removed by anything but the vault shows as tampering. */
+export const macExtra = (/** @type {string} */ table, /** @type {any} */ r) => (table === "vault_items" && r && r.named != null ? { named: String(r.named) } : {});
+
 const SOURCE = "vault:agent";
 
 export class Access {
@@ -35,7 +40,9 @@ export class Access {
   async urn(/** @type {string} */ name) {
     const K = this.need();
     if (!this.vid) this.vid = await K.vault.personalVault();
-    return `vyre://${K.space}/vault/${this.vid}/item/${name}`;
+    // An item in a named vault is addressed under that vault, so one grant on the vault covers it.
+    const row = /** @type {any} */ (this.v.row(String(name)));
+    return `vyre://${K.space}/vault/${row && row.named ? row.named : this.vid}/item/${name}`;
   }
 
   /**

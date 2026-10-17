@@ -23,7 +23,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
-  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
+  "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
   // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
   "mcp.repin",
   "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
@@ -253,7 +253,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
 
 /** The vault's tools: gated by the vault itself (core/vault/member-gate.js), which refuses a member in its own words. */
 export const SELF_GATED = Object.freeze(new Set([
-  "vault.access.get", "vault.access.set", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
+  "vault.access.get", "vault.access.set", "vault.named.access.get", "vault.named.access.set", "vault.named.create", "vault.named.list", "vault.named.move", "vault.named.remove", "vault.account.create", "vault.account.enroll-touchid", "vault.account.export-secret-key", "vault.account.import-secret-key", "vault.account.lock", "vault.account.reset", "vault.account.status",
   "vault.account.unlock", "vault.account.unlock-phone",
   "vault.agent.fill", "vault.agent.grant", "vault.agent.grants", "vault.agent.revoke", "vault.approve", "vault.audit", "vault.autobackup.drill", "vault.autobackup.enrol",
   "vault.autobackup.run", "vault.autobackup.status", "vault.backup", "vault.breach.check", "vault.caps", "vault.clipboard.clear", "vault.codes", "vault.codes.import",

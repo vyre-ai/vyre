@@ -35,6 +35,7 @@ import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
 import * as connectionShareTools from "./tools/connection-share.js";
+import * as namedTools from "./tools/named.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -532,12 +533,13 @@ export default {
     memberShareTools.register({ access: vault.access, tool });
     setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
+    namedTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
-      ctx.events.on("member.removed", (/** @type {any} */ e) => { const p = personOf(e); connShare.onMemberGone(p).catch(() => {}); try { people.destroy(p); } catch { /* not a person id */ } });
-      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
-      for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch(() => {}); try { people.lock(personOf(e)); } catch { /* not a person id */ } });
+      ctx.events.on("member.removed", (/** @type {any} */ e) => { connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
+      for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
     } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.
     if (typeof ctx.provide === "function") ctx.provide("personalStore", (/** @type {string} */ person, /** @type {string} */ space) => people.personalStore(person, space));

@@ -891,6 +891,23 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     for (const it of /** @type {any} */ (vault).list().items) if (it.kind === "api-credential" && await may(it.name, "vault.read")) out.push({ name: it.name, kind: it.kind, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) });
     return { items: out };
   });
+  // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.
+  tool("vault.me.vaults", SHARED_SURFACES, "The vaults shared with you, and the credentials in each that you can use: names and kinds, never a value.", obj({}), async (_input, meta) => {
+    const { may } = await asMember(meta);
+    const K = /** @type {any} */ (vault).access.K, chain = await K.chain(meta);
+    const placed = /** @type {any[]} */ (/** @type {any} */ (vault).db.prepare("SELECT name, named FROM vault_items WHERE named IS NOT NULL").all());
+    const out = [];
+    for (const v of /** @type {any[]} */ (await K.grants.vaults.list(chain))) {
+      if (v.personal) continue;
+      const items = [];
+      for (const p of placed.filter(x => x.named === v.id)) {
+        const it = /** @type {any} */ (vault).row(p.name);
+        if (it && it.kind === "api-credential" && await may(it.name, "vault.read")) items.push({ name: it.name, kind: it.kind });
+      }
+      out.push({ id: v.id, name: v.name, items });
+    }
+    return { vaults: out };
+  });
   tool("vault.me.shared.request", SHARED_SURFACES, "HTTP call to a vendor API with a credential the owner shared with you; Vyre adds the key and you never see it. Reads and, when the share allows it, your own sends, changes and payments go out at once: they are yours.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, operation: str, input: { type: "object" } }, ["credential"]),
     async (input, meta) => {

@@ -52,6 +52,7 @@ test("health: not known yet is not unused; known never used is", () => {
 });
 
 test("a stored item is placed in a group by kind and name", () => {
+  assert.equal(groupOf("connection", "clio-alice"), "Apps you connected", "an app a member connected has its own group, whatever its name says");
   assert.equal(groupOf("login", "Gmail"), "Logins");
   assert.equal(groupOf("api-key", "Stripe"), "Any API key");
   assert.equal(groupOf("secret", "resend-main"), "Email and sending");

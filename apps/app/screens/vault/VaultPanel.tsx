@@ -6,7 +6,7 @@ import type { IconName } from "@vyre/ui";
 import { GROUPS, type Nav } from "./redesign.js";
 import { useVaultNav } from "./vault-nav";
 
-const ICON: Record<string, IconName> = { "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
+const ICON: Record<string, IconName> = { "Apps you connected": "link", "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 
 const count = (n: number) => <Text size="caption" tone="label">{String(n)}</Text>;
 const same = (a: Nav, b: Nav) => a.kind === b.kind && (a.kind !== "group" || (b.kind === "group" && a.group === b.group));

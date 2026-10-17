@@ -11,11 +11,12 @@ import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import ImportPage from "./ImportPage";
 import { ItemSharing } from "./ItemSharing";
+import { MoveItem } from "./MoveItem";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
 
-const ICON: Record<string, IconName> = { "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
+const ICON: Record<string, IconName> = { "Apps you connected": "link", "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
 
@@ -135,15 +136,25 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Text tone="label">{cur.detail}</Text>
           {cur.daysLeft != null ? <Text size="caption" tone="label">{cur.daysLeft < 0 ? `Expired ${-cur.daysLeft} days ago` : `Expires in ${cur.daysLeft} days`}</Text> : null}
         </View>
+        {cur.kind === "connection" ? (
+          <Sec title="The connection">
+            <Card flush>
+              <Row dense title="Connects to" sub={cur.detail} />
+              <Row dense title="Token" sub="Kept in the Vault. Nobody sees it, and no agent or tool is given it." />
+            </Card>
+            <View className="flex-row gap-s2 pt-s2"><Button kind="secondary" size="sm" label="Connect again" onPress={() => router.push("/u/connections" as never)} /></View>
+          </Sec>
+        ) : (
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
           <Text size="caption" strong tone="label">The value</Text>
           <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
+        )}
         <Sec title="Used by">
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
         </Sec>
-        <Sec title="Who has it">
-          {scope === "space" && data.sharing ? <ItemSharing data={data} item={cur} /> : (
+        <Sec title={cur.kind === "connection" ? "Who can use it" : "Who has it"}>
+          {scope === "space" && data.sharing ? <ItemSharing api={data.sharing} item={cur} /> : scope === "mine" && cur.kind === "connection" && data.connectionSharing ? <ItemSharing api={data.connectionSharing} item={cur} connection /> : (
             <View className="gap-s2"><Text tone="muted">Only you. Your own vault is not shared.</Text></View>
           )}
         </Sec>
@@ -151,7 +162,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
             {local.some((e) => e.item === cur.id) || events.length ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>
         </Sec>
-        <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} /></View>
+        <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} />{scope === "space" && data.moving ? <MoveItem api={data.moving} item={cur} onMoved={load} /> : null}</View>
       </View>
     </Card>
   ) : null;
@@ -184,7 +195,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   if (phone && cur && sel) return <Frame title={cur.name} sub={cur.detail} onBack={() => setSel(null)}>{detail}{sheet}{addSheet}</Frame>;
 
   return (
-    <Frame title="Vault" sub="Logins, keys and connections." actions={<View className="flex-row items-center gap-s2">{scope === "mine" ? (phone ? <IconButton icon="lock" label="Lock" onPress={doLock} /> : <Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={doLock} />) : null}{data.real ? <Button kind="ghost" size="sm" label="More" onPress={() => router.push("/u/vault-more" as never)} /> : null}{phone ? <IconButton icon="plus" label="Add" kind="primary" onPress={startAdd} /> : <Button kind="primary" size="sm" icon="plus" label="Add" onPress={startAdd} />}</View>}>
+    <Frame title="Vault" sub="Logins, keys and connections." actions={<View className="flex-row items-center gap-s2">{scope === "mine" ? (phone ? <IconButton icon="lock" label="Lock" onPress={doLock} /> : <Button kind="ghost" size="sm" icon="lock" label="Lock" onPress={doLock} />) : null}{scope === "space" ? <Button kind="ghost" size="sm" label="Vaults" onPress={() => router.push("/u/vaults" as never)} /> : null}{data.real ? <Button kind="ghost" size="sm" label="More" onPress={() => router.push("/u/vault-more" as never)} /> : null}{phone ? <IconButton icon="plus" label="Add" kind="primary" onPress={startAdd} /> : <Button kind="primary" size="sm" icon="plus" label="Add" onPress={startAdd} />}</View>}>
       <Scoper scope={scope} onScope={setScope} />
       <Footnote icon="shield">Values stay hidden until you reveal one. Agents use an item without ever seeing it, and every use is logged.</Footnote>
       {items && sum.expired + sum.expiring + sum.unused > 0 ? <Banner tone={sum.expired ? "err" : "warn"} icon="shield">{sum.line}</Banner> : <Text tone="label">{sum.line}</Text>}

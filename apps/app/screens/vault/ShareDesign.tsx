@@ -6,6 +6,7 @@ import { Avatar, AvatarStack, Button, Card, Chip, EmptyState, Field, IconTile, R
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { ShareRow, ShareSheet, type Share, type Who } from "./ShareSheet";
 import { GroupsPanel } from "./GroupsPanel";
+import { VaultsPanel, type Vlt } from "./VaultsPanel";
 import { connectionNote, nameOf } from "./share-model.js";
 
 import { ME, PEOPLE, AGENTS, GROUPS0, dirOf } from "./share-sample";
@@ -92,7 +93,6 @@ function GroupsPart({ groups, setGroups, first }: { groups: Who[]; setGroups: (f
   );
 }
 
-type Vlt = { id: string; name: string; sub: string; count: number; shares: Share[]; mine?: boolean };
 const VAULTS0: Vlt[] = [
   { id: "mine", name: "Personal", sub: "Only you can open it", count: 7, shares: [], mine: true },
   { id: "space", name: "Juniper Studio keys", sub: "The studio's own keys and logins", count: 24, shares: [{ id: "everyone", level: "use" }] },
@@ -102,51 +102,11 @@ const VAULTS0: Vlt[] = [
 
 function VaultsPart({ groups, first }: { groups: Who[]; first?: string }) {
   const [vs, setVs] = useState(VAULTS0);
-  const [open, setOpen] = useState<string | null>(first === "share" ? "acme" : null);
-  const [making, setMaking] = useState(first === "new");
-  const [name, setName] = useState("");
-  const [start, setStart] = useState("me");
-  const cur = vs.find((v) => v.id === open);
-  const setShares = (f: (s: Share[]) => Share[]) => setVs((xs) => xs.map((v) => (v.id === open ? { ...v, shares: f(v.shares) } : v)));
-  const make = () => {
-    const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    setVs((xs) => [...xs, { id, name: name.trim(), sub: "Made just now", count: 0, shares: start === "all" ? [{ id: "everyone", level: "use" }] : [] }]);
-    showToast(`${name.trim()} made.`); setMaking(false); setName(""); setStart("me");
-  };
+  const setShares = (id: string, f: (s: Share[]) => Share[]) => setVs((xs) => xs.map((v) => (v.id === id ? { ...v, shares: f(v.shares) } : v)));
   return (
-    <View className="gap-s4">
-      <Footnote icon="shield">Each vault is kept apart: your own things and a client's things never sit in one place. Share a whole vault, and everyone you pick can use what is in it. Point a project at a vault and its agents use the keys without seeing them.</Footnote>
-      <View className="flex-row flex-wrap gap-s3">
-        {vs.map((v) => (
-          <View key={v.id} className="min-w-pane flex-1">
-            <Card>
-              <View className="gap-s3">
-                <View className="flex-row items-center gap-s3"><IconTile name={v.mine ? "lock" : "vault"} size={40} /><View className="min-w-0 flex-1"><Text size="title" strong>{v.name}</Text><Text tone="label">{v.sub}</Text></View></View>
-                <View className="flex-row items-center justify-between gap-s2">
-                  <Text tone="label">{plural(v.count, "item")}</Text>
-                  {v.shares.some((s) => s.id === "everyone") ? <Chip>Everyone in the Space</Chip> : v.shares.length ? <AvatarStack of={v.shares.map((s) => mark(whoOf(s.id, groups)))} size={24} /> : <Text tone="label">Only you</Text>}
-                </View>
-                <View className="flex-row gap-s2">
-                  <Button kind="secondary" size="sm" label="Open" onPress={() => showToast(`${v.name} lists its items here.`)} />
-                  {v.mine ? null : <Button kind="secondary" size="sm" icon="share" label="Share vault" onPress={() => setOpen(v.id)} />}
-                </View>
-              </View>
-            </Card>
-          </View>
-        ))}
-      </View>
-      <View className="self-start"><Button kind="secondary" size="sm" icon="plus" label="New vault" onPress={() => setMaking(true)} /></View>
-      {cur ? <ShareSheet open title={cur.name} onClose={() => setOpen(null)} shares={cur.shares} dir={dirOf(groups)} me={ME} everyone
-        onAdd={(w) => setShares((xs) => [...xs, { id: w.id, level: "use" }])} onLevel={(id, l) => setShares((xs) => xs.map((x) => (x.id === id ? { ...x, level: l } : x)))} onRemove={(id) => setShares((xs) => xs.filter((x) => x.id !== id))} /> : null}
-      <Sheet open={making} onClose={() => setMaking(false)} title="New vault">
-        <View className="gap-s4">
-          <Field name="Vault name" value={name} onChangeText={setName} placeholder="Northwind Bakery (client)" />
-          <Segmented<string> label="Who starts with access" options={[["me", "Only me"], ["all", "Everyone in the Space"]]} value={start} onChange={setStart} />
-          <Text tone="label">You can share it with people, groups and agents afterwards, one at a time or all at once.</Text>
-          <View className="flex-row gap-s2"><Button kind="primary" label="Make vault" onPress={make} disabled={!name.trim()} /><Button kind="ghost" label="Cancel" onPress={() => setMaking(false)} /></View>
-        </View>
-      </Sheet>
-    </View>
+    <VaultsPanel vaults={vs} dir={dirOf(groups)} me={ME} openFirst={first === "share" ? "share" : first === "new" ? "new" : undefined}
+      onCreate={(name, everyone) => setVs((xs) => [...xs, { id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, sub: "Made just now", count: 0, shares: everyone ? [{ id: "everyone", level: "use" }] : [] }])}
+      onAdd={(v, w) => setShares(v, (xs) => [...xs, { id: w.id, level: "use" }])} onLevel={(v, id, l) => setShares(v, (xs) => xs.map((x) => (x.id === id ? { ...x, level: l } : x)))} onRemove={(v, id) => setShares(v, (xs) => xs.filter((x) => x.id !== id))} />
   );
 }
 

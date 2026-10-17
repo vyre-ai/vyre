@@ -19,6 +19,9 @@ test("an agent can only be given Fill in, and so can anyone for an app connectio
   assert.deepEqual(allowedLevels("group", { connection: true }), ["use"]);
   assert.deepEqual(allowedLevels("person"), ["use", "reveal", "edit"]);
   assert.deepEqual(allowedLevels("group"), ["use", "reveal", "edit"]);
+  assert.deepEqual(allowedLevels("person", { levels: ["use"] }), ["use"], "a box that only honours Fill in for members hides the others");
+  assert.deepEqual(allowedLevels("group", { levels: ["use", "reveal"] }), ["use", "reveal"]);
+  assert.deepEqual(allowedLevels("agent", { levels: ["use", "reveal", "edit"] }), ["use"], "never more than Fill in for an agent, whatever the box offers");
 });
 
 test("only the agents the member may instruct are offered; the owner of the Space is offered all", () => {
