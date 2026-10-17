@@ -7,7 +7,7 @@ import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Se
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
 import { RunHere } from "../runner/RunHere";
-import { winkCard, accessWord, auditLines, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
+import { computerView, winkCard, accessWord, auditLines, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -23,6 +23,7 @@ export function SystemScreen() {
       {!info && !err ? <LoadingState rows={4} /> : null}
       <RunHere />
       {info ? <Machine info={info} /> : null}
+      <AgentComputer />
       <History />
       <Tests />
       <Banner>The cards below are for people who run their own home computer. A command is shown to copy and run yourself. Vyre never runs one for you.</Banner>
@@ -39,6 +40,29 @@ function Machine({ info }: { info: any }) {
       <Card flush>
         {machineRows(info).map(([k, v], i) => <View key={k}>{i ? <Divider /> : null}<Row title={k} end={<Text tone="muted">{v}</Text>} /></View>)}
         {hosted ? <View><Divider /><Row title="Hosted app" sub={hosted} /></View> : null}
+      </Card>
+    </Sec>
+  );
+}
+
+function AgentComputer() {
+  const [s, setS] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState("");
+  const load = useCallback(() => { system.computer().then(setS); }, []);
+  useEffect(load, [load]);
+  const v = computerView(s);
+  if (!v) return null;
+  const run = () => { setBusy(true); setSaid(""); system.updateComputer().then((r) => { setSaid(String(r?.message || "Updated.")); load(); }).catch((e) => setSaid(say(e, "The computer was not updated."))).finally(() => setBusy(false)); };
+  return (
+    <Sec title="Agent computer">
+      <Card flush>
+        {v.rows.map(([k, val], i) => <View key={k}>{i ? <Divider /> : null}<Row title={k} end={<Text tone="muted">{val}</Text>} /></View>)}
+        <Divider />
+        <View className="gap-s2 p-s3">
+          <Text size="secondary" tone="muted">{said || v.line}</Text>
+          <View className="self-start"><Button kind={v.canUpdate ? "primary" : "secondary"} size="sm" label={busy ? "Updating" : "Update now"} disabled={busy || !v.canUpdate} onPress={run} /></View>
+        </View>
       </Card>
     </Sec>
   );

@@ -13,13 +13,15 @@ import { DOCK, computerActions, computerWords, type ComputerView } from "./compu
 
 export type { ComputerView };
 
-export function AgentComputerPane({ name, view, busy, problem, onWake, onSleep, onOpen, onDock, onReset }: {
+export function AgentComputerPane({ name, view, busy, problem, onWake, onSleep, onOpen, onDock, onReset, onFiles }: {
   name: string; view: ComputerView | null; busy?: boolean; problem?: string;
   onWake: () => void; onSleep: () => void; onOpen: () => void;
   /** A dock app opened on the live screen (Chrome, Files, Terminal). */
   onDock?: (id: string) => void;
   /** Empties this agent's home (Chrome logins, files, terminal). Asks once more before it does. */
   onReset?: () => void;
+  /** Opens this agent's files in Vyre Files. */
+  onFiles?: () => void;
 }) {
   const [armed, setArmed] = useState(false);
   const { color } = useUiTheme();
@@ -37,6 +39,7 @@ export function AgentComputerPane({ name, view, busy, problem, onWake, onSleep, 
         {actions.includes("open") ? <Button kind="primary" size="sm" label="Open" disabled={busy} onPress={onOpen} /> : null}
         {actions.includes("sleep") ? <Button kind="secondary" size="sm" label="Sleep" disabled={busy} onPress={onSleep} /> : null}
       </View>
+      {onFiles ? <Row dense lead={<Icon name="folder" size={20} />} title={`${name}'s files`} sub="Open in Vyre Files" chevron onPress={onFiles} /> : null}
       {onReset ? (
         <View style={{ gap: 6 }}>
           {armed ? <Text size="caption" tone="label">{`This empties ${name}'s Chrome logins, files and terminal. Nobody else's are touched.`}</Text> : null}

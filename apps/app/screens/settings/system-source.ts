@@ -23,6 +23,9 @@ export function systemSource(call: Call) {
     wink: () => maybe("network.wink.status"),
     handback: () => maybe("computers.handback.status"),
     setHandback: (minutes: number) => ask<any>("computers.handback.set", { minutes }),
+    /** The agent computer against this Vyre (owner only: another caller gets null and the section is left out), and the update itself. */
+    computer: () => maybe("computers.update.status"),
+    updateComputer: () => ask<{ updated?: boolean; state?: string; message?: string }>("computers.update", {}),
     drive: () => maybe("files.drive.status"),
     /** The share's access: "ro" or "rw". */
     setAccess: (name: string, mode: "ro" | "rw") => ask<{ access?: string }>("files.drive.access", { name, mode }),

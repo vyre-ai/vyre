@@ -100,6 +100,7 @@ function Computer({ name }: { name: string }) {
             {g.info ? <Text size="caption" tone="faint">{watchersLine(g.info.viewers)}</Text> : null}
             {g.mine ? (
               <View className="gap-s2">
+                {!g.holder?.private ? <Banner tone="warn">Typing a password here shows it to this agent. Save it in your Vault and let Vyre fill it instead.</Banner> : null}
                 <View className="flex-row flex-wrap items-center gap-s2">
                   <Chip>{g.holder?.private ? "Signing in privately" : "You have control"}</Chip>
                   <Text mono size="caption">{g.holder?.since ? clock(now - g.holder.since) : ""}</Text>
