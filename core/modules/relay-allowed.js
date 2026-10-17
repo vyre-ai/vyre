@@ -22,6 +22,7 @@ export const RELAY_ALLOWED = Object.freeze({
   import: ["projects.add-threads", "projects.remove-threads", "sync.consent", "link.call"],
   // the computers module asks agents.level what the person behind the call may do with an agent (use or edit), as that person: agents.level judges the relayed person and refuses a caller that is not one
   computers: ["agents.level"],
+  microsoft: ["gate.request"], google: ["gate.request"], // an agent's send in a person's turn is filed at the Gate as that person: the requester and a standing permission read the relayed chain, as for mail
   mail: ["gate.request"], // standing permissions: the agent's session token reaches the Gate on the filed send
   ...FIRST_RUN_RELAY,
 });

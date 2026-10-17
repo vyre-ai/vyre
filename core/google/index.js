@@ -118,7 +118,7 @@ export default {
       const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
       const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: acct.key ? `google-firm:${acct.key}` : `google:${acct.name}`, to, content,
-        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) });
+        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) }, { relay: true });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.state === "sent" ? { sent: true, by: r.data.by } : r.data.id;
     };

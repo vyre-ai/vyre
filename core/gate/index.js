@@ -23,6 +23,7 @@ import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
 import { personOnChain, mayHandle, fromModule } from "./requester.js";
 import { chainPerson } from "../../lib/member-scope.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
@@ -425,7 +426,7 @@ export default {
         const K = needK();
         // the one person on the verified chain (lib/member-scope.js); a member sees only the permissions they gave, staff see all
         const me = (await chainPerson(K, meta)) || "";
-        const staff = ["owner", "admin"].includes(K.roleOf(me));
+        const staff = roleAtLeast(String(K.roleOf(me)), "admin");
         const rows = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => !i.agent || String(g.source).split(":")[2] === String(i.agent));
         const out = [];
         for (const g of rows) {
