@@ -1,23 +1,49 @@
 // @ts-check
-// The owner-only Flows tools, as the registry and the agent rules state them (team/0.6/FLOWS-PARITY.md, section 5 notes): each tool is a
-// person's own call (reach "person": the owner's key reaches it over MCP, as the app does), and an assistant is refused the ones the
-// agent rules keep the person's own (PERSON_ONLY). A static contract: no daemon, no grants are minted. Settle, advance, control, budget
-// and the Kit calls are not in this list: their reach or the agent rules differ from the app's, and a lead ruling decides them.
+// The owner-only Flows tools, as the registry and the agent rules state them (team/0.6/FLOWS-PARITY.md, section 5 notes). A static contract,
+// no daemon and no grants minted: each tool's registry reach, and its place in the agent rules (PERSON_ONLY, ASK_FIRST or the read-only list).
+// The behaviour behind each (an assistant's chain refused, an owner's chain allowed) is the kernel's; its refusal is in kernel/flows/index.js.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { PERSON_ONLY } from "../modules/agent-reach.js";
+import { PERSON_ONLY, ASK_FIRST, OPEN } from "../modules/agent-reach.js";
 
 const flowsModule = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
-const reachOf = name => (flowsModule.does.tools.find(/** @type {any} */ t => t.name === name) || {}).reach;
+const toolOf = name => flowsModule.does.tools.find(/** @type {any} */ t => t.name === name) || {};
 
-/** The owner-only tools whose registry reach is the person's and whose agent refusal the rules state. */
-const OWNER_ONLY = ["flows.pause", "flows.resume", "flows.access.set", "flows.rollback", "flows.kit.remove"];
-
-for (const name of OWNER_ONLY) {
+/** Person's own, and an assistant refused them, as in the app. */
+for (const name of ["flows.pause", "flows.resume", "flows.access.set", "flows.rollback", "flows.kit.remove", "flows.advance", "flows.budget.set"]) {
   test(`${name}: the owner's own call over MCP, and an assistant is refused it`, () => {
-    assert.equal(reachOf(name), "person", `${name} must be a person's own call, so the owner's key reaches it and no other member does`);
+    assert.equal(toolOf(name).reach, "person", `${name} must be a person's own call, so only the owner's own chain reaches it`);
     assert.ok(PERSON_ONLY.has(name), `${name} must be in agent-reach PERSON_ONLY, so an assistant is refused as in the app`);
+    assert.ok(!OPEN.has(name) && !ASK_FIRST.has(name), `${name} is not open or held: it is refused`);
   });
 }
+
+test("flows.settle: an assistant's answer is held for the person's tap, not run and not refused outright", () => {
+  assert.equal(toolOf("flows.settle").reach, "person");
+  assert.ok(ASK_FIRST.has("flows.settle"), "settle is ASK_FIRST: each assistant answer waits for the person's tap");
+  assert.ok(!OPEN.has("flows.settle") && !PERSON_ONLY.has("flows.settle"));
+});
+
+test("flows.budget: reading is anyone's, setting it is the person-only flows.budget.set", () => {
+  assert.equal(toolOf("flows.budget").reach, "anyone");
+  assert.equal(toolOf("flows.budget").effect, "read");
+  assert.equal(toolOf("flows.budget.set").effect, "write");
+  assert.ok(!PERSON_ONLY.has("flows.budget"), "a read is not person-only");
+});
+
+test("flows.control: a read of the switch, anyone's; pause and resume are the person-only tools", () => {
+  assert.equal(toolOf("flows.control").reach, "anyone");
+  assert.equal(toolOf("flows.control").effect, "read");
+});
+
+test("flows.kit.propose: anyone may propose, and a proposal installs nothing: the approver's yes does", () => {
+  assert.equal(toolOf("flows.kit.propose").reach, "anyone");
+});
+
+test("no tool is named flows.kit.install or flows.kit.update: the install runs only on an approved task (kit-apply), so adding one needs a ruling", () => {
+  const names = flowsModule.does.tools.map(/** @type {any} */ t => t.name);
+  assert.ok(!names.includes("flows.kit.install"), "flows.kit.install must not be a tool");
+  assert.ok(!names.includes("flows.kit.update"), "flows.kit.update must not be a tool");
+});

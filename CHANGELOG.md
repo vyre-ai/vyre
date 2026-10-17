@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(flows): flows.advance is person-only; flows.settle is held for the person's tap and refuses advance for an assistant; flows.budget reads, and flows.budget.set (person-only, owner or admin, refuses an assistant) sets the AI spend; flows.control stays a read; kit install and update stay unregistered (kit-apply runs them).
+
 - feat(app): the run page has Retry on the latest version (flows.retry with version latest, owner key); core/flows/owner-tools.test.js pins reach and agent refusal for pause, resume, access, rollback and kit remove.
 
 - feat(app): `/u/mail` (Compose button) and `/u/mail/compose` (New email, back once held).

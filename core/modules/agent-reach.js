@@ -241,6 +241,8 @@ export const PERSON_ONLY = new Map([
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
   ["work.template.golive", "puts a template version live: the template's owner or an admin in their own name; an assistant proposes it (flows.propose what: template) and the owner approves on a card"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
+  ["flows.advance", "skips a stage gate's required tasks: only the stage's owner or an admin, in their own name, with a reason on the ledger"],
+  ["flows.budget.set", "sets the Space's AI spend: only an owner or admin, in their own name"],
   ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.kit.remove", "changes the Space's shape and revokes grants"],
   ["spaces.invites.confirm", "needs the person's presence: confirms an invite, which grants access"],
@@ -490,7 +492,6 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "update.whats-new", "update.whats-new-seen", // the release notes of the running version, once per person: the assistant says them in the notes' own words and marks them seen; nothing but a seen mark is written
-  "flows.settle", "flows.advance", // answer a run that needs attention, and move a record past its stage gate early: the kernel holds the call to the person's own chain (a stage gate to its owner or an admin, with a reason on the ledger); a value for a skipped step stays the person's
   "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
@@ -643,6 +644,7 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
+  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],
