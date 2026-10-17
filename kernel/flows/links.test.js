@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "./testing/world.js";
-import { linksFor, withLinks } from "./links.js";
+import { linksFor, withLinks, byPerson } from "./links.js";
 
 const KIN = { name: "kin", label: "Kin", fields: [
   { name: "name", kind: "text", label: "Name" },
@@ -146,4 +146,13 @@ test("a manual start with a person on its chain records who started the run (run
   const runs = await w.runner.listRuns();
   assert.deepEqual(runs.map(r => r.started_by), ["per_bob"], "the starter is recorded on the run, not on the trigger");
   assert.equal(runs[0].trigger.by, undefined, "and the trigger does not carry it");
+});
+
+test("byPerson: the person whose change fired a Flow is its starter, even when a service emitted the event; a service-first chain and a schedule have none", () => {
+  assert.deepEqual(byPerson("person:per_bob", []), { by: "per_bob" }, "the actor names a person");
+  assert.deepEqual(byPerson("service:records", [{ actor: { kind: "person", id: "per_bob" } }, { actor: { kind: "service", id: "records" } }]), { by: "per_bob" }, "a person's change the records service emitted");
+  assert.deepEqual(byPerson("agent:kit", [{ actor: { kind: "person", id: "per_bob" } }, { actor: { kind: "agent", id: "kit" } }]), { by: "per_bob" }, "an assistant's change is its person's");
+  assert.deepEqual(byPerson("service:automation", [{ actor: { kind: "service", id: "automation" } }, { actor: { kind: "person", id: "per_alex" } }]), {}, "a Flow's own change has no starter");
+  assert.deepEqual(byPerson("service:cron", undefined), {}, "a schedule has none");
+  assert.deepEqual(byPerson(undefined, []), {});
 });

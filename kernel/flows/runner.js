@@ -608,7 +608,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor) }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor, env.chain) }, env);
   }
 
   /**
