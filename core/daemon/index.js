@@ -582,9 +582,8 @@ async function startLocked(opts, root, p, release) {
     // A person id kept from before the owner adopted an identity (a stored turn, a queued message) opens as the identity: canonicalPerson maps the replaced id forward and leaves any other as given.
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // The chain a direct yes (x-vyre-presence: yes) is checked in: the home's owner as one person, built the same way.
-    registry.deps.ownerChain = () => personChainFor(kernel.id.owner);
+    registry.deps.ownerChain = () => personChainFor(kernel.id.owner); /** @type {any} */ (registry.deps).verifyYes = async (/** @type {string} */ person, /** @type {string} */ op, /** @type {any} */ fields, /** @type {any} */ proof) => (await import("../../lib/one-yes.js")).yes("vault", { chain: await personChainFor(person), op, fields }, proof);   // the Vault module only (modules/index.js): a member's signed yes at a tag, checked in her own chain
     registry.deps.turnRecordTags = (await import("./turn-records.js")).turnRecordTags({ kernel, personChainFor });   // a chat turn's record picks, read under the asker's own chain (the Switchboard never holds it)
-    // What the link module's calls as `link:box` are judged as (#114): the person at the paired box, whose answer or words the Mac's link already checked against the box's pinned key. The facts are the ones a
     // person's own terminal here would carry, never a model's, so the Mac's chat gate sees the owner's chain. Only core/modules hands these out, and only to the link module's `link:box` calls.
     registry.deps.linkBoxFacts = () => ({ kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false });
     // the home's own Space, which a signed yes names (the refusal carries `sign` so a client signs exactly the bytes the sealing process checks)
