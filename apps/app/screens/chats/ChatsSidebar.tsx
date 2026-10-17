@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -20,7 +20,7 @@ export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.
 
 /** What the header and the list share: the search, the project and the tag (the header sets them, the list reads them), and what the list found for the filter menu. */
 const useChatsFilter = create<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; set: (p: Partial<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean }>) => void }>((set) => ({
-  q: "", project: "all", tag: "", all: [], tags: [], newAgent: false, set: (p) => set(p),
+  q: "", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
 const useAdd = () => {
