@@ -184,7 +184,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macCapsuleSpki() }), signal: abort.signal,
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, // A page that holds its own identity and no daemon (the in-page host) signs its paired session start with the key it reports here, with no prompt: that is this page's own key, not the Capsule's
+    // (whose signatures are behind Touch ID). Offering the Capsule key would leave the session start signed by a key the server does not hold for it.
+    presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: extra && extra.identity ? null : await macCapsuleSpki() }), signal: abort.signal,
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
