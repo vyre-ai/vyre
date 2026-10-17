@@ -8,7 +8,7 @@ import { createGrantsStore } from "../../kernel/grants/index.js";
 import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createEventLog } from "../../kernel/core/events.js";
 import { createChainBuilder } from "../../kernel/core/chain.js";
-import { AGENT_ACTIONS } from "../../kernel/seal/uses.js";
+import { AGENT_ACTIONS, ACCESS_LEVELS } from "../../kernel/seal/uses.js";
 
 export const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 
@@ -32,6 +32,8 @@ export async function kernelRig(o = {}) {
   await gs.installModule("vault", { actions: [], mints: [{ prefix: "vault", actions: ["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.rotate"] }] });
   // The Space's agents are registered actors (an unregistered hop is not a member of the Space and the authorizer refuses it before any grant is read)
   for (const uid of Object.values(agents)) await gw.grants.addActor(owner(), { kind: "agent", id: uid, space: SPACE }, { presence: { n: Math.random() } });
+  // The owner holds their own vaults whole: an owner holds nothing of a vault by being the owner, it is the manage grant that making a vault gives its maker (kernel/grants vaults.create)
+  if (o.ownerVault !== false) await gw.grants.create(owner(), { subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: SPACE } }, actions: [...ACCESS_LEVELS.manage], resource: { prefix: `vyre://${SPACE}/vault/*` }, conditions: {}, source: "vault:owner" }, { presence: { n: Math.random() } });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {
     space: SPACE, owner: OWNER, grants: gw.grants, authorize: gw.authorize,

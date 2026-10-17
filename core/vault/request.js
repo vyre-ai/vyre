@@ -882,7 +882,9 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     const K = /** @type {any} */ (vault).access && /** @type {any} */ (vault).access.K;
     const person = await memberOf(K, meta);
     const chain = await K.chain(meta);
-    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { return (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect === "allow"; } catch { return false; } };
+    // The kernel answers an outward act (vault.call) with an ask once every hop holds the grant: that ask is the Gate's yes, and a member's own call is not held (owner's ruling, byPerson in request()), so for that
+    // action alone "ask for approval" means the share allows it. A deny, a lone presence ask or any other action never passes.
+    const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { const r = await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) }); return r.effect === "allow" || (action === "vault.call" && r.effect === "ask" && r.reason === "needs_approval"); } catch { return false; } };
     return { person, may };
   };
   /** What she may do with an item: use it, show it (Read), change and rotate it (Edit and rotate). A credential is only ever used through Vyre. */

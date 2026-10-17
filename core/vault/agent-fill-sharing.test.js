@@ -12,7 +12,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
-import { kernelRig, SPACE, OWNER } from "./kernel-rig.js";
+import { kernelRig, SPACE } from "./kernel-rig.js";
 import { SaidIntents } from "./said.js";
 import { agentFill } from "./agent-fill.js";
 import { ACCESS_LEVELS } from "../../kernel/seal/uses.js";
@@ -42,8 +42,6 @@ async function world(t) {
     return { data: { agent: input.agent, ended: true } };
   } };
   const urn = await v.access.urn("northwind-app");
-  // The agent acts for the owner, and an owner holds nothing of a vault by being the owner: the hop for the owner is the vault's own manage grant (what making the vault gives its maker).
-  await rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: SPACE } }, actions: [...ACCESS_LEVELS.manage], resource: { prefix: urn.split("/item/")[0] + "/*" }, conditions: {}, source: "vault:share" }, { presence: { n: Math.random() } });
   /** A share of the login with an agent, as the sharing tools make it: the actions of a level, on the login's own address. */
   const share = (/** @type {string} */ agent, /** @type {readonly string[]} */ actions = ACCESS_LEVELS.use, over = {}) =>
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
@@ -79,12 +77,13 @@ test("only a level that includes Fill in lets an agent fill: Read-only or API us
   const lacking = await w.share("juno", ["vault.read", "vault.call"]);
   await refused(w.fill("juno"));
   await w.rig.gw.grants.revoke(w.rig.owner(), lacking.id, "wrong level", { presence: { n: 1 } });
-  for (const level of /** @type {const} */ (["use", "reveal", "edit"])) {
-    const g = await w.share("juno", /** @type {any} */ (ACCESS_LEVELS)[level] || ACCESS_LEVELS.reveal);
-    await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", `${level} lets it start`);
-    await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
-    await refused(w.fill("juno"));
-  }
+  // An assistant is given use and nothing above it (the kernel refuses a grant of reveal, edit or manage to an agent), so Fill in is the one level an agent can hold
+  for (const level of /** @type {const} */ (["reveal", "edit", "manage"]))
+    await assert.rejects(w.share("juno", ACCESS_LEVELS[level]), e => /** @type {any} */ (e).code === "bad_input", `${level} is never an agent's`);
+  const g = await w.share("juno", ACCESS_LEVELS.use);
+  await assert.rejects(w.fill("juno"), e => /** @type {any} */ (e).code === "stand_in", "use lets it start");
+  await w.rig.gw.grants.revoke(w.rig.owner(), g.id, "next level", { presence: { n: 1 } });
+  await refused(w.fill("juno"));
 });
 
 test("a fill goes only where the login is for: another origin, a lookalike and no origin the login names are refused even with a share", async t => {
@@ -118,6 +117,7 @@ test("only a login can be filled; the value never reaches the agent: not in the 
   let seen = "";
   try { await w.fill("juno"); } catch (e) { seen = String(/** @type {Error} */ (e).message); }
   const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls });
-  assert.ok(!all.includes(PASS), "the password is nowhere an agent or a log can read it");
+  const where = Object.entries({ seen, events: JSON.stringify(w.events), audit: JSON.stringify(w.db.prepare("SELECT * FROM vault_audit").all()), calls: JSON.stringify(w.calls) }).filter(([, x]) => x.includes(PASS)).map(([k]) => k);
+  assert.ok(!all.includes(PASS), `the password is nowhere an agent or a log can read it (found in: ${where.join(", ")})`);
   assert.ok(!all.includes("alex@northwind.example"), "nor the username");
 });
