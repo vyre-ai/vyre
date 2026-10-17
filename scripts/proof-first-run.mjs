@@ -53,7 +53,7 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, turnOn(l: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
@@ -88,8 +88,21 @@ async function browserDriver() {
     text: body,
     async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | and starts: ${b.slice(0, 120)}`); }); return body(); },
     async click(/** @type {string} */ t) {
-      const el = page.getByRole("button", { name: t }).or(page.getByRole("radio", { name: t })).or(page.getByRole("switch", { name: t })).or(page.getByText(t, { exact: true })).first();
-      await el.click({ timeout: 15_000 });
+      // By role first, in this order, and the words only when no control has that name: a union of all of them takes the first in the page, which for a switch is the words beside it (they toggle nothing).
+      const candidates = [page.getByRole("button", { name: t }), page.getByRole("radio", { name: t }), page.getByRole("switch", { name: t }), page.getByText(t, { exact: true })];
+      const end = Date.now() + 15_000;
+      for (;;) {
+        for (const c of candidates) if (await c.count()) { await c.first().click({ timeout: 15_000 }); return; }
+        if (Date.now() > end) throw new Error(`no button, choice or switch named "${t}" on the screen`);
+        await wait(300);
+      }
+    },
+    /** Turn a switch on and check it is on: its state is read back, never assumed. */
+    async turnOn(/** @type {string} */ label) {
+      const sw = page.getByRole("switch", { name: label }).first();
+      await sw.waitFor({ timeout: 15_000 });
+      if ((await sw.getAttribute("aria-checked")) !== "true") await sw.click({ timeout: 15_000 });
+      await until(async () => (await sw.getAttribute("aria-checked")) === "true", 5_000, `the switch "${label}" turning on`);
     },
     async fill(/** @type {string} */ l, /** @type {string} */ v) { await page.locator(`input[aria-label="${l}"], textarea[aria-label="${l}"]`).first().fill(v, { timeout: 15_000 }); },
     async shot(/** @type {string} */ n) { await page.screenshot({ path: path.join(out, `${n}.png`), fullPage: true }).catch(() => {}); },
@@ -122,6 +135,11 @@ async function macDriver() {
       try { await need().clickAria(t, 2_000); } catch { await need().click(t, 20_000); }
     },
     async fill(l, v) { await need().fill(l, v, 20_000); },
+    async turnOn(label) {
+      const state = () => need().evaluate((/** @type {string} */ l) => { const e = document.querySelector(`[aria-label="${l.replace(/"/g, '\\"')}"]`); return e ? e.getAttribute("aria-checked") : null; }, label);
+      if ((await state()) !== "true") await need().clickAria(label, 15_000);
+      await until(async () => (await state()) === "true", 5_000, `the switch "${label}" turning on`);
+    },
     async shot(n) { await need().shot(path.join(out, `${n}.png`)); },
     async reopen() { need().stop(); await wait(1500); await start(); },
     errors: () => [],
@@ -176,7 +194,7 @@ try {
     if (!m) throw new Error(`no recovery key on the screen: ${t.slice(0, 200)}`);
     recoveryKey = m[0];
     await drv.shot("02-recovery-key");
-    await drv.click(client === "mac-app" ? "I saved it" : "I saved it");
+    await drv.turnOn("I saved it");
     await drv.click("Continue");
     await drv.waitFor(AI_SIGNIN_COPY.title);
     await drv.click(AI_SIGNIN_COPY.skip);
