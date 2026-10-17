@@ -52,7 +52,7 @@ device.
 
 When you join a team's server, you sign in your own AI there: Settings, Accounts, sign in with Claude, Codex or Grok. The provider shows you its page and a code, you approve it, and the sign-in lives in a folder that belongs to that account alone. Your turns in a shared chat run on it, and no one else's do: not the owner's, not another member's. The owner cannot list it, use it or read it. You can have one sign-in account on the server; to change it, remove it first. A member can also keep an API key or a setup token in their own Vault and add an account that names it.
 
-If you keep a model key of your own in your vault and a chat turn needs it, Vyre lends it to that turn from your own vault: only your key, only for the session you started. The key goes only into the environment of the session you started, never into a tool result, event, log or audit row. A later release will add keys at the network edge instead of putting them in the session's environment.
+If you keep a model key of your own in your vault and a chat turn needs it, Vyre lends it to that turn from your own vault: only your key, only for the session you started. The key goes only into the session you started, never into a tool result, event, log or audit row. A later release will add keys at the network edge instead of putting them in the session.
 
 ### What a vendor sees
 
