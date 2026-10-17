@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { canonical } from "../../kernel/core/canonical.js";
 
 const FAKE = fileURLToPath(new URL("../mcp/testing/fake-mcp.js", import.meta.url));
@@ -26,12 +26,19 @@ test("B8: gate.request refuses an `unnamed` key from a model, a session or the C
   const { writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
   writeFileSync(join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: stubPresence() });
+  // a sender of the box's own, so the plain request below is an ordinary held send (the mail module offers mail:<account> only once an account exists)
+  writeModule(join(root, "modules"), "courier", { requires: ["gate"], does: { tools: ["courier.release"] } }, `export default { async start(ctx) {
+  ctx.tool("courier.release", { internal: true, run: () => ({ posted: true }) });
+  const r = await ctx.call("gate.offer", { name: "courier:board", tool: "courier.release", content: { text: "string" } });
+  if (r.error) throw new Error(r.error.message);
+  return {};
+} };`);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: stubPresence(), firstPartyRoots: [join(root, "modules")] });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
   const dev = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
   const tokenOf = async (/** @type {any} */ c) => ({ token: (await K.surfaces.open(c, {})).token });
-  const body = { kind: "send", via: "mail", to: "client@example.com", content: { subject: "Re: fixture", body: "Hi." } };
+  const body = { kind: "send", via: "courier:board", to: "#client", content: { summary: "Re: fixture", text: "Hi." } };
   for (const caller of ["cli", "mcp", "mcp:agent:juno"]) {
     const r = await d.registry.call("gate.request", { ...body, unnamed: true }, caller, await tokenOf(dev(OWNER)));
     assert.ok(r.error, `${caller} sent unnamed and was not refused`);

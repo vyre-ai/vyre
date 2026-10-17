@@ -43,7 +43,7 @@ async function setup(t) {
   const run = (name, input, hops) => tools.get(name).run(input, { token: "t", caller: hops.some(h => String(h).startsWith("agent:")) ? "mcp:agent:kit" : "cli", hops });
   await run("google.add", { name: "firm", email: "owner@firm.test", firm: true, domain: "firm.test", auth: { type: "service-account", item: "firm-sa", subject: "owner@firm.test" }, base: fake.base }, ["p-owner"]);
   await run("google.members.email", { person: "p-alice", email: "alice@firm.test" }, ["p-owner"]);
-  return { fake, run, gate, events, mayRead, files };
+  return { fake, run, tools, gate, events, mayRead, files };
 }
 const MAIL = { to: ["dana@harlow.example"], subject: "Refund R-9", body: "Dana, the letter is attached." };
 
