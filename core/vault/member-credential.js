@@ -11,7 +11,7 @@ import { connectionUrn } from "./connection-token.js";
 import { normalize } from "./api-request.js";
 
 export const SOURCE = "vault:member-credential";
-const HOUR = 3_600_000, DAY = 86_400_000;
+const HOUR = 3_600_000, TURN = 30 * 60_000;   // a loan lasts the turn: 30 minutes unless said, at most an hour; the end call is the normal end
 const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
 const sha = (/** @type {string[]} */ ...p) => crypto.createHash("sha256").update(p.join("\0")).digest("hex");
 /** A key a copy can carry and keep: a header, a bearer token or basic credentials that live in the credential itself. A sign-in that refreshes, a browser site, a service account or a named vault item stays where it is. */
@@ -51,8 +51,8 @@ export class MemberCredential {
     if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(thread)) throw bad("a loan is for one chat");
     const agent = String(i.agent || "").toLowerCase();
     if (!agent || agent === "assistant") throw bad("name one of your agents; the default assistant takes no loan", "bad_input");
-    const now = this.clock(), expires = i.expires === undefined ? now + HOUR : Number(i.expires);
-    if (!(expires > now) || expires > now + DAY) throw bad("a loan to a chat ends within a day");
+    const now = this.clock(), expires = i.expires === undefined ? now + TURN : Number(i.expires);
+    if (!(expires > now) || expires > now + HOUR) throw bad("a loan to a chat ends within an hour");
     const uid = await this.access.uidOf(agent);
     if (!uid) throw bad(`no agent named ${agent.slice(0, 60)}`, "not_found");
     await this.sweep();
@@ -95,7 +95,10 @@ export class MemberCredential {
   async effect(ref, agent, action, thread) {
     const c = this.find(ref), K = this.access.K;
     if (!c || !K || typeof K.agentMay !== "function" || c.thread !== thread || c.agent !== String(agent).toLowerCase()) return "deny";
-    try { return String(await K.agentMay(c.uid, action, connectionUrn(K.space, c.owner, c.ref), undefined, true, thread)); } catch { return "deny"; }
+    try {
+      // A loan acts only on HER turns: in a chat the agent serves everyone, so the turn now running must have been asked by her (threads.turn-asker, from the Switchboard, never from the caller's input). It holds even if the end call failed.
+      const r = await this.access.ctx.call("threads.turn-asker", { thread }).catch(() => null);
+      if (!r || !r.data || r.data.asker !== c.owner) return "deny"; return String(await K.agentMay(c.uid, action, connectionUrn(K.space, c.owner, c.ref), undefined, true, thread)); } catch { return "deny"; }
   }
 
   /** Take back what one chat's turn was lent: the grants, then the copies. @param {string} owner @param {string} thread @returns {Promise<number>} */

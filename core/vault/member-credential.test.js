@@ -26,7 +26,9 @@ async function mk(/** @type {import("node:test").TestContext} */ t, transportFor
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-memcred-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
-  const rig = await kernelRig({ people: [BOB], agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst" } });
+  /** Who asked the turn now running on a chat (the Switchboard's threads.turn-asker), set by a test. */
+  const askers = new Map([["chat-1", BOB], ["chat-2", BOB]]);
+  const rig = await kernelRig({ people: [BOB, "per_cy"], agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst" }, call: (/** @type {string} */ tool, /** @type {any} */ i) => (tool === "threads.turn-asker" ? { data: { asker: askers.get(i.thread) || null } } : undefined) });
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file" } }, emit: () => {}, log: () => {}, clock: rig.clock });
   v.access = new Access(v, rig.ctx);
   const people = new PeopleVaults({ dir: path.join(home, "vault-people"), sealRoot: home, testKdf: TEST_KDF });
@@ -47,7 +49,7 @@ async function mk(/** @type {import("node:test").TestContext} */ t, transportFor
     deps: { lentCreds, lookup: async () => [{ address: "93.184.216.10", family: 4 }], transport: async (/** @type {any} */ r) => { net.calls.push({ host: r.url.hostname, method: r.method, authorization: r.headers && r.headers.authorization }); return transportFor(r); } } });
   const as = (/** @type {string} */ agent, /** @type {string} */ thread, /** @type {any} */ input) => tools.get("vault.request").run(input, { caller: `mcp:agent:${agent}`, agent, thread });
   const GET = { method: "GET", url: "https://api.bobs.example.test/v1/a" };
-  return { v, people, lentCreds, net, gate, as, GET, rig, now: () => rig.clock() };
+  return { v, people, lentCreds, net, gate, as, GET, rig, askers, now: () => rig.clock() };
 }
 
 const LEND = (/** @type {any} */ o = {}) => ({ item: "bobs-api", agent: "kit", thread: "chat-1", ...o });
@@ -118,4 +120,37 @@ test("only a valid credential with a key that stays put can be lent: a bad confi
   for (const item of ["bad", "oauthy", "note"]) await assert.rejects(lentCreds.lend(BOB, LEND({ item, expires: now() + 1000 })), { code: "bad_input" }, item);
   await assert.rejects(lentCreds.lend(BOB, LEND({ item: "ghost", expires: now() + 1000 })), { code: "not_found" });
   await assert.rejects(lentCreds.lend(BOB, LEND({ agent: "ghost", expires: now() + 1000 })), { code: "not_found" });
+});
+
+test("it acts only on HER turns: another member's turn in the same chat, or a turn with no asker, is refused even though the lend has not ended", async t => {
+  const { lentCreds, as, net, GET, askers, now } = await mk(t);
+  const lent = await lentCreds.lend(BOB, LEND({ expires: now() + 600_000 }));
+  askers.set("chat-1", "per_cy");
+  await assert.rejects(as("kit", "chat-1", { credential: lent.credential, ...GET }), { code: "denied" }, "Cy asks the next turn in Bob's chat");
+  askers.delete("chat-1");
+  await assert.rejects(as("kit", "chat-1", { credential: lent.credential, ...GET }), { code: "denied" }, "no asker");
+  assert.equal(net.calls.length, 0);
+  askers.set("chat-1", BOB);
+  assert.equal((await as("kit", "chat-1", { credential: lent.credential, ...GET })).kind, "read", "her own turn works again");
+});
+
+test("a loan lasts the turn: 30 minutes unless said, never more than an hour", async t => {
+  const { lentCreds, now } = await mk(t);
+  const a = await lentCreds.lend(BOB, LEND({}));
+  assert.ok(a.expires - now() <= 30 * 60_000 + 1000 && a.expires - now() > 29 * 60_000, "about 30 minutes");
+  await assert.rejects(lentCreds.lend(BOB, LEND({ thread: "chat-2", expires: now() + 61 * 60_000 })), { code: "bad_input" }, "more than an hour");
+  await assert.rejects(lentCreds.lend(BOB, LEND({ thread: "chat-2", expires: now() - 1 })), { code: "bad_input" }, "already over");
+  assert.ok((await lentCreds.lend(BOB, LEND({ thread: "chat-2", expires: now() + 59 * 60_000 }))).credential);
+});
+
+test("the member leaving, or changing or deleting the item, takes the copy and the grant", async t => {
+  const { lentCreds, people, as, GET, now } = await mk(t);
+  const a = await lentCreds.lend(BOB, LEND({ expires: now() + 600_000 }));
+  assert.equal(await lentCreds.changed(BOB, "bobs-api"), 1, "an edit or a delete of the item");
+  await assert.rejects(as("kit", "chat-1", { credential: a.credential, ...GET }), { code: "denied" });
+  await assert.rejects(people.lent(BOB).get(a.credential), { code: "not_found" });
+  const b = await lentCreds.lend(BOB, LEND({ thread: "chat-2", expires: now() + 600_000 }));
+  assert.equal(await lentCreds.gone(BOB), 1, "she left");
+  await assert.rejects(as("kit", "chat-2", { credential: b.credential, ...GET }), { code: "denied" });
+  await assert.rejects(people.lent(BOB).get(b.credential), { code: "not_found" });
 });

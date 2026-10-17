@@ -21,9 +21,9 @@ const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 export const connectionUrn = (/** @type {string} */ space, /** @type {string} */ owner, /** @type {string} */ name) => `vyre://${space}/vault/${owner}/item/${name}`;
 
 export class ConnectionTokens {
-  /** @param {{ people: import("./people.js").PeopleVaults, kernel: any | (() => any), fetch?: any, now?: () => number }} d */
-  constructor({ people, kernel, fetch, now = Date.now }) {
-    this.people = people; this.kernelOf = typeof kernel === "function" ? kernel : () => kernel; this.fetch = fetch; this.now = now;
+  /** @param {{ people: import("./people.js").PeopleVaults, kernel: any | (() => any), fetch?: any, now?: () => number, askerOf?: (thread: string) => Promise<string | null> }} d askerOf: who asked the turn now running on a chat (the Switchboard's threads.turn-asker) */
+  constructor({ people, kernel, fetch, now = Date.now, askerOf }) {
+    this.askerOf = askerOf; this.people = people; this.kernelOf = typeof kernel === "function" ? kernel : () => kernel; this.fetch = fetch; this.now = now;
     /** @type {Map<string, Credentials>} one per owner, so a minted access token is reused until it nears its end */ this.creds = new Map();
   }
 
@@ -54,8 +54,24 @@ export class ConnectionTokens {
     if (typeof K.authorize !== "function" || !K.space) return false;
     try {
       const r = await K.authorize({ chain, action: write ? "vault.call" : "vault.read", resource: connectionUrn(K.space, owner, name) });
-      return Boolean(r && r.effect === "allow");
+      if (!r || r.effect !== "allow") return false;
+      return await this.loanHolds(K, chain, owner, name);
     } catch { return false; }
+  }
+
+  /**
+   * A connection lent to one chat's agent for a turn (connection-share lendTurn) acts only on HER turns: in a chat the agent serves everyone, so while such a loan is live on this connection and this chat,
+   * the turn now running must have been asked by the lender (threads.turn-asker, from the Switchboard, never from the caller's input). It holds even if the end call failed. No live loan: nothing more is asked.
+   * @param {any} K @param {any} chain @param {string} owner @param {string} name
+   */
+  async loanHolds(K, chain, owner, name) {
+    const hop = (chain && Array.isArray(chain.hops) ? chain.hops : []).find((/** @type {any} */ h) => h && h.actor && h.actor.kind === "agent" && h.via && typeof h.via.thread === "string");
+    if (!hop || !K.mint || typeof K.mint.list !== "function") return true;
+    const thread = String(hop.via.thread);
+    const gs = (await K.mint.list({ source: `vault:cshare:${owner}:${name}:` })) || [];
+    if (!gs.some((/** @type {any} */ g) => String(g.source).endsWith(`:turn:${thread}`))) return true;
+    const asker = typeof this.askerOf === "function" ? await this.askerOf(thread).catch(() => null) : null;
+    return asker === owner;
   }
 
   /**
