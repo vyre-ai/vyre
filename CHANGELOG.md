@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(app): Settings, Groups has its own icon (`contacts`), so no two places share `users` (logic.test.js); the sidebar row matches.
 - fix(test): the chat chip tests give the member a sign-in of their own (a member's turn never runs on the owner's); the sample world's thumbnail uses named colours, not literals (raw-colours test).
 - release: the first-run install proof (first-run-e2e.yml) no longer gates a release. release.yml has no first-run job and the release job does not need it; the workflow stays for running by hand. The owner tests the install himself.
 
