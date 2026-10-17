@@ -42,7 +42,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   // an agent not shared with Ben, and a Flow not shared with Ben: refused, and nothing wakes
   const seen = /** @type {any[]} */ ([]);
   const real = d.registry.deps.kernelSession;
-  d.registry.deps.kernelSession = async (/** @type {any} */ q) => { seen.push({ thread: q.thread, runas: q.runas, asker: q.asker }); return real(q); };
+  d.registry.deps.kernelSession = async (/** @type {any} */ q) => { seen.push({ thread: q.thread, runas: q.runas, asker: q.asker, optsKeys: q.rec && q.rec.opts ? Object.keys(typeof q.rec.opts === "string" ? JSON.parse(q.rec.opts) : q.rec.opts) : null, purpose: q.rec && q.rec.purpose }); return real(q); };
   assert.equal((await asBen("agents.flow-say", { agent: "juno", flow: open, text: "hi" })).error?.code, "denied", "an agent not shared with him");
   assert.ok(!(await asOwner("agents.access.set", { agent: "juno", kind: "person", subject: BEN, level: "use" })).error);
   assert.ok((await asBen("agents.flow-say", { agent: "juno", flow: hidden, text: "hi" })).error, "a Flow he may not read");
@@ -66,7 +66,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
     const g = JSON.stringify({ thread: flat(th.thread), last: ((th.turns || th.items || th.messages || []).slice(-3)).map((/** @type {any} */ x) => flat(x)) });
     throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}; the daemon log (threads, sessions, switchboard, launch): ${logs.filter((l) => /threads|session|launch|account|switchboard|refus|spawn/i.test(l)).slice(-25).join(" || ")}`);
   });
-  assert.equal(s.runas, BEN, "the job acts as the member who wrote");
+  assert.equal(s.runas, BEN, `the job acts as the member who wrote (the call: ${JSON.stringify(s)}; all calls: ${JSON.stringify(seen)})`);
   assert.notEqual(s.runas, OWNER, "never as the owner");
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
   assert.equal(row?.flow_origin?.flow, open, "the thread joins that Flow's chat");
