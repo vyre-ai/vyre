@@ -181,3 +181,17 @@ test("the people an editor can pick come from the kernel's member list on her ow
   assert.ok(got.people.some((/** @type {any} */ p) => p.id === BEN), JSON.stringify(got.people));
   assert.deepEqual(got.roles, []);
 });
+
+test("agents.level says edit, use or none for the person asking, and it changes as the share does", { timeout: 120_000 }, async t => {
+  const { ben, owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "words" });
+  const level = async () => (await ben("agents.level", { agent: "intake" })).data.level;
+  assert.equal(await level(), "none", "no share");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" });
+  assert.equal(await level(), "use");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "edit" });
+  assert.equal(await level(), "edit");
+  assert.equal((await owner("agents.level", { agent: "intake" })).data.level, "edit", "the owner edits");
+  await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: null });
+  assert.equal(await level(), "none", "taking it away takes it away");
+});

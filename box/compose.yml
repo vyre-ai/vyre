@@ -100,7 +100,8 @@ services:
   # The Docker API for agents' own computers (spec 7.9), and nothing else. Off until
   # `--profile computers`. Vyre's own proxy (core/dockerproxy) holds the host's socket, here and
   # nowhere else; vyred reaches it at http://docker-api:2375 on an internal network that only vyred joins. It allows container create, start, stop, pause, unpause,
-  # inspect, list and remove, exec on a computer and volume inspect, and refuses every other
+  # inspect, list and remove, exactly one exec (agentd's client, as agentctl, request on standard input),
+  # two archive uploads (the .boot file and agentd's token file) and volume inspect, and refuses every other
   # endpoint. It reads every body too: a create must pass core/computers/driver/policy.js against
   # the network, image and label prefix below, every per-container op is checked against the
   # labels the Engine itself reports, and what it forwards is its own re-serialisation of what it

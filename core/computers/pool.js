@@ -409,6 +409,8 @@ export class Pool {
         volume: `${this.opts.prefix}-home-${agent}`,
         browserVolume: `${this.opts.prefix}-browser-${agent}`,
       });
+      // A state volume made by an older image lacks the folders the agents live in; put them there before the first start (directories only, fixed owners; harmless on a volume that has them).
+      if (typeof d.migrateLayout === "function") await d.migrateLayout(id);
       this.set(agent, { container: id, state: "stopped" });
       this.emit("computer.created", { agent });
       this.log(`${agent}'s computer created`);
@@ -430,6 +432,8 @@ export class Pool {
       // many times /agents/reload is called afterward. Always the CURRENT member list, the same
       // "reseed with the latest, every start" pattern .boot's own seed() just above already uses.
       if (s.kind === "browser") await this.seedMembersBeforeStart(agent, id);
+      // agentd's own token, fresh each start, in agentd's directory (the entrypoint starts agentd only when it is there). vyred never needs to know it: it reaches agentd by running agentd's client in the computer, which reads the file itself.
+      if (s.kind === "browser" && typeof d.seedAgentd === "function") await d.seedAgentd(id, crypto.randomBytes(32).toString("base64url"));
       await d.start(id);
     }
     await this.boot(agent, id);
@@ -1014,11 +1018,11 @@ export class Pool {
    * A one-use ticket for opening Glass, bound to one agent and one surface. slow: the viewer is
    * on a relayed or slow link, and the relay paces its frame requests (glass.js).
    */
-  ticket(agent, surface, { slow = false } = {}) {
+  ticket(agent, surface, { slow = false, perAgent = false } = {}) {
     const now = this.now();
     for (const [k, t] of this.tickets) if (t.expires <= now) this.tickets.delete(k);
     const ticket = crypto.randomBytes(24).toString("base64url");
-    this.tickets.set(ticket, { agent, surface, slow: Boolean(slow), expires: now + TICKET_MS });
+    this.tickets.set(ticket, { agent, surface, slow: Boolean(slow), perAgent: Boolean(perAgent), expires: now + TICKET_MS });
     return ticket;
   }
 
@@ -1028,7 +1032,7 @@ export class Pool {
     if (!t) return null;
     this.tickets.delete(String(ticket));
     if (t.expires <= this.now()) return null;
-    return { agent: t.agent, surface: t.surface, slow: Boolean(t.slow) };
+    return { agent: t.agent, surface: t.surface, slow: Boolean(t.slow), perAgent: Boolean(t.perAgent) };
   }
 
   // ---- views -----------------------------------------------------------------------------

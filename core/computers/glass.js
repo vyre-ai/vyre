@@ -106,9 +106,11 @@ export class Pacer {
 
 export class Glass {
   /**
-   * @param {{ pool: import("./pool.js").Pool, keyboard: import("./keyboard.js").Keyboard, log?: (m: string) => void }} deps
+   * @param {{ pool: import("./pool.js").Pool, keyboard: import("./keyboard.js").Keyboard, log?: (m: string) => void, screen?: { open: (agent: string) => Promise<{ host: string, port: number, password: string, hello: string, release: () => void }> } }} deps
+   * screen: the per-agent computer. When a ticket says perAgent, the screen is dialled through the computer's relay with a ticket of its own (agentd-relay.js), not Xvnc's port.
    */
-  constructor({ pool, keyboard, log }) {
+  constructor({ pool, keyboard, log, screen }) {
+    this.screen = screen || null;
     this.pool = pool;
     this.keyboard = keyboard;
     this.log = log || (() => {});
@@ -130,6 +132,8 @@ export class Glass {
     const redeemed = this.pool.redeem(url.searchParams.get("ticket"));
     if (!redeemed) { reject(socket, 403, "Forbidden"); return; }
     const { agent, surface } = redeemed;
+    // a terminal's ticket opens the terminal stream and nothing else
+    if (String(surface).startsWith("terminal:")) { reject(socket, 403, "Forbidden"); return; }
     this.log(`glass: ${agent}/${surface} opening`);
     // The viewer's link is relayed or slow (glass.open asked link.health): pace its frames.
     const slow = Boolean(/** @type {any} */ (redeemed).slow);
@@ -150,6 +154,7 @@ export class Glass {
 
     let closed = false;
     let viewerHeld = false;
+    /** @type {(() => void) | null} */ let releaseScreen = null;
     /** The keepalive: a ping every 30 s, closed after two missed pongs (ADR 0005, decision 1). */
     let pinger = /** @type {ReturnType<typeof setInterval>|null} */ (null);
     let missed = 0;
@@ -164,6 +169,7 @@ export class Glass {
       if (pinger) { clearInterval(pinger); pinger = null; }
       if (pacer) { pacer.close(); pacer = null; }
       if (viewerHeld) { viewerHeld = false; try { this.pool.viewer(agent, -1); } catch {} }
+      if (releaseScreen) { const r = releaseScreen; releaseScreen = null; try { r(); } catch {} }
       try { if (flush) socket.end(); else socket.destroy(); } catch {}
       if (xvnc) try { xvnc.destroy(); } catch {}
       if (why) this.log(`glass: ${agent}/${surface} ended (${scrub(why)})`);
@@ -198,23 +204,35 @@ export class Glass {
     // Glass viewer holds the screen" means (pool.viewer), and it lasts until this connection ends.
     // 4001 says the computer is not running. With a reason, it did not boot, and Glass shows the
     // reason and stops retrying; without one, it may yet start, and Glass tries again.
-    try { await this.pool.viewer(agent, 1); viewerHeld = true; }
-    catch (e) {
-      const err = /** @type {any} */ (e);
-      closeWith(socket, err && err.boot ? 4001 : 1011, err && err.boot ? String(err.short || err.message) : "");
-      closeAll(err && err.message, true);
-      return;
+    /** @type {{ host: string, port: number, password: string, hello?: string } | null} */
+    let vnc;
+    if (/** @type {any} */ (redeemed).perAgent && this.screen) {
+      // The agent's own screen: asked of the per-agent computer (it wakes the agent if needed and registers a one-use ticket with agentd's relay), dialled at the relay.
+      try { const t = await this.screen.open(agent); releaseScreen = t.release; vnc = t; }
+      catch (e) { closeWith(socket, 4001, String(/** @type {Error} */ (e).message).slice(0, 120)); closeAll(/** @type {Error} */ (e).message, true); return; }
+      if (closed) return;
+    } else {
+      try { await this.pool.viewer(agent, 1); viewerHeld = true; }
+      catch (e) {
+        const err = /** @type {any} */ (e);
+        closeWith(socket, err && err.boot ? 4001 : 1011, err && err.boot ? String(err.short || err.message) : "");
+        closeAll(err && err.message, true);
+        return;
+      }
+      if (closed) return;
+
+      vnc = this.pool.vnc(agent);
+      if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
+
+      // The computer answers vyred's address alone; show it this vyred's address before dialling (it can change when vyred is recreated).
+      if (typeof this.pool.pin === "function") await this.pool.pin(agent).catch(e => this.log(`glass: ${agent}'s computer did not take this vyred's address (${scrub(e && e.message)})`));
+      this.log(`glass: ${agent}/${surface} dialling the screen`);
+      if (closed) return;
     }
-    if (closed) return;
-
-    const vnc = this.pool.vnc(agent);
-    if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
-
-    // The computer answers vyred's address alone; show it this vyred's address before dialling (it can change when vyred is recreated).
-    if (typeof this.pool.pin === "function") await this.pool.pin(agent).catch(e => this.log(`glass: ${agent}'s computer did not take this vyred's address (${scrub(e && e.message)})`));
-    this.log(`glass: ${agent}/${surface} dialling the screen`);
-    if (closed) return;
-    xvnc = net.connect(vnc.port, vnc.host);
+    if (!vnc) return;
+    const target = vnc;
+    xvnc = net.connect(target.port, target.host);
+    if (target.hello) xvnc.write(target.hello);
     this.sockets.add(xvnc);
     const xvncBytes = new Bytes();
     xvnc.on("data", b => xvncBytes.push(b));
@@ -228,15 +246,15 @@ export class Glass {
       if (this.pool.unknown && this.pool.unknown.has(agent)) { closeWith(socket, 4001, UNKNOWN); closeAll("the runtime could not be asked", true); return; }
       closeAll("the computer's screen closed");
     });
-    xvnc.on("error", e => closeAll(scrub(e.message, vnc.password)));
+    xvnc.on("error", e => closeAll(scrub(e.message, target.password)));
 
     /** @type {{ bytes: Buffer }} */
     let init;
     try {
-      init = await clientHandshake(xvncBytes, b => /** @type {import("node:net").Socket} */ (xvnc).write(b), vnc.password);
+      init = await clientHandshake(xvncBytes, b => /** @type {import("node:net").Socket} */ (xvnc).write(b), target.password);
       await serverHandshake(browserBytes, b => socket.write(encodeFrame(b)), init.bytes);
     } catch (e) {
-      closeAll(scrub(/** @type {Error} */ (e).message, vnc.password));
+      closeAll(scrub(/** @type {Error} */ (e).message, target.password));
       return;
     }
     if (closed) return;

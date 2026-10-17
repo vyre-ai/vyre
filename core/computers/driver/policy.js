@@ -276,6 +276,26 @@ export function allowExec(labels, cmd) {
 }
 
 /**
+ * The ONE exec vyred may make into a computer to reach agentd (sec53, 18 Oct): the container is one of ours, the user is the dedicated `agentctl` (never root, never an agent's uid), the
+ * command is exactly [/opt/agentd/client] with no argument, no environment, no tty, no working directory, no privilege, stdin and stdout attached and stderr not. The request travels
+ * on stdin and the answer on stdout. Anything else, in any field, is refused: an unknown key is as bad as a wrong value.
+ */
+export const AGENTD_EXEC = Object.freeze({ cmd: ["/opt/agentd/client"], user: "agentctl", maxInput: 16 * 1024, maxOutput: 64 * 1024, timeoutMs: 30_000 });
+const AGENTD_EXEC_KEYS = ["AttachStderr", "AttachStdin", "AttachStdout", "Cmd", "Tty", "User"];
+
+/** @param {Record<string, any>} labels @param {any} body the exec create body @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowAgentdExec(labels, body) {
+  if (!isComputerLabels(labels)) return { ok: false, why: "not an agent's computer (missing the managed/computer label pair)" };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, why: "the exec body must be an object" };
+  const keys = Object.keys(body).sort();
+  if (JSON.stringify(keys) !== JSON.stringify(AGENTD_EXEC_KEYS)) return { ok: false, why: `the exec body must name exactly ${AGENTD_EXEC_KEYS.join(", ")}` };
+  if (body.User !== AGENTD_EXEC.user) return { ok: false, why: "the exec runs as agentctl and no one else" };
+  if (JSON.stringify(body.Cmd) !== JSON.stringify(AGENTD_EXEC.cmd)) return { ok: false, why: "the exec runs /opt/agentd/client with no argument" };
+  if (body.Tty !== false || body.AttachStdin !== true || body.AttachStdout !== true || body.AttachStderr !== false) return { ok: false, why: "no tty; standard input and output attached, standard error not" };
+  return { ok: true };
+}
+
+/**
  * The other operations the proxy lets through (start, stop, pause, unpause, inspect, list,
  * remove, volume inspect): the same container check as exec, since none of them takes a body
  * worth checking.
@@ -349,6 +369,90 @@ export function allowBootTar(buf) {
   for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after .boot must be the end blocks");
   if (buf.length !== 512 + 512 + 1024) return no("not a one-file tar");
   return { ok: true };
+}
+
+// ---- agentd's token, as a file in agentctl's own directory ------------------------------------
+//
+// The same archive-API PUT as .boot, to /var/lib/vyre/agentd, one file called token, owned by agentctl (1004), mode 0400, one line of token characters. allowAgentdTokenTar accepts
+// exactly what agentdTokenTar makes and nothing else (not .boot's name, not another owner or mode, nothing after it but the end blocks).
+export const AGENTD_TOKEN = Object.freeze({ dir: "/var/lib/vyre/agentd", name: "token", uid: 1004, gid: 1004, mode: 0o400 });
+const AGENTD_TOKEN_BODY = /^[A-Za-z0-9_-]{43,128}\n$/;
+
+/** @param {string} token @returns {Buffer} */
+export function agentdTokenTar(token) {
+  const body = Buffer.from(`${token}\n`, "ascii");
+  if (!AGENTD_TOKEN_BODY.test(body.toString("ascii"))) throw new Error("agentd's token is not in the expected shape");
+  const h = Buffer.alloc(512);
+  h.write(AGENTD_TOKEN.name, 0, 100, "ascii");
+  octal(h, 100, 8, AGENTD_TOKEN.mode); octal(h, 108, 8, AGENTD_TOKEN.uid); octal(h, 116, 8, AGENTD_TOKEN.gid);
+  octal(h, 124, 12, body.length); octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156); h.write("0", 156, 1, "ascii"); h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0; for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  return Buffer.concat([h, body, Buffer.alloc((512 - (body.length % 512)) % 512), Buffer.alloc(1024)]);
+}
+
+/** @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowAgentdTokenTar(buf) {
+  const no = why => ({ ok: /** @type {false} */ (false), why });
+  if (!Buffer.isBuffer(buf) || buf.length !== 2048) return no("not a one-file tar of the expected size");
+  const h = buf.subarray(0, 512);
+  const str = (off, len) => h.subarray(off, off + len).toString("ascii").replace(/\0.*$/s, "");
+  const num = (off, len) => parseInt(str(off, len).trim() || "x", 8);
+  if (str(0, 100) !== AGENTD_TOKEN.name || str(345, 155) !== "") return no(`the file must be ${AGENTD_TOKEN.name}`);
+  if (str(156, 1) !== "0") return no("the entry must be a regular file");
+  if (num(100, 8) !== AGENTD_TOKEN.mode || num(108, 8) !== AGENTD_TOKEN.uid || num(116, 8) !== AGENTD_TOKEN.gid) return no("wrong owner or mode");
+  let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+  if (num(148, 8) !== sum) return no("bad header checksum");
+  const size = num(124, 12);
+  if (!(size > 0 && size < 512)) return no("wrong size");
+  if (!AGENTD_TOKEN_BODY.test(buf.subarray(512, 512 + size).toString("ascii"))) return no("the contents are not agentd's token");
+  for (let i = 512 + size; i < buf.length; i++) if (buf[i] !== 0) return no("anything after the token must be the end blocks");
+  return { ok: true };
+}
+
+// ---- the state volume's folders, for a volume made before they were in the image --------------
+//
+// A new volume copies the image's /var/lib/vyre, so a new computer has the agents' folders. A computer made by an older image has a volume without them, and the root is read-only and the
+// entrypoint has no CAP_CHOWN, so they are put there through the same archive-API PUT as .boot: directories only, each with the owner and mode the image gives it (the Dockerfile's loop). The tar
+// is built here from nothing but numbers, and the proxy lets through exactly these bytes and no other (allowLayoutTar), so a caller cannot choose a path, an owner or a mode.
+/** Bumped whenever the image's layout of /var/lib/vyre changes; a computer recorded with less is recreated by computers.update. */
+export const LAYOUT_VERSION = 2;
+export const LAYOUT = Object.freeze({ dir: "/var/lib/vyre", agents: 64, firstUid: 20000, browserOffset: 1000, vyre: 1001, agentctl: 1004 });
+
+/** @param {string} name @param {number} uid @param {number} gid @param {number} mode @returns {Buffer} a directory header */
+function dirHeader(name, uid, gid, mode) {
+  const h = Buffer.alloc(512);
+  h.write(`${name}/`, 0, 100, "ascii");
+  octal(h, 100, 8, mode); octal(h, 108, 8, uid); octal(h, 116, 8, gid); octal(h, 124, 12, 0); octal(h, 136, 12, 0);
+  h.fill(0x20, 148, 156); h.write("5", 156, 1, "ascii"); h.write("ustar\u000000", 257, 8, "ascii");
+  let sum = 0; for (const b of h) sum += b;
+  h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii");
+  return h;
+}
+
+/** The folders and their owners, as the Dockerfile makes them. @returns {Array<[string, number, number, number]>} [path, uid, gid, mode] */
+export function layoutEntries() {
+  const L = LAYOUT, out = /** @type {Array<[string, number, number, number]>} */ ([["agentd", L.agentctl, L.agentctl, 0o700]]);
+  for (const d of ["agents", "browsers", "x", "downloads"]) out.push([d, L.vyre, L.vyre, 0o711]);
+  for (let i = 0; i < L.agents; i++) {
+    const n = L.firstUid + i, b = n + L.browserOffset;
+    out.push([`agents/ag${n}`, n, n, 0o700], [`agents/ag${n}/home`, n, n, 0o700], [`browsers/agb${b}`, b, b, 0o700], [`browsers/agb${b}/profile`, b, b, 0o700],
+      [`x/ag${n}`, b, n, 0o2750], [`downloads/ag${n}`, b, n, 0o2750]);
+  }
+  return out;
+}
+
+/** @returns {Buffer} */
+export function layoutTar() {
+  return Buffer.concat([...layoutEntries().map(([name, uid, gid, mode]) => dirHeader(name, uid, gid, mode)), Buffer.alloc(1024)]);
+}
+
+let layoutCache = /** @type {Buffer | null} */ (null);
+/** Exactly the bytes layoutTar() makes. @param {Buffer} buf @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowLayoutTar(buf) {
+  layoutCache ??= layoutTar();
+  return Buffer.isBuffer(buf) && buf.length === layoutCache.length && buf.equals(layoutCache) ? { ok: true } : { ok: false, why: "not the computer's folder layout" };
 }
 
 // ---- a shared computer's per-agent identity, as a second file next to .boot ------------------

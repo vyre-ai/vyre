@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar, agentdTokenTar, allowAgentdTokenTar, AGENTD_TOKEN } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A one-request fake Engine: capture the create body it was actually sent, nothing else. */
@@ -318,4 +318,84 @@ test("policy: a computer is made with every capability dropped, only SETUID and 
   for (const patch of [b => { b.HostConfig.CapDrop = ["NET_RAW"]; return b; }, b => { b.HostConfig.SecurityOpt = []; return b; }, b => { b.HostConfig.CapAdd = [...b.HostConfig.CapAdd, "NET_RAW"]; return b; }]) {
     assert.equal(allowCreate(await mutate(t, patch), CONFIG).ok, false);
   }
+});
+
+// ---- the one exec into a computer: agentd's client, as agentctl (sec53's conditions, 18 Oct 2026) ----
+import { allowAgentdExec, AGENTD_EXEC } from "./policy.js";
+
+const OK_LABELS = { "run.vyre": "1", "vyre.managed": "true", "vyre.computer": "browser-shared" };
+const EXEC = () => ({ AttachStdin: true, AttachStdout: true, AttachStderr: false, Tty: false, Cmd: ["/opt/agentd/client"], User: "agentctl" });
+
+test("the exec into agentd is allowed in exactly one shape", () => {
+  assert.deepEqual(allowAgentdExec(OK_LABELS, EXEC()), { ok: true });
+  assert.deepEqual(AGENTD_EXEC.cmd, ["/opt/agentd/client"]);
+  assert.equal(AGENTD_EXEC.user, "agentctl");
+});
+
+test("every deviation from the agentd exec is refused: another command or argument, user, environment, tty, working directory, privilege, key or container", () => {
+  /** @type {Array<[string, (b: any) => any]>} */
+  const cases = [
+    ["another command", b => ({ ...b, Cmd: ["/bin/sh"] })],
+    ["an argument", b => ({ ...b, Cmd: ["/opt/agentd/client", "start"] })],
+    ["no command", b => ({ ...b, Cmd: [] })],
+    ["root", b => ({ ...b, User: "root" })],
+    ["an agent's uid", b => ({ ...b, User: "20000" })],
+    ["no user", b => { const { User, ...r } = b; return r; }],
+    ["an environment", b => ({ ...b, Env: ["A=b"] })],
+    ["a tty", b => ({ ...b, Tty: true })],
+    ["a working directory", b => ({ ...b, WorkingDir: "/" })],
+    ["privileged", b => ({ ...b, Privileged: true })],
+    ["stderr attached", b => ({ ...b, AttachStderr: true })],
+    ["stdin not attached", b => ({ ...b, AttachStdin: false })],
+    ["an unknown key", b => ({ ...b, DetachKeys: "ctrl-p" })],
+    ["a list", () => []],
+    ["nothing", () => null],
+  ];
+  for (const [what, make] of cases) assert.equal(allowAgentdExec(OK_LABELS, make(EXEC())).ok, false, what);
+  assert.equal(allowAgentdExec({ "run.vyre": "1" }, EXEC()).ok, false, "a container that is not ours");
+  assert.equal(allowAgentdExec({ "com.example.app": "postgres" }, EXEC()).ok, false, "someone else's container");
+});
+
+// ---- agentd's token file: exactly one tar, in agentctl's own directory ----
+const TOKEN = "A".repeat(43);
+const fix = (/** @type {Buffer} */ buf, /** @type {(b: Buffer) => void} */ f) => { const b = Buffer.from(buf); f(b); return b; };
+/** a header with its checksum made right again after a change */
+const resum = (/** @type {Buffer} */ b) => { let sum = 0; for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); return b; };
+
+test("agentd's token tar is accepted exactly as made, and the file, owner and mode are agentctl's", () => {
+  const tar = agentdTokenTar(TOKEN);
+  assert.deepEqual(allowAgentdTokenTar(tar), { ok: true });
+  assert.equal(AGENTD_TOKEN.dir, "/var/lib/vyre/agentd");
+  assert.deepEqual([AGENTD_TOKEN.uid, AGENTD_TOKEN.gid, AGENTD_TOKEN.mode], [1004, 1004, 0o400]);
+  assert.throws(() => agentdTokenTar("short"), /not in the expected shape/);
+  assert.throws(() => agentdTokenTar(`${TOKEN}\nextra`), /not in the expected shape/);
+});
+
+test("every deviation from agentd's token tar is refused: another name, owner, mode, a bad checksum, a longer body, extra blocks, or a .boot tar", () => {
+  const tar = agentdTokenTar(TOKEN);
+  const cases = [
+    ["another name", resum(fix(tar, b => b.write("other\0\0\0\0", 0, 9, "ascii")))],
+    ["root as owner", resum(fix(tar, b => b.write("0000000\0", 108, 8, "ascii")))],
+    ["an agent's uid", resum(fix(tar, b => b.write((20000).toString(8).padStart(7, "0") + "\0", 108, 8, "ascii")))],
+    ["a writable mode", resum(fix(tar, b => b.write("0000600\0", 100, 8, "ascii")))],
+    ["a bad checksum", fix(tar, b => { b[0] ^= 1; })],
+    ["a symlink entry", resum(fix(tar, b => b.write("2", 156, 1, "ascii")))],
+    ["a body that is not a token", fix(tar, b => b.write("not a token with spaces!!!!!!!!!!!!!!!!!!!!!", 512, 43, "ascii"))],
+    ["bytes after the end blocks", Buffer.concat([tar, Buffer.alloc(512)])],
+    ["a byte in the end blocks", fix(tar, b => { b[1600] = 1; })],
+    ["a .boot tar", bootTar({ computerd_token: "t".repeat(40), vnc_password: "abcdefgh" })],
+    ["nothing", Buffer.alloc(0)],
+  ];
+  for (const [what, buf] of /** @type {Array<[string, Buffer]>} */ (cases)) assert.equal(allowAgentdTokenTar(buf).ok, false, what);
+  assert.equal(allowBootTar(tar).ok, false, ".boot's check refuses the agentd tar too");
+});
+
+test("policy: no computer is ever published to the host or any other network, so the screen relay's port is reachable only on the computers' own network", async t => {
+  const body = await realBody(t);
+  assert.deepEqual(body.HostConfig.PortBindings, {}, "the driver publishes nothing");
+  for (const bindings of [{ "5910/tcp": [{ HostPort: "5910" }] }, { "5910/tcp": [{ HostIp: "0.0.0.0", HostPort: "5910" }] }]) {
+    assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, PortBindings: bindings } }, CONFIG).ok, false);
+  }
+  assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, PublishAllPorts: true } }, CONFIG).ok, false, "not by publishing every exposed port either");
+  assert.equal(allowCreate({ ...body, HostConfig: { ...body.HostConfig, NetworkMode: "host" } }, CONFIG).ok, false, "nor by the host's network");
 });

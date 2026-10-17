@@ -28,7 +28,7 @@ export class Fills {
   /**
    * @param {{ pool: import("./pool.js").Pool, shield: import("./shield.js").Shield, keyboard: import("./keyboard.js").Keyboard,
    *   emit: (type: string, payload: any, where?: any) => any, on?: (pattern: string, fn: (e: any) => void) => () => void,
-   *   helper: (agent: string) => Promise<{ url: string, token: string }>, log?: (m: string) => void,
+   *   helper: (agent: string) => Promise<{ url: string, token: string }>, register?: (agent: string, values: string[]) => void, log?: (m: string) => void,
    *   now?: () => number, schedule?: (fn: () => void, ms: number) => () => void }} deps
    */
   constructor(deps) {
@@ -37,6 +37,7 @@ export class Fills {
     this.keyboard = deps.keyboard;
     this.send = deps.emit;
     this.helper = deps.helper;
+    this.register = deps.register || (() => {});
     this.log = deps.log || (() => {});
     this.now = deps.now || (() => deps.pool.now());
     this.schedule = deps.schedule || ((fn, ms) => { const t = setTimeout(fn, ms); t.unref?.(); return () => clearTimeout(t); });
@@ -53,10 +54,10 @@ export class Fills {
 
   /**
    * Shield the agent's computer and hand the vault a CDP address and a token for this fill only.
-   * @param {string} agent @param {string} origin
+   * @param {string} agent @param {string} origin @param {string[]} [values] the exact values the fill will type: the computer scrubs them from what the agent's DevTools return
    * @returns {Promise<{ fill: string, cdpUrl: string, token: string, expires: number }>}
    */
-  async begin(agent, origin) {
+  async begin(agent, origin, values = []) {
     if (this.open.has(agent)) throw busy(`${agent}'s computer is busy: another sign-in is being filled`);
     const holder = this.keyboard.holder(agent);
     if (holder) throw busy(`${agent}'s computer is busy: ${holder} has the keyboard`);
@@ -83,6 +84,7 @@ export class Fills {
       if (this.shield.reason(agent) === "fill") await this.shield.set(agent, false, { reason: "fill" }).catch(() => {});
       throw e;
     }
+    this.register(agent, values);
     f.cancel = this.schedule(() => { this.end(agent, id, { why: "expired" }).catch(err => this.log(`expire ${agent}'s fill: ${err.message}`)); }, LIMIT_MS);
     this.send("computer.fill-began", { agent, fill: id, origin: f.origin });
     this.log(`${agent}'s computer shielded for a fill (${f.origin})`);

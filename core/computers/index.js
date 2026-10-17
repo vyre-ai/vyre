@@ -15,8 +15,17 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
+import crypto from "node:crypto";
 import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
+import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
+import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
+import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
+import { registerAgentTools } from "./agent-tools.js";
+import { ComputerUpdater, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
+import fs from "node:fs";
+import { makeAgentEndpoint } from "./agent-endpoint.js";
+import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -29,6 +38,7 @@ import { BrowserGlass } from "./browser-glass.js";
 import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
 import { resolveMemberBrowserProfileKey } from "../../lib/member-browser-profile-key.js";
 import { resolveAgentBrowserProfileKey } from "../../lib/agent-browser-profile-key.js";
+import { createMemberKey } from "./member-key.js";
 import { personIdOf } from "./person-id.js";
 import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member-browser-handback.js";
 import * as config from "../config/index.js";
@@ -72,12 +82,21 @@ export function pickDriver(cfg, key) {
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {
   async start(ctx) {
-    ctx.store.migrate(MIGRATIONS);
+    ctx.store.migrate([...MIGRATIONS, ...AGENT_USER_MIGRATIONS, ...UPDATE_MIGRATIONS]);
     const cfg = (ctx.config && ctx.config.computers) || {};
     const driver = pickDriver(cfg, ctx.paths ? ctx.paths.root : "default");
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
+    // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
+    // once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
+    const memberKey = createMemberKey({
+      fetch: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
+      put: async value => {
+        const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value, made_by: "computers" }, grants: ["computers"], onlyIfAbsent: true });
+        if (r && r.error) throw new Error(r.error.message);
+        return r && r.data;
+      } });
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
-      memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
+      memberTokenKey: () => memberKey() });
     const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");
     pool.browserProfiles = new BrowserProfiles({
       pool,
@@ -95,10 +114,15 @@ export default {
       pool, shared, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()),
       onHandback: (agent, t) => sealMemberBrowserOnHandback(handbackDeps, agent, { personId: String(t.personId), browserSnap: t.browserSnap }),
     });
-    const helperFor = agent => agentBrowser.helper(agent);
-    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on,
+    // With the space's computer up, an agent's Chrome is its own and the shield and the fill's window are kept by the Chrome link (cdp-adapter.js); otherwise the shared browser's computerd does it.
+    const helperFor = async agent => {
+      if (!agentdReady()) return agentBrowser.helper(agent);
+      await agentTools.place(agent); await agentUsers.wake(agent);
+      return cdpAdapter.endpoint(agent);
+    };
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => agentdReady() ? cdpAdapter.shield(agent, on, o) : tellComputerd(pool, agent, on,
       { ...o, computerRow: agentBrowser.computerRow(agent) }, a => helperFor(a)) });
-    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor });
+    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: helperFor, register: (agent, values) => cdpAdapter.register(agent, values) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -112,9 +136,57 @@ export default {
     let glass = null;
     /** @type {BrowserGlass|null} */
     let browserGlass = null;
+    // How many viewers have each agent's own screen open: a watched agent is not put to sleep for being idle.
+    /** @type {Map<string, number>} */
+    const screenViewers = new Map();
+    /** The agent's own screen for Glass: its relay on the space's computer, a ticket agentd was told about, and the agent's own VNC password. (agentUsers is made below; this runs on a connection, long after.) */
+    const agentScreen = {
+      open: async (/** @type {string} */ agent) => {
+        await agentUsers.wake(agent);
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        // the relay lets in vyred's address only: have the computer pin this vyred's address (it can change when vyred is recreated) before the ticket
+        await pool.pin(SHARED_COMPUTER_ID);
+        const hello = crypto.randomBytes(24).toString("base64url");
+        await agentUsers.screenTicket(agent, hello);
+        const password = vncPasswordFor(await memberKey(), agent);
+        screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+        let released = false;
+        return { host: h.host, port: RELAY_PORT, password, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+      },
+    };
+    /** The agent's Chrome for the code that drives it (hands, fill): a ticket with the relay for its debugging pipe, held as one link per agent in the adapter (cdp-adapter.js). */
+    const cdpAdapter = createCdpAdapter({ log: ctx.log, open: async (/** @type {string} */ agent) => {
+      const h = pool.hosts.get(SHARED_COMPUTER_ID);
+      if (!h) throw new Error(NOT_SET);
+      await pool.pin(SHARED_COMPUTER_ID);
+      const hello = crypto.randomBytes(24).toString("base64url");
+      await agentUsers.cdpTicket(agent, hello);
+      screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+      let released = false;
+      return { host: h.host, port: RELAY_PORT, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+    } });
+    /** The agent's terminal for the terminal stream: a one-use ticket with the relay (agentd-relay.js), which starts the terminal as the agent. */
+    const agentTerminal = {
+      openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
+        const h = pool.hosts.get(SHARED_COMPUTER_ID);
+        if (!h) throw new Error(NOT_SET);
+        await pool.pin(SHARED_COMPUTER_ID);
+        const hello = crypto.randomBytes(24).toString("base64url");
+        await agentUsers.terminalTicket(agent, hello, session);
+        screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+        let released = false;
+        return { host: h.host, port: RELAY_PORT, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+      },
+    };
+    try {
+      const { Terminal } = await import("./terminal.js");
+      const terminal = new Terminal({ pool, screen: agentTerminal, log: ctx.log });
+      ctx.upgrade("terminal", (req, socket, head, info) => terminal.handle(req, socket, head, info));
+    } catch (e) { ctx.log(`terminal not available: ${/** @type {Error} */ (e).message}`); }
     try {
       const { Glass } = await import("./glass.js");
-      glass = new Glass({ pool, keyboard, log: ctx.log });
+      glass = new Glass({ pool, keyboard, log: ctx.log, screen: agentScreen });
       ctx.upgrade("glass", (req, socket, head, info) => glass.handle(req, socket, head, info));
       browserGlass = new BrowserGlass({ pool, agentBrowser, keyboard, log: ctx.log });
       ctx.upgrade("browser-glass", (req, socket, head, info) => browserGlass.handle(req, socket, head, info));
@@ -133,9 +205,9 @@ export default {
     // SPEC's floor on polling an install that isn't using computers at all (found by perf).
     const sweepMs = Number(cfg.sweepMs ?? 5_000);
     const idleSweepMs = Number(cfg.idleSweepMs ?? 60_000);
-    const sweep = async () => { keyboard.sweep(); await pool.sweep(); };
+    const sweep = async () => { keyboard.sweep(); await pool.sweep(); await agentUsers.sweep(agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0).catch(e => ctx.log(`agent screens: ${/** @type {Error} */ (e).message}`)); };
     const busy = () => pool.checkouts.size > 0 || pool.idle.size > 0 || keyboard.takeovers.size > 0;
-    let sweeping = false, timer = null;
+    let sweeping = false, timer = null, autoUpdateTimer = null;
     const schedule = () => {
       if (sweepMs <= 0) return;
       timer = setTimeout(async () => {
@@ -203,7 +275,63 @@ export default {
       return surface;
     };
 
+    // The agents of the space's one computer: a Linux user each, a screen woken on demand and closed after 5 idle minutes (agent-users.js).
+    // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
+    // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
+    const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
+    const lazy = name => async u => {
+      const driver = pool.driver;
+      const box = pool.row(SHARED_COMPUTER_ID);
+      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
+      const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
+      const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
+      return /** @type {any} */ (ctl)[name](u);
+    };
+    const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
+      // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
+      emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
+      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
+    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+      terminal: (agent, session) => {
+        const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
+        return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
+      },
+      watch: (agent, slow, surface) => {
+        const ticket = pool.ticket(agent, isSurface(surface) ? surface : "glass:viewer", { slow, perAgent: true });
+        const { w, h } = pool.size(agent);
+        return { ticket, path: `${agentBrowser.glassPath()}?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
+      } });
+
+    // Bring the space's computer to the image this Vyre wants (update.js). It runs by itself when the server starts after an update; the owner can run it too.
+    const runningVersion = () => { try { return String(JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version); } catch { return "0.0.0"; } };
+    const updater = new ComputerUpdater({ db: ctx.store.db, pool, users: agentUsers, version: runningVersion(), log: ctx.log, emit,
+      held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0 || shield.has(agent) });
+    const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
+    /** Only the Space's owner, and no agent: the update stops every agent's screen for a moment. @param {any} meta */
+    const ownerOnly = async meta => {
+      const K = ctx.kernel;
+      if (K && typeof K.chain === "function") {
+        const chain = await K.chain(meta).catch(() => null);
+        const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1 || canon(String(hop.actor.id)) !== canon(String(K.owner))) {
+          throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
+        }
+        return;
+      }
+      if (agentClaim(String(meta && meta.caller || ""))) throw Object.assign(new Error("only the owner of this Space updates its agent computer"), { code: "denied" });
+    };
+    tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
+      obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });
+    tool("computers.update.status", "Whether the Space's agent computer matches this version of Vyre: what it was made from and what this Vyre wants. Owner only.",
+      obj({}), async (_i, meta) => { await ownerOnly(meta); return updater.status(); });
+    // After an update the server starts on the new Vyre while the computer is still the old one: bring it along once the rest is up, never blocking the start.
+    if (driver && cfg.autoUpdate !== false) {
+      const t0 = setTimeout(() => { updater.run().then(r => { if (r.updated) ctx.log(`agent computer: ${r.message}`); else if (r.state === "busy") ctx.log(`agent computer: ${r.message}`); }).catch(e => ctx.log(`agent computer update failed: ${/** @type {Error} */ (e).message}`)); }, Number(cfg.updateDelayMs ?? 20_000));
+      t0.unref();
+      autoUpdateTimer = t0;
+    }
 
     tool("computers.rename", "Rename an agent's computer: the person's own label for it, shown wherever the computer appears. An empty name goes back to the agent's name.",
       obj({ computer: str, name: str }, ["computer", "name"]), async (i, { caller }) => {
@@ -338,8 +466,13 @@ export default {
         return { ticket, path, width: w, height: h };
       });
 
+    const agentdReady = () => { const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
+
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
       obj({ agent: str, thread: str }), async (i, { caller }) => {
+        // The space's computer, when it is there: the agent's own Chrome, whose address and token come from here and from nowhere else. (The shared headless browser below is the fallback until it is deleted.)
+        if (agentdReady()) return agentEndpoint(i, caller);
         const agent = await resolve(i, caller);
         const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
         return { helper: ep.helper };
@@ -364,10 +497,10 @@ export default {
     };
 
     tool("computers.fill.begin", "Shield an agent's computer for a Vault fill: the agent's hands and CDP sockets are cut, and the vault gets a CDP address and a token for this fill only, good for 60 s.",
-      obj({ agent: str, origin: str }, ["agent", "origin"]), async (i, { caller }) => {
+      obj({ agent: str, origin: str, values: { type: "array", items: str } }, ["agent", "origin"]), async (i, { caller }) => {
         vaultOnly(caller);
         if (!AGENT.test(String(i.agent || ""))) throw new Error(`"${i.agent}" is not an agent name`);
-        return fills.begin(String(i.agent), String(i.origin || ""));
+        return fills.begin(String(i.agent), String(i.origin || ""), Array.isArray(i.values) ? i.values.filter(v => typeof v === "string") : []);
       }, { internal: true });
 
     tool("computers.fill.end", "End a Vault fill: its token and socket are dropped and the agent's computer is unshielded. target: the tab signed in, for the agent's hands.",
@@ -430,6 +563,8 @@ export default {
       async stop() {
         stopDeaths();
         if (timer) clearTimeout(timer);
+        if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
+        if (typeof offCreated === "function") offCreated();
         keyboard.stop();
         shield.stop();
         fills.stop();

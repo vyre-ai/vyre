@@ -299,6 +299,15 @@ export function register(ctx, h) {
     },
   });
 
+  ctx.tool("agents.level", {
+    description: "What the caller may do with an agent: edit, use or none. A person's surface only.",
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }, meta) => {
+      only(meta, "ask what level of an agent it has");
+      return { agent: String(agent), level: await levelOf(meta, h.must(agent)) };
+    },
+  });
+
   ctx.tool("agents.used", {
     description: "Where an agent is used: its chats, and the flows that name it as a doer.",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },

@@ -54,11 +54,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg \
       tigervnc-standalone-server tigervnc-common tigervnc-tools \
-      fluxbox xterm xdotool x11-utils x11-xserver-utils \
+      fluxbox xterm xdotool xinput x11-utils x11-xserver-utils \
       at-spi2-core dbus-x11 \
       python3 python3-gi gir1.2-atspi-2.0 \
       chromium \
       imagemagick \
+      tmux bubblewrap procps util-linux \
       tini \
       fonts-liberation fonts-noto-color-emoji \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -103,7 +104,8 @@ RUN groupadd -g 1000 agent \
     && chown browser:browser /var/lib/vyre/browser/chromium && chmod 0700 /var/lib/vyre/browser/chromium \
     && chown browser:agent /var/lib/vyre/browser/downloads && chmod 2750 /var/lib/vyre/browser/downloads
 
-# Chromium's own password saving is off by policy: the Vault is the only store (ADR 0005, decision 3).
+# Chromium's own password saving, autofill and sync are off by policy: the Vault is the only store (ADR 0005, decision 3). The owner's ruling (18 Oct 2026): the agent keeps full DevTools in its own Chrome, so
+# only the pages that would list a saved login or address are blocked by URL; the folder downloads go to is set per agent by the holder (agentd-chrome.py).
 # No extensions of any kind: one would run in the same page as a password the Vault fills.
 # DevTools stay allowed: DeveloperToolsAvailability 2 also refuses CDP attach ("Not allowed"), which
 # is how the agent's hands and the Vault fill work; the agent already has CDP through its hands.
@@ -116,14 +118,42 @@ RUN groupadd -g 1000 agent \
 # guess. The new tab is blank (chrome://newtab is blocked with the rest).
 RUN mkdir -p /etc/chromium/policies/managed \
     && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false,' \
-       ' "ExtensionInstallBlocklist": ["*"],' \
-       ' "URLBlocklist": ["file://*", "chrome://*", "devtools://*", "chrome-extension://*", "chrome-untrusted://*", "view-source:*"],' \
-       ' "DownloadDirectory": "/var/lib/vyre/browser/downloads", "PromptForDownloadLocation": false,' \
+       ' "ExtensionInstallBlocklist": ["*"], "SyncDisabled": true, "BrowserSignin": 0, "PasswordLeakDetectionEnabled": false,' \
+       ' "URLBlocklist": ["file://*", "chrome-extension://*", "chrome://password-manager", "chrome://settings/passwords", "chrome://settings/autofill", "chrome://settings/payments", "chrome://settings/addresses"],' \
+       ' "PromptForDownloadLocation": false,' \
        ' "NewTabPageLocation": "about:blank", "HomepageLocation": "about:blank", "HomepageIsNewTabPage": false}' \
        > /etc/chromium/policies/managed/vyre.json \
     && python3 -c 'import json; json.load(open("/etc/chromium/policies/managed/vyre.json"))'
 
 # root-owned and read-only (the root filesystem is read-only too): neither user can change them.
+
+# The agents' users (owner decision, 18 Oct 2026: one computer per space, one Linux user per agent). The root is read-only at run time, so
+# the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /var/lib/vyre/agents/ag<uid>/home (inside the state volume: the root is read-only)
+# and their homes and run folders are made here too, each owned by its uid and 0700 (a new volume copies them as they are). agentd keeps only CAP_SETUID and CAP_SETGID: it chowns nothing and starts every agent process as that uid.
+# Each agent also has a BROWSER uid, agb<uid+1000> (agb21000..agb21063), its own group: Chrome, its debugging socket and its profile belong to it (0700), so the agent's shell cannot read the browser's files, socket or
+# memory. Three small folders per agent carry what has to cross: x/ag<uid> (the agent's UNTRUSTED X cookie; owned by the browser, group = the agent's, setgid, so the agent reads it and cannot change it), and downloads/ag<uid> (owned by the
+# browser, group = the agent's, so a download is readable by the agent and writable only by the browser).
+RUN for n in $(seq 20000 20063); do \
+      b=$((n + 1000)); \
+      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/var/lib/vyre/agents/ag$n/home" "ag$n" \
+      && groupadd -g "$b" "agb$b" && useradd -M -u "$b" -g "$b" -s /usr/sbin/nologin -d "/var/lib/vyre/browsers/agb$b" "agb$b" \
+      && mkdir -p "/var/lib/vyre/agents/ag$n/home" "/var/lib/vyre/browsers/agb$b/profile" "/var/lib/vyre/x/ag$n" "/var/lib/vyre/downloads/ag$n" \
+      && chown "$n:$n" "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home" && chmod 0700 "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home" \
+      && chown -R "$b:$b" "/var/lib/vyre/browsers/agb$b" && chmod 0700 "/var/lib/vyre/browsers/agb$b" "/var/lib/vyre/browsers/agb$b/profile" \
+      && chown "$b:$n" "/var/lib/vyre/x/ag$n" && chmod 2750 "/var/lib/vyre/x/ag$n" \
+      && chown "$b:$n" "/var/lib/vyre/downloads/ag$n" && chmod 2750 "/var/lib/vyre/downloads/ag$n"; \
+    done \
+    && chown vyre:vyre /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads && chmod 0711 /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-chrome.py /opt/agentd/
+RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
+    && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
+    && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
+    && mkdir -p /var/lib/vyre/agentd && chown agentctl:agentctl /var/lib/vyre/agentd && chmod 0700 /var/lib/vyre/agentd
+COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
+# agentd's code is root's: neither agentctl nor an agent can write a file it runs.
+RUN chmod 0755 /usr/local/bin/agentd-vncpass \
+    && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
+    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
 COPY computerd /opt/computerd
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R a+rX,go-w /opt/computerd && chmod 0755 /usr/local/bin/entrypoint.sh /opt/computerd/atspi.py

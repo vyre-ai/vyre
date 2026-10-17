@@ -352,6 +352,18 @@ freezer() {
 }
 exec 9> >(freezer)
 
+# ---- agentd, as agentctl: the agents' users, screens and Chrome (owner decision, 18 Oct 2026) ------
+# A dedicated uid (1004) that keeps exactly CAP_SETUID and CAP_SETGID, ambient, so it can start an agent's processes as that agent's uid and do nothing else: no chown, no signals to
+# another uid, no files of another uid. Its socket and its token file are its own, 0600 and 0400 (the driver seeds the token like .boot); an agent uid has no access to either. Started only
+# when the token is there, so a computer made before agents lived on it starts as it always did.
+AGENTD_DIR="${VYRE_HOME}/agentd"
+if [ -f "${AGENTD_DIR}/token" ]; then
+  log "starting agentd"
+  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --securebits=+noroot,+noroot_locked --no-new-privs -- \
+    env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
+    node /opt/agentd/agentd-main.js &
+fi
+
 # ---- computerd, in the foreground, as vyre: its exit is the container's exit ------------------
 # Only what computerd needs, named one by one. GTK_MODULES and friends make Chromium build an
 # AT-SPI-visible tree, for AT-SPI reads only now -- Chrome itself is launched above, not by

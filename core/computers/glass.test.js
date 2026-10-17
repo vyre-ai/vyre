@@ -430,3 +430,59 @@ test("glass: a screen that drops while the computer is still running ends the st
   assert.ok(!Buffer.concat(chunks).includes(Buffer.from(STOPPED)));
   await new Promise(r => c.upgradeServer.close(r));
 });
+
+test("glass: a per-agent ticket is dialled at the relay with the relay's own hello first, never through the shared computer's screen, and its hold is released", async () => {
+  const xvnc = await fakeXvnc();
+  // the relay: reads the hello line, then is the agent's screen
+  /** @type {string[]} */ const hellos = [];
+  const relay = net.createServer(s => {
+    let buf = Buffer.alloc(0);
+    const onData = d => {
+      buf = Buffer.concat([buf, d]);
+      const nl = buf.indexOf(10);
+      if (nl < 0) return;
+      s.off("data", onData);
+      hellos.push(buf.subarray(0, nl).toString());
+      const up = net.connect(xvnc.port, "127.0.0.1");
+      up.on("connect", () => { if (buf.length > nl + 1) up.write(buf.subarray(nl + 1)); s.pipe(up); up.pipe(s); });
+      up.on("error", () => s.destroy());
+    };
+    s.on("data", onData);
+  });
+  await new Promise(r => relay.listen(0, "127.0.0.1", r));
+  const pool = fakePool({ port: 1, running: false });
+  const ticket = crypto.randomBytes(8).toString("hex");
+  pool.tickets.set(ticket, { agent: "kit", surface: "glass:laptop", slow: false, perAgent: true });
+  /** @type {string[]} */ const events = [];
+  const screen = { open: async agent => { events.push(`open ${agent}`); return { host: "127.0.0.1", port: /** @type {any} */ (relay.address()).port, password: PASSWORD, hello: `${"r".repeat(32)}\n`, release: () => events.push("release") }; } };
+  const glass = new Glass({ pool, keyboard: /** @type {any} */ ({ canType: () => false }), log: () => {}, screen });
+  const upgradeServer = net.createServer(sock => glass.handle(req(), sock, Buffer.alloc(0), { url: new URL(`http://vyred/v1/streams/computers/glass?ticket=${ticket}`) }));
+  await new Promise(r => upgradeServer.listen(0, "127.0.0.1", r));
+  const { sock } = await fakeBrowser(/** @type {any} */ (upgradeServer.address()).port);
+  const { status, rest } = await readUpgrade(sock);
+  assert.equal(status, "101");
+  const frames = frameQueue(sock, rest);
+  assert.equal((await frames.collect()).toString("latin1"), "RFB 003.008\n", "the agent's screen answered through the relay");
+  assert.deepEqual(hellos, ["r".repeat(32)]);
+  assert.deepEqual(pool.viewerCalls, [], "the shared computer's viewer hold is not used");
+  assert.deepEqual(events, ["open kit"]);
+  sock.destroy();
+  await new Promise(r => setTimeout(r, 150));
+  assert.deepEqual(events, ["open kit", "release"]);
+  await xvnc.close(); relay.close(); await new Promise(r => upgradeServer.close(r));
+});
+
+test("glass: a per-agent ticket whose screen cannot be opened closes with the reason and never touches the shared computer", async () => {
+  const pool = fakePool({ port: 1 });
+  const ticket = crypto.randomBytes(8).toString("hex");
+  pool.tickets.set(ticket, { agent: "kit", surface: "glass:laptop", slow: false, perAgent: true });
+  const glass = new Glass({ pool, keyboard: /** @type {any} */ ({ canType: () => false }), log: () => {}, screen: { open: async () => { throw new Error("the agent computer is not set up"); } } });
+  const upgradeServer = net.createServer(sock => glass.handle(req(), sock, Buffer.alloc(0), { url: new URL(`http://vyred/v1/streams/computers/glass?ticket=${ticket}`) }));
+  await new Promise(r => upgradeServer.listen(0, "127.0.0.1", r));
+  const { sock, closed } = await fakeBrowser(/** @type {any} */ (upgradeServer.address()).port);
+  const { status } = await readUpgrade(sock).catch(() => ({ status: "closed" }));
+  assert.ok(status === "101" || status === "closed");
+  await closed;
+  assert.deepEqual(pool.viewerCalls, []);
+  await new Promise(r => upgradeServer.close(r));
+});

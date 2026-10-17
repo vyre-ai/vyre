@@ -41,6 +41,7 @@
 import { createServer } from "node:http";
 import net from "node:net";
 import { createGate } from "./gate.js";
+import { publishPeer } from "./peer-file.js";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -665,7 +666,7 @@ const server = createServer(async (req, res) => {
     const cdpId = isVersion ? identifyClient(bearer) : null;
     // Only the owner's token moves the pin. A CDP client's token is an agent's (in shared mode, one per member), so whoever holds
     // it from another place must not pull the pin away from vyred: from an address that is not known it gets nothing.
-    if (isOwner) gate.pin(req.socket.remoteAddress);
+    if (isOwner) { gate.pin(req.socket.remoteAddress); publishPeer(gate.pinned); }
     else if (!gate.known(req.socket.remoteAddress)) {
       // Not vyred, and not this computer: no answer at all, not even a 401 (gate.js).
       gate.failed(req.socket.remoteAddress);

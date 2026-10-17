@@ -18,7 +18,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "gate.standing.add", "gate.standing.list", "gate.standing.revoke",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
-  "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
+  "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.level", "agents.used",
   "agents.vault.assign", "agents.vault.list", "agents.vault.unassign",
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
@@ -101,11 +101,12 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "commands.list",
   "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
+  "computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
   "computers.checkout", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
-  "computers.takeover", "computers.watch",
-  "connectors.calendar.today", "connectors.connection.approve",
+  "computers.takeover", "computers.update", "computers.update.status", "computers.watch",
+  "connectors.calendar.today", "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.connection.approve",
   "connectors.connection.check", "connectors.connection.create", "connectors.connection.decline", "connectors.connection.delete", "connectors.connection.export",
   "connectors.connection.get", "connectors.connection.import", "connectors.connection.list", "connectors.connection.proposals", "connectors.connection.propose",
   "connectors.connection.rebuild", "connectors.connection.update", "connectors.declare", "connectors.declared", 

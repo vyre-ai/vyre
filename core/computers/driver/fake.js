@@ -48,9 +48,14 @@ export class FakeDriver {
     return c;
   }
 
+  /** The state volumes by name, each with the layout of folders it holds (1 = made before the agents' folders, 2 = with them). A test sets an old one; a new volume gets the image's. @type {Map<string, { layout: number }>} */
+  volumes = new Map();
+
   /** @param {CreateSpec} spec */
   async create(spec) {
     const id = `fake-${++this.n}-${spec.agent}`;
+    const vol = spec.browserVolume || `fake-browser-${spec.agent}`;
+    if (!this.volumes.has(vol)) this.volumes.set(vol, { layout: 2 });
     this.containers.set(id, { id, agent: spec.agent, state: "created", spec: { ...spec, env: { ...spec.env }, labels: { ...spec.labels } } });
     this.calls.push({ op: "create", id, agent: spec.agent });
     return { id };
@@ -63,12 +68,25 @@ export class FakeDriver {
     this.calls.push({ op: "seed", id });
   }
 
+  /** The folder layout put into the container's state volume (directories only; not logged as a call, so the order other tests pin stays). @param {string} id */
+  async migrateLayout(id) {
+    const c = this.must(id);
+    const vol = c.spec.browserVolume || `fake-browser-${c.agent}`;
+    this.volumes.set(vol, { layout: 2 });
+  }
+
   /** @param {string} id @param {Array<{ name: string, token: string }>} agents */
   async seedAgentTokens(id, agents) {
     const c = this.must(id);
     if (!Array.isArray(agents) || agents.length === 0) throw new Error("seedAgentTokens needs at least one agent");
     c.agentTokens = agents.map(a => ({ ...a }));
     this.calls.push({ op: "seedAgentTokens", id });
+  }
+
+  /** agentd's token (kept, not logged as a call: the order of calls other tests pin stays as it was) @param {string} id @param {string} token */
+  async seedAgentd(id, token) {
+    const c = this.must(id);
+    c.agentdToken = token;
   }
 
   async start(id) {

@@ -20,6 +20,15 @@
       {"name": "computers.takeover", "effect": "write", "reach": "anyone"},
       {"name": "computers.giveback", "effect": "write", "reach": "anyone"},
       {"name": "computers.watch", "effect": "write", "reach": "anyone"},
+      {"name": "computers.agent.status", "effect": "read", "reach": "person"},
+      {"name": "computers.agent.wake", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.sleep", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.watch", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.terminals", "effect": "read", "reach": "person"},
+      {"name": "computers.agent.terminal.open", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
+      {"name": "computers.update", "effect": "write", "reach": "person"},
+      {"name": "computers.update.status", "effect": "read", "reach": "person"},
       {"name": "computers.endpoint", "reach": "modules"},
       {"name": "computers.may-act", "reach": "modules"},
       {"name": "computers.helper", "reach": "modules"},
@@ -39,10 +48,10 @@
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
       "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
       "computer.shielded", "computer.unshielded", "computer.joined", "computer.left",
-      "computer.member-added", "computer.member-removed", "computer.member-rotated"
+      "computer.member-added", "computer.member-removed", "computer.member-rotated", "computer.updated"
     ]
   },
-  "shows": { "streams": ["glass", "browser-glass"], "cli": ["computers"], "deck": ["panel:glass"] },
+  "shows": { "streams": ["glass", "browser-glass", "terminal"], "cli": ["computers"], "deck": ["panel:glass"] },
   "needs": { "vault": ["vyre-shared-computer-member-key", "vyre-agent-browser-profile-key"] },
   "teaches": {},
   "settings": [

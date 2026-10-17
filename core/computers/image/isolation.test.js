@@ -384,3 +384,103 @@ test("isolation: the agent is an untrusted X client: no cookie no display, and n
   const xterm = shAgent("pgrep -u 1000 -x xterm");
   assert.equal(xterm.code, 0, "the agent's xterm is not running under its untrusted cookie");
 });
+
+// ---- the agent users (owner decision, 18 Oct 2026): one computer, one Linux user per agent ----
+
+test("isolation (static): the image makes the 64 agent users itself, each in its own group only, and agentd never adds a user at run time", () => {
+  assert.match(DOCKERFILE, /for n in \$\(seq 20000 20063\)/);
+  assert.match(DOCKERFILE, /groupadd -g "\$n" "ag\$n" && useradd -M -u "\$n" -g "\$n" -s \/bin\/bash -d "\/home\/ag\$n" "ag\$n"/);
+  assert.doesNotMatch(DOCKERFILE.split("for n in $(seq 20000")[1].split("COPY agentd.js")[0], / -G /, "an agent user belongs to no other group");
+  assert.match(DOCKERFILE, /mkdir -p "\/home\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n"/, "each home and run folder is made at build");
+  assert.match(DOCKERFILE, /chown "\$n:\$n" "\/home\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n" && chmod 0700/, "owned by its own uid, 0700");
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.doesNotMatch(agentd, /"(useradd|groupadd|userdel|sudo|su|chown)"/, "the root is read-only, agentd has no CAP_CHOWN and no agent gets admin");
+});
+
+test("isolation (static): agentd starts nothing as root: every agent process goes through setpriv with no capabilities and no new privileges", () => {
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.match(agentd, /"--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs"/);
+  assert.match(agentd, /"--clear-groups"/);
+});
+
+test("isolation (static): agentd's control channel is a unix socket; the one TCP port is the screen relay, which opens nothing without a registered ticket", () => {
+  const main = fs.readFileSync(path.join(HERE_DIR, "agentd-main.js"), "utf8");
+  const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
+  assert.match(main, /server\.listen\(socket\)/);
+  assert.doesNotMatch(main + server, /listen\(\s*(\d+|process\.env\.[A-Z_]*PORT)|0\.0\.0\.0|127\.0\.0\.1/, "no port, no address");
+  assert.match(fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8"), /"-rfbport", "-1", "-rfbunixpath"/);
+  const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8");
+  assert.equal((main.match(/\.listen\(/g) || []).length, 2, "the control socket and the relay, nothing else");
+  assert.match(main, /relay\.listen\(o\.relayPort \?\? RELAY_PORT\)/);
+  assert.match(relay, /o\.tickets\.take\(/, "a connection is joined to a screen only through a ticket");
+  assert.match(relay, /\.\.\.asAgent\(u\), "\/usr\/bin\/python3", "-I", PIPE/, "the pipe runs as the agent, with one fixed word and no path");
+  assert.match(relay, /plain\(sock\.remoteAddress\) !== want\) return void sock\.destroy\(\)/, "only vyred's pinned address is let in, before a byte is read");
+  assert.match(fs.readFileSync(path.join(HERE_DIR, "computerd", "index.js"), "utf8"), /gate\.pin\(req\.socket\.remoteAddress\); publishPeer\(gate\.pinned\)/, "computerd writes the pin the relay reads");
+  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-chrome\.py \/opt\/agentd\//, "both helpers are in the image, root's");
+  assert.match(relay, /"\/usr\/bin\/python3", "-I", TERM, String\(u\.session\)/, "a terminal runs as the agent with only its checked name");
+  assert.doesNotMatch(relay, /vnc\.sock|socketOf/, "the relay never names a socket: the pipe builds it from its uid");
+});
+
+test("isolation (static): no environment variable can redirect agentd or its client, and agentd starts as agentctl with only setuid and setgid", () => {
+  for (const f of ["agentd-main.js", "agentd-client.js", "agentd-server.js"]) assert.doesNotMatch(fs.readFileSync(path.join(HERE_DIR, f), "utf8"), /process\.env/, f);
+  assert.match(ENTRYPOINT, /setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=\+setuid,\+setgid --ambient-caps=\+setuid,\+setgid --bounding-set=-all,\+setuid,\+setgid/);
+  assert.match(DOCKERFILE, /groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s \/usr\/sbin\/nologin/);
+});
+
+test("isolation (static): agentd starts with no new privileges and the root locked out, and its code is root's and not writable", () => {
+  const entry = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
+  const line = entry.split("\n").find(l => l.includes("--reuid=1004"));
+  assert.ok(line, "the agentd start line");
+  assert.match(line, /--securebits=\+noroot,\+noroot_locked/);
+  assert.match(line, /--no-new-privs/);
+  assert.match(line, /--bounding-set=-all,\+setuid,\+setgid/);
+  const tail = DOCKERFILE.split("COPY agentd-vncpass.sh")[1];
+  assert.match(tail, /chown -R root:root \/opt\/agentd/);
+  assert.match(tail, /chmod 0644 \/opt\/agentd\/\*\.js/);
+  assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
+});
+
+test("isolation (static): each agent's browser is its own uid, whose profile, debugging socket and memory the agent's shell cannot reach; only the agent's untrusted X cookie and the downloads cross, by group", () => {
+  const loop = DOCKERFILE.split("RUN for n in $(seq 20000 20063)")[1].split("COPY agentd.js")[0];
+  assert.match(loop, /b=\$\(\(n \+ 1000\)\)/, "the browser uid is the agent's plus 1000");
+  assert.match(loop, /groupadd -g "\$b" "agb\$b" && useradd -M -u "\$b" -g "\$b" -s \/usr\/sbin\/nologin -d "\/var\/lib\/vyre\/browsers\/agb\$b" "agb\$b"/, "its own group, no login");
+  assert.doesNotMatch(loop, / -G /, "no user belongs to another's group");
+  assert.match(loop, /chown -R "\$b:\$b" "\/var\/lib\/vyre\/browsers\/agb\$b" && chmod 0700 "\/var\/lib\/vyre\/browsers\/agb\$b" "\/var\/lib\/vyre\/browsers\/agb\$b\/profile"/, "profile and socket folder: the browser's, 0700");
+  assert.match(loop, /chown "\$b:\$n" "\/var\/lib\/vyre\/x\/ag\$n" && chmod 2750/, "the X cookie folder: the browser's, read by the agent's group (it holds the agent's UNTRUSTED cookie), written by no agent");
+  assert.match(loop, /chown "\$b:\$n" "\/var\/lib\/vyre\/downloads\/ag\$n" && chmod 2750/, "downloads: written by the browser, read by the agent's group only");
+  assert.doesNotMatch(loop, /chmod [0-7]*[1-7][0-7]{0,2} "\/var\/lib\/vyre\/browsers/, "no one else gets any right on the browser's folders");
+  const chrome = fs.readFileSync(path.join(HERE_DIR, "agentd-chrome.py"), "utf8");
+  assert.match(chrome, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
+  assert.match(chrome, /os\.chmod\(SOCK, 0o600\)/);
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  assert.match(agentd, /\.\.\.asBrowser\(u, lim\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
+  assert.doesNotMatch(agentd, /asAgent\([^)]*\)[^\n]*agentd-chrome/, "never as the agent");
+});
+
+test("isolation (static): Chrome keeps no passwords, addresses or sync, and its password and autofill pages are closed by policy; nothing else is shut to the agent's DevTools", () => {
+  const m = /printf '%s\\n' (.*?)\n\s+> \/etc\/chromium\/policies\/managed\/vyre\.json/s.exec(DOCKERFILE);
+  assert.ok(m, "the policy is written in the Dockerfile");
+  const json = JSON.parse([...m[1].matchAll(/'([^']*)'/g)].map(x => x[1]).join(""));
+  assert.equal(json.PasswordManagerEnabled, false);
+  assert.equal(json.AutofillAddressEnabled, false);
+  assert.equal(json.AutofillCreditCardEnabled, false);
+  assert.equal(json.SyncDisabled, true);
+  assert.equal(json.BrowserSignin, 0);
+  for (const u of ["chrome://password-manager", "chrome://settings/passwords", "chrome://settings/autofill", "chrome://settings/payments", "chrome://settings/addresses"]) assert.ok(json.URLBlocklist.includes(u), u);
+  assert.ok(!json.URLBlocklist.includes("chrome://*") && !json.URLBlocklist.includes("view-source:*") && !json.URLBlocklist.includes("devtools://*"), "ordinary chrome:// pages and DevTools stay open to the agent");
+  assert.equal(json.DeveloperToolsAvailability, undefined, "DevTools are not switched off");
+  assert.equal(json.DownloadDirectory, undefined, "the downloads folder is the holder's, per agent");
+});
+
+test("isolation (static): the screen is the browser uid's, never the agent's: Xvnc, its cookie and password, the window manager and the screen relay, and the agent's own cookie is an untrusted one", () => {
+  const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
+  const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
+  const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8");
+  const start = agentd.split("export function planStartScreen")[1].split("/** The agent's screen socket.")[0];
+  assert.doesNotMatch(start, /asAgent|as\(\)|as\(\{/, "no start step is built for the agent's uid");
+  assert.match(start, /"generate", D, "\.", "untrusted"/, "the agent's cookie is generated as untrusted (the X SECURITY extension)");
+  assert.match(start, /"-auth", b\.trusted/, "Xvnc is given the trusted cookie, which is the browser's");
+  assert.match(server, /asBrowser\(u, body\.limits \|\| \{\}\), "\/usr\/local\/bin\/agentd-vncpass", browserOf\(u\)\.vncPass/, "the password file is written by the browser uid into its folder");
+  assert.doesNotMatch(relay, /asAgent\(u\), "\/usr\/bin\/python3"/, "the screen relay's pipe is not the agent's");
+  assert.match(relay, /XAUTHORITY: browserOf\(u\)\.xauth/, "a terminal gets the untrusted cookie");
+});

@@ -285,6 +285,8 @@ vyre vault agent revoke <id>
 
 The agent `kit` may sign in to that one site with that one login until the expiry, and never reads the login. It is a grant in your Space, the same kind as every other: the agent, the action (fill), the login, the exact origin and the expiry. Only you give it, on your own session. When Claude asks, the request waits and you approve it with `vyre vault approve <id>`. Taking it away needs no one, and deleting the login ends every grant on it.
 
+The agent can use the signed-in session and see its cookies and tokens, but never the stored password. While a login is filled the agent is shut out of its own Chrome; the fill opens a new tab in the agent's own profile, signs in, empties the fields it typed and leaves the tab for the agent. Whatever the agent's DevTools return afterwards has the values the fill typed replaced by a marker, in every form they take, and the sign-in request's body is never given out. Chrome's own password manager, autofill and sync are off.
+
 ### Share a login from your own vault with an agent
 
 A member can let one agent sign in with one login from their own vault, on one site, until an expiry (up to a year; a week if you say nothing). Your agent can use this login while you're away. The agent never sees the login: its Chrome types it, and nothing returned to the agent or written to a log carries it.

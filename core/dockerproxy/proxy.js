@@ -38,8 +38,9 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
+import net from "node:net";
 
-const MAX_BODY = 256 * 1024;
+const MAX_BODY = 256 * 1024; // the folder layout tar (policy.layoutTar) is about 200 KB: raise this with it
 // A list of every computer on the box; far more than any real one, and bounded all the same.
 const MAX_LIST = 16 * 1024 * 1024;
 const MAX_EVENT_STREAMS = 4;
@@ -146,6 +147,10 @@ function only(body, shape, what) {
 const EXEC_SHAPE = { AttachStdin: v => v === false, AttachStdout: isBool, AttachStderr: isBool, Tty: isBool,
   Cmd: v => isStrs(v) && v.length > 0, Env: isStrs, WorkingDir: v => typeof v === "string", ConsoleSize: isSize,
   Privileged: v => v === false, User: v => v === "1000:1000" };
+// The ONE exec that may keep standard input open (sec53, 18 Oct 2026): vyred's call into agentd as the dedicated agentctl user. Its create body is checked by policy.allowAgentdExec and
+// re-serialised from the policy's own constants; its start is a connection upgrade that this proxy tunnels itself, from the exec's own inspection, with its own fixed start body, a cap on
+// what goes in and what comes out, and a deadline. Every other exec keeps AttachStdin false and is never upgraded.
+const AGENTD_START_BODY = '{"Detach":false,"Tty":false}';
 const EXEC_START_SHAPE = { Detach: isBool, Tty: isBool, ConsoleSize: isSize };
 
 /**
@@ -195,6 +200,10 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     return given.length === bearerBuf.length && crypto.timingSafeEqual(given, bearerBuf);
   };
   const prefix = config.labelPrefix;
+  const agentdPolicy = typeof policy.allowAgentdExec === "function" && policy.AGENTD_EXEC ? { allowAgentdExec: policy.allowAgentdExec, AGENTD_EXEC: policy.AGENTD_EXEC } : null;
+  /** Is this exec, as the Engine inspects it, agentd's client and nothing else? @param {any} info */
+  const isAgentdExec = info => Boolean(agentdPolicy && info && info.ProcessConfig && info.ProcessConfig.user === agentdPolicy.AGENTD_EXEC.user
+    && info.ProcessConfig.entrypoint === agentdPolicy.AGENTD_EXEC.cmd[0] && (info.ProcessConfig.arguments || []).length === 0);
   /** Each /events caller holds a connection to the Engine open; only a few at once. */
   let eventStreams = 0;
 
@@ -336,13 +345,20 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     // shared/browser-kind one, agent-browsers.md level 2) -- and the tar's own filename, not the
     // query, is what tells them apart; allowBootTar and allowAgentTokensTar each refuse the other
     // file's name outright, so exactly one of them can ever say ok for a given tar.
-    if (name === "seed") {
+    // A third file, agentd's token, lands in its own directory (policy.AGENTD_TOKEN.dir): the path in the query says which, and allowAgentdTokenTar is as strict as allowBootTar.
+    if (name === "seed" && typeof policy.allowAgentdTokenTar === "function" && policy.AGENTD_TOKEN && q.get("path") === policy.AGENTD_TOKEN.dir) {
+      if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
+      const verdict = policy.allowAgentdTokenTar(buf);
+      if (!verdict.ok) refuse(`archive: ${verdict.why}`);
+    } else if (name === "seed") {
       if (typeof policy.allowBootTar !== "function" || !policy.BOOT) refuse("this policy has no secrets file to allow");
       if (q.get("path") !== policy.BOOT.dir) refuse(`archive: only path=${policy.BOOT.dir}`);
       if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
       const boot = policy.allowBootTar(buf);
       const agentTokens = typeof policy.allowAgentTokensTar === "function" ? policy.allowAgentTokensTar(buf) : { ok: false, why: "this policy has no agent-tokens file to allow" };
-      if (!boot.ok && !agentTokens.ok) refuse(`archive: ${boot.why}`);
+      // the state volume's folders for a volume made before the image had them: exactly the bytes policy.layoutTar() makes (directories only, fixed owners and modes)
+      const layout = typeof policy.allowLayoutTar === "function" ? policy.allowLayoutTar(buf) : { ok: false, why: "this policy has no folder layout to allow" };
+      if (!boot.ok && !agentTokens.ok && !layout.ok) refuse(`archive: ${boot.why}`);
     }
 
     if (name === "events") {
@@ -412,6 +428,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       only(body, EXEC_START_SHAPE, "exec start");
       const r = await engine("GET", `${ver}/exec/${encodeURIComponent(m[1])}/json`);
       if (r.status !== 200) return send(res, r.status, r.body);
+      if (isAgentdExec(r.body)) refuse("an agentd exec is started only by a connection upgrade");
       const cid = r.body && r.body.ContainerID;
       if (typeof cid !== "string" || !cid) refuse(`exec ${m[1]} names no container`, 502);
       if (!(await own(ver, cid))) refuse(`exec ${m[1]}'s container is gone`);
@@ -446,7 +463,14 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     // vyred is the only caller on this network.
     if (name === "op") return forward(res, "POST", `${ver}/containers/${id}/${m[2]}${qs}`);
     if (name === "remove") return forward(res, "DELETE", `${ver}/containers/${id}${qs}`);
-    if (name === "seed") return forward(res, "PUT", `${ver}/containers/${id}/archive?${new URLSearchParams({ path: policy.BOOT.dir })}`, buf);
+    if (name === "seed") return forward(res, "PUT", `${ver}/containers/${id}/archive?${new URLSearchParams({ path: q.get("path") === policy.AGENTD_TOKEN?.dir ? policy.AGENTD_TOKEN.dir : policy.BOOT.dir })}`, buf);
+    if (name === "exec" && isObj(body) && body.User === "agentctl") {
+      if (!agentdPolicy) refuse("this policy has no agentd exec to allow");
+      const verdict = agentdPolicy.allowAgentdExec(c.Config.Labels, body);
+      if (!verdict.ok) refuse(`exec: ${verdict.why}`);
+      const x = agentdPolicy.AGENTD_EXEC;
+      return forward(res, "POST", `${ver}/containers/${id}/exec`, { AttachStderr: false, AttachStdin: true, AttachStdout: true, Cmd: [...x.cmd], Tty: false, User: x.user });
+    }
     if (name === "exec") {
       only(body, EXEC_SHAPE, "exec");
       if (!body.Cmd) refuse("exec needs a Cmd");
@@ -468,11 +492,57 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       req.resume();
     });
   });
-  // An attached exec would hijack the connection for stdin; docker.js never attaches.
-  server.on("upgrade", (req, sock) => {
-    log({ method: String(req.method), path: new URL(String(req.url), "http://docker").pathname, status: 403, why: "connection upgrades are refused" });
-    sock.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+  // A connection upgrade is refused unless it is the start of agentd's one exec (see AGENTD_START_BODY): then this proxy tunnels it, and nothing else, to the Engine.
+  server.on("upgrade", (req, sock, head) => {
+    sock.pause(); // nothing the caller sends is read until the checks are done and the tunnel is wired
+    const deny = (/** @type {number} */ status, /** @type {string} */ why) => {
+      log({ method: String(req.method), path: new URL(String(req.url), "http://docker").pathname, status, why });
+      sock.end(`HTTP/1.1 ${status} Refused\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`);
+    };
+    tunnel(req, sock, head).catch(err => deny(err instanceof Refusal ? err.status : 502, err instanceof Refusal ? err.message : `the Engine: ${err.message}`));
   });
+  /** @param {http.IncomingMessage} req @param {import("node:net").Socket} sock @param {Buffer} head */
+  const tunnel = async (req, sock, head) => {
+    if (!agentdPolicy) refuse("connection upgrades are refused");
+    if (!authorized(req.headers.authorization)) refuse("missing or wrong bearer", 401);
+    const url = new URL(String(req.url), "http://docker");
+    const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);
+    const ver = v ? v[0] : "";
+    const m = new RegExp(`^/exec/(${NAME})/start$`).exec(url.pathname.slice(ver.length));
+    if (req.method !== "POST" || !m || url.search || String(req.headers.upgrade).toLowerCase() !== "tcp") refuse("connection upgrades are refused");
+    if (Number(req.headers["content-length"]) !== Buffer.byteLength(AGENTD_START_BODY)) refuse("exec start: not the body agentd's start takes");
+    const r = await engine("GET", `${ver}/exec/${encodeURIComponent(m[1])}/json`);
+    if (r.status !== 200) refuse(`exec ${m[1]}: the Engine said ${r.status}`, r.status);
+    if (!isAgentdExec(r.body) || r.body.Running !== false || r.body.ExitCode != null) refuse("only agentd's exec is upgraded, and only once");
+    const cid = r.body && r.body.ContainerID;
+    if (typeof cid !== "string" || !cid || !(await own(ver, cid))) refuse(`exec ${m[1]} names no computer`);
+    const lim = /** @type {any} */ (agentdPolicy).AGENTD_EXEC;
+    const up = net.connect(socket);
+    let closed = false;
+    const end = () => { if (closed) return; closed = true; try { up.destroy(); } catch {} try { sock.destroy(); } catch {} };
+    const timer = setTimeout(end, lim.timeoutMs);
+    up.on("error", end); sock.on("error", end); up.on("close", () => { clearTimeout(timer); end(); }); sock.on("close", end);
+    up.on("connect", () => {
+      up.write(`POST ${ver}/exec/${encodeURIComponent(m[1])}/start HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(AGENTD_START_BODY)}\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n${AGENTD_START_BODY}`);
+      // the caller's own start body is dropped (the Engine got ours); what follows it is standard input, capped
+      let skip = Buffer.byteLength(AGENTD_START_BODY), sent = 0;
+      /** @param {Buffer} chunk */
+      const fromCaller = chunk => {
+        if (skip > 0) { const take = Math.min(skip, chunk.length); if (chunk.subarray(0, take).toString("utf8") !== AGENTD_START_BODY.slice(AGENTD_START_BODY.length - skip, AGENTD_START_BODY.length - skip + take)) return end(); skip -= take; chunk = chunk.subarray(take); }
+        if (!chunk.length) return;
+        sent += chunk.length;
+        if (sent > lim.maxInput) return end();
+        up.write(chunk);
+      };
+      if (head && head.length) fromCaller(head);
+      sock.on("data", fromCaller);
+      sock.resume();
+      sock.on("end", () => { try { up.end(); } catch {} });
+      let got = 0;
+      up.on("data", chunk => { got += chunk.length; if (got > lim.maxOutput + 4096) return end(); sock.write(chunk); });
+      up.on("end", () => { try { sock.end(); } catch {} });
+    });
+  };
   server.requestTimeout = 60_000;
   return server;
 }

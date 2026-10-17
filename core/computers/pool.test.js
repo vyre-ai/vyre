@@ -480,6 +480,7 @@ test("pool: addAgent makes a fresh shared computer, seeds it before start (not a
   assert.deepEqual(c.agentTokens.map(a => a.id), ["kit-1"]);
   assert.equal(c.agentTokens[0].name, "alice");
   assert.equal(c.agentTokens[0].token.length, 43, "a base64url SHA-256 HMAC is 43 characters");
+  assert.equal(String(c.agentdToken).length, 43, "agentd's own token was seeded before the start, in the shape its file takes");
   // Reload happened once the computer was actually running (the second seedAgentTokens, from
   // reseedMembers after ensure(), triggers it -- the first, inside ensure() before start, must not).
   assert.deepEqual(server.calls.map(c2 => `${c2.method} ${c2.path}`), ["POST /agents/reload"]);
@@ -737,4 +738,14 @@ test("pool: after a vyred start, every running computer is shown the token once,
   pool.pin = async () => { throw new Error("computerd is not listening yet"); };
   await pool.reconcile(); // a failure is not a restart, and not an error
   assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: a computer made on an old state volume gets the agents' folders before its first start, and a new volume is left as the image made it", async t => {
+  const driver = new FakeDriver();
+  const { pool } = setup(t, { driver });
+  driver.volumes.set("vyre-browser-kit", { layout: 1 });
+  await pool.ensure("kit");
+  assert.equal(driver.volumes.get("vyre-browser-kit")?.layout, 2, "the old volume's folders were put right");
+  await pool.ensure("pax");
+  assert.equal(driver.volumes.get("vyre-browser-pax")?.layout, 2);
 });
