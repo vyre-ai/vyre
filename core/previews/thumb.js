@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
+import { killGroup } from "../../lib/group-kill.js";
 import { spawn } from "node:child_process";
 
 const CANDIDATES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "chrome-headless-shell"];
@@ -32,7 +33,7 @@ export async function capture({ chrome, url, out, timeoutMs = 20_000, width = 80
       `--user-data-dir=${profile}`, `--window-size=${width},${height}`, "--virtual-time-budget=4000", "--host-resolver-rules=MAP *.localhost 127.0.0.1", `--screenshot=${tmp}`, ...(sandbox ? [] : ["--no-sandbox"]), url];
     const done = await new Promise(resolve => {
       const child = spawn(chrome, args, { stdio: "ignore", detached: true });
-      const t = setTimeout(() => { try { process.kill(-(child.pid || 0), "SIGKILL"); } catch { /* gone */ } resolve(false); }, timeoutMs);
+      const t = setTimeout(() => { killGroup(child.pid, "SIGKILL"); resolve(false); }, timeoutMs);
       child.on("error", () => { clearTimeout(t); resolve(false); });
       child.on("exit", () => { clearTimeout(t); resolve(true); });
     });
