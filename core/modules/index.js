@@ -36,7 +36,7 @@ import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, 
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
-import { mayHop, originApi, FLOW_RUN, FLOW_ACT, onPersonSurface } from "./hop.js";
+import { mayHop, originApi, FLOW_RUN, FLOW_ACT } from "./hop.js";
 import { failure, requiresFailure, reported, stubTools, startWaiting, armWaiting } from "./store-waiting.js";
 import { surfaceAllows, holdNeedsYou, listingMarks, scrubVaultResult, armSecrets, disarmSecrets, redactLog, redactExtra } from "./needs-you-hold.js";
 
@@ -1249,7 +1249,7 @@ export class Registry {
           const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const cur = currentCall();
-          const personSurface = onPersonSurface(cur.caller), hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
+          const personSurface = isPerson(String(cur.caller)), hasPerson = cur && (cur.kernelFacts || typeof cur.token === "string" || ((m.name === "onboard" || m.name === "identity") && personSurface));
           if (!cur || !hasPerson) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
           const origin = captureOrigin() || (personSurface ? String(cur.caller) : undefined);
           const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };
