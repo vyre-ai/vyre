@@ -228,6 +228,8 @@ export default {
       return w.data && w.data.kind === "member" ? String(w.data.person) : "";
     };
     const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => ownRow(hub, personKey, name, await callerMember(meta));
+    /** A person's connection is changed, tried or restarted by the person who made it alone: the Space owner reaches the row by its key but is not its maker. @param {string} name @param {any} meta */
+    const makerOnly = async (name, meta) => { const r = hub.row(name); if (r && r.owner && !(await hub.mayUse(r, who(meta), "own"))) throw Object.assign(new Error(`${String(name).slice(0, 60)} is another person's connection: only they can change it, restart it or try it`), { code: "denied" }); return name; };
 
     ctx.tool("mcp.update", {
       effect: "write",
@@ -276,7 +278,7 @@ export default {
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await rowName(input.name, meta), { who: who(meta) }); },
+      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await makerOnly(await rowName(input.name, meta), meta), { who: who(meta) }); },
     });
 
     ctx.tool("mcp.restart", {
@@ -284,7 +286,7 @@ export default {
       description: "Stop an MCP server and start it again, clearing a failed state and its restart budget.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => hub.restart({ ...input, name: await rowName(input.name, meta) }),
+      run: async (input, meta) => hub.restart({ ...input, name: await makerOnly(await rowName(input.name, meta), meta) }),
     });
 
     ctx.tool("mcp.tools", {
