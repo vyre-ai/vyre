@@ -234,7 +234,7 @@ export default defineKit({ id: "k", version: 1, includes: [Client, Matter] });`)
   assert.deepEqual(compile(text), kit);
   assert.equal(print(compile(text)), text);
   const one = (extra) => kitOf("", extra);
-  fails(one("a: defineField.choice(['x'], { computed: { expr: 'b' } }), b: defineField.text()"), "invalid_definition", /Computed field is one of/);
+  fails(one("a: defineField.choice(['x'], { computed: { expr: 'b' } }), b: defineField.text()"), "invalid_definition", /computed field is one of/);
   fails(one("a: defineField.number({ computed: { expr: 'nope + 1' } })"), "invalid_definition", /not a field of/);
   fails(one("a: defineField.number({ computed: { expr: 'a + 1' } })"), "invalid_definition", /cannot read itself/);
   fails(one("a: defineField.number({ computed: { expr: 'b' }, required: true }), b: defineField.number()"), "invalid_definition", /never written/);
