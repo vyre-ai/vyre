@@ -281,6 +281,9 @@ async function chipChat(t, who) {
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
   await d.kernel.gateway.records.define(ownerChain, { add_types: [TYPE] });
   const rec = await d.kernel.gateway.records.create(ownerChain, "client", { name: "Jane Harlow", budget: 5000 });
+  // an item in the OWNER's vault: what a member's chip must never resolve, and what the owner's own chip does (the control that lets the member test fail)
+  const put = await d.registry.call("vault.put", { name: "owner-secret", kind: "api-key", value: "sk-test-owner-only-value", hosts: ["https://api.example.com"] }, "cli");
+  assert.ok(put.data && !put.error, JSON.stringify(put));
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
@@ -302,6 +305,15 @@ test("a member's chat turn tags a record they may read, as themselves, and nothi
   const mentioned = await send(BOB, [{ kind: "record", id: rec.urn }, { kind: "vault", id: "owner-secret" }, { kind: "drive", id: "owner-file" }, { kind: "github", id: "owner/repo" }], "use #owner-secret and the file");
   const kinds = mentioned.flatMap(e => (e.payload.mentions || []).map(m => m.kind));
   assert.deepEqual(kinds, ["record"], `only the record, read under the member's chain: ${JSON.stringify(mentioned)}`);
+});
+
+test("the owner's chat turn resolves their own vault item; a member's chip and #Name for the same item resolve nothing from the owner's vault", { timeout: 90_000 }, async t => {
+  const { owner, BOB, send } = await chipChat(t);
+  const kinds = ev => ev.flatMap(e => (e.payload.mentions || []).map(m => `${m.kind}:${m.id || m.name}`));
+  const mine = await send(owner, [{ kind: "vault", id: "owner-secret" }], "use #owner-secret");
+  assert.ok(kinds(mine).includes("vault:owner-secret"), `the control: the owner's own chip resolves in a chat: ${JSON.stringify(mine)}`);
+  const theirs = await send(BOB, [{ kind: "vault", id: "owner-secret" }], "use #owner-secret");
+  assert.equal(kinds(theirs).filter(k => k.startsWith("vault:")).length, kinds(mine).filter(k => k.startsWith("vault:")).length, "the member's turn added no vault tag: the owner's item is not theirs");
 });
 
 test("a member's chat turn with a record that is not there, or one from another Space, tags nothing", { timeout: 90_000 }, async t => {
