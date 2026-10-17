@@ -33,12 +33,12 @@ export default function ChatsScreen() {
           <View className="gap-s2">
             <Text strong>{gap.title}</Text>
             <Text size="caption" tone="muted">{gap.line}</Text>
-            <View className="self-start"><Button size="sm" label={gap.action} onPress={() => go(gap.route)} /></View>
+            {gap.action && gap.route ? <View className="self-start"><Button size="sm" label={gap.action} onPress={() => go(gap.route as string)} /></View> : null}
           </View>
         </Banner>
       ) : null}
       {view.body === "unsupported" ? <Card><EmptyState title={UNSUPPORTED} body="This app and your server ship together. Update the server, then come back." /></Card>
-        : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
+        : view.body === "gap" && gap ? <Card><EmptyState title={gap.title} body={gap.line} {...(gap.action && gap.route ? { action: { label: gap.action, onPress: () => go(gap.route as string) } } : {})} /></Card>
         : view.body === "loading" ? <LoadingState rows={4} />
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : phone ? <View className="gap-s3"><ChatsSidebarHeader /><ChatsSidebar /></View>

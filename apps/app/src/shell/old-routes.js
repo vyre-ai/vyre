@@ -8,7 +8,6 @@ export const FIRST_RUN = Object.freeze({
   computer: "/onboard?path=computer",
   create: "/onboard?path=create",
   join: "/onboard?path=join",
-  phone: "/onboard?path=phone",
 });
 
 /** Every address the app used to have for the first run or pairing, and where it goes now. */
@@ -18,7 +17,7 @@ export const OLD_ROUTES = Object.freeze({
   "/u/install/connect": FIRST_RUN.computer,
   "/u/install/create": FIRST_RUN.create,
   "/u/install/join": FIRST_RUN.join,
-  "/u/install/phone": FIRST_RUN.phone,
+  "/u/install/phone": FIRST_RUN.start,
   "/pair": FIRST_RUN.start,
 });
 

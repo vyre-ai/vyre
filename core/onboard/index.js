@@ -640,7 +640,7 @@ export default {
     }
 
     /**
-     * The list the page, the onboarding module and `sudo vyre setup` share (#11): the ten steps with what the box sees for each, and the person's own saved
+     * The list the page, the onboarding module and `sudo vyre setup` share (#11): the nine steps with what the box sees for each, and the person's own saved
      * skips and passes. Cheap enough for the page to ask every couple of seconds.
      */
     async function setupSnapshot(caller = "local") {
@@ -656,7 +656,7 @@ export default {
       // What the box cannot ask directly is told by what came after it: a step later in the list being done means the earlier ones were passed.
       const later = addressDone || pairDone || passkey || assistant || Boolean(net().ownerSeen);
       const facts = { install: true, words: Boolean(setup && !setup.__error && setup.state === "paired") || later, address: addressDone, pair: pairDone, ai: ai.signedIn,
-        phone: devList.some(d => d && d.kind !== "web"), passkey, assistant, computers: people.length > 0, history: false };
+        passkey, assistant, computers: people.length > 0, history: false };
       const list = setupList(facts, { skipped: ob().setupSkipped || [], passed: ob().setupPassed || [] });
       return { ...list, name: st.name, accountName: st.accountName, address: st.address, assistant: { display: ob().assistant || null, state: ob().assistantState || null }, finished: list.finished || Boolean(ob().finished) && list.current === null };
     }
@@ -664,7 +664,7 @@ export default {
     ctx.tool("onboard.setup", {
       // Reading the step list is open to a model session (the name stays out of it); skip, unskip and pass check personOnly in the body.
       effect: "write", callers: [...ONBOARD_CALLERS, "mcp", "harness"],
-      description: "The setup step list: ten steps, each done, current, skipped or todo, with the current step and whether setup is finished.",
+      description: "The setup step list: nine steps, each done, current, skipped or todo, with the current step and whether setup is finished.",
       input: obj({ skip: { type: "string", enum: [...SKIPPABLE], description: "put this step aside to finish later; it stays listed as skipped" }, unskip: { type: "string", enum: [...SKIPPABLE], description: "take a skipped step back" }, pass: { type: "string", enum: [...PASSABLE], description: "say the person has been through this step" } }),
       run: async (input, { caller }) => {
         boxOnly();

@@ -52,18 +52,6 @@ export const firstChoices = (_kind) => ["join", "server"];
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());
 
-/** The Mac's "Add your phone": the phone becomes the one that approves. */
-export const ADD_PHONE = {
-  title: "Add your phone",
-  line: "Open Vyre on your phone and scan this. Your phone will approve things for you.",
-  orPaste: "Or type the code on your phone",
-  words: "Check that the phone shows the same words as this screen.",
-  skip: "Not now",
-  android: "Android: download Vyre-android.apk from the latest release on your phone and open it. Allow installs when Android asks.",
-  iphone: "iPhone: there is no App Store app yet. The install steps are on vyre.run/phone.",
-  waiting: "Waiting for your phone.",
-};
-
 /** The phone's "I don't have Vyre running yet" (native-core builds it; the words live here so the share sheet and the empty states say the same). */
 export const NO_VYRE = {
   title: "Vyre runs on a computer or a server",
@@ -94,7 +82,7 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
 
 /**
  * The one line and one action under an empty landing screen (the prototype's rows 8 and 8b). `gap` is what is missing on this device, or null when everything is connected.
- * @typedef {{ title: string, line: string, action: string, route: string }} EmptyCopy
+ * @typedef {{ title: string, line: string, action?: string, route?: string }} EmptyCopy   (no action: the line is all there is to say, as when the person signs in on their phone)
  */
 export const EMPTY = {
   now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/u/chats" },
@@ -107,13 +95,13 @@ export const WAITING = { title: "Your Vyre has not answered yet", line: "Check t
 
 /** What is missing on this device, as the empty state's words (row 8b). One line, one fixing action. @type {Record<"phone"|"mac"|"web", EmptyCopy>} */
 export const GAP = {
-  phone: { title: "Not connected to a Vyre", line: "Your phone needs a running Vyre to show anything.", action: "Scan the code", route: FIRST_RUN.computer },
-  mac: { title: "Nothing can approve yet", line: "No phone is paired, so sends and new devices wait.", action: "Add your phone", route: FIRST_RUN.phone },
-  web: { title: "Not connected", line: "This browser has no Vyre to talk to.", action: "Scan from your phone", route: FIRST_RUN.computer },
+  phone: { title: "Not connected to a Vyre", line: "Sign in with your Vyre's address, your username and your master password.", action: "Sign in", route: FIRST_RUN.start },
+  mac: { title: "Nothing can approve yet", line: "No phone is signed in, so sends and new devices wait. On your phone, open Vyre and sign in with this Vyre's address, your username and your master password." },
+  web: { title: "Not connected", line: "This browser has no Vyre to talk to. Sign in with your Vyre's address, your username and your master password.", action: "Sign in", route: FIRST_RUN.start },
 };
 
 /**
- * What is missing, or null. A phone or browser with no pairing and no box address is not connected. A Mac whose Vyre answers but lists no phone has nothing to approve with.
+ * What is missing, or null. A phone or browser with no pairing and no box address is not connected. A Mac whose Vyre answers but lists no phone has nothing to approve with, and is told how a phone signs in (there is nothing to press).
  * @param {{ kind: DeviceKind, paired: boolean, hasBox: boolean, devices: { device?: string, kind?: string }[] | null }} s  (a phone is a relay device of kind "app", or one named a phone)
  * @returns {EmptyCopy | null}
  */

@@ -5,9 +5,9 @@ import { welcomeOf } from "./welcome.js";
 
 test("welcome: open steps become cards, done steps do not", () => {
   const w = welcomeOf({ person: "Alex", assistant: "Juno", detail: { claude: { signedIn: true, installed: true }, pair: { state: "done" }, history: { state: "todo" }, devices: { state: "todo" } } });
-  assert.deepEqual(w.cards.map(c => c.id), ["history", "phone"]);
+  assert.deepEqual(w.cards.map(c => c.id), ["history"], "there is no Add your phone card: a phone signs in with the one sign-in line");
   assert.match(w.text, /Hi Alex\. I'm Juno/);
-  assert.match(w.text, /2 things are left/);
+  assert.match(w.text, /One thing is left/);
 });
 
 test("welcome: nothing open, or status unreadable, still greets", () => {
@@ -25,6 +25,6 @@ test("welcome: running import shows progress, an unpaired server asks to be pair
 
 test("welcome: no card names a tool", () => {
   const w = welcomeOf({ detail: { claude: { installed: true }, history: { state: "todo" }, devices: { state: "todo" } } });
-  assert.ok(w.cards.length >= 3);
+  assert.ok(w.cards.length >= 2);
   for (const c of w.cards) assert.ok(!("action" in c) && !("tool" in c));
 });

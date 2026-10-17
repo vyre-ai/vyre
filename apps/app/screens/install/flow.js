@@ -93,8 +93,8 @@ export const connectedLine = (/** @type {string} */ space, /** @type {string} */
 
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
-  // "phone" is the Mac's Add your phone, and "connect" is a phone or browser scanning a code from its Vyre: the actions of the empty states (first-run.js GAP).
-  return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
+  // /u/install, /u/install/create, /u/install/join and /u/install/server: the ways into the first run that remain (the empty states' old "phone" and "connect" actions are gone with the screens they opened)
+  return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : "name";
 }
 
 /** The line shown under a made space. */
