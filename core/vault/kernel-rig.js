@@ -54,6 +54,7 @@ export async function kernelRig(o = {}) {
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
     if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; }
+    if (tool === "connectors.connection.get") return { data: { id: input.id } };   // a lease names Connections that exist: the rig has them all
     if (tool === "agents.list") return { data: Object.entries(agents).map(([name, uid]) => ({ uid, name, kind: name === "assistant" ? "assistant" : "agent" })) };
     if (tool === "projects.record") return projects[input.project] ? { data: { urn: `vyre://${SPACE}/project/${projects[input.project]}` } } : { error: { code: "not_found", message: "no project" } };
     if (tool !== "agents.uid") return { error: { code: "no_such_tool", message: tool } };
