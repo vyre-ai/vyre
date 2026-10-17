@@ -184,3 +184,67 @@ test("the values stay scrubbed for ten minutes after the window and not for ever
   clock.t += RETAIN_MS + 1;
   assert.ok(JSON.stringify(await c.send("Runtime.evaluate", {})).includes(PASS), "outside the window and its retention nothing is redacted");
 });
+
+// ---- sessions belong to the client that attached them ---------------------------------------------------------------------------------
+
+/** a hook that gives every attach its own session id */
+const attaching = () => { let n = 0; return m => (m.method === "Target.attachToTarget" ? { sessionId: `S${++n}` } : undefined); };
+
+test("a CDP session's events go to the client that attached it alone, a command into another client's session is refused, and browser-level events reach every client", async t => {
+  const w = await world(t, attaching());
+  const x = await w.open("a"), y = await w.open("a");
+  const sx = (await x.cdp.send("Target.attachToTarget", { targetId: "t" })).sessionId, sy = (await y.cdp.send("Target.attachToTarget", { targetId: "t" })).sessionId;
+  assert.notEqual(sx, sy);
+  /** @type {any[]} */ const heardX = [], heardY = [];
+  x.cdp.on(m => heardX.push(m)); y.cdp.on(m => heardY.push(m));
+  w.chromes.a.emit({ sessionId: sx, method: "Page.loadEventFired", params: { who: "x's page" } });
+  w.chromes.a.emit({ sessionId: sy, method: "Page.loadEventFired", params: { who: "y's page" } });
+  w.chromes.a.emit({ method: "Target.targetCreated", params: { who: "browser" } });
+  await new Promise(r => setTimeout(r, 80));
+  assert.deepEqual(heardX.map(m => m.params.who).sort(), ["browser", "x's page"]);
+  assert.deepEqual(heardY.map(m => m.params.who).sort(), ["browser", "y's page"]);
+  await assert.rejects(() => y.cdp.send("Runtime.evaluate", { expression: "1" }, sx), /not yours/);
+  assert.ok(!w.chromes.a.seen.includes("Runtime.evaluate"), "nothing reached Chrome");
+  assert.equal((await x.cdp.send("Runtime.evaluate", { expression: "1" }, sx)).method, "Runtime.evaluate", "its own session works");
+  await assert.rejects(() => x.cdp.send("Runtime.evaluate", {}, "S-made-up"), /not yours/, "and a session nobody made is no one's to use");
+});
+
+test("the hands never hear the fill's page and cannot type into its session, in the window or after it", async t => {
+  const w = await world(t, attaching());
+  const agent = await w.open("a");
+  const FILL = "f".repeat(43);
+  await w.adapter.shield("a", true, { fill_token: FILL });
+  const fill = new Cdp({ cdpUrl: `${agent.ep.url}/cdp`, token: FILL });
+  t.after(() => fill.close());
+  const sf = (await fill.send("Target.attachToTarget", { targetId: "login" })).sessionId;
+  /** @type {any[]} */ const filled = [];
+  fill.on(m => filled.push(m));
+  await w.adapter.shield("a", false);   // the fill's client is cut; its sessions are detached
+  const hands = new Cdp({ cdpUrl: `${agent.ep.url}/cdp`, token: agent.ep.token });
+  t.after(() => hands.close());
+  /** @type {any[]} */ const heard = [];
+  hands.on(m => heard.push(m));
+  await hands.send("Browser.getVersion");
+  w.chromes.a.emit({ sessionId: sf, method: "Network.requestWillBeSent", params: { request: { postData: "pw=hunter2" } } });
+  await new Promise(r => setTimeout(r, 80));
+  assert.deepEqual(heard.filter(m => m.sessionId === sf), [], "the hands hear nothing from the fill's session");
+  await assert.rejects(() => hands.send("Input.insertText", { text: "x" }, sf), /not yours/);
+  assert.ok(w.chromes.a.seen.includes("Target.detachFromTarget"), "the fill's session was detached when its client went");
+});
+
+test("the adapter listens on loopback only, its tokens are 256-bit random values, one per agent, and an error never carries a token", async t => {
+  const w = await world(t);
+  const a = await w.open("a"), b = await w.open("b");
+  assert.match(a.ep.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+  const port = Number(a.ep.url.split(":").pop());
+  assert.equal(await new Promise(resolve => { const s = net.connect(port, "::1"); s.on("connect", () => { s.destroy(); resolve("open"); }); s.on("error", () => resolve("closed")); }), "closed", "not on the other loopback or any other address");
+  assert.match(a.ep.token, /^[A-Za-z0-9_-]{43}$/);
+  assert.notEqual(a.ep.token, b.ep.token);
+  assert.equal((await w.adapter.endpoint("a")).token, a.ep.token, "stable for the agent");
+  const wrong = new Cdp({ cdpUrl: `${a.ep.url}/cdp`, token: "z".repeat(43) });
+  const err = await wrong.connect().then(() => "", e => String(e.message));
+  assert.ok(err && !err.includes("z".repeat(43)) && !err.includes(a.ep.token), "an error names no token");
+  // the agent's token never reaches the other agent's Chrome
+  await a.cdp.send("Mark.a", {}); await b.cdp.send("Mark.b", {});
+  assert.ok(w.chromes.a.seen.includes("Mark.a") && !w.chromes.a.seen.includes("Mark.b") && !w.chromes.b.seen.includes("Mark.a"));
+});

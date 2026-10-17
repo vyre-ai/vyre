@@ -3,6 +3,8 @@
 // bearer token, then a WebSocket. An agent's own Chrome has no such port (its debugging pipe is a unix socket in the agent's 0700 folder, reached only through agentd's relay), so vyred answers
 // that shape itself, on loopback, per agent:
 //   - every agent has its own random token; a token opens THAT agent's Chrome and no other, and only computers.endpoint hands a token out (after resolving the calling agent from its verified claim);
+//   - a CDP session belongs to the client that attached it (and to what that session auto-attaches): its events go to that client only, and a command naming a session another client owns is refused, so
+//     the hands never hear the fill's page or type into its session; only sessionless browser-level events go to every client;
 //   - a connection for an agent is joined to the agent's relay with a ticket of its own (open), never to a path or an address a client names;
 //   - several clients of one agent (hands, fill) share the agent's one pipe: their message ids are rewritten so answers find their asker, and events go to every client of that agent only.
 //   - a Vault fill raises a WINDOW (shield): the agent's own clients are cut and refused (423), only the fill's token is let in, and the exact values the fill types are registered. Whatever the agent's DevTools
@@ -52,6 +54,7 @@ export function createCdpAdapter(deps) {
       this.agent = agent; this.seq = 0;
       /** @type {Map<(text: string) => void, { fill: boolean }>} */ this.clients = new Map();
       /** @type {Map<number, { send: (text: string) => void, id: number, method: string, request: string }>} */ this.asked = new Map();
+      /** Which client owns each CDP session. @type {Map<string, (text: string) => void>} */ this.owners = new Map();
       /** @type {net.Socket | null} */ this.sock = null; this.release = /** @type {(() => void) | null} */ (null);
       this.buf = Buffer.alloc(0); this.closed = false;
       this.ready = this.start();
@@ -102,11 +105,17 @@ export function createCdpAdapter(deps) {
           const who = this.asked.get(m.id);
           if (!who) continue;
           this.asked.delete(m.id);
+          // a session made for a client is that client's
+          if (!m.error && m.result && typeof m.result.sessionId === "string" && /^Target\.attach(ToTarget|ToBrowserTarget)$/.test(who.method)) this.owners.set(m.result.sessionId, who.send);
           const fill = Boolean(this.clients.get(who.send)?.fill);
           who.send(JSON.stringify(fill ? { ...m, id: who.id } : { ...this.forAgent(m, who), id: who.id }));
         } else {
+          // an event of a session goes to the session's owner alone; a session attached inside an owned one (a frame, a worker) is owned by the same client; a browser-level event goes to all
+          if (m.method === "Target.attachedToTarget" && m.params && typeof m.params.sessionId === "string" && m.sessionId && this.owners.has(m.sessionId)) this.owners.set(m.params.sessionId, /** @type {any} */ (this.owners.get(m.sessionId)));
+          const targets = m.sessionId ? (this.owners.has(m.sessionId) ? [this.owners.get(m.sessionId)] : []) : [...this.clients.keys()];
           let agentText = /** @type {string | null} */ (null);
-          for (const [c, info] of this.clients) c(info.fill ? text : (agentText ??= JSON.stringify(this.forAgent(m, null))));
+          for (const c of targets) { const info = this.clients.get(/** @type {any} */ (c)); if (info) /** @type {any} */ (c)(info.fill ? text : (agentText ??= JSON.stringify(this.forAgent(m, null)))); }
+          if (m.method === "Target.detachedFromTarget" && m.params) this.owners.delete(String(m.params.sessionId));
         }
       }
     }
@@ -115,6 +124,8 @@ export function createCdpAdapter(deps) {
       if (this.closed || !this.sock || Buffer.byteLength(text) > MAX_MSG) return false;
       let m; try { m = JSON.parse(text); } catch { return false; }
       if (!m || typeof m !== "object" || !Number.isInteger(m.id)) return false;
+      // a command into a session that is not this client's is refused, whoever's it is
+      if (m.sessionId !== undefined && this.owners.get(String(m.sessionId)) !== client) { client(JSON.stringify({ id: m.id, error: { code: -32001, message: "that session is not yours" } })); return true; }
       const up = ++this.seq;
       this.asked.set(up, { send: client, id: m.id, method: String(m.method || ""), request: String(m.params && m.params.requestId || "") });
       this.sock.write(JSON.stringify({ ...m, id: up }) + "\0");
@@ -126,6 +137,11 @@ export function createCdpAdapter(deps) {
     leave(client) {
       this.clients.delete(client);
       for (const [k, v] of this.asked) if (v.send === client) this.asked.delete(k);
+      // the sessions it made go with it (the pages stay)
+      for (const [sid, owner] of [...this.owners]) if (owner === client) {
+        this.owners.delete(sid);
+        if (this.sock && !this.closed) this.sock.write(JSON.stringify({ id: ++this.seq, method: "Target.detachFromTarget", params: { sessionId: sid } }) + "\0");
+      }
       if (!this.clients.size) setTimeout(() => { if (!this.clients.size) this.close(); }, 30_000).unref();
     }
     close() {
@@ -134,7 +150,7 @@ export function createCdpAdapter(deps) {
       try { this.sock?.destroy(); } catch {}
       if (this.release) { const r = this.release; this.release = null; try { r(); } catch {} }
       for (const c of this.clients.keys()) { try { c("\0close"); } catch {} }
-      this.clients.clear(); this.asked.clear();
+      this.clients.clear(); this.asked.clear(); this.owners.clear();
     }
   }
 
