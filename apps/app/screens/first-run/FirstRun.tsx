@@ -45,6 +45,7 @@ export function FirstRun() {
   const noDaemon = pageHasNoDaemon();
   const [aiThen, setAiThen] = useState<string>("");
   const [paired, setPaired] = useState<{ id: string; name: string; address: string } | null>(null);
+  const [noFingerprint, setNoFingerprint] = useState(false);
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [invite, setInvite] = useState(shot?.link || "");
@@ -151,7 +152,7 @@ export function FirstRun() {
         if (r.failed) { setFailure(typeof r.message === "string" ? r.message : "The space could not be made."); return; }
         if (r.expired) { setFailure(typeof r.message === "string" ? r.message : "The install window ended. Go back and show a new command."); setOnline(false); return; }
         if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
-        if (r.online) { setOnline(true); if (r.server) setPaired({ id: String(r.space || ""), name: String(r.server.name || r.server.hostname || "Your server"), address: String(r.server.address || "") }); }
+        if (r.online) { setOnline(true); setNoFingerprint(Boolean(r.noFingerprintYet)); if (r.server) setPaired({ id: String(r.space || ""), name: String(r.server.name || r.server.hostname || "Your server"), address: String(r.server.address || "") }); }
       });
     };
     tick();
@@ -392,6 +393,7 @@ export function FirstRun() {
             })} />
           </>
         ) : null}
+        {online && noFingerprint ? <Text tone="muted">Approvals that need your fingerprint are not available on this Mac yet.</Text> : null}
         {online && paired ? (
           <>
             <Text strong>{paired.name}</Text>
