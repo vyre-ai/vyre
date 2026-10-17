@@ -128,3 +128,38 @@ test("smtp: hands the message to the SMTP adapter with the saved login and the p
 test("an unknown provider is refused by name", () => {
   assert.throws(() => shape({ provider: "carrier-pigeon", apiKey: KEY, from: "a@b.example" }, msg), /not a sending service Vyre knows/);
 });
+
+test("cc and bcc: each provider takes them in its own shape, they count toward the 50, and a bad one is refused by name", async () => {
+  const m = { ...msg, cc: ["ops@northwind-bakery.example"], bcc: ["alex@harlow.example", "juno@harlow.example"] };
+  assert.deepEqual([json(shape(conn("resend"), m)).cc, json(shape(conn("resend"), m)).bcc], [m.cc, m.bcc]);
+  const f = new URLSearchParams(shape(conn("mailgun"), m).body);
+  assert.deepEqual([f.get("cc"), f.get("bcc")], ["ops@northwind-bakery.example", "alex@harlow.example,juno@harlow.example"]);
+  const p = json(shape(conn("postmark"), m));
+  assert.deepEqual([p.Cc, p.Bcc], ["ops@northwind-bakery.example", "alex@harlow.example,juno@harlow.example"]);
+  const s = json(shape(conn("sendgrid"), m)).personalizations[0];
+  assert.deepEqual([s.cc, s.bcc], [[{ email: "ops@northwind-bakery.example" }], [{ email: "alex@harlow.example" }, { email: "juno@harlow.example" }]]);
+  assert.equal(json(shape(conn("resend"), msg)).cc, undefined, "none given, none sent");
+  assert.throws(() => check(conn("resend"), { ...msg, cc: ["not an address"] }), /not an email address/);
+  assert.throws(() => check(conn("resend"), { ...msg, to: Array.from({ length: 30 }, (_, i) => `a${i}@x.example`), bcc: Array.from({ length: 30 }, (_, i) => `b${i}@x.example`) }), /at most 50/);
+  /** @type {any} */ let seen;
+  await send(conn("smtp", { smtpHost: "smtp.harlow.example" }), m, { smtp: { send: async (_c, _p, c) => { seen = c; return { message_id: "<1@x>" }; } } });
+  assert.deepEqual([seen.cc, seen.bcc], [m.cc, m.bcc], "SMTP carries them too");
+});
+
+test("files: Resend, Postmark and SendGrid carry them as base64 in their own shape, SMTP hands them to the adapter, and Mailgun sends a multipart form", async () => {
+  const files = [{ filename: "week1.pdf", contentType: "application/pdf", bytes: Buffer.from("PDF-1") }];
+  const b64 = Buffer.from("PDF-1").toString("base64");
+  const m = { ...msg, attachments: files };
+  assert.deepEqual(json(shape(conn("resend"), m)).attachments, [{ filename: "week1.pdf", content: b64 }]);
+  assert.deepEqual(json(shape(conn("postmark"), m)).Attachments, [{ Name: "week1.pdf", Content: b64, ContentType: "application/pdf" }]);
+  assert.deepEqual(json(shape(conn("sendgrid"), m)).attachments, [{ content: b64, filename: "week1.pdf", type: "application/pdf", disposition: "attachment" }]);
+  const mg = shape(conn("mailgun"), m);
+  assert.ok(mg.body instanceof FormData && !("content-type" in mg.headers), "a multipart form, its type set by the form");
+  assert.equal(mg.body.get("to"), msg.to.join(","));
+  const part = /** @type {File} */ (mg.body.get("attachment"));
+  assert.equal(part.name, "week1.pdf"); assert.equal(await part.text(), "PDF-1"); assert.equal(part.type, "application/pdf");
+  assert.equal(json(shape(conn("resend"), msg)).attachments, undefined, "none given, none sent");
+  /** @type {any} */ let seen;
+  await send(conn("smtp", { smtpHost: "smtp.harlow.example" }), m, { smtp: { send: async (_c, _p, c) => { seen = c; return { message_id: "<1@x>" }; } } });
+  assert.equal(seen.attachments[0].filename, "week1.pdf");
+});

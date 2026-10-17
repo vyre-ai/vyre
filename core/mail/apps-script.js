@@ -238,15 +238,22 @@ export function appsScriptAdapter(deps = {}) {
     /**
      * Send, after the Gate released it. The content is checked again here, before any request.
      * @param {AppsScriptConfig} cfg @param {Field} field
-     * @param {{ to: string | string[], cc?: string | string[], bcc?: string | string[], subject: string, body: string, in_reply_to?: string }} input
+     * @param {{ to: string | string[], cc?: string | string[], bcc?: string | string[], subject: string, body: string, in_reply_to?: string, attachments?: { filename: string, contentType?: string, bytes: Uint8Array }[] }} input
      */
     async send(cfg, field, input = /** @type {any} */ ({})) {
       const to = addresses(input.to, "to");
       checkContent(to, input);
-      const args = {
+      const args = /** @type {any} */ ({
         to: to.join(", "), cc: addresses(input.cc, "cc").join(", "), bcc: addresses(input.bcc, "bcc").join(", "),
         subject: input.subject, body: input.body,
-      };
+      });
+      const files = Array.isArray(input.attachments) ? input.attachments : [];
+      if (files.length) {
+        // a script installed before files existed would send without them and say nothing: ask it first, and refuse in words when it does not know about files
+        const probe = await call(field, "test", {}).catch(() => null);
+        if (!probe || probe.attachments !== true) throw fail("script", "your Apps Script is an older version that cannot carry files, so nothing was sent: paste the current script from Settings, Connections, deploy it again, and approve this message again");
+        args.attachments = files.map(f => ({ name: f.filename, type: f.contentType || "application/octet-stream", data: Buffer.from(f.bytes).toString("base64") }));
+      }
       if (input.in_reply_to) args.in_reply_to = input.in_reply_to;
       const data = await call(field, "send", args);
       if (!data || data.sent !== true) throw fail("script", "the script did not confirm the send");

@@ -10,6 +10,7 @@ export const SAMPLE_OPTIONS = {
     { name: "appointment", label: "Appointment", fields: [{ name: "client", label: "Client" }, { name: "phone", label: "Phone" }, { name: "email", label: "Email" }, { name: "starts_at", label: "Appointment time" }] },
     { name: "matter", label: "Matter", fields: [{ name: "client", label: "Client" }, { name: "stage", label: "Stage" }] },
   ],
+  filesOf: async (q) => [{ path: "Rota/week1.pdf", name: "week1.pdf" }, { path: "Documents/general/engagement-letter.docx", name: "engagement-letter.docx" }].filter((f) => !q || f.path.toLowerCase().includes(String(q).toLowerCase())),
   recordsOf: async (type) => [{ urn: `vyre://sample/${type}/r1`, label: "Pat Lopez" }, { urn: `vyre://sample/${type}/r2`, label: "Sam Ortiz" }],
   agents: [{ name: "refunds", label: "Refunds", staff: true }, { name: "intake", label: "Intake", staff: true }, { name: "research", label: "Research", staff: true }],
   templates: [

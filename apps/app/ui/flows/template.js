@@ -81,6 +81,8 @@ export function insertList(d, stepId, o, opt = {}) {
     }
     if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null, `{${s.id}.rows}`));
     if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null, `{${s.id}.value}`));
+    // a Documents step (a call of documents.generate, which the builder shows as an advanced step) files a document and answers its path: a value an email can attach
+    if (s.kind === "advanced" && s.raw && s.raw.kind === "call" && s.raw.action === "documents.generate") steps.push(item(`{steps.${s.id}.path}`, `The document made by ${s.summary || s.id}`, null, `{${s.id}.path}`));
     if (s.kind === "classify") steps.push(item(`{steps.${s.id}.label}`, `The group picked by ${s.id}`, null, `{${s.id}.label}`));
   }
   if (steps.length) out.push({ title: "Earlier steps", items: steps });

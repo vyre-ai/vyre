@@ -28,6 +28,7 @@ import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pick
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";
 import { imapAdapter } from "./imap.js";
+import { hold as holdFiles, release as releaseFiles } from "../../lib/connectors/attachments.js";
 import { appsScriptAdapter } from "./apps-script.js";
 
 const str = { type: "string" };
@@ -43,7 +44,10 @@ const behalf = obj({ surface: { type: "string", enum: ["capsule", "chat", "agent
   []);
 
 /** What a held item of a mail:<account> sender carries, for gate.senders. */
-const CONTENT = { subject: "string", body: "string, plain text", cc: "email[]?", bcc: "email[]?", in_reply_to: "Message-ID?" };
+const CONTENT = { subject: "string", body: "string, plain text", cc: "email[]?", bcc: "email[]?", in_reply_to: "Message-ID?", attachments: "files by reference: path, name, size, sha256, by (IMAP accounts)?" };
+
+/** Only Google and IMAP accounts send files; an Apps Script or MCP account is told so plainly, and nothing is held. */
+const noFiles = acct => Object.assign(new Error(`${acct.label || acct.account} cannot send files: Apps Script and MCP accounts cannot send files yet. Only Google and IMAP accounts take attachments; send without them.`), { code: "unsupported" });
 
 const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), { code, ...(detail ? { detail } : {}) });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -280,7 +284,7 @@ export default {
 
     // ---- sends ----
 
-    const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails,
+    const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails, attachments: { type: "array", description: "files of Files by reference: [{ path, name? }]; an IMAP account only", items: { type: "object", properties: { path: str, name: str }, required: ["path"] } },
       in_reply_to: { type: "string", description: "the Message-ID being answered, from mail.read" }, account, why: str, on_behalf: behalf,
       agent: { type: "string", description: "ignored; the session's agent is used, never a name in the input" },
       by: { type: "string", description: "ignored; naming another agent does not borrow its standing permission" },
@@ -292,7 +296,7 @@ export default {
       let held, via;
       if (kind === "google") {
         const r = await use("google.mail.send", { account: acct.ref, to, subject: c.subject, body: c.body, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}),
-          ...(c.in_reply_to ? { in_reply_to: c.in_reply_to } : {}), ...(why ? { why } : {}), on_behalf: on });
+          ...(c.in_reply_to ? { in_reply_to: c.in_reply_to } : {}), ...(c.attachment_refs ? { attachments: c.attachment_refs } : {}), ...(why ? { why } : {}), on_behalf: on });
         held = r.held; via = `google:${acct.ref}`;
       } else if (kind === "mcp") {
         const m = (await mcpMap(acct)).send;
@@ -331,6 +335,13 @@ export default {
         const acct = pickFor(list, named(input.account));
         if (!(acct.capabilities || []).includes("send_mail")) throw fail(`${acct.label || acct.account} is not allowed to send; it reads only`, "denied");
         const { to, c } = contentOf(input);
+        // files go by reference: path, name, size and hash are held and approved with the message; the bytes are read when it is sent (lib/connectors/attachments.js)
+        const kind = adapterOf(acct);
+        if (Array.isArray(input.attachments) && input.attachments.length) {
+          if (kind === "google") c.attachment_refs = input.attachments;   // the Google module holds them itself, as the asker
+          else if (kind === "imap") c.attachments = await holdFiles(ctx, meta, input.attachments).catch(e => { throw fail(e.message, e.code || "bad_input"); });
+          else throw noFiles(acct);
+        }
         const on = { ...filing, ...(meta.agent ? { agent: String(meta.agent) } : {}), ...(meta.thread ? { thread: String(meta.thread) } : {}) };
         return holdSend(acct, to, c, named(input.why), on);
       },
@@ -357,7 +368,9 @@ export default {
           ...(content.bcc ? { bcc: addresses(content.bcc, "bcc") } : {}), ...(named(content.in_reply_to) ? { in_reply_to: content.in_reply_to } : {}) };
         checkContent(dest, c);
         const [cfg, cred] = await nativeArgs(acct);
-        const out = await native[kind].send(cfg, cred, { to: dest, ...c });
+        const files = await releaseFiles(ctx, content.attachments).catch(e => { throw fail(e.message, e.code || "failed"); });
+        if (files.length && kind !== "imap") throw noFiles(acct);
+        const out = await native[kind].send(cfg, cred, { to: dest, ...c, ...(files.length ? { attachments: files } : {}) });
         ctx.events.emit("mail.sent", { account: acct.id });
         return { ...out, account: acct.id };
       },

@@ -2,8 +2,12 @@
 // A held outward send, read in full and edited before the person says yes (core/gate: gate.get gives the whole draft, gate.revise keeps an edit without sending, gate.approve sends exactly the
 // edited content, gate.reject discards). Pure: the page passes in what gate.get returned and what the person typed, and gets back what to show and what to send.
 
-const LABELS = /** @type {Record<string, string>} */ ({ subject: "Subject", body: "Message", text: "Message", cc: "Cc", bcc: "Bcc", method: "Method", url: "Address", in_reply_to: "In reply to" });
-const ORDER = ["subject", "body", "text", "cc", "bcc", "method", "url", "in_reply_to"];
+const LABELS = /** @type {Record<string, string>} */ ({ subject: "Subject", body: "Message", text: "Message", cc: "Cc", bcc: "Bcc", method: "Method", url: "Address", in_reply_to: "In reply to", attachments: "Files" });
+const ORDER = ["subject", "body", "text", "cc", "bcc", "attachments", "method", "url", "in_reply_to"];
+
+/** The files on a held message, each with its size: the approver sees exactly what goes out. @param {any} v */
+const filesLine = (v) => (Array.isArray(v) && v.length && v.every((x) => x && typeof x === "object" && typeof x.name === "string")
+  ? v.map((x) => { const n = typeof x.size === "number" ? x.size : x.bytes; return typeof n === "number" ? `${x.name} (${Math.max(1, Math.round(n / 1024))} KB)` : x.name; }).join(", ") : null);
 
 /** The content as it will go out: what the person last edited, else the draft. @param {any} item gate.get's answer */
 export const contentOf = (item) => (item && typeof item === "object" ? item.final ?? item.draft ?? {} : {});
@@ -14,12 +18,12 @@ export const contentOf = (item) => (item && typeof item === "object" ? item.fina
  */
 export function fieldsOf(item) {
   const c = contentOf(item);
-  const keys = Object.keys(c).filter((k) => typeof c[k] === "string" || (Array.isArray(c[k]) && c[k].every((/** @type {any} */ x) => typeof x === "string")));
+  const keys = Object.keys(c).filter((k) => typeof c[k] === "string" || (Array.isArray(c[k]) && c[k].every((/** @type {any} */ x) => typeof x === "string")) || filesLine(c[k]) !== null);
   keys.sort((a, b) => (ORDER.includes(a) ? ORDER.indexOf(a) : 99) - (ORDER.includes(b) ? ORDER.indexOf(b) : 99) || a.localeCompare(b));
   return keys.map((key) => ({
     key,
     label: LABELS[key] ?? key.replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase()),
-    value: Array.isArray(c[key]) ? c[key].join(", ") : String(c[key]),
+    value: filesLine(c[key]) ?? (Array.isArray(c[key]) ? c[key].join(", ") : String(c[key])),
     edit: item?.kind === "send" && typeof c[key] === "string",
   }));
 }

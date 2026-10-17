@@ -11,7 +11,8 @@ export function runSource(call: Call) {
   return {
     /** Start now. `key` makes a repeat tap the same run, not two. */
     startReal: (id: string, key: string, input: Record<string, unknown> = {}) => ask<{ id?: string; run?: string }>("flows.start", { id, input, key }),
-    retryReal: (run: string) => ask<{ ok: boolean }>("flows.retry", { run }),
+    /** Retry from the stopped step. `version: "latest"` runs the rest on the Flow's active version (the owner's choice; flows.retry takes it over MCP too). */
+    retryReal: (run: string, opts: { version?: "latest" } = {}) => ask<{ ok: boolean }>("flows.retry", { run, ...opts }),
     /** Stop a run that is paused, failed, waiting or held: it is kept, marked stopped, and what it waits on is withdrawn. */
     cancelReal: (run: string) => ask<{ ok: boolean; state?: string | null }>("flows.cancel", { run }),
   };

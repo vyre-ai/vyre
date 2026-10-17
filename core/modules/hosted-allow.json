@@ -35,7 +35,7 @@
   "flows.card": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.cheatsheet": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.code": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
-  "flows.control": "runs or controls a Flow the person already approved; its effects are held at the Gate like any act",
+  "flows.control": "reads the Space's Flow switch state (running, paused, draining and what is held); it changes nothing. Pause and resume are separate person-only tools",
   "flows.describe": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.diff": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",
   "flows.get": "reads a Flow, its runs or its tests; defining, kits and approval stay the person's",

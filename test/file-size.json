@@ -8,6 +8,6 @@
   "core/modules/index.js": 2049,
   "core/daemon/index.js": 2009,
   "core/vault/vault.js": 2054,
-  "kernel/flows/runner.js": 2080
+  "kernel/flows/runner.js": 2047
  }
 }

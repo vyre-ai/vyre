@@ -54,7 +54,8 @@ const WHAT = {
   "flows.control": "The Space's switch (running, paused or draining), how many runs are held and why, and how many events were dropped past the cap.",
   "flows.runs": "Recent runs of a Flow, newest first.",
   "flows.run": "One run: its trigger, its steps, what it did.",
-  "flows.budget": "The Space's daily AI allowance for Flow steps and today's use. An owner or admin sets it with tokens_per_day, and context_tokens for record context.",
+  "flows.budget": "The Space's daily AI allowance for Flow steps and today's use, and the context budget for record context. Reading is anyone's; setting it is flows.budget.set.",
+  "flows.budget.set": "Set the Space's daily AI allowance: { tokens_per_day?, context_tokens? }. An owner or an admin, in their own name; an assistant is refused.",
   "flows.retry": "Retry a failed or paused run from the stopped step. skip: true skips it (value: its replacement output); version: \"latest\" uses the active version.",
   "flows.cancel": "Stop a failed, paused or waiting run for good. Its record stays, marked cancelled. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
@@ -71,7 +72,7 @@ const LIBRARY = {
 };
 /** Tools a member reaches only for a Flow she made or one shared with her. */
 const INSPECT = new Set(["flows.describe", "flows.runs", "flows.connections"]);
-const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove"]);
+const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove", "flows.advance", "flows.budget.set"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 

@@ -70,3 +70,16 @@ test("R031-45: flows.attention also lists the stuck tasks the host reads for it"
   assert.deepEqual(r.tasks, [{ task: "t9", label: "Call the client", reason: "no phone", since: 3 }]);
   assert.deepEqual(r.runs, []);
 });
+
+test("f3: settle advance moves a stage gate only for a lone person: an assistant on the person's chain is refused person_only, the person's own chain reaches the stage check", async () => {
+  // A held settle that the person taps yes on reaches this handler, so the agent-hop refusal here is the line that stops an assistant-originated gate skip after the tap.
+  const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.chainFor(x) } });
+  await install(w, flowOf([fn("f", { retry: false })]));
+  const run = await fire(w);
+  await assert.rejects(() => f.tools["flows.settle"](agentChain(), { run: run.id, action: "advance", reason: "skip the gate" }),
+    e => e.code === "person_only", "an assistant's advance is refused as person only, before any stage check");
+  await assert.rejects(() => f.tools["flows.settle"](chainOf(), { run: run.id, action: "advance", reason: "skip the gate" }),
+    e => e.code !== "person_only", "the person's own advance is not refused for who asks; it reaches the stage check");
+  assert.equal((await w.runner.getRun(run.id)).state, "failed", "neither call moved the run");
+});

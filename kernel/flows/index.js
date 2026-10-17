@@ -346,15 +346,16 @@ export function createFlows(o) {
       return { run: r, painted: v ? paintRun(v.flow, shown, await cat()) : null, ...(lanes.length ? { lanes: lanes.map(({ lane, run, state }) => ({ lane, run, state })) } : {}) };
     },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.
-    "flows.budget": async (chain, i) => {
-      if (i && (i.tokens_per_day !== undefined || i.context_tokens !== undefined)) {
-        const who = personOf(chain);
-        const holders = [...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "owner") : []), ...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "admin") : [])];
-        if (!holders.some((/** @type {any} */ h) => h.id === who.id)) throw Object.assign(new Error("only an owner or an admin sets the AI budget"), { code: "not_allowed" });
-        if (i.context_tokens !== undefined) await runner.setContextTokens(Number(i.context_tokens));
-        if (i.tokens_per_day !== undefined) await runner.setAiBudget(Number(i.tokens_per_day));
-        return runner.aiBudget();
-      }
+    // Reading the allowance is anyone's. Setting it is flows.budget.set below: the read never changes anything.
+    "flows.budget": async () => runner.aiBudget(),
+    // The Space's AI spend: an owner or an admin, in their own name. An assistant on the person's chain may not set it, even when the person is the owner.
+    "flows.budget.set": async (chain, i) => {
+      if ((chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot set the AI budget: the owner or an admin does that in their own name"), { code: "person_only" });
+      const who = personOf(chain);
+      const holders = [...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "owner") : []), ...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "admin") : [])];
+      if (!holders.some((/** @type {any} */ h) => h.id === who.id)) throw Object.assign(new Error("only an owner or an admin sets the AI budget"), { code: "not_allowed" });
+      if (i && i.context_tokens !== undefined) await runner.setContextTokens(Number(i.context_tokens));
+      if (i && i.tokens_per_day !== undefined) await runner.setAiBudget(Number(i.tokens_per_day));
       return runner.aiBudget();
     },
     // A person's own. `by` is never taken from the call: it is the person at the other end of the chain (who supplied a substitute value for a skipped step is on the record).
@@ -378,6 +379,8 @@ export function createFlows(o) {
       }
       if (action === "stop") return { ...(await runner.cancel(run, { by: who.id, reason: i.reason })), action };
       if (action === "advance") {
+        // A stage gate moves only for its owner or an admin, in their own name: an assistant on the person's chain may not move it, even with the person's tap.
+        if ((chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
         if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
         return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
       }
