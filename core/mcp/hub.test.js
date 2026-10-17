@@ -664,6 +664,7 @@ test("hub pin: a person's own connection is approved by that person only, the Sp
   assert.equal((await hub.repin({ name: key, seen: held.pinSeen }, { owner: A })).pin.state, "pinned");
   assert.equal((await hub.repin({ name: "plain", seen: heldPlain.pinSeen })).pin.state, "pinned");
   await hub.stop();
+});
 
 test("a revoke wins: the next call of a revoked grantee fails without asking the Vault for a token; a held outward call is re-checked against the person who ASKED when it is released", async () => {
   const A = "per_alice", url = "https://mcp.example.test/mcp";
