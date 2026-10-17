@@ -74,7 +74,7 @@ export function ConnectApps({ apps, query, onQuery, category, onCategory, onAdd,
 }
 
 /** Share a connected app: each person or agent, off or at a level. An agent can only be given Fill in. */
-export function ShareSheet({ app, grantees, open, onClose, onChange }: { app: App | null; grantees: readonly { who: string; kind: "person" | "agent" }[]; open: boolean; onClose: () => void; onChange: (shares: Share[]) => void }) {
+export function ShareSheet({ app, grantees, open, onClose, onChange, fillOnly }: { fillOnly?: boolean; app: App | null; grantees: readonly { who: string; kind: "person" | "agent" }[]; open: boolean; onClose: () => void; onChange: (shares: Share[]) => void }) {
   if (!app) return null;
   const shares = app.shares;
   return (
@@ -84,13 +84,13 @@ export function ShareSheet({ app, grantees, open, onClose, onChange }: { app: Ap
         {grantees.map((g) => {
           const mine = shares.find((s) => s.who === g.who && s.kind === g.kind);
           return (
-            <Row key={`${g.kind}:${g.who}`} dense lead={<Avatar of={markRef(g.kind, g.who)} size={32} />} title={g.who} sub={g.kind === "agent" ? "Agent. Fill in only." : "Person"}
+            <Row key={`${g.kind}:${g.who}`} dense lead={<Avatar of={markRef(g.kind, g.who)} size={32} />} title={g.who} sub={g.kind === "agent" ? "Agent. Fill in only." : fillOnly ? "Person. Fill in only." : "Person"}
               end={mine
                 ? <Button size="sm" kind="ghost" label="Stop" accessibilityLabel={`Stop sharing ${app.name} with ${g.who}`} onPress={() => onChange(withoutShare(shares, g.who, g.kind))} />
                 : <Button size="sm" kind="secondary" label="Share" accessibilityLabel={`Share ${app.name} with ${g.who}`} onPress={() => onChange(withShare(shares, { ...g, level: "fill" }))} />} />
           );
         })}
-        {shares.filter((s) => s.kind === "person").map((s) => (
+        {fillOnly ? null : shares.filter((s) => s.kind === "person").map((s) => (
           <View key={s.who} style={{ gap: 6 }}>
             <Text size="secondary" tone="label">{`${s.who} can`}</Text>
             <Segmented label={`${s.who}'s level`} options={levelsFor("person")} value={s.level} onChange={(level) => onChange(withShare(shares, { who: s.who, kind: "person", level }))} />
