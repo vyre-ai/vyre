@@ -19,7 +19,7 @@ export default function RealConnectApps() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [flow, setFlow] = useState<Flow | null>(null);
-  const [sharing, setSharing] = useState<{ app: ConnectApp; item: string; grantees: Grantee[]; held: { subject: string }[]; member: boolean } | null>(null);
+  const [sharing, setSharing] = useState<{ app: ConnectApp; item: string; grantees: Grantee[]; held: unknown[]; member: boolean } | null>(null);
   const [notice, setNotice] = useState("");
   const [entries, setEntries] = useState<unknown[]>([]);
   const load = useCallback(() => {
@@ -86,7 +86,7 @@ export default function RealConnectApps() {
     try {
       for (const input of shareChanges(sharing.item, shares[conn] ?? [], next, sharing.grantees)) await (sharing.member ? connections.memberShareSet(input) : connections.shareSet(input));
       setShares((s) => ({ ...s, [conn]: next }));
-    } catch (e) { setNotice(words(e)); startShare(sharing.app); }
+    } catch (e) { setNotice(words(e as { message?: string })); startShare(sharing.app); }
   };
   const disconnect = (a: ConnectApp) => {
     const conn = (a as ConnectApp & { connection?: string }).connection;
