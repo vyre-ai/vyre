@@ -27,7 +27,7 @@ import { connect } from "./client.js";
 import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
-import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
+import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey } from "./hub.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -183,12 +183,25 @@ export default {
       run: async ({ name }) => ({ removed: await mine().remove(name) }),
     });
 
+    // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.
+    // The Space owner, and a call with no claim (the home's own work), reach a row by its name as before.
+    const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => {
+      const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
+      if (!claims) return name;
+      const w = await ctx.call("vault.me.who", {}, { relay: true });
+      if (w.error) throw Object.assign(new Error(w.error.message), { code: w.error.code || "denied" });
+      if (!w.data || w.data.kind !== "member") return name;
+      const key = personKey(String(name), w.data.person), r = hub.row(key);
+      if (!r || r.owner !== w.data.person) throw Object.assign(new Error(`you have no server named ${String(name).slice(0, 40)}`), { code: "not_found" });
+      return key;
+    };
+
     ctx.tool("mcp.update", {
       effect: "write",
       description: "Change an MCP server: any field of mcp.add. A new command, url or credential stops the running server and drops its cached tools.",
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "changes an MCP server"); refuseProcess(input, meta, (hub.row(input.name) || {}).transport); return hub.update(input); },
+      run: async (input, meta) => { refuseNonPerson(meta, "changes an MCP server"); const name = await rowName(input.name, meta); refuseProcess(input, meta, (hub.row(name) || {}).transport); return hub.update({ ...input, name }); },
     });
 
     ctx.tool("mcp.remove", {
@@ -196,7 +209,7 @@ export default {
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove(input); },
+      run: async (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove({ ...input, name: await rowName(input.name, meta) }); },
     });
 
     ctx.tool("mcp.repin", {
@@ -212,7 +225,7 @@ export default {
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(input.name); },
+      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await rowName(input.name, meta)); },
     });
 
     ctx.tool("mcp.restart", {
@@ -220,7 +233,7 @@ export default {
       description: "Stop an MCP server and start it again, clearing a failed state and its restart budget.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: input => hub.restart(input),
+      run: async (input, meta) => hub.restart({ ...input, name: await rowName(input.name, meta) }),
     });
 
     ctx.tool("mcp.tools", {
