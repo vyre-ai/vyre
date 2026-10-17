@@ -58,6 +58,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.actors": "lists the Space's people and assistants the caller may see; the kernel decides what shows",
   "records.types": "lists the record types; the kernel hides what the caller may not see",
   "records.list": "lists records under the caller's own chain; the kernel decides every row",
+  "records.audit": "who changed what on a record, before and after, from the signed event log; owner and admin only, read through the caller's own events.read so the kernel hides what the caller may not see",
   "records.get": "reads one record under the caller's own chain; the kernel decides",
   "records.reference": "reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides",
   "records.create": "writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder",

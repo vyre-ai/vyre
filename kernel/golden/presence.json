@@ -643,20 +643,6 @@
   "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.vaults.rotate changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
  },
  {
-  "tool": "wink.code.redeem",
-  "was": "presence_required",
-  "callers": [
-   "capsule",
-   "cli",
-   "deck",
-   "device",
-   "local",
-   "tailnet:owner"
-  ],
-  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
-  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.code.redeem changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
- },
- {
   "tool": "wink.offer.set",
   "was": "presence_required",
   "callers": [
