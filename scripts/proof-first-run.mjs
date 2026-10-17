@@ -173,11 +173,17 @@ async function macDriver() {
 }
 
 /** The server's own log for a failed wait: every warn line in full with the 20 lines before it, then the last 40 lines that mention the relay, the setup, the pairing, the owner or the directory (never a code: the server never logs one). */
+/** The end of the server's own log, from the container or the Mac server's proof home. */
+function serverLogText() {
+  let text = "";
+  if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "cat ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).stdout || "");
+  else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8") + "\n"; }
+  return text;
+}
+
 function serverLogForFailure() {
   try {
-    let text = "";
-    if (server === "installer") text = String(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "sh", "-c", "tail -n 800 ~/.vyre/logs/* 2>/dev/null"], { encoding: "utf8" }).stdout || "");
-    else { const d = path.join(process.env.HOME || "", ".vyre-proof", "logs"); for (const f of fs.readdirSync(d)) text += fs.readFileSync(path.join(d, f), "utf8").split("\n").slice(-800).join("\n") + "\n"; }
+    const text = serverLogText().split("\n").slice(-800).join("\n");
     const all = text.split("\n").filter((l) => l.trim());
     const out = /** @type {string[]} */ ([]);
     all.forEach((l, i) => { if (/\bwarn:/.test(l) && /\[spaces\]/.test(l)) out.push(`-- warn at line ${i}`, ...all.slice(Math.max(0, i - 20), i + 1)); });
@@ -275,8 +281,10 @@ try {
   }, { needs: [S("the real installer runs the command on a server")] });
 
   await run.step(S("the server names this identity its owner"), async () => {
-    const owner = await srv.operator("spaces.owner.status", {});
-    if (!owner || owner.identity !== personId) throw new Error(`the server's owner is ${JSON.stringify(owner)}, not ${personId}`);
+    // The kernel logs who it took as owner ("the owner is now the claimed identity <id>"); no server tool names the owner to an operator, and the id is not a secret.
+    const log = serverLogText();
+    const claimed = [...log.matchAll(/the owner is now the claimed identity (per_[a-z2-7]+)/g)].map((m) => m[1]);
+    if (!claimed.length || claimed[claimed.length - 1] !== personId) throw new Error(`the server's kernel took ${claimed.length ? claimed[claimed.length - 1] : "no identity"} as owner, not ${personId}`);
   }, { needs: [S("the server pairs to the creator, the screen names it, and the app reaches Ready")] });
 
   await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
