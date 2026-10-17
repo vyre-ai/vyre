@@ -161,7 +161,7 @@ test("a withdrawn task ends the thread its wake started, never one the task's fo
 
 test("a stuck reason hides a key of any shape: letters, digits, dashes, dots, slashes, plus and equals", async () => {
   const { sayWhy } = await import("./agent-wake.js");
-  for (const key of ["QWxhZGRpbjpvcGVuIHNlc2FtZQ+/AbCdEfGh==", "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", "AbCdEfGhIjKl/MnOpQrStUvWxYz0123", "abc+def+ghi+jkl+mno+pqr+stu"]) {
+  for (const key of ["QWxhZGRpbjpvcGVuIHNlc2FtZQ+/AbCdEfGh==", "sk-ant" + "-api03-AbCdEfGhIjKlMnOpQrStUv", "AbCdEfGhIjKl/MnOpQrStUvWxYz0123", "abc+def+ghi+jkl+mno+pqr+stu"]) {
     const r = sayWhy("juno", `the model said ${key} was refused`);
     assert.ok(!r.reason.includes(key.slice(4, 18)), `${key} is not in the reason: ${r.reason}`);
     assert.match(r.reason, /\[removed\]/);

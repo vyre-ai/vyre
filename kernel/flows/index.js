@@ -369,9 +369,11 @@ export function createFlows(o) {
     // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
     "flows.attention": async () => ({ runs: await runner.attention(), ...(o.stuckTasks ? { tasks: await Promise.resolve(o.stuckTasks()).catch(() => []) } : {}) }),
     "flows.settle": async (chain, i) => {
-      const who = personOf(chain);
       const run = need(i, "run", "the run's id (flows.attention)");
       const action = need(i, "action", "retry, skip, stop or advance");
+      // Said first, so an assistant on the person's chain is told the gate is the person's, not that its chain is not a lone person's.
+      if (action === "advance" && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
+      const who = personOf(chain);
       if (action === "retry") { await runner.retry(run, { by: who.id }); return { ok: true, action }; }
       if (action === "skip") {
         if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });

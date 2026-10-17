@@ -33,7 +33,9 @@ test("agents.flow-say refuses an assistant and an MCP session, and runs for a pe
   for (const surface of ["cli", "deck"]) {
     const person = await d.registry.call("agents.flow-say", INPUT, surface);
     assert.ok(person.error, "no such Flow");
-    assert.notEqual(person.error.code, "denied", `a person on ${surface} is not refused for who they are: ` + JSON.stringify(person.error).slice(0, 160));
-    assert.equal(person.error.code, "not_found", `${surface}: ` + JSON.stringify(person.error));
+    // past the door and the handler's person check, the Flow's own layer answers: the box here has no Flow of that name, and no chain of a person's own (a plain surface, no kernel)
+    const message = String(person.error.message);
+    assert.ok(person.error.code === "not_found" || /a Flow is changed or run under a person's own chain/.test(message), `${surface} reached the body: ` + JSON.stringify(person.error).slice(0, 160));
+    assert.ok(!/only a person writes|is not available to|person-only|person only/.test(message), `a person on ${surface} is not refused for who they are: ` + message.slice(0, 160));
   }
 });

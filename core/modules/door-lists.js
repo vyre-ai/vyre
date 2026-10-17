@@ -25,6 +25,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   // A project's instructions and context: the handler judges her seat on the project (read: any seat; write: owner, lead or contributor, never a viewer).
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
+  "agents.flow-say", // a member writes in a Flow's chat and wakes the Flow's agent as themselves, for an agent and a Flow they may use (core/daemon/flow-chat-member.test.js)
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.shared.reveal", "vault.me.shared.update", "vault.me.shared.rotate", "vault.me.vaults", "vault.me.provisioned", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.share.agent", "vault.me.unshare.agent", "vault.me.store.remove",
   // Connecting an app from the catalog: her connection is hers (her vault, her hub row, her own list); the module reads whose from the call (core/connectors/index.js memberOf). The rest of the module stays the owner's.
   "mcp.repin",
@@ -33,7 +34,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
-  "flows.access.get", "flows.access.set", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",
+  "flows.access.get", "flows.access.set", "flows.budget", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",
   "flows.graph", "flows.health", "flows.kit.card", "flows.kit.diff", "flows.kit.library", "flows.kit.library.get", "flows.kit.list", "flows.kit.propose", "flows.kit.test",
   "flows.actions", "flows.list", "flows.patch", "flows.propose", "flows.retry", "flows.runs", "flows.simulate", "flows.start", "flows.test.list", "flows.test.run", "flows.test.save", "flows.timeline",
   "goals.get", "goals.list", "goals.milestone-done", "goals.set",
@@ -129,7 +130,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
   "files.linked.mentions.resolve",
-  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.budget.set", "flows.kit.remove", "flows.pause", "flows.resume",
+  "flows.advance", "flows.approve", "flows.attention", "flows.budget.set", "flows.kit.remove", "flows.pause", "flows.resume",
   "flows.rollback", "flows.run", "flows.settle", "flows.test.remove",
   "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
