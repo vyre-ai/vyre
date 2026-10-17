@@ -58,6 +58,7 @@ export const PERSON_ONLY = new Map([
   ["github.session.undo", "rewrites a session's history by undoing its last change: the person's own act on their own work"],
   ["github.session.redo", "rewrites a session's history by redoing a change: the person's own act on their own work"],
   ["mcp.restart", "restarts an MCP server: the person's own act on their own machine"],
+  ["mcp.repin", "accepts the new text of a server's tools after the person reviewed it: the person's own act, never an assistant's"],
   ["releases.cert", "makes a release signing certificate: the person's own act, never an agent's"],
   ["releases.sign", "signs a release: the person's own act, never an agent's"],
   ["google.remove", "removes a Google account: the person's own act"],
