@@ -75,6 +75,16 @@ test("a member's standing permission lets their own agent send from their own ma
   const anyVia = { ...rule }; delete anyVia.via;
   assert.equal((await as(BEN, "gate.standing.add", anyVia)).error?.code, "denied", "nor a permission for any sender");
 
+  // another member can neither end nor see Ben's permission; Ben sees his own; the owner (staff) sees every permission, which is the audit view the permission list already gave
+  assert.equal((await as(CY, "gate.standing.revoke", { id: made.id })).error?.code, "denied", "Cy cannot revoke Ben's permission");
+  assert.deepEqual((await ok(CY, "gate.standing.list")).permissions, [], "Cy's list shows none of Ben's");
+  assert.deepEqual((await ok(CY, "gate.standing.list", { agent: "juno" })).permissions, [], "not even by naming the agent");
+  assert.ok((await ok(BEN, "gate.standing.list")).permissions.some((/** @type {any} */ p) => p.id === made.id), "Ben sees his own");
+  assert.ok((await ok(OWNER, "gate.standing.list")).permissions.some((/** @type {any} */ p) => p.id === made.id), "the owner sees all");
+  // a member cannot give a permission over a connection she does not hold
+  assert.equal((await as(BEN, "gate.standing.add", { ...rule, via: "mail:work" })).error?.code, "denied", "a connection Ben does not hold");
+  assert.equal((await as(BEN, "gate.standing.add", { ...rule, via: "google:work" })).error?.code, "denied", "nor a Google connection that is not his");
+
   // a revoke is immediate
   await ok(BEN, "gate.standing.revoke", { id: made.id });
   const after = await mail(BEN);
