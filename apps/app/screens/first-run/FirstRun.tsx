@@ -9,11 +9,11 @@ import { MOCK } from "../../src/real/box";
 import { takeJoin } from "../../src/shell/join-hold.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
-  addComputer, addPhone, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
+  addComputer, chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
   loadProgress, makeInvite, openSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "phone.add" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "computer.add" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -45,7 +45,6 @@ export function FirstRun() {
   const [invite, setInvite] = useState(shot?.link || "");
   const [url, setUrl] = useState("");
   const [github, setGithub] = useState(false);
-  const [phoneLink, setPhoneLink] = useState(shot?.screen === "phone.add" ? shot.link || "" : "");
   const [space, setSpace] = useState(shot?.space || "");
   const [spaces, setSpaces] = useState<Membership[]>([]);
   const [current, setCurrent] = useState("");
@@ -390,20 +389,6 @@ export function FirstRun() {
     );
   }
 
-  if (screen === "phone.add") {
-    return (
-      <FlowStep steps={steps} onBack={back} title="Add your phone" lead="Your phone opens this link and joins the space." failure={failure}
-        primary={{ label: phoneLink ? "Done" : "Add your phone", loading: busy, onPress: () => void run(async () => {
-          if (phoneLink) { go("ready"); return; }
-          const r = await addPhone(space || undefined);
-          if (!r.ok) { setFailure(r.message); return; }
-          setPhoneLink(String(r.link || ""));
-        }) }}>
-        {phoneLink ? <InviteShare link={phoneLink} /> : null}
-      </FlowStep>
-    );
-  }
-
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
     <FlowStep steps={steps} hero mark="done" title="You're in"
@@ -423,11 +408,11 @@ export function FirstRun() {
         })} />
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
+      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your master password.`}</Text>
       <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
         { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
         { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },
         { value: "computer.add", title: "Add a computer", sub: "It connects to every space you belong to.", icon: "laptop" },
-        { value: "phone.add", title: "Add a phone", sub: "The phone opens a link.", icon: "link" },
       ]} />
     </FlowStep>
   );
