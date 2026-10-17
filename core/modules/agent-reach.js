@@ -670,7 +670,7 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
-  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"],
+  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap and, once the person approves that exact call, runs as the person's own act; without that tap an assistant cannot move a stage gate on early (flows.advance is the person's own)"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],

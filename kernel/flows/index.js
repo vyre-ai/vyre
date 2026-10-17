@@ -56,6 +56,12 @@ function need(i, key, where) {
 
 const isPlain = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
 
+/** The person an assistant's approved act is for: the person its chain begins with. Used only when the registry says the person approved exactly this call. @param {any} chain */
+function approvedPerson(chain) {
+  const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0].actor : null;
+  if (!first || first.kind !== "person") throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" });
+  return { kind: "person", id: first.id, space: first.space };
+}
 function personOf(chain) {
   const hops = chain && chain.hops;
   if (!Array.isArray(hops) || hops.length !== 1 || hops[0].actor.kind !== "person") throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" });
@@ -368,21 +374,25 @@ export function createFlows(o) {
     },
     // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
     "flows.attention": async () => ({ runs: await runner.attention(), ...(o.stuckTasks ? { tasks: await Promise.resolve(o.stuckTasks()).catch(() => []) } : {}) }),
-    "flows.settle": async (chain, i) => {
+    // `via.approved` is set by core/flows/index.js alone, from the mark the registry puts on a call whose approval card the person answered yes and the registry just redeemed (lib/covered.js):
+    // an assistant's settle that the person approved runs as that person's own approved act, with the person its chain begins with. Without it an assistant on the person's chain is refused where it is refused here.
+    "flows.settle": async (chain, i, via) => {
+      const approved = via && via.approved === true;
+      const byAgent = (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
       const run = need(i, "run", "the run's id (flows.attention)");
       const action = need(i, "action", "retry, skip, stop or advance");
       // Said first, so an assistant on the person's chain is told the gate is the person's, not that its chain is not a lone person's.
-      if (action === "advance" && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
-      const who = personOf(chain);
+      if (action === "advance" && byAgent && !approved) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
+      const who = approved && byAgent ? approvedPerson(chain) : personOf(chain);
       if (action === "retry") { await runner.retry(run, { by: who.id }); return { ok: true, action }; }
       if (action === "skip") {
-        if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
+        if (i.value !== undefined && byAgent && !approved) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
         await runner.retry(run, { skip: true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id }); return { ok: true, action };
       }
       if (action === "stop") return { ...(await runner.cancel(run, { by: who.id, reason: i.reason })), action };
       if (action === "advance") {
-        // A stage gate moves only for its owner or an admin, in their own name: an assistant on the person's chain may not move it, even with the person's tap.
-        if ((chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
+        // A stage gate moves only for its owner or an admin, in their own name: an assistant on the person's chain may not move it on its own; the person's approved tap (via.approved) is the person's act.
+        if (byAgent && !approved) throw Object.assign(new Error("an assistant cannot move a stage gate on early: the person does that in their own name"), { code: "person_only" });
         if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
         return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
       }

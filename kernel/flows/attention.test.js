@@ -83,3 +83,17 @@ test("f3: settle advance moves a stage gate only for a lone person: an assistant
     e => e.code !== "person_only", "the person's own advance is not refused for who asks; it reaches the stage check");
   assert.equal((await w.runner.getRun(run.id)).state, "failed", "neither call moved the run");
 });
+
+test("f3: an assistant's settle that the person approved runs as the person's own act: advance reaches the stage check, and a chain that does not begin with a person is still refused", async () => {
+  // The registry holds an assistant's settle for the person's tap and, once the card is redeemed for exactly that call, tells this handler so (via.approved, set by core/flows/index.js from the registry's mark).
+  const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.chainFor(x) } });
+  await install(w, flowOf([fn("f", { retry: false })]));
+  const run = await fire(w);
+  const advance = { run: run.id, action: "advance", reason: "skip the gate" };
+  await assert.rejects(() => f.tools["flows.settle"](agentChain(), advance), e => e.code === "person_only", "unapproved: refused as before");
+  await assert.rejects(() => f.tools["flows.settle"](agentChain(), advance, { approved: false }), e => e.code === "person_only", "only approved: true counts");
+  await assert.rejects(() => f.tools["flows.settle"](agentChain(), advance, { approved: true }), e => e.code === "unavailable", "approved: it reaches the stage check (stages are not running in this test), as the person's own advance does");
+  const agentFirst = { hops: [{ actor: { kind: "agent", id: "juno", space: ALEX.space } }, { actor: ALEX }] };
+  await assert.rejects(() => f.tools["flows.settle"](agentFirst, advance, { approved: true }), e => e.code === "chain_not_person", "an approved call still needs a person at the start of its chain");
+});
