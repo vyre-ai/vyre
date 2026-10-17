@@ -197,6 +197,7 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
   assert.equal(st.owned, true);
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
+  console.log("PROBE-ROWS", JSON.stringify((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices), "status", JSON.stringify(st));
   assert.equal(st.device, "Alex's iPhone");
   // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
   assert.equal(((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "a pick with no kind makes no relay device row");
