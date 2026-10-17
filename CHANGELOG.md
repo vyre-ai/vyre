@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.5.6
+
+- feat(vault): a space's vault waits for the first save with approval; the host poll defers only on presence_required, and the Vault screen shows one calm line while the vault is not made yet (work/0.5.4/app53/adopt-trace).
+- release: 0.5.6 carries all of 0.5.5 (release notes in release/notes/0.5.6.md).
+
 ## 0.5.5
 
 - fix(app): a pairing that ends without showing words (the server already knows its owner) no longer leaves ready() waiting forever: adding a server completes. A first adoption now has a 120 s deadline that fails with "The server did not answer the pairing", the app logs each step of the pairing stage, and the server logs when setup-offer is entered and how it ends. The first-run proof prints the steps when the pairing does not finish A server whose answer names a different owner than the identity being paired is refused (bad_owner), and the add-server card shows the word box only when there are words (work/0.5.4/app53/adopt-trace).
