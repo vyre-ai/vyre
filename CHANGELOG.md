@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(flows): the template tests list every helper value the engine reads (run number, Flow, approver, Space and starter names), none waiting.
 - feat(flows): a run can print its own number among the Flow's, the Flow's name, who approved it, who started it ("your name") and the Space's name: `{run.number}`, `{flow.name}`, `{approver.name}`, `{me.name}`, `{space.name}`, offered under Insert a value. They are fixed once when the run starts, a name the server cannot find reads "a team member" (or "this Space"), never nothing, and the number comes from a counter kept with the Flow that only grows (pruning runs never takes a number back). A trigger field that has a helper's name stays reachable as `{trigger.me.name}`: the helper wins the short name. The host reads the names through the new `spaces.names` (host only, no person on the call).
 - feat(flows): text and lists. A brace written as `\{` is a brace (`\{name}` prints as {name}); text stored before this with braces in it stays plain text when the Flow is opened and saved, shown escaped. A URL list in text prints its main item (`first()`), and a date of a record a Lookup step found reads as a date. A For each takes a limit (default 50, at most 1000) in the editor, and a run whose list was longer says "cut at 50 of 200".
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
