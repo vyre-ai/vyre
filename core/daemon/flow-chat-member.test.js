@@ -80,7 +80,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const kept = (await K.gateway.records.query(K.gateway.serviceChain("skills"), "skill", { page: { limit: 50 } })).rows;
   const secret = kept.find((/** @type {any} */ x) => x.data.name === "owner-secret");
   assert.ok(secret, "the owner's skill exists");
-  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
+  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.list {"type":"contact","limit":3}\nvyre records.get {"urn":"vyre://${K.space}/skill/${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
   const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
     const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
