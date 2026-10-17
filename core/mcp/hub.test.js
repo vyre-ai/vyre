@@ -420,3 +420,69 @@ test("a person's connection: its key is theirs, its token is an item in their va
   assert.equal(hub.row(personKey("clio", B)).connection, "clio-bob");
   assert.deepEqual(hub.view(mine).auth, { type: "oauth" }, "the view names no item and no token");
 });
+
+test("a person's connection is used by whoever the Vault says holds its item, at the level it holds: no scope list, no person shortcut, and no answer means no", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp";
+  const levels = { alice: "call", kit: "read" };   // who holds the item: the maker with call, an agent with read, Bob nothing
+  const asked = [];
+  const mayUseConnection = async (c, who) => {
+    asked.push({ ...c, as: who.thread });
+    const held = levels[who.thread];
+    return held === "call" || (held === "read" && c.level === "read");
+  };
+  const { hub, db } = fakeHub({ mayUseConnection });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" }, scope: { projects: "*", agents: "*" } }, { owner: A });
+  const key = personKey("clio", A);
+  db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ? WHERE name = ?").run(JSON.stringify([{ name: "list_matters", annotations: { readOnlyHint: true } }, { name: "send_message" }]), Date.now(), key);
+  const as = (thread, agent = null) => ({ person: !agent, agent, thread });
+  assert.deepEqual((await hub.servers(as("alice"))).map(s => s.name), [key], "the maker sees it");
+  assert.deepEqual((await hub.servers(as("kit", "kit"))).map(s => s.name), [key], "an agent holding read sees it");
+  assert.deepEqual(await hub.servers(as("bob")), [], "a person with no grant sees nothing, though the row's scope says every agent and project, and though the caller is a person");
+  assert.deepEqual((await hub.tools(as("bob"))), []);
+  assert.deepEqual((await hub.tools(as("kit", "kit"))).map(t => t.tool).sort(), ["list_matters", "send_message"]);
+  await assert.rejects(hub.call({ server: key, tool: "list_matters" }, as("bob")), e => e.code === "denied" && /may use/.test(e.message));
+  await assert.rejects(hub.call({ server: key, tool: "send_message", arguments: { to: "dana@harlowlegal.com" } }, as("kit", "kit")), e => e.code === "denied" && /only read/.test(e.message), "read does not reach an outward tool");
+  const held = await hub.call({ server: key, tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "hi" } }, as("alice"));
+  assert.ok(held.held, "call level reaches an outward tool, and the Gate still holds it");
+  assert.ok(asked.some(a => a.level === "call" && a.owner === A && a.connection === "clio-alice"), "the Vault is asked at call level, for the row's owner and item");
+  assert.ok(asked.every(a => a.owner === A), "the owner comes from the row, never from the caller");
+  // a hub with no way to ask refuses everyone, the maker included
+  const blind = fakeHub({});
+  await blind.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  assert.deepEqual(await blind.hub.servers(as("alice")), []);
+  // an error from the Vault is a no
+  const broken = fakeHub({ mayUseConnection: async () => { throw new Error("vault locked"); } });
+  await broken.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  assert.deepEqual(await broken.hub.servers(as("alice")), []);
+  // the Space owner's own older rows keep the old rule
+  await hub.add({ name: "plain", transport: "http", url });
+  assert.ok((await hub.servers(as("bob"))).some(s => s.name === "plain"), "a row with no owner is unchanged: a person sees it");
+});
+
+test("a person's connection reaches its server with an access token the Vault hands over at the moment of the request, never a stored header, and the token is scrubbed from what comes back", async () => {
+  const A = "per_alice", url = "https://mcp.example.test/mcp", TOKEN = "fixture-access-token-abcdef123456";
+  const asked = [];
+  const { hub, db } = fakeHub({
+    mayUseConnection: async () => true,
+    connectionToken: async c => { asked.push(c); return { access_token: TOKEN, token_type: "Bearer" }; },
+  });
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  const key = personKey("clio", A);
+  const r = await hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" });
+  const text = JSON.stringify(r);
+  assert.ok(!text.includes(TOKEN), "the token is scrubbed from the result");
+  assert.ok(asked.length >= 1 && asked.every(a => a.owner === A && a.connection === "clio-alice" && a.write === false), "a read asks for the read kind of token, for the row's owner and item");
+  // a call released from the Gate is an outward one: the write kind
+  asked.length = 0;
+  await hub.run(key, "send_message", { text: "hi" }, { released: "h1" });
+  assert.ok(asked.length >= 1 && asked.every(a => a.write === true), "a released outward call asks for the write kind");
+  // a Vault that refuses refuses the call, with its own code
+  const bad = fakeHub({ mayUseConnection: async () => true, connectionToken: async () => { throw Object.assign(new Error("reconnect it"), { code: "needs_reconnect" }); } });
+  await bad.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await assert.rejects(bad.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), e => e.code === "needs_reconnect");
+  // a hub with no token source cannot connect a person's row
+  const none = fakeHub({ mayUseConnection: async () => true });
+  await none.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
+  await assert.rejects(none.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), /no way to reach/);
+  assert.ok(db);
+});
