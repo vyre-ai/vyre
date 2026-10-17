@@ -37,7 +37,7 @@ export async function pairToProofMessage(box, device, ticket) {
  * @param {{ relay: string, ticket: string, typed?: boolean, owner: { id: string, name?: string, vyre?: string, pin?: { id: string, seq: number, head: string }, kind?: "identity" | "space" }, deviceName?: string, proof?: { eid: string, sig: string },
  *   signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string, esig?: string }> | { eid: string, sig: string, esig?: string },
  *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", keySigner?: string, keyRp?: string, crypto?: any, keyStore?: any, WebSocket?: any,
- *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
+ *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number, firstAdoptMs?: number }} o
  *   typed: the ticket came from a typed code. The server names it `typed_tag`, asks no words when the person typed the ack back, and its words are made with no ticket (core/wink/pairing.js).
  * @returns {Promise<{ paired: true, relay: string, route: string, box: string, device: string, name: string, owner: any, session: boolean }>}
  */
@@ -60,7 +60,13 @@ export async function adoptServer(paired, o) {
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(o.ticket);
     const mark = o.typed ? { typed_tag: tag } : { tag };
-    const first = await adopt({ ...base, pairing: { commit, ...mark } });
+    // The server answers the first call at once (it only starts the ask and sends its nonce). One that never answers is a server that is stuck, not one waiting for a person: say so after a minute.
+    const FIRST_MS = o.firstAdoptMs ?? 60_000;
+    /** @type {any} */ let firstTimer;
+    const first = await Promise.race([
+      adopt({ ...base, pairing: { commit, ...mark } }),
+      new Promise((_, rej) => { firstTimer = setTimeout(() => rej(fail("unreachable", "The server did not answer the pairing")), FIRST_MS); }),
+    ]).finally(() => clearTimeout(firstTimer));
     if (first.status !== 200 || !first.body || !first.body.data) return refuse(first);
     // a proven (--pair-to) server, or a typed code whose ack was typed back, answers the owner at once; a first adoption answers pending with the server's nonce
     if (first.body.data.owner) return done(first.body.data);
