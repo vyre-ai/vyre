@@ -34,7 +34,7 @@ export function SharedItemRow({ item, onChanged }: { item: SharedItem; onChanged
       <Sheet open={changing} onClose={() => setChanging(false)} title={`Change ${item.name}`}>
         <View className="gap-s4">
           <Field name="Field" value={field} onChangeText={setField} placeholder="value" />
-          <Field name="New value" value={val} onChangeText={setVal} placeholder="" secureTextEntry />
+          <Field name="New value" value={val} onChangeText={setVal} placeholder="" kind="password" />
           <Text tone="label">The owner sees that you changed it, and when.</Text>
           {err ? <Footnote icon="info">{err}</Footnote> : null}
           <View className="flex-row gap-s2"><Button kind="primary" label={busy ? "Saving" : "Save"} disabled={busy || !val || !field.trim()} onPress={save} /><Button kind="ghost" label="Cancel" onPress={() => setChanging(false)} /></View>
