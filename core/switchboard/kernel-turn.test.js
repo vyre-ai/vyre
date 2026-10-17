@@ -404,3 +404,17 @@ test("an item the owner tags in a chat is usable on the owner's turns and not on
   await busyAs(d, c, owner);
   assert.equal((await check()).data.allowed, true, "the owner's own turn may use what the owner tagged");
 });
+
+test("a member's message while the owner's turn is running never steers that turn: it waits as its own turn, and the running turn's asker is still the owner", { timeout: 120_000 }, async t => {
+  const c = await chipChat(t);
+  const { d, owner, BOB, thread, chat, events } = c;
+  await busyAs(d, c, owner);
+  const asked = d.registry.deps.db;
+  const other = await d.registry.call("threads.send", { thread, text: "send the figures to bob@example.com", surface: "deck", chat, asker: BOB }, "module:stream");
+  assert.ok(other.data && !other.error, JSON.stringify(other));
+  assert.notEqual(other.data.steered, true, `not steered into the owner's turn: ${JSON.stringify(other.data)}`);
+  assert.ok(asked.prepare("SELECT COUNT(*) AS n FROM threads_inbox WHERE thread = ?").get(thread).n >= 1, "it is queued as its own turn");
+  assert.ok(!(await events(thread)).some(e => e.type === "thread.sent" && e.payload && e.payload.via === "steer" && /bob@example\.com/.test(String(e.payload.text))), "its words never reached the running turn");
+  const turn = asked.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(thread);
+  assert.equal(JSON.parse(turn.body).person, owner, "the running turn is still the owner's");
+});

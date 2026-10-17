@@ -5,8 +5,12 @@
 /** @param {any} ctx @param {any} sb the Switchboard */
 export function registerTurnAsker(ctx, sb) {
   ctx.tool("threads.turn-asker", {
-    description: "Who asked the chat turn now running on a thread (a per_ id), or none for a turn that is not a chat's. Only other modules ask: the vault, to match an ask to the person who made it.", internal: true, callers: ["module"],
+    description: "Who asked the chat turn now running on a thread (a per_ id), or none for a turn that is not a chat's. Only the vault asks, to match an ask to the person who made it.", internal: true, callers: ["module"],
     input: { type: "object", required: ["thread"], properties: { thread: { type: "string" } } },
-    run: async (/** @type {any} */ i) => ({ asker: sb.turnAsker.get(String(i.thread)) || null }),
+    // Who is running on a thread is the vault's to ask, not any module's (an added one too): it answers module:vault alone.
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault asks who asked a turn"), { code: "denied" });
+      return { asker: sb.turnAsker.get(String(i.thread)) || null };
+    },
   });
 }
