@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { buildManifest, verifyManifest, signManifest, canonical, newer, folderOf, sha256Hex, MANIFEST, SIGNATURE } from "./manifest.js";
 import { keygen, build, loader, verify, loadKey, entriesOf } from "./release.js";
@@ -324,18 +323,20 @@ test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and not
   assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
 });
 
-// ---- the installed app scans inside itself (loader/pairing.js and the scanner it ships), and tailnet's one card pairs ----
+// ---- the sealed loader, and tailnet's one card pairs ----
 
-test("release: the sealed loader ships the scanner and the in-app scan, and every import in that tree resolves", async t => {
+test("release: the sealed loader holds its own files only, and every import in that tree resolves", async t => {
   const dir = scratch(t);
   const key = path.join(dir, "release.key");
   keygen(key);
   const out = path.join(dir, "out");
   await loader({ release: "1.0.0", key, out });
   const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
-  for (const f of ["pairing.js", "fragment.js", "relay/wink/page.js", "relay/wink/flow.js", "relay/wink/wink.css", "web/js/scan.js", "web/js/scan-worker.js", "web/js/haptics.js"]) assert.ok(m.files[f], `${f} is sealed in the loader`);
+  assert.ok(m.files["fragment.js"], "fragment.js is sealed in the loader");
+  assert.ok(!m.files["pairing.js"] && !m.files["web/js/scan.js"], "the loader opens no camera");
   assert.ok(!m.files["web/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
-  const { specifiers } = await import("../wink/closure.js");
+  /** The relative specifiers a module imports: static and dynamic with a string. @param {string} src */
+  const specifiers = src => [...src.matchAll(/(?:^|[\s;}])import\s+(?:[^"'`;]*?\sfrom\s+)?["'`]([^"'`]+)["'`]/gm), ...src.matchAll(/\bimport\(\s*["'`]([^"'`]+)["'`]\s*\)/g)].map(x => x[1]).filter(x => x.startsWith("."));
   for (const f of Object.keys(m.files).filter(f => /\.js$/.test(f))) {
     const dirOf = path.posix.dirname(f);
     for (const s of specifiers(fs.readFileSync(path.join(out, f), "utf8"))) {
@@ -343,35 +344,6 @@ test("release: the sealed loader ships the scanner and the in-app scan, and ever
       assert.ok(m.files[next], `${f} imports ${s}, which is not in the sealed loader`);
     }
   }
-  assert.doesNotMatch(fs.readFileSync(path.join(out, "pairing.js"), "utf8"), /"\.\.\/\.\.\//, "the repo-relative scanner paths were rewritten");
-});
-
-test("pairing.js, from the sealed tree: the in-app scanner hands back the decoded ticket and looks nothing up", async t => {
-  const dir = scratch(t);
-  const key = path.join(dir, "release.key");
-  keygen(key);
-  const out = path.join(dir, "out");
-  await loader({ release: "1.0.0", key, out });
-  const { install } = await import("../../web/test/fake-dom.js");
-  install();
-  /** @type {any} */ (globalThis).matchMedia = () => ({ matches: true });
-  /** @type {any} */ (document).visibilityState = "visible";
-  /** @type {any} */ (document).getElementById = () => null;
-  const TICKET = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-  const timers = /** @type {(() => void)[]} */ ([]);
-  const realSet = globalThis.setTimeout;
-  /** @type {any} */ (globalThis).setTimeout = (/** @type {() => void} */ fn, /** @type {number} */ ms) => (ms === 450 ? (timers.push(fn), 0) : realSet(fn, ms));
-  t.after(() => { globalThis.setTimeout = realSet; });
-  const { scanTicket } = await import(pathToFileURL(path.join(out, "pairing.js")).href);
-  const tick = () => new Promise(r => realSet(r, 0));
-  /** @type {any} */ let cam = null;
-  const done = scanTicket({ relay: "wss://relay.test", crypto: {}, nav: { userAgent: "Mozilla/5.0 (Linux; Android 14)" }, startScan: (/** @type {any} */ o) => { cam = o; return { stop() {} }; } });
-  for (let i = 0; i < 200 && !cam; i++) await tick();
-  assert.ok(cam, "the in-app scanner started before a ticket is handed in");
-  cam.onFound(TICKET);
-  for (let i = 0; i < 8; i++) { await tick(); while (timers.length) timers.shift()?.(); }
-  assert.deepEqual([...await done], [...TICKET]);
-  assert.equal(/** @type {any} */ (document.body).querySelectorAll("#vyre-wink").length, 0, "the screen is gone when the ticket is handed over");
 });
 
 test("scan, one lookup, the card, the tap and the pairing, against a relay that deletes a ticket on its first lookup", async () => {

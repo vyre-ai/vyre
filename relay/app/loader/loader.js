@@ -115,18 +115,11 @@ async function main() {
   const last = load(LAST) || {};
   const about = { kind: /** @type {"web"} */ ("web"), ...(last.release ? { release: last.release, manifest: last.manifest } : {}) };
   let box = load(BOX);
-  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`; the installed app with no server yet scans one
-  // itself (pairing.js, the same scanner, no lookup). Anyone can send a person such a link, so nothing is redeemed on arrival: the
-  // fragment is read once and scrubbed from the address and history at once, the ticket is resolved ONCE (read only; it uses the
-  // ticket up), and the person sees who it says it is, with the key's fingerprint, and must tap Pair. The pairing then uses the
-  // record already held (a second lookup would find the ticket gone). A tap on Not now, or leaving, pairs nothing.
+  // A pairing handed over as `#pair=<ticket>` is read once and scrubbed from the address and history at once, the ticket is resolved ONCE (read only; it uses the
+  // ticket up), and the person sees who it says it is, with the key's fingerprint, and must tap Pair. The pairing then uses the record already held (a second lookup
+  // would find the ticket gone). A tap on Not now, or leaving, pairs nothing.
   let handed = pairTicketFrom(location.hash);
   if (handed) history.replaceState(null, "", "/");
-  if (!handed && !box && location.pathname !== "/pair") {
-    // No server yet: the scanner opens right here, never by navigating to wink.vyre.run, which on iOS leaves the installed app.
-    const { scanTicket } = await import("./pairing.js");
-    handed = await scanTicket({ relay: HOSTED_RELAY, crypto });
-  }
   if (handed) {
     box = await pairWithCard(handed, {
       resolve: () => { status("Looking up this pairing code"); return resolveTicket(handed, { relay: HOSTED_RELAY, crypto }); },
@@ -141,7 +134,7 @@ async function main() {
     status("That is an old kind of pairing code that no longer works. Sign in on the device with your space address, your username and your master password.");
     return;
   }
-  if (!box) { status("This browser is not paired with a server yet. On your server, open Settings, Devices, and scan the code with this device's camera."); return; }
+  if (!box) { status("This browser is not paired with a server yet. Sign in at web.vyre.run with your space address, your username and your master password."); return; }
   status(`Connecting to ${box.name || "your box"}`);
   const conn = connect({ ...box, about, keyStore, crypto });
   const { base, manifest, want } = await loadBuild(conn);
