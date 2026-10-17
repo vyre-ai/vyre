@@ -13,6 +13,9 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
 import { register } from "./request.js";
 import { kernelRig, SPACE } from "./kernel-rig.js";
+import { createGateway } from "../../kernel/gateway/index.js";
+import { createMemoryStore } from "../../kernel/store/memory.js";
+import { createEventLog } from "../../kernel/core/events.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -201,6 +204,21 @@ test("a task lease: the doer may use the Connection its approved Kit names, for 
   for (let i = 0; i < 4000; i++) rig.clock();
   const real = v.clock; v.clock = () => real() + 10_000;
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "after its time");
+});
+
+test("a lease ends the moment the person who approved it no longer holds the Connection, before the task closes or the lease is taken back", async t => {
+  const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
+  const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  await cred("conn-cn1");
+  await v.access.convertScopes();
+  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
+  // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
+  const blind = createGateway({ space: SPACE, store: createMemoryStore({ clock: rig.clock }), log: createEventLog({ space: SPACE, clock: rig.clock }), chains: rig.chains, clock: rig.clock, grantsStore: rig.gs, presence: { check: async () => null }, owner: rig.K.owner, hasPresenceSession: () => true });
+  assert.notEqual((await blind.authorize({ chain: rig.assistant(rig.uid("kit")), action: "vault.call", resource: await v.access.urn("conn-cn1") })).effect, "allow", "a lease with nothing to ask is refused");
+  await rig.gw.grants.revoke(rig.owner(), share.id, "left the project", { presence: { n: 1 } });
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "Ben lost it: the lease he carried holds nothing, though the task is still open and the lease still stands");
 });
 
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {

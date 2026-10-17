@@ -70,7 +70,6 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.disable", resource_type: "rule", risk: "grant", label: "turn a standing rule off", gloss: "Stop a rule binding without deleting it." },
 ].map(a => Object.freeze(a)));
 
-
 /** The action a grant is gated under: an owner or an admin giving an assistant, a service or a surface access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
 export const grantActionOf = input => (input && !input.parent && input.subject && ((input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind)) || (input.subject.kind === "group" && String(input.subject.id).startsWith("surface:"))) ? "grants.member" : "grants.create");
 
@@ -632,7 +631,6 @@ export function createGrantsStore(cfg) {
       tell(n, "withdrawn", chain);
       return n;
     },
-
 
     /**
      * Lend one computer to this Space in ONE act (the first lend of a device, ruled 5 Oct): the Space's side (only when the caller is an owner or admin) and the member's own side, bound to the

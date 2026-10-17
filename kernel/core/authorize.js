@@ -428,6 +428,7 @@ export function createAuthorizer(cfg) {
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
     const m = matchGrant(g, action, resource, { attrs, now, probe, origin, thread: h.actor.kind === "agent" && h.via && typeof h.via.thread === "string" ? h.via.thread : undefined, since: since(action), risk: riskOf(action) });
     if (!m.ok) return m;
+    if (/^vault:lease:/.test(String(g.source || "")) && !(g.approver && typeof cfg.approverHolds === "function" && await cfg.approverHolds(String(g.approver), action, resource))) return { ok: false, reason: "expired" }; // a lease is carried by the person who approved it: it holds nothing once they no longer hold the credential, even before it is taken back
     // where the act may go: every recipient must match the grant's `to` (an act with no recipients, or one outside it, is not covered)
     if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
     const c = g.conditions || {};
