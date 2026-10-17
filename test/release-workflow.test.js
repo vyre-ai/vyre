@@ -89,7 +89,7 @@ test("release.yml: the first-run install proof does not gate a release, and firs
     assert.ok(e2e.includes(must), `the e2e runs: ${must}`);
   }
   const script = fs.readFileSync(path.join(REPO, "scripts/proof-first-run.mjs"), "utf8");
-  for (const must of ["Get started", "Create your identity", "Save your recovery key", "Show the command", "spaces.owner.status", "Welcome back", "startInstallerServer", "startMacServer", "Not your server?"]) assert.ok(script.includes(must), `the proof walks: ${must}`);
+  for (const must of ["Get started", "Create your identity", "Save your recovery key", "Show the command", "the owner is now the claimed identity", "Welcome back", "startInstallerServer", "startMacServer", "Not your server?"]) assert.ok(script.includes(must), `the proof walks: ${must}`);
 });
 
 test("release.yml: the Vyre Mac app is built in this run on every channel, and its dmgs reach dist Developer ID signed and notarized, or ad hoc signed and said to be sideloaded", () => {
