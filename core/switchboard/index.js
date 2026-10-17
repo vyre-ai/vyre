@@ -42,6 +42,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.j
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
+import { mayReadHomeVault } from "../../lib/account-source.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -4038,6 +4039,8 @@ export default {
       if (a.kind === "login") return { auth: "subscription", env: {} };
       const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
+      // A key or token of one person that is not kept in their own vault is never read from the home's vault: it would be the owner's item, used in a member's turn.
+      if (!mayReadHomeVault(a)) throw Object.assign(new Error(`${a.label} is not kept in its owner's own vault, so no turn can use it. Add it again from the account's owner.`), { code: "denied" });
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
       let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
