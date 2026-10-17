@@ -6,9 +6,10 @@
 //   identity.signin.ack        your own act ("It was me"): the device stops being listed for you.
 // Everything is in memory, like the sessions: a restart or the one-hour expiry ends the sessions, so the card only ever shows live ones, and a card that outlives its session answers "already signed out".
 import { loginService } from "../../lib/login-door.js";
+import { isPerson, isOwnerDevice, isDevice, onTailnet, isSpaceMember } from "../../lib/caller.js";
 
-/** The owner's own local surfaces: the only callers the no-kernel fallback serves. */
-const LOCAL_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
+/** The owner at this computer: lib/caller.js says the caller is a person (never a model, an agent or a thread label), and it is not a paired device, a tailnet node or a space member, which are persons reached over a network. */
+const onThisComputer = (/** @type {any} */ meta) => isPerson(meta) && !isOwnerDevice(meta) && !isDevice(meta) && !onTailnet(meta) && !isSpaceMember(meta);
 const DEVICE = /^[A-Za-z0-9_-]{8,64}$/;
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -32,7 +33,7 @@ export function registerSignins(ctx, o) {
   const personOf = async (/** @type {any} */ meta) => {
     if (!ctx.kernel || typeof ctx.kernel.chain !== "function") {
       // development builds only (production has the kernel): the home's person answers for the owner's own local surfaces, exactly these labels and nothing a network caller can carry
-      const local = meta && typeof meta === "object" && LOCAL_SURFACES.has(String(meta.caller)) && meta.person === undefined;
+      const local = Boolean(meta) && typeof meta === "object" && meta.person === undefined && onThisComputer(meta);
       const f = local && o.fallbackPerson && o.fallbackPerson();
       if (f) return f;
       throw refuse("This is for a signed-in person.", "person_required");
