@@ -43,6 +43,8 @@ export function scopeOf(s) {
 
 /** @returns {PromptRow} */
 const DOC_PROMPT_MAX = 24000;
+/** The most distinct references one instructions file has looked up for the prompt. */
+export const REFS_MAX = 50;
 /**
  * The instructions with each @ or # reference (a markdown link to a vyre:// address, lib/doc-refs.js) turned into a line the model can use, "@Sam (person, vyre://acme/person/p_1)". `canRead` is the caller's
  * read check, asked once per address; a reference it refuses, or one that fails to answer, keeps its name and loses the address, so the prompt never carries what the reader could not open.
@@ -53,8 +55,13 @@ export async function withRefsResolved(x, canRead) {
   if (!x) return x;
   const known = new Map();
   const ask = async (/** @type {import("../../lib/doc-refs.js").DocRef} */ r) => { if (!known.has(r.urn)) known.set(r.urn, await canRead(r).then(Boolean, () => false)); };
-  for (const d of [x.agent, x.project]) if (d && typeof d.text === "string") for (const r of parseRefs(d.text)) await ask(r);
-  const one = (/** @type {{ name: string, text: string } | undefined} */ d) => (d && typeof d.text === "string" ? { ...d, text: renderForPrompt(d.text, (r) => known.get(r.urn) === true) } : d);
+  // at most REFS_MAX distinct addresses are resolved per document (each is a read check, one after another): the rest keep their names, and the prompt says how many
+  /** @type {Map<any, number>} */ const left = new Map();
+  for (const d of [x.agent, x.project]) if (d && typeof d.text === "string") {
+    const asked = new Set();
+    for (const r of parseRefs(d.text)) { if (asked.has(r.urn)) continue; if (asked.size >= REFS_MAX) { left.set(d, (left.get(d) || 0) + 1); continue; } asked.add(r.urn); await ask(r); }
+  }
+  const one = (/** @type {{ name: string, text: string } | undefined} */ d) => (d && typeof d.text === "string" ? { ...d, text: renderForPrompt(d.text, (r) => known.get(r.urn) === true) + (left.get(d) ? `\n\n(${left.get(d)} more references in this file keep only their names: at most ${REFS_MAX} are looked up in one file)` : "") } : d);
   return { ...(x.agent ? { agent: one(x.agent) } : {}), ...(x.project ? { project: one(x.project) } : {}) };
 }
 
