@@ -434,6 +434,9 @@ test("hub pin: the first tool list is the one reviewed; a changed description is
   // approving needs the hash the person read; a wrong or short one is refused, and nothing changes
   await assert.rejects(hub.repin({ name: "web", seen: "deadbeefdead" }), e => e.code === "conflict");
   await assert.rejects(hub.repin({ name: "web", seen: held.pinSeen.slice(0, 4) }), e => e.code === "conflict");
+  await assert.rejects(hub.repin({ name: "web", seen: held.pinSeen.slice(0, 12) }), e => e.code === "conflict", "a 12-character prefix is not the hash: only the whole 64 characters approve");
+  await assert.rejects(hub.repin({ name: "web", seen: held.pinSeen.slice(0, 63) }), e => e.code === "conflict");
+  await assert.rejects(hub.call({ server: "web", tool: "list_issues" }, person), e => e.code === "tools_changed" && e.message.includes(held.pinSeen), "the refusal names the whole hash to send back");
   assert.equal(hub.row("web").pinSeen, held.pinSeen);
   // the server changes yet again before the person approves: the approval takes the list they read, which no longer matches, so it is refused
   live = [tool("list_issues", "Something else again.")];

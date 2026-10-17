@@ -136,9 +136,11 @@ export default {
       effect: "read",
       description: "Search the reviewed app catalog of hosted MCP servers by words or category; each entry says its sign-in kind and whether you are connected.",
       input: obj({ query: str, category: str, connected: { type: "boolean" }, verified: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } }),
-      run: input => {
+      run: async (input, meta) => {
         const snap = catalog();
-        const connectedKeys = new Set(hub.rows().map(r => (r.url ? urlKey(r.url) : "")).filter(Boolean));
+        // "connected" means a server this caller may use (the same scope as mcp.servers): a member does not learn which apps the owner connected beyond what her sessions can reach.
+        const w = who(meta), memo = {}, connectedKeys = new Set();
+        for (const r of hub.rows()) if (r.url && await hub.inScope(r, w, memo)) connectedKeys.add(urlKey(r.url));
         return { ...searchCatalog(Array.isArray(snap.entries) ? snap.entries : [], input || {}, connectedKeys), generated: snap.generated || null };
       },
     });

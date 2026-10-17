@@ -912,17 +912,18 @@ export class Hub {
 
   /** The refusal for a server whose tool text changed since a person reviewed it. @param {any} r */
   changedError(r) {
-    return fail("tools_changed", `${r.name} changed what its tools say since you reviewed them, so they are held. Read the change in mcp.servers, then approve it with mcp.repin { name: "${r.name}", seen: "${String(r.pinSeen).slice(0, 12)}" } or remove the server.`);
+    return fail("tools_changed", `${r.name} changed what its tools say since you reviewed them, so they are held. Read the change in mcp.servers, then approve it with mcp.repin { name: "${r.name}", seen: "${r.pinSeen}" } or remove the server.`);
   }
 
   /**
-   * A person approves the tool text that was held: exactly the list they read (the one stored with the hold, never a fresh listing), named by its hash so a second change in between is not taken by mistake.
+   * A person approves the tool text that was held: exactly the list they read (the one stored with the hold, never a fresh listing), named by its FULL hash (a prefix is not enough: a server could search for a
+   * second list that starts the same) so a second change in between is not taken by mistake.
    * @param {{ name: string, seen: string }} input
    */
   async repin({ name, seen }) {
     const r = this.must(name);
     if (!r.pinSeen) throw fail("bad_state", `${r.name} has no changed tool text waiting for you`);
-    if (!seen || !String(r.pinSeen).startsWith(String(seen)) || String(seen).length < 12) throw fail("conflict", `${r.name}'s tools changed again since you read them: read mcp.servers and approve what it shows now`);
+    if (!seen || String(seen) !== r.pinSeen) throw fail("conflict", `${r.name}'s tools changed again since you read them: read mcp.servers and approve what it shows now`);
     this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = ?, pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(JSON.stringify(r.toolsSeen || []), this.now(), r.pinSeen, this.now(), name);
     this.deps.emit("mcp.repinned", { name });
     return this.view(this.must(name));
