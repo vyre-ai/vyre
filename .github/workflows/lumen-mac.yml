@@ -2,8 +2,8 @@
 name: lumen-mac
 on:
   push:
-    branches: ["main", "release/**"]   # a branch with a pull request runs through the pull request, not twice (push and pull_request)
-    paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/lumen-mac.yml"]
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["main", "release/**", "integrate/**", "work/**/train"]
   pull_request:
     paths: ["local/capsule/**", "!local/capsule/native-win/**"]
   workflow_dispatch:

@@ -1,0 +1,85 @@
+# Run chosen test files on a runner, by hand, in a few minutes. Before telling anyone a test is done, run it here (docs/contributing). The Mac, a person's machine and the whole suite are not the way to check one file.
+#   gh workflow run test-files.yml -f ref=work/0.5.3/me/item -f files="core/identity/signins.test.js lib/invite-link.test.js"
+#   files: space-separated test files, or globs, under core/, lib/, test/ or kernel/ (core/identity/*.test.js). Anything else is refused before the checkout.
+# It sets up as the node suite does (the same tools, the fscrypt volume, VYRE_MUST_RUN, npm test's tmp-guard before and after) and runs the files through scripts/test-counts.mjs: one process per file, a time limit, and the
+# check that every test a file declares ran. The result is the job's red or green and its step summary.
+# At most two of these run at once (two slots); a third waits behind one of them, and a fourth sent while one waits replaces the waiting one, so look at the run you started.
+name: test-files
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "The branch, tag or commit to test"
+        required: true
+        default: main
+      files:
+        description: "Test files or globs under core/, lib/, test/ or kernel/, separated by spaces"
+        required: true
+permissions:
+  contents: read
+concurrency:
+  # two slots: a run takes the one its number falls on; the other slot is the other group
+  group: test-files-${{ github.run_number % 2 }}
+  cancel-in-progress: false
+jobs:
+  files:
+    runs-on: ${{ vars.CI_SELF_HOSTED == '1' && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      # What was asked for, checked before anything is checked out or run: a ref that looks like a ref, and only test files or globs of the four folders, with no way up out of them.
+      - name: Check the inputs
+        env:
+          REF: ${{ inputs.ref }}
+          FILES: ${{ inputs.files }}
+        run: |
+          set -eu
+          printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9._/-]{1,200}$' || { echo "::error::the ref is not a branch, tag or commit name"; exit 1; }
+          case "$REF" in *..*|-*) echo "::error::the ref is not a branch, tag or commit name"; exit 1;; esac
+          n=0
+          for f in $FILES; do
+            n=$((n + 1))
+            printf '%s' "$f" | grep -Eq '^(core|lib|test|kernel)/[A-Za-z0-9_./*{},-]+$' || { echo "::error::$f is not a test file or glob under core/, lib/, test/ or kernel/"; exit 1; }
+            case "$f" in *..*) echo "::error::$f goes up a folder"; exit 1;; esac
+            printf '%s' "$f" | grep -Eq '\.test\.(js|mjs)$' || { echo "::error::$f does not name test files: end it in .test.js (a glob like core/identity/*.test.js is fine)"; exit 1; }
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no files given"; exit 1; }
+          [ "$n" -le 40 ] || { echo "::error::$n files: this is for a few; use the node workflow for more"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: |
+          command -v bwrap >/dev/null && command -v gocryptfs >/dev/null && command -v fusermount3 >/dev/null || { sudo apt-get -o DPkg::Lock::Timeout=300 update -qq && sudo apt-get -o DPkg::Lock::Timeout=300 install -y -qq bubblewrap gocryptfs fuse3; }
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: A loop-mounted ext4 with fscrypt, and the must-run switch
+        run: |
+          sudo fallocate -l 256M "$RUNNER_TEMP/fsc.img" && sudo mkfs.ext4 -q -O encrypt "$RUNNER_TEMP/fsc.img"
+          sudo mkdir -p /mnt/fsc && sudo mount -o loop "$RUNNER_TEMP/fsc.img" /mnt/fsc && sudo chown "$(id -u):$(id -g)" /mnt/fsc
+          echo "VYRE_FSCRYPT_DIR=/mnt/fsc" >> "$GITHUB_ENV"
+          echo "VYRE_MUST_RUN=1" >> "$GITHUB_ENV"
+      # a self-hosted runner restores its dependencies and the pinned Chrome from its own disk (scripts/ci-prewarm.sh); GitHub's hosted runner installs them
+      - if: ${{ runner.environment != 'github-hosted' }}
+        run: scripts/ci-prewarm.sh
+      - if: ${{ runner.environment == 'github-hosted' }}
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/install-test-chrome.mjs
+          npm ci --ignore-scripts --no-audit --no-fund --prefix apps/app
+      # npm test runs test/tmp-guard.mjs before and after, as in the node workflow; the files are the arguments
+      - name: Run the files
+        env:
+          FILES: ${{ inputs.files }}
+          VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && (vars.CI_TEST_WIDTH || '2') || '' }}
+        run: |
+          set -f
+          # shellcheck disable=SC2086
+          set -- $FILES
+          set +f
+          matched=$(node -e 'const fs=require("fs");const n=process.argv.slice(1).flatMap(g=>fs.globSync(g)).filter(f=>/\.test\.m?js$/.test(f)&&!f.split("/").includes("node_modules"));console.log(new Set(n).size)' -- "$@")
+          [ "$matched" -gt 0 ] || { echo "::error::those names match no test file in this ref"; exit 1; }
+          echo "$matched test files" | tee -a "$GITHUB_STEP_SUMMARY"
+          npm test -- "$@"

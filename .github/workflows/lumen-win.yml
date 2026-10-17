@@ -7,7 +7,8 @@
 name: lumen-win
 on:
   push:
-    paths: ["local/capsule/native-win/**", ".github/workflows/lumen-win.yml"]
+    # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
+    branches: ["release/**", "integrate/**", "work/**/train"]
   pull_request:
     paths: ["local/capsule/native-win/**", ".github/workflows/lumen-win.yml"]
   workflow_dispatch:

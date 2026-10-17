@@ -15,6 +15,10 @@ import { DatabaseSync } from "node:sqlite";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const RECORD = path.join(REPO, "test", "test-counts.json");
 export const MUST_RUN = path.join(REPO, "test", "must-run.json");
+/** How long each file took on a CI runner, in seconds: the weights the shards are balanced by (`timings` below merges a run's into it). */
+export const TIMINGS = path.join(REPO, "test", "test-timings.json");
+/** What an unmeasured file is assumed to take. */
+export const DEFAULT_SECONDS = 6;
 
 /**
  * Tests that must not skip where the job has what they need (VYRE_MUST_RUN=1, which the hosted node job sets after installing it): a skip there is a green that never ran the test. `mustRun` maps a file
@@ -48,6 +52,23 @@ export function assertTestNode() {
 export function declared(file) {
   const src = fs.readFileSync(path.join(REPO, file), "utf8");
   return (src.match(/^(test|it)\(/gm) || []).length;
+}
+
+/**
+ * The files of one shard, balanced by how long each takes: the longest file goes to the lightest shard, every shard computing the same split from the same list and weights. The boot tests run first in shard 1 and
+ * count toward its load. Without a weight a file counts DEFAULT_SECONDS. @param {string[]} others sorted files (not the boot ones) @param {number} n this shard, 1-based @param {number} total
+ * @param {Record<string, unknown>} weights seconds by file @param {number} bootSeconds the load shard 1 starts with
+ */
+export function shardFiles(others, n, total, weights, bootSeconds = 0) {
+  const w = (/** @type {string} */ f) => { const x = weights[f]; return typeof x === "number" && x > 0 ? x : DEFAULT_SECONDS; };
+  const load = Array.from({ length: total }, (_, i) => (i === 0 ? bootSeconds : 0));
+  /** @type {string[][]} */ const out = Array.from({ length: total }, () => []);
+  for (const f of [...others].sort((a, b) => w(b) - w(a) || (a < b ? -1 : 1))) {
+    let at = 0;
+    for (let i = 1; i < total; i++) if (load[i] < load[at]) at = i;
+    out[at].push(f); load[at] += w(f);
+  }
+  return out[n - 1].sort();
 }
 
 /** @param {string} f */ const readJson = f => JSON.parse(fs.readFileSync(f, "utf8"));
@@ -117,12 +138,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).filter(f => !omit.includes(f)).sort();
     // The boot tests run first, and always in shard 1, so a broken boot fails in minutes; the other files are sharded as before.
     const boot = BOOT_FIRST.filter(f => all.includes(f)), others = all.filter(f => !boot.includes(f));
-    const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...others.filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1)];
+    const weights = fs.existsSync(TIMINGS) ? readJson(TIMINGS) : {};
+    const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...(shard ? shardFiles(others, Number(shard[1]), Number(shard[2]), weights, boot.reduce((a, f) => a + (typeof weights[f] === "number" ? weights[f] : DEFAULT_SECONDS), 0)) : others)];
     const limit = Number(process.env.VYRE_TEST_FILE_LIMIT_MS || 300000), width = Number(process.env.VYRE_TEST_CONCURRENCY || Math.max(2, os.availableParallelism() - 1));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-counts-"));
     /** @type {Record<string, number>} */ const ran = {};
     /** @type {string[]} */ const failed = [], hung = [];
     /** @type {Record<string, string[]>} */ const skippedAll = {};
+    /** @type {Record<string, number>} */ const took = {};
     let next = 0;
     // One process per file with a time limit: a file that keeps the process open after its tests (what --test-force-exit used to hide) is named and killed, not left to run the job out.
     /** @type {Map<string, string[]>} */ const firstFailure = new Map();
@@ -134,7 +157,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     };
     const worker = async () => {
       for (let i = next++; i < files.length; i = next++) {
-        const f = files[i], out = path.join(dir, `${i}.json`);
+        const f = files[i], out = path.join(dir, `${i}.json`), began = Date.now();
         await new Promise(done => {
           // The file runs in its own process group with node's diagnostic report armed on SIGUSR2: a file that keeps the process open after its tests is not only named, the report lists the handles that kept it open.
           const rep = path.join(dir, `rep-${i}`);
@@ -158,7 +181,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             if (timedOut) hung.push(f); else if (code) failed.push(f);
             if (timedOut || code) firstFailure.set(f, excerpt(buf));
             if (timedOut || code) process.stdout.write(`\n===== ${timedOut ? "HUNG (killed after " + limit / 1000 + " s)" : "FAILED"}: ${f}\n${buf}\n`);
-            else process.stdout.write(`ok   ${f}\n`);
+            else { const sec = Math.round((Date.now() - began) / 100) / 10; took[f] = sec; process.stdout.write(`ok   ${f}  ${sec}s\n`); }
             done(undefined);
           });
         });
@@ -173,12 +196,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (failed.length) console.error("test-counts: files that failed:\n  " + failed.join("\n  "));
     const skipBad = process.env.VYRE_MUST_RUN === "1" && fs.existsSync(MUST_RUN) ? mustRunProblems(skippedAll, readJson(MUST_RUN).tests || {}) : [];
     if (skipBad.length) console.error("test-counts: tests that must run here were skipped (test/must-run.json):\n  " + skipBad.join("\n  "));
+    if (process.env.VYRE_TEST_TIMINGS_OUT) fs.writeFileSync(process.env.VYRE_TEST_TIMINGS_OUT, JSON.stringify(took, null, 1) + "\n");
     const countsFile = process.env.VYRE_TEST_COUNTS_KEEP || path.join(os.tmpdir(), `vyre-test-counts-${process.pid}.json`);
     fs.writeFileSync(countsFile, JSON.stringify(ran, null, 1) + "\n");
     const g = check(countsFile, full); if (!process.env.VYRE_TEST_COUNTS_KEEP) fs.rmSync(countsFile, { force: true });
     process.exit(hung.length || failed.length || skipBad.length || g ? 1 : 0);
   } else if (cmd === "check") process.exit(check(rest[0], rest[1] === "--full"));
   else if (cmd === "update") { fs.writeFileSync(RECORD, JSON.stringify(Object.fromEntries(Object.entries(readJson(rest[0])).sort()), null, 1) + "\n"); console.log("recorded " + RECORD); }
-  else if (cmd === "diff") process.exit(diff(rest[0] || "origin/work/kernel"));
-  else { console.error("usage: test-counts.mjs run [globs] | check <counts.json> [--full] | update <counts.json> | diff <base-ref>"); process.exit(2); }
+  else if (cmd === "timings") {
+    // timings <run.json...>: merge the per-file seconds the shards of a run wrote (VYRE_TEST_TIMINGS_OUT) into test/test-timings.json; a file that no longer exists is dropped, a file in the run takes the run's number
+    const now = fs.existsSync(TIMINGS) ? readJson(TIMINGS) : {};
+    for (const f of rest) Object.assign(now, readJson(f));
+    const kept = Object.fromEntries(Object.entries(now).filter(([k, v]) => typeof v === "number" && fs.existsSync(path.join(REPO, k))).sort());
+    fs.writeFileSync(TIMINGS, JSON.stringify(kept, null, 1) + "\n"); console.log(`recorded ${Object.keys(kept).length} timings in ${TIMINGS}`);
+  } else if (cmd === "diff") process.exit(diff(rest[0] || "origin/work/kernel"));
+  else { console.error("usage: test-counts.mjs run [globs] | check <counts.json> [--full] | update <counts.json> | timings <run.json...> | diff <base-ref>"); process.exit(2); }
 }

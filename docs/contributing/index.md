@@ -36,6 +36,25 @@ unset VYRE_HOME
 
 `--json` keeps `vyre up` on a Mac from asking where your box runs. A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
 
+## Branches
+
+- `main` is what has been released. Nothing else lands on it except a finished release branch.
+- `release/<x.y>` (for example `release/0.6`) holds a version while it is built. It is cut from `main`, and the version's CI runs against it.
+- `work/<x.y>/<who>/<item>` holds one item. Cut it from the current release branch, open a pull request into that release branch, and merge it once CI is green and a second person has read the diff.
+- A patch is `x.y.z`. It is cut from the release tag, carries fixes only, and merges back into `main` and into any open release branch.
+- Work that was parked and not finished is kept under `refs/archive/<branch name>` and listed on the `archive` branch.
+
+## What CI runs, and when
+
+- A pull request runs only the test files its change can reach through imports (`scripts/ci-select.mjs`). A change that reaches every test (a lockfile, a `package.json`, a workflow, `kernel/core`, the module loader, the test runner) or a file most tests import runs the whole suite. A changed code file that no test reaches fails the run with "no test covers <file>": add a test.
+- `main`, `integrate/**`, `release/**`, the train and a release tag run the whole suite, balanced across shards by `test/test-timings.json`. The Mac, Windows, Android, first-run and picture jobs run in full on those branches and on a pull request only when their own paths change.
+- A release tag starts the node suite, the pictures, the first-run proof and every build at once, in one run, and publishes when all of them are green.
+- A pull request into a release or integration branch gets its generated files (docs reference, agent docs, architecture map) regenerated and committed for it; the golden lists never are.
+
+## Run a few test files on a runner
+
+Before you say a test is done, run it on a runner, in a few minutes, without the whole suite: `gh workflow run test-files.yml -f ref=<branch> -f files="core/x/a.test.js lib/b.test.js"`. The files are test files or globs under `core/`, `lib/`, `test/` or `kernel/` (up to 40); anything else is refused before the checkout. It sets up as the node suite does and runs the files one process each. Two of these run at once; a third waits behind one of them.
+
 ## Where things live
 
 | Folder | What is in it |
