@@ -127,13 +127,14 @@ function stripIdentityFile(file) {
   writePrivate(file, JSON.stringify(r) + "\n");
 }
 
-/** @param {any} rec @param {Buffer} rk @param {string} [identityFile] @param {string} [root] */
-function holdFrom(rec, rk, identityFile, root) {
+/** @param {any} rec @param {Buffer} rk @param {string} [identityFile] @param {string} [root] @param {boolean} [viaPassword] */
+function holdFrom(rec, rk, identityFile, root, viaPassword = false) {
   const id = JSON.parse(aesUnwrap(rk, rec.identityWrap, AAD_ID).toString("utf8"));
   if (identityFile) holdIdentity(identityFile, { privateKeyB64: id.privateKey, agreePrivateB64: id.agreePrivate || null });
   if (rec.vaultWrap) {
-    // After vault.master.install the device key lives sealed on disk; unlock restores identity keys only until the person installs again.
-    if (root && openVaultKey(root)) clearPersonal();
+    // The device key lives sealed on disk once a master password exists. A recovery-key unlock restores the identity keys only; a password unlock also holds the master key until lock, so
+    // identity.vault.install can hand it to the running vault (the app does that right after an unlock). Holding it is what every unlock did before the seal, and nothing is written.
+    if (root && openVaultKey(root) && !viaPassword) clearPersonal();
     else holdPersonal(aesUnwrap(rk, rec.vaultWrap, AAD_VAULT));
   } else clearPersonal();
   return id;
@@ -158,7 +159,7 @@ export function unlockMaster(o) {
     catch { kek.fill(0); throw refuse("That password does not unlock this identity. Try again, or enter your recovery key on this device.", "bad_password"); }
     kek.fill(0);
   }
-  holdFrom(rec, rk, file, o.root);
+  holdFrom(rec, rk, file, o.root, !o.recoveryCode);
   rk.fill(0);
   return { unlocked: true, username: rec.username, id: rec.id };
 }
