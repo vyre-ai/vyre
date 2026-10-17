@@ -17,6 +17,7 @@
 
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
+import { noteFirstAdopt, clearFirstAdopt } from "../../lib/first-adopt.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
@@ -1203,7 +1204,12 @@ export function createPairing(o) {
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
       { const k = proofKinds.get(caller); if (k) { meta.set("owner_proof", k); meta.set("owner_pin", pinKinds.get(caller) || "none"); proofKinds.delete(caller); pinKinds.delete(caller); } else if (first) { meta.del("owner_proof"); meta.del("owner_pin"); } }
-      if (first) meta.set("adopter", caller);
+      if (first) {
+        meta.set("adopter", caller);
+        // When the first adoption finished and which device did it: the space vault may be made by that device, once, in the next ten minutes (lib/first-adopt.js). Never from anything a call sends.
+        meta.set("adopted_at", now());
+        try { if (ctx.paths && ctx.paths.root && deviceIdOf(caller) !== null) noteFirstAdopt(ctx.paths.root, caller, now()); } catch (e) { ctx.log(`wink: could not record the first adoption: ${/** @type {Error} */ (e).message}`); }
+      }
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
@@ -1272,7 +1278,8 @@ export function createPairing(o) {
     /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. The one that adopted it loses its device here too. */
     const clearOwner = () => {
       const adopter = meta.get("adopter");
-      for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
+      for (const k of ["owner", "adopter", "adopted_at", "handover", "peer_secret"]) meta.del(k);
+      try { if (ctx.paths && ctx.paths.root) clearFirstAdopt(ctx.paths.root); } catch { /* none */ }
       dropLater(adopter);
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});
