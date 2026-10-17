@@ -39,6 +39,7 @@
       "connectors.mention.search",
       "connectors.mention.resolve",
       "connectors.persist",
+      "connectors.needs-reconnect",
       { "name": "connectors.site.connect", "reach": "person", "effect": "write" },
       { "name": "connectors.site.propose", "reach": "anyone", "effect": "write" },
       { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
@@ -57,6 +58,7 @@
     "emits": [
       "connectors.connected",
       "connectors.connect-failed",
+      "connectors.needs-reconnect",
       "connectors.disconnected",
       "connectors.scope-changed",
       "connectors.connection-created",

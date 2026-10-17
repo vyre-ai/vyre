@@ -50,6 +50,7 @@ import * as requestTools from "./request.js";
 export { presence };
 import * as shareTools from "./tools/share.js";
 import * as mcpTools from "./tools/mcp.js";
+import * as connectionMay from "./tools/connection-may.js";
 import * as browserProfileTools from "./tools/browser-profile.js";
 import { PassMcp } from "./passmcp.js";
 import { listenMcp } from "./passmcp-listener.js";
@@ -520,7 +521,7 @@ export default {
 
     account.register({ ctx, vault, tool });
     // Each member's own vault (people.js): its own folder beside the owner's, never inside it.
-    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
+    const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     meTools.register({ ctx, people, tool });
     sharingTools.register({ ctx, vault, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
@@ -559,6 +560,7 @@ export default {
     let mcpListener = null;
     vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
     mcpTools.register({ vault, tool, internal });
+    connectionMay.register({ vault, internal });
     browserProfileTools.register({ people, vault, internal });
     if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
       mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
