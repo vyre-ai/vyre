@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(app): `/u/mail` (Compose button) and `/u/mail/compose` (New email, back once held).
+
 - feat(app): `screens/mail/ComposeMail.tsx` is the compose screen: To, Cc, Bcc, Subject, the words and Files from the Space Drive; Send holds the mail at the Gate (`mail.send`).
 
 - feat(app): `MailComposer` (apps/app/ui/components) writes a mail as the person: To, Cc, Bcc, Subject, the words and Files by path; `sendInput` gives the mail.send input and leaves blank copies out.
