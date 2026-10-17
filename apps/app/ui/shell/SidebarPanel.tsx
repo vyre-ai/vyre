@@ -44,7 +44,6 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
   }
   return (
     <View style={{ flex: 1, gap: RAIL.rowGap, minHeight: 0 }}>
-      {back}
       {panel.search ? <View style={{ paddingVertical: 4 }}><Field name={panel.search} value={q} onChangeText={setQ} placeholder={panel.search} /></View> : null}
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.sectionGap / 2 }}>
         {panel.before}

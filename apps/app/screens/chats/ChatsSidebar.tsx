@@ -11,6 +11,7 @@ import { useConvos } from "./useConvos";
 import { startChat } from "../../src/state/start-chat";
 import { byTag, chatsOrdered, chatsShown } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
+import { NewAgentFlow } from "./NewAgentFlow";
 
 /** The id of the chat the path shows (/u/chats/<id> or /session/<id>), or "". */
 export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.exec(path)?.[1] ?? "";
@@ -38,6 +39,7 @@ export function ChatsSidebar() {
   const [q, setQ] = useState("");
   const [project, setProject] = useState("all");
   const [tag, setTag] = useState("");
+  const [newAgent, setNewAgent] = useState(false);
   const ordered = chatsOrdered(chatsShown(chats.rows));
   const tagged = byTag(ordered, tag);
   const convos = useConvos(tagged.rows);
@@ -51,12 +53,13 @@ export function ChatsSidebar() {
   const add = [
     { label: "New chat", onPress: () => go("/u/chats/new") },
     { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
-    { label: "New agent", onPress: () => go("/u/settings/assistants/new") },
+    { label: "New agent", onPress: () => setNewAgent(true) },
     { label: "New email", onPress: () => go("/u/mail/compose") },
   ];
   return (
     <>
       {sheets}
+      <NewAgentFlow open={newAgent} onClose={() => setNewAgent(false)} />
       <ConversationList items={found} all={convos} query={q} onQuery={setQ} project={project} onProject={setProject} tags={tagged.tags.slice(0, 12).map((t) => t.tag)} tag={tag} onTag={setTag}
         extraFilters={[{ label: "Flows", onPress: () => go("/u/flows") }]} onOpen={open} add={add} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </>

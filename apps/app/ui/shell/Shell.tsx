@@ -94,31 +94,39 @@ function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
 }
 
 /** You at the foot of the rail. Expanded: the search button, your face, your name and address on one row. Folded: Expand, Search and your face stacked, search directly above the face. */
-function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
+function RailFoot({ p, folded, toggle, onBack, backLabel }: { p: RailProps; folded: boolean; toggle: () => void; /** Leaves the open panel (the place's list) for the main sidebar. */ onBack?: () => void; backLabel?: string }) {
   const { color } = useUiTheme();
   const all = allItems(p) as NavItem[];
   const cur = currentItem(p.current, all)?.id;
-  const search = (
-    <Tip label="Search" hint="Cmd K" side={folded ? "right" : "top"}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Search" onPress={p.onSearch} style={({ hovered, focused }: any) => [{ width: RAIL.face, height: RAIL.face, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? "var(--hover)" : "transparent" }]}>
-        <Icon name="search" tone="text-2" size={RAIL.iconSize} />
+  // One compact row of icons: back out of the open list, search, the bottom places (Build, Settings), collapse.
+  const icon = (label: string, name: any, onPress: (() => void) | undefined, on = false, hint?: string) => (
+    <Tip key={label} label={label} hint={hint} side={folded ? "right" : "top"}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ hovered, focused }: any) => [{ width: RAIL.face, height: RAIL.face, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: on ? color.selected : hovered || focused ? color.hover : "transparent" }]}>
+        <Icon name={name} tone={on ? "text" : "text-2"} size={RAIL.iconSize} />
       </Pressable>
     </Tip>
   );
   const face = <Avatar of={markRef("person", p.user.name)} size={RAIL.face} />;
+  const icons = [
+    ...(onBack ? [icon(`Back to the main sidebar${backLabel ? ` from ${backLabel}` : ""}`, "chevron-left", onBack, false, "Esc")] : []),
+    icon("Search", "search", p.onSearch, false, "Cmd K"),
+    ...p.bottom.map((it) => icon(it.label, it.icon, () => p.onNavigate(it.href), cur === it.id)),
+    icon(folded ? "Expand" : "Collapse", folded ? "chevron" : "chevron-left", toggle, false, "Cmd \\"),
+  ];
   return (
     <View style={{ gap: RAIL.rowGap }}>
-      {p.bottom.map((it) => <SidebarRow key={it.id} label={it.label} icon={it.icon} on={cur === it.id} folded={folded} onPress={() => p.onNavigate(it.href)} />)}
-      <SidebarRow label={folded ? "Expand" : "Collapse"} icon={folded ? "chevron" : "chevron-left"} tone="label" folded={folded} hint="Cmd \\" onPress={toggle} />
       <View style={{ height: 1, backgroundColor: color.edge, marginVertical: 8 }} />
       {folded ? (
-        <View style={{ alignItems: "center", gap: 8 }}>{search}{face}</View>
+        <View style={{ alignItems: "center", gap: 8 }}>{icons}{face}</View>
       ) : (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
-          {search}{face}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>
-            {p.user.sub ? <Text size="caption" tone="label" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>{icons}</View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 4 }}>
+            {face}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text strong style={{ fontSize: 14, lineHeight: 18 }} numberOfLines={1}>{p.user.name}</Text>
+              {p.user.sub ? <Text size="caption" tone="label" style={{ fontSize: 12, lineHeight: 16 }} numberOfLines={1}>{p.user.sub}</Text> : null}
+            </View>
           </View>
         </View>
       )}
@@ -146,12 +154,12 @@ function Rail(p: RailProps) {
   }, [toggle, panel]);
   const enter = reduced ? undefined : (panel ? SlideInRight : SlideInLeft).duration(RAIL.slideMs);
   return (
-    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, RAIL.width), flexShrink: 0, flexGrow: 0, padding: folded ? 12 : RAIL.inset, gap: RAIL.sectionGap - 8, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
+    <View role="navigation" accessibilityLabel="Places" style={{ width: railWidth(folded, panel?.id === "chats" ? RAIL.listWidth : RAIL.width), flexShrink: 0, flexGrow: 0, padding: folded ? 12 : RAIL.inset, gap: RAIL.sectionGap - 8, borderRightWidth: 1, borderColor: color.edge, backgroundColor: color.bg }}>
       <RailSwitcher p={p} folded={folded} />
       <Animated.View key={panel?.id ?? "main"} entering={enter} style={{ flex: 1, minHeight: 0 }}>
         {panel ? <SidebarPanel panel={panel} folded={folded} onOpen={p.onNavigate} /> : <MainNav p={p} folded={folded} />}
       </Animated.View>
-      <RailFoot p={p} folded={folded} toggle={toggle} />
+      <RailFoot p={p} folded={folded} toggle={toggle} onBack={panel ? panel.onBack : undefined} backLabel={panel?.title} />
     </View>
   );
 }

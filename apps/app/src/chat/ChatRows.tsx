@@ -91,25 +91,35 @@ function ActionRow({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Message({ who, family, meta, sub, dress, children, wide, provider, mine }: { mine?: boolean; who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
+function Message({ who, family, meta, sub, dress, children, wide, provider, mine, solo, continued, bar, footer }: { mine?: boolean; who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null;
+  /** A chat with one other: no face or name on any message. */ solo?: boolean;
+  /** The sender is the one of the message above: no face or name again. */ continued?: boolean;
+  /** The actions under the bubble (shown on hover or a long press), and what sits under them (reactions). */ bar?: React.ReactNode; footer?: React.ReactNode }) {
   const [hover, setHover] = useState(false);
   const [held, setHeld] = useState(false);
   const [focus, setFocus] = useState(false);
   const { color } = useUiTheme();
+  // Your own words sit on the right in a filled bubble, the others on the left in a soft grey one. A face and a name show only in a group, and only when the sender changes.
+  const showWho = !mine && !solo && !continued;
+  const detail = [dress?.pinned ? "pinned" : "", meta, sub].filter(Boolean).join(" · ");
+  const side = wide ? 24 : 16;
   return (
     <View {...({ dataSet: { from: who, msg: "1", mine: mine ? "1" : "0" }, tabIndex: 0, onFocus: () => setFocus(true), onBlur: () => setFocus(false) } as object)} style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
-      {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
+      {dress?.divider ? <View style={{ paddingHorizontal: side }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
       <ActionsOn.Provider value={hover || held || focus || showActions()}>
-      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: wide ? "row" : "column", gap: wide ? 12 : 4, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        {wide ? <Face name={who} family={family} size={32} provider={provider} /> : null}
-        <View style={S.s3}>
-          {/* on a phone the face is a small mark beside the name, so the words use the whole width instead of an indent */}
-          {wide ? <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /> : <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Face name={who} family={family} size={20} provider={provider} /><Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /></View>}
-          {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
+      <View style={{ paddingHorizontal: side, paddingTop: continued ? 2 : 10, paddingBottom: 2, alignItems: mine ? "flex-end" : "flex-start" }}>
+        {showWho ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 4, paddingLeft: 2 }}><Face name={who} family={family} size={24} provider={provider} /><Text size="caption" medium tone="label">{who}</Text></View> : null}
+        <View style={{ maxWidth: "88%", minWidth: 0, gap: 6, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: mine ? color.primary : color["surface-3"],
+          ...(dress?.mentioned || dress?.flash ? { borderWidth: 2, borderColor: color.accent } : {}) }}>
+          {dress?.reply ? <Text size="caption" tone={mine ? "inverse" : "label"}>in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
-          {dress?.replies ? <Text size="caption" tone="muted">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
+        </View>
+        {dress?.replies ? <Text size="caption" tone="muted" style={{ paddingTop: 2 }}>{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
+        <View style={{ alignItems: mine ? "flex-end" : "flex-start" }}>
+          {bar ? <ActionRow>{detail ? <Text size="caption" tone="label">{detail}</Text> : null}{bar}</ActionRow> : detail ? <ActionRow><Text size="caption" tone="label">{detail}</Text></ActionRow> : null}
+          {footer}
         </View>
       </View>
       </ActionsOn.Provider>
@@ -130,10 +140,10 @@ export function RefText({ text, style }: { text: string; style?: object }) {
 }
 
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
-export function UserText({ text, pending }: { text: string; pending: boolean }) {
+export function UserText({ text, pending, tone }: { text: string; pending: boolean; tone?: "inverse" }) {
   const style = pending ? { opacity: 0.55 } : undefined;
   const names = [...new Set(partsOf(text).flatMap((p) => ("vault" in p ? [p.vault] : [])))];
-  if (!names.length) return <Text size="read" selectable style={style}>{text}</Text>;
+  if (!names.length) return <Text size="read" selectable tone={tone} style={style}>{text}</Text>;
   return (
     <View style={{ gap: 6 }}>
       <RefText text={text} style={style} />
@@ -302,6 +312,14 @@ function whoOf(store: ChatStore, k: string): { name: string; family: "person" | 
   return own ? { name: PERSON, family: "person", sub: null } : { name: ASSISTANT, family: "assistant", sub: null };
 }
 
+/** Is the message above this one (the nearest message row before it) from the same sender? Then the face and name are not drawn again. */
+function continuedOf(store: ChatStore, k: string, ctx: BlockCtx, name: string): boolean {
+  const prev = ctx.before?.(k);
+  if (!prev) return false;
+  const it = store.item(prev);
+  return !!it && (it.kind === "user" || it.kind === "text") && whoOf(store, prev).name === name;
+}
+
 function dressOf(store: ChatStore, k: string, text: string, ctx: BlockCtx): Dress {
   const g = store.group;
   const m = k.slice(2);
@@ -397,19 +415,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const mine = store.group.isMine(k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
-        <Message mine={mine} who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre agent)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
+        <Message mine={mine} solo={ctx.solo} continued={continuedOf(store, k, ctx, w.name)} who={w.name} family={w.family} sub={it.via === "assistant" ? "Sent by Vyre agent" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}
+          bar={it.pending ? null : <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} mine={mine} group={groupOf(store, k, ctx, w.name)} />}
+          footer={it.pending ? null : <ReactionsRow store={store} k={k} ctx={ctx} />}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
-          <UserText text={it.text} pending={!!it.pending} />
+          <UserText text={it.text} pending={!!it.pending} tone={mine ? "inverse" : undefined} />
           {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
-          {it.pending ? null : (
-            <ActionRow>
-              <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} mine={mine} group={groupOf(store, k, ctx, w.name)} />
-            </ActionRow>
-          )}
-          {it.pending ? null : (
-            <ReactionsRow store={store} k={k} ctx={ctx} />
-          )}
         </Message>
         </Replyable>
       );
@@ -423,12 +435,9 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const w = whoOf(store, k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
-        <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
+        <Message solo={ctx.solo} continued={continuedOf(store, k, ctx, w.name)} who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}
+          bar={<MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} done={it.done} group={groupOf(store, k, ctx, w.name)} />} footer={<ReactionsRow store={store} k={k} ctx={ctx} />}>
           <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
-          <ActionRow>
-            <MessageBar text={it.text} from={w.name} ctx={ctx} uuid={k.slice(2)} done={it.done} group={groupOf(store, k, ctx, w.name)} />
-          </ActionRow>
-          <ReactionsRow store={store} k={k} ctx={ctx} />
         </Message>
         </Replyable>
       );
@@ -467,7 +476,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     case "reasoning":
       return <Frame wide={wide} indent dense><Reasoning text={String(it.text)} streaming={!it.done} /></Frame>;
     case "notice":
-      return <Frame wide={wide} indent><Text size="caption" tone="label">{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text></Frame>;
+      return <Frame wide={wide}><Text size="caption" tone="label" style={{ textAlign: "center" }}>{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text></Frame>;
     default:
       return null;
   }

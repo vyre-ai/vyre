@@ -15,6 +15,8 @@ export const mockComputerTools: Record<string, (i: any) => unknown> = {
   "computers.agent.sleep": (i) => { const s = settle(String(i.agent)); s.state = "asleep"; return shape(s); },
   "gate.standing.list": (i) => ({ permissions: String(i.agent) === "juno" ? [{ id: "g1", agent: "juno", resource: "vyre://spc/outbox/send/gmail", to: { patterns: ["*@northwind.example"] }, daily_cap: 20 }, { id: "g2", agent: "juno", resource: "vyre://spc/outbox/spend/meta", to: { patterns: ["Meta Ads"] }, max_amount: 200, daily_amount: 500 }].filter((p) => !gone.has(p.id)) : [] }),
   "gate.standing.revoke": (i) => { gone.add(String(i.id)); return { revoked: String(i.id) }; },
+  "projects.list": () => ({ projects: [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio" }, { slug: "okafor", name: "Okafor estate" }] }),
+  "agents.create": (i) => ({ name: String(i.name), kind: "agent", uid: `agt_${String(i.name)}` }),
   "threads.tasks": () => [
     { id: "t1", kind: "agent", title: "Pull last week's spend by campaign", status: "running" },
     { id: "t2", kind: "agent", title: "Check audience overlap between two ad sets", status: "done" },

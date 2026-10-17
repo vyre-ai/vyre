@@ -43,6 +43,8 @@ export type ComposerProps = {
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
   /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
   onTyping?: () => void;
+  /** A turn is running and can be stopped: the send button becomes a stop square while the box is empty. */
+  canStop?: boolean; stopping?: boolean; onStop?: () => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
@@ -168,6 +170,9 @@ export function ChatComposer(p: ComposerProps) {
   const menuRows = useMemo((): Row[] => {
     if (pop === "plus") {
       const rows: Row[] = [
+        { key: "attach", group: "Add", label: "Attach a file", leading: <Icon name="clip" size={18} />, hint: "Cmd U", run: () => { if (p.vyreFiles && p.onAttachVyreFile) { setPop("files"); setMenuQ(""); setActive(0); } else { closePop(); p.onAttachFile?.(); } } },
+        { key: "cmd", group: "Add", label: "Run a command", leading: <Icon name="terminal" size={18} />, hint: "/", run: () => { setPop(null); setMenuQ(""); insert("/"); } },
+        ...(pm || slots.length > 1 || p.models?.length ? [{ key: "who", group: "Add", label: "Who answers", sub: summary, leading: <Icon name="agents" size={18} />, hint: "Cmd /", run: () => { setPop("answering"); setMenuQ(""); setActive(0); } } as Row] : []),
         { key: "at", group: "Insert", label: "Mention a person or agent", leading: <Icon name="mention" size={18} />, hint: "@", run: () => { setPop(null); setMenuQ(""); insert("@"); } },
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
@@ -372,14 +377,15 @@ export function ChatComposer(p: ComposerProps) {
       />
   );
 
+  const stopShown = Boolean(p.canStop) && !intent.send;
   const sendBtn = (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={intent.queue ? "Queue message" : "Send"}
-      onPress={() => send()}
-      style={{ width: ctl, height: ctl, borderRadius: ctl / 2, backgroundColor: intent.send ? color.primary : "transparent", alignItems: "center", justifyContent: "center" }}
+      accessibilityLabel={stopShown ? "Stop" : intent.queue ? "Queue message" : "Send"}
+      onPress={() => (stopShown ? p.onStop?.() : send())}
+      style={{ width: ctl, height: ctl, borderRadius: ctl / 2, backgroundColor: intent.send || stopShown ? color.primary : "transparent", alignItems: "center", justifyContent: "center" }}
     >
-      <Icon name="send" size={20} tone={intent.send ? "primary-ink" : "label"} />
+      <Icon name={stopShown ? "stop" : "send"} size={20} tone={intent.send || stopShown ? "primary-ink" : "label"} />
     </Pressable>
   );
 
@@ -416,7 +422,7 @@ export function ChatComposer(p: ComposerProps) {
           <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} crumbs={crumbs} onCrumb={(i) => { if (i < nestPath.length) setNestPath(nestPath.slice(0, i)); }} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
         </View>
       ) : null}
-      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: focused ? color["edge-strong"] : color.edge, borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
+      <View style={{ backgroundColor: color["surface-3"], borderWidth: focused ? 1 : 0, borderColor: color["edge-strong"], borderRadius: 28, paddingVertical: p.phone ? 6 : 8, paddingHorizontal: p.phone ? 8 : 10, gap: 6 }}>
         {p.attachments?.length || toks.length || hasState ? (
           <View accessibilityLabel="Files and tags for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
             {p.attachments?.map((a) => (a.thumb ? (
@@ -431,22 +437,11 @@ export function ChatComposer(p: ComposerProps) {
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
-        {!expanded ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Tool big={big} icon="clip" label="Files" onPress={() => (p.vyreFiles && p.onAttachVyreFile ? openPop("files") : p.onAttachFile?.())} />
-            {field}
-            {sendBtn}
-          </View>
-        ) : field}
-        {expanded ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Tip label="Files" hint="Cmd U" side="top"><Tool big={big} icon="clip" label="Files: from Vyre Files or your computer" onPress={() => (p.vyreFiles && p.onAttachVyreFile ? openPop("files") : p.onAttachFile?.())} /></Tip>
-            <Tip label="Mention, tag, where it runs" hint="@ # /" side="top"><Tool big={big} icon="plus" label="More: mention, tag, where it runs" onPress={() => openPop("plus")} /></Tip>
-            {aiMenu ? <Tip label="Who answers" hint="Cmd /" side="top"><AnsweringControl people={pm && !ais.length} ais={pm && !ais.length ? [] : ais.length ? ais : [{ id: "m", label: summary }]} summary={summary} open={pop === "answering" || pop === "model"} hint="Cmd /" onPress={() => openPop("answering")} /></Tip> : null}
-            <View style={{ flex: 1, minWidth: 8 }} />
-            {sendBtn}
-          </View>
-        ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Tip label="Add: files, commands, who answers" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: files, commands, who answers" onPress={() => openPop("plus")} /></Tip>
+          {field}
+          {sendBtn}
+        </View>
       </View>
     </View>
   );

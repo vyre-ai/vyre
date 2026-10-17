@@ -61,21 +61,31 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
 }) {
   const { color } = useUiTheme();
   const stack = avatarStack(participants, viewer, 3);
+  const lone = stack.shown.length === 1 ? stack.shown[0] : null;
   return (
     <View style={[S.bar, { paddingHorizontal: phone ? 4 : 16, backgroundColor: color["surface-1"], zIndex: 2 }]}>
-      {onBack ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to chats" onPress={onBack} style={S.back}>
-          <Icon name="chev-l" size={20} tone="text" />
+      <View style={{ width: 88, flexDirection: "row", alignItems: "center" }}>
+        {phone && onBack ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to chats" onPress={onBack} style={S.back}>
+            <Icon name="chev-l" size={20} tone="text" />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={{ flex: 1, alignItems: "center", minWidth: 0 }}>
+        {/* One small centred chip: the face (or the group's stack), the name and, quieter, the project. A tap opens the side panel. */}
+        <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. Open details`} onPress={onOpen}
+          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
+          {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
+          <Text numberOfLines={1} style={{ flexShrink: 1 }}>
+            <Text strong>{title}</Text>
+            {project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
+          </Text>
         </Pressable>
-      ) : <View style={S.s1} />}
-      <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. Open details`} onPress={onOpen} style={S.open}>
-        <HeaderStack faces={stack.shown} more={stack.more} />
-        <Text numberOfLines={1} style={{ flexShrink: 1 }}>
-          <Text strong>{title}</Text>
-          {project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
-        </Text>
-      </Pressable>
-      {menu && menu.length ? <Menu align="end" trigger={<IconButton icon="more" label="More" kind="ghost" />} items={menu} /> : null}
+      </View>
+      <View style={{ width: 88, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
+        {menu && menu.length ? <Menu align="end" trigger={<IconButton icon="more" label="More" kind="ghost" />} items={menu} /> : null}
+        {!phone && onBack ? <IconButton icon="x" label="Close this chat" kind="ghost" onPress={onBack} /> : null}
+      </View>
     </View>
   );
 }

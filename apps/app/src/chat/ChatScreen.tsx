@@ -250,9 +250,20 @@ export function ChatScreen(p: ChatScreenProps) {
   }, []);
   useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
+  // A chat with one other has no face or name on its messages; a group shows them when the sender changes.
+  const solo = new Set([...store.group.participants(), ...(here.members ?? [])].filter((f) => f.id !== viewer).map((f) => f.id)).size <= 1;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const before = useCallback((key: string): string | null => {
+    const list = rowsRef.current;
+    for (let j = list.findIndex((r) => r.key === key) - 1; j >= 0; j--) { const kind = store.item(list[j].key)?.kind; if (kind === "user" || kind === "text") return list[j].key; }
+    return null;
+  }, [store]);
   const ctx = useMemo<BlockCtx>(
     () => ({
       wide: !phone,
+      solo,
+      before,
       diffSplit: !phone && threadW >= 560,
       hideVaultNames: Math.max(store.group.participants().filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1,
       ...(actions
@@ -291,7 +302,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api, solo, before],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
@@ -436,14 +447,8 @@ export function ChatScreen(p: ChatScreenProps) {
       </View>
 
       {meta.queue.length ? (
-        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 12 : 20, gap: 4, paddingTop: 6 }}>
-          {meta.queue.map((q) => (
-            <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
-              <View style={{ alignSelf: "center" }}><Chip icon="clock">Queued</Chip></View>
-              <Text numberOfLines={1} style={{ flex: 1 }}>{q.text}</Text>
-              <Text size="caption" tone="label">waiting for the current reply</Text>
-            </View>
-          ))}
+        <View accessibilityLabel="Queued messages" style={{ width: "100%", maxWidth: 860, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24, gap: 4, paddingTop: 6, alignItems: "flex-start" }}>
+          {meta.queue.map((q) => <Chip key={q.key} icon="clock">{`Queued: ${q.text.length > 60 ? `${q.text.slice(0, 59)}…` : q.text}`}</Chip>)}
         </View>
       ) : null}
 
@@ -507,6 +512,9 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          canStop={meta.canStop}
+          stopping={meta.stopping}
+          onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
           onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
