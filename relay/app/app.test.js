@@ -164,7 +164,7 @@ test("worker: /sw.js takes the old app down (clears its caches, unregisters, mov
 
 test("pair page: the old pairing code is gone, and the page names the next step", () => {
   const html = fs.readFileSync(new URL("./pair/index.html", import.meta.url), "utf8");
-  assert.match(GONE, /Devices, Add a device/);
+  assert.match(GONE, /master password/);
   assert.ok(html.includes(GONE), "the static page says the same sentence");
   assert.doesNotMatch(html, /vyre:\/\/pair|app\.vyre\.run\/pair/);
 });

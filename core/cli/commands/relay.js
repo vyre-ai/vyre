@@ -48,7 +48,7 @@ async function status() {
   }
   out(`  relay ${d.enabled ? (d.connected ? bold("connected") : "on, not connected yet") : "off"} ${dim(`· ${d.url}`)}`);
   out(dim(`  ${d.devices} device${d.devices === 1 ? "" : "s"} paired · ${d.open} open now${d.route ? ` · route ${d.route}` : ""}`));
-  if (!d.devices) out(dim("  add a device from your app: Devices, Add a device"));
+  if (!d.devices) out(dim("  sign in on another device with your space address, username and master password"));
   return 0;
 }
 
@@ -59,7 +59,7 @@ async function devices() {
     return emit(r.data, { kind: "table", title: "Relay devices", empty: "No devices paired through the relay", rows: r.data.devices,
       columns: [{ key: "name", label: "Name" }, { key: "id", label: "Id" }, { key: "kind", label: "Kind" }, { key: "online", label: "Online" }, { key: "trusted", label: "Trusted" }, { key: "lastSeen", label: "Last seen" }] });
   }
-  if (!r.data.devices.length) { out("  no devices paired through the relay"); out(dim("  add one from your app: Devices, Add a device")); return 0; }
+  if (!r.data.devices.length) { out("  no devices paired through the relay"); out(dim("  sign in on a device with your space address, username and master password")); return 0; }
   for (const d of r.data.devices) {
     const kind = d.kind === "web" ? `web app${d.trusted ? ", trusted" : ""}${d.build === "unknown" ? ", unknown build" : d.release ? `, ${d.release}` : ""}` : "app";
     out(`  ${bold(d.name)} ${dim(d.id)}`);
@@ -93,7 +93,7 @@ export default [
         case "status": return status();
         case "devices": return devices();
         case "pair":
-          return fail("vyre relay pair is gone: a code anyone could hold made devices nobody confirmed", { next: "on the new device sign in with your name and approve it from a device you already use, in your app: Devices, Add a device" });
+          return fail("vyre relay pair is gone: a code anyone could hold made devices nobody confirmed", { next: "on the new device, sign in with your space address, your username and your master password" });
         case "remove":
           if (!a) return usage("vyre relay remove needs a device id", "vyre relay devices lists them");
           return asPerson("relay.devices.remove", { id: a }, () => out(`  removed ${a}; its connections are closed`));

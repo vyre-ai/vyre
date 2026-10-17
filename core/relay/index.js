@@ -43,7 +43,7 @@ const DAY = 24 * 60 * 60_000;
 export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|relay\.setup\.claim$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
 /** The next step every refusal of the old pairing code names. */
-const ADD_A_DEVICE = "Pair this device again from your app: Devices, Add a device.";
+const ADD_A_DEVICE = "Sign in on the device again with your space address, your username and your master password.";
 
 export const MIGRATIONS = [
   `CREATE TABLE relay_devices (
@@ -872,7 +872,7 @@ export default {
 
     // The classic bearer code (relay.pair.start, relay.pair.first, and relay.join to redeem one) is gone (owner's ruling, 13 Oct 2026): a code any holder could redeem made a device nobody confirmed. The names stay
     // registered so an older CLI, app or script that still calls one hears why and what to do instead, not "no such tool". Nothing is made or enrolled.
-    const classicGone = (/** @type {string} */ what) => fail("gone", `${what} is gone: a code anyone could hold made devices nobody confirmed. A device now joins by signing in with the person's name and approving on another device, or with a space code and the same words. ${ADD_A_DEVICE}`);
+    const classicGone = (/** @type {string} */ what) => fail("gone", `${what} is gone: a code anyone could hold made devices nobody confirmed. A device now joins by signing in. ${ADD_A_DEVICE}`);
     ctx.tool("relay.pair.start", {
       description: "Gone: the classic bearer pairing code. Refuses and says how to add a device now (sign in by name and approve on another device, or a space code plus the same words).",
       input: obj(),

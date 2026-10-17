@@ -65,7 +65,7 @@ async function ticketOffer(/** @type {any} */ d, /** @type {string} */ url) {
   return { relay: r.offer.relay, route: r.offer.route, box: Buffer.from(r.offer.box), secret: r.offer.secret };
 }
 
-const NEXT = /Devices, Add a device/;
+const NEXT = /master password/;
 
 test("a classic pairing code cannot be made: every way to ask is refused in words that name the next step", async t => {
   const { d } = await world(t);

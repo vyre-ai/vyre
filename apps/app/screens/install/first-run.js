@@ -64,18 +64,6 @@ export const ADD_PHONE = {
   waiting: "Waiting for your phone.",
 };
 
-/** A browser holds no key: it connects from a phone, or says Vyre is not set up. */
-export const BROWSER = {
-  title: "Open Vyre on your phone",
-  line: "On your phone, open Vyre, then Devices, then Add a device, and scan or paste its code here.",
-  notSet: "Vyre is not set up yet?",
-  notSetTitle: "Set up Vyre on a computer or server first",
-  notSetLine: "A browser connects to a Vyre that is already running. Install it on a computer or a server, then come back.",
-  openSite: "Open vyre.run",
-  site: "https://vyre.run",
-  back: "Back",
-};
-
 /** The phone's "I don't have Vyre running yet" (native-core builds it; the words live here so the share sheet and the empty states say the same). */
 export const NO_VYRE = {
   title: "Vyre runs on a computer or a server",
@@ -175,10 +163,4 @@ export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && 
 /** The one banner for it: where it leads is the onboarding the box runs (/onboard). */
 export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your agent, your Claude and your devices.", action: "Finish setup", route: FIRST_RUN.start };
 
-/**
- * What a long code read on this device starts. A phone's code (`for: "phone"`, from Add a device) adds THIS device to the person's name; a server's code pairs this device to that server. A browser that cannot
- * claim a name still adds itself from a phone's code (relay/client/browserjoin.js), so the phone's code never goes down the server path.
- * @param {{ kind?: string, for?: string }} code @returns {"add-device" | "pair-server"}
- */
-export const codeRoute = (code) => (code && code.kind === "ticket" && code.for === "phone" ? "add-device" : "pair-server");
 

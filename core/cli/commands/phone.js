@@ -42,7 +42,7 @@ import { userHostFetch } from "../../../lib/http.js";
 const USAGE = "vyre phone [add --android [--usb|--wireless]|list|remove <id...>|test [id]] [--json]";
 
 /** What a phone does to join now, shown where the pairing code used to be. */
-const SIGN_IN = "Open Vyre on the phone and sign in with your name; approve it from a device you already use: Devices, Add a device";
+const SIGN_IN = "Open Vyre on the phone and sign in with your space address, your username and your master password";
 
 // ------------------------------------------------------------ where the phone pairs
 
@@ -341,7 +341,7 @@ const HELP = `
   vyre phone remove <id>...           forget a notification device, or remove a passkey (asks you first)
   vyre phone test [id]                send a test notification to every device, or one
 
-  A phone joins by signing in with your name and being approved on a device you already use: Devices, Add a device.
+  A phone joins by signing in with your space address, your username and your master password.
   The old pairing code is gone, so add installs the app and says so; it pairs nothing.`;
 
 export default {
@@ -363,7 +363,7 @@ export default {
       if (flags.iphone && flags.android) return usage("vyre phone add: --iphone or --android, not both");
       if (flags.usb || flags.wireless) return android(flags);
       return fail("a phone is not added from here any more: the pairing code is gone, because a code anyone could hold made devices nobody confirmed",
-        { next: "on the phone, sign in with your name and approve it from a device you already use, in the app: Devices, Add a device. To put the Android app on it over a cable: vyre phone add --android --usb" });
+        { next: "on the phone, sign in with your space address, your username and your master password. To put the Android app on it over a cable: vyre phone add --android --usb" });
     }
     if (sub === "list") return listPhones();
     if (sub === "remove") return remove(rest);

@@ -138,7 +138,7 @@ async function main() {
   } else if (location.pathname === "/pair" && location.hash.length > 1) {
     // The old bearer link (13 Oct 2026) pairs nothing.
     history.replaceState(null, "", "/");
-    status("That is an old kind of pairing code that no longer works. On a device you already use, open Devices, Add a device, and scan or type the new code.");
+    status("That is an old kind of pairing code that no longer works. Sign in on the device with your space address, your username and your master password.");
     return;
   }
   if (!box) { status("This browser is not paired with a server yet. On your server, open Settings, Devices, and scan the code with this device's camera."); return; }

@@ -173,21 +173,21 @@ test("relay cli verbs: vyre commands lists every verb run() handles", async t =>
   assert.deepEqual(verbs.find(v => v.verb === "on").flags.map(f => f.name), ["url"]);
 });
 
-test("relay cli verbs: pair is gone: it refuses with words and names Devices, Add a device, in text, --json and --view", async t => {
+test("relay cli verbs: pair is gone: it refuses with words and names signing in, in text, --json and --view", async t => {
   const { root, url } = await world(t);
   assert.equal((await run(root, ["relay", "on", "--url", url])).code, 0);
   const r = await run(root, ["relay", "pair"]);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /vyre relay pair is gone/);
-  assert.match(r.out, /Devices, Add a device/);
+  assert.match(r.out, /master password/);
   const j = await run(root, ["relay", "pair", "--json"]);
   assert.equal(j.code, 1);
-  assert.match(JSON.parse(j.stdout).error.next, /Devices, Add a device/);
+  assert.match(JSON.parse(j.stdout).error.next, /master password/);
   const v = await run(root, ["relay", "pair", "--view"]);
   assert.equal(v.code, 1);
   const f = v.stdout.trim().split("\n").map(l => JSON.parse(l));
   assert.equal(f[0].view.kind, "error", "an error frame, never a QR");
-  assert.match(f[0].view.next, /Devices, Add a device/);
+  assert.match(f[0].view.next, /master password/);
   const s = JSON.parse((await run(root, ["relay", "status", "--view"])).stdout.split("\n")[0]);
   assert.deepEqual([s.view.kind, s.view.title, s.data.enabled], ["card", "Relay", true]);
 });

@@ -47,7 +47,7 @@ test("relay cli: status and devices read without presence; pair is gone and chan
   }
   const pair = await run(root, ["relay", "pair"]);
   assert.equal(pair.code, 1, pair.out);
-  assert.match(pair.out, /Devices, Add a device/);
+  assert.match(pair.out, /master password/);
   assert.equal((await run(root, ["relay", "remove"])).code, 2);
   assert.equal((await run(root, ["relay", "bogus"])).code, 2);
 });
