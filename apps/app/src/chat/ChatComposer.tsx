@@ -43,6 +43,8 @@ export type ComposerProps = {
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
   /** Asks for her yes when she picks one of her own vault items in a chat that has an agent and a thread: the platform prompt, then a signed yes over exactly that lend. Null: nothing is lent. */
   onLendYes?: (item: string) => Promise<string | null>;
+  /** This device can sign her yes but the chat has no thread yet (its first message is not sent): a picked vault item is only named for now, and the composer says so. */
+  lendLater?: boolean;
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
   /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
   onTyping?: () => void;
@@ -121,6 +123,7 @@ export function ChatComposer(p: ComposerProps) {
   const lastTyping = useRef(0);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
+  const [lendNote, setLendNote] = useState(false);
   const slots = p.slots ?? [];
   const input = useRef<TextInput>(null);
   const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);
@@ -272,6 +275,7 @@ export function ChatComposer(p: ComposerProps) {
     if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
     if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
     // Tagging one of her own vault items asks for her presence once, here, at the tag; the yes rides on the chip to the message.
+    if (o.kind === "vault" && o.urn && !p.onLendYes && p.lendLater) setLendNote(true);
     if (o.kind === "vault" && o.urn && p.onLendYes) { const item = o.urn, name = o.pick; void p.onLendYes(item).then((yes) => { const m = picked.current.get(name); if (yes && m && m.id === item) picked.current.set(name, withYes(m, yes)); }).catch(() => {}); }
     const r = pick(text, trig, o.pick);
     setText(r.text);
@@ -301,6 +305,7 @@ export function ChatComposer(p: ComposerProps) {
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
     if (target.to.length || mentions.length || working) p.onSend(t, { ...target, ...(mentions.length ? { mentions } : {}), ...(working ? { mode: over ?? mode } : {}) }); else p.onSend(t);
     picked.current.clear();
+    setLendNote(false);
     setText("");
     setCaret(0);
     setAnswering([]);
@@ -447,6 +452,7 @@ export function ChatComposer(p: ComposerProps) {
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
+        {lendNote ? <Text size="caption" tone="label">Send a message first to let the agent use this.</Text> : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Tip label="Add: files, commands, who answers" hint="@ # /" side="top"><Tool big={big} icon="plus" label="Add: files, commands, who answers" onPress={() => openPop("plus")} /></Tip>
           {field}

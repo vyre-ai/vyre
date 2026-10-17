@@ -257,8 +257,9 @@ export function ChatScreen(p: ChatScreenProps) {
   }, []);
   useMessageKeys(panel !== null || findOpen);
   const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
+  const [canLend, setCanLend] = useState(false);
   // Her yes for lending one of her own vault items: where this device can sign one (the phone's key, a browser's passkey), tagging asks for it; elsewhere there is none and a tag lends nothing.
-  useEffect(() => { if (allowsMock()) return; let on = true; void (async () => { const device = await yesSigner().catch(() => null); const me = await loadIdentity().catch(() => null); const space = useSpaces.getState().space; if (on && device && me && space && space !== "all") setLendSigner(lendSignerFor({ device, person: me.id, space })); })(); return () => { on = false; setLendSigner(null); }; }, []);
+  useEffect(() => { if (allowsMock()) return; let on = true; void (async () => { const device = await yesSigner().catch(() => null); const me = await loadIdentity().catch(() => null); const space = useSpaces.getState().space; if (on && device && me && space && space !== "all") { setLendSigner(lendSignerFor({ device, person: me.id, space })); setCanLend(true); } })(); return () => { on = false; setLendSigner(null); }; }, []);
   // A chat with one other has no face or name on its messages; a group shows them when the sender changes.
   const solo = new Set([...store.group.participants(), ...(here.members ?? [])].filter((f) => f.id !== viewer).map((f) => f.id)).size <= 1;
   const rowsRef = useRef(rows);
@@ -533,6 +534,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onKey={p.onKey}
           onSend={onSend}
           groupChat={sharedChat}
+          lendLater={canLend && !here.thread}
           onLendYes={here.thread && /^per_/.test(String(viewerId).replace(/^person:/, "")) && /^[a-z][a-z0-9_-]{0,39}$/.test(store.group.assistantName()) ? (item) => lendYes({ asker: String(viewerId).replace(/^person:/, ""), id: item, thread: here.thread as string, agent: store.group.assistantName() }) : undefined}
           canStop={meta.canStop}
           stopping={meta.stopping}
