@@ -11,10 +11,11 @@ import { fromSeed } from "../identity/keys.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
+import { trail } from "./trail.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
-import { BROWSER_TOO_OLD, ed25519Works } from "../identity/webcrypto-web.js";
+import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypto-web.js";
 import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
@@ -50,8 +51,8 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
 let lastTrace = "";
 /** What a server answers when an act needs the person's own approval. */
-const PRESENCE_CODES = ["presence_required", "needs_presence", "on_phone", "software_key", "held"];
-const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; try { if (typeof console !== "undefined") console.info(`vyre:stage step ${line}`); } catch { /* no console */ } };
+const PRESENCE_CODES = ["presence_required"];
+const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; trail(`step ${line}`); };
 
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -188,7 +189,7 @@ export function createHost(o) {
               // the person can give (the answer says so), and nothing is lost by making it later.
               if (x && PRESENCE_CODES.includes(String(x.code))) { w.vaultPending = true; trace(`poll: the vault waits for an approval (${String(x.code)})`); }
               else if (!x || x.code !== "exists") {
-                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || "The space vault could not be made.").slice(0, 300) };
+                w.failed = { code: String((x && x.code) || "vault"), message: String((x && x.message) || `The space vault could not be made. The server said: ${String((x && x.code) || "nothing")}.`).slice(0, 300) };
                 return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: true };
               }
             }
@@ -239,7 +240,7 @@ export function createHost(o) {
       const existing = await o.store.load();
       if (existing) return { username: existing.username, id: existing.id, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
       // The identity chain verifies Ed25519 signatures with WebCrypto (or the fallback webcrypto.ts installs): a browser with neither is told so, not given the chain's own words.
-      if (!(await ed25519Works())) throw bad(BROWSER_TOO_OLD, "browser_too_old");
+      { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const seed = (o.random || ((n) => crypto.getRandomValues(new Uint8Array(n))))(32);
       const key = await fromSeed(seed);
       const code = await reserve(name);
@@ -267,6 +268,9 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
+    // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.
+    "identity.vault.install": async () => ({ installed: false, reason: "no_vault" }),
+
     "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
     // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
@@ -278,7 +282,7 @@ export function createHost(o) {
       if (!addr) throw bad("Use the address of a space, like juniper.vyre.run.");
       if (!name || !password) throw Object.assign(new Error(BAD), { code: "bad_login" });
       if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
-      if (!(await ed25519Works())) throw bad(BROWSER_TOO_OLD, "browser_too_old");
+      { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const begun = await door(addr.space, { op: "begin", username: name });
       const kdf = acceptKdf(begun.kdf);
       const d = await deriveLogin(String(password).normalize("NFKC"), String(begun.salt), kdf);
@@ -394,6 +398,8 @@ export function createHost(o) {
       const random = o.random || ((n) => crypto.getRandomValues(new Uint8Array(n)));
       const run = createAddServer({
         client: ports.client, relay: ports.relay, autoPair: true,
+        // The stages of this run, one line each (no code, no key): what a failed first run needs in order to say where it stopped.
+        onChange: (s) => { trail(`${s.stage}${s.error ? ` ${s.error.code}` : ""}`); },
         issue: async () => {
           const setupKey = await ports.createSetupKey();
           const secret = random(16);

@@ -100,8 +100,8 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.
 - `call` step `with=<earlier send step>`: this send rides that step's yes (one question names both; the earlier tool must list this one in its `covers`; same path, not out of a loop or lane).
 - `upsert` finds the record whose fields equal `match`, else creates it from `match` and `set`; the output is `record` and `created` (true or false). Without `update` a found record also gets `set`; with `update={...}` it gets only those, and `update={}` leaves it alone (find or create).
-- Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed; the last says what a waiting run does if it changes again.
-- `ask` goes to `person:<id>` or `role:<name>`, never an agent. Its `form` is 1 to 20 fields `{name, label?, kind: text|number|date|choice|boolean|file, required?, choices?}` (`choices`: 2 to 20 texts, only for kind choice).
+- Record changed: `{on:event,event:[client.created,client.updated],field:status,when_record_changes:replace|keep}` runs only when `status` changed.
+- `ask` goes to `person:<id>` or `role:<name>`, never an agent. Its `form` is 1 to 20 fields `{name, label?, kind: text|number|date|choice|boolean|file, required?, choices?}`.
 - Email: `tools_call comms.email {to, subject, text, replyTo, from}`; held for a yes.
 - A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
@@ -115,7 +115,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - Read: trigger, steps.<id>, run, now, tz (the Space's time zone, for the time functions), the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].
 - An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.
 - Text with values is one expression: `"Hi " + text(trigger.after.name) + " at " + format(trigger.after.starts_at, "weekdaytime", tz)`. A missing value is empty text; a sealed field prints its placeholder.
-- Times: `format(t, "weekdaytime", tz)`; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, "time", tz, -1, "day")` moves first. `addtime(t, 2, "hours", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving). Use one call; they nest only two deep.
+- Times: `format(t, "weekdaytime", tz)`; formats date, time, datetime, weekday, weekdaytime, iso; `format(t, "time", tz, -1, "day")` moves first. `addtime(t, 2, "hours", tz)` moves by minutes, hours, days, weeks or months (days and up keep the wall clock across daylight saving).
 - Functions: first, date, datetime, addtime, format, len, lower, upper, trim, startsWith, endsWith, coalesce, round, floor, min, max, number, text, isnull, days, hours, minutes. Nothing else is callable.
 
 ## Limits

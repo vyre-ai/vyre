@@ -15,6 +15,7 @@
 
 import crypto from "node:crypto";
 import { deviceIdOf } from "../../lib/caller.js";
+import { noteFirstAdopt, clearFirstAdopt, firstAdoptOf } from "../../lib/first-adopt.js";
 import { withinOrThrow } from "../../lib/within.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { finishJoin } from "../../relay/client/join.js";
@@ -1076,6 +1077,16 @@ export function createPairing(o) {
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
         try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind, ownerEnclave); } catch (e) { clearOwner(); throw e; }
         stepLog(caller.slice(7), `device recorded (session ${session ? "open" : "not open"})`);
+        // The server's first device: on the install-line path the boot redeem set the owner before any device paired, so applyAdopt took its "another device" return and wrote nothing. The record is made here,
+        // once the identity proof checked out, when no record exists and no other device of the owner is paired yet (lib/first-adopt.js: the vault key may be made by this device for ten minutes).
+        try {
+          const root = ctx.paths && ctx.paths.root ? ctx.paths.root : "";
+          if (root && mine.proven && !firstAdoptOf(root)) {
+            const identity = mine.proven || String(mine.input.identity || mine.input.owner.id);
+            const others = devices.list(identity).filter((/** @type {any} */ x) => x.id !== caller.slice(7) && x.id !== "self" && ["phone", "computer", "web"].includes(String(x.kind)));
+            if (!others.length) { noteFirstAdopt(root, caller, now()); meta.set("adopted_at", now()); }
+          }
+        } catch (e) { ctx.log(`wink: could not record the first device: ${/** @type {Error} */ (e).message}`); }
         return { ...adopted, session };
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)
@@ -1100,7 +1111,12 @@ export function createPairing(o) {
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
       { const k = proofKinds.get(caller); if (k) { meta.set("owner_proof", k); meta.set("owner_pin", pinKinds.get(caller) || "none"); proofKinds.delete(caller); pinKinds.delete(caller); } else if (first) { meta.del("owner_proof"); meta.del("owner_pin"); } }
-      if (first) meta.set("adopter", caller);
+      if (first) {
+        meta.set("adopter", caller);
+        // When the first adoption finished and which device did it: the space vault may be made by that device, once, in the next ten minutes (lib/first-adopt.js). Never from anything a call sends.
+        meta.set("adopted_at", now());
+        try { if (ctx.paths && ctx.paths.root && deviceIdOf(caller) !== null) noteFirstAdopt(ctx.paths.root, caller, now()); } catch (e) { ctx.log(`wink: could not record the first adoption: ${/** @type {Error} */ (e).message}`); }
+      }
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
@@ -1169,7 +1185,8 @@ export function createPairing(o) {
     /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. The one that adopted it loses its device here too. */
     const clearOwner = () => {
       const adopter = meta.get("adopter");
-      for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
+      for (const k of ["owner", "adopter", "adopted_at", "handover", "peer_secret"]) meta.del(k);
+      try { if (ctx.paths && ctx.paths.root) clearFirstAdopt(ctx.paths.root); } catch { /* none */ }
       dropLater(adopter);
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});

@@ -76,12 +76,19 @@ test("every registered session adapter gets the same caller, the same secret fil
   const ask = { kind: "send", via: "hooks", to: "hooks.example.test", content: { method: "POST", url: "https://hooks.example.test/x", body: "a note" } };
   const held = await d.registry.call("gate.request", ask, named);
   assert.equal(held.error, undefined, JSON.stringify(held.error));
-  const rows = await d.registry.call("gate.held", {}, "local");
-  assert.equal(rows.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === held.data.id).agent, "kit");
+  // the owner reads it, as the local socket does: with the kernel on, a call with no person on its chain gets no held item (core/gate/requester.js), so it carries the owner's own token (as test/harness.test.js does)
+  const K = d.kernel;
+  const ownerMeta = K ? { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token } : {};
+  const rows = await d.registry.call("gate.held", {}, "local", ownerMeta);
+  const row = (rows.data || []).find((/** @type {{ id: string, agent: string|null }} */ r) => r.id === held.data.id);
+  assert.ok(row, `the held item ${held.data.id} is in the owner's list: ${JSON.stringify(rows).slice(0, 400)}`);
+  assert.equal(row.agent, "kit");
   const bareAsk = await d.registry.call("gate.request", { ...ask, content: { ...ask.content, url: "https://hooks.example.test/y" } }, sessionCaller(adapters[0]));
   assert.equal(bareAsk.error, undefined, JSON.stringify(bareAsk.error));
-  const rowsBare = await d.registry.call("gate.held", {}, "local");
-  assert.equal(rowsBare.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === bareAsk.data.id).agent, null);
+  const rowsBare = await d.registry.call("gate.held", {}, "local", ownerMeta);
+  const bareRow = (rowsBare.data || []).find((/** @type {{ id: string, agent: string|null }} */ r) => r.id === bareAsk.data.id);
+  assert.ok(bareRow, `the bare ask ${bareAsk.data.id} is in the owner's list: ${JSON.stringify(rowsBare).slice(0, 400)}`);
+  assert.equal(bareRow.agent, null);
 
   // Browser profiles: computers.list keeps an ordinary agent on its own computer, and a bare mcp may not name one.
   for (const name of ["kit", "pax"]) {

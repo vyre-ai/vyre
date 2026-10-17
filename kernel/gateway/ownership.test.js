@@ -174,6 +174,8 @@ const TASK_CALLS = {
   ownership: ["request", "edit", "skip", "reopen", "unblock"],
   // moved only by the actor the task names (the doer works it, the checker decides it; isDoer / checkersOf in kernel/tasks/tasks.js): a stranger is refused by that rule
   actor: ["start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix"],
+  // moved only by the Flows service on a Flow step's due time (tasks.withdraw, ADR 0054): the grant is the Flows module's own, so a person, an assistant and every other module are refused (kernel/flows/deadline.test.js)
+  service: ["withdraw"],
   // reads, or kernel-internal bookkeeping with no person to speak of
   // the boot-time move of task words onto records: it takes no chain, runs as the tasks module's own chain and writes nothing a caller names
   internal: ["migrate"],
