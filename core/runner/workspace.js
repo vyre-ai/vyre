@@ -248,8 +248,7 @@ function fscryptDriver() {
   return {
     name: "fscrypt",
     exists: dir => fs.existsSync(enc(dir)),
-    // "incomplete" is a key whose removal is not finished: a process still holds a file open and what it holds stays readable. That is not locked, so it counts as mounted until the key is fully gone (lockHard and the chase keep going; whenSecured waits).
-    isMounted: dir => fs.existsSync(enc(dir)) && ["present", "incomplete"].includes(status(dir)),
+    isMounted: dir => fs.existsSync(enc(dir)) && status(dir) === "present",
     async create(dir, key) {
       // Owner-only: only POSIX permissions protect an UNLOCKED workspace. Only the folders THIS call creates are chmodded; a folder that was
       // already there (a home, a shared mount) is never touched.
@@ -268,8 +267,8 @@ function fscryptDriver() {
       return enc(dir);
     },
     async unmount(dir) {
-      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" means a process
-      // still holds a file open (what it holds stays readable): the sessions are stopped first, and isMounted reads "present" or "incomplete" until the key is fully gone.
+      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" only means a process
+      // still holds a file open; the sessions are stopped first, and isMounted reads "present" only while the key is there.
       if (!fs.existsSync(enc(dir))) return;
       await helper("remove", enc(dir));
     },
