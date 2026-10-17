@@ -156,3 +156,26 @@ test("byPerson: the person whose change fired a Flow is its starter, even when a
   assert.deepEqual(byPerson("service:cron", undefined), {}, "a schedule has none");
   assert.deepEqual(byPerson(undefined, []), {});
 });
+
+test("a Flow-written change carries the starter of the run that wrote it: Bob's run of Flow A makes Flow B read as Bob (and stop), Alex's run goes through", async () => {
+  const { w, chain, urn } = await setup();
+  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
+  const real = w.kernel.records.get;
+  w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
+  await install(w, copyFlow("trigger.after.spouse.name"));
+  // Flow A (approved by Alex) writes the "Main" record that links to Sam: its change fires Flow B, which reads Sam through the link
+  const a = await install(w, { format: 1, name: "make_main", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "mk", kind: "create", type: "kin", set: { name: "Main", spouse: { expr: "trigger.kin.urn" } } }] });
+  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as({ kind: "person", id: "per_bob" }));
+  await settle(w);
+  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as(ALEX));
+  await settle(w);
+  const all = await w.runner.listRuns();
+  const bRuns = all.filter(r => r.flow !== a.id);
+  const diag = JSON.stringify(all.map(r => ({ flow: r.flow === a.id ? "A" : "B", state: r.state, started_by: r.started_by, corr: r.trigger && r.trigger.event && r.trigger.event.corr, chain: r.trigger && r.trigger.event && (r.trigger.event.chain || []).map((/** @type {any} */ h) => `${h.actor.kind}:${h.actor.id}`) })));
+  assert.deepEqual(all.filter(r => r.flow === a.id).map(r => r.state), ["done", "done"], diag);
+  assert.deepEqual(bRuns.map(r => r.state).sort(), ["done", "failed"], `B read as the person who started A: ${diag}`);
+  assert.equal(bRuns.find(r => r.state === "failed")?.started_by, "per_bob", "B's starter is Bob, not the approver of A");
+  assert.match(String(bRuns.find(r => r.state === "failed")?.error.message), /not there, or is not yours to see/);
+  assert.deepEqual(await payments(w, chain), ["Sam"], "only the chain Alex started wrote it");
+});

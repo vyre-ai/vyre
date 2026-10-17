@@ -16,7 +16,7 @@ import { runCases } from "./cases.js";
 import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
-import { linksFor, withLinks, lesserRead, byPerson, starterOf } from "./links.js";
+import { linksFor, withLinks, lesserRead, starterOfEvent, starterOf } from "./links.js";
 import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter, slim, OUTWARD } from "./runner-util.js";
 import { simulate as simulateFlow } from "./simulate.js";
@@ -608,7 +608,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor, env.chain) }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...(await starterOfEvent(env, id => this.store.getRun(id))) }, env);
   }
 
   /**
