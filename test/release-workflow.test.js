@@ -202,7 +202,7 @@ test("release.yml: the signed module list is checked against the tarball and the
 
 test("release.yml: a tag that already has a release is refused in prepare before anything is built, a patch run shows the whole diff, and the Mac status is bound to the file hashes", () => {
   const guard = yml.indexOf("A tag that already has a release (published or draft) is never signed again");
-  assert.ok(guard > 0 && guard < yml.indexOf("The tag's commit is on main or the 0.2 stage line") && guard < yml.indexOf("- name: Version, channel, notes"), "the guard is the first step after setup");
+  assert.ok(guard > 0 && guard < yml.indexOf("The tag's commit is on main, or is a proper patch") && guard < yml.indexOf("- name: Version, channel, notes"), "the guard is the first step after setup");
   assert.match(yml.slice(guard, guard + 900), /gh release list .*--json tagName/);
   assert.match(yml, /PATCH RELEASE from hotfix\/\$TAG, NOT from main/);
   assert.match(yml, /git diff "\$base" HEAD > signing-diff\/whole-diff\.txt/);
