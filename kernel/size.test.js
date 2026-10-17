@@ -38,8 +38,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9695 (rel6, 16 Oct 2026, [kernel +4: lead ruling YES, 16 Oct 2026] seal/client.js writes <seal dir>/sealer.pid when it spawns the sealing process and removes it when the process exits, so lib/vault-wipe.js sees a sealer a ps listing cannot see yet).
 // 9820 (integrate/0.6, 16 Oct 2026): standing grants in gate kernel hooks, flows.actions and skills/chrome tools on the registry, and browser-access unification land in the trusted base together (+125 on 9695).
 // 9842 (integrate/0.6, 16 Oct 2026): gate standing list tools and flows.actions read path in the registry (+22 measured at ab0d8a54f).
-// 9852 (rel6, 16 Oct 2026, [kernel +10: lead ruling, #173] kernel/core/events.js: pump() waits for a drain already running for a consumer, and a drain hands the loop back every 20 ms of backlog; measured 13 added, 3 removed; +10 on 9842).
-const CAP = 9852;
+const CAP = 9842;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
