@@ -9,7 +9,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
 import { ConnectionTokens } from "../connection-token.js";
-import { openMemberKey, wrapPath } from "../people-seal.js";
+import { openConnectionKey, wrapPath } from "../people-seal.js";
 import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
 import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
@@ -215,21 +215,21 @@ test("sealed server copy: a connection keeps working while its owner is locked, 
   // the seal is bound to the person: Bob's wrap moved to Eve's place opens nothing
   const bobFile = wrapPath(sealRoot, BOB), eveFile = wrapPath(sealRoot, EVE);
   assert.ok(fs.existsSync(bobFile) && fs.existsSync(eveFile));
-  assert.notEqual(openMemberKey(sealRoot, BOB), null);
+  assert.notEqual(openConnectionKey(sealRoot, BOB), null);
   const keep = fs.readFileSync(eveFile);
   fs.copyFileSync(bobFile, eveFile);
-  assert.equal(openMemberKey(sealRoot, EVE), null, "a wrap moved to another person's place opens nothing");
+  assert.equal(openConnectionKey(sealRoot, EVE), null, "a wrap moved to another person's place opens nothing");
   fs.writeFileSync(eveFile, keep);
   // no plaintext copy of any key under the state folder: scan every file for the raw key bytes of the unlocked vault
   await call("vault.me.account.unlock", { password: PW, secretKey: made.data.secretKey }, BOB);
   const dump = (/** @type {string} */ d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? dump(path.join(d, e.name)) : [path.join(d, e.name)]);
   const raw = people.slot(BOB).vault.pvk.export();
   assert.equal(raw.length, 32);
-  const ckRaw = openMemberKey(sealRoot, BOB).export();
+  const ckRaw = openConnectionKey(sealRoot, BOB).export();
   for (const f of [...dump(sealRoot), ...dump(home)]) { assert.ok(!fs.readFileSync(f).includes(raw), `${f} holds the raw vault key`); assert.ok(!fs.readFileSync(f).includes(ckRaw), `${f} holds the raw connection key`); }
   // leaving the Space removes the seal
   people.destroy(BOB);
-  assert.equal(openMemberKey(sealRoot, BOB), null);
+  assert.equal(openConnectionKey(sealRoot, BOB), null);
   await assert.rejects(() => tokens.token({ owner: BOB, connection: "clio" }, asBob), { code: "locked" });
 });
 
@@ -274,7 +274,7 @@ test("the sealed key is a connection key: by cryptography it opens connection it
   await call("vault.me.account.create", { password: PW }, BOB);
   await call("vault.me.put", { name: "claude", kind: "ai-signin", fields: { token: "sk-bob-private" } }, BOB);
   await conn(call, "clio", { auth_kind: "bearer", token: "CONN-TOKEN-0001-abcdefghij" }, BOB);
-  const sealed = openMemberKey(sealRoot, BOB);
+  const sealed = openConnectionKey(sealRoot, BOB);
   assert.ok(sealed, "the server holds a key");
   const list = (/** @type {string} */ d) => fs.readdirSync(d).filter(f => f.endsWith(".json"));
   const folder = people.folder(BOB);
@@ -289,14 +289,14 @@ test("the sealed key is a connection key: by cryptography it opens connection it
   await assert.rejects(() => people.service(BOB).update("claude", { token: "x" }), { code: "not_found" });
   // a reset rotates the connection key: the old sealed key opens nothing, the new one does, and the connection still works
   people.rotateConnectionKey(BOB, people.slot(BOB));
-  const fresh = openMemberKey(sealRoot, BOB);
+  const fresh = openConnectionKey(sealRoot, BOB);
   assert.throws(() => open(sealed, people.connDir(BOB), people.atConn.bind(people), conF), "the old key opens nothing now");
   assert.equal(open(fresh, people.connDir(BOB), people.atConn.bind(people), conF).fields.token, "CONN-TOKEN-0001-abcdefghij");
   people.lock(BOB);
   assert.equal((await people.service(BOB).get("clio")).fields.token, "CONN-TOKEN-0001-abcdefghij", "still served from the sealed copy while locked");
   // leaving removes the seal
   people.destroy(BOB);
-  assert.equal(openMemberKey(sealRoot, BOB), null);
+  assert.equal(openConnectionKey(sealRoot, BOB), null);
 });
 
 test("vault.me.who names the owner or the one member in the chain, to the mcp and connectors modules only, and refuses what it cannot name", async t => {
