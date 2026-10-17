@@ -37,6 +37,7 @@ import * as sharingTools from "./tools/sharing.js";
 import * as connectionShareTools from "./tools/connection-share.js";
 import * as namedTools from "./tools/named.js";
 import * as provisionedTools from "./tools/provisioned.js";
+import * as readerTools from "./tools/reader.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -594,7 +595,8 @@ export default {
     const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));
     tool("vault.remind.run", ["cli", "local", "deck"], "Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.",
       obj({}), async () => remindRun(vault, call));
-    rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    const rot = rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    readerTools.register({ ctx, vault, tool, rotateItem: rot.rotateItem });
     const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
       : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
         // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to

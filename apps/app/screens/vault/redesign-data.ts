@@ -85,7 +85,7 @@ export function realData(call: Call): VaultData {
     const exp = det?.expires;
     return {
       // a name with a slash is an item in a shared vault (core/vault/shared.js): it came from someone else
-      id: r.name, sp: "space", group: groupOf(r.kind, r.name, det?.provider), sharedWithMe: r.name.includes("/"), name: r.name.replace(/[-_]+/g, " "), detail: r.description || r.hosts[0] || r.kind, secret: "",
+      id: r.name, sp: "space", kind: r.kind, group: groupOf(r.kind, r.name, det?.provider), sharedWithMe: r.name.includes("/"), name: r.name.replace(/[-_]+/g, " "), detail: r.description || r.hosts[0] || r.kind, secret: "",
       daysLeft: daysLeftOf(exp), lastUsedDays: undefined,
       usedBy: r.grants.map((g) => ({ kind: g.watcher ? "agent" as const : "connection" as const, name: g.watcher ? `${g.module}/${g.watcher}` : g.module })),
       shared: [],
@@ -164,8 +164,8 @@ export function realData(call: Call): VaultData {
           groups: (r.teams ?? []).map((t) => ({ id: t.id, kind: "group", name: t.name, people: t.people ?? [], agents: t.agents ?? [] })),
           agents: (r.agents ?? []).map((a) => ({ id: a.id, kind: "agent", name: a.name })),
         };
-        // Read and Edit and rotate are not hidden by the tools but cannot be used by a member yet, so this box offers Fill in only and a share made earlier at another level still shows as it is.
-        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null, levels: ["use"] };
+        // All three levels work for a member now (core/vault/tools/reader.js); an API credential is only ever used through Vyre, so it is offered Fill in alone.
+        return { shares: r.access.map((a) => ({ id: a.subject, level: a.level })), dir, me: null, levels: item.kind === "api-credential" ? ["use"] : ["use", "reveal", "edit"] };
       },
       async set(item, w, level) { await ask("vault.access.set", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
     },

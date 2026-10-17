@@ -29,6 +29,7 @@ export const NEEDS_PRESENCE = [
   "vault.emergency.add", "vault.emergency.refresh", "vault.emergency.request", "vault.emergency.status",
   "vault.connect", "vault.connections.grant", "vault.connections.update", "vault.mcp.pass.create", "vault.mcp.reveal.allow",
   "vault.space.create", "vault.space.grant", "vault.space.put", "vault.space.rotate",
+  "vault.me.shared.reveal", "vault.me.shared.update", "vault.me.shared.rotate",
   "vault.named.create", "vault.named.move", "vault.named.remove", "vault.named.access.set",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
