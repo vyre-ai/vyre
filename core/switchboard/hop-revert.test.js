@@ -37,7 +37,7 @@ test("runQueuedOver: a hop that cannot start says so in words, tells the stream 
 test("a write that throws while a queued turn is handed over releases the drain lock, and the row behind it still runs", async () => {
   /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }), deps: { log() {} },
     write() { throw new Error("lent: the words may not go into a process on a computer"); },
     dropQueuedChatTurn: (/** @type {string} */ id) => drained.push("notice"),   // the room is told the words were not sent
@@ -53,7 +53,7 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
   /** @type {any[]} */ const drained = [];
   const st = { turn: null, stopping: false };
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", st]]),
+    reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", st]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => { /* the hop's whole turn ran and ended here: its turnEnded returned at the lock */ },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -68,7 +68,7 @@ test("a hop whose turn ended before sendOnce resolved still drains the row behin
 test("runQueuedOver past the revert wait puts the row back instead of judging it on the hop's state", async () => {
   /** @type {any[]} */ const ran = []; /** @type {any[]} */ const drained = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]),
+    reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 30, turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: (/** @type {any[]} */ ...a) => { ran.push([q.slice(0, 90), a]); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -99,7 +99,7 @@ test("a revert whose switch throws still drains the put-back row", async () => {
   /** @type {any[]} */ const drained = []; /** @type {any[]} */ const sql = [];
   const revert = new Promise(r => setTimeout(r, 60));   // (turnEnded's promise has its .catch: it settles even when the switch threw)
   const sb = /** @type {any} */ ({
-    reverting: new Map([["t", revert]]), revertWaitMs: 20, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map([["t", revert]]), revertWaitMs: 20, turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 50)); return { changes: 1 }; } }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => { throw new Error("must not be judged"); }, sendOnce: async () => { throw new Error("must not run"); },
     drainQueued: (/** @type {string} */ id) => drained.push(id),
@@ -116,7 +116,7 @@ test("a revert whose switch throws still drains the put-back row", async () => {
 test("a queued row whose hop needs no move (sendOnce answers null) still delivers its words, under their asker", async () => {
   /** @type {any[]} */ const calls = [];
   const sb = /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, emit() {}, record: () => ({ project: null }),
     onceTarget: async () => ({}), sendOnce: async () => null,
     deliverRow: async (/** @type {string} */ id, /** @type {any} */ r, /** @type {any} */ kt) => { calls.push([id, r.text, kt.asker]); },
@@ -220,7 +220,7 @@ test("a lost mark releases only its own lock and drains nothing; the revert's ow
 
 test("a queued hop that fails after it was announced ends the announced turn first and then shows its notice, in fixed words", async () => {
   /** @type {string[]} */ const order = []; /** @type {string[]} */ const words = []; /** @type {any[]} */ const marks = [];
-  const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
+  const sb = /** @type {any} */ ({ reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
     db: { prepare: (/** @type {string} */ sql) => ({ run: (/** @type {any[]} */ ...a) => { marks.push([sql, a]); return { changes: 1 }; } }) }, onceTarget: async () => ({}),
     emit: (/** @type {string} */ type, /** @type {any} */ p) => { order.push(type); if (type === "thread.text") words.push(p.text); },
     endAnnouncedTurn: () => order.push("end-announced"), drainQueued() {},
@@ -256,7 +256,7 @@ test("threads.notice is closed to added modules and capped in the Switchboard's 
 
 test("a queued hop past the revert wait is put back once and dropped in words the second time", async () => {
   /** @type {string[]} */ const sql = []; /** @type {string[]} */ const texts = [];
-  const sb = /** @type {any} */ ({ reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 20, draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]), record: () => ({ project: null }),
+  const sb = /** @type {any} */ ({ reverting: new Map([["t", new Promise(() => {})]]), revertWaitMs: 20, turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null }]]), record: () => ({ project: null }),
     db: { prepare: (/** @type {string} */ q) => ({ run: () => { sql.push(q.slice(0, 70)); return { changes: 1 }; } }) },
     emit: (/** @type {string} */ type, /** @type {any} */ p) => { if (type === "thread.text") texts.push(p.text); }, drainQueued() {} });
   sb.drainDone = Switchboard.prototype.drainDone;
@@ -275,7 +275,7 @@ test("a queued hop past the revert wait is put back once and dropped in words th
 
 test("a queued hop in a team Space chat carries the Space with it: the hop's kernel session opens in that Space's kernel, where the reply looks for it", async () => {
   /** @type {any} */ let seen = null;
-  const sb = /** @type {any} */ ({ reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
+  const sb = /** @type {any} */ ({ reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]), record: () => ({ project: null }),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, onceTarget: async () => ({}), emit() {}, endAnnouncedTurn() {}, drainQueued() {}, deliverRow: async () => {},
     sendOnce: async (/** @type {any} */ _i, /** @type {any} */ _t, /** @type {any} */ _s, /** @type {any} */ _o, /** @type {any} */ o) => { seen = o.kernelTurn; return { sent: true }; } });
   sb.drainDone = Switchboard.prototype.drainDone;
@@ -295,7 +295,7 @@ test("deliverRow opens the row's session in the Space of its chat (a team chat's
 test("a queued chat turn is announced to the stream only after its asker's kernel session is open; one that does not open is never announced and is told once in words", async () => {
   /** @type {string[]} */ const order = [];
   const make = (/** @type {any} */ renew) => /** @type {any} */ ({
-    reverting: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
+    reverting: new Map(), turnAsker: new Map(), draining: new Map([["t", LOCK]]), once: new Map(), live: new Map([["t", { turn: null, stopping: false }]]),
     db: { prepare: () => ({ run: () => ({ changes: 1 }) }) }, record: () => ({ project: null }), deps: { log() {} },
     emit: (/** @type {string} */ type) => order.push(type), write: () => { order.push("written"); },
     renewCapped: async () => { order.push("session"); return renew; },
