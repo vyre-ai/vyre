@@ -29,6 +29,7 @@ import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { Face } from "./Face";
+import { lendYes } from "./lend-yes";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
@@ -527,6 +528,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onKey={p.onKey}
           onSend={onSend}
           groupChat={sharedChat}
+          onLendYes={here.thread && /^per_/.test(String(viewerId).replace(/^person:/, "")) && /^[a-z][a-z0-9_-]{0,39}$/.test(store.group.assistantName()) ? (item) => lendYes({ asker: String(viewerId).replace(/^person:/, ""), id: item, thread: here.thread as string, agent: store.group.assistantName() }) : undefined}
           canStop={meta.canStop}
           stopping={meta.stopping}
           onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}

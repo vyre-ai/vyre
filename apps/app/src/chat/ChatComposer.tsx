@@ -17,12 +17,13 @@ import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
+import { withYes } from "./lend-yes";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant"; doing?: string };
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
 export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
-export type PickedMention = { kind: string; id: string; name: string };
+export type PickedMention = { kind: string; id: string; name: string; /** Her yes for lending a vault item to the chat's agent for this turn (src/chat/lend-yes.ts); only a vault chip has one. */ yes?: string };
 export type ModelChoice = { id: string; label: string; fit: number | null };
 export type ComposerProps = {
   state: string;
@@ -40,6 +41,8 @@ export type ComposerProps = {
   runsOnDefault?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
+  /** Asks for her yes when she picks one of her own vault items in a chat that has an agent and a thread: the platform prompt, then a signed yes over exactly that lend. Null: nothing is lent. */
+  onLendYes?: (item: string) => Promise<string | null>;
   onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
   /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
   onTyping?: () => void;
@@ -268,6 +271,8 @@ export function ChatComposer(p: ComposerProps) {
     if (!trig) return;
     if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
     if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
+    // Tagging one of her own vault items asks for her presence once, here, at the tag; the yes rides on the chip to the message.
+    if (o.kind === "vault" && o.urn && p.onLendYes) { const item = o.urn, name = o.pick; void p.onLendYes(item).then((yes) => { const m = picked.current.get(name); if (yes && m && m.id === item) picked.current.set(name, withYes(m, yes)); }).catch(() => {}); }
     const r = pick(text, trig, o.pick);
     setText(r.text);
     setCaret(r.caret);
