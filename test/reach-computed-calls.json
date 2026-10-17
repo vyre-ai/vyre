@@ -187,9 +187,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/vault/index.js": {
-   "count": 3,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "count": 4,
+   "owner": "site-ops",
+   "note": "reviewed (acct6, 17 Oct): four forwarders hand ctx.call to a helper that names the tool as a literal. 509 emergency (planner.add), 568 said (threads.turn-asker only), 573 request (appmods.origin, connectors.site.run, vault.use.note, gate.request, gate.offer, gate.get), 601 the reminder pass (remind.js names only planner.add, planner.get, planner.done and link.status; rotate.js settle names planner.done). No forwarder takes a name from input or a stored value."
   },
   "core/vault/tools/agent-fill.js": {
    "count": 1,

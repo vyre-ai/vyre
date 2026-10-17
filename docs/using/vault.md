@@ -417,7 +417,7 @@ A member at Read can show the value on her own screen for a moment, after her ow
 
 ## App connections, and what the server holds
 
-An app you connect (Clio, Notion, Google and the like) is a connection in your own vault. You can share it at Fill in only: whoever holds the share can have the app used as you, and never gets the token, because Vyre adds it where the app is called. Anything that sends or changes data still waits for your yes. Deleting the connection, taking a share away, or leaving the Space ends every share on it and clears what those people left waiting for approval.
+An app you connect (Clio, Notion, Google and the like) is a connection in your own vault. You can share it at Fill in only: whoever holds the share can have the app used as you, and never gets the token, because Vyre adds it where the app is called. Their own sends go only to the destinations you have set, and an agent acting for them is still held at the Gate for your yes. Deleting the connection, taking a share away, or leaving the Space ends every share on it and clears what those people left waiting for approval.
 
 Two things are kept on the server so that agents and Flows keep working while you are signed out, and each is a key of its own:
 

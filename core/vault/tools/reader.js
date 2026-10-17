@@ -14,7 +14,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const FIELD = /^[A-Za-z0-9_.-]{1,64}$/;
 /** Kinds whose value this path never touches: used only through Vyre, or a signing key that only signs. */
 const NEVER = new Set(["api-credential", "passkey"]);
-const gone = (/** @type {string} */ item) => Object.assign(new Error(`no item named ${String(item).slice(0, 80)} is shared with you for that`), { code: "not_found" });
+const gone = (/** @type {string} */ item) => Object.assign(new Error(`no item named ${String(item).slice(0, 80)} is shared with you for that: ask the person who shared it, or check the name in your shared list`), { code: "not_found" });
 const json = (/** @type {any} */ v, /** @type {any} */ d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /**
