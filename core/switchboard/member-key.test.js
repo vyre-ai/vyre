@@ -5,12 +5,13 @@ import assert from "node:assert/strict";
 import { memberKey } from "./member-key.js";
 
 const acct = (over = {}) => ({ id: "acc1", label: "Ben's key", person: "per_ben", kind: "api-key", own_vault: 1, ...over });
-const ctxOf = (reply) => { const calls = []; return { calls, call: async (tool, input) => { calls.push({ tool, input }); return reply; } }; };
+const ctxOf = (reply) => { const calls = []; const opts = []; return { calls, opts, call: async (tool, input, o) => { calls.push({ tool, input }); opts.push(o); return reply; } }; };
 
 test("a person's key is lent for the turn from their own vault, and the value goes to the caller alone", async () => {
   const c = ctxOf({ data: { value: "sk-fixture-0123456789" } });
   assert.equal(await memberKey(c, acct()), "sk-fixture-0123456789");
   assert.deepEqual(c.calls, [{ tool: "vault.me.lend", input: { account: "acc1" } }]);
+  assert.deepEqual(c.opts, [{ relay: true }], "asked as the person on the turn: a plain module call carries no person");
 });
 
 test("a key not kept in its owner's own vault is refused without asking any vault", async () => {
