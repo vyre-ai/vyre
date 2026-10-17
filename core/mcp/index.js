@@ -74,7 +74,8 @@ export default {
         const st = /** @type {any} */ (ASKING.getStore()), member = st ? (typeof st.me === "string" ? st.me : (st.who && !st.who.agent && typeof st.who.me === "function" ? String(await Promise.resolve(st.who.me()).catch(() => "") || "") : "")) : "";
         // an agent's turn is relayed too: the Gate sees the person and the agent on the verified chain (the requester, and a standing permission for that agent), which a plain nested call does not carry
         const agentTurn = Boolean(st && st.who && st.who.agent);
-        let r = member || agentTurn ? await ctx.call("gate.request", input, { relay: true }) : null;
+        let r = null;
+        if (member || agentTurn) { try { r = await ctx.call("gate.request", input, { relay: true }); } catch (e) { if (!/no person on this call to relay/.test(String(/** @type {Error} */ (e).message))) throw e; } }
         if (!r || (r.error && /no person on this call to relay/.test(String(r.error.message)))) r = await ctx.call("gate.request", input);   // a call with no person on it (a module acting on its own) files as before
         return data(r);
       },
