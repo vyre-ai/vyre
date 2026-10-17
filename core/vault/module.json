@@ -143,6 +143,7 @@
       { "name": "vault.me.shared.list", "effect": "read", "reach": "person" },
       { "name": "vault.me.connection.share", "effect": "write", "reach": "person" },
       { "name": "vault.me.connection.shares", "effect": "read", "reach": "person" },
+      { "name": "vault.me.connection.directory", "effect": "read", "reach": "person" },
       { "name": "vault.me.shared.request", "effect": "write", "reach": "person" },
       { "name": "vault.me.update", "effect": "write", "reach": "person" },
       { "name": "vault.me.share.agent", "effect": "write", "reach": "person" },
