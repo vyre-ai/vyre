@@ -78,7 +78,7 @@ test("sleeping signals only the browser uid's processes (the browser, the window
 test("reset empties the home as the agent and the browser's profile as the browser uid; each keeps its folder and mode, and no other path is named", () => {
   const steps = planWipeHome(U).map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" "));
   assert.deepEqual(steps, ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/pkill -KILL -u 21000", "/usr/bin/find /var/lib/vyre/agents/ag20000/home -mindepth 1 -delete", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home",
-    "/usr/bin/find /var/lib/vyre/browsers/agb21000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/browsers/agb21000/profile", "/usr/bin/chmod 0700 /var/lib/vyre/browsers/agb21000/profile /var/lib/vyre/browsers/agb21000"]);
+    "/usr/bin/find /var/lib/vyre/browsers/agb21000 /var/lib/vyre/downloads/ag20000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/browsers/agb21000/profile", "/usr/bin/chmod 0700 /var/lib/vyre/browsers/agb21000/profile /var/lib/vyre/browsers/agb21000"]);
 });
 
 test("remove empties its run folder, its browser's folder and its downloads, each as the uid that owns them, and makes the folders again for the next agent", () => {
@@ -105,7 +105,7 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
   const name = argv => argv[argv.length - 1].startsWith("/") ? argv[argv.length - 1] : argv.filter(a => a.startsWith("/usr/bin/") && !/setpriv|prlimit|nice|env/.test(a))[0];
   const run = async argv => { ran.push(name(argv)); if (argv.includes("/usr/bin/pkill")) throw new Error("nothing to kill"); };
   await execute(planWipeHome(U), run, { tolerate: tolerant });
-  assert.equal(ran.length, 3);
+  assert.equal(ran.length, planWipeHome(U).length, "every step ran: the stops that fail are tolerated");
   await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv.includes("/usr/bin/find")) throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
 });
 
