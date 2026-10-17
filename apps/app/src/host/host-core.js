@@ -504,7 +504,7 @@ export function createHost(o) {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
       // The server this onboarding just made (or joined) is where the sign-in goes: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one.
-      const paired = (k.spaces || []).filter((s) => s && s.paired && s.paired.box);
+      const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
       const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
       if (!here) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
       const provider = String((input && input.provider) || "");
