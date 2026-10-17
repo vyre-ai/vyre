@@ -5,10 +5,41 @@
   "reviewed": {
    "file": "lib/mcp-catalog.reviewed.json",
    "reviewer": "mcp6",
-   "rows": 17
+   "rows": 27
   }
  },
  "entries": [
+  {
+   "id": "airtable",
+   "name": "Airtable",
+   "vendor": "Airtable",
+   "description": "Bases, tables and records",
+   "category": "work",
+   "url": "https://mcp.airtable.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.airtable.com, AS airtable.com/oauth2/v1) and AS metadata read 2026-10-17: registration endpoint named. The /mcp path is from the shipped preset, not from the resource document",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.airtable.com/.well-known/oauth-protected-resource"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://airtable.com/.well-known/oauth-authorization-server/oauth2/v1"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://airtable.com/oauth2/v1",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://airtable.com/oauth2/v1/register; not called"
+   },
+   "verdict": "conditional"
+  },
   {
    "id": "asana",
    "name": "Asana",
@@ -161,6 +192,95 @@
    "verdict": "conditional"
   },
   {
+   "id": "clickup",
+   "name": "ClickUp",
+   "vendor": "ClickUp",
+   "description": "Tasks, docs and time tracking",
+   "category": "work",
+   "url": "https://mcp.clickup.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.clickup.com/mcp) and AS metadata read 2026-10-17: registration endpoint named, token auth none, S256",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.clickup.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.clickup.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.clickup.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.clickup.com/oauth/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "cloudflare",
+   "name": "Cloudflare",
+   "vendor": "Cloudflare",
+   "description": "Workers, DNS and zone management",
+   "category": "dev",
+   "url": "https://mcp.cloudflare.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.cloudflare.com/mcp) and AS metadata read 2026-10-17: registration endpoint named, S256, private_key_jwt also listed",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.cloudflare.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.cloudflare.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.cloudflare.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.cloudflare.com/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "docusign",
+   "name": "DocuSign",
+   "vendor": "DocuSign",
+   "description": "E-signature envelopes",
+   "category": "legal",
+   "url": "https://mcp.docusign.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "AS metadata read 2026-10-17 (issuer account.docusign.com): no registration endpoint, no token auth methods listed. The MCP path is from third-party directories, and production needs beta enrollment",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.docusign.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "needs-client",
+    "issuer": "https://account.docusign.com",
+    "registration": false,
+    "checked": "2026-10-17",
+    "reason": "no registration endpoint; a client id must come from DocuSign"
+   },
+   "verdict": "blocked"
+  },
+  {
    "id": "dropbox",
    "name": "Dropbox",
    "vendor": "Dropbox",
@@ -186,6 +306,37 @@
     "reason": "rate limited (429) on both discovery documents; retry in the weekly run"
    },
    "verdict": "blocked"
+  },
+  {
+   "id": "egnyte",
+   "name": "Egnyte",
+   "vendor": "Egnyte",
+   "description": "Document management and data rooms",
+   "category": "files",
+   "url": "https://mcp-server.egnyte.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp-server.egnyte.com/mcp, AS mcp-oauth.egnyte.com/egnyte-connect) and AS metadata read 2026-10-17: registration endpoint named, PKCE S256",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp-server.egnyte.com/.well-known/oauth-protected-resource"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp-oauth.egnyte.com/egnyte-connect/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp-oauth.egnyte.com/egnyte-connect",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp-oauth.egnyte.com/clients; not called"
+   },
+   "verdict": "one-click"
   },
   {
    "id": "figma",
@@ -316,6 +467,68 @@
    "verdict": "blocked"
   },
   {
+   "id": "intercom",
+   "name": "Intercom",
+   "vendor": "Intercom",
+   "description": "Support conversations and contacts",
+   "category": "support",
+   "url": "https://mcp.intercom.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.intercom.com, AS mcp.intercom.com) and AS metadata read 2026-10-17: registration endpoint named. The /mcp path is from the shipped preset",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.intercom.com/.well-known/oauth-protected-resource"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.intercom.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.intercom.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.intercom.com/register; not called"
+   },
+   "verdict": "conditional"
+  },
+  {
+   "id": "klaviyo",
+   "name": "Klaviyo",
+   "vendor": "Klaviyo",
+   "description": "Email and SMS marketing, profiles and flows",
+   "category": "marketing",
+   "url": "https://mcp.klaviyo.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.klaviyo.com/mcp) and AS metadata read 2026-10-17: registration endpoint named, token auth none, S256",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.klaviyo.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.klaviyo.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.klaviyo.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.klaviyo.com/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
    "id": "linear",
    "name": "Linear",
    "vendor": "Linear",
@@ -397,6 +610,68 @@
     "registration": false,
     "checked": "2026-10-17",
     "reason": "no authentication required"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "miro",
+   "name": "Miro",
+   "vendor": "Miro",
+   "description": "Whiteboards and diagrams",
+   "category": "design",
+   "url": "https://mcp.miro.com/",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.miro.com) and AS metadata read 2026-10-17: registration endpoint named; no separate /mcp path",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.miro.com/.well-known/oauth-protected-resource"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.miro.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.miro.com/",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.miro.com/register; not called"
+   },
+   "verdict": "one-click"
+  },
+  {
+   "id": "monday",
+   "name": "monday.com",
+   "vendor": "monday.com",
+   "description": "Boards, items and work management",
+   "category": "work",
+   "url": "https://mcp.monday.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.monday.com/mcp) and AS metadata read 2026-10-17: registration endpoint named, S256",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.monday.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://auth.monday.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://auth.monday.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://auth.monday.com/oauth_ms/oauth/register; not called"
    },
    "verdict": "one-click"
   },
@@ -488,6 +763,37 @@
     "reason": "no registration endpoint; Vyre would need its own Slack app"
    },
    "verdict": "blocked"
+  },
+  {
+   "id": "square",
+   "name": "Square",
+   "vendor": "Square",
+   "description": "Payments, customers and catalog for small businesses",
+   "category": "finance",
+   "url": "https://mcp.squareup.com/mcp",
+   "transport": "http",
+   "auth": "oauth",
+   "headers": [],
+   "verified": true,
+   "basis": "protected-resource read (resource mcp.squareup.com/mcp) and AS metadata read 2026-10-17: registration endpoint named. Square's own support note says it lists the apps it allows, so sign-in may still refuse Vyre",
+   "sources": [
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.squareup.com/.well-known/oauth-protected-resource/mcp"
+    },
+    {
+     "source": "vendor-metadata",
+     "ref": "https://mcp.squareup.com/.well-known/oauth-authorization-server"
+    }
+   ],
+   "probe": {
+    "result": "dcr-advertised",
+    "issuer": "https://mcp.squareup.com",
+    "registration": true,
+    "checked": "2026-10-17",
+    "reason": "registration endpoint https://mcp.squareup.com/register; not called"
+   },
+   "verdict": "one-click"
   },
   {
    "id": "stripe",
