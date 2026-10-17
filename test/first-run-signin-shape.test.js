@@ -14,7 +14,6 @@ test("a person with no path opens on the choice of creating or signing in; an ex
   assert.equal(entryScreen(undefined), "id.choice");
   assert.equal(entryScreen("signin"), "id.signin");
   assert.equal(entryScreen("create"), "id.create");
-  assert.equal(entryScreen("computer"), "computer.add");
   assert.equal(SIGNIN_COPY.choiceTitle, "Get started");
 });
 

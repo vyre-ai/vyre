@@ -98,24 +98,9 @@ export async function makeInvite(input) {
   catch (e) { return fail(e); }
 }
 
-/** @param {{ url: string, username?: string, password: string, github?: boolean }} input */
-export async function addComputer(input) {
-  if (MOCK) return mock.addComputer(input);
-  try {
-    return done(await tool("onboard.computer.add", { url: input.url, password: input.password, ...(input.username ? { username: input.username } : {}), ...(input.github ? { github: true } : {}) }));
-  } catch (e) { return fail(e); }
-}
-
 export async function finishFirstRun() {
   if (MOCK) return mock.finishFirstRun();
   try { return done(await tool("onboard.first.done", {})); }
-  catch (e) { return fail(e); }
-}
-
-/** @param {string} [space] */
-export async function addPhone(space) {
-  if (MOCK) return mock.addPhone(space);
-  try { return done(await tool("onboard.phone.add", space ? { space } : {})); }
   catch (e) { return fail(e); }
 }
 

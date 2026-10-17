@@ -11,8 +11,6 @@ export const SHOT_TABLE = {
   "create.kind": { screen: "create.kind" },
   "create.wait": { screen: "create.wait", command: "curl -fsSL vyre.run/i | sh" },
   "invite.share": { screen: "invite.share", link: "https://vyre.run/i/sampletoken", space: "juniper" },
-  "computer.add": { screen: "computer.add" },
-  "phone.add": { screen: "phone.add", link: "https://vyre.run/i/samplephone" },
   ready: { screen: "ready", username: "alex", space: "juniper" },
 };
 
