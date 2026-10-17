@@ -23,7 +23,7 @@ const prefixOf = (/** @type {string} */ person, /** @type {string} */ name) => `
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults, tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
- * @returns {{ onRemoved: (person: string, name: string) => Promise<void>, onMemberGone: (person: string) => Promise<void> }}
+ * @returns {{ onRemoved: (person: string, name: string) => Promise<void>, onMemberGone: (person: string) => Promise<void>, lendTurn: (person: string, name: string, agent: string, thread: string, expires: number) => Promise<{ source: string }>, endTurn: (person: string, thread: string) => Promise<number> }}
  */
 export function register({ ctx, people, tool }) {
   const mint = () => { const m = ctx.kernel && ctx.kernel.mint; if (!m) throw Object.assign(new Error("sharing a connection needs the kernel"), { code: "unavailable" }); return m; };
@@ -97,6 +97,25 @@ export function register({ ctx, people, tool }) {
     });
 
   return {
+    /** Lend her own connection to one agent for one chat's turn: Fill in, held to that thread by the grant's own condition, with an expiry as the backstop. The end call is the normal end. */
+    lendTurn: async (person, name, agent, thread, expires) => {
+      await own(person, name);
+      const uid = await agentUid(agent);
+      if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" });
+      const source = `${csource(person, name, uid)}:turn:${thread}`;
+      await mint().end({ source, reason: "lent again for this turn" });
+      await mint().make({ subject: { kind: "actor", actor: { kind: "agent", id: uid, space: ctx.kernel.space } }, actions: [...levelActions("use")], resource: { prefix: connectionUrn(ctx.kernel.space, person, name) }, conditions: { where: { sessions: [thread] }, when: { expires } }, source, reason: "lent for one turn" });
+      return { source };
+    },
+    /** The turn is over: every connection she lent for that thread is taken back, and the hub is told so what its asker left waiting at the Gate goes. */
+    endTurn: async (person, thread) => {
+      const gs = (await mint().list({ source: `vault:cshare:${person}:` })) || [];
+      const names = new Set();
+      let n = 0;
+      for (const g of gs) if (String(g.source).endsWith(`:turn:${thread}`)) { await mint().end({ source: g.source, reason: "the turn ended" }); n++; names.add(String(g.source).slice(`vault:cshare:${person}:`.length).split(":")[0]); }
+      for (const name of names) await sweep(person, name);
+      return n;
+    },
     /** A member left the Space (or her access ended): every share of every connection of hers ends and the hub is told once for each. */
     onMemberGone: async (person) => {
       const gs = (await mint().list({ source: `vault:cshare:${person}:` })) || [];

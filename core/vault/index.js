@@ -530,7 +530,7 @@ export default {
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     const connShare = connectionShareTools.register({ ctx, people, tool });
     meTools.register({ ctx, people, tool, onRemoved: connShare.onRemoved });
-    meMentionTools.register({ ctx, people, internal: (/** @type {string} */ n, /** @type {string} */ d, /** @type {any} */ i, /** @type {Function} */ r) => ctx.tool(n, { internal: true, description: d, input: i, run: r }) });
+    meMentionTools.register({ ctx, people, lend: { connection: connShare, ...(vault.access.members && typeof vault.access.members.shareAs === "function" && typeof vault.access.members.endFor === "function" ? { login: { shareAs: (/** @type {string} */ o, /** @type {any} */ i) => vault.access.members.shareAs(o, i), endFor: (/** @type {string} */ o, /** @type {string} */ t) => vault.access.members.endFor(o, t) } } : {}) }, internal: (/** @type {string} */ n, /** @type {string} */ d, /** @type {any} */ i, /** @type {Function} */ r) => ctx.tool(n, { internal: true, description: d, input: i, run: r }) });
     // A login a member shares with an agent (member-share.js): their vault opens it, the share tools keep a copy for the agent's Chrome, and the copy follows the login: changed, removed or the member gone, it is refreshed or deleted.
     vault.access.members.people = people;
     people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
