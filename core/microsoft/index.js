@@ -7,7 +7,7 @@
 // Reads, plus two writes that a member makes from their OWN mailbox with their own hands: a message and an event (Graph mails the invite). Those are never held: they are the person's own act (Option A, 17 Oct;
 // ruling 18 Oct). A send an AGENT makes in the member's turn is refused until the Gate holds it for that member (step 2); the owner never approves a member's mail. Nothing runs in the background.
 import { Credentials } from "../../lib/connectors/auth.js";
-import { scopeFor, requireOwner, emailProblem, isOwnAct } from "../../lib/member-scope.js";
+import { scopeFor, requireOwner, emailProblem, isOwnAct, actingPerson } from "../../lib/member-scope.js";
 import { MIGRATIONS, check, store, memberEmails, EMAIL } from "./accounts.js";
 import { forMember } from "./member-account.js";
 import { graph, tools as graphTools, GRAPH_SCOPE } from "./graph.js";
@@ -139,7 +139,8 @@ export default {
 
     const ownAct = meta => isOwnAct(ctx.kernel, meta);
     /** An agent's send in a member's turn is held at that member's own Gate, showing the address it leaves from; the owner never sees or approves it. @param {any} acct @param {string[]} to @param {any} content @param {any} input */
-    const holdForMember = async (acct, to, content, input) => {
+    const holdForMember = async (acct, to, content, input, meta) => {
+      if (!(await actingPerson(ctx.kernel, meta))) throw fail("there is no person behind this call, so there is no mailbox to send from", "denied");
       const r = await ctx.call("gate.request", { kind: "send", via: `microsoft:${acct.name}`, to, content: { from: acct.mailbox, ...content }, ...(typeof input.why === "string" && input.why.trim() ? { why: input.why.trim().slice(0, 1000) } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.id;
@@ -160,7 +161,7 @@ export default {
         if (!subject || subject.length > 255 || /[\r\n]/.test(subject)) throw fail("the subject is one line, up to 255 characters");
         if (!body || body.length > 100_000) throw fail("the body is up to 100,000 characters");
         const acct = await first(meta);
-        if (!own) { const id = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input); return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
+        if (!own) { const id = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
         const out = await g.mailSend(acct, { to, cc, subject, body });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
         return out;
@@ -182,7 +183,7 @@ export default {
         const acct = await first(meta);
         if (!own) {
           if (!attendees.length) throw fail("an agent can only put an event with guests on your calendar, held for your approval; for one with no guests, add it yourself", "denied");
-          const id = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input);
+          const id = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input, meta);
           return { held: id, message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
         }
         const out = await g.eventCreate(acct, { title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}), attendees });

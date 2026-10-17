@@ -174,7 +174,7 @@ test("an agent's send or invite in a member's turn is held for that member, from
   await assert.rejects(viaAgent("microsoft.calendar.create", { title: "Solo", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00" }), e => e.code === "denied" && /guests/.test(e.message), "an agent's event with no guests is not held and not written");
   assert.equal(posts(), 0, "nothing reached Graph while the items wait");
   // a call whose chain holds no person is nobody's own act and nobody's mailbox
-  await assert.rejects(s.cli("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" }), e => e.code === "no_account" || e.code === "denied");
+  await assert.rejects(s.cli("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" }), e => e.code === "denied" && /no person/.test(e.message));
   assert.equal(s.items.size, 2);
 });
 
