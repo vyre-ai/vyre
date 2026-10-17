@@ -266,6 +266,7 @@ export function createGrantsStore(cfg) {
     const t = teams.get(id);
     if (!t || !actor) return false;
     if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
+    if (actor.kind === "agent" && (t.agents || []).includes(actor.id)) return true;
     if (actor.kind === "agent" && chain && Array.isArray(chain.hops)) return chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person" && t.members.includes(x.actor.id) && memberOk(x.actor));
     return false;
   };
@@ -1030,7 +1031,9 @@ export function createGrantsStore(cfg) {
       if (!Array.isArray(list) || list.length > 200 || list.some((/** @type {any} */ m) => typeof m !== "string" || !memberships.has(m))) throw new KernelError("bad_input", "a team holds up to 200 people, each a member of this Space");
       if ([...teams.values()].some(x => x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "a team with that name already exists");
       if (!prior && teams.size >= 200) throw new KernelError("bad_input", "a Space holds up to 200 teams");
-      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), by: issuer.id, at: clock() });
+      const ags = t.agents !== undefined ? t.agents : prior ? prior.agents || [] : [];
+      if (!Array.isArray(ags) || ags.length > 200 || ags.some((/** @type {any} */ a) => typeof a !== "string" || !actors.has(actorKey({ kind: "agent", id: a, space: cfg.space })))) throw new KernelError("bad_input", "a team holds up to 200 agents, each an agent of this Space");
+      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), agents: freeze([...new Set(ags)].sort()), by: issuer.id, at: clock() });
       teams.set(rec.id, rec);
       await note(chain, "team.set", urn("team", rec.id), { team: rec }, d.decision);
       return rec;

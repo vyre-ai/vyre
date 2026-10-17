@@ -138,6 +138,7 @@ export const OPEN_NOTES = Object.freeze({
   "spaces.list": "reads the Spaces on this device and the person's role in each",
   "spaces.records.status": "reads whether each Space's records are ready and, while they start, how far the first start is in words",
   "spaces.members.list": "reads everyone in a Space with role, scope, end date and warnings",
+  "spaces.groups.list": "reads the groups of a Space (a name, the people and agents in each), only those the person is in unless they are an owner or an admin",
   "spaces.move.plan": "plans moving a Space to another home, ordered steps and checks, nothing moves",
   "spaces.roles.names": "reads the display names of the five roles, or renames one; the ids never change",
   "spaces.status": "reads where creating a Space has got to and why anything failed",
