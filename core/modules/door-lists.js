@@ -126,8 +126,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
   "files.linked.mentions.resolve",
-  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.budget.set", "flows.connections", "flows.describe", "flows.kit.remove", "flows.pause", "flows.resume",
-  "flows.rollback", "flows.run", "flows.runs", "flows.settle", "flows.test.remove",
+  "flows.advance", "flows.approve", "flows.attention", "flows.budget", "flows.budget.set", "flows.kit.remove", "flows.pause", "flows.resume",
+  "flows.rollback", "flows.run", "flows.settle", "flows.test.remove",
   "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
