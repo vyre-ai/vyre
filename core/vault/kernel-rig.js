@@ -43,9 +43,9 @@ export async function kernelRig(o = {}) {
         try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
-    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread) => {
+    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { const e = (await gw.authorize({ chain: assistant(agent, OWNER, thread || "t"), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
+      try { const e = (await gw.authorize({ chain: assistant(agent, (typeof person === "string" && person) || OWNER, thread || "t"), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {

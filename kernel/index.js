@@ -306,18 +306,18 @@ export async function createKernel(cfg) {
        *  - tasks.list(chain): the queue of the person the chain acts for; tasks.forRecord(chain, urn): the open tasks on a record, read through the caller's own chain.
        */
       // Whether a named agent, acting for this Space's owner, may do a READ-risk act on a resource: the answer only. The agent's chain is built here and never leaves the kernel, so no module can mint an
-      // agent chain; a chain of [owner, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. Used by the projects module for "may this agent reach this project".
+      // agent chain; a chain of [person, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. The person is the Space's owner unless the caller names a member of this Space (a member's share is the member's own grant). Used by the projects module for "may this agent reach this project".
       // R031-83, the `spaces` module's Space bundle (lib/space-bundle.js): only what it needs of the kernel. The grants as data, the log's head, this Space's sealed values sealed under a bundle key, and the bundle key's own two sealed entries.
       ...(needs.bundle === true && cfg.sealer ? { bundle: Object.freeze({ ids: () => (spaces ? spaces.list() : [cfg.space]), of: (/** @type {string} */ id) => (id === cfg.space ? handle.bundle : spaces.bundleOf(id)), state: () => grantsStore.state(), head: () => ({ seq: log.latestSeq(), hash: log.head() }), dump: (/** @type {Uint8Array} */ bk) => cfg.sealer.spaceDump({ space: cfg.space, bk }),
         keep: (/** @type {string} */ w, /** @type {string} */ v) => (w === "key" || w === "code" ? cfg.sealer.service.put({ name: `spaces.${cfg.space}.bundle${w}`, value: v }) : Promise.reject(new KernelError("bad_input", "key or code"))),
         take: (/** @type {string} */ w) => (w === "key" || w === "code" ? cfg.sealer.service.get({ name: `spaces.${cfg.space}.bundle${w}` }) : Promise.reject(new KernelError("bad_input", "key or code"))), id: { space: cfg.space, owner: ownerRef.id } }) } : {}),
       ...(needs.reach === true ? {
-        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread) => {
+        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {
           if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
           const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
           if (!def || !(def.risk === "read" || AGENT_ACTIONS.includes(action))) throw new KernelError("not_allowed", "only a read or the use of a credential can be asked this way");
           try {
-            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true, ...(typeof thread === "string" && /^[A-Za-z0-9_.:-]{1,120}$/.test(thread) ? { thread } : {}) });
+            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: typeof person === "string" && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) ? person : ownerRef.id, vouched: true, ...(typeof thread === "string" && /^[A-Za-z0-9_.:-]{1,120}$/.test(thread) ? { thread } : {}) });
             const e = (await gateway.authorize({ chain, action, resource, ...(origin ? { origin } : {}) })).effect;
             return full ? e : e === "allow";
           } catch { return false; }
