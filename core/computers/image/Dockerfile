@@ -131,7 +131,7 @@ RUN mkdir -p /etc/chromium/policies/managed \
 # the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /var/lib/vyre/agents/ag<uid>/home (inside the state volume: the root is read-only)
 # and their homes and run folders are made here too, each owned by its uid and 0700 (a new volume copies them as they are). agentd keeps only CAP_SETUID and CAP_SETGID: it chowns nothing and starts every agent process as that uid.
 # Each agent also has a BROWSER uid, agb<uid+1000> (agb21000..agb21063), its own group: Chrome, its debugging socket and its profile belong to it (0700), so the agent's shell cannot read the browser's files, socket or
-# memory. Three small folders per agent carry what has to cross: x/ag<uid> (the X cookie; owned by the agent, group = the browser's, setgid, so the browser reads it and no one else), and downloads/ag<uid> (owned by the
+# memory. Three small folders per agent carry what has to cross: x/ag<uid> (the agent's UNTRUSTED X cookie; owned by the browser, group = the agent's, setgid, so the agent reads it and cannot change it), and downloads/ag<uid> (owned by the
 # browser, group = the agent's, so a download is readable by the agent and writable only by the browser).
 RUN for n in $(seq 20000 20063); do \
       b=$((n + 1000)); \
@@ -140,7 +140,7 @@ RUN for n in $(seq 20000 20063); do \
       && mkdir -p "/var/lib/vyre/agents/ag$n/home" "/var/lib/vyre/browsers/agb$b/profile" "/var/lib/vyre/x/ag$n" "/var/lib/vyre/downloads/ag$n" \
       && chown "$n:$n" "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home" && chmod 0700 "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home" \
       && chown -R "$b:$b" "/var/lib/vyre/browsers/agb$b" && chmod 0700 "/var/lib/vyre/browsers/agb$b" "/var/lib/vyre/browsers/agb$b/profile" \
-      && chown "$n:$b" "/var/lib/vyre/x/ag$n" && chmod 2750 "/var/lib/vyre/x/ag$n" \
+      && chown "$b:$n" "/var/lib/vyre/x/ag$n" && chmod 2750 "/var/lib/vyre/x/ag$n" \
       && chown "$b:$n" "/var/lib/vyre/downloads/ag$n" && chmod 2750 "/var/lib/vyre/downloads/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads && chmod 0711 /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads

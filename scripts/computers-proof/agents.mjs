@@ -113,6 +113,24 @@ try {
     const out = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `${cmd} 2>&1`]);
     check(/ermission denied|not permitted|No such/i.test(out) || out === "", `the agent's shell cannot read its browser's ${what}`, out.slice(0, 80));
   }
+  // the screen is the browser uid's too: the agent can read neither the screen's memory, its cookie nor its socket; what it has is an untrusted cookie that works but cannot see other clients' windows
+  const xpid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 21000 -x Xvnc | head -1"]);
+  check(/^\d+$/.test(xpid), "Xvnc runs as the browser uid 21000, not the agent's", xpid);
+  for (const [what, cmd] of [["environment", `cat /proc/${xpid}/environ`], ["memory", `head -c 16 /proc/${xpid}/mem`], ["open files", `ls /proc/${xpid}/fd`]]) {
+    const out = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `${cmd} 2>&1`]);
+    check(/ermission denied|not permitted|No such/i.test(out) || out === "", `the agent's shell cannot read the screen's ${what}`, out.slice(0, 80));
+  }
+  const trustedCookie = shOk(["exec", "-u", "20000", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/xauth"]);
+  check(denied(trustedCookie), "the agent cannot read the trusted X cookie", trustedCookie.slice(-80));
+  const vsock = shOk(["exec", "-u", "20000", CONTAINER, "python3", "-c", "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/vyre/browsers/agb21000/vnc.sock')"]);
+  check(denied(vsock), "the agent cannot open the screen's VNC socket", vsock.slice(-80));
+  const xenv = ["-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
+  const info = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo | grep -c SECURITY"]);
+  check(/^[1-9]/.test(info), "the agent's untrusted cookie works and the X SECURITY extension is on", info);
+  const grab = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "import -window root /tmp/agent-grab.png >/dev/null 2>&1; echo $?"]);
+  const ownGrab = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "import -window root /tmp/browser-grab.png >/dev/null 2>&1; echo $?"]);
+  check(ownGrab === "0", "the screen's owner can capture its own screen", ownGrab);
+  check(grab !== "0", "an untrusted client cannot capture the screen (other clients' windows)", `exit ${grab}`);
   const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);
   check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
   const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);

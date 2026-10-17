@@ -275,3 +275,28 @@ test("an agent's browser-level auto-attach does not take over a session the fill
   await assert.rejects(() => hands.send("Runtime.evaluate", { expression: "document.cookie" }, sf), /not yours/, "the fill's session is not the agent's, by auto-attach or otherwise");
   await assert.rejects(() => hands.send("Runtime.evaluate", { expression: "1" }, "S-auto"), /not yours/, "and a session Chrome attached on its own belongs to no client");
 });
+
+test("a Vault fill for agent A never reaches agent B's Chrome: A's fill token opens A's Chrome only, B is not shut out, B's Chrome hears nothing of the fill, and A's values are not B's to scrub", async t => {
+  const w = await world(t);
+  const a = await w.open("a"), b = await w.open("b");
+  const FILL = "f".repeat(43);
+  await w.adapter.shield("a", true, { fill_token: FILL });
+  w.adapter.register("a", ["A-secret-value"]);
+  // the fill's token addresses agent A, wherever it is presented
+  const fill = new Cdp({ cdpUrl: `${a.ep.url}/cdp`, token: FILL });
+  t.after(() => fill.close());
+  assert.equal((await fill.send("Fill.type", { v: "A-secret-value" })).who, "A");
+  assert.deepEqual(w.chromes.b.seen.filter(m => m === "Fill.type"), [], "B's Chrome saw no fill traffic");
+  // B is not in a window: its own client works through it, and A's window refuses only A's agent
+  assert.equal((await b.cdp.send("Mark.b", {})).who, "B");
+  assert.equal((await fetch(`${a.ep.url}/cdp/json/version`, { headers: { authorization: `Bearer ${a.ep.token}` } })).status, 423);
+  assert.equal((await fetch(`${b.ep.url}/cdp/json/version`, { headers: { authorization: `Bearer ${b.ep.token}` } })).status, 200);
+  // A's fill token does not open B's Chrome through B's token either way round, and B's token does not become a fill token
+  assert.equal((await fetch(`${b.ep.url}/cdp/json/version`, { headers: { authorization: `Bearer ${FILL}` } })).status, 200, "the fill token reaches the endpoint address but its agent is A");
+  const viaFill = new Cdp({ cdpUrl: `${b.ep.url}/cdp`, token: FILL });
+  t.after(() => viaFill.close());
+  await viaFill.send("Who.am.i", {});
+  assert.ok(w.chromes.a.seen.includes("Who.am.i") && !w.chromes.b.seen.includes("Who.am.i"), "presented anywhere, A's fill token reaches A's Chrome and not B's");
+  await w.adapter.shield("a", false);
+  assert.equal((await fetch(`${a.ep.url}/cdp/json/version`, { headers: { authorization: `Bearer ${FILL}` } })).status, 401);
+});

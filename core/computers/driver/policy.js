@@ -438,7 +438,7 @@ export function layoutEntries() {
   for (let i = 0; i < L.agents; i++) {
     const n = L.firstUid + i, b = n + L.browserOffset;
     out.push([`agents/ag${n}`, n, n, 0o700], [`agents/ag${n}/home`, n, n, 0o700], [`browsers/agb${b}`, b, b, 0o700], [`browsers/agb${b}/profile`, b, b, 0o700],
-      [`x/ag${n}`, n, b, 0o2750], [`downloads/ag${n}`, b, n, 0o2750]);
+      [`x/ag${n}`, b, n, 0o2750], [`downloads/ag${n}`, b, n, 0o2750]);
   }
   return out;
 }

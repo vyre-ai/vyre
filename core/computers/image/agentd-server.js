@@ -7,7 +7,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { Tickets, SESSION_RE } from "./agentd-relay.js";
-import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planExec, EXEC_LIMITS, asAgent, execute, tolerant, RUN } from "./agentd.js";
+import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planExec, EXEC_LIMITS, asBrowser, browserOf, execute, tolerant } from "./agentd.js";
 
 const ACTIONS = {
   "create": planCreate, "start": planStartScreen, "stop": planStopScreen, "wipe": planWipeHome, "remove": planRemove,
@@ -93,8 +93,8 @@ export function createAgentd(o) {
         if (action === "terminals") return send(200, { sessions: parseTerminals(await out(planTerminals(u))) });
         const steps = /** @type {any} */ (ACTIONS)[action](u, body.limits || {});
         if (action === "start" && typeof body.vncPassword === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.vncPassword)) {
-          // The password goes to a helper that runs AS the agent and reads it from standard input: never an argument, never a plain file.
-          steps.unshift(Object.assign([...asAgent(u, body.limits || {}), "/usr/local/bin/agentd-vncpass", `${RUN}/${u.user}/vnc.pass`], { input: body.vncPassword }));
+          // The password goes to a helper that runs AS the browser uid (the screen's owner) and reads it from standard input: never an argument, never a plain file.
+          steps.unshift(Object.assign([...asBrowser(u, body.limits || {}), "/usr/local/bin/agentd-vncpass", browserOf(u).vncPass], { input: body.vncPassword }));
         }
         await execute(steps, run, { tolerate: tolerant });
         send(200, { ok: true });

@@ -37,7 +37,7 @@ test("a good ticket joins the viewer to the agent's pipe, run as that agent's ui
   assert.equal(echoed, "RFB 003.008\n", "bytes after the ticket line went to the pipe, and the pipe's bytes came back");
   assert.equal(w.spawned.length, 1);
   const argv = w.spawned[0].join(" ");
-  assert.match(argv, /^\/usr\/bin\/setpriv --reuid=20003 --regid=20003 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs /);
+  assert.match(argv, /^\/usr\/bin\/setpriv --reuid=21003 --regid=21003 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs /, "the screen is the browser uid's, so its pipe is too");
   assert.ok(argv.endsWith(`/usr/bin/python3 -I ${PIPE} vnc`), "one fixed word, never a path: the pipe builds the socket from its own uid");
   s.destroy();
 });
@@ -107,7 +107,7 @@ test("agentd takes a ticket only for a real agent triple, and only with its bear
 test("the pipe takes no argument and no environment: it builds the agent's socket from its own uid", () => {
   const py = fs.readFileSync(new URL("./agentd-pipe.py", import.meta.url), "utf8");
   assert.match(py, /os\.geteuid\(\)/);
-  assert.match(py, /"vnc": \(20000, "\/var\/lib\/vyre\/agents\/ag%d\/vnc\.sock"\)/);
+  assert.match(py, /"vnc": \(21000, "\/var\/lib\/vyre\/browsers\/agb%d\/vnc\.sock"\)/);
   assert.match(py, /"cdp": \(21000, "\/var\/lib\/vyre\/browsers\/agb%d\/cdp\.sock"\)/, "the debugging socket is the browser uid's, in the browser uid's folder");
   assert.doesNotMatch(py, /os\.environ|getenv/);
   assert.equal((py.match(/sys\.argv/g) || []).length, 3, "the one argument is a word looked up in a closed table, nothing else");
@@ -217,7 +217,7 @@ test("the terminal's tmux server and every shell in it inherit only the built en
   const argv = w.spawned[0];
   const env = argv.slice(argv.indexOf("-i") + 1, argv.indexOf("/usr/bin/python3")).map(a => a.split("=")[0]);
   assert.equal(argv[argv.indexOf("/usr/bin/env") + 1], "-i", "started from an empty environment");
-  assert.deepEqual(env.sort(), ["HOME", "LANG", "LOGNAME", "PATH", "TERM", "USER"]);
+  assert.deepEqual(env.sort(), ["DISPLAY", "HOME", "LANG", "LOGNAME", "PATH", "TERM", "USER", "XAUTHORITY"], "and the untrusted X cookie, so a terminal can open its own windows and read no one else's");
   const py = fs.readFileSync(new URL("./agentd-term.py", import.meta.url), "utf8");
   assert.doesNotMatch(py, /VYRE|TOKEN|environ\.update|putenv|os\.environ\[(?!"TERM")/, "the helper adds only TERM");
   assert.match(py, /os\.execv\("\/usr\/bin\/tmux"/, "tmux is started with the helper's environment, as it is");

@@ -9,7 +9,7 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs";
-import { asAgent, asBrowser, validateRun, RUN_ARGV_BYTES } from "./agentd.js";
+import { asAgent, asBrowser, browserOf, validateRun, RUN_ARGV_BYTES } from "./agentd.js";
 
 export const RELAY_PORT = 5910;
 /** The address vyred has, written by computerd when it pins it (computerd/peer-file.js). */
@@ -88,9 +88,9 @@ export function createRelay(o) {
       open.set(u.uid, (open.get(u.uid) || 0) + 1);
       // the helper and its one fixed word come from the ticket's kind, never from text the ticket carried
       // a harness session needs more room than a screen helper: a Node process reserves a lot of address space
-      const argv = u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color" }), "/usr/bin/python3", "-I", TERM, String(u.session)]
+      const argv = u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color", DISPLAY: `:${u.display}`, XAUTHORITY: browserOf(u).xauth }), "/usr/bin/python3", "-I", TERM, String(u.session)]
         : u.kind === "run" ? [...asAgent(u, { memoryMb: 8192, procs: 1024 }), "/usr/bin/python3", "-I", RUN]
-        : [...(u.kind === "cdp" ? asBrowser(u) : asAgent(u)), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"];
+        : [...asBrowser(u), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"];
       const child = spawn(argv);
       let done = false;
       const finish = () => { if (done) return; done = true; open.set(u.uid, Math.max(0, (open.get(u.uid) || 1) - 1)); try { child.stdin?.end(); } catch {} try { sock.destroy(); } catch {} };

@@ -47,14 +47,14 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   assert.ok(w.ran.filter(a => a.includes("/usr/bin/find")).length === 4, "wipe and remove each empty the agent's folders and the browser's");
 });
 
-test("the VNC password reaches a helper that runs as the agent, on standard input, is derived per agent, and is on no command line", async t => {
+test("the VNC password reaches a helper that runs as the screen's owner (the browser uid), on standard input, is derived per agent, and is on no command line", async t => {
   const w = await world(t);
   await w.ctl.startScreen(U);
   const pw = vncPasswordFor("k".repeat(32), "ads");
   assert.equal(w.files.stdin, pw);
   assert.notEqual(pw, vncPasswordFor("k".repeat(32), "kit"), "every agent has its own");
   assert.ok(!w.ran.flat().join(" ").includes(pw), "never an argument");
-  assert.ok(w.ran[0].join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && w.ran[0].includes("/usr/local/bin/agentd-vncpass"), "run as the agent, before Xvnc starts");
+  assert.ok(w.ran[0].join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && w.ran[0].includes("/usr/local/bin/agentd-vncpass") && w.ran[0].includes("/var/lib/vyre/browsers/agb21000/vnc.pass"), "run as the browser uid, before Xvnc starts, into its folder");
 });
 
 test("agentd listens on a unix socket that only root can open: mode 0600, no TCP port, and the token is not in its environment", async t => {
