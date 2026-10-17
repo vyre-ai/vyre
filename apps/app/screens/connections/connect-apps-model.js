@@ -97,6 +97,23 @@ export function granteesOf(got, agents) {
   ];
 }
 
+/**
+ * The `vault.access.set` calls that turn the shares held (`before`) into the shares the sheet now shows (`next`): one per person or agent added or moved to another level, one with level null per one
+ * removed. Names resolve through the sheet's grantees, then through the shares held (an agent held by id keeps that id). Nobody it cannot resolve is touched.
+ * @param {string} item @param {{ who: string, level: string, subject?: string, kind?: "person" | "agent" }[]} before @param {{ who: string, level: string }[]} next @param {{ who: string, subject: string, kind: "person" | "agent" }[]} grantees
+ */
+export function shareChanges(item, before, next, grantees) {
+  const find = (/** @type {string} */ n) => grantees.find((g) => g.who === n) || before.find((b) => b.who === n && b.subject && b.kind) || null;
+  const out = [];
+  for (const s of next) {
+    const prev = before.find((b) => b.who === s.who);
+    const g = find(s.who);
+    if (g && (!prev || prev.level !== s.level)) out.push(shareInput(item, /** @type {any} */ (g), s.level));
+  }
+  for (const b of before) if (!next.some((s) => s.who === b.who)) { const g = find(b.who); if (g) out.push(shareInput(item, /** @type {any} */ (g), null)); }
+  return out;
+}
+
 /** The `vault.access.set` input for one share change: the level in the kernel's words, an agent held at Fill in, `null` to stop. @param {string} item @param {{ kind: "person" | "agent", subject: string }} who @param {string | null} level */
 export function shareInput(item, who, level) {
   return { name: item, kind: who.kind, subject: who.subject, level: level === null ? null : who.kind === "agent" ? "use" : levelToKernel(level) };
