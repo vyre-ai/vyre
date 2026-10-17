@@ -4,8 +4,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
-- test(provider-adapters): lib/mcp-catalog-pull.js is allowed one provider token (count 1). It reads the Claude plugin manifest file name as catalog input; it is not a session provider format. Note to the chat team: this file is on the list with that reason (lead's ruling, 17 Oct 2026).
-
 - fix(memory): memory.heard reads the chat's thread only from meta.thread (the daemon's verified binding), never from a caller label, and files the agent's lesson only for a named agent; a plain session of no agent files nothing. core/memory/index.js.
 
 - refactor(sessions): the environment variable each provider's CLI reads for an account's key (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY, OPENAI_COMPAT_API_KEY) is one list in lib/credential-env.js, read by the Switchboard's accountEnv and by spawn.js, which removes every one of them from the environment it hands the lender, the sandbox spawner and a terminal. For the chat team: test/provider-adapters.allow.json lists lib/credential-env.js at 2 and core/switchboard/index.js at 41 (one line moved); the file is the single place to add a provider's key variable.

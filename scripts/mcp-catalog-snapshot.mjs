@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRegistryPage, parsePlugins, mergeEntries, diffMarkdown } from "../lib/mcp-catalog.js";
 import { pullRegistry, readPluginRepo, annotateProbes, REGISTRY } from "../lib/mcp-catalog-pull.js";
+import { PLUGIN_LAYOUT } from "../core/sessions/drivers/plugin-layout.js";
 import { probeServer } from "../lib/mcp-probe.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -81,7 +82,7 @@ async function main() {
   const o = args(process.argv.slice(2));
   const prev = (() => { try { return JSON.parse(fs.readFileSync(o.out, "utf8")); } catch { return null; } })();
   const registryPages = await pullRegistry(fetchJson, { base: o.registry });
-  const plugins = o.plugins.map(x => ({ repo: x.repo, sha: x.sha, found: readPluginRepo(x.dir) }));
+  const plugins = o.plugins.map(x => ({ repo: x.repo, sha: x.sha, found: readPluginRepo(x.dir, PLUGIN_LAYOUT.manifest) }));
   const next = buildSnapshot({ registryPages, plugins, registry: o.registry, today: o.today });
   // A person's review stands: a row with a verdict stays whole (and stays even if no source lists it now), and a row already probed keeps its answer until a reviewer re-probes it.
   const reviewedFile = (() => { try { return JSON.parse(fs.readFileSync(o.reviewed, "utf8")); } catch { return null; } })();
