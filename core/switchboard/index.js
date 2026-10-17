@@ -313,6 +313,12 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
 /** The saved launch options of a thread (threads_runs.opts). */
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
+/** The person a Flow job acts as, as the thread's stored options keep it. The record a caller holds (record()) is a mapped row with no `opts`, so the stored row is read: without this the job's kernel session was asked for no `runas` and was made as the home's owner. */
+const runasOf = (/** @type {any} */ sb, /** @type {string} */ id, /** @type {any} */ rec) => {
+  const held = optsOf(rec).runas;
+  if (typeof held === "string" && held) return held;
+  try { const r = optsOf(sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).runas; return typeof r === "string" && r ? r : ""; } catch { return ""; }
+};
 
 /**
  * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name alone (the same name a card shows):
@@ -979,7 +985,6 @@ export class Switchboard {
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (startedBy(o)) kept.person = startedBy(o);
-      this.deps.log(`threads: launch keeps ${Object.keys(kept).join(",") || "nothing"}; run_as is a ${typeof o.run_as}, purpose ${String(o.purpose)}`);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -1194,7 +1199,7 @@ export class Switchboard {
     const t0 = Date.now();
     if (!this.renewSeq) this.renewSeq = new Map();
     const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
-    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(optsOf(rec).runas ? { runas: optsOf(rec).runas } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(runasOf(this, id, rec) ? { runas: runasOf(this, id, rec) } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
     // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.
@@ -4915,7 +4920,7 @@ export default {
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },
-      run: async (i0, m) => { const i = trustedLaunch(i0, m); ctx.log(`threads: launch input kept ${Object.keys(i).filter((k) => ["run_as", "flow_origin", "for_person", "account", "person"].includes(k)).join(",") || "none of run_as/flow_origin/for_person/account/person"} of ${Object.keys(i0).filter((k) => ["run_as", "flow_origin", "for_person", "account", "person"].includes(k)).join(",")} (caller ${String(m && m.caller)}, first party ${Boolean(m && m.firstParty)})`); await checkLaunch(sb, i, ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
+      run: async (i0, m) => { const i = trustedLaunch(i0, m); await checkLaunch(sb, i, ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner()); return sb.launch(i); },   // (this tool is not wrapped by `tool`, so the call's chain is read here)
     });
     ctx.tool("threads.launch-check", { description: "Would this agent or teammate launch be allowed for whoever is asking? A module asks before it queues work (team.ask); answers { asker }.", internal: true, callers: ["module"], input: { type: "object", properties: { agent: str, agent_kind: str, env: { type: "object" }, fallback: { type: "object" }, asker: str } }, run: async (i0, m) => ({ asker: await checkLaunch(sb, trustedLaunch(i0, m), ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : null, kernelOwner()) }) });
     // For agents: usage per agent, and Vyre's own words in a thread (budget warnings, a halt).
