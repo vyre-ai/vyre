@@ -22,7 +22,8 @@ export function connectionsSource(call: Call) {
     connectCancel: (id: string) => ask("connectors.connect.cancel", { id }),
     /** Finish a sign-in with the whole address the browser landed on (a browser on another device). */
     connectFinish: (id: string, url: string) => ask("connectors.connect.finish", { id, url }),
-    disconnect: (name: string) => ask("connectors.disconnect", { name }),
+    /** The answer says whether the vendor was told to drop the token, for a person's connection; `revoked` is null when the box did not say. */
+    async disconnect(name: string) { const r = await ask<{ revoked?: unknown; why?: unknown }>("connectors.disconnect", { name }); return { revoked: typeof r?.revoked === "boolean" ? r.revoked : null, why: String(r?.why ?? "") }; },
     /** Who can use a connection that exists; a null scope is the default. */
     setScope: (name: string, scope: Scope) => ask("connectors.scope", { name, scope }),
     // The firm's sending service (comms.*): the key goes to the vault once, through vault.connect (the person's presence), and is never read back.

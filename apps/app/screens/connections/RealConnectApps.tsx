@@ -3,10 +3,10 @@
 // vault.access.set) and Disconnect. All of it goes through the kernel's tools, the same ones the MCP surface has. A secret typed here goes to the box once and is not kept (model.ts words redacts it).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, ConnectApps, ErrorState, Field, LoadingState, Sheet, ShareSheet, Text, showToast, type ConnectApp } from "@vyre/ui";
+import { Banner, Button, Card, ConnectApps, ErrorState, Field, LoadingState, Sheet, ShareSheet, Text, type ConnectApp } from "@vyre/ui";
 import { connections } from "./source-real";
 import { scopeOf, words, type Preset, type Step } from "./model";
-import { appsOf, extraApps, granteesOf, inputOf, itemOfConnection, missing, shareChanges, sharesOf, sheetOf, memberGrantees, memberSharesOf } from "./connect-apps-model.js";
+import { appsOf, disconnectLine, extraApps, granteesOf, inputOf, itemOfConnection, missing, shareChanges, sharesOf, sheetOf, memberGrantees, memberSharesOf } from "./connect-apps-model.js";
 import { GuideView, openUrl, usePoll } from "./shared";
 
 type Flow = { app: ConnectApp; preset: Preset; step: Step | null; values: Record<string, string>; busy: boolean; error: string };
@@ -90,7 +90,7 @@ export default function RealConnectApps() {
   };
   const disconnect = (a: ConnectApp) => {
     const conn = (a as ConnectApp & { connection?: string }).connection;
-    if (conn) connections.disconnect(conn).then(() => { showToast(`${a.name} is disconnected.`); load(); }).catch((e) => setNotice(words(e)));
+    if (conn) connections.disconnect(conn).then((r) => { setNotice(disconnectLine(a.name, r)); load(); }).catch((e) => setNotice(words(e)));
   };
 
   if (problem) return <ErrorState title="The catalog could not be read" reason={problem} retry={load} />;

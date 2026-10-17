@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareChanges, shareInput, memberSharesOf, memberGrantees, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
+import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareChanges, shareInput, disconnectLine, memberSharesOf, memberGrantees, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
 
 const groups = [{ group: "work", presets: [
   { id: "linear", label: "Linear", group: "work", who: "", note: "Issues", setup: "none", via: "", connected: [] },
@@ -84,4 +84,10 @@ test("a member's connection shares are Fill in, agents named by id, and she can 
   const held = memberSharesOf({ shares: [{ kind: "person", subject: "p1", level: "use" }, { kind: "agent", subject: "uid-9", level: "use" }, { kind: "team", subject: "t" }] }, [{ uid: "uid-9", name: "kit" }]);
   assert.deepEqual(held.map((h) => [h.who, h.kind, h.level]), [["p1", "person", "fill"], ["kit", "agent", "fill"]]);
   assert.deepEqual(memberGrantees(held, [{ name: "juno" }]).map((g) => g.kind + ":" + g.subject), ["person:p1", "agent:juno"]);
+});
+
+test("the disconnect line says plainly whether the app was told to drop the token", () => {
+  assert.match(disconnectLine("Notion", { revoked: true }), /Notion was told to drop the token/);
+  assert.match(disconnectLine("Notion", { revoked: false, why: "the vendor named no revocation address" }), /was not told to drop the token \(the vendor named no revocation address\), so remove it in Notion too/);
+  assert.equal(disconnectLine("Notion", { revoked: null }), "Notion is disconnected here.");
 });

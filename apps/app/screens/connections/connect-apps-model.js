@@ -114,6 +114,11 @@ export function shareChanges(item, before, next, grantees) {
   return out;
 }
 
+/** What the screen says after Disconnect: plainly whether the app was told to drop the token. `revoked` is null when the box did not say. @param {string} name @param {{ revoked: boolean | null, why?: string }} r */
+export const disconnectLine = (name, r) => r.revoked === true ? `${name} is disconnected, and ${name} was told to drop the token.`
+  : r.revoked === false ? `${name} is disconnected here. ${name} was not told to drop the token${r.why ? ` (${r.why})` : ""}, so remove it in ${name} too, in its list of connected apps.`
+  : `${name} is disconnected here.`;
+
 /** The `vault.access.set` input for one share change: the level in the kernel's words, an agent held at Fill in, `null` to stop. @param {string} item @param {{ kind: "person" | "agent", subject: string }} who @param {string | null} level */
 export function shareInput(item, who, level) {
   return { name: item, kind: who.kind, subject: who.subject, level: level === null ? null : who.kind === "agent" ? "use" : levelToKernel(level) };
