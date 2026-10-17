@@ -420,3 +420,13 @@ test("a page with no daemon offers the AI sign-in once its space is online, and 
   const sent = pp.seen.calls.filter((c) => c.name === "sessions.accounts.signin").pop();
   assert.deepEqual([sent.box, sent.input.provider, sent.input.label], ["boxA", "claude", "Claude"], "it goes to the server this onboarding made, not the older one listed first");
 });
+
+test("a Mac window says on its online answer that fingerprint approvals are not there yet; a browser says nothing", async (t) => {
+  for (const mac of [true, false]) {
+    const { pp, host } = await ready(t, { softwareKeyHere: mac });
+    const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+    pp.seen.resolveAs = "one";
+    const done = await until(host, open.id, (r) => r.online);
+    assert.equal(done.noFingerprintYet === true, mac, mac ? "the Mac window says it" : "the browser does not");
+  }
+});

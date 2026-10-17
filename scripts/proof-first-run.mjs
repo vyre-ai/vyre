@@ -288,6 +288,10 @@ try {
     catch (e) { const lines = serverLogForFailure(); console.log(`  server log at the failed wait:\n${lines}`); throw new Error(`${/** @type {Error} */ (e).message} | server log: ${lines.split("\n").slice(-8).join(" || ")}`); }
     await drv.shot("04-space-online");
     if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
+    // On the Mac window the session is signed by the page's own key, so the screen says plainly that fingerprint approvals are not there yet; the browser says nothing of the kind.
+    const says = /fingerprint are not available on this Mac yet/.test(t);
+    if (client === "mac-app" && !says) throw new Error(`the Mac's online screen does not say fingerprint approvals are not available yet: ${t.slice(0, 300)}`);
+    if (client !== "mac-app" && says) throw new Error("the browser's online screen talks about a Mac's fingerprint");
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
     await drv.click("Continue");
     // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
