@@ -23,7 +23,7 @@ export function register({ ctx, vault, tool }) {
   const K = () => { const k = ctx.kernel; if (!k || !k.grants || !k.grants.vaults || !k.mint) throw Object.assign(new Error("named vaults need the kernel"), { code: "unavailable" }); return k; };
   const chainOf = async (/** @type {any} */ meta) => K().chain(meta);
   const vaultsOf = async (/** @type {any} */ meta) => /** @type {any[]} */ (await K().grants.vaults.list(await chainOf(meta)));
-  const known = async (/** @type {any} */ meta, /** @type {string} */ id) => { const v = (await vaultsOf(meta)).find(x => x.id === id && !x.personal); if (!v) throw Object.assign(new Error(`no vault with the id ${String(id).slice(0, 60)}`), { code: "not_found" }); return v; };
+  const known = async (/** @type {any} */ meta, /** @type {string} */ id) => { const v = (await vaultsOf(meta)).find(x => x.id === id && !x.personal); if (!v) throw Object.assign(new Error(`no vault with the id ${String(id).slice(0, 60)}: check the id on your Vaults page, or ask the vault's owner`), { code: "not_found" }); return v; };
   const rows = () => /** @type {any[]} */ (vault.db.prepare("SELECT id, name, named FROM vault_items").all());
   const members = async (/** @type {any} */ meta) => { try { const ms = K().grants.members ? await K().grants.members.list(await chainOf(meta)) : null; return Array.isArray(ms) ? ms : null; } catch { return null; } };
   const teams = async (/** @type {any} */ meta) => { try { const ts = K().grants.teams ? await K().grants.teams.list(await chainOf(meta)) : null; return Array.isArray(ts) ? ts : null; } catch { return null; } };
@@ -51,7 +51,7 @@ export function register({ ctx, vault, tool }) {
   tool("vault.named.move", PEOPLE, "Put an item in a vault, or back in the Space's own (vault null). What was shared on the item at its old place is taken back; the new vault's shares apply.", obj({ item: str, vault: { type: ["string", "null"] } }, ["item"]),
     async ({ item, vault: to }, meta) => {
       const r = vault.row(String(item || ""));
-      if (!r) throw Object.assign(new Error(`no item named ${String(item).slice(0, 80)}`), { code: "not_found" });
+      if (!r) throw Object.assign(new Error(`no item named ${String(item).slice(0, 80)}: check the name in the vault, or ask who made it`), { code: "not_found" });
       if (to !== null && to !== undefined) await known(meta, String(to));
       const old = await vault.access.urn(r.name);
       await K().vault.takeBack({ prefix: old, reason: "the item moved to another vault" });
@@ -96,8 +96,8 @@ export function register({ ctx, vault, tool }) {
       else {
         if (!ID.test(String(subject || ""))) throw bad(`name the ${kind} to share with`);
         if (kind === "person") { if (level) { const ms = await members(meta); if (!ms || !ms.some((/** @type {any} */ x) => String(x.person) === subject)) throw Object.assign(new Error("that person is not a member of this Space"), { code: "not_a_member" }); } makes.push({ key: subject, subject: { kind: "actor", actor: { kind: "person", id: subject, space: k.space } }, actions: [...levelActions(level || "use")] }); }
-        if (kind === "team") { if (level) { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id"), { code: "not_found" }); } makes.push({ key: subject, subject: { kind: "group", id: subject }, actions: [...levelActions("use")] }); }
-        if (kind === "agent") { const uid = (await agentUid(subject)) || (level ? null : subject); if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" }); makes.push({ key: uid, subject: { kind: "actor", actor: { kind: "agent", id: uid, space: k.space } }, actions: [...levelActions("use")] }); }
+        if (kind === "team") { if (level) { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id: take the id from the team's own page, or ask an owner or an admin"), { code: "not_found" }); } makes.push({ key: subject, subject: { kind: "group", id: subject }, actions: [...levelActions("use")] }); }
+        if (kind === "agent") { const uid = (await agentUid(subject)) || (level ? null : subject); if (!uid) throw Object.assign(new Error("no agent has that name: check the name with the person who made the agent, or share with a person or a team instead"), { code: "not_found" }); makes.push({ key: uid, subject: { kind: "actor", actor: { kind: "agent", id: uid, space: k.space } }, actions: [...levelActions("use")] }); }
         if (kind === "team" && level) makes[0].actions = [...levelActions(level)];
       }
       for (const m of makes) {

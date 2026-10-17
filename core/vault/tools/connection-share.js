@@ -1,7 +1,7 @@
 // @ts-check
 // connection-share: a member shares her own app connection (a Clio, a Google, a Notion) with a person, a team or an agent, at Fill in and nothing more. It is a kernel grant on the connection's address
 // (connectionUrn), made through the vault module's mint handle, the same grant the hub checks before it lends a token's use (core/mcp). The token is never shared: the hub adds it at the boundary, so
-// whoever holds the share can have the app used as her and never has the token. Anything that sends or changes data still waits at the Gate for her yes.
+// whoever holds the share can have the app used as her and never has the token. Their own sends go only to the destinations the owner has set, and an agent acting for them is still held at the Gate for her yes.
 //
 // Taking a share away, and deleting the connection, end the grants and tell the hub (mcp.sweep) to discard what those people left waiting at the Gate for it. The hub re-checks every requester anyway;
 // the sweep is the cleanup the release gate asks for after every unshare.
@@ -55,12 +55,12 @@ export function register({ ctx, people, tool }) {
         // Only an agent she may instruct herself (she made it, or was given Can use or Can edit): one that others also instruct would let them use her connection through it. Anything else is not found.
         if (level) { const who = await ctx.call("agents.instructors", { agent: String(subject).toLowerCase() }); if (who.error || !who.data) throw Object.assign(new Error("no agent has that name: check the name of the agent"), { code: "not_found" }); }
         const uid = (await agentUid(subject)) || (level ? null : subject);
-        if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" });
+        if (!uid) throw Object.assign(new Error("no agent has that name: check the name with the person who made the agent, or share with a person or a team instead"), { code: "not_found" });
         key = uid; who = { kind: "actor", actor: { kind: "agent", id: uid, space: ctx.kernel.space } };
       }
       if (level) {
         if (kind === "person") { const ms = await members(meta); if (!ms || !ms.some((/** @type {any} */ x) => String(x.person) === subject)) throw Object.assign(new Error("that person is not a member of this Space"), { code: "not_a_member" }); }
-        if (kind === "team") { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id"), { code: "not_found" }); }
+        if (kind === "team") { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id: take the id from the team's own page, or ask an owner or an admin"), { code: "not_found" }); }
       }
       const m = mint();
       await m.end({ source: csource(id, name, key), reason: "the sharing of this connection changed" });

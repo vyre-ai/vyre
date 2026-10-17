@@ -28,7 +28,7 @@ import { memberServers, storeOverCalls, legacyRows, remoteOk } from "../../lib/m
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
 import { ownRow } from "../../lib/own-row.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
-import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey } from "./hub.js";
+import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey, ASKING } from "./hub.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -69,7 +69,11 @@ export default {
       offer,
       // Filed by thread, project and agent from what vyred verified for the model's call. ctx.call
       // runs as module:mcp, which would lose them, so the hub puts them in the request itself.
-      request: async input => data(await ctx.call("gate.request", input)),
+      request: async input => {
+        // A held call is asked as the member on this call (the tool named her from the verified chain, one person and no agent), so the item is hers at the Gate; with no member it is filed as before.
+        const st = /** @type {any} */ (ASKING.getStore()), member = st ? (typeof st.me === "string" ? st.me : (st.who && !st.who.agent && typeof st.who.me === "function" ? String(await Promise.resolve(st.who.me()).catch(() => "") || "") : "")) : "";
+        return data(await ctx.call("gate.request", input, member ? { relay: true } : undefined));
+      },
       item: async id => data(await ctx.call("gate.get", { id })),
       agentKind: async agent => {
         const list = data(await ctx.call("agents.list", {}));

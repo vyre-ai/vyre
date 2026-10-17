@@ -38,7 +38,7 @@ export function register({ ctx, people, internal }) {
       let items;
       try { items = (await people.list(id, {})).items; } catch (e) { throw locked(e); }
       const it = items.find((/** @type {any} */ i) => i.name === String(input.id));
-      if (!it) throw Object.assign(new Error(`no item of yours named ${String(input.id).slice(0, 60)}`), { code: "not_found" });
+      if (!it) throw Object.assign(new Error(`no item of yours named ${String(input.id).slice(0, 60)}: check the name in your own vault`), { code: "not_found" });
       return { id: it.name, name: it.name, kind: it.kind, hint: hintOf(it), note: "Only its name is shown in the chat, never the value." };
     });
 }

@@ -83,13 +83,13 @@ export function register({ ctx, vault, tool }) {
       if (kind === "agent") {
         // Taking access away still works for an agent that was renamed or removed: the name is tried first, then the id as given.
         const uid = (await agentUid(subject)) || (level ? null : subject);
-        if (!uid) throw Object.assign(new Error("no agent has that name"), { code: "not_found" });
+        if (!uid) throw Object.assign(new Error("no agent has that name: check the name with the person who made the agent, or share with a person or a team instead"), { code: "not_found" });
         key = uid; who = { kind: "actor", actor: { kind: "agent", id: uid, space: space() } };
       }
       // A grant is made only for a current member, a team that exists or an agent of the Space (taking one away needs no check); a kernel that cannot say is refused.
       if (level) {
         if (kind === "person") { const ms = await members(meta); if (!ms || !ms.some((/** @type {any} */ x) => String(x.person) === subject)) throw Object.assign(new Error("that person is not a member of this Space"), { code: "not_a_member" }); }
-        if (kind === "team") { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id"), { code: "not_found" }); }
+        if (kind === "team") { const ts = await teams(meta); if (!ts || !ts.some((/** @type {any} */ x) => String(x.id) === subject)) throw Object.assign(new Error("there is no team with that id: take the id from the team's own page, or ask an owner or an admin"), { code: "not_found" }); }
       }
       await m.end({ source: sourceOf(n, key), reason: "the sharing of this item changed" });
       if (level) await m.make({ subject: who, actions: [...levelActions(level)], resource: { prefix: await urnOf(n) }, source: sourceOf(n, key), reason: `shared by the owner: ${level}` });

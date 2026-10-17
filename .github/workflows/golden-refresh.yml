@@ -39,7 +39,7 @@ jobs:
       - run: |
           node scripts/sync-copies.mjs
           node scripts/gen-surface-lists.mjs
-          git diff --name-only -- local apps/app/src/store-core apps/app/src/real/member-routes.generated.js core/computers/image/computerd relay/client | tee copies-changed.txt
+          git diff --name-only -- local apps/app/src/store-core apps/app/src/real core/computers/image/computerd relay/client | tee copies-changed.txt
           tar czf copies-gen.tgz -T copies-changed.txt || true
       - run: node kernel/golden/index.js --write
       - run: node kernel/flows/golden/write.mjs

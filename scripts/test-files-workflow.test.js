@@ -44,10 +44,12 @@ test("the check lets a ref and test files or globs of the four folders through",
   }
 });
 
-test("the check refuses another folder, a way up, a script that is no test, a bare folder glob, a hostile ref and nothing at all", () => {
+test("the check refuses a way up, a script that is no test, a bare folder glob, a hostile ref and nothing at all, and accepts a test file in any folder", () => {
   for (const [ref, files] of [
-    ["main", "scripts/x.test.js"], ["main", "core/../scripts/x.test.js"], ["main", "/etc/passwd.test.js"], ["main", "core/identity/*"], ["main", "core/signins.js"], ["main", "core/a.test.js; rm -rf x"],
+    ["main", "core/../scripts/x.test.js"], ["main", "node_modules/x/y.test.js"], ["main", "scripts/node_modules/x.test.js"], ["main", "/etc/passwd.test.js"], ["main", "core/identity/*"], ["main", "core/signins.js"], ["main", "core/a.test.js; rm -rf x"],
     ["main", "core/$(id).test.js"], ["main", ""], ["main", Array.from({ length: 41 }, (_, i) => `lib/a${i}.test.js`).join(" ")],
     ["", "lib/a.test.js"], ["../x", "lib/a.test.js"], ["-x", "lib/a.test.js"], ["main; id", "lib/a.test.js"], ["a b", "lib/a.test.js"],
   ]) assert.notEqual(check(ref, files).status, 0, `${JSON.stringify([ref, files.slice(0, 40)])} should be refused`);
+  // the any-path rule (sec53 signed): a test file or glob in any folder of the repository is accepted
+  for (const files of ["scripts/x.test.js", "records/language/compile.test.js", "apps/app/src/host/*.test.js"]) assert.equal(check("main", files).status, 0, `${files} should be accepted`);
 });

@@ -123,10 +123,10 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const person = await memberOf(ctx.kernel, meta);
       const row = await ctx.call("sessions.accounts.item", { account: String(input.account || ""), person });
       const acct = row && !row.error ? row.data : null;
-      if (!acct || typeof acct.item !== "string" || !AI_KINDS.includes(String(acct.kind || ""))) throw Object.assign(new Error("that account is not yours, or holds no key of yours"), { code: "denied" });
+      if (!acct || typeof acct.item !== "string" || !AI_KINDS.includes(String(acct.kind || ""))) throw Object.assign(new Error("that account is not yours, or holds no key of yours: pick one of your own AI accounts, or add your key to it first"), { code: "denied" });
       let it; try { it = await people.get(person, { name: acct.item }); } catch { throw Object.assign(new Error("unlock your own vault to use this account"), { code: "locked" }); }
       const value = it.fields[String(acct.field || "value")] ?? it.fields.key ?? it.fields.token;
-      if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty"), { code: "denied" });
+      if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty: add the key to the account in your vault, then try again"), { code: "denied" });
       people.emit("vault.me.lent", { person, account: String(input.account) });   // who and which account: never the value, and never the item's name (the member's own label for a secret)
       return { value };
     },
@@ -156,11 +156,11 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       if (!["module:mcp", "module:connectors"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const K = ctx.kernel;
       let c;
-      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read"), { code: "denied" }); }
+      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read: sign in again on this device, then try again"), { code: "denied" }); }
       const hops = c && Array.isArray(c.hops) ? c.hops : [];
       if (hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind !== "person")) throw Object.assign(new Error("an assistant is not a person: ask as yourself"), { code: "denied" });
       const ids = [...new Set(hops.filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)))];
-      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is"), { code: "denied" });
+      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is: ask from your own signed-in session, with no assistant between"), { code: "denied" });
       return String(K.owner) === ids[0] ? { kind: "owner" } : { kind: "member", person: ids[0] };
     },
   });
@@ -182,12 +182,12 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const svc = people.service(id), name = String(input.name);
       if (await svc.has(name)) {
         const cur = await svc.get(name);
-        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours: choose another name, or connect the app again under your own name"), { code: "denied" });
       } else {
         // A name an ordinary item of hers already has is refused (checked when her vault is open; a sealed-only call cannot see ordinary items, which the connection key does not open).
         let clash = false;
         try { clash = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === name); } catch (e) { if (/** @type {any} */ (e).code !== "locked") throw e; }
-        if (clash) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+        if (clash) throw Object.assign(new Error("that name is not a connection of yours: choose another name, or connect the app again under your own name"), { code: "denied" });
       }
       return svc.put(name, `connection to ${new URL(f.server_url).host}`, fields);
     },

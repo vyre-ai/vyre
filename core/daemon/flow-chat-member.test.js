@@ -24,7 +24,8 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", VYRE_SESSION_SANDBOX_OFF: "1", FAKE_CLAUDE_LOG: path.join(root, "claude.log") });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  const logs = /** @type {string[]} */ ([]);
+  const d = await start({ root, log: (/** @type {any} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
@@ -41,7 +42,7 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   // an agent not shared with Ben, and a Flow not shared with Ben: refused, and nothing wakes
   const seen = /** @type {any[]} */ ([]);
   const real = d.registry.deps.kernelSession;
-  d.registry.deps.kernelSession = async (/** @type {any} */ q) => { seen.push({ thread: q.thread, runas: q.runas, asker: q.asker }); return real(q); };
+  d.registry.deps.kernelSession = async (/** @type {any} */ q) => { seen.push({ thread: q.thread, runas: q.runas, asker: q.asker, optsKeys: q.rec && q.rec.opts ? Object.keys(typeof q.rec.opts === "string" ? JSON.parse(q.rec.opts) : q.rec.opts) : null, purpose: q.rec && q.rec.purpose }); return real(q); };
   assert.equal((await asBen("agents.flow-say", { agent: "juno", flow: open, text: "hi" })).error?.code, "denied", "an agent not shared with him");
   assert.ok(!(await asOwner("agents.access.set", { agent: "juno", kind: "person", subject: BEN, level: "use" })).error);
   assert.ok((await asBen("agents.flow-say", { agent: "juno", flow: hidden, text: "hi" })).error, "a Flow he may not read");
@@ -59,8 +60,13 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   // shared with him: the agent wakes, and the job's kernel session is Ben's, never the owner's
   const ok = await asBen("agents.flow-say", { agent: "juno", flow: open, text: "Why did run 8 fail?" });
   assert.ok(ok.data && ok.data.thread, JSON.stringify(ok.error));
-  const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session");
-  assert.equal(s.runas, BEN, "the job acts as the member who wrote");
+  const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session").catch(async (/** @type {any} */ e) => {
+    const th = (await asOwner("threads.get", { thread: ok.data.thread, limit: 30 })).data || {};
+    const flat = (/** @type {any} */ o) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => !["cwd", "name", "id", "chat", "agent", "project"].includes(k) && (v === null || ["string", "number", "boolean"].includes(typeof v))).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 160) : v]));
+    const g = JSON.stringify({ thread: flat(th.thread), last: ((th.turns || th.items || th.messages || []).slice(-3)).map((/** @type {any} */ x) => flat(x)) });
+    throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}; the daemon log (threads, sessions, switchboard, launch): ${logs.filter((l) => /threads|session|launch|account|switchboard|refus|spawn/i.test(l)).slice(-25).join(" || ")}`);
+  });
+  assert.equal(s.runas, BEN, `the job acts as the member who wrote (the call: ${JSON.stringify(s)}; all calls: ${JSON.stringify(seen)}; launch lines: ${logs.filter((l) => /launch input|launch keeps|kernel session/.test(l)).join(" || ")})`);
   assert.notEqual(s.runas, OWNER, "never as the owner");
   const row = (await asOwner("threads.get", { thread: ok.data.thread, limit: 1 })).data?.thread;
   assert.equal(row?.flow_origin?.flow, open, "the thread joins that Flow's chat");
@@ -74,9 +80,19 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const kept = (await K.gateway.records.query(K.gateway.serviceChain("skills"), "skill", { page: { limit: 50 } })).rows;
   const secret = kept.find((/** @type {any} */ x) => x.data.name === "owner-secret");
   assert.ok(secret, "the owner's skill exists");
-  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
+  const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.list {"type":"contact","limit":3}\nvyre records.get {"urn":"vyre://${K.space}/skill/${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
-  const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer");
+  const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
+    const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
+    const th = (await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {};
+    out("thread", JSON.stringify({ status: th.thread && th.thread.status, reason: th.thread && th.thread.stopped_reason, turns: th.thread && th.thread.turns, account: th.thread && th.thread.account, driver: th.thread && th.thread.driver }));
+    out("keys", Object.keys(th).join(","));
+    out("types", (th.events || []).map((/** @type {any} */ x) => x.type).join(","));
+    out("texts", (th.events || []).filter((/** @type {any} */ x) => /text|message|tool|notice/.test(String(x.type))).map((/** @type {any} */ x) => `${x.type}: ${JSON.stringify(x.payload).slice(0, 400)}`).slice(-6).join(" ## "));
+    out("log", logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-12).join(" || "));
+    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").split("\n").filter((l) => /error|denied|EACCES|ENOENT|forbidden|not_found|rows|socket|VYRE_HOME/i.test(l.replace(/"append":"[^"]*"/, ""))).map((l) => l.replace(/"append":"[^"]*"/, "").slice(-600)).slice(-4).join(" ## "); } catch { return "none"; } })());
+    throw e;
+  });
   assert.ok(said.includes("rows"), "an ordinary read in the job answers");
   assert.ok(!said.includes("OWNER-PRIVATE-TEXT"), "the owner's private skill never reaches the member's job");
 

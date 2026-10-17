@@ -80,7 +80,7 @@ export function ShareSheet({ app, grantees, open, onClose, onChange, fillOnly }:
   return (
     <Sheet open={open} onClose={onClose} title={`Share ${app.name}`}>
       <View style={{ gap: 12 }}>
-        <Text size="secondary" tone="label">{shareLine(shares)}. Anything that sends or changes data still waits for your yes.</Text>
+        <Text size="secondary" tone="label">{shareLine(shares)}. They use it to the destinations you have set; an agent acting for them is still held at the Gate for your yes.</Text>
         {grantees.map((g) => {
           const mine = shares.find((s) => s.who === g.who && s.kind === g.kind);
           return (
