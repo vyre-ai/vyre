@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.5.6
 
-- feat(vault): a space's vault waits for the first save with approval; the host poll defers only on presence_required, and the Vault screen shows one calm line while the vault is not made yet (work/0.5.4/app53/adopt-trace).
+- feat(vault): a space's vault waits for the first save with approval; the host poll defers only on presence_required, the first put in the server's own space makes the vault key in the same call (only for a person, and only after the item is acceptable), the device that finished the first adoption may make it once without a fresh approval inside a short window, and the Vault screen shows one calm line while the vault is not made yet (work/0.5.6/app53/vault).
 - release: 0.5.6 carries all of 0.5.5 (release notes in release/notes/0.5.6.md).
 
 ## 0.5.5
