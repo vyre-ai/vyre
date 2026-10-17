@@ -680,7 +680,7 @@ export class Hub {
   /** @param {Who} who */
   async servers(who) {
     const memo = {}, out = [];
-    for (const r of this.rows()) if (await this.inScope(r, who, memo)) out.push(this.view(r, who.person));
+    for (const r of this.rows()) { const ok = await this.inScope(r, who, memo); console.error("DBG servers", r.name, r.owner, ok, JSON.stringify(who), typeof who.me === "function" ? JSON.stringify(await Promise.resolve(who.me()).catch(e => "ERR " + e.message)) : "nome"); if (ok) out.push(this.view(r, who.person)); }
     return out;
   }
 
