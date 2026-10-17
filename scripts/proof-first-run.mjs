@@ -344,45 +344,50 @@ try {
     if (!claimed.length || claimed[claimed.length - 1] !== personId) throw new Error(`the server's kernel took ${claimed.length ? claimed[claimed.length - 1] : "no identity"} as owner, not ${personId}`);
   }, { needs: [S("the server pairs to the creator, the screen names it, and the app reaches Ready")] });
 
-  // ---- The owner's walk, after Ready, in the window as it opens: each screen the owner looks at first, one step each so a failure names the screen. A picture of every one.
+  // ---- The owner's walk, after Ready, in the window as it opens: each screen the owner looks at first, one step each so a failure names the screen. A picture of every one, taken whether it passes or not.
+  // The sidebar's own words (Now, Projects, Records, Sites ...) are on every screen, so a screen counts as shown only by what its own pane says, and by the picture.
   const BAD = /You may not do that|Pair first|member's own vault|did not answer|did not load|went wrong|not allowed|forbidden/i;
   const READY = [S("the server pairs to the creator, the screen names it, and the app reaches Ready")];
-  /** Open a screen and wait until it says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} [before] */
+  /** Open a screen and wait until its own pane says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} before */
   const look = async (name, file, shows, ms, before) => {
-    if (before) await before();
     let t = "";
-    await until(async () => { t = await drv.text(); return shows.test(t); }, ms, `${name} to show what it should`).catch((/** @type {Error} */ e) => { throw new Error(`${e.message}. The screen says: ${t.replace(/\s+/g, " ").slice(0, 400)}`); });
+    try {
+      await before();
+      await until(async () => { t = await drv.text(); return shows.test(t); }, ms, `${name} to show what it should`);
+    } catch (e) {
+      await drv.shot(`${file}-failed`).catch(() => {});
+      throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${t.replace(/\s+/g, " ").slice(0, 500)}`);
+    }
     await drv.shot(file);
     const bad = BAD.exec(t);
     if (bad) throw new Error(`${name} shows "${bad[0]}": ${t.replace(/\s+/g, " ").slice(0, 400)}`);
     return t;
   };
   await run.step(S("owner walk: Now loads, with no skeleton after 90 s"), async () => {
-    await drv.go("/u/now");
-    await look("Now", "07-now", /Good (morning|afternoon|evening)|nothing needs you|needs you|Edit/i, 90_000);
+    await look("Now", "07-now", /Good (morning|afternoon|evening)/i, 90_000, async () => { await drv.click("Now"); });
   }, { needs: READY });
   await run.step(S("owner walk: Records shows its list, or says it is setting up"), async () => {
-    await look("Records", "08-records", /Records|No records yet|setting up|still starting/i, 90_000, async () => { await drv.click("Records"); });
+    await look("Records", "08-records", /Contacts|All objects|No records|setting up|still starting/i, 90_000, async () => { await drv.click("Records"); });
   }, { needs: READY });
   await run.step(S("owner walk: Sites lists, with no refusal"), async () => {
-    await look("Sites", "09-sites", /Sites/i, 60_000, async () => { await drv.go("/u/sites"); });
+    await look("Sites", "09-sites", /No sites|New site|Create a site|Your sites|Published|Visit|Add a site|site/i, 60_000, async () => { await drv.click("Sites"); });
   }, { needs: READY });
   await run.step(S("owner walk: Vault, Mine, opens"), async () => {
-    await drv.go("/u/vault");
-    await look("Vault", "10-vault-mine", /Mine|Make your own vault|Your own vault|Vault/i, 60_000, async () => { try { await drv.click("Mine"); } catch { /* the page already shows Mine */ } });
+    await look("Vault Mine", "10-vault-mine", /Nothing here|Make your own vault|is locked|Add (a|your|an)|No item|Add item/i, 60_000, async () => { await drv.go("/u/vault"); try { await drv.click("Mine"); } catch { /* it shows Mine already */ } });
   }, { needs: READY });
   await run.step(S("owner walk: Agents, creating an agent succeeds"), async () => {
-    await look("New agent", "11-new-agent", /New agent/i, 60_000, async () => { await drv.go("/u/settings/assistants/new"); });
+    await look("New agent form", "11-new-agent", /New agent/i, 60_000, async () => { await drv.go("/u/settings/assistants/new"); });
     await drv.fill("Name", "walker");
     await drv.fill("Job", "Answer questions about the Space.");
     await drv.click("Create");
-    await look("Agents", "12-agents", /walker/i, 60_000, async () => { await drv.go("/u/agents"); });
+    await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
+    await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await drv.click("Agents"); });
   }, { needs: READY });
   await run.step(S("owner walk: Projects has a Personal or default project"), async () => {
-    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await drv.go("/u/projects"); });
+    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await drv.click("Projects"); });
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
-    await look("AI accounts", "14-ai-accounts", /AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
+    await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
   }, { needs: READY });
 
   await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
