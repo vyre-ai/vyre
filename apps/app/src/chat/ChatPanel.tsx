@@ -181,7 +181,7 @@ export function ChatPanel(p: ChatPanelProps) {
         onMemory={p.onMemory}
         onExport={p.onExport}
         onRoll={p.onRoll}
-        onContext={() => open("context")}
+        onContext={() => { cameFromMore.current = true; p.onPage("context"); }}
         onTasks={() => open("tasks")}
         onTranscript={() => open("transcript")}
         runningCount={running}

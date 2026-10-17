@@ -269,6 +269,13 @@ test("a chat message queued behind a turn survives a restart and then runs under
 // under the owner's access, so they are heard only for the home's own owner. (The stream's calls are module:stream; nothing here is a person's surface.)
 const TYPE = { name: "client", label: "Client", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "budget", kind: "number", label: "Budget", hidden_from: ["member"] }] };
 
+/** A member's turn runs on their own sign-in (asker-account.js), never the owner's: these tests are about chips and asks, not sign-ins, so the member has one. @param {any} d @param {string} person */
+async function ownSignIn(d, person) {
+  const made = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "A member's Claude", kind: "login" }, "cli");
+  assert.ok(made.data && !made.error, JSON.stringify(made));
+  d.registry.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, person = ? WHERE id = ?").run(Date.now(), person, made.data.id);
+}
+
 async function chipChat(t, who) {
   const root = tempHome(t);
   const d = await chatDaemon(t, root);
@@ -282,12 +289,9 @@ async function chipChat(t, who) {
   await d.kernel.gateway.records.define(ownerChain, { add_types: [TYPE] });
   const rec = await d.kernel.gateway.records.create(ownerChain, "client", { name: "Jane Harlow", budget: 5000 });
   // an item in the OWNER's vault: what a member's chip must never resolve, and what the owner's own chip does (the control that lets the member test fail)
-  const put = await d.registry.call("vault.put", { name: "owner-secret", kind: "api-key", value: "sk-test-owner-only-value", hosts: ["https://api.example.com"] }, "cli");
+  const put = await d.registry.call("vault.put", { name: "owner-secret", kind: "api-key", value: "owner-only-test-value-1234", hosts: ["https://api.example.com"] }, "cli");
   assert.ok(put.data && !put.error, JSON.stringify(put));
-  // A member's turn runs on their own sign-in (asker-account.js), never the owner's: Bob has one, so these tests are about chips and not about sign-ins.
-  const bobs = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "Bob's Claude", kind: "login" }, "cli");
-  assert.ok(bobs.data && !bobs.error, JSON.stringify(bobs));
-  d.registry.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, person = ? WHERE id = ?").run(Date.now(), BOB, bobs.data.id);
+  await ownSignIn(d, BOB);
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
@@ -365,6 +369,7 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
   const BOB = "per_" + "b".repeat(26);
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  await ownSignIn(d, BOB);
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
@@ -385,7 +390,12 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
 const busyAs = async (d, ctxt, asker) => {
   const sent = await d.registry.call("threads.send", { thread: ctxt.thread, text: "demo", surface: "deck", chat: ctxt.chat, asker }, "module:stream");
   assert.ok(sent.data && !sent.error, JSON.stringify(sent));
-  await until(async () => (await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit"), `${asker}'s turn to be busy`);
+  // busy: the demo turn waits on its Edit ask, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
+  await until(async () => {
+    if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
+    const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 1 }, "cli")).data.thread.status;
+    return st === "working" || st === "waiting";
+  }, `${asker}'s turn to be busy`);
 };
 const endTurn = async (d, ctxt) => {
   await d.registry.call("threads.stop", { thread: ctxt.thread }, "cli");
