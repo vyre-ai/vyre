@@ -232,7 +232,7 @@ export class PeopleVaults {
     const find = (/** @type {string} */ name) => this.allConnections(id, key()).find(i => i.name === name);
     return {
       has: async (/** @type {string} */ name) => Boolean(find(name)),
-      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no item named ${name}`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
+      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no item named ${name}: check the name in your own vault`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
       /** Make the connection, or replace its fields (a refresh merges: pass only what changed). */
       put: async (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ fields) => {
         if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
@@ -244,7 +244,7 @@ export class PeopleVaults {
       },
       update: async (/** @type {string} */ name, /** @type {any} */ fields) => {
         const k = key(), it = this.allConnections(id, k).find(i => i.name === name);
-        if (!it) throw Object.assign(new Error(`no item named ${name}`), { code: "not_found" });
+        if (!it) throw Object.assign(new Error(`no item named ${name}: check the name in your own vault`), { code: "not_found" });
         this.writeConnection(id, it.fileId, { name, kind: "connection", description: it.description, updated: this.clock() }, { ...it.fields, ...PeopleVaults.clean(fields) }, k);
       },
     };
@@ -305,7 +305,7 @@ export class PeopleVaults {
     return {
       has: async (/** @type {string} */ name) => Boolean(find(name)),
       names: async () => this.allLent(id, key()).map(i => i.name),
-      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no lent item named ${name}`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
+      get: async (/** @type {string} */ name) => { const it = find(name); if (!it) throw Object.assign(new Error(`no lent item named ${name}: ask the member to share it again`), { code: "not_found" }); const { fileId, ...rest } = it; void fileId; return rest; },
       /** Keep a copy of one item (replacing an earlier copy of the same name). */
       put: async (/** @type {string} */ name, /** @type {{ kind: string, description?: string, fields: any }} */ item) => {
         if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
@@ -438,9 +438,9 @@ export class PeopleVaults {
 
   /** @param {string} id @param {{ name: string, fields?: any, description?: string }} input */
   async update(id, { name, fields, description }) {
-    if (this.hasConnection(id, name)) throw Object.assign(new Error("a connection is changed by connecting again, not edited here"), { code: "denied" });
+    if (this.hasConnection(id, name)) throw Object.assign(new Error("a connection is changed by connecting again, not edited here: connect the app again"), { code: "denied" });
     const it = this.all(id).find(i => i.name === name);
-    if (!it) throw new Error(`no item named ${name}`);
+    if (!it) throw new Error(`no item named ${name}: check the name in your own vault`);
     const next = fields === undefined ? it.fields : { ...it.fields, ...PeopleVaults.clean(fields) };
     this.write(id, it.fileId, { name, kind: it.kind, description: description === undefined ? it.description : String(description).slice(0, 500), updated: this.clock() }, next);
     await this.onItem(id, name);
@@ -452,7 +452,7 @@ export class PeopleVaults {
     const it = this.all(id).find(i => i.name === name);
     if (it) { const { fileId, ...rest } = it; void fileId; return rest; }
     const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
-    if (!c) throw new Error(`no item named ${name}`);
+    if (!c) throw new Error(`no item named ${name}: check the name in your own vault`);
     const { fileId, fields, ...rest } = c; void fileId;
     return { ...rest, fields: Object.fromEntries(Object.entries(fields).filter(([k]) => CONNECTION_PUBLIC.has(k))) };
   }
@@ -470,7 +470,7 @@ export class PeopleVaults {
     const it = this.all(id).find(i => i.name === name);
     if (it) { fs.rmSync(path.join(this.itemDir(id), it.fileId + ".json"), { force: true }); await this.onItem(id, name); return { removed: name }; }
     const c = this.allConnections(id, this.connectionKey(id, this.key(id))).find(i => i.name === name);
-    if (!c) throw new Error(`no item named ${name}`);
+    if (!c) throw new Error(`no item named ${name}: check the name in your own vault`);
     fs.rmSync(path.join(this.connDir(id), c.fileId + ".json"), { force: true });
     return { removed: name };
   }

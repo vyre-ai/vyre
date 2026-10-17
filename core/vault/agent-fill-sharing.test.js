@@ -65,7 +65,8 @@ test("a share is to one agent: kit's share does not let juno fill, and juno's sh
   await w.share("kit");
   await refused(w.fill("juno"));
   assert.equal(w.began(), 0);
-  await assert.rejects(w.fill("kit"), e => /** @type {any} */ (e).code === "stand_in", "kit, with a share, gets as far as its browser");
+  const why = JSON.stringify({ effect: await w.v.access.effectFor("kit", "northwind-app", "vault.fill", ORIGIN), allowed: await w.v.access.allowed("kit", "northwind-app", ORIGIN).catch(e => String(e.message)), uid: await w.v.access.uidOf("kit"), urn: await w.v.access.urn("northwind-app"), mayNoOrigin: await w.rig.ctx.kernel.agentMay(w.rig.uid("kit"), "vault.fill", await w.v.access.urn("northwind-app")), mayOrigin: await w.rig.ctx.kernel.agentMay(w.rig.uid("kit"), "vault.fill", await w.v.access.urn("northwind-app"), ORIGIN) });
+  await assert.rejects(w.fill("kit"), e => /** @type {any} */ (e).code === "stand_in", `kit, with a share, gets as far as its browser (what the vault saw: ${why})`);
   assert.equal(w.began(), 1);
   await refused(w.fill("assistant"), /is not lent to/);
   assert.equal(w.began(), 1, "the default assistant holds nothing it was not given");
