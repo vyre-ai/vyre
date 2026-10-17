@@ -168,6 +168,9 @@ export function createAddServer(o) {
     }
   }
 
+  /** One timestamp-free line per step of the pairing, read by the first-run proof when the pairing does not finish (the stage alone cannot say which wait it is in). */
+  const trace = (/** @type {string} */ step) => { try { if (typeof console !== "undefined") console.info(`vyre:stage step ${step}`); } catch { /* no console */ } };
+
   /** "These match my server's terminal": now, and only now, the connection opens and the pairing starts. */
   async function confirmWords() {
     const p = pending;
@@ -176,19 +179,37 @@ export function createAddServer(o) {
     const mine = p.mine;
     set({ stage: "pairing", error: null });
     let chan;
-    try { chan = await o.connect({ offer: p.offer, key: p.key, secret: p.secret }); } catch { if (mine === run) stop("connect"); return; }
+    trace("channel opening");
+    try { chan = await o.connect({ offer: p.offer, key: p.key, secret: p.secret }); } catch { trace("channel failed"); if (mine === run) stop("connect"); return; }
+    trace("channel open");
     if (mine !== run) { try { chan.close(); } catch { /* gone */ } return; }
     let qr;
     try {
       const me = await o.identity();
       // The memory is a courtesy for the screen: a server that does not say it simply gets no note.
-      try { const info = await chan.call("system.info"); const mb = Number(info && info.memoryMb); const fv = filevaultNote(info && info.filevault); if (mine === run && ((Number.isFinite(mb) && mb > 0) || fv)) set({ ...(Number.isFinite(mb) && mb > 0 ? { memoryMb: mb } : {}), note: joinNotes(Number.isFinite(mb) && mb > 0 ? memoryNote(state.choice, mb) : null, fv) }); } catch { /* no note */ }
-      const offer = await chan.call("wink.server.setup-offer", { identity: me.id });
+      try { trace("system.info asked"); const info = await chan.call("system.info"); trace("system.info answered"); const mb = Number(info && info.memoryMb); const fv = filevaultNote(info && info.filevault); if (mine === run && ((Number.isFinite(mb) && mb > 0) || fv)) set({ ...(Number.isFinite(mb) && mb > 0 ? { memoryMb: mb } : {}), note: joinNotes(Number.isFinite(mb) && mb > 0 ? memoryNote(state.choice, mb) : null, fv) }); } catch { /* no note */ }
+      // The server asks the names directory to confirm this identity's key before it makes the ticket. A directory that does not answer yet (a server that has just started, a brief outage) answers "unavailable":
+      // that is a wait, not a refusal, so ask again until the install line runs out. Any other refusal stops here.
+      let offer;
+      for (;;) {
+        try { offer = await chan.call("wink.server.setup-offer", { identity: me.id }); trace("setup-offer answered"); break; }
+        catch (e) {
+          const x = /** @type {any} */ (e);
+          trace(`setup-offer refused ${String(x && x.code || "no code")}`);
+          // The code decides. The words alone are used only when the channel carried no code at all (a transport that drops codes): a denial has the same words and must stop at once.
+          const waiting = Boolean(x) && (x.code === "unavailable" || (!x.code && /could not confirm this key/i.test(String(x.message || ""))));
+          if (!waiting || mine !== run || now() >= state.expiresAt) throw e;
+          await sleep(pollMs);
+          if (mine !== run) return;
+        }
+      }
       qr = String(offer && offer.qr || "");
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }
     try { chan.close(); } catch { /* gone */ }
     if (mine !== run) return;
-    try { await o.pair(qr, { pageKey: p.key }); } catch { if (mine === run) stop("pair"); return; }
+    trace("pairing starts");
+    try { await o.pair(qr, { pageKey: p.key }); } catch (e) { trace(`pairing failed ${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).code || "no code")}`); if (mine === run) stop("pair"); return; }
+    trace("pairing finished");
     if (mine !== run) return;
     set({ stage: "done" });
   }
