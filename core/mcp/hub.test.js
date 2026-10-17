@@ -503,3 +503,25 @@ test("hub pin: a server stored before pinning is held when its live text differs
   assert.equal(moved.cache, null);
   await hub.stop();
 });
+
+test("B8: an outward MCP call with no named destination is held as unnamed, so no standing permission can match it", async () => {
+  const { hub, held } = fakeHub({ values: { tok: "fixture-abcdefghijklmnop-1234" } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
+  // "send_message" with no recipient argument: the destination would default to the server's own name.
+  const none = await hub.call({ server: "web", tool: "send_message", arguments: { text: "hi" } }, person);
+  assert.equal(held.get(none.held).unnamed, true, "no recipient named: never matched by a standing permission");
+  assert.deepEqual(held.get(none.held).to, ["web"], "the held item still shows where it goes");
+  // The same call with a real recipient is named, so an intent or a standing permission for that address can match it.
+  const named = await hub.call({ server: "web", tool: "send_message", arguments: { channel: "#legal", text: "hi" } }, person);
+  assert.notEqual(held.get(named.held).unnamed, true);
+  assert.deepEqual(held.get(named.held).to, ["#legal"]);
+});
+
+test("B8: a destructive MCP call is held as a delete, which no standing permission covers", async () => {
+  const { hub, held } = fakeHub({ values: { tok: "fixture-abcdefghijklmnop-1234" }, behave: {
+    tools: () => [{ name: "archive_matter", annotations: { destructiveHint: true } }],
+  } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
+  const r = await hub.call({ server: "web", tool: "archive_matter", arguments: { id: "m1" } }, person);
+  assert.equal(held.get(r.held).kind, "delete");
+});
