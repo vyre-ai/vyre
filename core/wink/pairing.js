@@ -1077,6 +1077,8 @@ export function createPairing(o) {
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
         try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind, ownerEnclave); } catch (e) { clearOwner(); throw e; }
         stepLog(caller.slice(7), `device recorded (session ${session ? "open" : "not open"})`);
+        // A pick that named no kind gets a record of its name and nothing else: no session, no key, and no relay device row either. The relay's own provisional row for the pairing is let go once the answer has travelled.
+        if (!session && !["phone", "computer", "web"].includes(String(mine.input.deviceKind || ""))) dropLater(caller);
         // The server's first device: on the install-line path the boot redeem set the owner before any device paired, so applyAdopt took its "another device" return and wrote nothing. The record is made here,
         // once the identity proof checked out, when no record exists and no other device of the owner is paired yet (lib/first-adopt.js: the vault key may be made by this device for ten minutes).
         try {

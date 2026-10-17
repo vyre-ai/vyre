@@ -199,6 +199,8 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
   assert.equal(st.device, "Alex's iPhone");
   // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
+  // (the relay's provisional row for the pairing is let go once the answer has travelled, as after a refused pairing)
+  await until(async () => ((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length === 0 || null, 8000).catch(() => null);
   assert.equal(((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "a pick with no kind makes no relay device row");
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
