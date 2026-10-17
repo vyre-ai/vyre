@@ -12493,6 +12493,7 @@ The spaces a person is in, one entry each: { space, name, color, link }, for a d
 
 - Input:
   - `person` string, required
+  - `home` boolean: also list the home's own Space when the person is a member of it
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.move.plan`
