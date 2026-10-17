@@ -171,7 +171,7 @@ export default {
         if (!subject || subject.length > 255 || /[\r\n]/.test(subject)) throw fail("the subject is one line, up to 255 characters");
         if (!body || body.length > 100_000) throw fail("the body is up to 100,000 characters");
         const acct = await first(meta);
-        if (!own) { const h = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); if (h.state === "sent") return { sent: true, from: acct.mailbox, to, subject, covered_by: h.by }; const id = h.id; return { held: id, message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
+        if (!own) { const h = await holdForMember(acct, to, { subject, body, ...(cc.length ? { cc } : {}) }, input, meta); if (h.state === "sent") return { sent: true, from: acct.mailbox, to, subject, covered_by: h.by }; const id = h.id; return { held: id, ...(h.error ? { error: h.error } : {}), message: `Held at your Gate: "${subject}" to ${to.join(", ")} from ${acct.mailbox} goes out once you approve it in Vyre.` }; }
         const out = await g.mailSend(acct, { to, cc, subject, body });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: "email" });
         return out;
@@ -196,7 +196,7 @@ export default {
           const h = await holdForMember(acct, attendees, { op: "invite", summary: title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}) }, input, meta);
           if (h.state === "sent") return { created: true, attendees, covered_by: h.by };
           const id = h.id;
-          return { held: id, message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
+          return { held: id, ...(h.error ? { error: h.error } : {}), message: `Held at your Gate: the invite "${title}" goes to ${attendees.join(", ")} from ${acct.mailbox} once you approve it in Vyre. Nothing was created yet.` };
         }
         const out = await g.eventCreate(acct, { title, start: String(input.start), end: String(input.end), time_zone: tz, ...(input.where ? { where: String(input.where).slice(0, 255) } : {}), ...(input.description ? { description: String(input.description).slice(0, 20_000) } : {}), attendees });
         ctx.events.emit("microsoft.sent", { account: acct.name, what: attendees.length ? "invite" : "event" });
