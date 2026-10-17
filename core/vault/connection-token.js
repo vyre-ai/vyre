@@ -54,7 +54,7 @@ export class ConnectionTokens {
     if (typeof K.authorize !== "function" || !K.space) return false;
     try {
       const r = await K.authorize({ chain, action: write ? "vault.call" : "vault.read", resource: connectionUrn(K.space, owner, name) });
-      return Boolean(r && r.effect === "allow");
+      return Boolean(r && (r.effect === "allow" || (write && r.effect === "ask" && r.reason === "needs_approval")));   // an outward act is the kernel's ask once every hop holds the grant; the Gate holds the send
     } catch { return false; }
   }
 

@@ -70,7 +70,9 @@ export class Access {
       }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
-      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
+      // Holding the connection at call is what is asked here, not whether the send goes out: the kernel answers an outward act with its ask once every hop holds the grant, and the Gate holds the send itself.
+      const r = await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) });
+      return r.effect === "allow" || (level === "call" && r.effect === "ask" && r.reason === "needs_approval");
     } catch { return false; }
   }
 

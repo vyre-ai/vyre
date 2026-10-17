@@ -116,8 +116,11 @@ test("only a login can be filled; the value never reaches the agent: not in the 
   await assert.rejects(agentFill({ vault: w.v, said: new SaidIntents(w.v), log: () => {}, call: async () => ({ data: {} }) }, { agent: "juno", item: "graph-api" }), e => /** @type {any} */ (e).code === "not_found");
   let seen = "";
   try { await w.fill("juno"); } catch (e) { seen = String(/** @type {Error} */ (e).message); }
-  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls });
-  const where = Object.entries({ seen, events: JSON.stringify(w.events), audit: JSON.stringify(w.db.prepare("SELECT * FROM vault_audit").all()), calls: JSON.stringify(w.calls) }).filter(([, x]) => x.includes(PASS)).map(([k]) => k);
+  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls.filter(c => c.name !== "computers.fill.begin") });
+  const where = Object.entries({ seen, events: JSON.stringify(w.events), audit: JSON.stringify(w.db.prepare("SELECT * FROM vault_audit").all()), calls: JSON.stringify(w.calls.filter(c => c.name !== "computers.fill.begin")) }).filter(([, x]) => x.includes(PASS)).map(([k]) => k);
   assert.ok(!all.includes(PASS), `the password is nowhere an agent or a log can read it (found in: ${where.join(", ")})`);
   assert.ok(!all.includes("alex@northwind.example"), "nor the username");
+  // The one place a value goes is the begin of the fill itself: the agent's own computer is handed the values to scrub from everything the agent's DevTools return (agent-fill.js, the fill window), and the call carries nothing else of the login.
+  const begin = w.calls.filter(c => c.name === "computers.fill.begin");
+  assert.equal(begin.length, 1); assert.deepEqual(Object.keys(begin[0].input).sort(), ["agent", "origin", "values"]);
 });
