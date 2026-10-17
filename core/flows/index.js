@@ -4,7 +4,6 @@
 // assistant) or the chain the daemon proved for a person's own surface. A call with neither gets the module's own service chain from the kernel, which is not a caller, and is refused. This module never
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
-import { COVERED } from "../../lib/covered.js";
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { serveMember, mayInspectFlow, hideFor, notYours, CALLS as MEMBER_CALLS } from "./member.js";
@@ -145,10 +144,7 @@ export default {
             // A chain whose first hop is not a person skips this: that is the host's own service and agent chains only. A member's MCP key chain always starts with the person.
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
-          // The person's yes to this very call: the registry sets the mark only on the call it just redeemed an approval card for (lib/covered.js), never from anything a client sends.
-          const covered = meta && meta[COVERED];
-          const approved = name === "flows.settle" && covered && covered.tool === "flows.settle";
-          return f.flows.tools[INNER(name)](chain, rest, approved ? { approved: true } : undefined);
+          return f.flows.tools[INNER(name)](chain, rest);
         },
       });
     }
