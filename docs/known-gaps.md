@@ -26,7 +26,7 @@ A list or a search of a type whose rows are private by project looks through up 
 
 ### An agent computer's workspace after its lease ends
 
-When an agent's computer lease ends, its workspace key is removed at once, but a process that still holds a file open can read that file until it exits. Normal sessions stop within a moment. A full fix that stops every holder before reporting the workspace locked comes in the next update.
+When the lease of a computer lent to a Space ends, the workspace key is removed at once, but a process that still holds a file open can read that file until it exits, and whoever uses that computer can read through it. Normal sessions stop within a moment. A full fix that stops every holder before reporting the workspace locked comes in the next update.
 
 ### A Viewer's AI cannot open the project folder
 
