@@ -37,7 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
-import { registerGroups } from "./groups.js"; import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
+import { registerGroups } from "./groups.js"; import { registerNames } from "./names.js"; import { sameWords, triesCounter, WORDS_REFUSED, TOO_MANY } from "../../lib/spaces/invite-words.js";
 import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch, isReleaseBuild } from "../../lib/release-build.js";
@@ -2499,18 +2499,7 @@ export default {
       return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
 
-    // The names a run can print about itself ({space.name}, {approver.name}, {me.name}): this Space's name and one person's Vyre name, read by the Space's own host alone, with no person on the call (the
-    // member list is for the person who asks; a Flow's run has only its approver). Never anything but a name; a name it does not know is null.
-    tool("spaces.names", "This Space's name and one person's Vyre name, for what a Flow run prints about itself: { space, person? } -> { space, person }. Only the Space's own host asks.",
-      obj({ space: str, person: str }, ["space"]), async (i, meta) => {
-        if (String((meta && meta.caller) || "") !== "module:vyred") throw refuse("only the Space's own host asks for these names", "denied"); // internal-word: the caller label, not shown text
-        const id = String(i.space || "").trim().toLowerCase(), row = spaces.get(id);
-        let st = null; try { st = identity.status(); } catch { st = null; }
-        const own = K && id === String(K.space) && st && st.exists && st.name ? String(st.name) : "";
-        const plain = (/** @type {any} */ n) => (typeof n === "string" && n.trim() ? n.trim().replace(/(\.vyre\.run)+$/, "") : null);
-        const person = i.person ? plain(await nameOf(String(i.person))) : null;
-        return { space: plain(row && row.name) || plain(own), person };
-      }, { internal: true });
+    registerNames({ tool, spaces, identity, K, nameOf, refuse, obj, str });
 
     tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. With no space it answers for this home's own Space once it holds the root key. The kernel reads this on every invite card.", obj({ space: str }), async i => {
       // The daemon asks with no space for this home's own Space: the one the kernel keeps here, once this module holds its root key (until then the card shows none).

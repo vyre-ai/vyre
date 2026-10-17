@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- refactor(spaces): the `spaces.names` tool (a Space's name and one person's Vyre name, for what a Flow run prints) moves to core/spaces/names.js, with the module's own helpers handed in, so core/spaces/index.js stays inside its file-size record. No behaviour change.
 - refactor(flows): the Flows runner's `simulate` (what a Flow would have done over a window of past events, 80 lines) moves to kernel/flows/simulate.js, and `slim` and `OUTWARD` to runner-util.js, so kernel/flows/runner.js is back under its file-size ceiling (2098 to 2029 lines). No behaviour change: the runner passes the same catalog, chains, event log, holidays, clock, zone rule and step walk.
 - fix(previews): a preview's own command runs under shell limits (no core files, files up to 1 GiB, 1,024 processes, 4,096 open files), set before the command and leaving it as written. Network egress is not limited yet: a dev server must serve on its loopback port, so it needs a wall that lets only that port through. core/previews/supervisor.js.
 - fix(flows): a linked record a Flow reads through a token is read under the lesser of the Flow's chain and the chain of whoever started the run (a manual start, or an event whose actor is a person, records `trigger.by` from the verified chain; schedules and web calls have none): a member cannot see through a Flow a record she could not open herself. kernel/flows/runner.js, core/daemon/flows-host.js (`ports.actorChain`).
