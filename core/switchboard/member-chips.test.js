@@ -60,10 +60,11 @@ test("the owner's own words in a chat are heard for asks, as before; a member's 
   for (const [memberTurn, expected] of [[false, 1], [true, 0]]) {
     const sb = rig([]);
     sb.deps.recordTags = async (/** @type {any[]} */ chips) => ({ chips, tags: [] });
-    let heardActs = 0;
-    sb.hearActs = async () => { heardActs++; };
+    /** @type {any[][]} */ const heard = [];
+    sb.hearActs = async (/** @type {any[]} */ ...a) => { heard.push(a); };
     await Switchboard.prototype.ingress.call(sb, "t1", "email Dana", "deck", "u1", [], [], "module:stream", null, { memberTurn, asker: memberTurn ? "per_bob" : "per_owner" });
-    assert.equal(heardActs, expected, memberTurn ? "a member's chat words record no ask" : "the owner's chat words are heard");
+    assert.equal(heard.length, expected, memberTurn ? "a member's chat words record no ask" : "the owner's chat words are heard");
+    if (!memberTurn) assert.equal(heard[0][5], "per_owner", "and the ask is recorded for the owner who said it, so no one else's turn rides it");
   }
 });
 

@@ -39,7 +39,7 @@ import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.j
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
-import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js";
+import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
@@ -2571,7 +2571,7 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
+    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project, turn && turn.asker);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
     const ownVault = turn && turn.memberTurn && turn.asker ? await memberVaultTags({ call: this.deps.call.bind(this.deps), asker: turn.asker, thread: id, said: uuid, chips, names: mentionsOf(text, pasted) }) : [];   // a member's own vault, never the owner's if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
@@ -2588,15 +2588,15 @@ export class Switchboard {
    * this thread's project and PR; each intent it returns is recorded as the person (vault.said.record). Doubt records
    * nothing. The thread's own PR is github.session.pr's answer, used only when it is exactly one. Pasted spans are taken
    * out first, so someone else's words never ask.
-   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project
+   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project @param {string|null} [asker] the chat turn's asker, kept with each ask this records
    */
-  async hearActs(id, text, uuid, pasted, project) {
+  async hearActs(id, text, uuid, pasted, project, asker = null) {
     // lib/said/hear.js decides what was asked from the person's own words and the facts it reads through `call`
     // (never a fresh watchers.card: the hash is the card as shown); this records what it returns.
     const turnsSince = at => Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_turns WHERE thread = ? AND at >= ?").get(id, at)).n) || 0;
     const intents = await heardActs({ text, pasted, project, thread: id, call: (tool, input) => this.deps.call(tool, input), turnsSince }).catch(() => []);
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, ...(asker ? { asker } : {}), kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
@@ -5059,7 +5059,7 @@ export default {
       },
     }); registerTranscriptTools(ctx, sb, str);
     registerRecallSessions(ctx, sb, str, optsOf);
-    ctx.tool("threads.origin", {
+    registerTurnAsker(ctx, sb); ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {
