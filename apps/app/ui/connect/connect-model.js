@@ -29,7 +29,7 @@ export function setupLine(app) {
 }
 
 /** @param {string} s */
-const norm = (s) => String(s || "").toLowerCase();
+const norm = (/** @type {string | undefined} */ s) => String(s || "").toLowerCase();
 
 /**
  * What the screen shows for a query and a chip. `count` is how many apps are connected (always across all of them, for the "N connected" at the top). `recommended` is up to three apps to start with, only
