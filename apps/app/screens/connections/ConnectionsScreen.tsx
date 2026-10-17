@@ -5,7 +5,7 @@ import { Tabs } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealAccess from "./RealAccess";
 import RealAnyApp from "./RealAnyApp";
-import RealCatalog from "./RealCatalog";
+import RealConnectApps from "./RealConnectApps";
 import RealConnected from "./RealConnected";
 import RealMcp from "./RealMcp";
 import RealMine from "./RealMine";
@@ -22,7 +22,7 @@ export default function ConnectionsScreen() {
       <Tabs<Tab> value={tab} onChange={setTab} items={[["all", "Connected"], ["add", "Add"], ["any", "Any app"], ["mcp", "MCP"], ["access", "Access"]]} />
       <View>
         {tab === "all" ? <><RealConnected open={setTab} /><RealSending /></> : null}
-        {tab === "add" ? <RealCatalog /> : null}
+        {tab === "add" ? <RealConnectApps /> : null}
         {tab === "any" ? <RealAnyApp /> : null}
         {tab === "mcp" ? <><RealMcp /><RealMine /></> : null}
         {tab === "access" ? <RealAccess /> : null}

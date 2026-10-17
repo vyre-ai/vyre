@@ -80,12 +80,13 @@ export function inputOf(sheet, values) {
 
 /**
  * What a share sheet needs from vault.access.get: the people and agents already shared with, at the library's levels. Teams are not offered in this sheet yet.
- * @param {any} got the answer of vault.access.get @returns {{ who: string, kind: "person" | "agent", level: string }[]}
+ * @param {any} got the answer of vault.access.get @param {{ uid?: string, name: string }[]} [agents] @returns {{ who: string, kind: "person" | "agent", level: string }[]}
  */
-export function sharesOf(got) {
+export function sharesOf(got, agents = []) {
+  const agentName = new Map(agents.filter((a) => a && a.uid).map((a) => [String(a.uid), String(a.name)]));
   const names = new Map((Array.isArray(got && got.people) ? got.people : []).map((/** @type {any} */ p) => [String(p.id), String(p.name || p.id)]));
   return (Array.isArray(got && got.access) ? got.access : []).filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent"))
-    .map((/** @type {any} */ a) => ({ who: a.kind === "person" ? names.get(String(a.subject)) || String(a.subject) : String(a.subject), subject: String(a.subject), kind: a.kind, level: levelFromKernel(String(a.level)) }));
+    .map((/** @type {any} */ a) => ({ who: a.kind === "person" ? names.get(String(a.subject)) || String(a.subject) : agentName.get(String(a.subject)) || String(a.subject), subject: String(a.subject), kind: a.kind, level: levelFromKernel(String(a.level)) }));
 }
 
 /** Who a share sheet may pick: the Space's people and its agents. @param {any} got @param {any[]} agents */

@@ -7,7 +7,7 @@ export const CATEGORIES = /** @type {const} */ ([["all", "All"], ["productivity"
 
 /** Catalog group or category words to a chip. */
 const CHIP_OF = /** @type {Record<string, string>} */ ({
-  work: "productivity", productivity: "productivity", docs: "productivity", calendar: "productivity", files: "productivity", ops: "productivity",
+  work: "productivity", google: "productivity", productivity: "productivity", docs: "productivity", calendar: "productivity", files: "productivity", ops: "productivity",
   mail: "communication", chat: "communication", communication: "communication", meetings: "communication", support: "communication",
   design: "design", dev: "code", code: "code",
   data: "data", finance: "data", crm: "data", search: "data", marketing: "data", analytics: "data",
