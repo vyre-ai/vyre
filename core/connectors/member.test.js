@@ -56,7 +56,7 @@ test("members list and see connected marks for their own connections only", { ti
   assert.deepEqual(await labels(await w.as("owner", "connectors.list")), ["notion"], "the owner's list does not show a member's");
   const marks = async (/** @type {any} */ r, /** @type {string} */ id) => ((r.data.presets.find((/** @type {any} */ p) => p.id === id) || {}).connected || []).map((/** @type {any} */ c) => c.label).sort();
   assert.deepEqual(await marks(await w.as("ben", "connectors.catalog"), "notion"), ["ben's"]);
-  assert.deepEqual(await marks(await w.as("cy", "connectors.catalog"), "notion"), ["cy's"]);
+  assert.deepEqual(await marks(await w.as("cy", "connectors.catalog"), "notion"), ["cy's", "cy's linear"], "(the seed records both of Cy's under the notion preset)");
   assert.deepEqual(await marks(await w.as("owner", "connectors.catalog"), "notion"), ["owner's"]);
 });
 
