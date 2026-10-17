@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(identity): the sign-in tools' refusals say what to do next (test/errors-teach.test.js): no door open, not this server's team, not found. not_found still says the same thing for a hidden and a missing item.
 - feat(identity): the sign-in service finds the usernames registered for a person id (`usernamesOf`), so each person, not only the owner, sees and signs out their own new-device sign-ins.
 - feat(identity): the sign-in service lists a person's live sessions (`sessionsOf`: device id, label, time; never the secret) and signs a device out (`revokeDevice`), which also makes that device new again. The service is reachable to the identity module's own tools through `lib/login-door.js`.
 - feat(names): the directory keeps, per username, the space addresses a person belongs to. The identity adds and removes them with a signed act (`POST /v1/ids/spaces/add`, `/remove`); the list is not in the public record, and `POST /v1/ids/spaces {assertion}` returns it only for the person a relay GitHub assertion (audience `names`) names. The relay's assertion now carries the linked Vyre name. The directory verifies the assertion against the pinned relay key (`RELAY_ASSERT_KEY`, `lib/relay-keys.js`).
