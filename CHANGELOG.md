@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- test(app): the positive path of Create a space in a page with no daemon, with a real relay, a real names directory, a real server (a vyred started with the line's one-time code), the real setup channel and pairing and the real directory claim: `onboard.space.poll` says online only after a really paired server, and the directory then holds the space's name (`host-pairing-real.test.js`). A stall shows as the stage the poll stops at.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).
