@@ -180,8 +180,13 @@ test("a merge needs the team of every project either row links to, in both direc
 });
 
 test("a built-in private type pages the same way: a cursor only when a readable row follows", async () => {
-  const { R, owner, dev, rivera, person } = await rig();
-  for (let i = 0; i < 6; i++) await R.create(owner, "team-member", { name: `Seat ${i}`, actor: person(BOB), kind: "person", project: { urn: rivera.urn } });
+  const { R, owner, dev, rivera, other, person } = await rig();
+  // BOB's six seats on Rivera, with seats on a project he is not on before, between and after them
+  const mine = [], theirs = [];
+  const foreign = async (/** @type {number} */ n) => { for (let i = 0; i < n; i++) theirs.push((await R.create(owner, "team-member", { name: `Other ${theirs.length}`, actor: person(DAN), kind: "person", project: { urn: other.urn } })).id); };
+  await foreign(2);
+  for (let i = 0; i < 6; i++) { mine.push((await R.create(owner, "team-member", { name: `Seat ${i}`, actor: person(BOB), kind: "person", project: { urn: rivera.urn } })).id); if (i === 1 || i === 3) await foreign(1); }
+  await foreign(2);
   const first = await R.query(dev(EVE), "team-member", { page: { limit: 1 } });
   assert.equal(first.rows.length, 0, "EVE is on no team: she reads none of the seats");
   assert.equal(first.next_cursor, undefined, "and is given no cursor");
@@ -191,4 +196,19 @@ test("a built-in private type pages the same way: a cursor only when a readable 
   assert.equal(some.rows.length, 2, "the team reads its own seats");
   assert.ok(some.next_cursor, "and pages on");
   assert.equal((await R.query(owner, "team-member", { page: { limit: 50 } })).rows.length >= 6, true);
+  // the whole read in one page, and then one row at a time: the pages together are exactly the same rows in the same order, with none of the other project's seats and none twice
+  const all = (await R.query(dev(BOB), "team-member", { page: { limit: 50 } })).rows.map((/** @type {any} */ r) => r.id);
+  for (const id of theirs) assert.ok(!all.includes(id), "none of the project BOB is not on");
+  for (const id of mine) assert.ok(all.includes(id), "every seat of his own project");
+  const seen = [];
+  let cur = undefined;
+  for (let i = 0; i < 30; i++) {
+    const one = await R.query(dev(BOB), "team-member", { page: { limit: 1, ...(cur ? { cursor: cur } : {}) } });
+    assert.ok(one.rows.length <= 1);
+    for (const r of one.rows) seen.push(r.id);
+    if (!one.next_cursor) break;
+    cur = one.next_cursor;
+  }
+  assert.deepEqual(seen, all, "one page at a time is the limit-50 read: in order, exactly his seats");
+  assert.equal(new Set(seen).size, seen.length, "no row twice");
 });
