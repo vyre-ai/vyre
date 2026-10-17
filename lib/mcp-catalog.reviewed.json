@@ -36,7 +36,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.linear.app/register named; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "linear.app"
   },
   {
    "id": "notion",
@@ -67,7 +68,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.notion.com/register; not called. First resource-metadata read returned a garbled issuer, so the AS document was read directly"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "notion.com"
   },
   {
    "id": "stripe",
@@ -98,7 +100,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://access.stripe.com/mcp/oauth2/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "stripe.com"
   },
   {
    "id": "calendly",
@@ -129,7 +132,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://calendly.com/oauth/register; not called"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "calendly.com"
   },
   {
    "id": "gohighlevel",
@@ -162,7 +166,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://services.leadconnectorhq.com/mcp/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "leadconnectorhq.com"
   },
   {
    "id": "canva",
@@ -189,7 +194,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.canva.com/register; not called"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "canva.com"
   },
   {
    "id": "sentry",
@@ -216,7 +222,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.sentry.dev/oauth/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "sentry.dev"
   },
   {
    "id": "meta-ads",
@@ -243,7 +250,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.facebook.com/.well-known/register/ads; not called"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "facebook.com"
   },
   {
    "id": "figma",
@@ -274,7 +282,8 @@
     "checked": "2026-10-17",
     "reason": "registration advertised, but it issues a client secret only, and the vendor limits apps to its catalog"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "figma.com"
   },
   {
    "id": "asana",
@@ -305,7 +314,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.asana.com/register; not called. Runtime conflict: the host failed DCR this session"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "asana.com"
   },
   {
    "id": "atlassian",
@@ -336,7 +346,8 @@
     "checked": "2026-10-17",
     "reason": "no registration endpoint: a client id must come from Atlassian"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "atlassian.com"
   },
   {
    "id": "hubspot",
@@ -369,7 +380,8 @@
     "checked": "2026-10-17",
     "reason": "no registration endpoint; the client is the person's own HubSpot app"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "hubspot.com"
   },
   {
    "id": "slack",
@@ -400,7 +412,8 @@
     "checked": "2026-10-17",
     "reason": "no registration endpoint; Vyre would need its own Slack app"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "slack.com"
   },
   {
    "id": "google-gmail",
@@ -431,7 +444,8 @@
     "checked": "2026-10-17",
     "reason": "no registration endpoint; the person's own Google Cloud client, and the Workspace Developer Preview Program"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "google.com"
   },
   {
    "id": "box",
@@ -462,7 +476,8 @@
     "checked": "2026-10-17",
     "reason": "an admin registers the client in the Admin Console"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "box.com"
   },
   {
    "id": "dropbox",
@@ -489,7 +504,8 @@
     "checked": "2026-10-17",
     "reason": "rate limited (429) on both discovery documents; retry in the weekly run"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "dropbox.com"
   },
   {
    "id": "microsoft-learn",
@@ -516,7 +532,8 @@
     "checked": "2026-10-17",
     "reason": "no authentication required"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "microsoft.com"
   },
   {
    "id": "egnyte",
@@ -547,7 +564,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp-oauth.egnyte.com/clients; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "egnyte.com"
   },
   {
    "id": "docusign",
@@ -574,7 +592,8 @@
     "checked": "2026-10-17",
     "reason": "no registration endpoint; a client id must come from DocuSign"
    },
-   "verdict": "blocked"
+   "verdict": "blocked",
+   "domain": "docusign.com"
   },
   {
    "id": "monday",
@@ -605,7 +624,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://auth.monday.com/oauth_ms/oauth/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "monday.com"
   },
   {
    "id": "clickup",
@@ -636,7 +656,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.clickup.com/oauth/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "clickup.com"
   },
   {
    "id": "airtable",
@@ -667,7 +688,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://airtable.com/oauth2/v1/register; not called"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "airtable.com"
   },
   {
    "id": "intercom",
@@ -698,7 +720,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.intercom.com/register; not called"
    },
-   "verdict": "conditional"
+   "verdict": "conditional",
+   "domain": "intercom.com"
   },
   {
    "id": "miro",
@@ -729,7 +752,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.miro.com/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "miro.com"
   },
   {
    "id": "klaviyo",
@@ -760,7 +784,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.klaviyo.com/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "klaviyo.com"
   },
   {
    "id": "square",
@@ -791,7 +816,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.squareup.com/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "squareup.com"
   },
   {
    "id": "cloudflare",
@@ -822,7 +848,8 @@
     "checked": "2026-10-17",
     "reason": "registration endpoint https://mcp.cloudflare.com/register; not called"
    },
-   "verdict": "one-click"
+   "verdict": "one-click",
+   "domain": "cloudflare.com"
   }
  ]
 }
