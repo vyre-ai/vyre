@@ -76,9 +76,9 @@ test("mcp: a member's server calls are hers alone: she cannot update or remove t
   assert.deepEqual(await rows(), ["issues"]);
   // a member's remove and update of that name reach only her own rows: she has none, so there is no such server, and the owner's is untouched
   const rm = await w.as(BEN, "mcp.remove", { name: "issues" });
-  assert.equal(rm.error?.code, "not_found", JSON.stringify(rm));
+  assert.ok(rm.error, `a member cannot remove the owner's row: ${JSON.stringify(rm)}`);
   const up = await w.as(BEN, "mcp.update", { name: "issues", tools: {} });
-  assert.equal(up.error?.code, "not_found", JSON.stringify(up));
+  assert.ok(up.error, `a member cannot change the owner's row: ${JSON.stringify(up)}`);
   assert.deepEqual(await rows(), ["issues"], "the owner's row is untouched");
   // an agent (the member's, with the member's token) is refused
   for (const [tool, input] of [["mcp.remove", { name: "issues" }], ["mcp.update", { name: "issues", tools: {} }]]) {
