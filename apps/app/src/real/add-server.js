@@ -183,7 +183,19 @@ export function createAddServer(o) {
       const me = await o.identity();
       // The memory is a courtesy for the screen: a server that does not say it simply gets no note.
       try { const info = await chan.call("system.info"); const mb = Number(info && info.memoryMb); const fv = filevaultNote(info && info.filevault); if (mine === run && ((Number.isFinite(mb) && mb > 0) || fv)) set({ ...(Number.isFinite(mb) && mb > 0 ? { memoryMb: mb } : {}), note: joinNotes(Number.isFinite(mb) && mb > 0 ? memoryNote(state.choice, mb) : null, fv) }); } catch { /* no note */ }
-      const offer = await chan.call("wink.server.setup-offer", { identity: me.id });
+      // The server asks the names directory to confirm this identity's key before it makes the ticket. A directory that does not answer yet (a server that has just started, a brief outage) answers "unavailable":
+      // that is a wait, not a refusal, so ask again until the install line runs out. Any other refusal stops here.
+      let offer;
+      for (;;) {
+        try { offer = await chan.call("wink.server.setup-offer", { identity: me.id }); break; }
+        catch (e) {
+          const x = /** @type {any} */ (e);
+          const waiting = x && (x.code === "unavailable" || /could not confirm this key/i.test(String(x.message || "")));
+          if (!waiting || mine !== run || now() >= state.expiresAt) throw e;
+          await sleep(pollMs);
+          if (mine !== run) return;
+        }
+      }
       qr = String(offer && offer.qr || "");
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }
     try { chan.close(); } catch { /* gone */ }

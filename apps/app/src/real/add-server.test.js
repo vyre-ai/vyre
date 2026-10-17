@@ -166,3 +166,25 @@ test("a Mac server with FileVault on gets the plain warning on the card, joined 
   assert.equal(joinNotes(memoryNote("records", 2000), filevaultNote("on")).startsWith("This server has"), true);
   assert.match(joinNotes(memoryNote("records", 2000), filevaultNote("on")), /FileVault is on/);
 });
+
+test("add-server: a directory that cannot confirm the key yet is waited for, not given up on; any other refusal stops", async () => {
+  // The server's first answers are "unavailable" (its directory is not reachable yet), then the ticket.
+  let asked = 0;
+  const f = fakes({ after: 1 });
+  const connect = async () => { f.calls.connect++; return { call: async (/** @type {string} */ tool) => { f.calls.tools.push(tool); if (tool === "system.info") return { memoryMb: 7900 }; asked++; if (asked < 3) throw Object.assign(new Error("The directory could not confirm this key. Wait a minute and run the install line again."), { code: "unavailable" }); return { qr: "vyre://wink/2?t=" + "x".repeat(22) + "&r=wss%3A%2F%2Frelay.example", expires: 1 }; }, close: () => { f.calls.closed++; } }; };
+  const issued = { code: "B".repeat(199), secret: new Uint8Array(16), key: { privateKey: {}, spki: new Uint8Array(91) }, expiresAt: Date.now() + 30 * 60_000 };
+  const a = make({ ...f, connect }, { autoPair: true, issue: async () => issued });
+  await a.begin("records", "linux");
+  await until(() => a.state.stage === "done");
+  assert.equal(asked, 3, "asked again after each unavailable");
+  assert.equal(f.calls.paired.length, 1);
+
+  // A refusal that is not a wait (the server belongs to someone else) stops at once, and says the pairing did not finish.
+  const g = fakes({ after: 1 });
+  const refuse = async () => ({ call: async (/** @type {string} */ tool) => { if (tool === "system.info") return { memoryMb: 7900 }; throw Object.assign(new Error("This server already belongs to someone."), { code: "owned" }); }, close: () => {} });
+  const b = make({ ...g, connect: refuse }, { autoPair: true, issue: async () => issued });
+  await b.begin("records", "linux");
+  await until(() => b.state.stage === "stopped");
+  assert.equal(b.state.error && b.state.error.code, "pair");
+  assert.equal(g.calls.paired.length, 0);
+});
