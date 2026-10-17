@@ -282,6 +282,7 @@ export function createTasks(cfg) {
     if (c.role) return roleHolders(c.role).filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
     return [c].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent") && !same(a, t.doer));
   };
+  const requestedFor = (/** @type {any} */ chain) => { const h = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
   const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
@@ -391,6 +392,8 @@ export function createTasks(cfg) {
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
         ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
         state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }),
+        // the first PERSON on the verified chain, never anything the request names: a task an agent hands on keeps the person it began with (the woken agent works within that person's limits)
+        ...(requestedFor(chain) ? { requested_for: requestedFor(chain) } : {}),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
       });
