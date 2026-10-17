@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount, movesAccount } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -152,4 +152,19 @@ test("trustedLaunch: run_as and flow_origin come only from the agents module", a
   assert.deepEqual(trustedLaunch(i, mk("module:agents")), i);
   for (const c of ["module:planner", "module:stream"]) assert.deepEqual(trustedLaunch(i, mk(c)), { agent: "juno", for_person: "ana" });
   assert.deepEqual(trustedLaunch(i, { firstParty: false, caller: "mcp" }), { agent: "juno" });
+});
+
+test("a live session started for one member is never reused for another member's turn: the other asker is moved onto their own account (a fresh process), the account's own person goes on as before", async () => {
+  const world = { accounts: [{ id: "anas", provider: "claude", person: ANA }, { id: "bens", provider: "claude", person: BEN }], login: true };
+  const onBens = { provider: "claude", account: "bens", project: null, agent: null };
+  // Ana asks in a thread whose session runs on Ben's account: her turn is a one-turn hop onto HER account, never a send into Ben's process
+  assert.deepEqual(await askerOver(sb({ ...world, rec: onBens }), "t", { asker: ANA }), { provider: "claude", account: "anas", person: ANA });
+  // Ben asks in his own thread: nothing moves
+  assert.equal(await askerOver(sb({ ...world, rec: onBens }), "t", { asker: BEN }), null);
+  // the move is to a different account of the same provider, which loads no native session of the first: it starts fresh and is handed the conversation
+  assert.equal(movesAccount(onBens, "claude", { id: "anas" }), true);
+  assert.equal(movesAccount(onBens, "claude", { id: "bens" }), false);
+  // a member with no account of their own is refused (no reuse of Ben's), and a launch for Ana never names Ben's account by input
+  await refused(askerOver(sb({ accounts: [{ id: "bens", provider: "claude", person: BEN }], rec: onBens, login: true }), "t", { asker: ANA }));
+  await assert.rejects(memberAccount(sb(world), { provider: "claude", account: "bens", project: null, agent: null }, { kernelTurn: { chat: "c", asker: ANA }, account: "bens" }, "t"), (/** @type {any} */ e) => e.code === "account_unavailable");
 });
