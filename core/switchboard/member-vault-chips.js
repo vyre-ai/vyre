@@ -1,8 +1,7 @@
 // @ts-check
 // A member's vault chip and #Name on a chat turn resolve from THEIR OWN vault, never the owner's. The Switchboard asks the vault module (vault.me.mention.resolve), naming the asker the kernel has already
 // checked is in this chat; the vault reads only that person's own vault and answers a name, a kind and a note, never a value. An item that is not in their vault is plain text; a locked vault says so in words
-// (its own line, which the chat shows). A chip alone hands nothing to an agent. A chip that carries her yes (signed over { asker, id, thread, agent }, plus origin exactly when the chip names one) (the device-signed presence the composer took at the tag, an opaque string the Vault checks and
-// this file never reads) also asks the Vault to lend the item to the chat's agent for this turn (vault.me.mention.lend); the Vault refuses without a good yes, and then the chip stays a pill.
+// (its own line, which the chat shows). A chip alone hands nothing to an agent and nothing is lent: her items reach an agent only as the text #Vault.<Name>, which Vyre fills in where it leaves (DESIGN-vault-references.md).
 
 const MAX = 4;
 
@@ -23,32 +22,8 @@ export async function memberVaultTags({ call, asker, thread, said, chips, names,
     }
     const d = r.data && typeof r.data === "object" ? r.data : null;
     if (!d) continue;
-    const lent = await lendFor({ call, asker, thread, agent, id, chip: (Array.isArray(chips) ? chips : []).find(c => c && c.kind === "vault" && String(c.id) === id) });
     out.push({ kind: "vault", id, name: String(d.name || id), hint: d.kind ? String(d.kind) : null,   // the kind only: the vault's hint carries the start of the item's description, which can be a private note and has no place in the thread's text or events
-    hosts: [], note: lent.note || (typeof d.note === "string" && d.note ? d.note : null), outside: false });
+    hosts: [], note: (typeof d.note === "string" && d.note ? d.note : null), outside: false });
   }
   return out;
-}
-
-/**
- * The lend of her item to the chat's agent for this turn, asked only when the chip carries her yes and the turn has an agent that runs it (never named by the chat's text). Whatever the Vault answers is
- * the answer: a refusal leaves the chip a pill. The note says what the agent may do, and names the credential for vault.request when the Vault gave one; the value is never here.
- * @param {{ call: (tool: string, input: any) => Promise<any>, asker: string, thread: string, agent: string | null, id: string, chip: any }} o
- * @returns {Promise<{ note: string | null }>}
- */
-async function lendFor({ call, asker, thread, agent, id, chip }) {
-  const yes = chip && typeof chip.yes === "string" && chip.yes.length <= 4096 ? chip.yes : "";
-  // A login with several sites is tagged for one: the app signs the origin into her yes when the chip names it, and the Vault checks it with the rest. Passed on only as the chip has it; a mismatch is the Vault's refusal.
-  const origin = chip && typeof chip.origin === "string" && chip.origin.length <= 253 ? chip.origin : "";
-  if (!yes || !agent) return { note: null };
-  const r = await call("vault.me.mention.lend", { asker, id, thread, agent, yes, ...(origin ? { origin } : {}) }).catch(() => null);
-  // Four refusals get words and the chip stays a named pill: no site saved, several sites and none picked, her yes not checking, and a rule. Anything else is silent.
-  const code = r && r.error ? String(r.error.code) : "", msg = r && r.error ? String(r.error.message || "") : "";
-  if (code === "bad_input" && /^save the site on this login first/i.test(msg)) return { note: "The agent was not given this login: it has no saved site. Add the site to this login in your vault, then tag it again." };
-  if (code === "bad_input" && /^which site/i.test(msg)) return { note: "The agent was not given this login: it has several sites and none was picked. Pick one when you tag it, then tag it again." };
-  if (code === "presence_required") return { note: "The agent was not given this login: your yes did not check." };
-  if (code === "denied") return { note: "The agent was not given this login: not allowed." };
-  if (!r || r.error || !r.data || r.data.lent !== true) return { note: null };
-  const use = typeof r.data.use === "string" && /^[A-Za-z0-9._:-]{1,120}$/.test(r.data.use) ? r.data.use : "";
-  return { note: `${typeof r.data.note === "string" && r.data.note ? r.data.note : "The agent can use it for this turn and never sees it."}${use ? ` Pass credential "${use}" to vault.request.` : ""}` };
 }

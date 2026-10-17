@@ -48,54 +48,11 @@ test("the item's description never reaches the tag: only its name and kind do", 
   assert.equal(tag.hint, "login");
 });
 
-const lendRig = (/** @type {any[]} */ asked, /** @type {any} */ lendAnswer) => async (/** @type {string} */ tool, /** @type {any} */ input) => {
-  asked.push([tool, input]);
-  if (tool === "vault.me.mention.resolve") return { data: { name: input.id, kind: "login", hint: "login: a private note", note: "Only its name is shown in the chat, never the value." } };
-  return lendAnswer;
-};
-
-test("a chip with her yes and a turn agent asks the Vault to lend it for this turn; the Vault's answer decides, and the chip names the credential for vault.request", async () => {
+test("a vault chip, even one that still carries a yes, asks the Vault for nothing but its name: nothing is lent", async () => {
   const asked = /** @type {any[]} */ ([]);
-  const [tag] = await memberVaultTags({ call: lendRig(asked, { data: { lent: true, name: "clio", note: "The agent can use it for this turn and never sees it.", use: "lent-abc123" } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "signed-yes-opaque" }], names: [] });
-  const lend = asked.find(([tool]) => tool === "vault.me.mention.lend");
-  assert.deepEqual(lend[1], { asker: "per_bob", id: "clio", thread: "t1", agent: "kit", yes: "signed-yes-opaque" }, "her yes goes through untouched, with the turn's asker and the turn's own agent");
-  assert.ok(tag.note.includes('Pass credential "lent-abc123" to vault.request.'), tag.note);
-  assert.equal(JSON.stringify(tag).includes("private note"), false);
-});
-
-test("no yes, or no agent for the turn, asks for no lend; a refusal such as presence_required leaves the chip a pill", async () => {
-  const asked = /** @type {any[]} */ ([]);
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio" }], names: [] });
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: null, chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
-  assert.equal(asked.some(([tool]) => tool === "vault.me.mention.lend"), false);
-  const [tag] = await memberVaultTags({ call: lendRig([], { error: { code: "presence_required", message: "needs her yes" } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "bad" }], names: [] });
-  assert.equal(tag.note, "Only its name is shown in the chat, never the value.", "still only a named pill");
-});
-
-test("a #Name never lends: only a picked chip that carries her yes does", async () => {
-  const asked = /** @type {any[]} */ ([]);
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [], names: ["clio"] });
-  assert.equal(asked.some(([tool]) => tool === "vault.me.mention.lend"), false);
-});
-
-test("an origin the chip names is passed with her yes, and no origin means none is sent", async () => {
-  const asked = /** @type {any[]} */ ([]);
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y", origin: "https://app.clio.com" }], names: [] });
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
-  const lends = asked.filter(([tool]) => tool === "vault.me.mention.lend").map(([, i]) => Object.keys(i).sort());
-  assert.deepEqual(lends, [["agent", "asker", "id", "origin", "thread", "yes"], ["agent", "asker", "id", "thread", "yes"]]);
-});
-
-test("a login whose site the Vault cannot tell stays a pill that says why, and lends nothing", async () => {
-  const [tag] = await memberVaultTags({ call: lendRig([], { error: { code: "bad_input", message: "which site does the agent sign in to? this login has several saved: pick one when you tag it" } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
-  assert.match(tag.note, /several sites and none was picked/);
-  assert.equal(JSON.stringify(tag).includes("pick one when you tag it\""), false, "the Vault's own words are not echoed into the thread");
-});
-
-test("the other lend refusals each say one plain thing and keep the pill", async () => {
-  const note = async (error) => (await memberVaultTags({ call: lendRig([], { error }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] }))[0].note;
-  assert.match(await note({ code: "bad_input", message: "save the site on this login first" }), /no saved site/);
-  assert.match(await note({ code: "presence_required", message: "x" }), /your yes did not check/);
-  assert.match(await note({ code: "denied", message: "x" }), /not allowed/);
-  assert.equal(await note({ code: "boom", message: "x" }), null);
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { asked.push([tool, input]); return { data: { name: input.id, kind: "login", hint: "login: a private note", note: "Only its name is shown in the chat, never the value." } }; };
+  const [tag] = await memberVaultTags({ call, asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "signed", origin: "https://app.clio.com" }], names: ["clio"] });
+  assert.deepEqual([...new Set(asked.map(([tool]) => tool))], ["vault.me.mention.resolve"]);
+  assert.equal(tag.note, "Only its name is shown in the chat, never the value.");
+  assert.equal(JSON.stringify(asked).includes("signed"), false, "her yes is never read or passed on");
 });
