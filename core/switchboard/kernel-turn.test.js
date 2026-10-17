@@ -322,6 +322,15 @@ test("a member's chat turn with a record that is not there, or one from another 
   assert.deepEqual(mentioned, [], "plain words, never a tag");
 });
 
+test("a person's own turn that is not in a chat reaches ingress and finishes: ingress declares everything it uses", { timeout: 90_000 }, async t => {
+  const { d, events } = await chipChat(t);
+  const work2 = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work2, { recursive: true, force: true }));
+  const r = await d.registry.call("threads.start", { cwd: work2, prompt: "use #owner-secret please", surface: "deck" }, "cli");
+  assert.ok(r.data && !r.error, JSON.stringify(r));
+  await until(async () => (await events(r.data.id)).some(e => e.type === "thread.finished"), "the turn to finish", 60_000);
+});
+
 test("the owner's own chat turn tags a record too (chips resolve in a chat for the person who asked)", { timeout: 90_000 }, async t => {
   const { owner, rec, send } = await chipChat(t);
   const mentioned = await send(owner, [{ kind: "record", id: rec.urn }]);

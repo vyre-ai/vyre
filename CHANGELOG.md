@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(switchboard): `ingress()` declares `names` again (a member's turn has none; a person's own turn reads them from the text) and drops a member's non-record chips; a test starts a thread outside a chat so an undeclared name cannot slip through.
 - refactor: `record-tags.js` (and its test) moved from core/switchboard to lib, so the daemon's turn-record picks and the Switchboard share one pure helper and `core/daemon -> core/switchboard` gains no edge (boundaries test).
 - refactor(vault): the per-turn member lend is out of 0.6: `vault.me.mention.lend` and `.end`, `member-credential.js`, `mention-yes.js` and the `verifyYes` wiring, the lend sentence in `lib/one-yes.js`, the `lent-` branch in `request.js`, and their tests. `vault.me.mention.search` and `.resolve` stay. Connection loans are out too: `connection-share` lendTurn/endTurn, the loan check in `connection-token`, and `member-share`'s per-thread branch (`shareAs`/`endFor`), with their tests; matches acct6-refs. The job lease (`connection-lend.js`, `leaseTask`, task-lend) stays.
 - refactor(switchboard): vault references replace the turn lend. A member's vault chip asks the Vault for its name only; the lend call, the chip `yes`/`origin`, `lend-end.js` and its turn-end hooks, and the app's lend pin test are removed (DESIGN-vault-references.md). The turn-asker binding stays for asks and Drive grants.
