@@ -32,7 +32,8 @@ export function installEd25519Fallback(g) {
     if (!isEd(algo) || format !== "raw") return nativeImport(format, data, algo, ...rest);
     try {
       const key = await nativeImport(format, data, algo, ...rest);
-      try { rawOf.set(key, new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : data)); } catch { /* not keepable */ }
+      // A copy of the bytes, never a view of the caller's buffer: the caller may overwrite or reuse it after the import.
+      try { rawOf.set(key, data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)) : (() => { throw new Error("not bytes"); })()); } catch { /* not keepable */ }
       return key;
     }
     catch (e) {

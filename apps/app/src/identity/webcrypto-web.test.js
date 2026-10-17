@@ -106,3 +106,22 @@ test("a browser that imports an Ed25519 key but refuses to verify with it is ans
   assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("hello")), true);
   assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("hellO")), false);
 });
+
+test("the key bytes kept for a refused verify are a copy: the caller overwriting its buffer, as an ArrayBuffer or a typed array, changes nothing", async () => {
+  const real = crypto.webcrypto.subtle;
+  const refuse = () => Object.assign(new Error("Algorithm: Unrecognized name"), { name: "NotSupportedError" });
+  const g = { crypto: { subtle: {
+    importKey: async (f, data, algo, ...r) => (String(algo.name || algo).toUpperCase() === "ED25519" ? { opaque: true } : real.importKey(f, data, algo, ...r)),
+    verify: async (algo, ...r) => { if (String(algo.name || algo).toUpperCase() === "ED25519") throw refuse(); return real.verify(algo, ...r); },
+    digest: (...a) => real.digest(...a),
+  } } };
+  installEd25519Fallback(g);
+  const { pub, sig } = sign(Buffer.from("copy me"));
+  for (const make of [() => { const ab = new ArrayBuffer(32); new Uint8Array(ab).set(pub); return { ab, bytes: ab, wipe: () => new Uint8Array(ab).fill(0) }; }, () => { const u = new Uint8Array(40); u.set(pub, 4); const view = u.subarray(4, 36); return { ab: view, bytes: view, wipe: () => u.fill(0) }; }]) {
+    const m = make();
+    const key = await g.crypto.subtle.importKey("raw", m.bytes, { name: "Ed25519" }, false, ["verify"]);
+    m.wipe();
+    assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("copy me")), true, "the good signature still verifies after the caller's buffer was overwritten");
+    assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("copy mE")), false, "a tampered message still does not");
+  }
+});
