@@ -126,23 +126,68 @@ export async function stopDaemon(dir) {
   throw new Error(`vyred pid ${pid} would not die; not removing its home`);
 }
 
+/** The pids of the children of this test process, now. */
+const childrenNow = () => { try { return execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { return []; /* none, or no pgrep */ } };
+
 /**
- * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child of this test process still running (a fake session the
- * daemon started and did not wait for). It assumes the test file starts no child of its own that must outlive the daemon test: every child of this process is ended and counted as a leftover. It hides nothing: a daemon that would not stop, or a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
- * @param {any} t @param {{ stop: () => Promise<any> }} d
+ * Stop an in-process daemon at the end of a test so that a failing test cannot hold the file open: d.stop() within 20 s, then end every child that appeared under this test process AFTER this call
+ * (a fake session the daemon started and did not wait for) and say so. Children that already ran when the helper was called (a sealing process the daemon started with itself, a server the file made
+ * before) are not touched: the daemon's own stop owns those. A child the file starts later and means to keep passes in `keep` as a function of its pid. It hides nothing: a daemon that would not stop, or
+ * a child left behind, fails the test, with the pid. Use it as `stopDaemonBounded(t, d)` right after start().
+ * `before` is the set of children there were before the daemon started (startDaemonBounded passes it, so what start() itself launched is checked too).
+ * @param {any} t @param {{ stop: () => Promise<any> }} d @param {{ keep?: (pid: number) => boolean, before?: Set<number> }} [o]
  */
-export function stopDaemonBounded(t, d) {
+export function stopDaemonBounded(t, d, o = {}) {
+  const before = o.before || new Set(childrenNow());
   t.after(async () => {
     /** @type {any} */ let timer, failure = null; /** @type {number[]} */ let left = [];
     try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
     catch (e) { failure = e; }
     finally {
       clearTimeout(timer);
-      /** @type {number[]} */ let pids = [];
-      try { pids = execFileSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" }).split("\n").filter(Boolean).map(Number); } catch { /* none, or no pgrep */ }
+      const pids = childrenNow().filter(pid => !before.has(pid) && !(o.keep && o.keep(pid)));
       for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
       left = pids;
     }
+    if (failure) throw failure;
+    if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
+  });
+}
+
+/**
+ * Start a daemon for a test (core/daemon start, the same options) and register its bounded stop: the children that exist BEFORE it starts are recorded first, so a sealing process or anything else
+ * start() launches is checked at the end too. Use it where a test would write `const d = await start(opts); t.after(() => d.stop());`.
+ * @param {any} t @param {any} opts @param {{ keep?: (pid: number) => boolean }} [o]
+ */
+export async function startDaemonBounded(t, opts, o = {}) {
+  const before = new Set(childrenNow());
+  const { start } = await import("../core/daemon/index.js");
+  const d = await start(opts);
+  stopDaemonBounded(t, d, { ...o, before });
+  return d;
+}
+
+/**
+ * One teardown for several daemons started in the same test (each with its own home). Several
+ * `startDaemonBounded` hooks in one test blame later daemons' children on an earlier stop; this
+ * stops every daemon in reverse start order and checks children once against the snapshot taken here.
+ * @param {any} t @param {() => Array<{ stop: () => Promise<any> }>} daemons
+ */
+export function stopDaemonsBounded(t, daemons) {
+  const beforeAll = new Set(childrenNow());
+  t.after(async () => {
+    /** @type {any} */ let failure = null;
+    for (const d of [...daemons()].reverse()) {
+      /** @type {any} */ let timer;
+      try { await Promise.race([d.stop(), new Promise((_, no) => { timer = setTimeout(() => no(new Error("the daemon did not stop in 20 s")), 20_000); })]); }
+      catch (e) { failure = e; }
+      finally { clearTimeout(timer); }
+      if (failure) break;
+    }
+    /** @type {number[]} */ let left = [];
+    const pids = childrenNow().filter(pid => !beforeAll.has(pid));
+    for (const pid of pids) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    left = pids;
     if (failure) throw failure;
     if (left.length) throw new Error(`the daemon stopped but left ${left.length} child process(es) running (pid ${left.join(", ")}), ended now`);
   });
@@ -311,4 +356,25 @@ export async function offerUrl(d, caller = "cli", meta = { proof: { method: "pas
   const status = (await d.registry.call("relay.status", {}, caller, meta)).data;
   const r = await resolveTicket(fromBase64url(minted.data.ticket), { relay: status.url, crypto: nodeCrypto() });
   return pairUrl({ relay: r.offer.relay, route: r.offer.route, box: Buffer.from(r.offer.box), secret: r.offer.secret, name: r.name });
+}
+
+/**
+ * A real mail connection for a test that runs a whole vyred: a fake IMAP and SMTP server (core/mail/testing/fake-imap.js), the connection made through the Vault the way a person makes it, and its use opened
+ * to agents. `cli(tool, input)` is the owner's call. Returns { mailbox, item, id }: the fake server (`mailbox.sent` lists what reached it), the vault item and the mail account id the `mail:<id>` sender is
+ * named by. Used by core/gate/standing-mail.test.js; core/appmods/docuseal-live.test.js builds the same by hand.
+ * @param {import("node:test").TestContext} t @param {(tool: string, input?: any) => Promise<any>} cli
+ */
+export async function mailFixture(t, cli, { user = "alex@harlow.example", password = "hunter2-hunter2" } = {}) {
+  const { startFakeMail } = await import("../core/mail/testing/fake-imap.js");
+  const mailbox = await startFakeMail(t, { user, password });
+  const fields = (/** @type {string} */ security) => ({ imap_host: "127.0.0.1", imap_port: String(mailbox.imap.port), smtp_host: "127.0.0.1", smtp_port: String(mailbox.smtp.port), username: user, password, from: user, security });
+  const conn = await cli("vault.connect", { module: "mail", need: "imap", label: "alex", fields: fields("tls") });
+  if (!conn.data || !conn.data.item) throw new Error(`the mail connection was not made: ${JSON.stringify(conn.error || conn)}`);
+  await cli("vault.put", { name: conn.data.item, kind: "env-set", fields: fields("none") });
+  const accounts = await cli("mail.accounts", {});
+  const rows = accounts.data && (Array.isArray(accounts.data) ? accounts.data : accounts.data.accounts) || [];
+  const id = String((rows[0] && (rows[0].id || rows[0].account)) || conn.data.id || "");
+  if (!id) throw new Error(`no mail account id: ${JSON.stringify(accounts)}`);
+  await cli("vault.connections.grant", { id, surface: "agents" });
+  return { mailbox, item: String(conn.data.item), id };
 }

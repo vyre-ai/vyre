@@ -112,6 +112,26 @@ export const fromStuckTasks = rows => rows.map(t => ({ id: `tasks:${t.task}`, ki
  * vault.health.summary (R031-80s): the vault's Watchtower findings as ONE calm row, never a row per item: how many need to be rotated and how many to be fixed, counts only. Dismissing it is vault.health.dismiss;
  * the row opens the Vault, where each item is named.
  */
+/** A space vault rotation that failed when a member left. The retry is automatic. The card names the space and the title, never a key. */
+export const fromSpaceVault = (/** @type {any} */ d) => (d && Array.isArray(d.items) ? d.items : []).filter(r => r && r.space && r.title).map(r => ({
+  id: `space-vault:${clean(r.space, 80)}`, kind: "task", title: clean(r.title) || "A space vault key still needs to rotate",
+  detail: "Vyre will try again on its own.", at: at(r.at), source: "space-vault",
+  answer: { tool: "vault.space.status", input: { space: String(r.space) }, fill: /** @type {string[]} */ ([]) },
+}));
+
+/**
+ * identity.signins.pending: a device that signed in to this space and that the person has not yet said was them. One `signin` card each, named by the device's own label and the time it signed in (the card's `at`).
+ * The answer signs that device out (identity.signin.revoke, the person's own act through the kernel); "It was me" only acknowledges it. The device id is the client's own stable id, never a session or a secret, and
+ * a label shaped like a credential is dropped whole. Quiet: the push for a new device is core/push's own notice (signin.new-device), so this row adds no second one, and a home whose identity module lacks the tool is not named as unreadable.
+ * @param {any} d the tool's answer: the list, or { devices }
+ */
+export const fromNewDevices = d => (Array.isArray(d) ? d : d && Array.isArray(d.devices) ? d.devices : []).filter((/** @type {any} */ r) => r && /^[A-Za-z0-9_-]{8,64}$/.test(String(r.device))).map((/** @type {any} */ r) => {
+  const device = String(r.device), name = clean(r.label, 60) || "a new device";
+  const revoke = { tool: "identity.signin.revoke", input: { device }, fill: /** @type {string[]} */ ([]) };
+  return { id: `signins:${device}`, kind: "signin", title: `Signed in on ${name}`, at: at(r.at), source: "signins", answer: revoke,
+    answers: [{ label: "Not me, sign it out", ...revoke }, { label: "It was me", tool: "identity.signin.ack", input: { device }, fill: /** @type {string[]} */ ([]) }] };
+});
+
 export const fromHealth = (/** @type {any} */ h) => {
   const total = h && Number.isFinite(h.total) ? Number(h.total) : 0;
   if (!total) return [];
@@ -185,6 +205,9 @@ export const OWNERS = [
   { name: "publish-jobs", tool: "publish.job.attention", map: d => fromJobs(d && Array.isArray(d.jobs) ? d.jobs : []), quiet: true, watch: [
     ["deployment.*", (t, p) => (t === "deployment.job-ran" && p && p.deployment ? [`publish:${p.deployment}`, p.ok ? "ran again" : "failed"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
+  { name: "space-vault", tool: "vault.space.attention", map: fromSpaceVault, quiet: true, watch: [] },
+  { name: "signins", tool: "identity.signins.pending", map: fromNewDevices, quiet: true, watch: [
+    ["signin.*", (t, p) => (p && p.device && t === "signin.revoked" ? [`signins:${p.device}`, "signed out"] : p && p.device && t === "signin.acknowledged" ? [`signins:${p.device}`, "it was you"] : null)]] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [

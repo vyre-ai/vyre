@@ -1,6 +1,13 @@
 // @ts-check
 // The pure half of the live screen cards: the one word for a run's state, the step track, and the sign-in card's words. Node tests it; OperatorCard.tsx and SigninCard.tsx draw them.
 
+import { itemLabel } from "./secure-paste.js";
+
+/** Vault item name on cards: hidden in a shared chat so others cannot see what is in the Vault. @param {string} name @param {{ shared?: boolean }} [o] */
+export function vaultItemLabel(name, { shared = false } = {}) {
+  return shared ? "Vault item" : itemLabel(name);
+}
+
 /** @param {string} state */
 export const runWord = (state) => ({ working: "Working", done: "Done", stuck: "Needs you", paused: "Paused" }[state] ?? "Working");
 

@@ -58,6 +58,24 @@ export const ALIASES = {
     // at once (memory.remember), as /vyre remember does. An agent, or anyone naming a project, writes to that project's memory.
     route: { when: (a, env) => !env.VYRE_AGENT && !a.project, tool: "memory.remember", map: a => ({ text: String(a.text || "") }) },
   },
+  skills_browse: {
+    tool: "skills.browse",
+    description: "Skills and plugins in the library (same browse path as the app): what you may use, drafts, harness targets, and role caps.",
+    input: { type: "object", properties: { level: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+    map: (a) => Object.fromEntries(["level", "limit"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
+  },
+  skills_list: {
+    tool: "skills.browse",
+    description: "The skills you may use in the library (browse view; same path as skills_browse).",
+    input: { type: "object", properties: { level: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+    map: (a) => Object.fromEntries(["level", "limit"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
+  },
+  skills_decline: {
+    tool: "skills.decline",
+    description: "Turn down a draft skill or plugin version waiting for approval.",
+    input: { type: "object", required: ["name", "level", "version"], properties: { name: { type: "string" }, level: { type: "string" }, scope: { type: "string" }, version: { type: "integer", minimum: 1 } } },
+    map: (a) => Object.fromEntries(["name", "level", "scope", "version"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
+  },
   memory_correct: {
     tool: "memory.heard",
     description: "Pass on a correction the person just made in this chat. Needs action and from_turn, the person's own turn (seq) that says it.",
@@ -70,4 +88,4 @@ export const ALIASES = {
 /** The vyred tool an alias or raw name stands for, when it is one of the five. @param {string} name */
 export const aliasFor = name => ALIASES[name];
 /** The vyred tools the aliases replace, so the raw twin is not offered beside them. */
-export const REPLACED = new Set(Object.values(ALIASES).map(a => a.tool));
+export const REPLACED = new Set([...Object.values(ALIASES).map((a) => a.tool), "skills.list"]);

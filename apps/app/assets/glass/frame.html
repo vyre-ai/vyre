@@ -14297,7 +14297,77 @@ function drop() {
   }
   host.replaceChildren();
 }
+function connectScreencast(m) {
+  drop();
+  snap.hidden = true;
+  code = 0;
+  reason = "";
+  let ws;
+  try {
+    ws = new WebSocket(String(m.url));
+  } catch (e2) {
+    post({ t: "down", code: 0, reason: String(e2 && e2.message || e2), clean: false, start: true });
+    return;
+  }
+  const c2 = document.createElement("canvas");
+  c2.style.width = "100%";
+  c2.style.height = "100%";
+  c2.style.display = "block";
+  host.replaceChildren(c2);
+  canvas = c2;
+  const ctx = c2.getContext("2d");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => post({ t: "live" });
+  ws.onclose = (e2) => {
+    post({ t: "down", code: e2.code, reason: e2.reason || "", clean: e2.wasClean });
+  };
+  ws.onerror = () => post({ t: "down", code: 0, reason: "the stream failed", clean: false });
+  ws.onmessage = (ev) => {
+    let text = "";
+    if (typeof ev.data === "string") text = ev.data;
+    else if (ev.data instanceof ArrayBuffer) text = new TextDecoder().decode(ev.data);
+    let msg;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (msg.t === "live" && msg.width && msg.height) {
+      c2.width = msg.width;
+      c2.height = msg.height;
+      post({ t: "live" });
+      return;
+    }
+    if (msg.t !== "frame" || !msg.data || !ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      if (canvas === c2) {
+        c2.width = img.width;
+        c2.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        keepFrame();
+      }
+    };
+    img.src = `data:image/jpeg;base64,${msg.data}`;
+  };
+  window.__vyreScreencastSend = (obj) => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  };
+  rfb = { viewOnly: true, disconnect: () => {
+    try {
+      ws.close();
+    } catch {
+    }
+  }, focus: () => {
+  } };
+  holding = false;
+  applyHolding();
+}
 function connect(m) {
+  if (String(m.url || "").includes("browser-glass")) {
+    connectScreencast(m);
+    return;
+  }
   drop();
   snap.hidden = snap.hidden && true;
   code = 0;

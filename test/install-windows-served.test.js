@@ -28,4 +28,10 @@ test("install-windows.ps1: points at a real release, checks the installer agains
   assert.match(ps, /SHA256SUMS must list VyreSetup\.exe exactly once/);
   assert.match(ps, /does NOT check SHA256SUMS\.sig/);
   assert.ok(!/VyreSetup\.msi/.test(ps), "no link to an installer that does not exist");
+  const clear = ps.indexOf("Remove-Item Env:\\VYRE_CODE");
+  const start = ps.indexOf("Start-Process -FilePath $app");
+  assert.ok(clear >= 0 && start > clear, "VYRE_CODE is cleared before the app starts");
+  assert.equal(/\$env:VYRE_SETUP_CODE\s*=/.test(ps), false, "this installer does not arm the server boot");
+  assert.equal(ps.includes("ArgumentList $code"), false);
+  assert.ok(!/Set-Content|Out-File|Add-Content/.test(ps), "the setup code is not written to a file");
 });

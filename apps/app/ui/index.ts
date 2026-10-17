@@ -29,6 +29,8 @@ export { Banner } from "./components/Banner";
 export { Field } from "./components/Field";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
+export { FormFields } from "./components/FormFields";
+export { blank as blankForm, missing as missingForm, submission as formSubmission, isQuestions } from "./components/form-fields-model.js";
 export { Segmented } from "./components/Segmented";
 export { RolePicker } from "./components/RolePicker";
 export type { RoleChoice } from "./components/RolePicker";
@@ -115,13 +117,19 @@ export type { StackGap } from "./components/Stack";
 export { FlowStep } from "./components/FlowStep";
 export { CodeField } from "./components/CodeField";
 export { CodeDisplay } from "./components/CodeDisplay";
-export { MatchWords } from "./components/MatchWords";
 export { PasswordField } from "./components/PasswordField";
 export { ProviderRow } from "./components/ProviderRow";
 export type { ProviderState } from "./components/ProviderRow";
 export { ChoiceList } from "./components/ChoiceList";
 export type { Choice } from "./components/ChoiceList";
 export { passwordStrength } from "./lib/strength.js";
+export { ChoiceHero } from "./components/ChoiceHero";
+export { RecoveryKeySheet } from "./components/RecoveryKeySheet";
+export { InviteShare } from "./components/InviteShare";
+export { ServerUrlField } from "./components/ServerUrlField";
+export { PasswordStrength } from "./components/PasswordStrength";
+export { ProviderSignInButton } from "./components/ProviderSignInButton";
+export { NeedsYouCard, publicFacts } from "./components/NeedsYouCard";
 export { formatCode, codeComplete } from "./lib/code.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
@@ -178,3 +186,8 @@ export type { DocOverlayProps } from "./files/DocOverlay";
 export type { AssistProps } from "./files/MarkdownDoc";
 export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
+export {
+  SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
+  FEATURED_SLASHES, NATIVE_SLASHES,
+} from "./chat";
+export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps } from "./chat";

@@ -21,7 +21,7 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
  * @typedef {object} CreateSpec
  * @property {string} agent
  * @property {string} image
- * @property {Record<string, string>} env      SCREEN and the egress PAC; never a secret (those go by seed)
+ * @property {Record<string, string>} env      SCREEN; never a secret (those go by seed)
  * @property {Record<string, string>} labels   `<prefix>.computer=<agent>` and `<prefix>.managed=true`
  * @property {string} [network]
  * @property {string} volume                   the agent's home volume, mounted at /home/agent
@@ -33,9 +33,7 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
 
 /**
  * @typedef {"running"|"paused"|"exited"|"missing"} ContainerState
- * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number, tailnet?: number }, exitCode?: number }} Inspection
- * ports.tailnet: where the computer's tailnet side answers, apart from computerd; no driver names
- * one until the image runs that side as another user (core/computers/tailnet.js).
+ * @typedef {{ state: ContainerState, host: string|null, ports?: { vnc: number, helper: number }, exitCode?: number }} Inspection
  */
 
 /**

@@ -144,7 +144,7 @@ export default {
     const offered = new Set();
     const offer = async id => {
       if (offered.has(id)) return;
-      const r = await ctx.call("gate.offer", { name: `mail:${id}`, tool: "mail.release", kinds: ["send"], content: CONTENT });
+      const r = await ctx.call("gate.offer", { name: `mail:${id}`, tool: "mail.release", kinds: ["send"], content: CONTENT, recipients: "to" });
       if (r.error) throw fail(`the Gate did not take the mail:${id} sender: ${r.error.message}`, "failed");
       offered.add(id);
     };
@@ -281,7 +281,10 @@ export default {
     // ---- sends ----
 
     const mailInput = { to: emails, subject: str, body: { type: "string", description: "plain text" }, cc: emails, bcc: emails,
-      in_reply_to: { type: "string", description: "the Message-ID being answered, from mail.read" }, account, why: str, on_behalf: behalf };
+      in_reply_to: { type: "string", description: "the Message-ID being answered, from mail.read" }, account, why: str, on_behalf: behalf,
+      agent: { type: "string", description: "ignored; the session's agent is used, never a name in the input" },
+      by: { type: "string", description: "ignored; naming another agent does not borrow its standing permission" },
+      agent_name: { type: "string", description: "ignored; naming another agent does not borrow its standing permission" } };
 
     /** Hold one message at the Gate through the account's adapter. Nothing is sent here. */
     async function holdSend(acct, to, c, why, on) {
@@ -298,7 +301,8 @@ export default {
         held = r && r.held; via = `mcp:${acct.ref}`;
       } else {
         await offer(acct.id);
-        const r = await use("gate.request", { kind: "send", via: `mail:${acct.id}`, to, content: c, ...(why ? { why } : {}), ...on });
+        const req = { kind: "send", via: `mail:${acct.id}`, to, content: c, ...(why ? { why } : {}), ...on };
+        const r = await ctx.call("gate.request", req, { relay: true }).then(x => (x.error ? Promise.reject(Object.assign(new Error(x.error.message), { code: x.error.code })) : x.data));
         held = r.id; via = `mail:${acct.id}`;
       }
       if (!held) throw fail(`${via} did not hold this send, so nothing was sent`, "failed");
@@ -327,7 +331,8 @@ export default {
         const acct = pickFor(list, named(input.account));
         if (!(acct.capabilities || []).includes("send_mail")) throw fail(`${acct.label || acct.account} is not allowed to send; it reads only`, "denied");
         const { to, c } = contentOf(input);
-        return holdSend(acct, to, c, named(input.why), filing);
+        const on = { ...filing, ...(meta.agent ? { agent: String(meta.agent) } : {}), ...(meta.thread ? { thread: String(meta.thread) } : {}) };
+        return holdSend(acct, to, c, named(input.why), on);
       },
     });
 

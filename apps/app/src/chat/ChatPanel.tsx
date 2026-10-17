@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
+import { FileViewer, Avatar, Banner, Button, Chip, Divider, Icon, PanelCapabilityRows, Row, SectionLabel, Sheet, Switch, Text, markRef, showToast, useUiTheme } from "@vyre/ui";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
 import { Face } from "./Face";
@@ -42,6 +42,7 @@ export type ChatPanelProps = {
   /** A pinned assistant or Engineer chat is one chat: no fork. */
   noFork?: boolean;
   onForked?: (thread: string) => void; replyMode?: string | null; shared?: boolean; onOpenFiles?: () => void;
+  onMemory?: () => void; onExport?: () => void; onRoll?: () => void;
 };
 
 export function ChatPanel(p: ChatPanelProps) {
@@ -150,11 +151,17 @@ export function ChatPanel(p: ChatPanelProps) {
         {p.queued.map((q) => <Row key={q.queued} dense title={q.text || "A message"} end={<Button size="sm" label="Send now" disabled={busy} onPress={() => void run(() => chatTools.sendNow(p.thread, q.queued), undefined, "Sent now.")} />} />)}
       </> : null}
 
+      <PanelCapabilityRows
+        onMemory={p.onMemory}
+        onExport={p.onExport}
+        onRoll={p.onRoll}
+        onContext={() => p.onPage("context")}
+        onTasks={() => p.onPage("tasks")}
+        onTranscript={() => p.onPage("transcript")}
+        runningCount={running}
+      />
       <SectionLabel>Around it</SectionLabel>
       <Row dense lead={<Icon name="file" size={20} />} title="Files" sub="Made, received and shared with the project" chevron onPress={() => (p.onOpenFiles ? (p.onClose(), p.onOpenFiles()) : p.onPage("files"))} />
-      <Row dense lead={<Icon name="bolt" size={20} />} title="Running here" state={running == null ? undefined : running ? `${running} running` : "Nothing"} chevron onPress={() => p.onPage("tasks")} />
-      <Row dense lead={<Icon name="info" size={20} />} title="Context used" sub="What Vyre can see from this chat" chevron onPress={() => p.onPage("context")} />
-      <Row dense lead={<Icon name="history" size={20} />} title="Transcript and recall" chevron onPress={() => p.onPage("transcript")} />
       {p.noFork ? null : <ForkRows otherPlace={p.otherPlace} onFork={() => void run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
         onForkTo={(to) => void run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />}
       {p.projectSlug && p.session ? <Row dense lead={<Icon name="undo" size={20} />} title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => p.onPage("back")} /> : null}

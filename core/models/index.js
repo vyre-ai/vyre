@@ -19,7 +19,7 @@ const FIRST_LOOK_MS = 3 * 60_000;
 const MIN_ASK_MS = 60_000;
 const str = { type: "string" };
 /** Who may read the registry: the person's surfaces, a module (the approvals queue reads the proposals) and an assistant. Answering a proposal is a person's surface only. */
-const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const WHO = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 const PEOPLE = [...PERSON_SURFACES, "device"];
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const MIGRATIONS = [

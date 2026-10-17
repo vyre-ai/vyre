@@ -31,7 +31,7 @@ import { provider as catalog } from "./providers.js";
  */
 export const PROVIDER_SITES = Object.freeze({
   anthropic: ["console.anthropic.com", "platform.claude.com"], "claude-setup-token": ["console.anthropic.com", "platform.claude.com"], openai: ["platform.openai.com"],
-  github: ["github.com/settings"], slack: ["api.slack.com"], cloudflare: ["dash.cloudflare.com"], tailscale: ["login.tailscale.com"],
+  github: ["github.com/settings"], slack: ["api.slack.com"], cloudflare: ["dash.cloudflare.com"],
   deepgram: ["console.deepgram.com"], elevenlabs: ["elevenlabs.io/app"],
 });
 /** An entry is a host, or host/path-prefix: the key-issuing pages only, not the whole domain (a site's user content can print a key). @param {string} prov @param {string} host @param {string} [pathname] */
