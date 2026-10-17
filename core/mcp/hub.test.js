@@ -499,6 +499,7 @@ test("a person's connection reaches its server with an access token the Vault ha
   await none.hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
   await assert.rejects(none.hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" }), /no way to reach/);
   assert.ok(db);
+});
 
 // ---- description pinning: tool text a person reviewed is the tool text a model reads ----
 
