@@ -267,6 +267,8 @@
       "vault.copied",
       "vault.linked",
       "vault.unlinked",
+      "vault.member-shared",
+      "vault.member-unshared",
       "vault.member-added",
       "vault.member-role",
       "vault.shared-created",

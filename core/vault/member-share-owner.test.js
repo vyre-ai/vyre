@@ -59,7 +59,7 @@ test("a login a member shared with an agent cannot be seen or opened by the owne
     assert.ok(!(await as(who, "vault.me.shares", {})).data?.shares?.length, `${who} has no shares of their own to list (and Ben's are not theirs)`);
   }
   // the owner and the admin also cannot end Ben's share through his tools
-  for (const who of /** @type {const} */ (["owner", "ada"])) assert.ok((await as(who, "vault.me.unshare.agent", { item: LABEL })).error, `${who} cannot use the member's share tools`);
+  for (const who of /** @type {const} */ (["owner", "ada"])) { const r = await as(who, "vault.me.unshare.agent", { item: LABEL }); assert.ok(r.error || (r.data && r.data.ended === 0), `${who} cannot end the member's share: it ends only the caller's own copies, and they have none (${JSON.stringify(r).slice(0, 120)})`); }
   assert.ok(!JSON.stringify(seen).includes(PASS), "the password is in nothing any caller received");
   assert.deepEqual((await ok("ben", "vault.me.shares")).shares.map((/** @type {any} */ s) => s.ref), [ref], "and Ben's share is still there");
 });

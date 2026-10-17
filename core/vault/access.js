@@ -70,7 +70,8 @@ export class Access {
       }
       if (owner) return await new ConnectionTokens({ people: null, kernel: K }).allowed(String(owner), String(connection), level === "call", meta);
       const chain = await K.chain(meta);
-      return (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect === "allow";
+      const effect = (await K.authorize({ chain, action: level === "read" ? "vault.read" : "vault.call", resource: await this.urn(String(connection)) })).effect;
+      return effect === "allow" || (level === "call" && effect === "ask");   // a call that only waits for the Gate's yes is held, as in personMay
     } catch { return false; }
   }
 
@@ -237,7 +238,7 @@ export class Access {
     // the person who approved the task lends only what they hold themselves: a Connection they cannot use is refused, whatever the Kit names
     if (typeof approver !== "string" || !approver) throw Object.assign(new Error("a lease needs the person who approved the task: without one the agent runs on its own access"), { code: "denied" });
     const home = `vyre://${K.space}/vault/${await K.vault.personalVault()}`;
-    for (const c of connections) if (!(await K.vault.personMay(approver, "vault.call", `${home}/connection/${c}`))) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not one you may use, so it cannot be lent to this task: ask an owner to share it with you first`), { code: "denied" });
+    for (const c of connections) if (!(await K.vault.personMay(approver, "vault.call", `${home}/connection/${c}`, true))) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not one you may use, so it cannot be lent to this task: ask an owner to share it with you first`), { code: "denied" });
     const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
     if (thread !== undefined) await K.vault.takeBack({ source: `vault:lease:${String(task)}`, reason: "held to the job's thread" });
     const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}${thread !== undefined ? `:${thread}` : ""}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver), ...(thread !== undefined ? { sessions: [String(thread)] } : {}) })));
