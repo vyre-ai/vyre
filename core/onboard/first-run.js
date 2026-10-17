@@ -356,6 +356,21 @@ export function registerFirstRun(ctx, io) {
       if (adopted && sid && isPerson(meta && meta.caller)) {
         try { await personCall("vault.space.create", { space: sid }); }
         catch (e) { if (!e || e.code !== "exists") throw e; }
+        // The server's space gets its name in the names directory, so <name>.vyre.run answers a sign-in from another device. Once per install line; a refusal (a name taken) stops here with the way on.
+        if (!row.published) {
+          try {
+            // The server this install line paired, named by the pairing the line started: never the newest or the only one.
+            const server = status && typeof status.server === "string" && status.server ? status.server : "";
+            if (!server) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
+            await personCall("spaces.publish-server-space", { server, name: row.name });
+            row.published = true;
+          } catch (e) {
+            const x = /** @type {any} */ (e);
+            const code = String((x && x.code) || "claim");
+            const taken = code === "taken" || code === "name_taken";
+            return { id, online: false, expired: false, failed: true, code, canRename: false, kind: row.kind, expiresAt: row.expiresAt, message: taken ? "That name was taken a moment ago. Go back, pick another name and show a new command." : String((x && x.message) || "The space could not be named.").slice(0, 300) };
+          }
+        }
         rememberSpace(held, personId, { id: sid, name: row.name, role: "owner", server: null });
       }
       if (adopted) return { id, online: true, expired: false, kind: row.kind, expiresAt: row.expiresAt, ...(sid ? { space: sid } : {}) };

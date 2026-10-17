@@ -211,7 +211,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "spaces.identity.sync", "spaces.invites.accept", "spaces.invites.confirm", "spaces.invites.create", "spaces.invites.list", "spaces.invites.preview",
   "spaces.invites.redeem", "spaces.invites.revoke", "spaces.members.add", "spaces.members.add-agent", "spaces.members.computers", "spaces.members.extend",
   "spaces.members.remove", "spaces.members.set-role", "spaces.members.transfer", "spaces.move.plan", "spaces.moves.evidence", "spaces.moves.finish", "spaces.moves.receipt",
-  "spaces.moves.receive", "spaces.name-here", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
+  "spaces.moves.receive", "spaces.name-here", "spaces.publish-server-space", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
   "spaces.records.status", "spaces.resume", "spaces.retire-here", "spaces.roles.names", "spaces.server.install", "spaces.servers", "spaces.setup.claim",
   "spaces.setup.save", "spaces.status", "spaces.storage.delete", "spaces.storage.get", "spaces.storage.list", "spaces.storage.put", "spaces.storage.put-if",
   "spaces.storage.set-cap", "spaces.storage.usage", "spaces.time-zone.set", "spaces.upgrade.plan", "spaces.upgrade.receipt", "spaces.upgrade.run",

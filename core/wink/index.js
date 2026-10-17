@@ -243,6 +243,7 @@ export function createWink(inject = {}) {
     pairing.tools();
     const installPair = registerInstallPair({
       ctx, meta: pairing.meta, now, log: (m) => ctx.log(m),
+      serverOf: (id) => pairing.serverOf(id),
       askServer: async () => {
         const sid = pairing.homeServerId();
         if (!sid) return null;
