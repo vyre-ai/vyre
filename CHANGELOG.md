@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- refactor(kernel): the type-definition checks (kinds, roles, computed fields, names, shape) moved from `gateway/records.js` to `gateway/definition-checks.js`, outside the counted base; no behaviour change. The trusted base fell from 9842 to 9680 lines and the cap from 9842 to 9740.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
 - feat(app): operator card **Sign in privately** opens inline Glass with shielded take-over (`LiveScreen` private + autoTake).
