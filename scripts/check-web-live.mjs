@@ -9,6 +9,7 @@
 //   node scripts/check-web-live.mjs --app-out app-out [--url https://web.vyre.run] [--route /] [--browser] [--shot file.png]
 // The browser needs playwright resolvable from PW_FROM (a folder with it installed); the workflow installs it.
 
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -60,7 +61,7 @@ ok(page.r.headers.get("x-content-type-options") === "nosniff" && !page.r.headers
 if (a.includes("--browser")) {
   const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
   const { chromium } = require("playwright");
-  const browser = await chromium.launch({ ...(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : null) });
+  const browser = await chromium.launch({ ...(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : null), args: [...CHROME_SAFE] });
   const ctx = await browser.newContext({ viewport: { width: 430, height: 900 } });
   const p = await ctx.newPage();
   /** @type {string[]} */ const problems = [];

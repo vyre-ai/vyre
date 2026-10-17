@@ -39,7 +39,7 @@ const ALLOWED = new Map([
   // other runtimes
   ["apps/app/", BROWSER], ["web/", BROWSER], ["relay/app/", BROWSER], ["relay/client/", BROWSER + " (the device client; the Windows capsule ships it alone)"], ["modules/vault-extension/", BROWSER],
   ["local/hands-chrome-mac/", BROWSER + " (the extension) or " + HARNESS], ["core/resilience/web.js", BROWSER], ["core/appmods/browser-probe.cjs", BROWSER + " (a probe page)"],
-  ["names/worker/", WORKER], ["relay/worker/", WORKER], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
+  ["names/worker/", WORKER], ["relay/worker/", WORKER], ["relay/web/", WORKER + " (web.vyre.run: its `fetch(req, env)` is the Worker handler, not a call)"], ["packages/module-sdk/", "the module SDK and its test harness stay free of repo imports"],
   // test support
   [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS], ["core/runner/testing/", HARNESS], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
 ]);

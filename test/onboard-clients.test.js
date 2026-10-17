@@ -69,6 +69,8 @@ test("the onboard tools are the registry's, and first run is the only place that
   for (const root of roots) {
     for (const f of walk(root)) {
       if (/\.test\.(js|ts|tsx)$|mock|generated/.test(f)) continue;
+      // The page host answers the onboard tools itself when a page has no daemon, so it makes the same calls first run's tools make (core/onboard): it IS first run's implementation there.
+      if (path.relative(ROOT, f) === "apps/app/src/host/host-core.js") continue;
       if (!/\.(js|ts|tsx|mjs)$/.test(f)) continue;
       for (const name of clientCalls(f)) if (wrapped.has(name)) hits.push(`${path.relative(ROOT, f)}: ${name}`);
     }
