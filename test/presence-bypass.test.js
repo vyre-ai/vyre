@@ -163,6 +163,14 @@ test("bypass: a Bash tool call that tries it is denied by the floor, with vyred 
 
 test("bypass: the person's own routes still work, once each", async t => {
   const b = await box(t);
+  // A call with no person on it, even with a good signature, is refused and creates no held item: the held send stays held and nothing is sent. (With the kernel off there is no person to ask for.)
+  if (b.own["x-vyre-kernel-session"]) {
+    const bare = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: b.id }) });
+    assert.notEqual(bare.status, 200, "a person-less call does not approve: " + JSON.stringify(bare.body));
+    assert.equal(b.mail.got.length, 0, "and nothing was sent");
+    const still = await raw(b.socket, "/v1/tools/gate.held", {}, { "x-vyre-caller": "cli", ...b.own });
+    assert.ok((still.body.data || []).some((/** @type {any} */ i) => i.id === b.id), "and the held send is still held, still the owner's to answer");
+  }
   // The Capsule: a signed call.
   const header = b.signed("gate.approve", { id: b.id });
   const ok = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": header, ...b.own });
