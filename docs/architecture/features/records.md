@@ -49,7 +49,7 @@ The kernel keeps the rows and judges every read and write. The `records` module 
 - `kernel/core/fields.js` the `{{field:...}}` placeholder resolver.
 - `lib/sealed.js`, `lib/record-types.js`, `lib/record-cards.js` model view of sealed values, system types, context cards.
 - `records/` core types, language (`records/language`), Kits (`records/kits`), connectors, comms log.
-- `core/switchboard/record-tags.js` the `#` tag in the composer.
+- `lib/record-tags.js` the `#` tag in the composer.
 - `apps/app/screens/records/` Records screen, import sheet, views, export. `apps/app/screens/customize/` Objects and fields. `apps/app/ui/setup/fieldtokens.js` field tokens, and `apps/app/ui/flows/template.js` the list they come from.
 
 ## How agents use it

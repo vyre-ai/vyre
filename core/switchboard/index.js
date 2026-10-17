@@ -39,7 +39,7 @@ import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.j
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
-import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
+import { recordTags } from "../../lib/record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
