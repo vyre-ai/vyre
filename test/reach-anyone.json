@@ -2624,10 +2624,6 @@
   "work.chat.prefs": {
    "module": "work",
    "reason": "read-only: chat preferences for the signed-in person; kernelOf refuses when no kernel is attached"
-  },
-  "agents.flow-say": {
-   "module": "agents",
-   "reason": "only a person writes: the handler refuses every non-person caller, reads the Flow and its runs through that person's own access (no access, no wake) and the job runs as them"
   }
  }
 }
