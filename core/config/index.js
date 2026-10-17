@@ -173,9 +173,9 @@ export function isDevice(machine) { return machine === "device" || machine === "
 
 /** @typedef {{ name?: string, role: "box"|"local", machine: "server"|"device", projectsDir: string, roots: string[],
  *   me: { domains: string[], emails: string[] }, transcripts: string[],
- *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string },
- *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
- *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
+ *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string, clientId?: string, clientSecret?: string, redirect?: string },
+ *   glass: { roots?: string[] },
+ *   computers: { [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
  *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
  *   app: { root: boolean },
@@ -193,10 +193,10 @@ export function isDevice(machine) { return machine === "device" || machine === "
  * (roleBuckets, core/modules/index.js), presence and onboard read this one, not `role`. */
 
 /**
- * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
- * network.origins replaces the list; an empty list turns cross-origin calls off.
+ * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app (web.vyre.run, the Vyre app on the web; app.vyre.run only redirects to it and is dropped from this
+ * list once that redirect is live). Config network.origins replaces the list; an empty list turns cross-origin calls off.
  */
-export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+export const HOSTED_ORIGINS = Object.freeze(["https://web.vyre.run", "https://app.vyre.run"]);
 
 /** The origins in effect for this network config, lowercased, no trailing slash. @param {any} network @returns {string[]} */
 export function hostedOrigins(network) {
@@ -267,12 +267,8 @@ function defaults(root, platform = process.platform) {
     transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced"), ...accountTranscripts()],
     modules: { enable: [], disable: [] },
     network: {},
-    // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
-    // (core/computers/egress.js, box/compose.egress.yml).
-    glass: { egress: { enabled: false, sites: [] } },
-    // Off: no computer joins the tailnet as its own node until the owner turns it on
-    // (core/computers/tailnet.js, ADR 0014 part 9).
-    computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
+    glass: {},
+    computers: {},
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
     // On: the one app answers "/" (ADR 0027; core/daemon/app.js); a person may turn it off.
@@ -300,8 +296,8 @@ export function load(root = home(), platform = process.platform) {
     me: { ...d.me, ...(user.me || {}) },
     modules: { ...d.modules, ...(user.modules || {}) },
     network: { ...d.network, ...(user.network || {}) },
-    glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
-    computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
+    glass: { ...d.glass, ...(user.glass || {}) },
+    computers: { ...d.computers, ...(user.computers || {}) },
     hooks: { ...d.hooks, ...(user.hooks || {}) },
     app: { ...d.app, ...(user.app || {}) },
     term: { ...d.term, ...(user.term || {}) },

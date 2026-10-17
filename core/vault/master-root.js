@@ -37,11 +37,20 @@ function opensAgent(dir, raw) {
 }
 
 /**
- * Write the server copy when it is missing or different. The held buffer stays intact.
- * @param {{ keys: { exists: () => Promise<boolean>, load: (o?: any) => Promise<Buffer|null>, save?: (raw: Buffer) => Promise<void> } }} vault
+ * Keep the server copy equal to the held key, sealed. Once a master password exists the server copy is the sealed wrap (kernel/identity/vault-at-rest.js), never a plaintext file, and
+ * any plaintext vault/key left from before is removed after the sealed copy opens to the same key. A home with no master record keeps its file or keychain keystore as it was.
+ * @param {{ dir: string, keys: { exists: () => Promise<boolean>, load: (o?: any) => Promise<Buffer|null>, save?: (raw: Buffer) => Promise<void> } }} vault
  * @param {Buffer} held
  */
 async function syncServerCopy(vault, held) {
+  const root = path.dirname(vault.dir);
+  if (readMaster(root)) {
+    const sealed = openVaultKey(root);
+    const same = Boolean(sealed && sealed.length === held.length && crypto.timingSafeEqual(sealed, held));
+    if (sealed) sealed.fill(0);
+    if (!same || fs.existsSync(plainVaultKeyPath(root))) adoptVaultKey(root, held);
+    return;
+  }
   if (typeof vault.keys.save !== "function") return;
   if (await vault.keys.exists()) {
     const current = await vault.keys.load();
@@ -80,14 +89,13 @@ export async function deviceKey(vault) {
   if (await vault.keys.exists()) {
     const raw = await vault.keys.load();
     if (!raw) throw locked("the vault is locked · vyre vault unlock");
+    // A master password exists and a plaintext key is still here (a home from before it): seal it and remove the file.
+    if (readMaster(path.dirname(vault.dir)) && opensAgent(vault.dir, raw)) adoptVaultKey(path.dirname(vault.dir), raw);
     return raw;
   }
   if (readMaster(path.dirname(vault.dir))) {
     const sealed = openVaultKey(path.dirname(vault.dir));
-    if (sealed) {
-      await syncServerCopy(vault, sealed);
-      return sealed;
-    }
+    if (sealed) return sealed;
     throw locked("The master password is set and this vault has no server copy of its key. Unlock on this device so the vault can adopt it.");
   }
   const raw = await vault.keys.create();

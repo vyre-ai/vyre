@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
-import { listen, tool } from "../api/box";
+import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, leaseLine, lentMacOffline, LENT_OFFLINE_TICKS, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, leaseLine, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
@@ -15,21 +15,12 @@ export function usePlacement(thread: string, real: boolean) {
   const [starting, setStarting] = useState("");
   // The same fact can arrive twice: a line is never put twice in a row.
   const say = useCallback((at: number, text: string) => setLines((l) => (l.length && l[l.length - 1].text === text ? l : [...l.slice(-4), { at, text }])), []);
+  // The screen only shows where the session runs. The home alone takes a session from a computer that stopped answering (its sweep, one move, with the reason); no screen moves a session on a timer, so a computer that
+  // comes and goes cannot bounce one back and forth, and only the session's own person moves it (the chip's tap).
   useEffect(() => {
     if (!real) return;
     let live = true;
-    let offlineTicks = 0;
-    const autoServer = async () => {
-      const pl = await runner.placement(thread).catch(() => null);
-      const places = await tool("runner.places", {}).catch(() => null);
-      if (!lentMacOffline(pl, places, thread)) { offlineTicks = 0; return; }
-      offlineTicks += 1;
-      if (offlineTicks < LENT_OFFLINE_TICKS) return;
-      const x = await runner.move(thread, "server").catch(() => null);
-      if (x && live) setP(x);
-    };
-    runner.placement(thread).then((x) => { if (live) setP(x); void autoServer(); }).catch(() => {});
-    const tick = setInterval(() => { void autoServer(); }, 15_000);
+    runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
     const off = listen((e: any) => {
       if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
         setStarting(placingWords(e.payload));
@@ -51,9 +42,8 @@ export function usePlacement(thread: string, real: boolean) {
       // A higher epoch wins: an update that arrives late never moves the chip back.
       setP((cur) => (fresher(cur?.epoch, epoch) ? { where: to === "mac" ? "mac" : "server", computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now(), ...(to === "paused" ? { state: "paused" as const } : {}), ...(epoch !== undefined ? { epoch } : {}) } : cur));
       say(Number(e.payload.at ?? Date.now()), movedLine({ to, reason: e.payload.reason }));
-      if (to === "server") void autoServer();
     });
-    return () => { live = false; clearInterval(tick); off?.(); };
+    return () => { live = false; off?.(); };
   }, [thread, real, say]);
   const move = useCallback(async (to: "mac" | "server") => {
     try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }

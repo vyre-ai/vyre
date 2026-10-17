@@ -108,6 +108,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; brand.resolve opened to a model or a module in afde6d660 (9 Oct 2026); the body decides: read-only: the brand defaults worked out from the saved profile; changes nothing"
  },
  {
+  "tool": "bridges.continue",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (hands work to another Space as a task: held for the person's yes): hands work to another Space as a task that points back at records by reference; nothing is copied"
+ },
+ {
+  "tool": "bridges.copy",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (copies a record out of one Space into another: held for the person's yes): copies a record into another Space the person belongs to; sealed fields arrive empty unless the person copies them in person"
+ },
+ {
   "tool": "bridges.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one share the person's Space is part of; the bridges module takes the person from the verified caller"
  },
@@ -142,6 +150,14 @@
  {
   "tool": "bridges.propose-view",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): proposes a live read-only view to another Space, which the other side accepts before anything crosses"
+ },
+ {
+  "tool": "bridges.resolve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): looks up the name behind a vyre:// reference to another Space the person belongs to; a read, and an unreadable or missing reference answers alike"
+ },
+ {
+  "tool": "bridges.view.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads a shared view live and read-only through its source Space, only the fields the share lists, marked external; the person must be a live member"
  },
  {
   "tool": "capsule.status",
@@ -296,20 +312,12 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; computer.use opened to a model or a module in 8b72edb5c (9 Oct 2026); the body decides: guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
  },
  {
-  "tool": "computers.egress.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers' Chrome sends listed sites through the person's Mac"
- },
- {
   "tool": "computers.handback.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads after how many idle minutes a take-over hands the keyboard back"
  },
  {
   "tool": "computers.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames an agent's computer, the person's own label for it"
- },
- {
-  "tool": "computers.tailnet.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers join the tailnet as their own tagged nodes"
  },
  {
   "tool": "connectors.calendar.today",

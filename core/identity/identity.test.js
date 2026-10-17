@@ -12,6 +12,7 @@ import { fileIdentityStore } from "../spaces/identity.js";
 import { forgetAll, identityHeld } from "../../kernel/identity/holder.js";
 import { readMaster } from "../../kernel/identity/master.js";
 import { dialLive } from "../devices/live.js";
+import { vouch } from "../../lib/github-verified.js";
 
 process.env.VYRE_TEST_MASTER_KDF = "cheap";
 
@@ -41,7 +42,15 @@ test("an agent cannot supply the master password, and a migration strips the pla
   await assert.rejects(() => store.sign(Buffer.from("x")), (e) => e.code === "locked");
   await tools.get("identity.unlock").run({ password: "correct horse battery" }, { caller: "cli" });
   assert.equal((await store.sign(Buffer.from("x"))).length, 64);
+  // A login and an id typed into the tool have no receipt from GitHub and link nothing, whoever types them.
+  for (const caller of ["cli", "mcp", "mcp:agent:kit", "module:onboard"]) {
+    await assert.rejects(() => tools.get("identity.github.link").run({ login: "mallory", subject: "gh_66666" }, { caller }), (e) => e.code === "github_unverified", caller);
+  }
+  assert.equal(readMaster(root).github, null);
+  vouch("alex-studio", "gh_12345");
   await tools.get("identity.github.link").run({ login: "alex-studio", subject: "gh_12345" }, { caller: "cli" });
+  assert.equal(readMaster(root).github.login, "alex-studio");
+  await assert.rejects(() => tools.get("identity.github.link").run({ login: "alex-studio", subject: "gh_12345" }, { caller: "cli" }), (e) => e.code === "github_unverified", "a receipt is spent once");
   await tools.get("identity.lock").run({}, { caller: "cli" });
   const devTools = new Map();
   const dctx = {

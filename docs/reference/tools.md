@@ -2283,23 +2283,6 @@ Give an agent a screen and a running computer (made on first need, thawed if fro
   - `why` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
-### `computers.egress.set`
-
-Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.
-
-- Input:
-  - `enabled` boolean
-  - `sites` list of string
-- Callers: any caller
-- Needs a person present.
-
-### `computers.egress.status`
-
-Whether computers' Chrome sends the listed sites through the user's Mac (config glass.egress), the sites, whether the egress sidecar answers right now, and whether its gate lets listed sites through (only while the Mac is in use as the exit node).
-
-- Input: none
-- Callers: any caller
-
 ### `computers.endpoint`
 
 Where the agent's Chrome and computerd answer, and computerd's token. Checks out and thaws.
@@ -2432,14 +2415,6 @@ Rotate one member's own CDP token without taking it off the computer -- for a le
   - `computer` string, required
 - Callers: any caller
 
-### `computers.node.agent`
-
-The agent whose running computer is this tailnet node (by stable id), or null.
-
-- Input:
-  - `stableId` string, required
-- Callers: other modules only (internal: `vyre call` answers no_such_tool)
-
 ### `computers.pause`
 
 Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.
@@ -2504,22 +2479,6 @@ Stop an agent's computer. Its home volume stays; the next checkout starts it aga
 
 - Input:
   - `agent` string
-- Callers: any caller
-
-### `computers.tailnet.set`
-
-Turn on or off each computer joining the tailnet as its own ephemeral node tagged tag:vyre-agent. The owner's to change, never an agent's; it applies to computers that start afterwards.
-
-- Input:
-  - `enabled` boolean, required
-- Callers: any caller
-- Needs a person present.
-
-### `computers.tailnet.status`
-
-Whether computers join the tailnet as their own tagged nodes (config computers.tailnet), the tag, whether the auth key is in the vault and granted (never its value), and each computer's node.
-
-- Input: none
 - Callers: any caller
 
 ### `computers.takeover`
@@ -5608,6 +5567,47 @@ Wrap this device's existing keys under a new master password. The recovery key i
   - `password` string, required
 - Callers: any caller
 
+### `identity.signin.ack`
+
+Say a sign-in on a new device was you: it stops waiting on you. Your own act.
+
+- Input:
+  - `device` string, required
+- Callers: any caller
+
+### `identity.signin.revoke`
+
+Sign one of your devices out: end every live session of that device id and forget it, so its next sign-in is a new device again. Your own act.
+
+- Input:
+  - `device` string, required
+- Callers: any caller
+
+### `identity.signins.pending`
+
+Your sign-ins on a new device that are still signed in and that you have not said were you. For the card on Now. Each person sees their own.
+
+- Input: none
+- Callers: any caller
+
+### `identity.signins.serve`
+
+A team member's own new-device sign-ins on the team's server: the ones waiting on them, as that member. Only the daemon's member door runs it.
+
+- Input:
+  - `call` "pending", required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
+### `identity.signins.serve-write`
+
+A team member's own act on a new-device sign-in on the team's server: sign it out or say it was them, as that member. Only the daemon's member door runs it.
+
+- Input:
+  - `call` "revoke" or "ack", required
+  - `input` object
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `identity.status`
 
 Whether a username exists, whether it is unlocked, and whether the directory may show it.
@@ -7737,7 +7737,7 @@ Sign this computer into every space this identity belongs to. Each space uses it
   - `type` string
   - `url` string
   - `username` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `onboard.finish`
 
@@ -7772,10 +7772,11 @@ Save where this person is in the first-run flow.
 
 ### `onboard.github.finish`
 
-Link a GitHub login to this person. The master password is still required to unlock the vault.
+Link a GitHub login to this person. The account id is read from GitHub. The master password still unlocks the vault.
 
 - Input:
-  - `login` string, required
+  - `code` string: The code from the GitHub login. The account id is read from GitHub.
+  - `login` string
   - `subject` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
 
@@ -7871,7 +7872,7 @@ Create this person's identity and vault from a username and master password. Ret
   - `password` string, required
   - `username` string, required
   - `confirm` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `onboard.person.lookup`
 
@@ -7886,17 +7887,6 @@ Check a username for the public person page. Says whether the form is valid. Rea
 Whether this device already has an identity, and that username. A later space uses the same one.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
-
-### `onboard.phone.add`
-
-Add this person's phone. Returns a link the phone opens. Changes which devices can reach the space.
-
-- Input:
-  - `fingerprint` string
-  - `name` string
-  - `space` string
-  - `type` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`
 
 ### `onboard.setup`
@@ -10373,6 +10363,16 @@ Take a folder of this computer away from chats. Nothing in it is touched; a chat
 - Input:
   - `id` string, required
 - Callers: any caller
+
+### `runner.group-move`
+
+Move a chat to the server before people are added to it. Internal: the work module, just before work.chat.change adds someone. Input: chat, person (the one adding), names (who is joining). Answers { moved }.
+
+- Input:
+  - `chat` string, required
+  - `person` string, required
+  - `names` list of string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `runner.here`
 
@@ -15187,7 +15187,7 @@ Whether an item is granted to the calling module, and to exactly this watcher wh
 
 ### `vault.grants.status`
 
-Whether each pass holder is covered for what they hold, as last seen at the relay. Reads names and logins only, never a value.
+Who holds a live pass, and for which items and in which mode. Reads names only, never a value.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
@@ -16091,9 +16091,10 @@ List space vault item names. Values stay sealed.
 
 ### `vault.space.put`
 
-Store a space vault item. The value is sealed and never returned.
+Store a space vault item for the hosts it may be sent to. The value is sealed and never returned.
 
 - Input:
+  - `hosts` list of string, required
   - `id` string, required
   - `name` string, required
   - `space` string, required
@@ -16121,7 +16122,7 @@ Whether a space vault exists and which generation it is on. No key is returned.
 
 ### `vault.space.use`
 
-Use a space vault item on an outbound request. The caller gets the response, never the value.
+Use a space vault item on a host it was saved for. Another host, including a redirect, is refused. The response never includes the value.
 
 - Input:
   - `id` string, required

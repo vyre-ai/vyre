@@ -533,7 +533,9 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   const made = {};
   for (const [role, extra] of [["admin", {}], ["manager", {}], ["member", { scope }], ["temp", { scope, expires: w.clock.t + 2 * DAY }]]) {
     const r = await d.ok("spaces.invites.create", { space, role, ...extra });
-    assert.match(r.link, /^https:\/\/harlow\.vyre\.run\/join\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    assert.match(r.link, /^https:\/\/vyre\.run\/i\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "the link to share names no server");
+    assert.match(r.join_link, /^https:\/\/harlow\.vyre\.run\/join\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "the space's own join link rides beside it");
+    assert.equal(r.link.split("/i/")[1], r.join_link.split("/join/")[1], "one token, two ways to open it");
     assert.equal(r.code, null, "with no Wink module here the invite is the link alone (a typed code is best effort)");
     made[role] = r;
   }
@@ -554,6 +556,11 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   const text = JSON.stringify(card);
   assert.ok(!text.includes(alex.id) && !text.includes(made.member.token) && !text.includes("inv_"), "the card holds only what the person needs");
   assert.equal((await stranger.call("spaces.invites.preview", { link: "https://evil.example.com/join/abc.def" })).error?.code, "bad_input");
+  // The space's own join link opens the same card as the link to share, and a link to share that names nothing, or a space the directory does not hold, is refused in words.
+  assert.deepEqual(await stranger.ok("spaces.invites.preview", { link: made.member.join_link }), card);
+  assert.equal((await stranger.call("spaces.invites.preview", { link: "https://vyre.run/i/abcdefghij.klmnopqrst" })).error?.code, "bad_input");
+  const unknownChain = `inv_${"ab".repeat(16)}.${Buffer.from(JSON.stringify({ chain: { id: `spc_${"a".repeat(26)}`, seq: 1, head: "h" } })).toString("base64url")}`;
+  assert.equal((await stranger.call("spaces.invites.preview", { link: `https://vyre.run/i/${unknownChain}` })).error?.code, "not_found");
   const t2 = made.member.token.split(".");
   assert.equal((await stranger.call("spaces.invites.preview", { link: `https://harlow.vyre.run/join/${t2[0]}.${Buffer.alloc(64).toString("base64url")}` })).error?.code, "forged");
   assert.equal((await stranger.call("spaces.invites.preview", { link: `https://northwind.vyre.run/join/${made.member.token}` })).error?.code, "wrong_space");
@@ -917,7 +924,9 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   const made = await d.call("spaces.invites.create", { space, role: "member", to: kit.id }, "cli", { token, kernel_proof: sign("inviteCreate", { role: "member", invitee: kit.id }) });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.match(made.data.id, /^inv_[0-9a-f]{32}$/);
-  assert.match(made.data.link, /^https:\/\/harlow\.vyre\.run\/join\/inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/);
+  assert.match(made.data.link, /^https:\/\/vyre\.run\/i\/inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/, "the link to share names no server");
+  assert.match(made.data.join_link, /^https:\/\/harlow\.vyre\.run\/join\/inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/);
+  assert.equal(made.data.link.split("/i/")[1], made.data.join_link.split("/join/")[1]);
   // kit's device: the card comes from the kernel, with the words to read out; the pin in the link is checked against the space's list
   const card = await kitDev.ok("spaces.invites.preview", { link: made.data.link }, "cli", { token: kitToken });
   assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);

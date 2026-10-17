@@ -75,25 +75,6 @@ export function winkCard(d: any): Card {
   return c;
 }
 
-/** Glass egress: listed sites leave an agent's browser through the owner's Mac. */
-export function egressCard(d: any): Card {
-  const c = card("Glass egress");
-  const sites: unknown[] = Array.isArray(d?.sites) ? d.sites : [];
-  if (!d?.enabled) {
-    c.state = "Off";
-    c.lines.push("Some sites refuse a datacenter address. The sites you list leave an agent's browser through your own Mac instead.");
-    return c;
-  }
-  c.state = sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet";
-  if (sites.length) c.lines.push(sites.map(String).join(", "));
-  const side = d.sidecar || {};
-  if (side.answers) c.lines.push("The egress sidecar answers.");
-  else c.warn.push(`The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show your home's address.`);
-  if (d.problem) c.warn.push(String(d.problem));
-  if (d.applies) c.lines.push(`This ${d.applies}.`);
-  return c;
-}
-
 /** Glass hand-back: after how long without input a take-over goes back to the agent. */
 export function handbackOf(d: any): { minutes: number; choices: number[]; warn: number } {
   return { minutes: Number(d?.minutes) || 0, choices: Array.isArray(d?.choices) && d.choices.length ? d.choices.map(Number) : [0, 2, 5, 15], warn: Number(d?.warn_s) || 10 };

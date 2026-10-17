@@ -4,6 +4,7 @@ import { router, usePathname } from "expo-router";
 import { boxOrigin } from "../api/box";
 import { MOCK } from "../real/box";
 import { isBoxless } from "./shell";
+import { hostWanted } from "../host";
 import { loadPairing } from "../api/relay";
 import { useTheme } from "../theme/theme";
 import { readSkipped } from "../state/setup-progress";
@@ -18,7 +19,7 @@ export function SetupGate({ children }: { children: ReactNode }) {
   const path = usePathname();
   // The phone, the Mac app's window on a server Mac (no vyred of its own), and the Windows app's window (always the bundled app); a browser page is its box's own origin and never gates.
   // A mock build (EXPO_PUBLIC_VYRE_MOCK=1) is the sample world, already set up: it opens in the app. /onboard stays reachable by its address for review.
-  const gated = !MOCK && (Platform.OS !== "web" || isBoxless());
+  const gated = !MOCK && (Platform.OS !== "web" || isBoxless() || hostWanted());
   const { color } = useTheme();
   const [checked, setChecked] = useState(!gated);
   useEffect(() => {

@@ -32,11 +32,27 @@ function codeFromBody(body) {
   return "";
 }
 
+/** A browser form post comes from this page: its Origin names this host, and it is not marked cross-site. A call with no Origin (a command line, a test) is not a browser and is let through to the code check. @param {import("node:http").IncomingMessage} req */
+function sameOrigin(req) {
+  if (String(req.headers["sec-fetch-site"] || "") === "cross-site") return false;
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  try { return new URL(String(origin)).host === String(req.headers.host || ""); } catch { return false; }
+}
+
+const TRIES = 10;
+const TRY_WINDOW_MS = 60_000;
+
 /**
- * @param {{ redeem: (code: string) => Promise<unknown>, locked: () => boolean, hidePaste?: () => boolean }} o
+ * @param {{ redeem: (code: string) => Promise<unknown>, locked: () => boolean, hidePaste?: () => boolean, stopWhenPaired?: boolean, now?: () => number }} o
+ * `stopWhenPaired`: once a response says the server is paired, the page stops listening. Ten tries a minute, then it answers 429 until the minute is up.
  */
 export function createSetupPage(o) {
   /** @type {import("node:http").Server | null} */ let server = null;
+  const now = o.now || Date.now;
+  /** @type {number[]} */ let tries = [];
+  const closeSoon = () => { if (o.stopWhenPaired) setImmediate(() => { void stop(); }); };
+  async function stop() { if (!server) return; const s = server; server = null; await new Promise(r => { s.close(() => r(undefined)); s.closeIdleConnections?.(); }); }
   /**
    * @param {import("node:http").IncomingMessage} req
    * @param {import("node:http").ServerResponse} res
@@ -49,11 +65,17 @@ export function createSetupPage(o) {
       const locked = o.locked();
       res.writeHead(locked ? 403 : 200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(req.method === "HEAD" ? "" : page({ locked, hidePaste: hidePaste() }));
+      if (locked) closeSoon();
       return;
     }
     if (req.method !== "POST" || url.pathname !== "/setup") { res.writeHead(405, { "content-type": "text/plain; charset=utf-8" }); res.end("Use the page."); return; }
     if (url.searchParams.has("code")) { res.writeHead(400, { "content-type": "text/html; charset=utf-8" }); res.end(page({ hidePaste: hidePaste(), error: "Paste the code into the box. It does not belong in the address." })); return; }
-    if (o.locked()) { res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); res.end(page({ locked: true })); return; }
+    if (o.locked()) { res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); res.end(page({ locked: true })); closeSoon(); return; }
+    if (!sameOrigin(req)) { res.writeHead(403, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); res.end(page({ hidePaste: hidePaste(), error: "Use this page itself to pair, not a form on another site." })); return; }
+    const at = now();
+    tries = tries.filter(t => at - t < TRY_WINDOW_MS);
+    if (tries.length >= TRIES) { res.writeHead(429, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "retry-after": "60" }); res.end(page({ hidePaste: hidePaste(), error: "Too many tries. Wait a minute and paste the code again." })); return; }
+    tries.push(at);
     const chunks = [];
     let size = 0;
     req.on("data", (/** @type {Buffer} */ c) => { size += c.length; if (size > 4096) req.destroy(); else chunks.push(c); });
@@ -63,11 +85,13 @@ export function createSetupPage(o) {
         await o.redeem(code);
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(page({ locked: true }));
+        closeSoon();
       } catch (e) {
         const err = /** @type {any} */ (e);
         const locked = err && err.code === "locked" || o.locked();
         res.writeHead(locked ? 403 : 400, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(page({ locked, hidePaste: hidePaste(), error: locked ? "" : String(err && err.message || "That code was not accepted. Make a new install line in the Vyre app.") }));
+        if (locked) closeSoon();
       }
     });
   }
@@ -80,6 +104,10 @@ export function createSetupPage(o) {
       server.listen(opt.port ?? 8080, opt.host ?? "0.0.0.0");
       return server;
     },
-    async stop() { if (!server) return; const s = server; server = null; await new Promise(r => s.close(() => r(undefined))); },
+    stop,
+    /** Whether the page is listening. */
+    get listening() { return server !== null; },
+    /** The address the page listens on, or null. */
+    address() { return server ? server.address() : null; },
   };
 }

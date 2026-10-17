@@ -115,7 +115,6 @@ export type { StackGap } from "./components/Stack";
 export { FlowStep } from "./components/FlowStep";
 export { CodeField } from "./components/CodeField";
 export { CodeDisplay } from "./components/CodeDisplay";
-export { MatchWords } from "./components/MatchWords";
 export { PasswordField } from "./components/PasswordField";
 export { ProviderRow } from "./components/ProviderRow";
 export type { ProviderState } from "./components/ProviderRow";

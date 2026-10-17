@@ -10,6 +10,8 @@
 
 /** Tools a member's own session may call: the handler judges her on her own chain (or the kernel does), so the answer is what she may see and change, not the owner's. A device that is not yet proven reaches the sign-in and pairing steps here (presence.person.*, wink.server.adopt and pair.answer, wink.phone.*): it must reach them to become proven, and each carries its own proof (passkey, code, ticket). */
 export const MEMBER_MAY = Object.freeze(new Set([
+  // A person's own sign-ins on a new device (core/identity/signins.js): every person sees, vouches for and signs out their own, for the person the kernel chain says the call is, never an input.
+  "identity.signin.ack", "identity.signin.revoke", "identity.signins.pending",
   "agents.create", "agents.delete", "agents.history", "agents.list", "agents.threads", "agents.update", "agents.usage", "agents.versions",
   // An agent's files, context, links, Vault list and sharing: anyone calls them; the handler judges her as the agent's creator, an admin, or someone given Can edit (Can use sees where it is used), and every link against what she herself can reach.
   "agents.access.get", "agents.access.set", "agents.ask", "agents.context.add", "agents.context.link", "agents.context.list", "agents.context.remove", "agents.context.unlink", "agents.docs.get", "agents.docs.set", "agents.used",
@@ -35,7 +37,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "mentions.kinds",
   "models.get", "models.list", "models.status",
   "onboard.agent.list", "onboard.agent.signin", "onboard.assistant", "onboard.claude", "onboard.computer.add", "onboard.finish", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save", "onboard.github.finish", "onboard.github.start", "onboard.history", "onboard.join", "onboard.join.read", "onboard.link",
-  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
+  "onboard.machine", "onboard.member.link", "onboard.name", "onboard.pair", "onboard.passkey", "onboard.person.create", "onboard.person.lookup", "onboard.person.status", 
   "onboard.setup", "onboard.skip", "onboard.status", "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll", "onboard.windows", "onboard.you",
   "planner.add", "planner.bin", "planner.list", "planner.parse", "planner.ringing", "planner.upcoming",
   "presence.person.pair-challenge", "presence.person.start", "presence.person.start-paired", "presence.person.status",
@@ -92,9 +94,9 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "commands.list",
   "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
-  "computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
+  "computers.checkout", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
-  "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
+  "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
   "computers.takeover", "computers.watch",
   "connectors.calendar.today", "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.connection.approve",
   "connectors.connection.check", "connectors.connection.create", "connectors.connection.decline", "connectors.connection.delete", "connectors.connection.export",
@@ -287,7 +289,6 @@ export const MEMBER_OUTWARD = Object.freeze({
   "onboard.space.current": "the person's yes: naming which Space she is in is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.member.link": "the person's yes: linking her member identity is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.computer.add": "the person's yes: adding a computer is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.phone.add": "the person's yes: adding her phone is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.windows": "the person's yes: finishing Windows setup is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "identity.vault.install": "the person's yes: installing her vault on this device is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "spaces.pair.install": "the owner's yes: pairing a server install is the owner's Space act; an assistant's request lands as a held card in the owner's approvals, her own call from her device needs only her when she is the owner.",

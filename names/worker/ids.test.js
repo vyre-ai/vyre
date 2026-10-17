@@ -47,6 +47,23 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   void chainsById;
 });
 
+test("ids: a space's chain id resolves to its name, as a person's does, and an id of the other kind or an unknown one is not found", async t => {
+  const w = world(t);
+  const alex = await person(w);
+  data(await alex.claim("alex"));
+  const harlow = await identity(w, alex.first, { kind: "space", ctxFor: async id => id === alex.state.id ? alex.ops : null });
+  await harlow.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id, label: "Alex" }, alex.first.eid);
+  const h = data(await harlow.claim("harlow", "aG9tZQ", alex.first, alex.first.eid));
+  const bySpace = data(await alex.get(`/v1/ids/resolve?id=${h.id}`));
+  assert.deepEqual([bySpace.name, bySpace.kind, bySpace.id], ["harlow", "space", h.id]);
+  assert.deepEqual(bySpace, data(await alex.get("/v1/ids/resolve?name=harlow")), "the same answer the name gives");
+  const byPerson = data(await alex.get(`/v1/ids/resolve?id=${alex.state.id}`));
+  assert.deepEqual([byPerson.name, byPerson.kind], ["alex", "person"]);
+  assert.equal(code(await alex.get(`/v1/ids/resolve?id=spc_${"a".repeat(26)}`)), "not_found");
+  assert.equal(code(await alex.get("/v1/ids/resolve?id=spc_short")), "not_found");
+  assert.equal(code(await alex.get(`/v1/ids/resolve?id=xyz_${"a".repeat(26)}`)), "not_found");
+});
+
 test("ids: one namespace with the names an older setup gave a server, one name per identity, reserved and invalid names refused", async t => {
   const w = world(t), box = who(w);
   const alex = await person(w), other = await person(w);
@@ -407,13 +424,25 @@ test("cors: the name availability check answers any origin like resolve (no cred
   assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
 });
 
+test("cors: with no APP_ORIGINS set, the Vyre app on the web (web.vyre.run) and the old host are the app origins, and a look-alike is not", async t => {
+  const w = world(t);
+  for (const origin of ["https://web.vyre.run", "https://app.vyre.run"]) {
+    const pre = await raw(w, "OPTIONS", "/v1/ids/finalize", { origin, headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+    assert.equal(pre.status, 204, origin);
+    assert.equal(pre.h("access-control-allow-origin"), origin);
+  }
+  for (const origin of ["https://web.vyre.run.evil.example", "http://web.vyre.run", "https://webvyre.run", "https://web.vyre.runX"]) {
+    assert.equal((await raw(w, "OPTIONS", "/v1/ids/finalize", { origin, headers: { "access-control-request-method": "POST" } })).status, 405, origin);
+  }
+});
+
 test("CO-1: the live config pins APP_ORIGINS to exactly one https origin, and no dev or wildcard origin", async () => {
   const fs = await import("node:fs"), url = await import("node:url"), path = await import("node:path");
   const toml = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "wrangler.toml"), "utf8");
   const m = /^APP_ORIGINS\s*=\s*"([^"]*)"/m.exec(toml);
   assert.ok(m, "APP_ORIGINS is set in [vars]");
   assert.ok(!/127\.0\.0\.1|\*|http:/.test(m[1].replace("https://vyreapp.localhost", "")) && !/localhost/.test(m[1].replace("https://vyreapp.localhost", "")), m[1]);
-  assert.equal(m[1], "https://app.vyre.run,vyreapp://box,https://vyreapp.localhost", "the hosted app, the Mac app's window and the Windows app's window, nothing else");
+  assert.equal(m[1], "https://web.vyre.run,https://app.vyre.run,vyreapp://box,https://vyreapp.localhost", "the Vyre app on the web, the old host until its redirect is live, the Mac app's window and the Windows app's window, nothing else");
 });
 
 test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, the directory writes the TXT and one CAA that pins the ACME account; nobody else can", async t => {
