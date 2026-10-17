@@ -222,8 +222,9 @@ export default {
     /** The member's person id when the call carries a claim the Vault names as a member's; "" for the owner and for home work with no claim. A claim the Vault cannot name is refused, never served as the owner's. */
     const callerMember = async (/** @type {any} */ meta) => {
       const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
-      if (!claims) return "";
+      if (!claims) { console.error("DBG callerMember noclaims", meta && meta.caller, typeof (meta && meta.token)); return ""; }
       const w = await ctx.call("vault.me.who", {}, { relay: true });
+      console.error("DBG callerMember", meta.caller, typeof meta.token, Boolean(meta.kernelFacts), JSON.stringify(w).slice(0, 200));
       if (w.error) throw Object.assign(new Error(w.error.message), { code: w.error.code || "denied" });
       return w.data && w.data.kind === "member" ? String(w.data.person) : "";
     };
