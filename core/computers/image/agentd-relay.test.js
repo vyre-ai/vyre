@@ -20,7 +20,7 @@ async function world(t, o = {}) {
   const tickets = new Tickets();
   /** @type {string[][]} */ const spawned = [];
   // the stand-in for the agent's pipe is cat: it echoes what it is sent, which is all the relay needs from it
-  const relay = createRelay({ tickets, spawn: argv => { spawned.push(argv); return spawn("/bin/cat", [], { stdio: ["pipe", "pipe", "ignore"] }); }, helloMs: 300, ...o });
+  const relay = createRelay({ tickets, peer: () => "127.0.0.1", spawn: argv => { spawned.push(argv); return spawn("/bin/cat", [], { stdio: ["pipe", "pipe", "ignore"] }); }, helloMs: 300, ...o });
   await new Promise(r => relay.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => relay.close());
   const port = /** @type {any} */ (relay.address()).port;
@@ -110,4 +110,15 @@ test("the pipe takes no argument and no environment: it builds the agent's socke
   assert.match(py, /"\/var\/lib\/vyre\/agents\/ag%d\/vnc\.sock" % uid/);
   assert.doesNotMatch(py, /sys\.argv|os\.environ|getenv/);
   assert.match(py, /uid < 20000 or uid > 20063/);
+});
+
+test("a peer that is not vyred's address is closed before it can send a ticket; with no pin yet, nobody is let in", async t => {
+  for (const peer of [() => "10.9.9.9", () => null]) {
+    const w = await world(t, { peer });
+    w.tickets.add(T1, U);
+    const s = await connect(w.port, `${T1}\n`);
+    assert.equal(await closes(s), true);
+    assert.equal(w.spawned.length, 0, "no process");
+    assert.deepEqual(w.tickets.take(T1), U, "the ticket was never read, so it is not spent");
+  }
 });

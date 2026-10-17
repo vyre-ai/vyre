@@ -126,6 +126,8 @@ export default {
         await agentUsers.wake(agent);
         const h = pool.hosts.get(SHARED_COMPUTER_ID);
         if (!h) throw new Error(NOT_SET);
+        // the relay lets in vyred's address only: have the computer pin this vyred's address (it can change when vyred is recreated) before the ticket
+        await pool.pin(SHARED_COMPUTER_ID);
         const hello = crypto.randomBytes(24).toString("base64url");
         await agentUsers.screenTicket(agent, hello);
         const password = vncPasswordFor(await ctx.vault.fetch(MEMBER_TOKEN_ITEM), agent);

@@ -7,9 +7,14 @@
 import net from "node:net";
 import crypto from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
+import fs from "node:fs";
 import { asAgent } from "./agentd.js";
 
 export const RELAY_PORT = 5910;
+/** The address vyred has, written by computerd when it pins it (computerd/peer-file.js). */
+export const PEER_FILE = "/var/lib/vyre/vyred-peer";
+const plain = (/** @type {unknown} */ a) => String(a || "").replace(/^::ffff:/, "");
+export const peerFromFile = (/** @type {string} */ file = PEER_FILE) => () => { try { return fs.readFileSync(file, "utf8").trim() || null; } catch { return null; } };
 export const PIPE = "/opt/agentd/agentd-pipe.py";
 const TICKET_RE = /^[A-Za-z0-9_-]{32,64}$/;
 export const TICKET_MS = 30_000;
@@ -37,14 +42,18 @@ export class Tickets {
 }
 
 /**
- * @param {{ tickets: Tickets, spawn?: (argv: string[]) => import("node:child_process").ChildProcess, maxPerAgent?: number, maxPending?: number, helloMs?: number }} o
+ * Only vyred's address may connect (the same pin computerd keeps): any other peer is closed before it can send a ticket, so an agent cannot even try one. The ticket is the second gate.
+ * @param {{ tickets: Tickets, spawn?: (argv: string[]) => import("node:child_process").ChildProcess, peer?: () => string | null, maxPerAgent?: number, maxPending?: number, helloMs?: number }} o
  */
 export function createRelay(o) {
   const spawn = o.spawn || (argv => nodeSpawn(argv[0], argv.slice(1), { env: {}, stdio: ["pipe", "pipe", "ignore"] }));
+  const peer = o.peer || peerFromFile();
   const maxPerAgent = o.maxPerAgent ?? 2, maxPending = o.maxPending ?? 16, helloMs = o.helloMs ?? 3000;
   /** @type {Map<number, number>} */ const open = new Map();
   let pending = 0;
   return net.createServer(sock => {
+    const want = peer();
+    if (!want || plain(sock.remoteAddress) !== want) return void sock.destroy();
     if (pending >= maxPending) return void sock.destroy();
     pending++;
     let counted = true, buf = Buffer.alloc(0);
