@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { createKernel } from "../index.js";
 
 const S = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
+/** A read the gate refuses either throws or comes back as no task at all (ask.get answers null for a task the chain may not read). @param {Promise<any>} p */
+const refusedRead = async p => { try { return (await p) == null; } catch { return true; } };
 
 test("a named agent can start its lent task, not another, and not after the lend ends", async () => {
   const k = await createKernel({ space: S, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9) });
@@ -47,7 +49,7 @@ test("a lend dies the moment its task is withdrawn, before anything takes the gr
   await k.gateway.ask.withdraw(k.chains.forModule({ module: "flows", approver: owner }), task.id, { reason: "due time" });
   // the grant is still there (nothing has taken it back yet) but it holds nothing
   assert.ok((await flows.mint.list({ source: `flows:task:${task.id}` })).length >= 1, "the lend has not been ended");
-  await assert.rejects(() => k.gateway.ask.get(asAgent(), task.id), /./, "reading the task with the lend is refused");
+  assert.equal(await refusedRead(k.gateway.ask.get(asAgent(), task.id)), true, "reading the task with the lend is refused");
   await assert.rejects(() => k.gateway.ask.complete(asAgent(), task.id, { note: "late", sources: ["vyre://x/y/z"] }), /./, "handing it in is refused");
 });
 
@@ -61,7 +63,7 @@ test("a lend that names a task the kernel does not hold is dead: an unknown task
   const real = await k.gateway.ask.request(owner, { title: "Draft the note", doer: scribe, output: { kind: "note" }, source: "manual" });
   // the lend covers the real task's address but is sourced from a task id that does not exist
   await flows.mint.make({ subject: { kind: "actor", actor: scribe }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${S}/task/${real.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: "flows:task:ghost-task-id", reason: "a lend for nothing" });
-  await assert.rejects(() => k.gateway.ask.get(asAgent(), real.id), /./, "a lend for a task nobody holds reads nothing");
+  assert.equal(await refusedRead(k.gateway.ask.get(asAgent(), real.id)), true, "a lend for a task nobody holds reads nothing");
   await assert.rejects(() => k.gateway.ask.start(asAgent(), real.id), /./, "and starts nothing");
 });
 
