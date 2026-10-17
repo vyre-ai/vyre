@@ -488,17 +488,20 @@ test("computers: the admin tools are a person's alone: an agent and a module are
   assert.notEqual((await s.kit("computers.handback.status")).error, undefined, "its status is the person's too");
 });
 
-test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {
+test("computers: computers.member.add makes the member-token key on first need (the vault keeps it), adds the member and reloads computerd", async t => {
   const s = await boot(t);
+  // computerd is not running in this test: its reload answers at once instead of retrying a connection that nothing listens on
+  /** @type {string[]} */ const reloads = [];
+  s.h.pool._helperFetch = async (/** @type {URL} */ url) => { reloads.push(url.pathname); return /** @type {any} */ ({ ok: true, status: 200, json: async () => ({ agents: 1, revoked: [] }) }); };
   const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
-  assert.ok(r.error, "add succeeded with no vault running to derive a token from");
-  assert.match(r.error.message, /vault/i);
-  // ensure() itself (seedMembersBeforeStart, before the container ever starts) is what hits the
-  // vault. Since 29 Sep (reviewer LOW 2) a failed add for a brand-new member leaves no trace: the
-  // row it made for this call is rolled back, not left half-built for the next attempt to trip
-  // over -- a retry after fixing the vault starts from nothing, same as the very first try.
-  assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
-  assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.computer, "browser-abc123");
+  assert.deepEqual(s.h.pool.members("browser-abc123").map((/** @type {any} */ m) => m.agent_id), ["kit-1"], "the member was added");
+  assert.deepEqual(reloads, ["/agents/reload"], "computerd was told to read its new identity file");
+  // a second add finds the key already there and does not make another
+  const again = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-2", name: "bob" });
+  assert.equal(again.error, undefined, JSON.stringify(again.error));
+  assert.deepEqual(s.h.pool.members("browser-abc123").map((/** @type {any} */ m) => m.agent_id).sort(), ["kit-1", "kit-2"]);
 });
 
 test("computers: the person renames an agent's computer, it shows in the list and tells the surfaces, and an agent cannot", async t => {
