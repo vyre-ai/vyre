@@ -10,7 +10,7 @@ export const whoName = (who, nameOf) => {
   return (nameOf && nameOf(id)) || (String(who).startsWith("person:") ? `Person ${id.slice(-6)}` : String(who).replace(/^[a-z]+:/, ""));
 };
 
-/** One value as a short line. A sealed placeholder (an object with `sealed`) reads "sealed". @param {any} v */
+/** One value as a short line. A sealed placeholder (an object with `sealed`) reads "sealed". @param {any} v@returns {string} */
 export function shown(v) {
   if (v === undefined || v === null || v === "") return "empty";
   if (typeof v === "object" && !Array.isArray(v) && ("sealed" in v || "ref" in v)) return "sealed";
