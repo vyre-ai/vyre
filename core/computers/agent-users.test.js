@@ -23,6 +23,7 @@ function setup(t, extra = {}) {
     startScreen: async (/** @type {any} */ u) => { if (extra.failStart) throw new Error("no screen"); ran.push(`start :${u.display} ${u.user}`); },
     stopScreen: async (/** @type {any} */ u) => { ran.push(`stop :${u.display} ${u.user}`); },
     wipeHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
+    screenTicket: async (/** @type {any} */ u, /** @type {string} */ ticket) => { ran.push(`ticket ${u.user} ${ticket}`); },
   };
   const users = new AgentUsers({ db, ctl, now: () => clock.t, emit: type => events.push(type), ...extra.deps });
   return { users, clock, ran, events };
@@ -122,4 +123,16 @@ test("a computer holds at most its limit of agents", async t => {
   const { users } = setup(t, { deps: { max: 2 } });
   await users.add("a1", "A"); await users.add("a2", "B");
   await assert.rejects(() => users.add("a3", "C"), /already holds 2 agents/);
+});
+
+test("a screen ticket is registered for a live agent only, under that agent's own user, and counts as use", async t => {
+  const { users, ran, clock } = setup(t);
+  await users.add("ads", "Ads");
+  await assert.rejects(() => users.screenTicket("ads", "t".repeat(32)), /screen is not on/);
+  await assert.rejects(() => users.screenTicket("nobody", "t".repeat(32)), /screen is not on/);
+  await users.wake("ads");
+  clock.t += 60_000;
+  await users.screenTicket("ads", "t".repeat(32));
+  assert.deepEqual(ran.filter(x => x.startsWith("ticket")), [`ticket ag20000 ${"t".repeat(32)}`]);
+  assert.equal(users.row("ads").last_active, clock.t);
 });

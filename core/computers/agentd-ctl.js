@@ -27,6 +27,8 @@ export function agentdCtl(deps) {
     startScreen: async u => post("start", { user: u.user, uid: u.uid, display: u.display, limits: deps.limits ? deps.limits() : {}, vncPassword: vncPasswordFor(await deps.vncKey(), u.agentId) }),
     stopScreen: u => post("stop", { user: u.user, uid: u.uid, display: u.display }),
     wipeHome: u => post("wipe", { user: u.user, uid: u.uid, display: u.display }),
+    /** register a one-use ticket for a viewer's connection to the relay (agentd-relay.js) */
+    screenTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket }),
   };
 }
 

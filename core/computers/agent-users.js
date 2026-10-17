@@ -40,7 +40,8 @@ export const userNameOf = uid => `ag${uid}`;
  *   removeUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void> }} Ctl
+ *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void> }} Ctl
  */
 
 export class AgentUsers {
@@ -103,6 +104,15 @@ export class AgentUsers {
       this.emit("computer.agent-live", { agent: id });
       return this.row(id);
     });
+  }
+
+  /** Register a viewer's one-use ticket for this agent's live screen with agentd's relay; counts as use. Refused for a screen that is not up. @param {string} id @param {string} ticket */
+  async screenTicket(id, ticket) {
+    const r = this.row(id);
+    if (!r || r.state !== "live") throw new Error(`${id}'s screen is not on`);
+    if (typeof this.ctl.screenTicket !== "function") throw new Error("this computer cannot open a screen to an agent");
+    await this.ctl.screenTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
+    this.touchNow(id);
   }
 
   /** Something used the agent's screen or Chrome (a tool call, a viewer, a take-over input). @param {string} id */

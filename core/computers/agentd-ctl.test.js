@@ -80,3 +80,10 @@ test("a token file that holds no token stops agentd from starting", async t => {
   fs.writeFileSync(path.join(dir, "token"), "short");
   assert.throws(() => startAgentd({ socket: path.join(dir, "s.sock"), tokenFile: path.join(dir, "token") }), /holds no token/);
 });
+
+test("a screen ticket goes to agentd as the agent's triple and the ticket, nothing else", async () => {
+  /** @type {any[]} */ const sent = [];
+  const ctl = agentdCtl({ transport: async (a, b) => { sent.push([a, b]); return { status: 200, json: { ok: true } }; }, vncKey: async () => "k".repeat(32) });
+  await /** @type {any} */ (ctl).screenTicket({ agentId: "ads", user: "ag20001", uid: 20001, display: 21 }, "t".repeat(32));
+  assert.deepEqual(sent, [["ticket", { user: "ag20001", uid: 20001, display: 21, ticket: "t".repeat(32) }]]);
+});

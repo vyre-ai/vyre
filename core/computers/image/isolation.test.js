@@ -403,12 +403,18 @@ test("isolation (static): agentd starts nothing as root: every agent process goe
   assert.match(agentd, /"--clear-groups"/);
 });
 
-test("isolation (static): agentd has no TCP listener: it listens on a unix socket and the screen is a unix socket too", () => {
+test("isolation (static): agentd's control channel is a unix socket; the one TCP port is the screen relay, which opens nothing without a registered ticket", () => {
   const main = fs.readFileSync(path.join(HERE_DIR, "agentd-main.js"), "utf8");
   const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
   assert.match(main, /server\.listen\(socket\)/);
   assert.doesNotMatch(main + server, /listen\(\s*(\d+|process\.env\.[A-Z_]*PORT)|0\.0\.0\.0|127\.0\.0\.1/, "no port, no address");
   assert.match(fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8"), /"-rfbport", "-1", "-rfbunixpath"/);
+  const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8");
+  assert.equal((main.match(/\.listen\(/g) || []).length, 2, "the control socket and the relay, nothing else");
+  assert.match(main, /relay\.listen\(o\.relayPort \?\? RELAY_PORT\)/);
+  assert.match(relay, /o\.tickets\.take\(/, "a connection is joined to a screen only through a ticket");
+  assert.match(relay, /\.\.\.asAgent\(u\), "\/usr\/bin\/python3", "-I", PIPE/, "the pipe runs as the agent, with no argument");
+  assert.doesNotMatch(relay, /vnc\.sock|socketOf/, "the relay never names a socket: the pipe builds it from its uid");
 });
 
 test("isolation (static): no environment variable can redirect agentd or its client, and agentd starts as agentctl with only setuid and setgid", () => {
