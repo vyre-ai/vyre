@@ -55,12 +55,3 @@ test("a moment takes a yes in its forms, a reveal's yes may be reused for five m
   assert.notEqual((await at("relay.disable", {})).error?.code, "presence_required");
   fs.rmSync(path.join(root, "b.vyre"), { force: true });
 });
-
-test("the lend of a member's own item is not a moment op: the registry's floor must never see it, the Vault checks her yes itself", async () => {
-  const { momentOf, lineOfOp } = await import("../lib/one-yes.js");
-  const { MOMENT_OPS } = await import("../lib/one-yes-ops.js");
-  assert.equal(momentOf("vault.me.mention.lend"), null);
-  assert.equal(MOMENT_OPS.vault.includes("vault.me.mention.lend") || MOMENT_OPS.pair.includes("vault.me.mention.lend"), false);
-  // its sentence on her phone is still written
-  assert.match(lineOfOp("vault.me.mention.lend", { asker: "per_x", id: "clio", thread: "t", agent: "kit" }, "this phone"), /kit.*clio.*without seeing it/);
-});

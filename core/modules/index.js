@@ -1353,7 +1353,7 @@ export class Registry {
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet: pair it with a server first"), { code: "unavailable" }); return f(id, space); },
       } : {}),
       // the presence module confirms a local yes with the daemon's own verifier (Touch ID, the terminal code), the one the registry's floor already holds
-      ...(m.name === "presence" && (/** @type {any} */ (this.deps)).presence ? { verifier: (/** @type {any} */ (this.deps)).presence } : {}), ...(m.name === "vault" && (/** @type {any} */ (this.deps)).verifyYes ? { verifyYes: (/** @type {any} */ (this.deps)).verifyYes } : {}),
+      ...(m.name === "presence" && (/** @type {any} */ (this.deps)).presence ? { verifier: (/** @type {any} */ (this.deps)).presence } : {}),
       ...(m.name === "relay" || m.name === "wink" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.

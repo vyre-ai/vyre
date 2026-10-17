@@ -20,8 +20,6 @@
       { "name": "vault.me.release", "reach": "modules" },
       { "name": "vault.me.mention.search", "reach": "modules" },
       { "name": "vault.me.mention.resolve", "reach": "modules" },
-      { "name": "vault.me.mention.lend", "reach": "modules" },
-      { "name": "vault.me.mention.end", "reach": "modules" },
       { "name": "vault.connection.token", "reach": "modules" },
       { "name": "vault.me.connect.put", "reach": "modules" },
       { "name": "vault.me.who", "reach": "modules" },

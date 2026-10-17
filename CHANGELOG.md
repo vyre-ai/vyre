@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- refactor(vault): the per-turn member lend is out of 0.6: `vault.me.mention.lend` and `.end`, `member-credential.js`, `mention-yes.js` and the `verifyYes` wiring, the lend sentence in `lib/one-yes.js`, the `lent-` branch in `request.js`, and their tests. `vault.me.mention.search` and `.resolve` stay. Connection loans (`connection-share` lendTurn/endTurn, `connection-token`) are not touched here.
 - refactor(switchboard): vault references replace the turn lend. A member's vault chip asks the Vault for its name only; the lend call, the chip `yes`/`origin`, `lend-end.js` and its turn-end hooks, and the app's lend pin test are removed (DESIGN-vault-references.md). The turn-asker binding stays for asks and Drive grants.
 - fix(switchboard): a refused member lend keeps the named pill and says why in four plain notes: no saved site, several sites none picked, her yes did not check, not allowed. Other refusals stay silent.
 - refactor(kernel): the type-definition checks (kinds, roles, computed fields, names, shape) moved from `gateway/records.js` to `gateway/definition-checks.js`, outside the counted base; no behaviour change. The trusted base fell from 9842 to 9680 lines and the cap from 9842 to 9740.

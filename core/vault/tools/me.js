@@ -43,7 +43,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
 /** The two tools with which a member uses what the owner shared with her (registered in core/vault/request.js, beside vault.request, which they run through). */
-export const SHARED_ME_TOOLS = ["vault.me.mention.search", "vault.me.mention.resolve", "vault.me.mention.lend", "vault.me.mention.end", "vault.me.shared.reveal", "vault.me.shared.update", "vault.me.shared.rotate", "vault.me.provisioned", "vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
+export const SHARED_ME_TOOLS = ["vault.me.mention.search", "vault.me.mention.resolve", "vault.me.shared.reveal", "vault.me.shared.update", "vault.me.shared.rotate", "vault.me.provisioned", "vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
