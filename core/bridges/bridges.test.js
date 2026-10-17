@@ -264,8 +264,10 @@ test("bridges: a model's copy is held by the registry (ask first) and nothing is
   // a model asking for sealed values, even with the person's proof beside it, is stopped by the same hold: no card is needed to know it can never copy them
   const sealed = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp:agent:juno", ME);
   assert.equal(sealed.error?.code, "held_unavailable", JSON.stringify(sealed));
-  // a bare model session ("mcp") is no more the person than a named agent: it is held like any model
-  assert.equal((await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME)).error?.code, "held_unavailable");
+  // a bare model session ("mcp") carries no agent or thread claim, so the registry's ask-first hold (which keys on that claim) does not apply to it; it is still no more the person than a named agent, and the
+  // tool's own model-chain refusal answers forbidden. Nothing is written either way.
+  const bare = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "mcp", ME);
+  assert.equal(bare.error?.code, "forbidden", JSON.stringify(bare));
   assert.equal(h.w.records.northwind.client, undefined, "still nothing was written");
   // the person alone, with presence: off by default, so still not copied
   const own = await h.call("bridges.copy", { person: "alex", urn: "vyre://harlow/client/c1", toSpace: "northwind", copy_sealed: ["ssn"] }, "deck");
