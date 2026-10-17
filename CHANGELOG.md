@@ -2,7 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## 0.6
+## 0.6.0-rc.1
 
 - ci(golden-refresh): the generated-copies tarball covers every file scripts/gen-surface-lists.mjs writes under apps/app/src/real (member-routes.generated.js and space-tools.generated.js), not one named file, so test/surface-lists.test.js can go green from the runner's output.
 
