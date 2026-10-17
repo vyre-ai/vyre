@@ -1,7 +1,7 @@
 {
   "name": "wink",
   "version": "0.1.0",
-  "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
+  "description": "Pairing as grants: every way in is a Wink. Devices (computer, server, storage) belong to the identity, never to a space. Pair a server, invite a person, offer compute, see and remove what was given.",
   "roles": [
     "box",
     "local"
@@ -48,31 +48,6 @@
       {
         "name": "wink.home.call",
         "reach": "modules",
-        "effect": "write"
-      },
-      {
-        "name": "wink.code.open",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.code.redeem",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.code.carry",
-        "reach": "modules",
-        "effect": "write"
-      },
-      {
-        "name": "wink.code.status",
-        "reach": "person",
-        "effect": "read"
-      },
-      {
-        "name": "wink.code.ack",
-        "reach": "person",
         "effect": "write"
       },
       {
@@ -147,11 +122,6 @@
         "effect": "write"
       },
       {
-        "name": "wink.server.confirm",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
         "name": "wink.server.pairing",
         "reach": "person",
         "effect": "read"
@@ -198,36 +168,6 @@
       },
       {
         "name": "wink.relay.apply",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.phone.open",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.phone.scan",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.phone.pairing",
-        "reach": "person",
-        "effect": "read"
-      },
-      {
-        "name": "wink.phone.pair.answer",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.phone.enrolled",
-        "reach": "person",
-        "effect": "write"
-      },
-      {
-        "name": "wink.phone.wait",
         "reach": "person",
         "effect": "write"
       },
@@ -363,27 +303,16 @@
     "emits": [
       "wink.offered",
       "wink.found",
-      "wink.confirmed",
       "wink.joined",
       "wink.declined",
       "wink.expired",
       "wink.removed",
       "wink.shared",
-      "wink.code-opened",
-      "wink.code-replaced",
-      "wink.code-closed",
-      "wink.code-wrong",
-      "wink.code-ack",
-      "wink.code-done",
-      "wink.code-unavailable",
       "wink.pair-waiting",
       "wink.pair-done",
       "wink.pair-asked",
-      "wink.signin-asked",
       "wink.pair-confirm",
       "wink.pair-answered",
-      "wink.enrol-asked",
-      "wink.enrolled",
       "wink.pair-failed",
       "wink.server-adopted",
       "wink.server-paired",
@@ -399,8 +328,6 @@
       "wink.device-needs-repair"
     ],
     "on": [
-      "relay.code-asked",
-      "relay.signin-asked",
       "relay.connected",
       "name.claimed",
       "relay.invite-redeemed",

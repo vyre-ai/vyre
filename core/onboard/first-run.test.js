@@ -76,15 +76,10 @@ function harness(opt = {}) {
     if (name === "wink.install.complete") throw Object.assign(new Error("not yet"), { code: opt.completeCode || "bad_state" });
     if (name === "spaces.invites.create") return { link: "https://vyre.run/i/abcdefghijk" };
     if (name === "spaces.invites.preview") { if (opt.preview) return opt.preview(input); throw Object.assign(new Error("no card"), { code: "not_found" }); }
-    if (name === "wink.phone.open") return { qr: "vyre://wink/2?p=phoneseed", link: "vyre://wink/2?p=phoneseed", expires: 1_900_000_000_000, code: "WINK-ABCD-EFGH" };
     if (name === "spaces.invites.accept") {
       const link = String(input.link || "");
       if (link.includes("adminlink")) return { space: "spc_juniper", name: "juniper", role: "admin", server: "https://juniper.vyre.run" };
       return { space: "spc_juniper", name: "juniper", role: "member", server: "https://juniper.vyre.run" };
-    }
-    if (name === "devices.signin") {
-      assert.equal("password" in input, true);
-      return { ok: true, username: input.username || "alex", server: input.server, live: true, device: "aaaaaaaaaaaaaaaa" };
     }
     if (name === "vault.space.create") {
       if (made.has(input.space)) throw Object.assign(new Error("exists"), { code: "exists" });
@@ -102,14 +97,14 @@ test("the first-run tools are the ones the app calls, and an access change is ma
   const { tools } = harness();
   const names = [...tools.keys()].sort();
   assert.deepEqual(names, [
-    "onboard.agent.list", "onboard.agent.signin", "onboard.computer.add", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save",
+    "onboard.agent.list", "onboard.agent.signin", "onboard.first.done", "onboard.first.progress", "onboard.first.progress.save",
     "onboard.github.finish", "onboard.github.start", "onboard.join.read", "onboard.member.link",
-    "onboard.person.create", "onboard.person.lookup", "onboard.person.status", "onboard.phone.add",
+    "onboard.person.create", "onboard.person.lookup", "onboard.person.status",
     "onboard.space.current", "onboard.space.join", "onboard.space.list", "onboard.space.open", "onboard.space.poll",
   ]);
   const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
   const rows = new Map(manifest.does.tools.filter((t) => typeof t === "object").map((t) => [t.name, t]));
-  for (const name of ["onboard.person.create", "onboard.github.finish", "onboard.space.join", "onboard.space.open", "onboard.space.current", "onboard.member.link", "onboard.computer.add", "onboard.phone.add"]) {
+  for (const name of ["onboard.person.create", "onboard.github.finish", "onboard.space.join", "onboard.space.open", "onboard.space.current", "onboard.member.link"]) {
     assert.equal(rows.get(name).outward, true, name);
     assert.equal(rows.get(name).effect, "write", name);
     assert.equal(rows.get(name).reach, "anyone", name);
@@ -248,24 +243,9 @@ test("the install command is the pairing line, and an invite goes through the sp
   const join = await tools.get("onboard.space.join").run({ link: link.link }, {});
   assert.equal(join.joined, true);
   assert.equal(calls.some((c) => c.name === "spaces.invites.accept"), true);
-  const invitesBefore = calls.filter((c) => c.name === "spaces.invites.create").length;
-  const phone = await tools.get("onboard.phone.add").run({ space: "juniper" }, {});
-  assert.equal(phone.link, "vyre://wink/2?p=phoneseed");
-  assert.equal(phone.role, "device");
-  assert.equal(phone.code, "WINK-ABCD-EFGH");
-  assert.equal(calls.some((c) => c.name === "wink.phone.open"), true, "a phone is paired as the person's own device");
-  assert.equal(calls.filter((c) => c.name === "spaces.invites.create").length, invitesBefore, "adding a phone makes no invite for a second person");
-  const computer = await tools.get("onboard.computer.add").run({ url: "https://juniper.vyre.run", username: "alex", password: "correct horse battery" }, {});
-  assert.equal(computer.url, "https://juniper.vyre.run");
-  assert.equal(computer.username, "alex");
-  assert.equal("password" in computer, false);
-  assert.equal(calls.some((c) => c.name === "devices.signin"), true);
-  assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
-  // The card for adding a computer names the server it will sign in to.
-  assert.match(lineOfOp("onboard.computer.add", { url: "https://juniper.vyre.run", username: "alex" }, "An assistant"), /juniper\.vyre\.run/);
 });
 
-test("one identity is owner of one space and admin of another, and a computer signs into both servers", async () => {
+test("one identity is owner of one space and admin of another, and the spaces list names both servers", async () => {
   const { tools, calls } = harness();
   const made = await tools.get("onboard.person.create").run({ username: "alex", password: "correct horse battery", confirm: "correct horse battery" }, { caller: "cli" });
   assert.equal(made.already, false);
@@ -299,27 +279,6 @@ test("one identity is owner of one space and admin of another, and a computer si
   assert.equal((await tools.get("onboard.space.list").run({}, {})).current, byName.juniper.id);
   await assert.rejects(() => tools.get("onboard.space.current").run({ space: "spc_missing" }, {}), /not one this identity/);
 
-  const computer = await tools.get("onboard.computer.add").run({ url: "https://studio.vyre.run", username: "alex", password: "correct horse battery" }, {});
-  const signins = calls.filter((c) => c.name === "devices.signin");
-  assert.deepEqual(signins.map((c) => c.input.server).sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.equal(signins.every((c) => c.input.username === "alex" && c.input.password === "correct horse battery"), true);
-  assert.equal(computer.added, true);
-  assert.deepEqual(computer.missing, []);
-  assert.equal("password" in computer, false);
-  assert.equal("carry" in computer, false);
-  const againList = await tools.get("onboard.space.list").run({}, {});
-  assert.equal(againList.spaces.find((s) => s.name === "studio").server, "https://studio.vyre.run");
-  assert.equal(againList.id, "id_alex");
-  const againComputer = await tools.get("onboard.computer.add").run({ username: "alex", password: "correct horse battery" }, {});
-  const both = calls.filter((c) => c.name === "devices.signin");
-  assert.equal(both.length, 4);
-  assert.deepEqual(both.slice(2).map((c) => c.input.server).sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.deepEqual(againComputer.servers.slice().sort(), ["https://juniper.vyre.run", "https://studio.vyre.run"]);
-  assert.equal(againComputer.added, true);
-  assert.equal(againComputer.live, true);
-  assert.equal(againComputer.devices.length, 2);
-  const line = lineOfOp("onboard.computer.add", { username: "alex", password: "correct horse battery" }, "An assistant");
-  assert.doesNotMatch(line, /horse/);
   const shown = lineOfOp("onboard.space.current", { space: "juniper" }, "An assistant");
   assert.match(shown, /juniper/);
   assert.equal(calls.some((c) => c.name === "spaces.owner.transfer"), false);
