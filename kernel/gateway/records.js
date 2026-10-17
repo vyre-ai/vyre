@@ -242,7 +242,7 @@ export function createRecords(cfg) {
       return Boolean(d && (d.grants || []).some((/** @type {string} */ id) => { const g = cfg.grantOf && cfg.grantOf(id); return Boolean(g && !g.parent && g.resource && Array.isArray(g.resource.where) && g.resource.where.length && staffActor(g.issuer)); }));
     } catch { return false; }
   };
-  /** @type {Set<string> | null} */ let protectedTypes = null;
+  /** @type {Set<string> | null} */ let protectedTypes = null; let typesAway = false;
   /** Bumped whenever the definitions change (a define starts and ends here; a raw definer says so through types-signal.js): a cache built from definitions read while one was changing is used once and not kept. */
   let typesGen = 0;
   const typesChanged = () => { protectedTypes = null; privRows.invalidate(); typesGen++; };
@@ -253,7 +253,7 @@ export function createRecords(cfg) {
       if (typeof store.types !== "function") return false;
       const gen = typesGen;
       // while the definitions cannot be read (the store is away) every type counts as protected: an owner, an admin and a keeper are served as ever, anyone else is refused, and nothing is remembered
-      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { return true; }
+      try { const built = new Set((await store.types()).filter((/** @type {any} */ t) => t.protected === true).map((/** @type {any} */ t) => t.name)); typesAway = false; if (gen !== typesGen) return built.has(type); protectedTypes = built; } catch { typesAway = true; return true; }
     }
     return protectedTypes.has(type);
   };
@@ -518,9 +518,9 @@ export function createRecords(cfg) {
     if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `Only an owner or an admin can change this ${type}. Ask one of them.`); }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
-    if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
+    if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw typesAway ? new KernelError("unavailable", "the record store is still starting: try again in a moment") : new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);
     // a type a module KEEPS is changed or removed only by its keeper (the module's own one-hop service chain) or an owner or admin: a chain that merely ends in the keeper's service hop (a person's chain with the service appended) does not pass
-    if (op !== "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw new KernelError("not_allowed", `only an owner or admin, or the service that keeps it, changes a ${type}`);
+    if (op !== "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw typesAway ? new KernelError("unavailable", "the record store is still starting: try again in a moment") : new KernelError("not_allowed", `only an owner or admin, or the service that keeps it, changes a ${type}`);
     const lim = await limitsOf(chain, type, d);
     /** @type {any[]} */ let linkFields = [];
     if (op === "create" || op === "update") {

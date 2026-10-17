@@ -78,7 +78,7 @@ test("f6: what is held survives a restart and runs", async () => {
   await install(w, flowOf([fn("f", { timeout_ms: 600000 })], { concurrency: 1 }));
   for (let i = 0; i < 3; i++) await fire(w, { n: i });
   assert.equal(await count(w, "queued"), 2);
-  const chains = { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
+  const chains = { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => w.kernel.withdrawChain() };
   const done = [];
   const r2 = new FlowRunner({ kernel: w.kernel, store: w.store, catalog: () => w.cat, chains, clock: () => w.clock.t, emit: () => {}, ports: { roles: w.runner.ports.roles, sandbox: async () => { done.push(1); return { outputs: { n: 1 } }; } } });
   g.release(1);
@@ -255,7 +255,7 @@ test("settings: flows.retry_attempts caps the tries a step gets by default, neve
 test("the tools: pause with all or drain, resume with a backlog choice, and the control line says the held count first", async () => {
   const { createFlows } = await import("./index.js");
   const w = await world();
-  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: { roles: w.runner.ports.roles } });
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => w.kernel.withdrawChain() }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: { roles: w.runner.ports.roles } });
   const person = w.kernel.chainFor({ flow: "x", approver: { kind: "person", id: "per_alex", space: "spc_harlow000001" }, tainted: false, space: "spc_harlow000001" });
   const chain = { hops: [{ actor: { kind: "person", id: "per_alex", space: "spc_harlow000001" } }] };
   void person;
@@ -343,7 +343,7 @@ test("two runs on one record that do interleave replay correctly: each run's led
 test("a Flow tool that needs an id says so, with where to find it", async () => {
   const { createFlows } = await import("./index.js");
   const w = await world();
-  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => w.kernel.withdrawChain() }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
   const chain = { hops: [{ actor: { kind: "person", id: "per_alex", space: "spc_harlow000001" } }] };
   for (const [tool, input] of [["flows.start", { flow: "intake-welcome" }], ["flows.run", {}], ["flows.retry", {}], ["flows.timeline", {}], ["flows.get", {}]]) {
     await assert.rejects(() => f.tools[/** @type {string} */ (tool)](chain, input), (/** @type {any} */ e) => e.code === "bad_input" && /is required/.test(e.message), `${tool} names what it needs`);

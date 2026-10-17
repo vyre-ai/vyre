@@ -222,8 +222,7 @@ export async function start(opts = {}) {
  * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
  */
 async function startLocked(opts, root, p, release) {
-  // Which build this process runs, read now: after an upgrade in place, build.json on disk is the
-  // new one, and a vyred that read it later would claim the new commit while running old code.
+  // Which build this process runs, read now: after an upgrade in place, build.json on disk is the new one, and a vyred that read it later would claim the new commit while running old code.
   build();
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
@@ -255,8 +254,7 @@ async function startLocked(opts, root, p, release) {
   const started = Date.now();
   /** Open event streams, closed on stop so server.close() is not held open by them. */
   const streams = new Set();
-  // Tool calls running now, so stop() lets them finish before it closes (ADR 0029, R7), and
-  // whether it has begun to: a call that arrives then is told to come back, not half-run.
+  // Tool calls running now, so stop() lets them finish before it closes (ADR 0029, R7), and whether it has begun to: a call that arrives then is told to come back, not half-run.
   /** @type {Set<Promise<any>>} */
   const inflight = new Set();
   const drain = { on: false };
@@ -696,7 +694,9 @@ async function startLocked(opts, root, p, release) {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || (typeof q.runas === "string" && q.runas) || kernel.id.owner);   // a Flow job acts as its approver (kept as runas by the switchboard), never as the owner
-      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      // A Flow job that acts as its approver (`runas`, with no asker) is not in the thread's own chat: that chat was made for the home and its owner, and the approver is not a member of it, so the kernel would
+      // answer "no such chat" and the job would run with no session at all. Such a job's session is the approver's own, in no chat.
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" && !(typeof q.runas === "string" && q.runas && !q.asker) ? q.rec.chat : undefined);
       // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person

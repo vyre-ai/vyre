@@ -103,7 +103,7 @@ export async function runScenario(name, o = {}) {
   /** @type {any} */ let runner = w.runner;
   if (o.crashAt !== undefined) {
     w.store.putRun = real;
-    const chains = { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
+    const chains = { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => w.kernel.withdrawChain() };
     runner = new FlowRunner({ kernel: w.kernel, store: w.store, catalog: () => w.cat, chains, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
     await runner.recover(); await runner.drain(); await settle(w); await runner.drain();
   }

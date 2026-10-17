@@ -8,6 +8,7 @@
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -44,16 +45,27 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
-/**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
- *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null }} o
- */
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
 let lastTrace = "";
 /** What a server answers when an act needs the person's own approval. */
 const PRESENCE_CODES = ["presence_required"];
 const trace = (/** @type {string} */ line) => { if (line === lastTrace) return; lastTrace = line; trail(`step ${line}`); };
 
+/** What the sign-in screen may be told about a provider login the server started: only these fields, only plain values (a flow id, the login address and code, a state, the account's id and label, a message or an error). Nothing else the server says passes. @param {any} r */
+function pickSignin(r) {
+  const src = r && typeof r === "object" ? r : {};
+  const plain = (/** @type {any} */ v) => (typeof v === "string" ? v.slice(0, 500) : typeof v === "number" || typeof v === "boolean" ? v : undefined);
+  /** @type {Record<string, any>} */ const out = {};
+  for (const key of ["flow", "step", "state", "status", "url", "code", "account", "id", "label", "provider", "message"]) { const v = plain(src[key]); if (v !== undefined) out[key] = v; }
+  if (src.error && typeof src.error === "object") out.error = { ...(plain(src.error.code) !== undefined ? { code: plain(src.error.code) } : {}), ...(plain(src.error.message) !== undefined ? { message: plain(src.error.message) } : {}) };
+  else if (plain(src.error) !== undefined) out.error = plain(src.error);
+  return out;
+}
+
+/**
+ * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
+ *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean }} o
+ */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
   const base = o.directory.replace(/\/+$/, "");
@@ -73,6 +85,8 @@ export function createHost(o) {
 
   /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean }>} */
   const waits = new Map();
+  /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
+  let madeHere = "";
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
    * @param {string} text
@@ -203,9 +217,10 @@ export function createHost(o) {
           }
           await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
           w.saved = true;
+          madeHere = String(p.box);
         }
         const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
-        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
+        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), ...(o.softwareKeyHere ? { noFingerprintYet: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";
@@ -476,6 +491,27 @@ export function createHost(o) {
       let listed = false;
       if (name) { try { await api.publishSpace(name, "add"); listed = true; } catch { /* a member already; the line is added the next time this space is published */ } }
       return { joined: true, space: name || null, id, role, server: name ? `https://${name}.vyre.run` : null, listed };
+    },
+
+    // AI accounts are made on the server (a member's own login, sessions.accounts.signin), so a page with no daemon offers them once its space is online: the three providers, and the sign-in forwarded to the
+    // paired server over the peer wire with the same start (provider, label), then poll (flow, code) the screen already speaks. Nothing secret is returned.
+    "onboard.agent.list": async () => {
+      if (!o.space) throw unsupported();
+      return { providers: AIS.map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) })) };
+    },
+    "onboard.agent.signin": async (input) => {
+      if (!o.space) throw unsupported();
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      // The server this onboarding just made (or joined) is where the sign-in goes: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one.
+      const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
+      const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
+      if (!here) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
+      const provider = String((input && input.provider) || "");
+      if (!AIS.includes(provider)) throw bad("That provider does not support sign-in here.");
+      const ports = await o.space.load();
+      const body = { provider, ...(input.label ? { label: String(input.label).slice(0, 80) } : {}), ...(input.flow ? { flow: String(input.flow).slice(0, 200) } : {}), ...(input.code ? { code: String(input.code).slice(0, 200) } : {}) };
+      return pickSignin(await ports.call("sessions.accounts.signin", body, here.paired.box));
     },
 
     "onboard.space.list": async () => {

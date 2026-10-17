@@ -62,7 +62,9 @@ async function world(t) {
 }
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
-const denied = (/** @type {Promise<any>} */ p, re = /not lent|denied|member/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
+/** A share that has ended: its copy is gone, so the fill finds no such login (not_found) or is denied. */
+const gone = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => ["denied", "not_found"].includes(/** @type {any} */ (e).code));
+const denied = (/** @type {Promise<any>} */ p, re = /not lent|not for|denied|member/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
 
 test("a member's share: one login, one agent, one site; the agent is told a reference, the member a plain line, and the agent's fill starts", async t => {
   const w = await world(t);
@@ -148,7 +150,7 @@ test("every way a share ends deletes its copy: unshare, the login changed, the l
   assert.equal(count(), 1); assert.equal(files(), 1);
   assert.deepEqual(await w.M.unshare({ item: LABEL }, w.as(BEN)), { ended: 1 });
   assert.equal(count(), 0); assert.equal(files(), 0, "the sealed copy is gone with the row");
-  await denied(w.fill(a));
+  await gone(w.fill(a));
   // the login changed: the copy follows it, so the agent signs in with the new password
   const b = (await w.share()).shared.ref;
   w.items.get(BEN).get(LABEL).fields.password = "fixture-NEW-password-0123456789abcdef";
@@ -157,13 +159,13 @@ test("every way a share ends deletes its copy: unshare, the login changed, the l
   // the login stops being a login with a password: the copy goes
   delete w.items.get(BEN).get(LABEL).fields.password;
   await w.M.changed(BEN, LABEL);
-  assert.equal(count(), 0); await denied(w.fill(b));
+  assert.equal(count(), 0); await gone(w.fill(b));
   // removed
   w.items.get(BEN).get(LABEL).fields.password = PASS;
   const c = (await w.share()).shared.ref;
   w.items.get(BEN).delete(LABEL);
   await w.M.changed(BEN, LABEL);
-  assert.equal(count(), 0); assert.equal(files(), 0); await denied(w.fill(c));
+  assert.equal(count(), 0); assert.equal(files(), 0); await gone(w.fill(c));
   // the member leaving: all of their shares, whatever agent and site
   w.items.get(BEN).set(LABEL, { name: LABEL, kind: "login", fields: { username: USER, password: PASS } });
   await w.share(); await w.share({ agent: "kit", origin: "https://other.example.com" });

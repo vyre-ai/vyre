@@ -9,6 +9,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
 import { ConnectionTokens } from "../connection-token.js";
+import { SHARE_TOOLS } from "./member-share.js";
 import { openConnectionKey, wrapPath } from "../people-seal.js";
 import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
@@ -21,11 +22,18 @@ const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: 
 function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}, /** @type {any} */ peopleExtra = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, ...peopleExtra });
+  /** What the vault announced (people.emit), and the member token accounts the sessions module would answer for (vault.me.lend asks sessions.accounts.item). */
+  const events = /** @type {{ type: string, p: any }[]} */ ([]), accounts = /** @type {Record<string, any>} */ ({});
+  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, emit: (/** @type {string} */ type, /** @type {any} */ p) => { events.push({ type, p }); }, ...peopleExtra });
   t.after(() => people.close());
   const kernel = { owner: OWNER, space: "spc_aaaaaaaaaaaa", hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => { if (m.gone) throw new Error("not a member of this Space"); return { hops: m.hops || [] }; }, ...kernelExtra };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = gateTools({ kernel, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
+  /** @type {any} */ (ctx).call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (tool !== "sessions.accounts.item") return { error: { code: "no_such_tool", message: tool } };
+    const a = accounts[String(input.account)];
+    return a && a.person === input.person ? { data: a } : { error: { code: "not_found", message: "no such account" } };
+  };
   register({ ctx, people, tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
   // a tool of the space (owner's) vault, as index.js registers it
   ctx.tool("vault.put", { callers: ["cli"], run: async () => "space vault written" });
@@ -34,7 +42,7 @@ function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} *
     const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
-  return { call, reg, people, home };
+  return { call, reg, people, home, accounts, events };
 }
 
 /** A connection made the one way it can be: the connectors module, for the person in the chain. */
@@ -43,7 +51,7 @@ const conn = (/** @type {any} */ call, /** @type {string} */ name, /** @type {an
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
-  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS].sort());
+  assert.deepEqual([...MEMBER_ALLOWED].sort(), [...ME_TOOLS, ...ME_MODULE_TOOLS, ...SHARED_ME_TOOLS, ...SHARE_TOOLS].sort());
   for (const n of [...ME_TOOLS, ...ME_MODULE_TOOLS]) assert.ok(reg.has(n), `${n} is registered`);
 });
 
@@ -70,7 +78,7 @@ test("a member is refused another person's vault: a person field in the input ch
     assert.ok(!JSON.stringify(r).includes("bob-secret"));
   }
   assert.deepEqual((await call("vault.me.list", { person: BOB }, EVE)).data.items, []);
-  assert.equal((await call("vault.me.remove", { name: "bobs", person: BOB }, EVE)).error.message, "no item named bobs");
+  assert.match((await call("vault.me.remove", { name: "bobs", person: BOB }, EVE)).error.message, /^no item named bobs\b/);
   assert.equal((await call("vault.me.get", { name: "bobs" }, BOB)).data.fields.token, "bob-secret", "Bob's item is untouched");
   assert.ok((await call("vault.me.account.unlock", { password: PW, secretKey: b.data.secretKey, person: BOB }, EVE)).error, "Bob's Secret Key does not open Eve's vault");
 });
@@ -141,7 +149,7 @@ test("vault.me.release hands her Dropbox token to the files module only, for the
   // only her dropbox item, never another of hers
   assert.equal((await asFiles({ name: "claude", field: "token" }, BOB)).error.code, "denied");
   // the person is the chain's, not the input's: Eve gets her own (none), never Bob's
-  assert.equal((await asFiles({ name: "dropbox", person: BOB }, EVE)).error.message, "no item named dropbox");
+  assert.match((await asFiles({ name: "dropbox", person: BOB }, EVE)).error.message, /^no item named dropbox\b/);
   // the owner, no person, two people, an agent turn
   assert.equal((await asFiles({ name: "dropbox" }, OWNER)).error.message, ME_REFUSAL);
   assert.equal((await asFiles({ name: "dropbox" }, null)).error.code, "denied");
@@ -285,7 +293,7 @@ test("vault.me.connect.put: the connectors module stores a sign-in in the signin
   const got = (await call("vault.me.get", { name: "clio" }, BOB)).data;
   assert.equal(got.kind, "connection"); assert.equal(got.fields.connected_by, BOB, "connected_by is the chain's person, not the input's");
   assert.deepEqual(Object.keys(got.fields).sort(), ["auth_kind", "connected_by", "server_url"], "the person sees what it connects to and never a token");
-  assert.equal((await call("vault.me.get", { name: "clio" }, EVE)).error.message, "no item named clio", "nothing lands in another person's vault");
+  assert.match((await call("vault.me.get", { name: "clio" }, EVE)).error.message, /^no item named clio\b/, "nothing lands in another person's vault");
   assert.equal((await put({ name: "clio", fields: { ...f, refresh_token: "R2" } }, BOB)).data.created, false, "a second sign-in updates it");
   assert.equal((await people.service(BOB).get("clio")).fields.refresh_token, "R2");
   for (const caller of ["module:files", "module:sessions", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.connect.put", { name: "x", fields: f }, BOB, { caller })).error?.code, "denied", caller);

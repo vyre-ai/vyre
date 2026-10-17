@@ -1,6 +1,6 @@
 {
   "name": "vyre",
-  "version": "0.5.3",
+  "version": "0.6.0-rc.1",
   "description": "Your team and your AI agents, working together on a server you own. Open source, self-hosted, any model.",
   "type": "module",
   "bin": {
@@ -117,6 +117,7 @@
     "!**/testing/**",
     "!harness/member-relay-harness.js",
     "!kernel/flows/safety-net.js",
+    "!kernel/flows/golden/write.mjs",
     "apps/app/src/chat/core/commands.js",
     "apps/app/src/chat/core/match.js",
     "packages/module-sdk/testing.js"

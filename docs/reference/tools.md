@@ -204,7 +204,7 @@ Write in a Flow's chat: wake the Flow's agent for you, as you, with the Flow and
   - `flow` string, required
   - `text` string, required
   - `run` string: narrow the question to one run
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `agents.history`
 
@@ -8738,7 +8738,7 @@ End every paired session and grant of one device, or of all devices when none is
 
 ### `presence.person.locked`
 
-The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.
+Paired devices locked after wrong sign-in answers, with when each lock ends (ms): { locked: [{ device, until }] }. Removed devices are not listed.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
@@ -11620,7 +11620,7 @@ Turn down a draft waiting for a yes: the proposer or the level's owner retires i
   - `name` string, required
   - `version` integer, required
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `space`, `tailnet`
 
 ### `skills.draft`
 
@@ -12493,6 +12493,7 @@ The spaces a person is in, one entry each: { space, name, color, link }, for a d
 
 - Input:
   - `person` string, required
+  - `home` boolean: also list the home's own Space when the person is a member of it
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.move.plan`
@@ -15114,6 +15115,7 @@ Tell the vendor to revoke a person's connection token (RFC 7009), if the connect
 - Input:
   - `connection` string, required
   - `owner` string, required
+  - `as` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.connection.token`
@@ -15123,6 +15125,7 @@ An access token for one person's app connection, for the MCP hub: { owner, conne
 - Input:
   - `connection` string, required
   - `owner` string, required
+  - `as` string
   - `write` boolean
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 

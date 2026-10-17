@@ -135,7 +135,7 @@ shardTest("a browser whose identity is a passkey pairs a fresh server: the owner
 shardTest("a pick with no deviceKind makes a device row (named a device, as the app said nothing of itself) and nothing more: no relay device row, no presence key, no paired session, and the device cannot sign in or call a tool", async t => {
   const f = await pairFreshServer(t, { kind: "" });
   const { w, done } = f;
-  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "a device", "the app said no kind and no name, so the device is recorded under the plain name");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "Alex's iPhone", "the device is recorded under the name it gave, although the app sent no kind");
   // (the relay's own provisional row from the pairing may exist; it is not the owner's paired device, and the checks below show it opens nothing)
   assert.notEqual((await deviceRow(w, done.device))?.ownerPaired, true, "the relay does not hold it as the owner's paired device");
   const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
@@ -145,7 +145,7 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
   // (presence.keys also lists the relay's provisional row for the pairing's own key; what matters is that the Wink record above holds no key and confirms nothing, and the sign-in and channel checks below)
   const links = linksFor(t, f);
   await assert.rejects(() => links.startPaired("srv"), "the device cannot sign in, so it cannot call any tool");
-  // and with no relay device row it cannot open a device channel either: an ordinary hello gets no device, and nothing a device could reach
+  // and as only a provisional relay row it cannot reach anything a device could: an ordinary hello gets nothing, and the owner's tool surface is refused
   const crypt = nodeCrypto();
   const k = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
   /** @type {any} */ let r = null;
@@ -155,7 +155,8 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
     // (the relay's provisional row may name it a device on the channel; what it may reach is the question, and the owner's tool surface is refused)
     // Three outcomes stay apart: a 403, a 400 or a stream reset is a refusal; a request nobody answers shows nothing unless a control request on the same channel, to a path the device may
     // reach (a plain peer stream gets its 400), is answered inside the same window; no answer to the control means the channel is dead and the refusal is not shown.
-    const ask = (/** @type {any} */ h) => new Promise(res => { const st = r.channel.open(h); st.onhead = (/** @type {any} */ x) => res({ status: x && x.status }); st.onreset = () => res({ status: 0, reset: true }); setTimeout(() => res({ timeout: true }), 4000); });
+    /** @type {number[]} */ const toolHeads = [];
+    const ask = (/** @type {any} */ h) => new Promise(res => { const st = r.channel.open(h); st.onhead = (/** @type {any} */ x) => { if (h.path === "/v1/tools") toolHeads.push(x && x.status); res({ status: x && x.status }); }; st.onreset = () => res({ status: 0, reset: true }); setTimeout(() => res({ timeout: true }), 4000); });
     const tools = /** @type {any} */ (await ask({ method: "GET", path: "/v1/tools" }));
     if (tools.timeout) {
       const control = /** @type {any} */ (await ask({ peer: "wink", space: "home" }));
@@ -163,6 +164,9 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
     } else {
       assert.ok(tools.status === 403 || tools.status === 400 || tools.reset, `GET /v1/tools is refused (${tools.status})`);
     }
+    // (the tool request's stream stays open after the window: an answer that comes late must not be a success either)
+    await new Promise(res => setTimeout(res, 500));
+    assert.ok(!toolHeads.some(c => c >= 200 && c < 300), `GET /v1/tools never got a 2xx head (${toolHeads.join(",")})`);
   }
 });
 
@@ -198,8 +202,19 @@ shardTest("a device with no box pairs a fresh server through pairServer: the cla
   assert.equal(st.owned, true);
   assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
   assert.equal(st.device, "Alex's iPhone");
-  // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: no relay device row, so nothing was enrolled or given a session through the relay).
-  assert.equal(((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "a pick with no kind makes no relay device row");
+  // The pick recorded the device by the name it gave although the app sent no deviceKind (a record only: the relay's provisional row for the pairing may exist, but nothing was enrolled or given a session through it).
+  // The relay's own provisional row from the pairing's hello may exist (it is not made by the name: the same row is there when the app sends none). What matters is what it is: not the owner's
+  // paired device, not trusted, no presence key, no storage kind, and nothing was enrolled or given a session through it.
+  const rows = ((await w.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []);
+  for (const row of rows) {
+    assert.equal(row.kind, "app", "the relay row is the provisional one (app), never a phone or a computer");
+    assert.notEqual(row.ownerPaired, true, "a pick with no kind makes no owner-paired relay device");
+    assert.notEqual(row.presence, true, "a pick with no kind enrols no presence key through the relay");
+    assert.equal(row.storage, "unknown", "a pick with no kind has no key storage kind");
+    const raw = /** @type {any} */ (w.d.registry.deps.db.prepare("SELECT trusted FROM relay_devices WHERE id = ?").get(row.id));
+    assert.ok(!raw || !raw.trusted, "a pick with no kind makes no trusted relay device");
+    assert.equal((await w.d.registry.call("wink.device.record", { id: row.id }, "module:presence")).data?.confirmed === true && (await w.d.registry.call("wink.device.record", { id: row.id }, "module:presence")).data?.key != null, false, "no confirmed record with a key");
+  }
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
 });

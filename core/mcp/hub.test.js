@@ -476,12 +476,18 @@ test("a person's connection is used by whoever the Vault says holds its item, at
 test("a person's connection reaches its server with an access token the Vault hands over at the moment of the request, never a stored header, and the token is scrubbed from what comes back", async () => {
   const A = "per_alice", url = "https://mcp.example.test/mcp", TOKEN = "fixture-access-token-abcdef123456";
   const asked = [];
-  const { hub, db } = fakeHub({
+  const { hub, db, held } = fakeHub({
     mayUseConnection: async () => true,
     connectionToken: async c => { asked.push(c); return { access_token: TOKEN, token_type: "Bearer" }; },
   });
   await hub.add({ name: "clio", transport: "http", url, auth: { type: "oauth", connection: "clio-alice" } }, { owner: A });
   const key = personKey("clio", A);
+  // a grantee's DIRECT outward call is held at the Gate and asks the Vault for no token at all: the token is asked for only once the Gate has said yes
+  asked.length = 0;
+  const direct = await hub.call({ server: key, tool: "send_message", arguments: { text: "hi" } }, { person: true, agent: null, thread: "t" });
+  assert.ok(direct.held, "the outward call is held: " + JSON.stringify(direct));
+  assert.equal(held.size, 1, "a request was made to the Gate");
+  assert.equal(asked.length, 0, "no token was asked for before the release");
   const r = await hub.call({ server: key, tool: "list_issues" }, { person: true, agent: null, thread: "t" });
   const text = JSON.stringify(r);
   assert.ok(!text.includes(TOKEN), "the token is scrubbed from the result");

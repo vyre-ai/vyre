@@ -477,6 +477,10 @@
    "class": "own",
    "why": "writes a DRAFT only, as the person the call carries; nothing uses it until the level's owner approves"
   },
+  "skills.decline": {
+   "class": "refused",
+   "why": "turning down a draft only closes it or takes access away, never grants any; the body refuses a chain that is not exactly one person (library.decline), and only the draft's proposer or the level's owner can retire it"
+  },
   "team.add": {
    "class": "refused",
    "why": "refused in the body for a plain session: team.add runs for an agent only when your own words asked for it; tell the perso"

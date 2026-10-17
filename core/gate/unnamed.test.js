@@ -66,7 +66,7 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   const callAs = async (/** @type {any} */ args) => d.registry.call("mcp.call", { server: "web", tool: "send_message", arguments: args }, "mcp:agent:juno", await agentTok());
 
   // A hub server with one outward tool, on a real vyred (stdio child, its calls logged to a file).
-  await ok("mcp.add", { name: "web", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"],
+  await ok("mcp.add", { name: "web", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], scope: { agents: ["juno"] },   // no written scope names the assistant only; juno is a plain agent
     vars: { FAKE_MCP_LOG: logFile, FAKE_MCP_TOOLS: JSON.stringify([{ name: "send_message", inputSchema: { type: "object" } }]) } });
   // The person gives juno a standing permission to send to example.com addresses through this server.
   await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mcp:web", to: { patterns: ["*@example.com"] }, daily_cap: 5 });
@@ -80,5 +80,5 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   // Named, inside the scope: the same standing permission covers it, so it goes out with no question (the positive control).
   const named = await callAs({ to: "client@example.com", text: "hi" });
   assert.ok(!named.error, JSON.stringify(named.error));
-  await until(() => calls(logFile) === 1);
+  await until(() => calls(logFile) === 1).catch(async e => { throw new Error(`${e.message}: the named send answered ${JSON.stringify(named.data).slice(0, 300)}; held at the Gate now: ${JSON.stringify(await ok("gate.held")).slice(0, 400)}`); });
 });

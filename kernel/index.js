@@ -413,7 +413,7 @@ export async function createKernel(cfg) {
           const issuer = String(g.source).split(":")[3] || "";
           const role = issuer ? grantsStore.roleOf({ kind: "person", id: issuer, space: cfg.space }) : null;
           if (!(role === "owner" || role === "admin" || (issuer && q.agentOwner === issuer))) continue;
-          if (!(await mayUseVia(issuer, q.via)) || (/^(?:microsoft:|google-firm:)/.test(q.via) ? issuer !== String(first.actor.id) : !/^(?:mail|google):[A-Za-z0-9_.-]{1,80}$/.test(q.via) && !["owner", "admin"].includes(grantsStore.roleOf({ kind: "person", id: String(first.actor.id), space: cfg.space })))) continue;   // firm-key mailbox (microsoft:, google-firm:): its issuer's own turns only; the Space's static sender: staff turns only
+          if (!(await mayUseVia(issuer, q.via)) || (/^(?:microsoft:|google-firm:)/.test(q.via) ? issuer !== String(first.actor.id) : !/^(?:mail|google):[A-Za-z0-9_.-]{1,80}$/.test(q.via) && !grantsStore.isAdmin({ kind: "person", id: String(first.actor.id), space: cfg.space }))) continue;   // firm-key mailbox (microsoft:, google-firm:): its issuer's own turns only; the Space's static sender: staff turns only
           if (!(await toAllows(c.to, q.to, (l, a) => listHas(l, a, q.via)))) continue;
           if (q.kind === "spend") {
             const amount = Number(q.amount);
@@ -439,9 +439,9 @@ export async function createKernel(cfg) {
       roleOf: (/** @type {string} */ person) => grantsStore.roleOf({ kind: "person", id: String(person), space: cfg.space }) || null } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p),
         // Whether a member of this Space may use a credential of the vault now: the answer only (allow or deny), for the lend of a Connection to a task (the person who approved it must hold it). The person's chain is built here and never leaves the kernel.
-        personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+        personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource, /** @type {boolean} */ asks) => {
           if (typeof person !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(person) || !["vault.call", "vault.read", "vault.fill"].includes(action)) throw new KernelError("bad_input", "name one person and a credential action");
-          return holdsCredential(person, action, resource);
+          return holdsCredential(person, action, resource, asks === true);
         } }) } : {}),
       // The same question for the three modules that send a person's files out (mail, comms and google): may this member read this file now. The one function, asked of the one kernel; no other handle has it.
       ...(m.name === "mail" || m.name === "comms" || m.name === "google" ? { personMay: personMayFor(["drive.read"]) } : {}),

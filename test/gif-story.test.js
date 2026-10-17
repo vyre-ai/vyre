@@ -398,7 +398,7 @@ test("an e-mail from comms.send reaches a real mail account on one yes: the acco
   const card = await approved(w, "comms.send", input);
   const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card, ...(await w.meta()) });   // the person's own client carries the person (comms relays the call to the mail module as them)
   assert.equal(r.error, undefined, JSON.stringify(r.error));
-  await until(() => fake.sent.length === 1, "the mail server received the message");
+  await until(() => fake.sent.length === 1, "the mail server received the message").catch(async e => { throw new Error(`${e.message}: comms.send answered ${JSON.stringify(r.data).slice(0, 300)}; at the Gate: ${JSON.stringify(await w.asPerson("gate.held", {})).slice(0, 500)}`); });
   assert.deepEqual(fake.sent[0].rcpt, ["dana@harlow.test"]);
   const encoded = fake.sent[0].data.split("\r\n\r\n").slice(1).join("").replace(/\s+/g, "");
   assert.equal(Buffer.from(encoded, "base64").toString(), input.body, "the words the person approved are the words that went out");

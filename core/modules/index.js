@@ -587,7 +587,7 @@ export const callerAllowed = (callers, caller, tool, setupExtra) => classReach(c
  * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
  * to decide, not this list's. "mobile" is the old bare phone label: any caller can claim it, and the phone arrives as its paired device (`device:<id>`), so a callers list that still names it never admits a bare "mobile".
  */
-const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
+const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent", "mobile"]);
 
 /** The raw kernel of a hosted Space, keyed by the view a module holds for it. Module-private: only routedKernel reads it. @type {WeakMap<object, any>} */
 const HOSTED_KERNEL = new WeakMap();
@@ -1345,7 +1345,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "turnRecordTags", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "turnRecordTags", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, n === "kernelSession" ? (/** @type {any} */ q) => this.deps.kernelSession(q) : this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

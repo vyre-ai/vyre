@@ -313,6 +313,12 @@ export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
 /** The saved launch options of a thread (threads_runs.opts). */
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
+/** The person a Flow job acts as, as the thread's stored options keep it. The record a caller holds (record()) is a mapped row with no `opts`, so the stored row is read: without this the job's kernel session was asked for no `runas` and was made as the home's owner. */
+const runasOf = (/** @type {any} */ sb, /** @type {string} */ id, /** @type {any} */ rec) => {
+  const held = optsOf(rec).runas;
+  if (typeof held === "string" && held) return held;
+  try { const r = optsOf(sb.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).runas; return typeof r === "string" && r ? r : ""; } catch { return ""; }
+};
 
 /**
  * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name alone (the same name a card shows):
@@ -537,8 +543,7 @@ export class Switchboard {
     } catch { /* no hop record */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
-      // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
-      // Said as an event too: a surface that missed the old process's end would spin otherwise.
+      // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it. Said as an event too: a surface that missed the old process's end would spin otherwise.
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
       this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
@@ -913,8 +918,7 @@ export class Switchboard {
       if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
       this.ensureSlot(id);
     } else {
-      // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
-      // folder and project, a new id, and never the other session's process or transcript.
+      // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its folder and project, a new id, and never the other session's process or transcript.
       if (o.fork) {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
@@ -1015,8 +1019,7 @@ export class Switchboard {
     at("session socket and kernel session");
     await this.openSocket(id, rec, o.kernelTurn || null, o.accountRun || null);
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
-    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
-    // under the same thread: there is nothing of its own to resume.
+    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session under the same thread: there is nothing of its own to resume.
     at("git identity");
     o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
@@ -1034,8 +1037,7 @@ export class Switchboard {
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, chat: fresh.chat, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
       provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
-    // The surface that started it gets the keyboard. A prompt given at launch by a module (an
-    // agent asked something) is typed without taking the lease, so no surface is locked out.
+    // The surface that started it gets the keyboard. A prompt given at launch by a module (an agent asked something) is typed without taking the lease, so no surface is locked out.
     if (o.surface) this.lease(id, o.surface);
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume && !this.restoreSteers(id)) this.resumeQueued(id);
@@ -1074,8 +1076,7 @@ export class Switchboard {
    * text alone, as before.
    */
   async systemPrompt(rec, o) {
-    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
-    // the launch's append read as its facts, versioned. Without the sessions module, as before.
+    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with the launch's append read as its facts, versioned. Without the sessions module, as before.
     if (o.purpose === "capsule" && !o.agent) {
       const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}), ...(o.zone ? { zone: String(o.zone) } : {}) }).catch(() => null);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
@@ -1193,7 +1194,7 @@ export class Switchboard {
     const t0 = Date.now();
     if (!this.renewSeq) this.renewSeq = new Map();
     const seq = (this.renewSeq.get(id) || 0) + 1; this.renewSeq.set(id, seq);
-    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(optsOf(rec).runas ? { runas: optsOf(rec).runas } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
+    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(runasOf(this, id, rec) ? { runas: runasOf(this, id, rec) } : {}), ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch((/** @type {any} */ e) => { this.deps.log(`threads: no kernel session for ${String(id).slice(0, 8)}: ${e && e.message}`); return null; });
     this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: ${ks ? "opened" : "none"} for ${turn && turn.asker ? String(turn.asker).slice(-6) : "no turn"}${turn && turn.space ? " in a team Space" : ""} in ${Date.now() - t0} ms`);
     if (!turn && rec && rec.chat) this.deps.log(`threads: kernel session (${via}) for ${String(id).slice(0, 8)}: NO turn for a thread of chat ${String(rec.chat).slice(-6)}: the session opens on the home path (${ks ? "opened" : "none"})`);
     // A session that came back after a newer open began, or after its bound passed (renewCapped), belongs to a turn that is gone: it is released and never replaces the session of the turn running now.
@@ -1485,8 +1486,7 @@ export class Switchboard {
   spawn(id, o) {
     // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
     const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
-    // One credential per child, set only in that child. An agent on a setup token must not
-    // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
+    // One credential per child, set only in that child. An agent on a setup token must not quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
     // another provider's session is told where its skills were written (its driver links them into the home it runs with)
@@ -2273,7 +2273,7 @@ export class Switchboard {
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
-    this.live.delete(id);
+    this.live.delete(id); this.turnAsker.delete(id);   // the turn that was running is over (stopped or crashed too): nobody is its asker any more, so a stale asker never covers the next turn
     if (this.once.has(id) && !this.reverting.has(id)) {
       this.endHop(id, this.once.get(id).back);
       // said once, in words: that person's turn did not finish, and the chat is back on its usual account
@@ -2359,9 +2359,9 @@ export class Switchboard {
    * longer be taken back.
    */
   turnEnded(id, st, project) {
-    st.turn = null;
+    const ran = Boolean(st.turn); st.turn = null;
     this.resumeTried.delete(id);
-    this.turnAsker.delete(id);
+    if (ran && (!this.live.has(id) || this.live.get(id) === st)) this.turnAsker.delete(id);   // only a turn that ran, and is the one running now, clears its asker: a stopped turn's late finish, or a launch with queued rows and no turn yet (resumeQueued), never wipes the asker of the turn about to be written
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
@@ -2439,7 +2439,7 @@ export class Switchboard {
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     if (lead && runQueuedOver(this, id, rows, (() => { try { return JSON.parse(lead); } catch { return null; } })(), (at, rowId) => mark.run(at, rowId), now, lock)) return;
-    const taken = rows.filter(r => mark.run(now, r.id).changes);
+    const taken = rows.filter(r => mark.run(now, r.id).changes);   if (taken.length) { if (kt0 && kt0.chat) this.turnAsker.set(id, kt0.asker || null); else this.turnAsker.delete(id); }   // a queued turn is its own asker's from the moment it is handed over, as a direct send is (nobody's when it carries no verified asker)
     if (!taken.length) { this.drainDone(id, true, lock); return; }
     // The turn is announced to the stream (its member starts answering for this asker) only once the asker's own kernel session is open: a reply that opened before it would find none.
     const announce = () => { for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project); };

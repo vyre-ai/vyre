@@ -16,6 +16,10 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
+### A member's own AI account in chats
+
+A member who has added her own AI account can't chat yet: her turn stops with a clear message, because her own key isn't lent to her chats yet. A member without one chats on the space's AI account if it has one. No one's key ever reaches another person. Fixed in the next update. The owner isn't affected, because the owner's accounts are the space's. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
+
 ### Long runs of rows you may not see
 
 A list or a search of a type whose rows are private by project looks through up to 20 pages of hidden rows before it gives up. If more than that lie between you and the next row you may read, the page comes back empty with no way to continue. Nothing hidden is shown; ask an owner or an admin, or filter the list.

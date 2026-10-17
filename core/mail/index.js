@@ -297,6 +297,8 @@ export default {
       if (kind === "google") {
         const r = await use("google.mail.send", { account: acct.ref, to, subject: c.subject, body: c.body, ...(c.cc ? { cc: c.cc } : {}), ...(c.bcc ? { bcc: c.bcc } : {}),
           ...(c.in_reply_to ? { in_reply_to: c.in_reply_to } : {}), ...(c.attachment_refs ? { attachments: c.attachment_refs } : {}), ...(why ? { why } : {}), on_behalf: on });
+        // inside a standing yes or a card the person already gave, the Google account sent it at once: that is a send, not a hold
+        if (r && r.sent === true) return { sent: true, account: acct.id, via: `google:${acct.ref}`, ...(r.covered_by ? { covered_by: r.covered_by } : {}), message: `Sent at once: "${c.subject || "(no subject)"}" to ${to.join(", ")} from ${acct.account}, inside a yes the person already gave.` };
         held = r.held; via = `google:${acct.ref}`;
       } else if (kind === "mcp") {
         const m = (await mcpMap(acct)).send;

@@ -202,9 +202,12 @@ export default {
         // The person already said yes to this send on their phone: the registry redeemed a card bound to the very call a first-party module (mail) is filing this send for. The Gate does not take the
         // mark's word: it asks the approvals queue whether that card was redeemed for this tool, this input and this asker, within its life, and not yet used, and the queue uses it up as it answers.
         // Anything else (no mark, a module that is not Vyre's own, another kind, a card already used, a made-up one) is held as ever.
-        if (covered && firstParty === true && input.kind === "send" && (caller === `module:${String(covered.tool).split(".")[0]}` || (Array.isArray(covered.via) && covered.via.some((/** @type {string} */ m) => caller === `module:${m}`)))) {
+        if (covered && !by.agent && (firstParty === true || meta0.relayedByFirstParty === true) && input.kind === "send" && (caller === `module:${String(covered.tool).split(".")[0]}` || (Array.isArray(covered.via) && covered.via.some((/** @type {string} */ m) => caller === `module:${m}`)))) {
           const { via: _via, ...mark } = covered;
-          const r = await ctx.call("approvals.cover", mark).catch(() => null);
+          // a card is the PERSON's yes (their own client), never an agent's: an agent's send is judged by its standing permission or held, whatever card its call rode on
+          // the card is the person's yes to this send, not a way round who may use the connection: a requester who could not use it herself (the kernel's own check, as gate.standing.add) is held for its owner, and the card is not spent
+          const mayUse = !by.requester || !ctx.kernel || (typeof ctx.kernel.mayUseConnection === "function" && await Promise.resolve(ctx.kernel.mayUseConnection(String(by.requester), String(input.via))).then(Boolean, () => false));   // a kernel whose handle cannot answer is no
+          const r = mayUse ? await ctx.call("approvals.cover", mark).catch(() => null) : null;
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
@@ -446,7 +449,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission: ask the owner or an admin which one you mean, or take its id from the standing permissions on your Gate screen"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };

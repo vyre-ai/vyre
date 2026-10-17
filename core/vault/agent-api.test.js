@@ -293,10 +293,10 @@ test("only a connection's maker, alone in the chain, holds it at level own: not 
 
 test("a lease ends the moment the person who approved it no longer holds the Connection, before the task closes or the lease is taken back", async t => {
   const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
-  const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : tool === "connectors.connection.get" ? { data: { id: i.id } } : undefined) });
   await cred("conn-cn1");
   await v.access.convertScopes();
-  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
+  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } }, { resource: { prefix: `vyre://${SPACE}/vault/${await rig.gs.personalVault()}/connection/cn1` } });   // the lease asks about the Connection's own address
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
   // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
@@ -308,7 +308,7 @@ test("a lease ends the moment the person who approved it no longer holds the Con
 
 test("a lease held to a job's thread works in that thread only: another session of the same agent, and a call that names no thread, hold nothing of it", async t => {
   const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
-  const { cred, ask, GET, v, rig } = await mk(t, { call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  const { cred, ask, GET, v, rig } = await mk(t, { call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : tool === "connectors.connection.get" ? { data: { id: i.id } } : undefined) });
   await cred("conn-cn1");
   await v.access.convertScopes();
   const until = rig.clock() + 3_600_000;

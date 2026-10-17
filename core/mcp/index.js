@@ -28,7 +28,7 @@ import { memberServers, storeOverCalls, legacyRows, remoteOk } from "../../lib/m
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
 import { ownRow } from "../../lib/own-row.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
-import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey } from "./hub.js";
+import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom, personKey, ASKING } from "./hub.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -69,7 +69,16 @@ export default {
       offer,
       // Filed by thread, project and agent from what vyred verified for the model's call. ctx.call
       // runs as module:mcp, which would lose them, so the hub puts them in the request itself.
-      request: async input => data(await ctx.call("gate.request", input)),
+      request: async input => {
+        // A held call is asked as the member on this call (the tool named her from the verified chain, one person and no agent), so the item is hers at the Gate; with no member it is filed as before.
+        const st = /** @type {any} */ (ASKING.getStore()), member = st ? (typeof st.me === "string" ? st.me : (st.who && !st.who.agent && typeof st.who.me === "function" ? String(await Promise.resolve(st.who.me()).catch(() => "") || "") : "")) : "";
+        // an agent's turn is relayed too: the Gate sees the person and the agent on the verified chain (the requester, and a standing permission for that agent), which a plain nested call does not carry
+        const agentTurn = Boolean(st && st.who && st.who.agent);
+        let r = null;
+        if (member || agentTurn) { try { r = await ctx.call("gate.request", input, { relay: true }); } catch (e) { if (!/no person on this call to relay/.test(String(/** @type {Error} */ (e).message))) throw e; } }
+        if (!r || (r.error && /no person on this call to relay/.test(String(r.error.message)))) r = await ctx.call("gate.request", input);   // a call with no person on it (a module acting on its own) files as before
+        return data(r);
+      },
       item: async id => data(await ctx.call("gate.get", { id })),
       agentKind: async agent => {
         const list = data(await ctx.call("agents.list", {}));
@@ -228,6 +237,8 @@ export default {
       return w.data && w.data.kind === "member" ? String(w.data.person) : "";
     };
     const rowName = async (/** @type {string} */ name, /** @type {any} */ meta) => ownRow(hub, personKey, name, await callerMember(meta));
+    /** A person's connection is changed, tried or restarted by the person who made it alone: the Space owner reaches the row by its key but is not its maker. @param {string} name @param {any} meta */
+    const makerOnly = async (name, meta) => { const r = hub.row(name); if (r && r.owner && !(await hub.mayUse(r, who(meta), "own"))) throw Object.assign(new Error(`${String(name).slice(0, 60)} is another person's connection: only they can change it, restart it or try it`), { code: "denied" }); return name; };
 
     ctx.tool("mcp.update", {
       effect: "write",
@@ -276,7 +287,7 @@ export default {
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await rowName(input.name, meta)); },
+      run: async (input, meta) => { refuseNonPerson(meta, "tests an MCP server"); return hub.test(await makerOnly(await rowName(input.name, meta), meta), { who: who(meta) }); },
     });
 
     ctx.tool("mcp.restart", {
@@ -284,7 +295,7 @@ export default {
       description: "Stop an MCP server and start it again, clearing a failed state and its restart budget.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => hub.restart({ ...input, name: await rowName(input.name, meta) }),
+      run: async (input, meta) => hub.restart({ ...input, name: await makerOnly(await rowName(input.name, meta), meta) }),
     });
 
     ctx.tool("mcp.tools", {
