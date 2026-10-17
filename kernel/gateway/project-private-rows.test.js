@@ -70,7 +70,7 @@ test("a member off the project cannot open, list, search, total or follow a link
   // a total on the matter, which she may read, counts only the rows she may read
   assert.equal((await R.get(owner, "matter", matter.id)).data.assets_total, 300, "the owner's total");
   assert.equal((await R.get(dev(BOB), "matter", matter.id)).data.assets_total, 300, "the seat's total");
-  assert.equal((await R.get(dev(EVE), "matter", matter.id)).data.assets_total, 0, "a member off the matter gets no part of it");
+  assert.equal((await R.get(dev(EVE), "matter", matter.id)).data.assets_total, null, "a member off the matter gets no part of it: a sum over nothing she may read is null, as for a matter with no rows");
 });
 
 test("a page never says more rows follow when the rest are rows the reader may not see", async () => {
