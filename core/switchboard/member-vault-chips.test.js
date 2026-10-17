@@ -85,3 +85,9 @@ test("an origin the chip names is passed with her yes, and no origin means none 
   const lends = asked.filter(([tool]) => tool === "vault.me.mention.lend").map(([, i]) => Object.keys(i).sort());
   assert.deepEqual(lends, [["agent", "asker", "id", "origin", "thread", "yes"], ["agent", "asker", "id", "thread", "yes"]]);
 });
+
+test("a login whose site the Vault cannot tell stays a pill that says why, and lends nothing", async () => {
+  const [tag] = await memberVaultTags({ call: lendRig([], { error: { code: "bad_input", message: "which site does the agent sign in to? this login has several saved: pick one when you tag it" } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
+  assert.match(tag.note, /could not tell which site/);
+  assert.equal(JSON.stringify(tag).includes("pick one when you tag it\""), false, "the Vault's own words are not echoed into the thread");
+});

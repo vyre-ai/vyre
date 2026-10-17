@@ -42,6 +42,8 @@ async function lendFor({ call, asker, thread, agent, id, chip }) {
   const origin = chip && typeof chip.origin === "string" && chip.origin.length <= 253 ? chip.origin : "";
   if (!yes || !agent) return { note: null };
   const r = await call("vault.me.mention.lend", { asker, id, thread, agent, yes, ...(origin ? { origin } : {}) }).catch(() => null);
+  // A login whose site the Vault cannot tell (none saved, or several and none picked) is refused before anything is lent: the chip says so in words and stays a named pill.
+  if (r && r.error && String(r.error.code) === "bad_input" && /^which site/i.test(String(r.error.message || ""))) return { note: "The agent was not given this login: Vyre could not tell which site it signs in to. Save the site on the item in your vault, or pick one when you tag it, then tag it again." };
   if (!r || r.error || !r.data || r.data.lent !== true) return { note: null };
   const use = typeof r.data.use === "string" && /^[A-Za-z0-9._:-]{1,120}$/.test(r.data.use) ? r.data.use : "";
   return { note: `${typeof r.data.note === "string" && r.data.note ? r.data.note : "The agent can use it for this turn and never sees it."}${use ? ` Pass credential "${use}" to vault.request.` : ""}` };
