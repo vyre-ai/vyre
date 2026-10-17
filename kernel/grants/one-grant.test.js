@@ -118,7 +118,8 @@ test("teams hold agents: a listed agent reaches the team's grant with use only, 
   await give(g, { kind: "group", id: team.id }, "manage");
   // the agent acts for the owner here, who holds everything: what limits it is the agent's own hop, which is the team's grant
   const kit = assistantOf(OWNER, "kit"), juno = assistantOf(OWNER, "juno");
-  assert.equal((await ask(gw, kit, "vault.read", item())).effect, "allow", "the listed agent uses what the team holds");
+  const listed = await ask(gw, kit, "vault.read", item());
+  assert.equal(listed.effect, "allow", `the listed agent uses what the team holds (the authorizer said: ${JSON.stringify(listed)})`);
   for (const a of ["vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate"]) assert.notEqual((await ask(gw, kit, a, item())).effect, "allow", `${a} is never an agent's, even listed in a team that holds manage`);
   assert.equal((await ask(gw, juno, "vault.read", item())).effect, "deny", "an agent the team does not list has nothing");
   // listing again without the agents field keeps them; an empty list takes them out at once
