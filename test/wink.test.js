@@ -77,6 +77,8 @@ async function world(t, opt = {}) {
   // With the kernel on, the owner's device is the facts the listener proves (a paired app row and a person session), never the label SCREEN stands for.
   let screenRow = false; // the screen's own paired row is made the first time it calls, so a test that never uses it sees none
   const screenFacts = { kind: "device", device_key_id: SCREEN.slice(7), person: d.kernel.id.owner, path: "relay", session: "ps1" };
+  // (the owner is read at each call: adopting a server makes the claimed identity the owner, and the screen is that person from then on)
+  Object.defineProperty(screenFacts, "person", { get: () => d.kernel.id.owner, enumerable: true });
   const call = (tool, input = {}, caller = SCREEN, meta = A) => (caller === SCREEN && meta && meta.person && !screenRow && (screenRow = true, d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'screen', 'p', 1, 'app', 0, NULL)").run(SCREEN.slice(7)), true), d.registry.call(tool, input, caller, caller === SCREEN && meta && meta.person && !meta.kernelFacts ? { ...meta, kernelFacts: screenFacts, kernel_proof: { op: "stand-in", fields: {}, n: 1 } } : meta));
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   return { d, url, root, events, call, status, logs };
@@ -537,7 +539,7 @@ shardTest("wink: a device.paired event alone registers no device (ring, code, ti
   const before = await paired();
   assert.deepEqual(before, [device]);
   for (const via of ["ring", "code", "ticket", "window", undefined]) {
-    w.d.events.emit("device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
+    w.d.events.emit("relay", "device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
   }
   await new Promise(r => setTimeout(r, 500));
   assert.deepEqual(await paired(), before, "no device row for any of them");
