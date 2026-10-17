@@ -2,7 +2,9 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## Unreleased
+## 0.5.3
+
+Release summary (the plain-words version is release/notes/0.5.3.md): a new first run on the web, the Mac app and the Windows app (identity with a master password and recovery key, then one install command that pairs the server by itself); sign in from any device with the space address, username and master password, or GitHub; usernames at vyre.run/u/name and invite links at vyre.run/i/token; a card on your other devices for each new sign-in, with Not me; the app on the web at web.vyre.run; run on your own computer (Settings, Computer: Always allow, Ask, Never), with group chats always on the server; Tailscale removed from the Mac's outbound path and the vault passes; security fixes to pairing, the vault, GitHub linking and chat; the old typed-code, four-words, Solo and Install flows removed. The entries below are the changes themselves.
 
 - test(app): the shared vyre.run/i link test expected the old /u/install/join address; the join opens at /onboard?path=join since the one redirect map, as the other assertions in apps/app/src/shell/join-link.test.js already say.
 - fix(app): the lock cover is lifted for the two-server proof fixture of a build made for the proof only. The proof stubs every tool call to fail, so the fail-closed cover ("Can't reach your vault") sat over the page and intercepted the proof's clicks; a release build (no `EXPO_PUBLIC_VYRE_PROOF`) covers it like any page. Also: the host test for GitHub sign-in with no directory list now expects the ask for a space address (`needs_space`), which is what that case answers since the typed-address fallback.
