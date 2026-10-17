@@ -2013,7 +2013,7 @@ export default {
         try { return { groups: (await teams.list(k.chain)).map(shapeGroup) }; } catch (e) { throw kernelWords(e); }
       });
     tool("spaces.groups.set", "Make a group, or change one (rename it, change its people and agents). Owners and admins only, under the person's proof. An agent in a group can use what the group is given and never see a value or change one.",
-      obj({ space: str, id: str, name: str, people: { type: "array", items: str }, agents: { type: "array", items: str } }, ["space"]), async (i, meta) => {
+      obj({ space: str, id: str, name: str, people: { type: "array", items: str, description: "person ids" }, agents: { type: "array", items: str, description: "agent ids (the stable id from spaces.members.list, never a name or a label)" } }, ["space"]), async (i, meta) => {
         const { teams, k } = await groupsOf(i, meta);
         try {
           const t = await teams.set(k.chain, { ...(i.id !== undefined ? { id: String(i.id) } : {}), ...(i.name !== undefined ? { name: String(i.name) } : {}), ...(i.people !== undefined ? { members: i.people } : {}), ...(i.agents !== undefined ? { agents: i.agents } : {}) }, k.proof);
