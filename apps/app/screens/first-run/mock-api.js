@@ -4,7 +4,9 @@
 import { GITHUB_MOCK } from "./mock.js";
 
 const mock = { person: /** @type {string | null} */ (null), id: "id_alex", current: /** @type {string | null} */ (null), spaces: /** @type {{ id: string, name: string, role: string, server: string | null }[]} */ ([]) };
-let progress = { screen: "id.create", stack: ["id.create"] };
+// Nothing saved yet: a first run opens on its own first screen (the resume in FirstRun.tsx only takes a saved stack).
+/** @type {{ screen: string | null, stack: string[] }} */
+let progress = { screen: null, stack: [] };
 
 /** @param {string} username */
 export async function lookupPerson(username) {

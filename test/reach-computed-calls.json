@@ -231,11 +231,6 @@
    "owner": "sessions",
    "note": "reviewed (0.5.3): route.tool from routeComposerLine; only person-scoped slash targets"
   },
-  "core/vault/space-tools.js": {
-   "count": 1,
-   "owner": "vault",
-   "note": "reviewed (0.5.3): computed tool name from the space-tools table only"
-  },
   "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",

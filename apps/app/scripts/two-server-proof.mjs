@@ -76,7 +76,7 @@ try {
     const { page, errors } = await open("boxless");
     await page.getByText("Add another server").first().waitFor({ timeout: 15000 });
     check(await page.getByText("Add another server").first().isVisible(), "a boxless window with nothing paired shows the add door in Servers");
-    check(await page.getByText("Have a code from another device?").first().isVisible(), "and the typed-code pairing is offered beside it");
+    check((await page.getByText("Have a code from another device?").count()) === 0, "and no typed-code pairing is offered beside it, only the add door");
     check((await page.getByText("Upgrade to My Cloud").count()) > 0 || (await page.getByText("Add a server").count()) > 0, "My Cloud offers Add a server with no Personal space and no server paired");
     check(errors.length === 0, `no page errors${errors.length ? ": " + errors[0] : ""}`);
   }

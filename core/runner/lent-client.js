@@ -70,7 +70,10 @@ export function createLentClient(o) {
       if (r && Number.isInteger(r.epoch)) epochs.set(session, r.epoch);
       return r;
     },
-    stop: session => o.invoke("lent.stop", [{ session }]).finally(() => { epochs.delete(session); }),
+    stop: (session, epoch) => {
+      const had = Number.isInteger(epoch) ? epoch : epochs.get(session);
+      return o.invoke("lent.stop", [{ session, ...(Number.isInteger(had) ? { epoch: had } : {}) }]).finally(() => { if (epochs.get(session) === had) epochs.delete(session); });   // a newer stint's epoch is not the ended one's to drop
+    },
     /** The epoch the home gave this session, or undefined when it is not lent from here. */
     epochOf: session => epochs.get(session),
     /** The heartbeat: this computer's sessions with their epochs and use, and whether nothing holds them back now. The answer lists the sessions the home no longer has at that epoch (stopped here), what it offers back and what it wants done. */

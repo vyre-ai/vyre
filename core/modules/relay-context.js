@@ -1,7 +1,6 @@
 // @ts-check
 // The person a module relays: which module may relay which tool on the first run, and the proven facts a relayed call carries.
 // Kept out of index.js so the registry stays under its size cap.
-import { modelCaller } from "./needs-you-hold.js";
 
 /** Modules that relay the asking person on the person's own surface. First-run and pair-install run before a session token exists, so onboard and identity relay from the surface itself. */
 export const FIRST_RUN_RELAY = Object.freeze({
@@ -20,7 +19,7 @@ export const FIRST_RUN_RELAY = Object.freeze({
  */
 export function relayedPerson(moduleName, cur, deps) {
   if (!cur) return null;
-  const personSurface = deps.isPerson(String(cur.caller)) && !modelCaller(String(cur.caller));
+  const personSurface = deps.isPerson(String(cur.caller));
   if (!(cur.kernelFacts || typeof cur.token === "string" || ((moduleName === "onboard" || moduleName === "identity") && personSurface))) return null;
   const origin = deps.captureOrigin() || (personSurface ? String(cur.caller) : undefined);
   const relayed = { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}), ...(typeof cur.viaMcp === "string" && cur.viaMcp ? { viaMcp: cur.viaMcp, ...(cur.viaMcpHosted === true ? { viaMcpHosted: true } : {}) } : {}) };

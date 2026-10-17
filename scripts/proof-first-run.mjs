@@ -178,6 +178,7 @@ try {
     await drv.click("Create a space");
     await drv.waitFor("Where should it run?");
     await drv.click(server === "mac" ? "Always-on Mac" : "Linux server");
+    await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
     await drv.click("Show the command");
     const t = await drv.waitFor("Waiting for it to come online", 90_000);
     const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(t);

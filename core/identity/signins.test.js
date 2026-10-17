@@ -80,9 +80,10 @@ test("a build with no kernel falls back to the home's own person and to no one e
   let home = ALEX;
   registerSignins(ctx, { service: () => svc, fallbackPerson: () => home });
   svc.sessions.push({ person: ALEX, device: A, label: "x", at: 1 });
-  assert.deepEqual(await tools.get("identity.signin.revoke").run({ device: A }, as(BLAIR)), { revoked: true, ended: 1 }, "the home's person, not whatever the meta says");
+  assert.deepEqual(await tools.get("identity.signin.revoke").run({ device: A }, { caller: "cli" }), { revoked: true, ended: 1 }, "the home's person, for the owner's own surface");
+  await assert.rejects(() => tools.get("identity.signin.revoke").run({ device: A }, as(BLAIR)), (e) => e.code === "person_required", "a person named in the meta is not the owner at this computer (sec53: the fallback is for local surfaces only)");
   home = null;
-  await assert.rejects(() => tools.get("identity.signin.revoke").run({ device: A }, {}), (e) => e.code === "person_required");
+  await assert.rejects(() => tools.get("identity.signin.revoke").run({ device: A }, { caller: "cli" }), (e) => e.code === "person_required");
 });
 
 test("a member signing out the owner's device id does nothing, and the owner's list never shows the member's device", async () => {

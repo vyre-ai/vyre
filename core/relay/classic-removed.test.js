@@ -111,11 +111,11 @@ test("a device paired the old way before this version: the owner's own keeps wor
   db.prepare("UPDATE relay_devices SET owner_paired = NULL WHERE id IN (?, ?)").run(unmarked.id, lateMark.id);
   await d.stop();
   // the upgrade: a new start judges each row once
-  const seen = /** @type {any[]} */ ([]);
   const up = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => up.stop());
   for (let i = 0; i < 100; i++) { const st = (await up.registry.call("relay.status", {}, "cli", PROOF)).data; if (st && st.connected) break; await new Promise(r => setTimeout(r, 100)); }
-  up.events.on("device.removed", (/** @type {any} */ e) => seen.push(e.payload || e));
+  // The events the bus kept, not a listener attached after the start: the judging of a row happens when the relay comes up or when the device dials, and a listener added after the wait above can miss the first.
+  const removed = () => /** @type {any[]} */ (up.events.since(0, { type: "device.removed", limit: 1000 })).map(e => e.payload || e);
   assert.ok((await dial(marked.offer, marked.keys, null)).reply, "the owner's own device keeps working");
   // the owner marks a phone of his own before it next connects
   up.registry.deps.db.prepare("UPDATE relay_devices SET owner_paired = ? WHERE id = ?").run(JSON.stringify({ by: "owner", at: Date.now(), path: "marked" }), lateMark.id);
@@ -123,8 +123,8 @@ test("a device paired the old way before this version: the owner's own keeps wor
   const refused = await dial(unmarked.offer, unmarked.keys, null);
   assert.ok(!refused.reply, "an unmarked old device is let in");
   assert.match(String(refused.refused), /device removed/, "the device hears the one reason a relay passes on, which sends its app to pair again");
-  const gone = seen.find(e => e.id === unmarked.id);
-  assert.ok(gone, JSON.stringify(seen));
+  const gone = removed().find(e => e.id === unmarked.id);
+  assert.ok(gone, JSON.stringify(removed()));
   assert.match(String(gone.why), NEXT, "the owner's screens get the words and the next step");
   const listed = (await up.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.map((/** @type {any} */ x) => x.id);
   assert.ok(!listed.includes(unmarked.id) && listed.includes(marked.id) && listed.includes(lateMark.id), JSON.stringify(listed));

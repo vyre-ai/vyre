@@ -37,6 +37,7 @@ test("the join path never names a server, and identity leads to the path the per
   assert.equal(afterAi({ path: "join", heldInvite: "https://vyre.run/i/abcdefgh" }), "join.review");
   assert.equal(afterAi({ path: "create" }), "create.kind");
   assert.equal(afterAi({}), "space.choice");
+  assert.equal(afterAi({ path: "phone" }), "space.choice", "first run has no Add your phone step any more (a phone signs in with the one sign-in line), so path=phone is the plain choice");
 });
 
 /** @param {{ status?: any, config?: any, fetch?: typeof fetch }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[], ctx: any }} */
@@ -234,7 +235,8 @@ test("the install command is the pairing line, and an invite goes through the sp
   assert.equal(commandOk(opened.command), true);
   assert.match(opened.command, /VYRE_CODE=/);
   assert.equal(opened.code, undefined);
-  const mac = await tools.get("onboard.space.open").run({ kind: "mac" }, {});
+  await assert.rejects(() => tools.get("onboard.space.open").run({ kind: "mac" }, {}), (e) => e.code === "bad_input" && /Name your space/.test(e.message), "no name, no default label");
+  const mac = await tools.get("onboard.space.open").run({ kind: "mac", name: "studio" }, {});
   assert.match(mac.command, /install-mac-server\.sh/);
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
   assert.equal(polled.online, false);

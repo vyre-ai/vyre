@@ -209,14 +209,6 @@
    "module": "bridges",
    "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
   },
-  "bridges.resolve": {
-   "module": "bridges",
-   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
-  },
-  "bridges.view.read": {
-   "module": "bridges",
-   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
-  },
   "chrome.act": {
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"

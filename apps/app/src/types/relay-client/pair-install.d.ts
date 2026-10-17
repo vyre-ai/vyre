@@ -6,6 +6,7 @@ export function mintPairCode(o: {
   secret: Uint8Array;
   fingerprint: Uint8Array;
   now?: () => number;
+  random?: (n: number) => Uint8Array;
 }): Promise<{ code: string; exp: number; person: string }>;
 
 /** The one install line. Linux and an always-on Mac both run it. */

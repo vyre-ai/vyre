@@ -145,7 +145,7 @@ export async function homeSession(d, channel, space, invite) {
       return reply.result;
     },
     /** A live chat stream over the member door (`chat.open` on the wire): frames arrive on `handlers` until the stream ends or `close()` is called. */
-    /** @param {string} chat @param {string} from @param {any} handlers */
+    /** @param {string} chat @param {number | string} from the stream position to resume from @param {any} handlers */
     async openChat(chat, from, handlers) {
       const result = await this.call("chat.open", [{ chat, from }]);
       const sid = result && typeof result.stream === "string" ? result.stream : "";

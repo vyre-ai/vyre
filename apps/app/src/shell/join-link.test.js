@@ -66,7 +66,7 @@ test("the link an owner shares, https://vyre.run/i/<token>, is a join link too; 
   assert.equal(joinLink(`${tok}/`), `${tok}/`);
   for (const bad of ["https://vyre.run/join/x", "https://vyre.run/i/", "https://vyre.run/i/a b", "https://vyre.run/i/../x", "http://vyre.run/i/abcdefgh", "https://vyre.run/other/abcdefgh"]) assert.equal(joinLink(bad), null, bad);
   assert.equal(withoutToken(tok), "https://vyre.run/i/…");
-  assert.equal(joinTarget(tok), "/u/install/join");
+  assert.equal(joinTarget(tok), "/onboard?path=join", "the shared link opens the same first-run join as any other; the token stays out of the address");
   assert.equal(takeJoin(), tok);
   clearJoin();
 });

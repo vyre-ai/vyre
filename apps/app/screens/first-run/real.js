@@ -41,7 +41,7 @@ export async function startGithub() {
 
 /** @param {string} [login] @param {string} [code] */
 export async function finishGithub(login, code) {
-  if (MOCK) return mock.finishGithub(login);
+  if (MOCK) return mock.finishGithub(login || "");
   /** @type {Record<string, string>} */
   const input = {};
   if (login) input.login = login;
@@ -68,6 +68,13 @@ export async function joinSpace(link) {
 export async function openSpace(input) {
   if (MOCK) return mock.openSpace(input);
   try { return done(await tool("onboard.space.open", { kind: input.kind, ...(input.name ? { name: input.name } : {}) })); }
+  catch (e) { return fail(e); }
+}
+
+/** Pick another name for a space whose name the directory said was taken; the paired server is kept and the claim is tried again. @param {string} id @param {string} name */
+export async function renameSpace(id, name) {
+  if (MOCK) return { ok: true, id, name };
+  try { return done(await tool("onboard.space.name", { id, name })); }
   catch (e) { return fail(e); }
 }
 

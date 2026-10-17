@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AppState, Platform, StyleSheet, View } from "react-native";
+import { AppState, Platform, View } from "react-native";
+import { usePathname } from "expo-router";
 import { ThemeProvider as UiThemeProvider } from "@vyre/ui";
 import { MOCK } from "../real/box";
-import { useTheme } from "../theme/theme";
 import { UnlockScreen } from "../../screens/unlock/UnlockScreen";
 import { identityState, lockIdentity } from "../../screens/unlock/real.js";
-import { applyCover, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
+import { applyCover, coverExempt, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
 import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
 
 /**
@@ -14,7 +14,6 @@ import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
  * Settings, Account; the default is 15 minutes). The state is read at start, when the app comes back to the front, and after every unlock or lock. A build with no identity answers nothing and is never gated.
  */
 export function UnlockGate({ children }: { children: ReactNode }) {
-  const { color } = useTheme();
   const [status, setStatus] = useState<{ exists?: boolean; unlocked?: boolean; needsMigration?: boolean; unreachable?: boolean; username?: string | null } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const under = useRef<View | null>(null);
@@ -50,16 +49,17 @@ export function UnlockGate({ children }: { children: ReactNode }) {
   }, [wanted, minutes, refresh]);
 
   // Fail closed: until the first read answers, and whenever a read fails, the app stays covered. Under the cover the app is inert on the web (no keyboard, no screen reader) and hidden on a phone.
-  const view = MOCK ? "none" : lockView(status, loaded);
+  const path = usePathname();
+  const view = MOCK || coverExempt({ proofBuild: process.env.EXPO_PUBLIC_VYRE_PROOF === "1", path }) ? "none" : lockView(status, loaded);
   const covered = view !== "none";
   useEffect(() => {
     if (Platform.OS === "web") applyCover(under.current as unknown as Parameters<typeof applyCover>[0], covered);
   }, [covered]);
   return (
-    <View style={styles.fill} onTouchStart={() => lock.current?.touch()}>
-      <View ref={under} style={styles.fill} importantForAccessibility={covered ? "no-hide-descendants" : "auto"} accessibilityElementsHidden={covered}>{children}</View>
+    <View className="flex-1" onTouchStart={() => lock.current?.touch()}>
+      <View ref={under} className="flex-1" importantForAccessibility={covered ? "no-hide-descendants" : "auto"} accessibilityElementsHidden={covered}>{children}</View>
       {!covered ? null : (
-        <View accessibilityViewIsModal style={[StyleSheet.absoluteFill, { backgroundColor: color.bg }]}>
+        <View accessibilityViewIsModal className="absolute inset-0 bg-bg">
           {/* The screens come from the component library, whose own theme provider the routes mount (app/onboard.tsx); the cover sits above every route, so it mounts one itself. */}
           {view === "pending" ? null : <UiThemeProvider><UnlockScreen key={view} view={view} username={status?.username} onDone={() => void refresh()} onRetry={() => void refresh()} /></UiThemeProvider>}
         </View>
@@ -68,4 +68,3 @@ export function UnlockGate({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({ fill: { flex: 1 } });
