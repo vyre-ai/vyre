@@ -16,7 +16,7 @@ import { runCases } from "./cases.js";
 import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
-import { linksFor, withLinks, lesserRead, byPerson, starterOf } from "./links.js";
+import { linksFor, withLinks, lesserRead, starterOfEvent, starterOf } from "./links.js";
 import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter, slim, OUTWARD } from "./runner-util.js";
 import { simulate as simulateFlow } from "./simulate.js";
@@ -608,7 +608,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor) }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...(await starterOfEvent(env, id => this.store.getRun(id))) }, env);
   }
 
   /**
@@ -1088,7 +1088,7 @@ export class FlowRunner {
    */
   async #preview(ctx, s, input) {
     if (ctx.dry || typeof this.ports.preview !== "function") return input;
-    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
+    try { return await this.ports.preview(this.#chain(ctx), s.action, input, ctx.run.started_by ? String(ctx.run.started_by) : ctx.run.trigger && ctx.run.trigger.by ? String(ctx.run.trigger.by) : null); }
     catch (e) { throw new StepFail(String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e)); }
   }
 
@@ -1141,7 +1141,7 @@ export class FlowRunner {
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
     const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
     const load = async () => {
-      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.trigger && ctx.run.trigger.by) }); }
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.started_by || (ctx.run.trigger && ctx.run.trigger.by)) }); }
       catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
     };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
