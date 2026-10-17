@@ -1212,13 +1212,11 @@ shardTest("a person whose device entry is a passkey joins a team through the inv
 });
 
 
-shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.localhost): one passkey is the identity, the presence key and the signer of list changes; it joins a team, reaches it as a member, and adds a phone to its own name", { timeout: 180_000 }, async t => {
+shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.localhost): one passkey is the identity, the presence key and the signer of list changes; it joins a team, reaches it as a member (adding a phone to the name went with the device-add flows; a phone now signs in)", { timeout: 180_000 }, async t => {
   const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
   const { windowsPasskey } = await import("../apps/app/src/real/windows-passkey.js");
-  const { enrolDevice } = await import("../apps/app/src/identity/enrol-device.js");
   const { authenticator } = await import("../apps/app/src/identity/soft-authenticator.js");
   const { WORDS } = await import("../relay/client/words.js");
-  const C = await import("../kernel/identity/chain.js");
   const { ident, made, hosted, ownerChain, linkFor } = await teamRig(t, { release: true });
   const auth = authenticator({ rp: "vyreapp.localhost" });
   const pc = await ident.anotherPasskey("winhello", auth, "vyreapp.localhost");
@@ -1241,16 +1239,6 @@ shardTest("a Windows PC that claimed its name with Windows Hello (rp vyreapp.loc
   const list = await callTeam(deps, made.space, "grants.members.list", []);
   assert.deepEqual((Array.isArray(list) ? list : list.members || []).map(m => m.person).filter(p => p === pc.id), [pc.id], "a member sees their own membership through the member door");
   assert.ok((Array.isArray(list) ? list : list.members || []).filter(m => m.person !== pc.id).every(m => m.partial === true && Object.keys(m).sort().join() === "partial,person,role,space"), "another member is only who is in and their role: no key ids, no terms");
-  // its own name: a phone's key joins the list, the change signed by the passkey (not held, so the chain takes it)
-  const phone = crypto.generateKeyPairSync("ed25519");
-  const phoneKey = phone.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("base64url");
-  const done = await enrolDevice({ name: "winhello", eid: pc.eid, pin: pc.pin, base: "http://127.0.0.1:1", fetch: ident.fetch, now: () => ident.clock.t, sign: async m => pc.key.sign(m), entry: { publicKey: phoneKey, label: "Sam's phone" } });
-  assert.equal(done.already, false);
-  const res = await (await ident.fetch("http://127.0.0.1:1/v1/ids/resolve?name=winhello", { headers: {} })).json();
-  const state = await C.verifyChain(res.data.ops, { now: ident.clock.t + C.SKEW_MS });
-  assert.ok(state.entries.some(e => e.pub === phoneKey), "the phone is on the list");
-  assert.equal(state.entries.find(e => e.eid === pc.eid).held, undefined, "the PC's entry is a full device, not held");
-  assert.equal(res.data.ops.at(-1).by, pc.eid, "signed by the passkey");
 });
 
 shardTest("a member reads a team chat in the app's own code path: the real callTeam/homeSession session, the pollDuplex poller and core/stream's client against a real paired server; the owner's words arrive in order once each, a member added later gets nothing from before her floor, and a member not in the chat is refused in words", { timeout: 200_000 }, async t => {
