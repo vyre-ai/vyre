@@ -149,6 +149,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
+  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">("details");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
@@ -338,7 +339,6 @@ export function ChatScreen(p: ChatScreenProps) {
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
-  const line = head.line + (muted ? (head.line ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   // The sealed note speaks of the AI in the chat: with none here (a chat between people) it stays away until one joins or is asked.
   const aiHere = faces.filter((f) => f.family === "assistant" || f.family === "model").length;
@@ -361,7 +361,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
@@ -379,7 +379,16 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setPanel("root")} onTools={() => setPanel("root")} projectTile={chatProject.current} />
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={() => { setPanelTab("details"); setPanel("root"); }} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+        menu={[
+          { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
+          { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
+          ...(faces.some((f) => f.family === "assistant" && f.id !== viewerId) ? [{ label: "Computer", onPress: () => { setPanelTab("computer"); setPanel("root"); } }] : []),
+          { label: "Move to a project", onPress: () => setPanel("project") },
+          { label: "Find in this conversation", onPress: () => setFindOpen(true) },
+          { label: pinned ? "Unpin" : "Pin", onPress: () => setPinned(!pinned) },
+          { label: muted ? "Unmute" : "Mute", onPress: () => setMuted(!muted) },
+        ]} />
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}

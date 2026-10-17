@@ -61,3 +61,16 @@ test("a word for each kind, for the row's second line and screen readers", () =>
   assert.equal(convoKindWord("person"), "Teammate");
   assert.equal(convoKindWord("chat"), "Chat");
 });
+
+test("a row carries one dot: needs-you wins over unread; the preview is the last line only; a group lists who is in it", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "a", title: "A", line: "draft ready", asks: 1, unread: 2, people: ["Sam"], agents: ["kit"] }), chat({ id: "b", title: "B", unread: 2 }), chat({ id: "c", title: "C" })],
+    agents: [], people: [],
+  });
+  const by = Object.fromEntries(items.map((i) => [i.title, i]));
+  assert.equal(by.A.dot, "ask");
+  assert.equal(by.A.sub, "draft ready");
+  assert.deepEqual(by.A.names, ["Sam", "kit"]);
+  assert.equal(by.B.dot, "unread");
+  assert.equal(by.C.dot, "");
+});

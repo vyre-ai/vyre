@@ -5,8 +5,7 @@ import { Platform, useWindowDimensions } from "react-native";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
 import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
-import { useChats } from "../../src/state/chats";
-import { chatsOrdered, chatsShown } from "../chats/chats-model.js";
+import { ChatsSidebar } from "../chats/ChatsSidebar";
 import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
@@ -36,15 +35,6 @@ function ProjectsLoader() {
   return null;
 }
 
-function ChatsLoader() {
-  const chats = useChats();
-  const put = useLoaded((s) => s.put);
-  useEffect(() => {
-    put("chats", chatsOrdered(chatsShown(chats.rows)).filter((c: any) => c.open !== false).map((c: any) => ({ id: c.id, label: c.title, href: `/u/chats/${c.id}` })));
-  }, [chats.rows, put]);
-  return null;
-}
-
 function FlowsLoader() {
   const put = useLoaded((s) => s.put);
   // The sample build lists the same Flows as the Flows page (the ones made in the builder and the Kit's), in the same groups; a real box lists flows.list, whose rows carry the Flow's group.
@@ -71,7 +61,7 @@ const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
 
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
-  chats: { title: "Chat", icon: "chat", search: "Search chats", empty: "No chats yet." },
+  chats: { title: "Chat", icon: "chat", empty: "" },
   records: { title: "Records", icon: "records", empty: "" },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
@@ -82,7 +72,7 @@ const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: str
 
 /** The component that loads the active panel's list. Mount it once in the shell. */
 export function PanelLoader({ id }: { id: string | null }) {
-  return id === "projects" ? <ProjectsLoader /> : id === "chats" ? <ChatsLoader /> : id === "flows" ? <FlowsLoader /> : null;
+  return id === "projects" ? <ProjectsLoader /> : id === "flows" ? <FlowsLoader /> : null;
 }
 
 /** The panel the path opens, or null (the main sidebar): a place with no list built yet stays on the main sidebar. */
@@ -108,7 +98,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
-      before: id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
+      before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,
       after: id === "records" ? <><SidebarRow label="All objects" icon="records" tone="label" onPress={() => onNavigate("/u/settings/customize")} /><SidebarRow label="New view" icon="plus" tone="label" onPress={() => useNewView.getState().set(true)} /></> : undefined,

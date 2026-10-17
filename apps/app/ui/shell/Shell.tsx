@@ -45,8 +45,8 @@ export type ShellProps = NavDef & {
   children: React.ReactNode;
 };
 
-function SpaceSwitcher({ spaces, space, onSpace }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
-  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} />;
+function SpaceSwitcher({ spaces, space, onSpace, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
+  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} compact={compact} />;
 }
 
 type RailProps = ShellProps;
@@ -64,7 +64,7 @@ function RailSwitcher({ p, folded }: { p: RailProps; folded: boolean }) {
       trigger={
         <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`} style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 12, padding: 4, borderRadius: RAIL.rowRadius + 2, justifyContent: folded ? "center" : "flex-start", backgroundColor: hovered ? "var(--hover)" : "transparent" }]}>
           {mark}
-          {folded ? null : <><View style={{ flex: 1, minWidth: 0 }}><Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text>{cur.sub ? <Text size="caption" tone="label" numberOfLines={1}>{cur.sub}</Text> : null}</View><Icon name="chevron-down" size={16} tone="label" /></>}
+          {folded ? null : <><View style={{ flex: 1, minWidth: 0 }}><Text strong style={{ fontSize: 15, lineHeight: 20 }} numberOfLines={1}>{cur.name}</Text></View><Icon name="chevron-down" size={16} tone="label" /></>}
         </Pressable>
       }
       items={p.spaces.map((s) => ({ label: s.id === p.space ? `${s.name} (showing)` : s.name, onPress: () => p.onSpace(s.id) }))}
