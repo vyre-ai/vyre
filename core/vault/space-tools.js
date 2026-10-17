@@ -2,7 +2,7 @@
 // Space vault tools. The personal vault's lending path is unchanged. These tools seal a space key that the server wrap can open while nobody is unlocked.
 
 import path from "node:path";
-import { isPerson } from "../../lib/caller.js";
+import { deviceIdOf, isPerson } from "../../lib/caller.js";
 import { httpFetch } from "../../lib/http.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import * as SV from "../../kernel/identity/space-vault.js";
@@ -28,7 +28,7 @@ export function registerSpaceTools(ctx, seam = {}) {
       // The cheap checks first, before anything touches the disk: this server's own space (so also a space id's shape), then the verified device caller with no agent.
       if (!ctx.paths || !ctx.paths.root || !ctx.kernel || !space || space !== String(ctx.kernel.space || "") || !/^spc_[a-z2-7]{8,}$/.test(space)) return false;
       const caller = String((who && who.caller) || "");
-      if (!caller.startsWith("device:") || (who.meta && who.meta.agent)) return false;
+      if (deviceIdOf(caller) === null || (who.meta && who.meta.agent)) return false;
       if (SV.status(dirOf({ space })).exists !== false) return false;
       return firstRunMayCreate({ root: ctx.paths.root, caller, space, ownSpace: String(ctx.kernel.space || "") });
     } catch { return false; }
@@ -41,7 +41,7 @@ export function registerSpaceTools(ctx, seam = {}) {
       spaceOk(input);
       const first = firstRun(input, { caller: meta && meta.caller, meta });
       const made = SV.create(dirOf(input));
-      const device = String((meta && meta.caller) || "").startsWith("device:") ? String(meta.caller) : "";
+      const device = deviceIdOf(String((meta && meta.caller) || "")) !== null ? String(meta.caller) : "";
       try { ctx.events.emit("vault.space-created", { space: String(input.space), device, firstRun: first }); } catch { /* an undeclared event: skipped */ }
       ctx.log(`vault: space vault made for ${String(input.space)} (device ${device || "none"}, first run ${first ? "yes" : "no"})`);
       return made;

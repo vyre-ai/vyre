@@ -116,7 +116,8 @@ test("the first put in this server's own space makes the space's vault key in th
   await assert.rejects(() => r.call("vault.space.put", { space: other, ...item }), (/** @type {any} */ e) => e.code === "not_found");
   assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
   // Granting, rotating and using a space with no vault say so, and make nothing.
-  await assert.rejects(() => r.call("vault.space.grant", { space: other, person: ALICE, pub: x25519Pair().pub }), (/** @type {any} */ e) => e.code === "not_found");
+  // (grant asks the kernel first: ALICE is a member of the home space only, so another space is refused as "not a member" before any vault is looked for)
+  await assert.rejects(() => r.call("vault.space.grant", { space: other, person: ALICE, pub: x25519Pair().pub }), (/** @type {any} */ e) => e.code === "denied");
   await assert.rejects(() => r.call("vault.space.rotate", { space: other }), (/** @type {any} */ e) => e.code === "not_found");
   await assert.rejects(() => r.call("vault.space.use", { space: other, id: "stripe", url: "https://api.stripe.com/v1" }), (/** @type {any} */ e) => e.code === "not_found");
   assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
