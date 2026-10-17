@@ -424,3 +424,21 @@ test("an added module cannot put a command or a vault environment in the hub, bu
   const mine = await v.cli("mcp.add", { name: "mine", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { GH_TOKEN: "gh-token" } });
   assert.ok(mine.data, JSON.stringify(mine));
 });
+
+test("mcp.catalog: a person searches the reviewed catalog and sees which entries are connected; a model is refused, and so is a model's mcp.repin", async t => {
+  const http = await startFakeMcpHttp(t, {});
+  const file = path.join(tempHome(t), "catalog.json");
+  const entry = (id, name, url, over = {}) => ({ id, name, vendor: "northwind.com", description: `${name} for the bakery`, category: "ops", url, transport: "http", auth: "none", headers: [], verified: true, basis: "test", sources: [], ...over });
+  fs.writeFileSync(file, JSON.stringify({ v: 1, generated: "2026-10-19", entries: [entry("com.northwind/notes", "Northwind Notes", http.url), entry("com.northwind/orders", "Northwind Orders", "https://orders.example.test/mcp", { auth: "unknown", verified: false })] }));
+  const v = await vyred(t, { mcp: { catalog: file } });
+  const all = (await v.cli("mcp.catalog", {})).data;
+  assert.equal(all.total, 2);
+  assert.equal(all.generated, "2026-10-19");
+  assert.deepEqual(all.entries.map(e => [e.id, e.connected, e.oneClick]), [["com.northwind/notes", false, true], ["com.northwind/orders", false, false]]);
+  assert.equal((await v.cli("mcp.add", { name: "notes", transport: "http", url: http.url })).data.test.ok, true);
+  assert.deepEqual((await v.cli("mcp.catalog", { connected: true })).data.entries.map(e => e.id), ["com.northwind/notes"]);
+  assert.deepEqual((await v.cli("mcp.catalog", { query: "orders" })).data.entries.map(e => e.id), ["com.northwind/orders"]);
+  assert.ok((await v.agent("kit", "t-1")("mcp.catalog", {})).error, "an agent does not browse the catalog");
+  assert.ok((await v.agent("kit", "t-1")("mcp.repin", { name: "notes", seen: "0123456789ab" })).error, "an agent never approves changed tool text");
+  assert.ok((await v.session("t-1")("mcp.repin", { name: "notes", seen: "0123456789ab" })).error, "nor does a person's Claude session");
+});

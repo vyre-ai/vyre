@@ -36,7 +36,11 @@ export const MIGRATIONS = [
    );`,
   // One meaning of "no scope": the person and the assistant only. A server stored before that has an explicit open scope
   // (the old default was written out on every row); any row without one is kept open, so nothing that works breaks.
-  `UPDATE mcp_servers SET scope = '{"projects":"*","agents":"*"}' WHERE scope IS NULL OR scope = '' OR scope = '{}' OR scope = 'null';`,
+  `UPDATE mcp_servers SET scope = '{"projects":"*","agents":"*"}' WHERE scope IS NULL OR scope = '' OR scope = '{}' OR scope = 'null';`,  // Description pinning: the hash of the tool list a person reviewed (tools_pin), and, when the live list later differs, the hash and the list itself held for review (pin_seen, tools_seen).
+  `ALTER TABLE mcp_servers ADD COLUMN tools_pin TEXT;`,
+  `ALTER TABLE mcp_servers ADD COLUMN pinned_at INTEGER;`,
+  `ALTER TABLE mcp_servers ADD COLUMN pin_seen TEXT;`,
+  `ALTER TABLE mcp_servers ADD COLUMN tools_seen TEXT;`,
 ];
 
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -365,6 +369,31 @@ function normalizePolicy(t) {
 const json = (s, d) => { try { return s == null ? d : JSON.parse(s); } catch { return d; } };
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 const fail = (code, msg) => Object.assign(new Error(msg), { code });
+
+/**
+ * The hash of a tool list as a person reviews it: each tool's name, description, input schema and annotations, in name order. A server's tool text is third-party text a model reads, so a list
+ * that differs from the reviewed one is held (the "rug pull" a server could do after it was approved).
+ * @param {any[]} tools
+ */
+export function pinOf(tools) {
+  const rows = (tools || []).map(t => ({ name: String(t.name), description: String(t.description || ""), inputSchema: t.inputSchema || { type: "object" }, annotations: t.annotations || null }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
+/** What changed between the reviewed tool list and the one held: tool names with the old and new description, for the person to read as data. @param {any[]} was @param {any[]} now */
+export function pinChanges(was, now) {
+  const a = new Map((was || []).map(t => [t.name, t])), b = new Map((now || []).map(t => [t.name, t]));
+  const text = (/** @type {any} */ t) => cut(String(t.description || ""), 500);
+  const out = [];
+  for (const [n, t] of b) {
+    const o = a.get(n);
+    if (!o) out.push({ tool: n, kind: "added", now: text(t) });
+    else if (pinOf([o]) !== pinOf([t])) out.push({ tool: n, kind: "changed", was: text(o), now: text(t) });
+  }
+  for (const [n, o] of a) if (!b.has(n)) out.push({ tool: n, kind: "removed", was: text(o) });
+  return out.slice(0, 100);
+}
 // A module's own call (the kernel's own "module:<name>" label, ctx.call - never a caller-
 // forgeable claim the way an agent's own caller string is) is scoped like the person too, same
 // as always; this guards it against smuggling an agent: or thread: claim behind "module:" the
@@ -433,7 +462,7 @@ export class Hub {
     return { name: r.name, transport: r.transport, command: r.command, args: json(r.args, []), cwd: r.cwd, url: r.url,
       headers: json(r.headers, {}), env: json(r.env, {}), vars: json(r.vars, {}), auth: json(r.auth, { type: "none" }),
       scope: json(r.scope, { projects: "*", agents: "*" }), tools: json(r.tools, {}), idle: r.idle,
-      cache: json(r.tools_cache, null), cachedAt: r.cached_at, lastUsed: r.last_used, added: r.added, updated: r.updated };
+      cache: json(r.tools_cache, null), cachedAt: r.cached_at, pin: r.tools_pin || null, pinnedAt: r.pinned_at || null, pinSeen: r.pin_seen || null, toolsSeen: json(r.tools_seen, null), lastUsed: r.last_used, added: r.added, updated: r.updated };
   }
 
   rows() { return this.db.prepare("SELECT name FROM mcp_servers ORDER BY name").all().map(r => this.row(r.name)); }
@@ -455,12 +484,14 @@ export class Hub {
     const s = this.live.get(r.name);
     const base = { name: r.name, transport: r.transport, state: s ? s.state : "stopped", tools: r.cache ? this.visibleTools(r).length : null,
       ...(s && s.error ? { error: s.error } : {}), lastUsed: r.lastUsed || null,
-      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope };
+      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope,
+      ...(r.pinSeen ? { held: "tools_changed" } : {}) };
     if (!full) return base;
     const origin = r.url ? (() => { const u = new URL(r.url); return u.origin + u.pathname; })() : null;
     return { ...base, ...(r.command ? { command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) } : {}), ...(origin ? { url: origin } : {}),
       headers: Object.keys(r.headers), env: r.env, vars: Object.keys(r.vars), policy: r.tools, idle: r.idle ?? this.deps.idle ?? DEFAULT_IDLE,
-      cachedAt: r.cachedAt || null, added: r.added, updated: r.updated };
+      cachedAt: r.cachedAt || null, added: r.added, updated: r.updated,
+      ...(r.pin ? { pin: r.pinSeen ? { state: "changed", seen: r.pinSeen, changes: pinChanges(r.cache || [], r.toolsSeen || []) } : { state: "pinned", at: r.pinnedAt } } : {}) };
   }
 
   // ---- management ----
@@ -507,7 +538,7 @@ export class Hub {
     const changed = Object.keys(input).filter(k => k !== "name");
     const reconnect = how.some(k => JSON.stringify(n[k]) !== JSON.stringify(r[k]));
     this.db.prepare(`UPDATE mcp_servers SET transport = ?, command = ?, args = ?, cwd = ?, url = ?, headers = ?, env = ?, vars = ?, auth = ?, scope = ?,
-      tools = ?, idle = ?, updated = ?${reconnect ? ", tools_cache = NULL, cached_at = NULL" : ""} WHERE name = ?`).run(n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url,
+      tools = ?, idle = ?, updated = ?${reconnect ? ", tools_cache = NULL, cached_at = NULL, tools_pin = NULL, pinned_at = NULL, pin_seen = NULL, tools_seen = NULL" : ""} WHERE name = ?`).run(n.transport, n.command, JSON.stringify(n.args), n.cwd, n.url,
       JSON.stringify(n.headers), JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, this.now(), n.name);
     // A new command, url or credential is a different connection: the running one stops, and the
     // old tool list is dropped, since it may not be the same server any more.
@@ -613,6 +644,7 @@ export class Hub {
 
   /** A server's cached tools after the person's policy, with names and classification. */
   visibleTools(r) {
+    if (r.pinSeen) return [];   // its tool text changed since a person reviewed it: nothing is offered until they approve what it says now
     const cache = Array.isArray(r.cache) ? r.cache : [];
     const names = aggregate(r.name, cache.map(t => String(t.name)));
     const pol = r.tools || {};
@@ -664,6 +696,7 @@ export class Hub {
     const r = this.row(server);
     const memo = {};
     if (!r || !(await this.inScope(r, who, memo))) throw fail("denied", `no MCP server ${String(server).slice(0, 40)} that this ${who.agent ? `agent (${who.agent})` : "session"} may use`);
+    if (r.pinSeen) throw this.changedError(r);
     let t = r.cache ? this.findTool(r, tool) : null;
     const names = r.cache ? aggregate(r.name, r.cache.map(x => String(x.name))) : new Map();
     const cached = [...names].some(([raw, agg]) => raw === tool || agg === tool || agg === `${r.name}__${tool}`);
@@ -728,6 +761,7 @@ export class Hub {
 
   /** Call a tool on a running (or started) server, with one retry after a 401 or a lost session. */
   async run(name, tool, args, { agent = null, released = null } = {}) {
+    { const held = this.row(name); if (held && held.pinSeen) throw this.changedError(held); }   // an approved call waits for the same review
     const t0 = this.now();
     const s = this.state(name);
     s.inflight++;
@@ -848,16 +882,50 @@ export class Hub {
     return client;
   }
 
-  /** Store the tool list when it differs from the cache. */
+  /**
+   * Store the tool list when it differs from the cache. The first list a server gives is the one the person reviewed (they connected it, or an older cache they already used), and its hash is pinned. A later
+   * list that hashes differently is not adopted: it is held with the server, its tools are withdrawn, and `mcp.repin` takes what the person read.
+   */
   async refresh(name, tools) {
     const clean = (tools || []).filter(t => t && typeof t.name === "string" && t.name).slice(0, 1000)
       .map(t => ({ name: t.name, description: typeof t.description === "string" ? cut(t.description, 2000) : "", inputSchema: isObj(t.inputSchema) ? t.inputSchema : { type: "object" },
         ...(isObj(t.annotations) ? { annotations: t.annotations } : {}) }));
     const r = this.must(name);
-    const next = JSON.stringify(clean);
-    if (JSON.stringify(r.cache) === next) return;
-    this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ? WHERE name = ?").run(next, this.now(), name);
-    this.deps.emit("mcp.refreshed", { name, tools: clean.length });
+    const next = JSON.stringify(clean), pin = pinOf(clean);
+    const reviewed = r.pin || (Array.isArray(r.cache) ? pinOf(r.cache) : null);
+    if (reviewed === null || (reviewed === pin && !r.pinSeen && JSON.stringify(r.cache) !== next)) {
+      this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = COALESCE(pinned_at, ?), pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(next, this.now(), pin, this.now(), name);
+      this.deps.emit("mcp.refreshed", { name, tools: clean.length });
+      return;
+    }
+    if (reviewed === pin) {
+      // the reviewed text is back (or never left): any held change is dropped, and a pin missing from an older row is written
+      if (r.pinSeen || !r.pin) this.db.prepare("UPDATE mcp_servers SET tools_pin = ?, pinned_at = COALESCE(pinned_at, ?), pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(pin, this.now(), name);
+      return;
+    }
+    if (r.pinSeen === pin) return;   // already held for exactly this list
+    this.db.prepare("UPDATE mcp_servers SET tools_pin = COALESCE(tools_pin, ?), pinned_at = COALESCE(pinned_at, ?), pin_seen = ?, tools_seen = ? WHERE name = ?").run(reviewed, this.now(), pin, next, name);
+    const ch = pinChanges(r.cache || [], clean);
+    this.deps.emit("mcp.tools-changed", { name, added: ch.filter(c => c.kind === "added").length, removed: ch.filter(c => c.kind === "removed").length, changed: ch.filter(c => c.kind === "changed").length });
+    this.deps.log?.(`${name}: its tool descriptions changed since they were reviewed, so its tools are held`);
+  }
+
+  /** The refusal for a server whose tool text changed since a person reviewed it. @param {any} r */
+  changedError(r) {
+    return fail("tools_changed", `${r.name} changed what its tools say since you reviewed them, so they are held. Read the change in mcp.servers, then approve it with mcp.repin { name: "${r.name}", seen: "${String(r.pinSeen).slice(0, 12)}" } or remove the server.`);
+  }
+
+  /**
+   * A person approves the tool text that was held: exactly the list they read (the one stored with the hold, never a fresh listing), named by its hash so a second change in between is not taken by mistake.
+   * @param {{ name: string, seen: string }} input
+   */
+  async repin({ name, seen }) {
+    const r = this.must(name);
+    if (!r.pinSeen) throw fail("bad_state", `${r.name} has no changed tool text waiting for you`);
+    if (!seen || !String(r.pinSeen).startsWith(String(seen)) || String(seen).length < 12) throw fail("conflict", `${r.name}'s tools changed again since you read them: read mcp.servers and approve what it shows now`);
+    this.db.prepare("UPDATE mcp_servers SET tools_cache = ?, cached_at = ?, tools_pin = ?, pinned_at = ?, pin_seen = NULL, tools_seen = NULL WHERE name = ?").run(JSON.stringify(r.toolsSeen || []), this.now(), r.pinSeen, this.now(), name);
+    this.deps.emit("mcp.repinned", { name });
+    return this.view(this.must(name));
   }
 
   /** The server went away on its own. */

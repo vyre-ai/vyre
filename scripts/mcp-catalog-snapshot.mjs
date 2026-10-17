@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+// Pull the official MCP registry and the Claude plugin repos into the committed catalog snapshot (core/mcp/catalog.snapshot.json). The weekly workflow (.github/workflows/mcp-catalog.yml) runs this and opens a pull
+// request with the diff, so a person reads every new entry before it can appear in the app. Run by hand the same way:
+//   node scripts/mcp-catalog-snapshot.mjs --out core/mcp/catalog.snapshot.json --diff-md /tmp/diff.md --plugins claude-plugins-official=/path/to/checkout@<sha> --plugins knowledge-work-plugins=/path@<sha>
+// The snapshot is only rewritten when its entries changed (the date does not count), and a pull that finds under half of the entries it had is refused unless --force names it.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseRegistryPage, parsePlugins, mergeEntries, diffMarkdown } from "../lib/mcp-catalog.js";
+import { pullRegistry, readPluginRepo, REGISTRY } from "../lib/mcp-catalog-pull.js";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/** @param {string[]} argv */
+function args(argv) {
+  /** @type {{ out: string, diffMd: string, registry: string, plugins: { repo: string, dir: string, sha: string }[], force: boolean, today: string }} */
+  const o = { out: path.join(ROOT, "core", "mcp", "catalog.snapshot.json"), diffMd: "", registry: REGISTRY, plugins: [], force: false, today: new Date().toISOString().slice(0, 10) };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--out") o.out = path.resolve(argv[++i]);
+    else if (a === "--diff-md") o.diffMd = path.resolve(argv[++i]);
+    else if (a === "--registry") o.registry = argv[++i];
+    else if (a === "--force") o.force = true;
+    else if (a === "--plugins") { const m = /^([A-Za-z0-9._-]+)=(.+)@([0-9a-f]{7,40})$/.exec(argv[++i] || ""); if (!m) throw new Error("--plugins takes <repo>=<checkout dir>@<commit sha>"); o.plugins.push({ repo: m[1], dir: path.resolve(m[2]), sha: m[3] }); }
+    else throw new Error(`unknown argument ${a}`);
+  }
+  return o;
+}
+
+/** @param {string} url */
+async function fetchJson(url) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "vyre-catalog-snapshot" }, signal: AbortSignal.timeout(30_000) });
+      if (!r.ok) throw new Error(`${r.status} from ${new URL(url).host}`);
+      return await r.json();
+    } catch (e) { if (attempt >= 1) throw e; await new Promise(res => setTimeout(res, 2000)); }
+  }
+}
+
+/**
+ * Build the next snapshot from the pulled pieces. Exported for the test.
+ * @param {{ registryPages: any[], plugins: { repo: string, sha: string, found: any[] }[], registry: string, today: string }} p
+ */
+export function buildSnapshot(p) {
+  const fromRegistry = p.registryPages.flatMap(parseRegistryPage);
+  const perPlugin = p.plugins.map(x => parsePlugins({ repo: x.repo, sha: x.sha }, x.found));
+  return {
+    v: 1,
+    generated: p.today,
+    sources: { registry: { url: p.registry, entries: fromRegistry.length }, plugins: p.plugins.map((x, i) => ({ repo: x.repo, sha: x.sha, servers: perPlugin[i].length })) },
+    entries: mergeEntries(fromRegistry, ...perPlugin),
+  };
+}
+
+/** @param {any} prev @param {any} next @param {boolean} force @returns {{ write: boolean, why: string }} */
+export function decide(prev, next, force) {
+  const had = prev && Array.isArray(prev.entries) ? prev.entries : [];
+  if (JSON.stringify(had) === JSON.stringify(next.entries)) return { write: false, why: "unchanged" };
+  if (!force && had.length >= 20 && next.entries.length < had.length / 2) return { write: false, why: `refused: ${next.entries.length} entries against ${had.length} before looks like a broken pull (--force names it on purpose)` };
+  return { write: true, why: "changed" };
+}
+
+async function main() {
+  const o = args(process.argv.slice(2));
+  const prev = (() => { try { return JSON.parse(fs.readFileSync(o.out, "utf8")); } catch { return null; } })();
+  const registryPages = await pullRegistry(fetchJson, { base: o.registry });
+  const plugins = o.plugins.map(x => ({ repo: x.repo, sha: x.sha, found: readPluginRepo(x.dir) }));
+  const next = buildSnapshot({ registryPages, plugins, registry: o.registry, today: o.today });
+  const d = decide(prev, next, o.force);
+  if (!d.write) { console.log(`catalog ${d.why}`); if (d.why.startsWith("refused")) process.exit(1); return; }
+  fs.mkdirSync(path.dirname(o.out), { recursive: true });
+  fs.writeFileSync(o.out, `${JSON.stringify(next, null, 1)}\n`);
+  if (o.diffMd) fs.writeFileSync(o.diffMd, diffMarkdown(prev ? prev.entries : [], next.entries));
+  console.log(`catalog written: ${next.entries.length} entries`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(e => { console.error(`catalog snapshot failed: ${e.message}`); process.exit(1); });

@@ -25,6 +25,8 @@ import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
+import fs from "node:fs";
+import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
 const str = { type: "string" };
@@ -123,6 +125,24 @@ export default {
     // (a module hop inherits the turn), so vault.me.store.* resolves the same person; the owner has no personal vault and uses mcp.add.
     const MINE = [...PERSON_SURFACES, "device", "web"];   // a person's surfaces, as vault.me.store.* has them: a model's labels are not among them
     const mine = () => memberServers(storeOverCalls((tool, input) => ctx.call(tool, input, { relay: true })));
+    // The app catalog: a reviewed weekly snapshot (scripts/mcp-catalog-snapshot.mjs opens the pull request, a person merges it). Read from the file the build carries; none is an empty catalog.
+    let snapshot = /** @type {any} */ (null);
+    const catalog = () => {
+      if (snapshot) return snapshot;
+      try { snapshot = JSON.parse(fs.readFileSync(typeof opts.catalog === "string" ? opts.catalog : new URL("./catalog.snapshot.json", import.meta.url), "utf8")); } catch { snapshot = { entries: [] }; }
+      return snapshot;
+    };
+    ctx.tool("mcp.catalog", {
+      effect: "read",
+      description: "Search the reviewed app catalog of hosted MCP servers by words or category; each entry says its sign-in kind and whether you are connected.",
+      input: obj({ query: str, category: str, connected: { type: "boolean" }, verified: { type: "boolean" }, limit: { type: "integer" }, offset: { type: "integer" } }),
+      run: input => {
+        const snap = catalog();
+        const connectedKeys = new Set(hub.rows().map(r => (r.url ? urlKey(r.url) : "")).filter(Boolean));
+        return { ...searchCatalog(Array.isArray(snap.entries) ? snap.entries : [], input || {}, connectedKeys), generated: snap.generated || null };
+      },
+    });
+
     ctx.tool("mcp.mine.list", {
       effect: "read",
       description: "The MCP servers you brought yourself (your own accounts): name and address, never a credential.",
@@ -158,6 +178,14 @@ export default {
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove(input); },
+    });
+
+    ctx.tool("mcp.repin", {
+      effect: "write",
+      description: "Approve the tool descriptions an MCP server changed since you reviewed them: { name, seen } where seen is the hash mcp.servers shows. Until then its tools are held.",
+      input: obj({ name: str, seen: str }, ["name", "seen"]),
+      callers: PEOPLE,
+      run: (input, meta) => { refuseNonPerson(meta, "approves changed MCP tool descriptions"); return hub.repin(input); },
     });
 
     ctx.tool("mcp.test", {

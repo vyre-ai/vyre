@@ -65,6 +65,14 @@ crashes three times in five minutes stays stopped until you restart it (**Restar
 `vyre connect list` shows every connection. `vyre connect test mcp tracker` tries one now.
 `vyre connect remove mcp tracker` disconnects it and leaves its vault items where they are.
 
+## When a server changes what its tools say
+
+The first tool list a server gives is the one you reviewed, and Vyre keeps its fingerprint. The descriptions are text a model reads, so a server could change them after you approved it. If a later list differs, Vyre holds that server: its tools are not offered, and a call is refused with `tools_changed`. `mcp.servers` shows what changed for you to read, and `mcp.repin { name, seen }` approves exactly the list you read. A model cannot approve it. If the server changes again before you approve, the approval is refused and you read the new change.
+
+## Find an app in the catalog
+
+`mcp.catalog` searches a reviewed list of hosted MCP servers by words or category, and says for each whether you are already connected. The list is a weekly snapshot of the official MCP registry and the Claude plugin repositories: a person reads every new entry in a pull request before it appears. An entry marked verified was published under its vendor's own domain. Anything else is listed as inferred and does not get a one-click connect.
+
 ## Hold and approve a send
 
 The hub reads each tool's name. A tool is a read when its name is plainly a read (`list`, `get`,

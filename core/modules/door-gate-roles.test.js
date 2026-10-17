@@ -121,7 +121,7 @@ test("the groups: every tool is registered, owner-only, in one group, and no gro
 
 test("mcp.mine.*: a Member calls her own MCP accounts (the gate lets them through and the vault's own person check judges her), a Guest is refused; the owner-only firm-key tools stay refused to her", { timeout: 200_000 }, async t => {
   const { as } = await rig(t);
-  for (const tool of ["mcp.mine.list", "mcp.mine.add", "mcp.mine.remove"]) {
+  for (const tool of ["mcp.catalog", "mcp.mine.list", "mcp.mine.add", "mcp.mine.remove"]) {
     assert.ok(MEMBER_MAY.has(tool) && !OWNER_ONLY.has(tool), `${tool} is on a Member's list alone`);
     assert.ok(!gated(await as("member", tool, { name: "x", type: "http", url: "https://x.example.com/mcp" }), tool), `${tool}: a Member is not turned away by the gate`);
     assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
