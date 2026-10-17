@@ -87,7 +87,7 @@ import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { httpFetch } from "../../lib/http.js"; import { entryView } from "./entry-view.js";
-import { chosenServer } from "./chosen-server.js";
+import { chosenServer } from "./chosen-server.js"; import { registerPublishServerSpace } from "./publish-server-space.js";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
@@ -1333,6 +1333,7 @@ export default {
       }
       return { space: id, existed: true, rootPublic: have.publicKey };
     });
+    registerPublishServerSpace({ tool, obj, str, refuse, chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
