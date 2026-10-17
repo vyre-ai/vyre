@@ -1035,5 +1035,6 @@
  "web/js/join-caps.test.js": 5,
  "web/js/person.test.js": 8,
  "web/js/trace.test.js": 2,
- "web/vendor/jsqr/jsqr.test.js": 2
+ "web/vendor/jsqr/jsqr.test.js": 2,
+ "test/finish-owner.test.js": 1
 }
