@@ -235,9 +235,10 @@ export async function agentLaunchGuard(sb, i, who, owner) {
 export const trustedLaunch = (i, meta) => {
   if (!i) return i;
   const first = Boolean(meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"));
-  const { for_person, read_only, run_as, flow_origin, ...rest } = i;
+  const { for_person, read_only, run_as, flow_origin, account, person, ...rest } = i;
   // `for_person` from any first-party module; `read_only` (one folder the session may read, its own agent folder) only from the agents module: nobody else widens what a sandbox can read.
-  return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}),
+  // `account` and `person` (the AI sign-in a launch runs on, and whose it is) only from a first-party module: from anyone else a launch could name another person's login.
+  return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(account !== undefined && first ? { account } : {}), ...(person !== undefined && first ? { person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}),
     // `run_as` (the person a Flow's job acts as, so its kernel session is theirs and not the owner's) and `flow_origin` (where the job came from) only from the agents module, which got them from the host.
     ...(run_as !== undefined && first && String(meta.caller) === "module:agents" ? { run_as } : {}), ...(flow_origin !== undefined && first && String(meta.caller) === "module:agents" ? { flow_origin } : {}) };
 };
@@ -252,6 +253,8 @@ const firstPerson = (chain) => { const h = chain && Array.isArray(chain.hops) ? 
  */
 export async function checkLaunch(sb, i, chain, owner) {
   const who = firstPerson(chain);
+  // A launch that names an account for a person it is for names that person's own: any other pairing is refused, whoever asks.
+  if (i.account && typeof i.for_person === "string" && i.for_person && String(/** @type {any} */ (i).person || "") !== i.for_person) throw Object.assign(new Error("the sign-in named is not that person's own, so nothing was started"), { code: "denied" });
   await agentLaunchGuard(sb, i, who, owner);
   return who || (typeof i.for_person === "string" && i.for_person && i.for_person !== "automation" ? i.for_person : null);
 }
