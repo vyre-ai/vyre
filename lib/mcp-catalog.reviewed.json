@@ -445,7 +445,7 @@
     "reason": "no registration endpoint; the person's own Google Cloud client, and the Workspace Developer Preview Program"
    },
    "verdict": "blocked",
-   "domain": "google.com"
+   "domain": "googleapis.com"
   },
   {
    "id": "box",
