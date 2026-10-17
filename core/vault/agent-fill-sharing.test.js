@@ -25,8 +25,9 @@ async function world(t) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-sharing-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
-  const rig = await kernelRig({ agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst" } });
+  const rig = await kernelRig({ agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst", ghost: "agt_ghost" }, notActors: ["ghost"] });
   const events = /** @type {any[]} */ ([]);
+  const logs = /** @type {string[]} */ ([]);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file" } }, emit: (type, p) => events.push({ type, p }), log: () => {}, clock: rig.clock });
   v.access = new Access(v, rig.ctx);
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
@@ -36,7 +37,7 @@ async function world(t) {
   const calls = /** @type {any[]} */ ([]);
   /** A stand-in for the browser: the connection opens and then stops, so a started fill shows as the stop and a refused one as a refusal. */
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
-  const d = { vault: v, said: new SaidIntents(v), log: () => {}, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
+  const d = { vault: v, said: new SaidIntents(v), log: (/** @type {string} */ m) => { logs.push(String(m)); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => {
     calls.push({ name, input });
     if (name === "computers.fill.begin") return { data: { fill: "fill-1", cdpUrl: "http://127.0.0.1:9", token: "" } };
     return { data: { agent: input.agent, ended: true } };
@@ -47,7 +48,7 @@ async function world(t) {
     rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "agent", id: rig.uid(agent), space: SPACE } }, actions: [...actions], resource: { prefix: urn }, conditions: {}, source: "vault:share", ...over }, { presence: { n: Math.random() } });
   const fill = (/** @type {string} */ agent, /** @type {any} */ extra = {}) => agentFill(d, { agent, item: "northwind-app", origin: ORIGIN, ...extra });
   const began = () => calls.filter(c => c.name === "computers.fill.begin").length;
-  return { v, rig, db, events, calls, share, fill, began };
+  return { v, rig, db, events, logs, calls, share, fill, began };
 }
 
 const refused = (/** @type {Promise<any>} */ p, /** @type {RegExp} */ re = /is not lent to/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
@@ -117,7 +118,16 @@ test("only a login can be filled; the value never reaches the agent: not in the 
   // the only place the values go is the computer's scrub list (computers.fill.begin registers them so the agent's own view of the page never shows them): not to the agent, not to a log
   const begin = w.calls.find(c => c.name === "computers.fill.begin");
   assert.ok(begin && begin.input.values.includes(PASS), "the exact values are registered for scrubbing");
-  const all = JSON.stringify({ seen, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls.filter(c => c.name !== "computers.fill.begin") });
+  const all = JSON.stringify({ seen, logs: w.logs, events: w.events, audit: w.db.prepare("SELECT * FROM vault_audit").all(), calls: w.calls.filter(c => c.name !== "computers.fill.begin") });
   assert.ok(!all.includes(PASS), "the password is nowhere an agent or a log can read it");
   assert.ok(!all.includes("alex@northwind.example"), "nor the username");
+});
+
+test("an agent that resolves to a uid but is not a member of the Space is refused even with a matching share (the rig registering its agents does not hide the check)", async t => {
+  const w = await world(t);
+  await w.share("ghost");
+  await refused(w.fill("ghost"));
+  assert.equal(w.began(), 0, "the agent's computer was never touched");
+  await w.share("kit");
+  await assert.rejects(w.fill("kit"), e => /** @type {any} */ (e).code === "stand_in", "the same share on a member agent starts");
 });
