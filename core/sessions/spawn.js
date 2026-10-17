@@ -75,7 +75,10 @@ export function spawnSession(command, args, o = {}) {
   if (o.lentSpawn) {
     const { lentSpawn, ...here } = o;
     /** @type {any} */ let lent = null;
-    try { lent = lentSpawn(command, args, o.env || {}, o.cwd, o.signal ? { signal: o.signal } : undefined); } catch { lent = null; }
+    // The lender's process runs on the person's own computer with that computer's own sign-in: no key of this home goes there. The environment it is handed has no credential variable and none that names a descriptor,
+    // so even a lender that forwarded its environment would carry none; the box's own fallback below keeps the whole environment and moves the key onto fd 3 like any other launch.
+    const sent = { ...(o.env || {}) }; stripCredentials(sent);
+    try { lent = lentSpawn(command, args, sent, o.cwd, o.signal ? { signal: o.signal } : undefined); } catch { lent = null; }
     if (lent) return lentOrBox({ lent, box: () => spawnSession(command, args, here) });
     return spawnSession(command, args, here);
   }
@@ -84,7 +87,9 @@ export function spawnSession(command, args, o = {}) {
   // A session confined by the runner's home sandbox (lib/agent-sandbox.js): the prepared spawner plans and launches this process under the same rules, its group
   // recorded for the peer check. The subreaper and the uid split are the unconfined path's; the sandbox replaces them here.
   if (o.sandboxSpawn) {
-    const child = o.sandboxSpawn(command, args, o.env || {}, o.cwd, { ...(o.signal ? { signal: o.signal } : {}), ...(o.terminal ? { terminal: true } : {}) });
+    // The sandbox hands the session its sign-in on its own pipe (lib/agent-sandbox.js `secret`, chosen from this launch's environment when the sandbox was prepared), so the spawner is given no credential variable at all.
+    const clean = { ...(o.env || {}) }; stripCredentials(clean);
+    const child = o.sandboxSpawn(command, args, clean, o.cwd, { ...(o.signal ? { signal: o.signal } : {}), ...(o.terminal ? { terminal: true } : {}) });
     if (child.pid && o.onSpawn) { try { o.onSpawn({ pid: child.pid, pgid: child.pid, sid: child.pid }); } catch {} }
     return child;
   }
