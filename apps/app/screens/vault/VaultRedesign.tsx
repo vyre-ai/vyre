@@ -15,7 +15,7 @@ import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
 
-const ICON: Record<string, IconName> = { "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
+const ICON: Record<string, IconName> = { "Apps you connected": "link", "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
 
@@ -135,15 +135,25 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Text tone="label">{cur.detail}</Text>
           {cur.daysLeft != null ? <Text size="caption" tone="label">{cur.daysLeft < 0 ? `Expired ${-cur.daysLeft} days ago` : `Expires in ${cur.daysLeft} days`}</Text> : null}
         </View>
+        {cur.kind === "connection" ? (
+          <Sec title="The connection">
+            <Card flush>
+              <Row dense title="Connects to" sub={cur.detail} />
+              <Row dense title="Token" sub="Kept in the Vault. Nobody sees it, and no agent or tool is given it." />
+            </Card>
+            <View className="flex-row gap-s2 pt-s2"><Button kind="secondary" size="sm" label="Connect again" onPress={() => router.push("/u/connections" as never)} /></View>
+          </Sec>
+        ) : (
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
           <Text size="caption" strong tone="label">The value</Text>
           <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
+        )}
         <Sec title="Used by">
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
         </Sec>
-        <Sec title="Who has it">
-          {scope === "space" && data.sharing ? <ItemSharing data={data} item={cur} /> : (
+        <Sec title={cur.kind === "connection" ? "Who can use it" : "Who has it"}>
+          {scope === "space" && data.sharing ? <ItemSharing api={data.sharing} item={cur} /> : scope === "mine" && cur.kind === "connection" && data.connectionSharing ? <ItemSharing api={data.connectionSharing} item={cur} connection /> : (
             <View className="gap-s2"><Text tone="muted">Only you. Your own vault is not shared.</Text></View>
           )}
         </Sec>
