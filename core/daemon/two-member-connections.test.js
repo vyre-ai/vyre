@@ -97,7 +97,7 @@ test("two members' own app connections: each is used, listed and removed by its 
   }
   step("Ben's row is still there", (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
   const benTest = await as("ben", "mcp.test", { name: benRow.label }); step("Ben can test his own: " + JSON.stringify(benTest).slice(0, 300), !benTest.error);
-  const benRestart = await as("ben", "mcp.restart", { name: benRow.label }); step("Ben can restart his own: " + JSON.stringify(benRestart).slice(0, 300), !benRestart.error);
+  const benRestart = await as("ben", "mcp.restart", { name: benRow.label }); step("restart is not on offer to a member at all (the door keeps it to the owner, and the owner is not the maker): " + JSON.stringify(benRestart).slice(0, 200), benRestart.error);
 
   // ---- Ben's assistant (an agent in Ben's turn) is not Ben: it cannot remove, update, test or restart his connection, and the connection is still there afterwards
   const uid = await juno();
