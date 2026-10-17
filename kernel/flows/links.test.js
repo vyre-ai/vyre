@@ -97,7 +97,6 @@ test("links.js: a path that follows no link reads nothing", async () => {
 
 test("a linked record is read under the lesser of the Flow's chain and the chain of whoever started the run", async () => {
   const { w, chain, urn } = await setup();
-  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   // the Flow's own chain may read every kin; the member who starts it may not read Sam
@@ -105,7 +104,7 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
   w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
   const flow = { format: 1, name: "read_kin", label: "Read kin", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "put", kind: "create", type: "payment", set: { amount: 1, client: { expr: "trigger.kin.name" } } }] };
   const { id } = await install(w, flow);
-  const asAlex = w.kernel.as(ALEX), asBob = w.kernel.as("per_bob");
+  const asAlex = w.kernel.as(ALEX), asBob = w.kernel.as({ kind: "person", id: "per_bob" });
   await w.runner.start(id, { kin: urn(sam) }, asAlex);
   await settle(w);
   await w.runner.start(id, { kin: urn(sam) }, asBob);
@@ -119,14 +118,13 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
 
 test("an event-triggered run reads a linked record under the lesser of the Flow's chain and the chain of the person whose change fired it", async () => {
   const { w, chain, urn } = await setup();
-  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
   w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
   await install(w, copyFlow("trigger.after.spouse.name"));
   // a change by Bob, who may not read Sam, fires the Flow: it stops; the same change by Alex goes through
-  await w.kernel.records.create(w.kernel.as("per_bob"), "kin", { name: "Main", spouse: urn(sam) });
+  await w.kernel.records.create(w.kernel.as({ kind: "person", id: "per_bob" }), "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
   await w.kernel.records.create(w.kernel.as(ALEX), "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);

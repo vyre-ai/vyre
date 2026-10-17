@@ -12,19 +12,13 @@ const flowsModule = JSON.parse(fs.readFileSync(new URL("./module.json", import.m
 const toolOf = name => flowsModule.does.tools.find(/** @type {any} */ t => t.name === name) || {};
 
 /** Person's own, and an assistant refused them, as in the app. */
-for (const name of ["flows.pause", "flows.resume", "flows.access.set", "flows.rollback", "flows.kit.remove", "flows.advance", "flows.budget.set"]) {
+for (const name of ["flows.pause", "flows.resume", "flows.access.set", "flows.rollback", "flows.kit.remove", "flows.advance", "flows.budget.set", "flows.settle"]) {
   test(`${name}: the owner's own call over MCP, and an assistant is refused it`, () => {
     assert.equal(toolOf(name).reach, "person", `${name} must be a person's own call, so only the owner's own chain reaches it`);
     assert.ok(PERSON_ONLY.has(name), `${name} must be in agent-reach PERSON_ONLY, so an assistant is refused as in the app`);
     assert.ok(!OPEN.has(name) && !ASK_FIRST.has(name), `${name} is not open or held: it is refused`);
   });
 }
-
-test("flows.settle: an assistant's answer is held for the person's tap, not run and not refused outright", () => {
-  assert.equal(toolOf("flows.settle").reach, "person");
-  assert.ok(ASK_FIRST.has("flows.settle"), "settle is ASK_FIRST: each assistant answer waits for the person's tap");
-  assert.ok(!OPEN.has("flows.settle") && !PERSON_ONLY.has("flows.settle"));
-});
 
 test("flows.budget: reading is anyone's, setting it is the person-only flows.budget.set", () => {
   assert.equal(toolOf("flows.budget").reach, "anyone");

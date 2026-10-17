@@ -37,7 +37,7 @@ test("f3: flows.settle retries, skips with a value, and stops; a stale wait is q
   const run = await fire(w);
   const listed = (await f.tools["flows.attention"](chainOf(), {})).runs;
   assert.equal(listed.length, 1);
-  await assert.rejects(() => f.tools["flows.settle"](agentChain(), { run: run.id, action: "retry" }), /only a person/);
+  await assert.rejects(() => f.tools["flows.settle"](agentChain(), { run: run.id, action: "retry" }), /only a person/i);
   await assert.rejects(() => f.tools["flows.settle"](chainOf(), { run: run.id, action: "nonsense" }), /action is retry, skip, stop or advance/);
   await assert.rejects(() => f.tools["flows.settle"](chainOf(), { action: "retry" }), /run is required/);
   const stopped = await f.tools["flows.settle"](chainOf(), { run: run.id, action: "stop", reason: "not needed" });

@@ -48,8 +48,15 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   await new Promise(r => setTimeout(r, 300));
   assert.deepEqual(seen, [], "nothing woke for a refused write");
 
-  // shared with him: the agent wakes, and the job's kernel session is Ben's, never the owner's
+  // with no AI sign-in of his own the owner's is never used for him (core/switchboard/asker-account.js): the refusal says so and nothing wakes
   assert.ok(!(await asOwner("flows.access.set", { id: open, subject: BEN, level: "use" })).error);
+  const noAccount = await asBen("agents.flow-say", { agent: "juno", flow: open, text: "hi" });
+  assert.match(String(noAccount.error && noAccount.error.message), /no AI sign-in picked/, JSON.stringify(noAccount.error));
+  assert.deepEqual(seen, [], "nothing woke without his own sign-in");
+  const added = await asBen("sessions.accounts.add", { provider: "claude", label: "Ben's Claude", kind: "login" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+
+  // shared with him: the agent wakes, and the job's kernel session is Ben's, never the owner's
   const ok = await asBen("agents.flow-say", { agent: "juno", flow: open, text: "Why did run 8 fail?" });
   assert.ok(ok.data && ok.data.thread, JSON.stringify(ok.error));
   const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session");

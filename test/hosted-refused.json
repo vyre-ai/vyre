@@ -57,6 +57,7 @@
   "flows.advance",
   "flows.approve",
   "flows.budget",
+  "flows.budget.set",
   "flows.compile-text",
   "flows.connections",
   "flows.credential-uses",
