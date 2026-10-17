@@ -339,13 +339,13 @@ test("the lend key: what a member lends to an agent sits in her own vault under 
   assert.throws(() => openItemV2(lk, people.at(BOB, "lk"), JSON.parse(fs.readFileSync(path.join(folder, "lk.json"), "utf8"))), "not the file that holds the key");
   // the connection key's seal does not open as a lend key, and Bob's lend wrap moved to Eve's place opens nothing
   assert.notEqual(openConnectionKey(sealRoot, BOB), null);
-  const bobLend = wrapPath(sealRoot, BOB, "lend"), eveLend = wrapPath(sealRoot, EVE, "lend"), keep = fs.readFileSync(eveLend);
+  const bobLend = wrapPath(sealRoot, BOB, "lend"), eveLend = wrapPath(sealRoot, EVE, "lend"), keep = fs.readFileSync(eveLend), keepBob = fs.readFileSync(bobLend);
   fs.copyFileSync(bobLend, eveLend);
   assert.equal(openConnectionKey(sealRoot, EVE, "lend"), null);
   fs.writeFileSync(eveLend, keep);
   fs.copyFileSync(wrapPath(sealRoot, BOB), bobLend);
   assert.equal(openConnectionKey(sealRoot, BOB, "lend"), null, "a connection wrap is not a lend wrap");
-  fs.writeFileSync(bobLend, fs.readFileSync(wrapPath(sealRoot, BOB, "lend")));
+  fs.writeFileSync(bobLend, keepBob);
   // served from the sealed copy while she is locked; a reset rotates the key
   people.lock(BOB);
   const afterLock = people.lent(BOB);
