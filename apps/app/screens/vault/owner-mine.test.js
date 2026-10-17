@@ -9,6 +9,7 @@ test("the server's refusal of the owner is recognised, and nothing else is", () 
   assert.equal(isOwnerRefusal(Object.assign(new Error(ME_REFUSAL), { code: "denied" })), true, "the owner's refusal");
   assert.equal(isOwnerRefusal(Object.assign(new Error("locked"), { code: "locked" })), false, "a locked vault is not it");
   assert.equal(isOwnerRefusal(Object.assign(new Error("not allowed"), { code: "denied" })), false, "another denial is not it");
+  assert.equal(isOwnerRefusal(Object.assign(new Error("vault.me.account.status isn't on this Mac yet: vyre-core holds the vault here, and this part hasn't moved into it"), { code: "core_owned" })), true, "a Mac server's answer: no member vault there, so Mine is the vault it has");
   assert.equal(isOwnerRefusal(null), false);
 });
 
