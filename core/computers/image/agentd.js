@@ -16,10 +16,9 @@
 // its own VNC password, Chrome under that uid with its own profile directory, tmux with its own socket in the home, address space and
 // process limits through prlimit, nice 5. Nothing here gives an agent a group of another agent or any admin right.
 
-/** Where agents' homes live: one volume for the whole computer, each home 0700. */
-export const HOMES = "/home";
 /** Where each agent keeps its runtime files (the VNC password file): inside the computer's state volume, each folder made at image build owned by its agent, 0700. */
 export const RUN = "/var/lib/vyre/agents";
+/** An agent's home is inside its own run folder, on the computer's one state volume (the image root is read-only, so a home anywhere else could not be written). Each is 0700. */
 const USER_RE = /^ag[a-z0-9]{1,28}$/;
 const MIN_UID = 20000;
 /** The image makes this many agent users; a request outside them is refused. */
@@ -35,7 +34,7 @@ function check(u) {
 }
 
 /** The home of a user. @param {string} user */
-export const homeOf = user => `${HOMES}/${user}`;
+export const homeOf = user => `${RUN}/${user}/home`;
 
 /**
  * The argv prefix that runs something as the agent's uid with nothing extra: every capability set emptied (inheritable, ambient, bounding), no new privileges, no groups, limited
@@ -113,7 +112,10 @@ export function planRemove(u) {
   const as = asAgent(u);
   return [
     [...as, "/usr/bin/pkill", "-KILL", "-u", String(u.uid)],
-    [...as, "/usr/bin/find", homeOf(u.user), `${RUN}/${u.user}`, "-mindepth", "1", "-delete"],
+    [...as, "/usr/bin/find", `${RUN}/${u.user}`, "-mindepth", "1", "-delete"],
+    // the home was inside what was just emptied: make it again, empty, for the next agent that takes this place
+    [...as, "/usr/bin/mkdir", homeOf(u.user)],
+    [...as, "/usr/bin/chmod", "0700", homeOf(u.user), `${RUN}/${u.user}`],
   ];
 }
 

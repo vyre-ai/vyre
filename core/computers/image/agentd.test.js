@@ -16,7 +16,7 @@ test("a new agent's home and run folder were made at image build; adding one onl
   const steps = flat(planCreate(U));
   assert.ok(!steps.some(x => /useradd|groupadd|chown/.test(x)), "agentd never adds a user or chowns: it has no capability to");
   assert.ok(steps.every(x => x.startsWith("/usr/bin/setpriv --reuid=20000 --regid=20000")), "every step runs as the agent");
-  assert.ok(steps.some(x => x.endsWith("/usr/bin/chmod 0700 /home/ag20000 /var/lib/vyre/agents/ag20000")));
+  assert.ok(steps.some(x => x.endsWith("/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000")));
 });
 
 test("every agent process runs through setpriv as that uid, with absolute paths: no groups, every capability set emptied, no new privileges, limited, and an environment built from nothing", () => {
@@ -63,12 +63,12 @@ test("sleeping signals as the agent, only its uid, and never its tmux server", (
 
 test("reset empties the home as the agent and keeps the folder and its mode; it names no other path", () => {
   const steps = planWipeHome(U);
-  assert.deepEqual(steps.map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" ")), ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/find /home/ag20000 -mindepth 1 -delete", "/usr/bin/chmod 0700 /home/ag20000"]);
+  assert.deepEqual(steps.map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" ")), ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/find /var/lib/vyre/agents/ag20000/home -mindepth 1 -delete", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home"]);
 });
 
-test("remove empties exactly its home and run folder as the agent and leaves the image user", () => {
-  const last = planRemove(U).pop() || [];
-  assert.deepEqual(last.slice(last.indexOf("/usr/bin/find")), ["/usr/bin/find", "/home/ag20000", "/var/lib/vyre/agents/ag20000", "-mindepth", "1", "-delete"]);
+test("remove empties exactly its run folder (its home is inside it) as the agent, makes the home again and leaves the image user", () => {
+  const steps = planRemove(U).map(x => x.slice(x.indexOf("-i") + 1).filter(a => !/^[A-Z]+=/.test(a)).join(" "));
+  assert.deepEqual(steps, ["/usr/bin/pkill -KILL -u 20000", "/usr/bin/find /var/lib/vyre/agents/ag20000 -mindepth 1 -delete", "/usr/bin/mkdir /var/lib/vyre/agents/ag20000/home", "/usr/bin/chmod 0700 /var/lib/vyre/agents/ag20000/home /var/lib/vyre/agents/ag20000"]);
 });
 
 test("a triple that is not exactly user ag<uid>, a uid the image made and that uid's display is refused before anything runs", () => {
@@ -80,7 +80,7 @@ test("a triple that is not exactly user ag<uid>, a uid the image made and that u
     assert.throws(() => planStartScreen(b), undefined, JSON.stringify(b));
   }
   assert.doesNotThrow(() => planCreate({ user: "ag20063", uid: 20063, display: 83 }), "the last of the 64");
-  assert.equal(homeOf("ag20000"), "/home/ag20000");
+  assert.equal(homeOf("ag20000"), "/var/lib/vyre/agents/ag20000/home");
 });
 
 test("a step fails the plan unless it is one that may fail (stopping what is not running)", async () => {
@@ -94,10 +94,10 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
 
 test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
   const holder = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
-  assert.match(holder, /HOME = "\/home\/ag%d" % uid/);
+  assert.match(holder, /HOME = "\/var\/lib\/vyre\/agents\/ag%d\/home" % uid/);
   assert.match(holder, /--user-data-dir=%s\/\.chrome" % HOME/);
   assert.match(holder, /--restore-last-session/, "the tabs and their logins come back when Chrome does");
   assert.ok(planStopScreen(U).every(x => x.includes("/usr/bin/pkill") && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
-  assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/home/ag20000")));
+  assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/agents/ag20000/home")));
   assert.ok(planRemove(U).some(x => x.includes("-delete")));
 });

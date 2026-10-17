@@ -9,7 +9,7 @@ uid = os.geteuid()
 if uid < 20000 or uid > 20063 or uid != os.getuid() or len(sys.argv) != 1:
     sys.exit(2)
 RUN = "/var/lib/vyre/agents/ag%d" % uid
-HOME = "/home/ag%d" % uid
+HOME = "/var/lib/vyre/agents/ag%d/home" % uid
 SOCK = RUN + "/cdp.sock"
 MAX_MSG = 16 * 1024 * 1024
 MAX_PENDING = 32 * 1024 * 1024

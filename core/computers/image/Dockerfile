@@ -127,12 +127,12 @@ RUN mkdir -p /etc/chromium/policies/managed \
 # root-owned and read-only (the root filesystem is read-only too): neither user can change them.
 
 # The agents' users (owner decision, 18 Oct 2026: one computer per space, one Linux user per agent). The root is read-only at run time, so
-# the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /home/ag<uid>
+# the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /var/lib/vyre/agents/ag<uid>/home (inside the state volume: the root is read-only)
 # and their homes and run folders are made here too, each owned by its uid and 0700 (a new volume copies them as they are). agentd keeps only CAP_SETUID and CAP_SETGID: it chowns nothing and starts every agent process as that uid.
 RUN for n in $(seq 20000 20063); do \
-      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/home/ag$n" "ag$n" \
-      && mkdir -p "/home/ag$n" "/var/lib/vyre/agents/ag$n" \
-      && chown "$n:$n" "/home/ag$n" "/var/lib/vyre/agents/ag$n" && chmod 0700 "/home/ag$n" "/var/lib/vyre/agents/ag$n"; \
+      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/var/lib/vyre/agents/ag$n/home" "ag$n" \
+      && mkdir -p "/var/lib/vyre/agents/ag$n/home" \
+      && chown "$n:$n" "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home" && chmod 0700 "/var/lib/vyre/agents/ag$n" "/var/lib/vyre/agents/ag$n/home"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents && chmod 0711 /var/lib/vyre/agents
 COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-chrome.py /opt/agentd/

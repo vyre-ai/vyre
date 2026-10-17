@@ -40,10 +40,10 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   await w.ctl.stopScreen(U);
   await w.ctl.wipeHome(U);
   await w.ctl.removeUser(U);
-  assert.ok(w.ran.some(a => a.includes("/usr/bin/mkdir") && a.includes("/home/ag20000")));
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/mkdir") && a.includes("/var/lib/vyre/agents/ag20000/home")));
   assert.ok(w.ran.some(a => a.includes("/usr/bin/Xvnc")));
   assert.ok(w.ran.some(a => a.includes("/usr/bin/pkill") && a.includes("chromium")));
-  assert.ok(w.ran.some(a => a.includes("/usr/bin/find") && a.includes("/home/ag20000")));
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/find") && a.includes("/var/lib/vyre/agents/ag20000")));
   assert.ok(w.ran.filter(a => a.includes("/usr/bin/find")).length === 2, "wipe and remove each empty folders");
 });
 
