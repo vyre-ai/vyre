@@ -17,17 +17,10 @@
 <main>
   <h1>Vyre Lumen</h1>
   <p>Connect this computer to your Vyre.</p>
-  <section id="typed">
-    <p>On another device where you are signed in, open Devices, then Add a device, and type the code it shows here.</p>
-    <input id="code" placeholder="WINK-7K4Q-M2XD" autocomplete="off" spellcheck="false">
-    <button id="typed-go">Connect</button>
-    <p id="ack" class="fine" role="status"></p>
-  </section>
-  <p>Or, if you know it, enter your Vyre's address, like alex.vyre.run.</p>
+  <p>Enter your Vyre's address, like alex.vyre.run, then sign in with your username and master password.</p>
   <input id="addr" placeholder="alex.vyre.run" autocomplete="off" autofocus>
   <button id="go">Connect</button>
   <div id="err" role="alert"></div>
   <p class="fine">If Windows said it did not recognize this app, choose More info, then Run anyway.</p>
 </main>
 <script src="first-run.js"></script>
-<script type="module" src="first-run-pair.js"></script>
