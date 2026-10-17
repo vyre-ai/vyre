@@ -38,7 +38,7 @@ test("the join path never names a server, and identity leads to the path the per
   assert.equal(afterAi({ path: "create" }), "create.kind");
   assert.equal(afterAi({}), "space.choice");
   assert.equal(afterAi({ path: "computer" }), "computer.add");
-  assert.equal(afterAi({ path: "phone" }), "phone.add");
+  assert.equal(afterAi({ path: "phone" }), "space.choice", "first run has no Add your phone step any more (a phone signs in with the one sign-in line), so path=phone is the plain choice");
 });
 
 /** @param {{ status?: any, config?: any, fetch?: typeof fetch }} [opt] @returns {{ tools: Map<string, any>, saved: any[], calls: { name: string, input: any }[], ctx: any }} */
