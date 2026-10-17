@@ -167,6 +167,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(mac, windows): the Mac and Windows shells sign the proof that makes a server yours (wink.server.adopt's "vyre-wink-pair-to-v1" message: the server's key, this device's id there, the ticket's tag), read strictly by its exact shape and named "Make the server you are pairing yours" on the Touch ID sheet or the Windows confirmation; before, the shells refused it ("Vyre cannot tell what this would sign"), so a Mac never finished owning a server. relay/client/finish.js builds the bytes in one exported function (pairToProofMessage), pinned by a vector the Node, Swift and Rust tests share.
 - fix(app): a server pairing that does not finish says why (the server's own refusal, or "Your server stopped answering before the pairing finished") instead of "Something went wrong."; the typed-code error now carries its code (screens/devices/typed-model.js serverPairError).
 - ci: a pull request's newer push cancels its older run in node, app, box-image and design-pictures (the work/ test alone never matched a pull request's ref); main, release branches and tags never cancel. box-image and design-pictures already run only when their inputs change.
+## 0.6
+
+- ci(regen): on a pull request into a release branch, regen.yml runs scripts/team/regen.mjs on Linux in a read-only job and, when the docs reference and index, the agent docs or the architecture map are stale, a second job with the write token applies only those paths as a commit to the PR branch (never the golden lists, which change through golden-refresh) and starts node, app, box-image and design-pictures on the new commit; a fork's pull request fails with the stale files named. Nobody edits generated files by hand.
 
 ## 0.5.1
 
