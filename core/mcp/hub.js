@@ -619,6 +619,7 @@ export class Hub {
    */
   async inScope(r, who, memo) {
     // A person's connection has no scope list: whoever may use it is whoever the Vault says holds its item (a grant), the person who made it included. Neither the person shortcut nor a #tag reaches it.
+    // Rows with no owner are the Space owner's older ones and keep the scope rule below. No new row may be made without an owner once members connect: add() takes the owner from the verified caller, never from input.
     if (r.owner) return this.mayUse(r, who, "read");
     if (who.person) return true;
     // A #tag in the person's own turn: this thread (or one it came from) may use this server, whatever its scope says.
