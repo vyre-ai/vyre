@@ -18,7 +18,6 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [phoneLink, setPhoneLink] = useState("");
   const [place, setPlace] = useState<"linux" | "mac">("linux");
   const [command, setCommand] = useState("");
   const live = useRef(true);
@@ -41,19 +40,6 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
       .catch((e) => { if (live.current) setSaid(said(e)); })
       .finally(() => { if (live.current) setBusy(false); });
   };
-  const addPhone = () => {
-    setBusy(true);
-    tool<{ spaces?: { id?: string; name?: string }[]; current?: string | null }>("onboard.space.list", {})
-      .then((list) => {
-        const rows = Array.isArray(list?.spaces) ? list.spaces : [];
-        const hit = rows.find((s) => s.id && s.id === list?.current) || rows[0];
-        if (!hit) throw Object.assign(new Error("Create or join a space first."), { code: "no_space" });
-        return tool<{ link?: string }>("onboard.phone.add", { space: hit.name || hit.id });
-      })
-      .then((r) => { if (live.current) { setPhoneLink(String(r?.link || "")); setSaid(""); finish(); } })
-      .catch((e) => { if (live.current) setSaid(said(e)); })
-      .finally(() => { if (live.current) setBusy(false); });
-  };
   const openServer = () => {
     setBusy(true);
     tool<{ command?: string }>("onboard.space.open", { kind: place })
@@ -68,7 +54,6 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
       <Card className="items-center gap-s3">
         <Chip tone="ok" icon="check">Done</Chip>
         <Text strong>{`The ${noun} is added`}</Text>
-        {phoneLink ? <Text mono selectable className="w-full text-center">{phoneLink}</Text> : null}
         <Button size="sm" label="Done" onPress={onDone} />
       </Card>
     );
@@ -88,8 +73,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     body = (
       <Card className="gap-s3">
         <Text strong>Add your phone</Text>
-        <Text tone="muted">The phone opens a link and joins the space.</Text>
-        <Button kind="primary" label={busy ? "Asking" : "Make the link"} onPress={busy ? () => {} : addPhone} />
+        <Text tone="muted">On the phone, open Vyre and sign in with the space address, your username and your master password. There is nothing to pair.</Text>
       </Card>
     );
   } else {
@@ -115,7 +99,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
     );
   }
   return (
-    <Page title={`Add a ${noun}`} sub={kind === "server" ? "One install command" : kind === "phone" ? "A link the phone opens" : "The space address and your master password"}>
+    <Page title={`Add a ${noun}`} sub={kind === "server" ? "One install command" : kind === "phone" ? "Sign in on the phone" : "The space address and your master password"}>
       {said1 ? <Banner tone="warn">{said1}</Banner> : null}
       {body}
       <View className="flex-row justify-center"><Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={onBack} /></View>

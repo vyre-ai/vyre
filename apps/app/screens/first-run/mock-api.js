@@ -85,11 +85,6 @@ export async function finishFirstRun() {
   return { ok: true, done: true };
 }
 
-/** @param {string} [space] */
-export async function addPhone(space) {
-  return { ok: true, link: "https://vyre.run/i/samplephone", space: space || null };
-}
-
 export async function listAgentProviders() {
   return { ok: true, providers: [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }] };
 }

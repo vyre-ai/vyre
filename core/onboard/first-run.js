@@ -1,10 +1,10 @@
 // @ts-check
-// First run, invites, and adding a computer or a phone. One tool each: the app calls these, and the MCP server
+// First run, invites, and adding a computer. One tool each: the app calls these, and the MCP server
 // forwards the same registry tools (harness/mcp/server.js holds none of its own).
 //
 // One identity can be the owner, an admin or a member of many spaces. Each space has its own server. A later
 // join or create uses the identity already on this device. This file does not mint a second identity, a second
-// install code, or a second owner change. A phone is a link. It never signs a change of who owns a space.
+// install code, or a second owner change. It never signs a change of who owns a space.
 
 import { randomBytes } from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
@@ -459,20 +459,6 @@ export function registerFirstRun(ctx, io) {
         servers.push(t.server);
       }
       return { url: typed || servers[0] || null, username: who, github: github === true, added: missing.length === 0, servers, missing, live: lives.length > 0 && lives.every(Boolean), devices };
-    },
-  });
-
-  ctx.tool("onboard.phone.add", {
-    effect: "write",
-    description: "Add this person's phone as one of their own devices. Returns the link and the typed code the phone uses, good for one phone and five minutes. It is not an invite to a space.",
-    input: obj({ space: str, name: str, type: str, fingerprint: str }),
-    callers: [...OPEN],
-    run: async (_input, meta) => {
-      // A phone is a device of this identity (wink.phone.open: a QR and a code, one phone, five minutes). It is never a member invite, which would add a second person.
-      const opened = await personCall("wink.phone.open", {});
-      const link = String((opened && (opened.link || opened.qr)) || "");
-      if (!link) throw bad("The phone link did not come back. Try again.");
-      return { link, role: "device", expires: opened.expires ?? null, ...(opened.code ? { code: String(opened.code) } : {}) };
     },
   });
 

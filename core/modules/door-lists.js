@@ -289,7 +289,6 @@ export const MEMBER_OUTWARD = Object.freeze({
   "onboard.space.current": "the person's yes: naming which Space she is in is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.member.link": "the person's yes: linking her member identity is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.computer.add": "the person's yes: adding a computer is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
-  "onboard.phone.add": "the person's yes: adding her phone is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "onboard.windows": "the person's yes: finishing Windows setup is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "identity.vault.install": "the person's yes: installing her vault on this device is her act; an assistant's request is held for one tap, her own call from her device needs only her.",
   "spaces.pair.install": "the owner's yes: pairing a server install is the owner's Space act; an assistant's request lands as a held card in the owner's approvals, her own call from her device needs only her when she is the owner.",

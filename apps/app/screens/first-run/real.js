@@ -112,13 +112,6 @@ export async function finishFirstRun() {
   catch (e) { return fail(e); }
 }
 
-/** @param {string} [space] */
-export async function addPhone(space) {
-  if (MOCK) return mock.addPhone(space);
-  try { return done(await tool("onboard.phone.add", space ? { space } : {})); }
-  catch (e) { return fail(e); }
-}
-
 export async function listAgentProviders() {
   if (MOCK) return mock.listAgentProviders();
   try { return done(await tool("onboard.agent.list", {})); }
