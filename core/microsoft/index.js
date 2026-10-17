@@ -61,9 +61,19 @@ export default {
     const first = async meta => (await mailboxes(meta))[0];
 
     ctx.tool("microsoft.accounts", {
-      description: "The firm Microsoft 365 app: name and domain, never a secret. Owner only.",
+      description: "The Microsoft 365 accounts you can use: for a member, only their own provisioned account (the app, their address and its domain, never a credential); for the owner, the firm app (name and domain, never a secret).",
       input: obj({}), callers: PEOPLE,
-      run: safe(async (_, meta) => { await requireOwner(ctx.kernel, meta); return accounts.all().map(a => ({ name: a.name, domain: a.domain, item: a.auth.item, added: a.added })); }),
+      run: safe(async (_, meta) => {
+        // A member sees only the account the firm app lets them act as: the address the owner recorded for them, derived the way every call derives it. None recorded, or no firm app, is an empty list, not an error.
+        const person = await actingPerson(ctx.kernel, meta);
+        if (person && person !== (ctx.kernel && ctx.kernel.owner)) {
+          let rows = [];
+          try { rows = await mailboxes(meta); } catch (e) { if (!["denied", "no_account"].includes(/** @type {any} */ (e).code)) throw e; }
+          return rows.map(a => ({ app: a.name, email: a.mailbox, domain: String(a.mailbox).split("@")[1] || "" }));
+        }
+        await requireOwner(ctx.kernel, meta);
+        return accounts.all().map(a => ({ name: a.name, domain: a.domain, item: a.auth.item, added: a.added }));
+      }),
     });
 
     ctx.tool("microsoft.add", {

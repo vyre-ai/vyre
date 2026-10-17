@@ -72,7 +72,7 @@ test("no work email recorded, or outside the firm domain, or no app: refused in 
 
 test("only the owner adds the app, removes it or sets emails; a member (self or other) is refused", async t => {
   const s = await setup(t);
-  for (const [name, input] of [["microsoft.add", { name: "firm", domain: "firm.test", item: "k" }], ["microsoft.remove", { name: "firm" }], ["microsoft.members.email", { person: "p-alice", email: "owner@firm.test" }], ["microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }], ["microsoft.members.email", {}], ["microsoft.accounts", {}], ["microsoft.check", {}]])
+  for (const [name, input] of [["microsoft.add", { name: "firm", domain: "firm.test", item: "k" }], ["microsoft.remove", { name: "firm" }], ["microsoft.members.email", { person: "p-alice", email: "owner@firm.test" }], ["microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }], ["microsoft.members.email", {}], ["microsoft.check", {}]])
     await assert.rejects(s.member(name, input), e => e.code === "denied" && /owner/.test(e.message), name);
   await addFirm(s);
   await assert.rejects(s.cli("microsoft.members.email", { person: "p-alice", email: "a@evil.test" }), /outside the firm/);
@@ -213,4 +213,37 @@ test("send and invite check their input: addresses, a one-line subject, a body, 
   await bad("microsoft.calendar.create", { title: "x", start: "2026-10-20T10:00:00", end: "2026-10-20T09:00:00" }, /end after the start/);
   await bad("microsoft.calendar.create", { title: "x", start: "2026-10-20T09:00:00", end: "2026-10-20T10:00:00", time_zone: "Mars/Base" }, /IANA/);
   assert.ok(s.g.requests.every(r => r.method === "GET"), "a refused input sends nothing");
+});
+
+test("microsoft.accounts as a member: only their own provisioned account, the app and the address, never a credential, a mailbox of anyone else's or the firm app's item", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  const mine = await s.member("microsoft.accounts");
+  assert.deepEqual(mine, [{ app: "firm", email: "alice@firm.test", domain: "firm.test" }], JSON.stringify(mine));
+  assert.ok(!JSON.stringify(mine).includes("m365-key") && !JSON.stringify(mine).includes(s.g.secret), "no item name and no secret");
+  // a member with no work email recorded sees none; one with another address sees theirs only
+  const as = (hops, caller = "device:abc") => { s.people.chain = hops; return s.tools.get("microsoft.accounts").run({}, { token: "t", caller }); };
+  const bob = await as(["p-bob"]);
+  assert.deepEqual(bob, [], "no recorded email, no account");
+  await s.cli("microsoft.members.email", { person: "p-bob", email: "bob@firm.test" });
+  assert.deepEqual(await as(["p-bob"]), [{ app: "firm", email: "bob@firm.test", domain: "firm.test" }]);
+  assert.deepEqual(await s.member("microsoft.accounts"), mine, "and Alice still sees only hers");
+  // an assistant acting for Alice reads Alice's, not the owner's
+  assert.deepEqual(await as(["p-alice", "agent:kit"], "mcp:agent:kit"), mine);
+  // an admin is not the owner: requireOwner has always refused an admin the firm app's list, so an admin is served as a member is (their own provisioned account, if one is recorded) and still cannot read or change the firm app
+  await s.cli("microsoft.members.email", { person: "p-ada", email: "ada@firm.test" });
+  assert.deepEqual(await as(["p-ada"]), [{ app: "firm", email: "ada@firm.test", domain: "firm.test" }], "an admin sees their own account, not the firm app");
+  s.people.chain = ["p-ada"];
+  await assert.rejects(s.tools.get("microsoft.add").run({ name: "x", domain: "firm.test", item: "k" }, { token: "t", caller: "device:abc" }), e => e.code === "denied" && /owner/.test(e.message), "and cannot change it");
+  // no firm app, or a call with no person: nothing for a member, the owner's list for the owner
+  await s.cli("microsoft.remove", { name: "firm" });
+  assert.deepEqual(await s.member("microsoft.accounts"), []);
+  await addFirm(s);
+  assert.deepEqual((await s.owner("microsoft.accounts")).map(a => [a.name, a.domain, a.item]), [["firm", "firm.test", "m365-key"]], "the owner still sees the firm app, as before");
+  // a call with no person behind it: the owner's own socket (cli, local, capsule: only the owner's Linux user can open it, the existing owner surface) gets the firm app, as before; a module, a stream or any other
+  // caller with no person gets nothing and is refused, never a broader answer than a member gets
+  assert.deepEqual((await s.cli("microsoft.accounts")).map(a => a.name), ["firm"], "the owner's own socket, as before");
+  for (const caller of ["module:files", "module:threads", "device:abcdef", "mcp", "mcp:agent:kit"]) {
+    s.people.chain = [];
+    await assert.rejects(s.tools.get("microsoft.accounts").run({}, { caller }), e => e.code === "denied", caller);
+  }
 });
