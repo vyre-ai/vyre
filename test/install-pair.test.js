@@ -416,7 +416,7 @@ test("the setup page takes only the install line's own code, opens only after th
   const line = await mintPairCode({ person: PERSON, publicKey: creator.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => creator.sign(m) });
   // A code the stranger's own published key signed, for the stranger's own setup material: valid, and the directory confirms it, but it is not this server's line.
   const theirs = await mintPairCode({ person: STRANGER, publicKey: stranger.pub, secret: crypto.randomBytes(16), fingerprint: crypto.randomBytes(16), now: NOW, sign: (m) => stranger.sign(m) });
-  let up = true;
+  let up = false;   // the boot redeem finds the directory down; the page is tried once it is back
   const directory = { resolveById: async (/** @type {string} */ id) => {
     if (!up) throw Object.assign(new Error("unreachable"), { code: "unreachable" });
     return { entries: [{ kind: "device", pub: id === PERSON ? creator.pub : stranger.pub }] };
