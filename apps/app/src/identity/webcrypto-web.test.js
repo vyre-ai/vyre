@@ -59,7 +59,7 @@ test("the identity chain verifies a real genesis on a browser with no Ed25519 on
   try {
     const { generateDeviceKey } = await import("./keys.js");
     const key = await generateDeviceKey({ forceSoftware: true });
-    const make = () => C.makeGenesis({ kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey }, code: { eid: key.eid, kind: "code", pub: key.publicKey }, nonce: "n", ts: Date.now(), sign: (m) => key.sign(m) });
+    const make = () => C.makeGenesis({ kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey }, code: { eid: key.eid, kind: "code", pub: key.publicKey }, nonce: "nonce-for-the-test", ts: Date.now(), sign: (m) => key.sign(m) });
     await assert.rejects(() => make().then((g) => C.verifyChain([g], { now: Date.now() + 1 })), /first device signs its own genesis/, "before the fallback: the old, unhelpful failure");
     installEd25519Fallback(globalThis);
     const state = await C.verifyChain([await make()], { now: Date.now() + 1 });

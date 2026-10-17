@@ -23,7 +23,7 @@ import { webCrypto } from "../../../../relay/client/webcrypto.js";
 import { nodeCrypto, fileKeyStore } from "../../../../relay/client/nodecrypto.js";
 import { utf8 } from "../../../../relay/client/bytes.js";
 import { pairServer } from "../../../../relay/client/serverpair.js";
-import { claimServerSpace } from "../../identity/claim-space.js";
+import { claimServerSpace } from "../identity/claim-space.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_TEST_SELF_RESERVE = "1";
