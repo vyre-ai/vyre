@@ -83,8 +83,13 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const inJob = await asBen("agents.flow-say", { agent: "juno", flow: open, text: `vyre records.query {"type":"contact","page":{"limit":3}}\nvyre records.get {"type":"skill","id":"${secret.id}"}` });
   assert.ok(inJob.data && inJob.data.thread, JSON.stringify(inJob.error));
   const said = await until(async () => { const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 80 })).data || {}); return g.includes("rows") ? g : null; }, "the job's own read to answer").catch(async (/** @type {any} */ e) => {
-    const g = JSON.stringify((await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {}).slice(0, 3500);
-    throw new Error(`${e.message}; the thread: ${g}; the log: ${logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-20).join(" || ")}; the fake claude's log: ${(() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").slice(-1500); } catch { return "none"; } })()}`);
+    const out = (/** @type {string} */ k, /** @type {string} */ v) => console.log(`DIAG ${k}: ${String(v).replace(/\s+/g, " ").slice(0, 1800)}`);
+    const th = (await asOwner("threads.get", { thread: inJob.data.thread, limit: 40 })).data || {};
+    out("thread", JSON.stringify({ status: th.thread && th.thread.status, reason: th.thread && th.thread.stopped_reason, turns: th.thread && th.thread.turns, account: th.thread && th.thread.account, driver: th.thread && th.thread.driver }));
+    out("items", JSON.stringify(th.turns || th.items || th.messages || []).slice(-1500));
+    out("log", logs.filter((l) => /threads|session|spawn|socket|account|sandbox/i.test(l)).slice(-12).join(" || "));
+    out("fake", (() => { try { return fs.readFileSync(path.join(root, "claude.log"), "utf8").slice(-1200); } catch { return "none"; } })());
+    throw e;
   });
   assert.ok(said.includes("rows"), "an ordinary read in the job answers");
   assert.ok(!said.includes("OWNER-PRIVATE-TEXT"), "the owner's private skill never reaches the member's job");
