@@ -117,7 +117,7 @@ export function realData(call: Call): VaultData {
       
   }
   const deviceKeys = deviceKeyStore({ get: kvGet, set: kvSet });
-  return {
+  const data: VaultData = {
     real: true,
     async load(scope0) {
       // The owner has no member vault: once vault.me.* has refused the owner, the Mine tab shows the owner's own vault (vault.*), and every later call on it uses the same tools.
@@ -165,6 +165,8 @@ export function realData(call: Call): VaultData {
     },
     connectionSharing: {
       async load(item) {
+        // the owner's connections are items of the Space vault, shared the way those are (vault.access.*): vault.me.connection.* refuses the owner
+        if (owner) return data.sharing!.load(item);
         const [sh, dr, me] = await Promise.all([
           ask<{ shares: { kind: Who["kind"] | "team"; subject: string; level: Level }[] }>("vault.me.connection.shares", { name: item.id }),
           ask<{ people: { id: string; name: string; role?: string }[]; groups: { id: string; name: string; people?: string[]; agents?: string[] }[]; agents: { id: string; name: string; instructors?: string[] }[] }>("vault.me.connection.directory"),
@@ -178,7 +180,7 @@ export function realData(call: Call): VaultData {
         const f = me.fields ?? {};
         return { shares: sh.shares.map((s) => ({ id: s.subject, level: s.level })), dir, me: null, info: { account: f.server_url ? new URL(f.server_url).host : "", how: f.connected_by ? "You connected it" : "" } };
       },
-      async set(item, w, level) { await ask("vault.me.connection.share", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
+      async set(item, w, level) { if (owner) return data.sharing!.set(item, w as never, level); await ask("vault.me.connection.share", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
     },
     sharing: {
       async load(item) {
@@ -195,4 +197,5 @@ export function realData(call: Call): VaultData {
     },
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
   };
+  return data;
 }
