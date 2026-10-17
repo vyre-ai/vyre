@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(app): in the Connect apps preview the app marks and buttons share the search field's and the labels' left and right edges (the rows are pulled out by their own side padding).
 - fix(app): the Connect apps preview reads calmer: group labels in 12 muted sentence case (as the sidebar's), the category chips on one row that scrolls sideways, and a connected app's line says "Shared with 1 person and 1 agent" (the names and levels are in Share with...).
 - feat(app): the Connect apps screen, as a preview on sample data (`/connect-demo`; nothing is wired to a server). A search across apps, category chips (Productivity, Communication, Design, Code, Data, More), "Recommended for you", one row per app with Add, Set up or Connected and "N connected" at the top. A row that needs setup says what it needs first (a pasted token or the firm's own developer app). A connected app's menu opens Share with..., which uses the Vault levels (Fill in, Read, Edit and rotate; an agent only at Fill in). Library components `ConnectApps`, `ShareSheet`, `SetupSheet` in `ui/connect`, rules in `connect-model.js`.
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).

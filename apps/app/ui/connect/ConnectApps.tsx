@@ -24,6 +24,9 @@ function GroupLabel({ children, first }: { children: string; first?: boolean }) 
   return <Text accessibilityRole="header" size="caption" medium tone="label" style={{ fontSize: 12, lineHeight: 16, paddingTop: first ? 0 : 12, paddingBottom: 4 }}>{children}</Text>;
 }
 
+/** A row carries its own 16 of side padding; pulling the rows out by that much puts their marks and buttons on the same left and right edges as the search field and the labels. */
+const ROWS = { marginHorizontal: -16 } as const;
+
 function AppRow({ app, menu, onAdd }: { app: App; menu: MenuItem[]; onAdd: (a: App) => void }) {
   const action = app.state === "connected"
     ? <Menu align="end" trigger={<Button size="sm" kind="secondary" label="Connected" icon="check" accessibilityLabel={`${app.name} is connected. More`} />} items={menu} />
@@ -56,13 +59,13 @@ export function ConnectApps({ apps, query, onQuery, category, onCategory, onAdd,
       {v.recommended.length ? (
         <View>
           <GroupLabel first>Recommended for you</GroupLabel>
-          {v.recommended.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}
+          <View style={ROWS}>{v.recommended.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}</View>
         </View>
       ) : null}
       {v.list.length ? (
         <View>
           {v.recommended.length ? <GroupLabel>All apps</GroupLabel> : null}
-          {v.list.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}
+          <View style={ROWS}>{v.list.map((a) => <AppRow key={a.id} app={a} menu={menuOf(a)} onAdd={onAdd} />)}</View>
         </View>
       ) : null}
       {v.empty ? <EmptyState title="No app matches" body="Try another word, or pick a different category." action={query || category !== "all" ? { label: "Clear", onPress: () => { onQuery(""); onCategory("all"); } } : undefined} /> : null}
