@@ -61,9 +61,10 @@ export default {
       },
       addServer: async input => data(await ctx.call("mcp.add", input)),
       testServer: async name => data(await ctx.call("mcp.test", { name })),
-      hasServer: async name => {
+      // A member's hub row is listed under its key; her label is the name she knows it by. The owner's own row is the one with no owner, so a member's row of the same name is never mistaken for it.
+      hasServer: async (name, member) => {
         const list = data(await ctx.call("mcp.servers", {}));
-        return (Array.isArray(list) ? list : list.servers || []).find(s => s.name === name) || null;
+        return (Array.isArray(list) ? list : list.servers || []).find(s => (member ? s.owner === member && s.label === name : s.name === name && !s.owner)) || null;
       },
       updateServer: async input => { data(await ctx.call("mcp.update", input)); },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
