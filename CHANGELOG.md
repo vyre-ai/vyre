@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- ci(golden-refresh): the generated-copies tarball covers every file scripts/gen-surface-lists.mjs writes under apps/app/src/real (member-routes.generated.js and space-tools.generated.js), not one named file, so test/surface-lists.test.js can go green from the runner's output.
+
 - fix(device-tests): from work/0.6/fix53/device-tests 2d855aef5, signed by sec53 where it touches a security path: relay/client/finish.js always sends deviceName (a kind-less pick keeps its name); agents.flow-say drops the "mobile" caller; skills.decline is open to WHO_CAN as allow.json says; publish-server-space's refusal names a next step; skills and flows asks in lib/tools-asks-bank.js; test fixes (peer, spaces, one-person-surfaces list, the timings file no longer names the scan test, web/js/api.js comment).
 
 - ci(golden-refresh): the run also writes apps/app/src/real/member-routes.generated.js (scripts/gen-surface-lists.mjs) and ships it in copies-gen.tgz, so test/surface-lists.test.js can go green from the runner's output.
