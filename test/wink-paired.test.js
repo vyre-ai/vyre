@@ -165,6 +165,9 @@ shardTest("a pick with deviceKind phone still records the phone by name (the kin
   const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
   assert.equal(st.owned, true);
   assert.equal(st.device, "Alex's iPhone");
+  // the control for the kind-less test's "no presence key" assertion: a phone pick DOES put its device in the key list the person reads, so that assertion can fail
+  const keys = (await f.w.d.registry.call("presence.keys", {}, "cli", PROOF)).data;
+  assert.ok(JSON.stringify(keys ?? null).includes(f.done.device), "a phone's key is in presence.keys, by its device id");
 });
 
 shardTest("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
