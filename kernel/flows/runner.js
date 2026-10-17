@@ -16,7 +16,7 @@ import { runCases } from "./cases.js";
 import { readForm } from "./form.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
-import { linksFor, withLinks } from "./links.js";
+import { linksFor, withLinks, lesserRead, byPerson, starterOf } from "./links.js";
 import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
@@ -649,7 +649,7 @@ export class FlowRunner {
         await this.cancel(r.id, { by: null, reason: "replaced by a newer change" }).catch(() => {});
       }
     }
-    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env);
+    return this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env, ...byPerson(env.actor) }, env);
   }
 
   /**
@@ -779,7 +779,7 @@ export class FlowRunner {
     if (d.effect !== "allow") throw Object.assign(new Error("you may not run that Flow"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     // A model-started run (the chain has an assistant in it) carries model-supplied input: it runs tainted (external), so it can never drive a grant or an admin act, and its record says so.
     const byModel = (callerChain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent");
-    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {} }, { trust: byModel ? "external" : "member", data: input ?? {} });
+    return this.#start(f, { kind: "manual", key: key || newId("man_"), input: input ?? {}, ...starterOf(callerChain) }, { trust: byModel ? "external" : "member", data: input ?? {} });
   }
 
   /** Wait for every started run to reach a resting state. For tests and for shutdown. */
@@ -1148,7 +1148,7 @@ export class FlowRunner {
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
     const scope = () => { const base = this.#scope(ctx, locals); return linked.length ? withLinks(base, linked) : base; };
     const load = async () => {
-      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: (type, id) => this.k.records.get(this.#chain(ctx), type, id) }); }
+      try { linked = await linksFor(s, this.#scope(ctx, locals), { space: ctx.cat.space, read: lesserRead(this.k.records, this.#chain(ctx), this.ports.actorChain, ctx.run.trigger && ctx.run.trigger.by) }); }
       catch (e) { if (e instanceof LinkError) throw new StepFail(e.code, `step ${s.id}: ${e.message}`); throw e; }
     };
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());

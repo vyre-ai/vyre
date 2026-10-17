@@ -1301,11 +1301,9 @@ export function createRecords(cfg) {
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
-      if (!PRIVATE_READS[type] && await privateType(type)) return visiblePage(spec = checkPage(spec), page => api.query(chain, type, { ...spec, page }), x => mayView(chain, type, x));
-      const r = await api.query(chain, type, spec);
-      if (!PRIVATE_READS[type]) return r;
-      const rows = []; for (const x of r.rows) if (await mayView(chain, type, x)) rows.push(x);
-      return { ...r, rows };
+      if (!(await privateType(type))) return api.query(chain, type, spec);
+      // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
+      return visiblePage(spec = checkPage(spec), page => api.query(chain, type, { ...spec, page }), x => mayView(chain, type, x));
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
@@ -1314,7 +1312,8 @@ export function createRecords(cfg) {
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {
       const hitOk = async (/** @type {any} */ h) => (!(await isProtectedType(h.type)) || (mayKeep(chain, h.type) && madeByTrusted(urn(h.type, h.id)))) && (!(await privateType(h.type)) || await mayView(chain, h.type, await api.get(chain, h.type, h.id).catch(() => null)));
-      if (await privRows.searchReaches(spec && spec.types)) return visiblePage(spec = checkPage(spec), page => api.search(chain, { ...spec, page }), hitOk);
+      const named = Array.isArray(spec && spec.types) && spec.types.length ? spec.types : null;
+      if (!named || (await Promise.all(named.map((/** @type {string} */ t) => privateType(t)))).some(Boolean)) return visiblePage(spec = checkPage(spec), page => api.search(chain, { ...spec, page }), hitOk);
       const r = await api.search(chain, spec);
       const keep = []; for (const h of r.rows) keep.push(await hitOk(h));
       return { ...r, rows: r.rows.filter((/** @type {any} */ _h, /** @type {number} */ i) => keep[i]) };

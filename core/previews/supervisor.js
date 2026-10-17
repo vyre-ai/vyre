@@ -7,6 +7,12 @@ import { spawn as realSpawn } from "node:child_process";
 import net from "node:net";
 
 export const LOG_BYTES = 200 * 1024;
+/**
+ * What a preview's own command may use, as shell limits set before it runs (an agent wrote it, or the code it builds): no core files, no file larger than 1 GiB, at most 1,024 processes of the Vyre user and
+ * 4,096 open files. A limit the shell cannot set is skipped and the command still runs. Network egress is not limited here: a dev server must serve on its loopback port, which the wall in lib/sandbox
+ * does not allow (it denies all network), so a wall that lets only that port through is the next step.
+ */
+export const LIMITS = "ulimit -c 0 2>/dev/null; ulimit -f 2097152 2>/dev/null; ulimit -u 1024 2>/dev/null; ulimit -n 4096 2>/dev/null; ";
 const SAFE_ENV = ["PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "SHELL", "TERM", "TMPDIR"];
 const RESTARTS = 3, WINDOW_MS = 120_000, BACKOFF = [1000, 3000, 9000];
 
@@ -64,7 +70,7 @@ export function createSupervisor(o = {}) {
     /** @type {Record<string, string>} */ const env = {};
     for (const k of SAFE_ENV) if (process.env[k]) env[k] = /** @type {string} */ (process.env[k]);
     Object.assign(env, e.opts.env, { PORT: String(e.opts.port), HOST: "127.0.0.1", HOSTNAME: "127.0.0.1" });
-    const child = spawn("/bin/sh", ["-c", e.opts.command], { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("/bin/sh", ["-c", `${LIMITS}${e.opts.command}`], { cwd: e.opts.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     e.child = child;
     e.since = now();
     set(e, "starting");

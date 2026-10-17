@@ -60,8 +60,6 @@ export function createPrivateRows(d) {
       return !linked;
     };
   };
-  /** Could a search over these types (none named: all) reach a row private by its project? */
-  const searchReaches = async (/** @type {any} */ types) => { await linksOf(""); return Boolean(map && map.size) && (!Array.isArray(types) || !types.length || types.some((/** @type {string} */ t) => /** @type {any} */ (map).has(t))); };
   /** The writer is on the team of EVERY project any of these row datas links to, and is not a Viewer there (a chain with no person, or a trusted one, passes). */
   async function linkGate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any[]} */ ...datas) {
     if (!(d.members && typeof d.members.membership === "function" && chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"))) return;
@@ -86,7 +84,7 @@ export function createPrivateRows(d) {
   const isPrivate = async (/** @type {string} */ type) => d.builtinRule(type) || (await linksOf(type)).length > 0;
   /** For a total over a type that reads by a rule of its own: the check each row must pass to be counted for this chain (undefined when every row reads the same, or the caller is staff or a service). */
   const rowsMayView = async (/** @type {any} */ chain, /** @type {string} */ type) => (!(await isPrivate(type)) || d.serviceOnly(chain) || d.staffOfChain(chain) ? undefined : (/** @type {any} */ rec) => mayView(chain, type, rec));
-  return { linksOf, ruleOf, isPrivate, rowsMayView, invalidate, searchReaches, linkGate, mergeGuard };
+  return { linksOf, ruleOf, isPrivate, rowsMayView, invalidate, linkGate, mergeGuard };
 }
 
 /**
