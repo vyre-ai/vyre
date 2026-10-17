@@ -140,6 +140,7 @@ export default {
           if (INSPECT.has(name)) {
             const first = chain.hops && chain.hops[0] ? chain.hops[0].actor : null, me = first && first.kind === "person" ? String(first.id) : "";
             const role = me && f.roleOf ? f.roleOf(me) : "";
+            // A chain whose first hop is not a person skips this: that is the host's own service and agent chains only. A member's MCP key chain always starts with the person.
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
           return f.flows.tools[INNER(name)](chain, rest);
