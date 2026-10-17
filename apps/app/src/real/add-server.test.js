@@ -187,4 +187,21 @@ test("add-server: a directory that cannot confirm the key yet is waited for, not
   await until(() => b.state.stage === "stopped");
   assert.equal(b.state.error && b.state.error.code, "pair");
   assert.equal(g.calls.paired.length, 0);
+
+  // A definitive denial that carries the same words stops at once: the code decides, not the words.
+  let denied = 0;
+  const h = fakes({ after: 1 });
+  const deny = async () => ({ call: async (/** @type {string} */ tool) => { if (tool === "system.info") return { memoryMb: 7900 }; denied++; throw Object.assign(new Error("The directory could not confirm this key. Wait a minute and try again."), { code: "denied" }); }, close: () => {} });
+  const d = make({ ...h, connect: deny }, { autoPair: true, issue: async () => issued });
+  await d.begin("records", "linux");
+  await until(() => d.state.stage === "stopped");
+  assert.equal(denied, 1, "asked once");
+  // A transport that drops codes keeps the words as the signal.
+  let n = 0;
+  const k = fakes({ after: 1 });
+  const bare = async () => ({ call: async (/** @type {string} */ tool) => { if (tool === "system.info") return { memoryMb: 7900 }; n++; if (n < 2) throw new Error("The directory could not confirm this key. Wait a minute and try again."); return { qr: "vyre://wink/2?t=" + "x".repeat(22) + "&r=wss%3A%2F%2Frelay.example", expires: 1 }; }, close: () => {} });
+  const e2 = make({ ...k, connect: bare }, { autoPair: true, issue: async () => issued });
+  await e2.begin("records", "linux");
+  await until(() => e2.state.stage === "done");
+  assert.equal(n, 2);
 });
