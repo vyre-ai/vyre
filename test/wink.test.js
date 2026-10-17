@@ -549,3 +549,14 @@ shardTest("paired session ends, on the real kernel: sign-out-everywhere (wink as
   assert.ok(ended.data.ended >= 1, JSON.stringify(ended));
   assert.equal(await a.live(), false, "after sign-out-everywhere the session is gone");
 });
+
+shardTest("wink: a device.paired that did not come through a confirmed window (ring, code, a bare ticket, or no way named) registers no device", async t => {
+  const w = await world(t);
+  for (const via of ["ring", "code", "ticket", undefined]) {
+    w.d.events.emit("device.paired", { id: `d${String(via)}0000000000000`.slice(0, 16), name: "Stranger", fingerprint: "AB12", ...(via ? { via } : {}) });
+  }
+  await new Promise(r => setTimeout(r, 500));
+  assert.equal((await w.call("wink.access")).data.devices.length, 0, "no device row for any of them");
+  const device = await pairComputer(t, w);
+  assert.ok((await w.call("wink.access")).data.devices.some(d => d.id === device), "a window the owner confirmed still registers");
+});

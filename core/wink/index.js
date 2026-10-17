@@ -281,8 +281,8 @@ export function createWink(inject = {}) {
       } catch (err) { ctx.log(`wink: a waiting pairing could not be let go: ${/** @type {Error} */ (err).message}`); }
     });
     const registerDevice = async (/** @type {any} */ p) => {
-      // A ring or a typed code adds nothing: this module makes neither. Only a pairing a screen confirmed (a window) is registered.
-      if (p.via === "ring" || p.via === "code") return null;
+      // Only a pairing the owner's screen confirmed (a window) is registered. A ring, a code, a bare ticket or any other way in adds nothing.
+      if (p.via !== "window") return null;
       const identity = await owner1();
       const existing = pairing.devices.get(String(p.id));
       if (existing && !existing.removed) return existing;

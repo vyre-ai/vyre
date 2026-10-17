@@ -836,7 +836,7 @@
  "records/ids.test.js": 4,
  "records/language/compile.test.js": 12,
  "records/language/fuzz.test.js": 3,
- "relay/app/app.test.js": 14,
+ "relay/app/app.test.js": 11,
  "relay/app/wrangler.test.js": 5,
  "relay/client/channel.test.js": 10,
  "relay/client/client.test.js": 12,

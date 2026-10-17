@@ -306,22 +306,6 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
 });
 
-import { pairTicketFrom, HOSTED_RELAY, cardWords, phoneCodeWords } from "./loader/fragment.js";
-import nodeCrypto from "node:crypto";
-
-test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and nothing else is taken for one", () => {
-  const ticket = nodeCrypto.randomBytes(8);
-  const got = pairTicketFrom(`#pair=${ticket.toString("base64url")}`);
-  assert.ok(got);
-  assert.deepEqual(Buffer.from(/** @type {Uint8Array} */ (got)), ticket);
-  assert.equal(HOSTED_RELAY, "wss://relay.vyre.run");
-  assert.equal(pairTicketFrom("#pair=short"), null, "too short");
-  assert.equal(pairTicketFrom(`#pair=${nodeCrypto.randomBytes(40).toString("base64url")}`), null, "too long");
-  assert.equal(pairTicketFrom(`#pair=${ticket.toString("base64url")}&x=1`), null, "extra fields are not a hand-off");
-  assert.equal(pairTicketFrom(`#enroll=${ticket.toString("base64url")}`), null);
-  assert.equal(pairTicketFrom(""), null);
-  assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
-});
 
 // ---- the sealed loader, and tailnet's one card pairs ----
 
@@ -332,7 +316,7 @@ test("release: the sealed loader holds its own files only, and every import in t
   const out = path.join(dir, "out");
   await loader({ release: "1.0.0", key, out });
   const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
-  assert.ok(m.files["fragment.js"], "fragment.js is sealed in the loader");
+  assert.ok(!m.files["fragment.js"], "the loader holds no pairing code");
   assert.ok(!m.files["pairing.js"] && !m.files["web/js/scan.js"], "the loader opens no camera");
   assert.ok(!m.files["web/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
   /** The relative specifiers a module imports: static and dynamic with a string. @param {string} src */
@@ -346,34 +330,10 @@ test("release: the sealed loader holds its own files only, and every import in t
   }
 });
 
-test("scan, one lookup, the card, the tap and the pairing, against a relay that deletes a ticket on its first lookup", async () => {
-  const { pairWithCard } = await import("./loader/fragment.js");
-  const live = new Set(["1,2,3,4,5,6,7,8"]);
-  const record = { name: "Alex's Mac", fingerprint: "AB12", handle: "alex", offer: { box: "k" } };
-  const resolve = async (/** @type {Uint8Array} */ tk) => { const k = [...tk].join(","); if (!live.delete(k)) throw new Error("expired or already used"); return record; };
-  /** @type {any[]} */ const cards = [];
-  const paired = await pairWithCard(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), { resolve, confirm: async f => { cards.push(f); return true; }, pair: async f => ({ box: f.offer.box }) });
-  assert.deepEqual(paired, { box: "k" });
-  assert.equal(cards.length, 1);
-  assert.equal(live.size, 0, "the single lookup used the ticket up, and the pairing still worked from the held record");
-  // Not now pairs nothing.
-  live.add("9,9,9,9,9,9,9,9");
-  let pairs = 0;
-  assert.equal(await pairWithCard(new Uint8Array([9, 9, 9, 9, 9, 9, 9, 9]), { resolve, confirm: async () => false, pair: async () => { pairs++; return {}; } }), null);
-  assert.equal(pairs, 0);
-});
-
-test("loader: the confirm card says who the code claims to be, as short plain text", () => {
-  assert.deepEqual(cardWords({ name: "Harlow's box", handle: "harlow", fingerprint: "abcd efgh" }), { says: "harlow.vyre.run", fingerprint: "abcd efgh" });
-  assert.equal(cardWords({ name: "Harlow's box", handle: null, fingerprint: "abcd efgh" }).says, "Harlow's box");
-  const hostile = cardWords({ name: "<img src=x onerror=alert(1)>" + "x".repeat(200), handle: null, fingerprint: "f".repeat(100) });
-  assert.ok(hostile.says.length <= 80 && hostile.fingerprint.length <= 20, "capped; the loader writes it with textContent, never as markup");
-});
-
-test("loader: the phone shows its own key's fingerprint while it waits for Confirm, as plain capped text", () => {
-  assert.equal(phoneCodeWords("abcd efgh"), "This phone: abcd efgh");
-  assert.equal(phoneCodeWords(""), "");
-  assert.equal(phoneCodeWords(null), "");
-  assert.ok(!/[<>]/.test(phoneCodeWords("<b>abcd</b>")), "markup characters are dropped");
-  assert.ok(phoneCodeWords("f".repeat(100)).length <= "This phone: ".length + 20);
+test("loader: a #pair= link pairs nothing, stores no box and is scrubbed from the address", () => {
+  const src = fs.readFileSync(new URL("./loader/loader.js", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /pairOffer|pairTicket|resolveTicket|fragment\.js|vyre\.box"?, ?\w*[Hh]anded/);
+  const guard = src.slice(src.indexOf('location.hash.startsWith("#pair=")'), src.indexOf("return;", src.indexOf('location.hash.startsWith("#pair=")')));
+  assert.match(guard, /history\.replaceState\(null, "", "\/"\)/, "the fragment is scrubbed");
+  assert.doesNotMatch(guard, /store\(BOX/, "no box is stored");
 });
