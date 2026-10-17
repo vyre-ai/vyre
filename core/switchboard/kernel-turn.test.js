@@ -441,11 +441,15 @@ test("a member's turn that is stopped leaves no asker behind, and the owner's tu
   const waiting = await d.registry.call("threads.send", { thread, text: "demo", surface: "deck", chat, asker: owner }, "module:stream");
   assert.ok(waiting.data && !waiting.error && waiting.data.steered !== true, JSON.stringify(waiting));
   assert.equal(await asker(), BOB, "and until Ben's turn ends it is still Ben's");
+  // an ask Ben made while his turn ran: it must not follow him onto the owner's turn
+  const benAsk = await d.registry.call("vault.said.record", { thread, said: "said-ben", kind: "send", to: ["ben@example.com"], what: "email ben@example.com the notes", asker: BOB }, "module:sessions");
+  assert.ok(benAsk.data && !benAsk.error, JSON.stringify(benAsk));
   // Ben's turn is stopped: the waiting owner turn starts, and the asker is the owner's, never Ben's left over
   await d.registry.call("threads.stop", { thread }, "cli");
   await until(async () => (await asker()) === owner, "the owner's waiting turn to be the turn running, with the owner as its asker");
   await d.registry.call("vault.said.record", { thread, said: "said-q", kind: "send", to: ["bob@example.com"], what: "email bob@example.com the figures", asker: owner }, "module:sessions");
   assert.equal((await d.registry.call("vault.said.match", { kind: "send", via: "mail", to: ["bob@example.com"], thread }, "module:gate")).data.matched, true, "what the owner said covers the owner's turn that followed Ben's stopped one");
+  assert.equal((await d.registry.call("vault.said.match", { kind: "send", via: "mail", to: ["ben@example.com"], thread }, "module:gate")).data.matched, false, "and what Ben said does not: his ask is not left over on the owner's turn");
   // and a stopped turn with nothing behind it leaves nobody as its asker
   await endTurn(d, c);
   await until(async () => (await asker()) === null, "a stopped turn to leave no asker");
