@@ -253,3 +253,14 @@ test("staff instruct every agent, so losing a share of an agent does not end an 
   delete K.membership;
   await stops(w.fill(r.shared.ref));
 });
+
+test("the share is for the agent it was made for: the name resolving to a different stable id today (the agent was removed and made again) is refused", async t => {
+  const w = await world(t);
+  const r = await w.share();
+  await stops(w.fill(r.shared.ref));
+  const was = w.v.access.uidOf;
+  w.v.access.uidOf = async () => "agt_another";
+  await denied(w.fill(r.shared.ref));
+  w.v.access.uidOf = was;
+  await stops(w.fill(r.shared.ref));
+});

@@ -316,8 +316,8 @@ export async function createKernel(cfg) {
           if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
           const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
           if (!def || !(def.risk === "read" || AGENT_ACTIONS.includes(action))) throw new KernelError("not_allowed", "only a read or the use of a credential can be asked this way");
-          try {
-            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: typeof person === "string" && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) ? person : ownerRef.id, vouched: true, ...(typeof thread === "string" && /^[A-Za-z0-9_.:-]{1,120}$/.test(thread) ? { thread } : {}) });
+          try { const who = person === undefined ? ownerRef.id : (typeof person === "string" && person !== ownerRef.id && /^per_[A-Za-z0-9_-]{1,64}$/.test(person) && grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) ? person : null); if (who === null) return false;   // a named person who is not a member gets no answer, never the owner's
+            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: who, vouched: true, ...(typeof thread === "string" && /^[A-Za-z0-9_.:-]{1,120}$/.test(thread) ? { thread } : {}) });
             const e = (await gateway.authorize({ chain, action, resource, ...(origin ? { origin } : {}) })).effect;
             return full ? e : e === "allow";
           } catch { return false; }

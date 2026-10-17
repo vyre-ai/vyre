@@ -94,6 +94,8 @@ export class MemberShare {
     const o = exactOrigin(origin), K = this.access.K;
     if (!K || !o || o !== copy.origin) return false;
     try {
+      // The agent is still the one the share was made for: the name the copy keeps resolves to the same stable id today (an agent removed and made again under the same name is a different agent and inherits nothing).
+      if ((await this.access.uidOf(copy.agent)) !== copy.uid) return false;
       // The kernel's whole answer for this agent first (it is still a registered agent of the Space, no deny or freeze on it, the member-narrowing and group rules), asked for the chain [the member, the agent]: the grant is the
       // member's own (source vault:member-share:<ref>), so the member's side must hold it, not the Space owner's. The answer is yes only when it AND the share both say yes.
       // Where the kernel handle has no agentMay (a bare test rig) the share checks alone decide.
