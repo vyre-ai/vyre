@@ -26,9 +26,15 @@ export function installEd25519Fallback(g) {
   const subtle = g && g.crypto && g.crypto.subtle;
   if (!subtle || subtle.__vyreEd25519) return Boolean(subtle);
   const nativeImport = subtle.importKey.bind(subtle), nativeVerify = subtle.verify.bind(subtle);
+  // A WebKit that imports an Ed25519 key but refuses to verify with it (found in the Mac app's window): the public key's bytes are kept beside the browser's own key, so a refusal of the verify can be answered.
+  const rawOf = new WeakMap();
   subtle.importKey = async (/** @type {any} */ format, /** @type {any} */ data, /** @type {any} */ algo, /** @type {any[]} */ ...rest) => {
     if (!isEd(algo) || format !== "raw") return nativeImport(format, data, algo, ...rest);
-    try { return await nativeImport(format, data, algo, ...rest); }
+    try {
+      const key = await nativeImport(format, data, algo, ...rest);
+      try { rawOf.set(key, new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : data)); } catch { /* not keepable */ }
+      return key;
+    }
     catch (e) {
       if (!unsupported(e)) throw e;
       return { [FALLBACK]: await methods.importKey("raw", data, algo) };
@@ -40,20 +46,29 @@ export function installEd25519Fallback(g) {
       if (!isEd(algo)) throw Object.assign(new Error("The key is not usable with that algorithm"), { name: "InvalidAccessError" });
       return methods.verify(algo, key[FALLBACK], sig, msg);
     }
-    return nativeVerify(algo, key, sig, msg);
+    try { return await nativeVerify(algo, key, sig, msg); }
+    catch (e) {
+      if (isEd(algo) && unsupported(e) && rawOf.has(key)) return methods.verify(algo, await methods.importKey("raw", rawOf.get(key), algo), sig, msg);
+      throw e;
+    }
   };
   Object.defineProperty(subtle, "__vyreEd25519", { value: true });
   return true;
 }
 
 /** Can this page verify an Ed25519 signature (the browser's own or the fallback)? Checked with a known vector and a tampered one: it must say yes to the first and no to the second. */
+let why = "";
+/** The name (never the text) of what stopped the last Ed25519 self-check, for the first-run trail. */
+export const ed25519Why = () => why;
 export async function ed25519Works(/** @type {any} */ g = globalThis) {
+  why = "";
   try {
     const key = await g.crypto.subtle.importKey("raw", hex(VECTOR.pub), { name: "Ed25519" }, false, ["verify"]);
     const good = await g.crypto.subtle.verify({ name: "Ed25519" }, key, hex(VECTOR.sig), new Uint8Array(0));
     const bad = await g.crypto.subtle.verify({ name: "Ed25519" }, key, hex(VECTOR.sig), new Uint8Array([1]));
+    if (!(good === true && bad === false)) why = `wrong answer ${good} ${bad}`;
     return good === true && bad === false;
-  } catch { return false; }
+  } catch (e) { why = `${String((/** @type {any} */ (e)) && (/** @type {any} */ (e)).name || "Error")} ${g && g.crypto && g.crypto.subtle ? "has subtle" : "no subtle"}`; return false; }
 }
 
 export const BROWSER_TOO_OLD = "This browser is too old for Vyre. Update it, or use the Vyre app.";

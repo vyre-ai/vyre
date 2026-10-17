@@ -89,3 +89,20 @@ test("a fallback key used with another algorithm is refused, not verified by nob
 test("the words for a browser that cannot be helped", () => {
   assert.equal(BROWSER_TOO_OLD, "This browser is too old for Vyre. Update it, or use the Vyre app.");
 });
+
+test("a browser that imports an Ed25519 key but refuses to verify with it is answered by the fallback, and says nothing wrong about a tampered one", async () => {
+  const real = crypto.webcrypto.subtle;
+  const refuse = () => Object.assign(new Error("Algorithm: Unrecognized name"), { name: "NotSupportedError" });
+  const g = { crypto: { subtle: {
+    importKey: async (f, data, algo, ...r) => (String(algo.name || algo).toUpperCase() === "ED25519" ? { opaque: true } : real.importKey(f, data, algo, ...r)),
+    verify: async (algo, ...r) => { if (String(algo.name || algo).toUpperCase() === "ED25519") throw refuse(); return real.verify(algo, ...r); },
+    digest: (...a) => real.digest(...a),
+  } } };
+  assert.equal(await ed25519Works(g), false, "before the fallback");
+  installEd25519Fallback(g);
+  assert.equal(await ed25519Works(g), true, "the fallback answers the refused verify");
+  const { pub, sig } = sign(Buffer.from("hello"));
+  const key = await g.crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("hello")), true);
+  assert.equal(await g.crypto.subtle.verify({ name: "Ed25519" }, key, sig, Buffer.from("hellO")), false);
+});
