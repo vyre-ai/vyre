@@ -8,6 +8,7 @@
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -496,7 +497,7 @@ export function createHost(o) {
     // paired server over the peer wire with the same start (provider, label), then poll (flow, code) the screen already speaks. Nothing secret is returned.
     "onboard.agent.list": async () => {
       if (!o.space) throw unsupported();
-      return { providers: [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }] };
+      return { providers: AIS.map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1) })) };
     },
     "onboard.agent.signin": async (input) => {
       if (!o.space) throw unsupported();
@@ -507,7 +508,7 @@ export function createHost(o) {
       const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
       if (!here) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
       const provider = String((input && input.provider) || "");
-      if (!["claude", "codex", "grok"].includes(provider)) throw bad("That provider does not support sign-in here.");
+      if (!AIS.includes(provider)) throw bad("That provider does not support sign-in here.");
       const ports = await o.space.load();
       const body = { provider, ...(input.label ? { label: String(input.label).slice(0, 80) } : {}), ...(input.flow ? { flow: String(input.flow).slice(0, 200) } : {}), ...(input.code ? { code: String(input.code).slice(0, 200) } : {}) };
       return pickSignin(await ports.call("sessions.accounts.signin", body, here.paired.box));
