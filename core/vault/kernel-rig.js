@@ -22,7 +22,7 @@ export async function kernelRig(o = {}) {
   const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
   const person = (/** @type {string} */ who) => chains.fromFacts({ kind: "device", device_key_id: `d-${who}`, person: who, path: "direct" });
   /** An agent acting for a person, as the kernel builds it for a session. */
-  const assistant = (/** @type {string} */ uid, who = OWNER) => chains.fromFacts({ kind: "agent_session", agent: uid, session: "s", thread: "t", vouched: true, person: who });
+  const assistant = (/** @type {string} */ uid, who = OWNER, thread = "t") => chains.fromFacts({ kind: "agent_session", agent: uid, session: "s", thread, vouched: true, person: who });
   const presence = { check: async () => null };
   const log = createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
@@ -40,9 +40,9 @@ export async function kernelRig(o = {}) {
         try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
-    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
+    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { const e = (await gw.authorize({ chain: assistant(agent), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
+      try { const e = (await gw.authorize({ chain: assistant(agent, OWNER, thread || null), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {

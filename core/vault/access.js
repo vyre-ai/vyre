@@ -177,11 +177,13 @@ export class Access {
    * A task credential lease (team/BACKLOG.md): the doer agent may use named Connections for one task. Its authority is the person's yes when the Kit was installed, which listed those credentials, so it is
    * bound to exactly that: flows says (`flows.kit.credentials`) which approved Kit version the task is from and which credentials it names; a Connection that is not named there, or does not exist, is refused.
    * Use only (a read runs, anything outward is still held), until `until` or `leaseEnd`, idempotent per task, agent and Connection, so a restart does not double it. The grant records the Kit and its version.
-   * @param {{ task: string, agent: string, connections: string[], until: number }} i
+   * With a `thread`, the lease is held to that one job thread: the unbound lease of the task ends and a bound one begins in the same step, so no other session of the agent ever holds it.
+   * @param {{ task: string, agent: string, connections: string[], until: number, approver?: string, thread?: string }} i
    */
-  async leaseTask({ task, agent, connections, until, approver }) {
+  async leaseTask({ task, agent, connections, until, approver, thread }) {
     const K = this.need();
     if (!/^[A-Za-z0-9_.-]{1,80}$/.test(String(task))) throw new Error("name the task");
+    if (thread !== undefined && !/^[A-Za-z0-9_.:-]{1,120}$/.test(String(thread))) throw new Error("name the job's thread");
     if (!Array.isArray(connections) || !connections.length || connections.length > 20) throw new Error("name the Connections to lend, up to 20");
     if (!(Number(until) > this.v.clock())) throw new Error("a lease ends in the future");
     const uid = await this.uidOf(agent);
@@ -199,7 +201,8 @@ export class Access {
     const home = `vyre://${K.space}/vault/${await K.vault.personalVault()}`;
     for (const c of connections) if (!(await K.vault.personMay(approver, "vault.call", `${home}/connection/${c}`))) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not one you may use, so it cannot be lent to this task: ask an owner to share it with you first`), { code: "denied" });
     const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
-    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver) })));
+    if (thread !== undefined) await K.vault.takeBack({ source: `vault:lease:${String(task)}`, reason: "held to the job's thread" });
+    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}${thread !== undefined ? `:${thread}` : ""}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver), ...(thread !== undefined ? { sessions: [String(thread)] } : {}) })));
     this.v.audit("lease-lent", null, "module:flows", true, `task ${task} to ${agent}: ${connections.join(", ")} (${tag})`);
     this.v.emit("vault.lease-lent", { task, agent, connections, kit: kit.kit, version: kit.version });
     return { lent: made.length, already: connections.length - made.length };
@@ -222,7 +225,7 @@ export class Access {
   modelName(meta, caller) { return String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(); }
 
   /** The kernel's answer for a model to use a credential: "allow", "ask" (an outward act, held for a person) or "deny". An agent the Space does not know, or an unreachable kernel, is deny. */
-  async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin) {
+  async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin, /** @type {string} */ thread) {
     const K = this.K;
     if (!K || typeof K.agentMay !== "function") return "deny";
     try {
@@ -234,19 +237,19 @@ export class Access {
       const c = /^conn-([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(item);
       if (c) at.push(`${at[0].split("/item/")[0]}/connection/${c[1]}`);
       let best = "deny";
-      for (const res of at) { const e = String(await K.agentMay(uid, action, res, origin, true)); if (e === "allow") return e; if (e === "ask") best = e; }
+      for (const res of at) { const e = String(await K.agentMay(uid, action, res, origin, true, thread)); if (e === "allow") return e; if (e === "ask") best = e; }
       return best;
     } catch { return "deny"; }
   }
 
   /**
    * The items a model holds a grant for, of any kind, by the same check a call makes: an API credential it may read, a login lent to it at one of its sites, an item it may read or take a code from.
-   * Names and kinds (an API credential also its description and hosts), never a value. @param {string} name
+   * Names and kinds (an API credential also its description and hosts), never a value. The calling thread (from the registry, never from input) lets a lease held to that thread show. @param {string} name @param {string} [thread]
    */
-  async listFor(name) {
+  async listFor(name, thread) {
     const out = [];
     for (const it of this.v.list().items) {
-      let ok = (await this.effectFor(name, it.name, "vault.read")) !== "deny" || (await this.effectFor(name, it.name, "vault.totp")) !== "deny";
+      let ok = (await this.effectFor(name, it.name, "vault.read", undefined, thread)) !== "deny" || (await this.effectFor(name, it.name, "vault.totp", undefined, thread)) !== "deny";
       for (const h of ok ? [] : it.hosts || []) if ((await this.effectFor(name, it.name, "vault.fill", h)) !== "deny") { ok = true; break; }
       if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
     }

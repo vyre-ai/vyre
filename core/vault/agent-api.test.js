@@ -221,6 +221,33 @@ test("a lease ends the moment the person who approved it no longer holds the Con
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "Ben lost it: the lease he carried holds nothing, though the task is still open and the lease still stands");
 });
 
+test("a lease held to a job's thread works in that thread only: another session of the same agent, and a call that names no thread, hold nothing of it", async t => {
+  const kits = { "task-1": { approved: true, kit: "intake", version: "2", credentials: ["cn1"] } };
+  const { cred, ask, GET, v, rig } = await mk(t, { call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
+  await cred("conn-cn1");
+  await v.access.convertScopes();
+  const until = rig.clock() + 3_600_000;
+  await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" })).kind, "read", "before the job has a thread, the lease is the agent's in any session");
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "job-1" }), { lent: 1, already: 0 }, "held to the job's thread");
+  const live = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1" && g.status === "active");
+  assert.equal(live.length, 1, "the unbound lease ended in the same step the bound one began");
+  assert.deepEqual(live[0].conditions.where, { sessions: ["job-1"] });
+  assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "job-1" })).kind, "read", "the job's own thread uses it");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "another session of the same agent");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "a call that names no thread");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit", { thread: "other" }), /needs a grant/, "a thread named in the input is ignored: only the registry's thread counts");
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET, thread: "job-1" }, "mcp:agent:kit"), /needs a grant/, "and with no registry thread, the input's name buys nothing");
+  assert.deepEqual((await v.access.listFor("kit", "job-1")).map(i => i.name), ["conn-cn1"], "the job's thread sees the connection it may use");
+  assert.deepEqual(await v.access.listFor("kit", "other"), [], "another session does not");
+  assert.deepEqual(await v.access.listFor("kit"), [], "nor a list that names no thread");
+  await assert.rejects(v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "bad thread!" }), /thread/);
+  // the task ends: the bound lease goes with it, and a retry of the same task can be lent again
+  await v.access.leaseEnd({ task: "task-1" });
+  await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "job-1" }), /needs a grant/);
+  assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner }), { lent: 1, already: 0 }, "an ended lease is lent again for a retry, not skipped as already made");
+});
+
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
   const { cred, ask, give, agent, net, GET, v } = await mk(t);
   await cred("graph-api");

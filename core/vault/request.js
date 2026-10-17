@@ -667,7 +667,7 @@ export class ApiRequests {
     const access = /** @type {any} */ (this.vault).access;
     if (isModel && !tagged && access && access.K) {
       const who = access.modelName(/** @type {any} */ (meta), caller);
-      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call")) === "deny") {
+      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call", undefined, meta.thread)) === "deny") {
         audit(false, `${plan.method} ${plan.url.hostname} refused: no grant for ${who}`);
         throw bad(`${name} is not available to ${who === "assistant" ? "the assistant" : `the agent ${who}`}: it needs a grant (its project's vault, a vault shared with it, or a lease for the task)`, "denied");
       }
