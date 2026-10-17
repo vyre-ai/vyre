@@ -317,7 +317,9 @@ export function eventChoices(o, current) {
 }
 
 /** The expression a `{token}` reads: a bare name is a field of what started the Flow, `steps.`, `event.`, `row.` and `item.` are read as they are. @param {string} t */
-const tokenExpr = (t) => (/^(steps|event|row|item|error)\./.test(t) ? t : `trigger.${t}`);
+const tokenExpr = (t) => (/^(steps|event|row|item|error|trigger)\./.test(t) ? t : `trigger.${t}`);
+/** A trigger field whose path is also a helper ({me.name}, {now}) stays reachable by its full path: the helper wins the short name, `{trigger.me.name}` is the field. */
+const viaTrigger = (/** @type {string} */ path) => (Object.hasOwn(HELPERS, path) ? `trigger.${path}` : path);
 /** A piece of text as an expression string literal. Only what the engine's reader decodes is written: \\, \", \n and \t. A line break is one \n; other control characters are dropped. @param {string} t */
 const lit = (t) => `"${String(t).replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 /** The text a string literal holds, read the way the engine reads it. @param {string} p */
@@ -331,7 +333,11 @@ const unesc = (/** @type {string} */ s) => s.replace(new RegExp(`\\{\\{(${INNER}
 const esc = (/** @type {string} */ s) => s.replace(new RegExp(`(?<!\\{)\\{(${INNER})\\}(?!\\})`, "gi"), "{{$1}}");
 const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}(?!\})/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
-const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)" });
+const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)",
+  // what a run knows about itself (kernel/flows/runner.js scope `run`): its number among the Flow's, the Flow's name, who approved it, the Space's name, and the person who started it ("your name")
+  "run.number": "text(run.number)", "flow.name": "text(run.flow_name)", "approver.name": "text(run.approver_name)", "space.name": "text(run.space_name)", "me.name": "text(run.starter_name)" });
+/** The expression path each run helper reads, to the token it was written as. */
+const PATH_TOKEN = /** @type {Record<string, string>} */ ({ "run.number": "run.number", "run.flow_name": "flow.name", "run.approver_name": "approver.name", "run.space_name": "space.name", "run.starter_name": "me.name" });
 /** The `{token}` names of date fields the Flow being written can read, with their kind ("date" or "datetime"); set while a draft is written (see `toDefinition`). @type {Map<string, string>} */
 let DATE_TOKENS = new Map();
 /**
@@ -380,7 +386,7 @@ const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, 
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
-const refToken = (n) => (n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? n.slice(8) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
+const refToken = (n) => (PATH_TOKEN[n] ? PATH_TOKEN[n] : n === "now" ? "now" : /^trigger\.([a-z0-9_.]+)$/i.test(n) ? viaTrigger(n.slice(8)) : /^(?:steps|event|row|item|error)\./.test(n) ? n : null);
 /** A joined-text expression back to the text with braces, or null when it is anything else. @param {string} e */
 function templateText(e) {
   if (!TEMPLATE.test(e) || !/(?:text|date|datetime|format|first)\(/.test(e)) return null;
@@ -404,9 +410,9 @@ function templateText(e) {
   return out;
 }
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
-const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] || m[2]}}` : unval(v); };
+const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] || m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
+const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";
@@ -982,7 +988,7 @@ export function valueSources(d, stepId, o) {
     if (s.kind === "document") out.push([`{steps.${s.id}.path}`, `Where the document made by ${s.id} is filed`]);
     if (s.kind === "formula") out.push([`{steps.${s.id}.value}`, `The value worked out by ${s.id}`]);
   }
-  out.push(["{now}", "The date and time now"], ["{today}", "Today's date"]);
+  out.push(["{now}", "The date and time now"], ["{today}", "Today's date"], ["{run.number}", "This run's number"], ["{flow.name}", "The Flow's name"], ["{approver.name}", "The name of who approved the Flow"], ["{space.name}", "The Space's name"], ["{me.name}", "Your name, the person who started the run"]);
   return out;
 }
 

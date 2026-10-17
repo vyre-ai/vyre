@@ -489,6 +489,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.names",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.people",
     "reach": "modules"
    },

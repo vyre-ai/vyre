@@ -41,3 +41,30 @@ test("plain text stored before the escape existed keeps meaning plain text when 
   assert.equal(d.steps[0].instructions, "Greet them as {{client}} says, then ask about {{topic}}.", "shown doubled: these braces were never tokens");
   assert.equal(toDefinition(d, options).steps[0].instructions, "Greet them as {client} says, then ask about {topic}.", "and saved as the plain text it was");
 });
+
+test("the run helpers are tokens: {run.number}, {flow.name}, {approver.name}, {space.name} and {me.name} store as what the run knows and read back as the tokens", async () => {
+  const { fromDefinition, valueSources } = await import("./logic.js");
+  const d = { name: "Helpers", trigger: { kind: "manual" }, steps: [{ id: "create1", kind: "create", type: "matter", fields: [{ field: "title", value: "Run {run.number} of {flow.name} by {approver.name} for {me.name} at {space.name}" }] }] };
+  const stored = toDefinition(d, options);
+  assert.deepEqual(checkFlow(stored), []);
+  const e = stored.steps[0].set.title.expr;
+  for (const p of ["text(run.number)", "text(run.flow_name)", "text(run.approver_name)", "text(run.starter_name)", "text(run.space_name)"]) assert.ok(e.includes(p), p);
+  assert.equal(fromDefinition(stored).steps[0].fields[0].value, "Run {run.number} of {flow.name} by {approver.name} for {me.name} at {space.name}");
+  assert.ok(valueSources({ ...d, trigger: { kind: "manual" } }, "create1", options).some(([t]) => t === "{approver.name}"), "offered under Insert a value");
+  assert.deepEqual(toDefinition(fromDefinition(stored), options), stored);
+});
+
+test("a trigger field that has a helper's name stays reachable by its full path and is never read as the helper", async () => {
+  const { fromDefinition } = await import("./logic.js");
+  const d = { name: "Clash", trigger: { kind: "form", path: "hook" }, steps: [{ id: "create1", kind: "create", type: "matter", fields: [{ field: "title", value: "{me.name} wrote by the helper, {trigger.me.name} by the hook, and {trigger.now} is the hook's own now" }] }] };
+  const e = toDefinition(d, options).steps[0].set.title.expr;
+  assert.match(e, /text\(run\.starter_name\)/, "the short name is the helper");
+  assert.match(e, /text\(trigger\.me\.name\)/, "the full path is the hook's field");
+  assert.match(e, /text\(trigger\.now\)/, "even for now");
+  const back = fromDefinition(toDefinition(d, options)).steps[0].fields[0].value;
+  assert.equal(back, d.steps[0].fields[0].value, "and reads back as written, the two kept apart");
+  const whole = { name: "W", trigger: { kind: "form", path: "hook" }, steps: [{ id: "create1", kind: "create", type: "matter", fields: [{ field: "title", value: "{trigger.me.name}" }] }] };
+  const w = toDefinition(whole, options);
+  assert.deepEqual(w.steps[0].set.title, { expr: "trigger.me.name" });
+  assert.equal(fromDefinition(w).steps[0].fields[0].value, "{trigger.me.name}", "a whole token of the clashing field reads back by its full path");
+});
