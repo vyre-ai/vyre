@@ -41,7 +41,7 @@ export async function startGithub() {
 
 /** @param {string} [login] @param {string} [code] */
 export async function finishGithub(login, code) {
-  if (MOCK) return mock.finishGithub(login);
+  if (MOCK) return mock.finishGithub(login || "");
   /** @type {Record<string, string>} */
   const input = {};
   if (login) input.login = login;
