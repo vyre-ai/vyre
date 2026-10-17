@@ -408,6 +408,9 @@ test("PH-1 end to end: the daemon's own relay row decides what a device is (rela
   assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
 });
 
+/** every file under a folder, relative */
+const fs2walk = (/** @type {string} */ dir, /** @type {string} */ base = dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? fs2walk(path.join(dir, e.name), base) : [path.relative(base, path.join(dir, e.name))]);
+
 test("the kernel's data-store list: a fresh kernel daemon holds no data of the person's (except what it cannot read), and one record or one file makes it hold some", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -418,9 +421,11 @@ test("the kernel's data-store list: a fresh kernel daemon holds no data of the p
   t.after(() => d.stop());
   const read = async () => Object.fromEntries(await Promise.all((await d.registry.deps.dataStores()).map(async s => [s.name, await s.holds().catch(() => undefined)])));
   const fresh = await read();
-  assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh));
+  // when it fails, say what is there: the kernel's event types with counts, and the home's files
+  const seen = () => { try { return JSON.stringify({ events: d.registry.deps.db.prepare("SELECT type, COUNT(*) n FROM kernel_events GROUP BY type").all(), files: (fs2walk(root)) }); } catch (e) { return String(e); } };
+  assert.equal(fresh["the Space's records, events and grants"], false, JSON.stringify(fresh) + " " + seen());
   assert.equal(fresh["the modules' own data"], false, JSON.stringify(fresh));
-  assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh));
+  assert.equal(fresh["the files in this server's home"], false, JSON.stringify(fresh) + " " + seen());
   // The vault has a real read now (lib/vault-wipe.js): exactly `false` only when the home holds no item, shared record, key or sealed value of the person's (the sealer's own keys are not one); the folder's file is the sealer's.
   assert.equal(fresh["the vault and sealed values"], false, JSON.stringify(fresh));
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
