@@ -317,8 +317,14 @@ test("the owner's own chat turn tags a record too (chips resolve in a chat for t
 });
 
 test("a chat turn's words never record what the owner asked for (hearActs is a person's own surface only)", { timeout: 90_000 }, async t => {
-  const { d, BOB, send } = await chipChat(t);
-  await send(BOB, [], "open a PR and merge it");
-  const said = await d.registry.call("vault.said.list", {}, "module:switchboard");
-  assert.ok(said.error || !(said.data && (Array.isArray(said.data) ? said.data : said.data.said || []).length), `nothing was recorded as said for a member's chat words: ${JSON.stringify(said).slice(0, 200)}`);
+  const { d, BOB, send, thread } = await chipChat(t);
+  const asks = async () => { const r = await d.registry.call("vault.said.list", { thread }, "module:gate"); assert.ok(r.data && !r.error, `the list call must answer, or this test proves nothing: ${JSON.stringify(r)}`); return JSON.stringify(r.data); };
+  // the control: an owner ask recorded the way a person's own turn records one is listed, so the list does show asks
+  const rec = await d.registry.call("vault.said.record", { thread, said: "said-control", kind: "send", to: ["dana@example.com"], what: "email Dana the control line" }, "module:sessions");
+  assert.ok(rec.data && !rec.error, JSON.stringify(rec));
+  assert.ok((await asks()).includes("control line"), "the control ask is listed");
+  const before = await asks();
+  // a member's chat words that read like an ask: nothing more is recorded
+  await send(BOB, [], "email dana@example.com the form link and open a PR and merge it");
+  assert.equal(await asks(), before, "a member's chat words added no ask");
 });
