@@ -726,6 +726,8 @@ export function createPairing(o) {
       input: obj({ identity: str }, ["identity"]),
       run: async (input, meta1 = {}) => {
         if (!/^setup:[a-z2-7]{16}$/.test(String((meta1 && meta1.caller) || ""))) throw fail("denied", "Only the setup page's or app's own channel can ask for this.");
+        ctx.log("wink: setup-offer entered");
+        try {
         const to = String((input && input.identity) || "").trim();
         if (!to || to.length > 64 || /[\u0000-\u001f"\\]/.test(to)) throw fail("bad_input", "Name the identity to pair to by its id.");
         if (!/^per_[a-z2-7]{26}$/.test(to)) throw fail("denied", "That is not a person id. Pair again from the Vyre app.");
@@ -738,7 +740,9 @@ export function createPairing(o) {
         if (typeof ctx.call === "function") { try { await ctx.call("relay.devices.clear-leftover", {}); } catch { /* no relay module here */ } }
         meta0Set(to);
         const made = await mintQr();
+        ctx.log("wink: setup-offer answered with a ticket");
         return { qr: made.qr, expires: made.expires };
+        } catch (/** @type {any} */ e) { ctx.log(`wink: setup-offer refused (${String(e && e.code || "no code")})`); throw e; }
       },
     });
 
