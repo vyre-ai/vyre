@@ -14,9 +14,11 @@ import { ValueField } from "./ValueField";
 import { ComposeField } from "./ComposeField";
 import { AddressField } from "./AddressField";
 import { FormulaBox } from "./FormulaBox";
-import { DocumentFields } from "./DocumentFields";
+import { DateTimeField } from "../components/DateTimeField";
+import { DateValue } from "./DateValue";
 import { FailurePanel } from "./FailurePanel";
-import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick } from "./logic.js";
+import { DocumentFields } from "./DocumentFields";
+import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -103,7 +105,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     {(s.fields ?? []).map((f: { field: string; value: string }, fi: number) => (
                       <View key={fi} className="flex-row items-end gap-s2">
                         <View className="min-w-0 flex-1">{fieldChoices(options, s.type).length ? <Select label={fi ? undefined : "Field"} value={fieldValue(options, s.type, f.field)} options={fieldChoices(options, s.type, f.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} /> : <Field label={fi ? undefined : "Field"} name="Field" value={f.field} onChangeText={(field) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, field } : x)) })} placeholder="For example Amount" />}</View>
-                        <View className="min-w-0 flex-1"><Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" /></View>
+                        <View className="min-w-0 flex-1">{dateKindOf(options, s.type, f.field) ? <DateValue label={fi ? undefined : "Value"} name="Value" kind={dateKindOf(options, s.type, f.field) as "date" | "datetime"} zone={options.zone} value={f.value} onChange={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} /> : <Field label={fi ? undefined : "Value"} name="Value" value={f.value} onChangeText={(value) => setStep(s.id, { fields: s.fields.map((x: any, k: number) => (k === fi ? { ...x, value } : x)) })} placeholder="Text, or {amount}" />}</View>
                         <Button kind="ghost" size="sm" icon="x" label="Remove field" onPress={() => setStep(s.id, { fields: s.fields.filter((_: any, k: number) => k !== fi) })} />
                       </View>
                     ))}
@@ -198,7 +200,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   <Select label="Which record" value={s.record ?? ""} options={links} placeholder="Choose a record" onChange={(record) => setStep(s.id, { record })} />
                   <Select label="Object" value={s.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setStep(s.id, { type })} />
                   {fieldChoices(options, s.type).length ? <Select label="Field" value={fieldValue(options, s.type, s.field)} options={fieldChoices(options, s.type, s.field)} placeholder="Choose a field" onChange={(field) => setStep(s.id, { field })} /> : <Field label="Field" value={s.field ?? ""} onChangeText={(field) => setStep(s.id, { field })} placeholder="For example Status" />}
-                  <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />
+                  {dateKindOf(options, s.type, s.field) ? <DateValue label="New value" name="New value" kind={dateKindOf(options, s.type, s.field) as "date" | "datetime"} zone={options.zone} value={s.value ?? ""} onChange={(value) => setStep(s.id, { value })} /> : <Field label="New value" value={s.value ?? ""} onChangeText={(value) => setStep(s.id, { value })} placeholder="For example Refunded" />}
                   <Rows rows={s.more ?? []} onChange={(more) => setStep(s.id, { more })} draft={draft} stepId={s.id} options={options} title="Also set" help="More fields changed on the same record in the same step." />
                 </>
               ) : null}
@@ -271,7 +273,13 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
       ) : null}
       {s.kind === "wait" ? (
         <>
-          <Select label="Wait" value={s.mode === "until" ? "until" : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          <Select label="Wait" value={s.mode === "until" || s.mode === "on" ? s.mode : "for"} options={WAIT_MODES} onChange={(mode) => set({ mode, ...(mode === "until" ? { when: s.when ?? "before", unit: s.unit === "days" || s.unit === "hours" || s.unit === "minutes" ? s.unit : "hours" } : {}) })} />
+          {s.mode === "on" ? (
+            <>
+              <DateTimeField label="Wait until" value={s.on ?? ""} zone={options.zone} onChange={(on) => set({ on: on ?? "" })} help={options.zone ? `In ${options.zone}.` : "In your own time zone."} />
+              <Text size="caption" tone="label">If that time has already passed, the Flow carries on at once.</Text>
+            </>
+          ) : null}
           {s.mode === "until" ? (
             <>
               <Select label="Date to wait for" value={s.field ?? ""} options={dateChoices(draft, s.id, options)} placeholder="Choose the date, such as the appointment" onChange={(field) => set({ field })} />
