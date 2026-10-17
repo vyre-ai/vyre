@@ -6,6 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - fix(records): on the member door the audit's person and project filters are `changed_by` and `in_project` (the door never carries identity keys); the tool reads them as person and project. `audit` is listed among the records calls the door classifies. core/work/member-tools.js, core/records-tools/index.js.
 
+- fix(app): Settings, Groups has its own icon (`contacts`), so no two places share `users` (logic.test.js); the sidebar row matches.
 - fix(test): the chat chip tests give the member a sign-in of their own (a member's turn never runs on the owner's); the sample world's thumbnail uses named colours, not literals (raw-colours test).
 - release: the first-run install proof (first-run-e2e.yml) no longer gates a release. release.yml has no first-run job and the release job does not need it; the workflow stays for running by hand. The owner tests the install himself.
 

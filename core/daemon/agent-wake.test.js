@@ -121,12 +121,12 @@ test("a named agent is lent its task before it is woken, the lend repeats safely
   const gw = { ask: { get: async () => task(), edit: async () => {} } };
   const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), clock: () => NOW, log: () => {},
     lend: async t => { calls.push(`lend ${t.id} ${t.doer.id}`); }, reclaim: async id => { calls.push(`reclaim ${id}`); },
-    callModule: async () => { calls.push("wake"); return { thread: "th", already: false }; } });
+    callModule: async tool => { calls.push(tool === "agents.wake" ? "wake" : tool); return { thread: "th", already: false }; } });
   await onEvent(created("t1"));
   assert.deepEqual(calls, ["lend t1 juno", "wake"], "the use is lent first, then the agent is woken");
   await onEvent(created("t1", "task.completed"));
   await onEvent(created("t1", "task.voided"));
-  assert.deepEqual(calls.slice(2), ["reclaim t1", "reclaim t1"]);
+  assert.deepEqual(calls.slice(2), ["agents.wake-done", "reclaim t1", "agents.wake-done", "reclaim t1"], "the wake is marked over, then the lend is taken back");
 });
 
 test("a job that stopped with a bare reason but whose thread says the sign-in expired is reported as an expired sign-in", async () => {

@@ -26,11 +26,11 @@ export function relayedPerson(moduleName, cur, deps) {
   return { origin, relayed };
 }
 
-/** The tools the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send, and giving the keyboard back (threads.release) once the ask is answered, which only lets go of the asker's own lease. @param {string} tool */
-export const agentsMayRelay = tool => tool === "threads.send" || tool === "threads.release";
-/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
+/** The tools the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send, giving the keyboard back (threads.release) once the ask is answered, which only lets go of the asker's own lease, and the two reads agents.flow-say makes of a Flow and its runs so that a Flow the person may not use wakes nothing (flows.describe, flows.runs). @param {string} tool */
+export const agentsMayRelay = tool => tool === "threads.send" || tool === "threads.release" || tool === "flows.describe" || tool === "flows.runs";
+/** The per-call check on the agents module's relay: throws for any tool but those four. @param {string} tool @param {string} as */
 export function checkAgentsRelay(tool, as) {
-  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send and threads.release only`);
+  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send, threads.release, flows.describe and flows.runs only`);
 }
 
 /** Whether a module's `{ as }` call carries this turn's proven person: any person caller, the sessions and assistant modules replaying one for mentions and threads, and agents for threads.send and threads.release. */

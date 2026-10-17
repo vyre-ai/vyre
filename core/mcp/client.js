@@ -449,9 +449,13 @@ function httpChannel(spec, opts) {
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, opts.timeout);
     open.add(ac);
+    // The caller's headers come from the hub (a connection's token, a reference's value). Their error is the hub's own code (needs_reconnect, refused),
+    // so it leaves here as it was thrown, not wrapped as a network error (the train's hub.test asserts the code).
+    let extra;
+    try { extra = await callerHeaders(opts); } catch (e) { clearTimeout(timer); open.delete(ac); throw e; }
     try {
       const headers = {
-        ...(await callerHeaders(opts)),
+        ...extra,
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         ...protoHeaders(),
