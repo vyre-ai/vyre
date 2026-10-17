@@ -45,7 +45,7 @@ export function registerSpaceTools(ctx, seam = {}) {
       spaceOk(input);
       // The key goes only to someone this space's own kernel says is a member. A named stranger, or a kernel that cannot answer, gets nothing.
       const k = ctx.kernel;
-      if (!k || typeof k.membership !== "function") throw refuse("This server cannot check who belongs to that space, so the vault key is not shared.", "unavailable");
+      if (!k || typeof k.membership !== "function") throw refuse("This server cannot check who belongs to that space, so the vault key is not shared. Ask the owner of that space to share it from the server that holds the space.", "unavailable");
       /** @type {any} */ let m = null;
       try { m = await k.membership(String(input.person || ""), String(input.space)); } catch { m = null; }
       const ownsHome = typeof k.owner === "string" && k.owner === String(input.person) && k.space === String(input.space);
