@@ -186,6 +186,9 @@ test("a ticket opens only what it was registered for, once, as the uid it names;
   assert.ok(spawned[0].join(" ").endsWith(RUN) && spawned[0].includes("--reuid=20003"), "a run ticket starts the run helper as its own uid");
   assert.ok(spawned[1].join(" ").endsWith(`${PIPE} vnc`) && !spawned[1].includes(RUN) && spawned[1].includes("--reuid=21003"), "a screen ticket starts the screen pipe, never the run helper");
   assert.ok(spawned[2].join(" ").endsWith(`${PIPE} cdp`) && !spawned[2].includes(RUN) && spawned[2].includes("--reuid=21004"), "a Chrome ticket starts the Chrome pipe as that agent's browser uid, not as the agent whose ticket opened the run");
+  // the numbers a run helper really gets, read from what the relay started (literals, not the constants they are built from)
+  assert.match(spawned[0].join(" "), / --as=8589934592 --nproc=1024 --nofile=8192 --fsize=8589934592 --cpu=604800 /);
+  assert.match(spawned[1].join(" "), / --as=3221225472 --nproc=512 --nofile=4096 --fsize=4294967296 /, "a screen helper keeps the ordinary limits");
   assert.equal(await use(T1), 0, "a second connection with a spent ticket gets no byte");
   assert.equal(spawned.length, 3, "and starts nothing");
   const run = new Tickets();
@@ -193,11 +196,36 @@ test("a ticket opens only what it was registered for, once, as the uid it names;
   assert.equal(run.take(T1)?.kind, "run", "the kind is the ticket's, not the connection's");
 });
 
-test("the run helper limits are set at their numbers", () => {
-  const relay = fs.readFileSync(path.join(HERE, "agentd-relay.js"), "utf8");
-  assert.match(relay, /asAgent\(u, \{ memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 \* 86400 \}\)/);
-  const line = ([...planExecLimits()]).join(" ");
-  assert.match(line, /--as=8589934592 --nproc=1024 --nofile=8192 --fsize=8589934592 --cpu=604800 /);
+test("a run ticket cannot be turned into another kind, and no other kind into a run: registration refuses the mix, and the relay's helper follows the ticket", async t => {
+  for (const kind of /** @type {const} */ (["vnc", "cdp"])) {
+    assert.throws(() => new Tickets().add(T1, U, kind, null, SPEC), /names what to run/, `${kind} with a command`);
+    assert.throws(() => new Tickets().add(T1, U, kind, "work", null), kind === "vnc" || kind === "cdp" ? /terminal ticket names its terminal|names its terminal/ : undefined, `${kind} with a terminal`);
+  }
+  assert.throws(() => new Tickets().add(T1, U, "term", "work", SPEC), /names what to run/, "a terminal with a command");
+  assert.throws(() => new Tickets().add(T1, U, "run", null, null), /names what to run/, "a run without a command");
+  assert.throws(() => new Tickets().add(T1, U, "run", "work", SPEC), /no terminal/, "a run with a terminal");
+  // spent through the relay, a screen ticket gets no command frame and the screen pipe; only a run ticket gets the run helper and its command
+  const tickets = new Tickets();
+  /** @type {string[][]} */ const spawned = [];
+  /** @type {Buffer[]} */ const first = [];
+  const relay = createRelay({ tickets, peer: () => "127.0.0.1", helloMs: 300, spawn: argv => {
+    spawned.push(argv);
+    const child = spawn("/bin/cat", [], { stdio: ["pipe", "pipe", "ignore"] });
+    const w = child.stdin.write.bind(child.stdin);
+    child.stdin.write = (/** @type {any} */ b, ...r) => { first.push(Buffer.from(b)); return w(b, ...r); };
+    return child;
+  } });
+  await new Promise(r => relay.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => relay.close());
+  const port = /** @type {any} */ (relay.address()).port;
+  const spend = async (/** @type {string} */ ticket) => { const s = net.connect(port, "127.0.0.1"); s.on("error", () => {}); await new Promise(r => s.on("connect", () => r(null))); s.write(`${ticket}\nxx`); await new Promise(r => setTimeout(r, 150)); s.destroy(); };
+  tickets.add(T1, U, "vnc");
+  await spend(T1);
+  assert.ok(!spawned[0].includes(RUN), "a screen ticket never starts the run helper");
+  assert.ok(!first.some(b => b[0] === 4 && b.length > 5), "and no command is written to it");
+  tickets.add(T2, U, "run", null, SPEC);
+  first.length = 0;
+  await spend(T2);
+  assert.ok(spawned[1].includes(RUN), "a run ticket starts the run helper");
+  assert.equal(first[0][0], 4, "and it is told what to run first");
 });
-import { asAgent } from "./agentd.js";
-const planExecLimits = () => asAgent(U, { memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 * 86400 });
