@@ -368,12 +368,13 @@ export function ChatComposer(p: ComposerProps) {
         onBlur={() => setFocused(false)}
         autoFocus={p.autoFocus}
         multiline
+        {...({ rows: 1 } as object)}
         {...aria}
         placeholder={answering.length > 1 ? (p.phone ? "Ask everyone chosen" : "Ask the AIs you chose at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={onKey}
-        style={{ color: color.text, fontSize: 16, lineHeight: 24, minHeight: expanded && p.phone ? 72 : !expanded && p.phone ? T : 24, ...(!expanded && p.phone ? { height: T } : {}), maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: expanded ? 4 : 10, flex: expanded ? undefined : 1, minWidth: 0, outlineStyle: "none" } as any}
+        style={{ color: color.text, fontSize: p.phone ? 16 : 14, lineHeight: p.phone ? 24 : 20, minHeight: expanded && p.phone ? 72 : !expanded && p.phone ? T : 24, ...(!expanded && p.phone ? { height: T } : {}), maxHeight: 160, paddingLeft: expanded ? 6 : 0, paddingRight: expanded ? 6 : 0, paddingVertical: expanded ? 4 : 10, flex: 1, minWidth: 0, outlineStyle: "none" } as any}
       />
   );
 

@@ -16,5 +16,5 @@ export function ArrowNav({ children }: { children: React.ReactNode }) {
     e.preventDefault();
     rows[to]?.focus();
   };
-  return <View ref={box} {...({ onKeyDown: key } as object)}>{children}</View>;
+  return <View ref={box} style={{ flex: 1, minHeight: 0 }} {...({ onKeyDown: key } as object)}>{children}</View>;
 }

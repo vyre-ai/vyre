@@ -28,6 +28,7 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
+import { Face } from "./Face";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
 import { FileViewerSheet } from "../../screens/drive/FileViewerSheet";
@@ -369,6 +370,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const sharedChat = Math.max(found.filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1;
   // A chat between people: a message goes to the people and no AI answers unless one is asked for it (reply mode "mention", or no AI in the chat).
   const peopleChat = peopleOnly({ shared: sharedChat, replyMode: store.group.replyMode(), ais: faces.filter((f) => f.family === "assistant" || f.family === "model").length });
+  const startOthers = faces.filter((f) => f.id !== viewerId);
+  const startLone = startOthers.length === 1 ? startOthers[0] : null;
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
@@ -435,11 +438,20 @@ export function ChatScreen(p: ChatScreenProps) {
             renderRow={renderRow}
             hasMore={false}
             onNearTop={() => {}}
-            head={<View>{sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 6, paddingHorizontal: phone ? 16 : 24, marginBottom: 8, backgroundColor: color["surface-2"], borderBottomWidth: 1, borderBottomColor: color.edge }}>
-          <Icon name="shield" />
-          <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
-          <Text size="caption" tone="label" strong>Got it</Text>
-        </Pressable> : null}<View style={{ height: 12 }} /></View>}
+            head={<View style={{ width: "100%", maxWidth: 760, alignSelf: "center", marginLeft: "auto", marginRight: "auto", paddingHorizontal: phone ? 16 : 24 }}>
+              {/* The start of the chat: who it is with, once, at the top of the history. */}
+              <View style={{ alignItems: "center", gap: 8, paddingTop: 32, paddingBottom: 16 }}>
+                {startLone ? <Face name={startLone.name} family={startLone.family === "assistant" ? "assistant" : startLone.family === "model" ? "model" : "person"} size={40} id={startLone.id} /> : null}
+                <Text medium>{head.title}</Text>
+                <Text size="caption" tone="label">{chatProject.current && chatProject.current.slug !== "general" ? chatProject.current.name : "The start of this chat"}</Text>
+              </View>
+              {sealedNote && aiHere > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss the sealed note" onPress={() => setSealedNote(false)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 40, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 8, borderRadius: 12, backgroundColor: color["surface-3"] }}>
+                <Icon name="shield" />
+                <Text size="caption" tone="muted" style={{ flex: 1 }}>{sealedNoteText({ sealed: info.sealed, assistants: assistantsHere })}</Text>
+                <Text size="caption" tone="label" medium>Got it</Text>
+              </Pressable> : null}
+              <View style={{ height: 8 }} />
+            </View>}
             jumpTo={jump}
             jump={(go) => <JumpPill go={go} count={rows.length} base={base.current} bottom={16} />}
           />
