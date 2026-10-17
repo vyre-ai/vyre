@@ -299,6 +299,11 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
   const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
   const BOB = "per_" + "b".repeat(26);
   await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  // the member's turn runs on her OWN sign-in (a member with none is refused: account_required, nothing sent), so she has one, added the way a member adds it, on her own surface
+  const bobChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });
+  const bobToken = (await d.kernel.surfaces.open(bobChain, {})).token;
+  const added = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "Bob's Claude", kind: "login" }, "deck", { token: bobToken });
+  assert.ok(!added.error, JSON.stringify(added.error));
   const chat = await d.kernel.gateway.grants.chats.create(ownerChain, { people: [BOB] });
   const events = async id => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events;
   const fin = async (id, n) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
