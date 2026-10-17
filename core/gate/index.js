@@ -142,18 +142,20 @@ export default {
       try {
         // B8: a call that names no destination (an MCP tool with no recipient argument) never matches a standing permission.
         if (input.unnamed === true) return null;
-        if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) return null;
+        if (!ctx.kernel || typeof ctx.kernel.standingFor !== "function" || !["send", "spend"].includes(String(input.kind))) { console.error("DBG standingCover: no kernel handle or kind", input.kind); return null; }
         let to = gate.recipients(input);
         if ((!to || !to.length) && String(input.kind) === "send") {
           try { to = gate.prepare(input).dest; } catch { to = null; }
         }
-        if (!to || !to.length) return null;
+        if (!to || !to.length) { console.error("DBG standingCover: no recipients", JSON.stringify(input.to)); return null; }
         const amount = input.kind === "spend" && input.content && typeof input.content === "object" ? Number(input.content.amount) : undefined;
         const currency = input.kind === "spend" && input.content && typeof input.content === "object" && typeof input.content.currency === "string" ? input.content.currency : undefined;
         const maker = agentName ? await ctx.call("agents.maker", { agent: String(agentName) }).catch(() => null) : null;
         const agentOwner = maker && !maker.error && maker.data && typeof maker.data.made_by === "string" ? maker.data.made_by : null;
-        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
-      } catch { return null; }
+        const got = await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
+        console.error("DBG standingCover:", got ? "COVERED" : "NOT covered", "via", input.via, "to", JSON.stringify(to), "agent", agentName, "owner", agentOwner);
+        return got;
+      } catch (e) { console.error("DBG standingCover threw", String(e && e.message || e)); return null; }
     };
     const said = async (input, thread, agent) => {
       try {

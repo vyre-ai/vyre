@@ -399,11 +399,11 @@ export async function createKernel(cfg) {
       ...(m.name === "gate" ? { standingFor: async (/** @type {any} */ meta, /** @type {{ kind: string, via: string, to: string[], amount?: number, currency?: string, agentOwner?: string | null, peek?: boolean }} */ q) => {
         let chain; try { chain = await handle.chain(meta || {}); } catch { return null; }
         const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null, last = chain && Array.isArray(chain.hops) ? chain.hops[chain.hops.length - 1] : null;
-        if (!first || first.actor.kind !== "person" || !last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) return null;
+        if (!first || first.actor.kind !== "person" || !last || last.actor.kind !== "agent" || last.actor.id === "assistant" || String(last.actor.id).startsWith("model:") || chain.hops.length < 2) { console.error("DBG standingFor: chain shape", JSON.stringify((chain && chain.hops || []).map(h => h.actor.kind + ":" + h.actor.id))); return null; }
         if (!q || !["send", "spend"].includes(q.kind) || typeof q.via !== "string" || !Array.isArray(q.to) || !q.to.length) return null;
         const now = clock();
         // the person the agent works for must hold use of the connection the act goes through (a member's chat never sends as an address she could not use herself)
-        if (!(await mayUseVia(String(first.actor.id), q.via))) return null;
+        if (!(await mayUseVia(String(first.actor.id), q.via))) { console.error("DBG standingFor: may not use via"); return null; }
         // a send may be a post: a permission for either kind covers a Gate send through that connection
         const resources = (q.kind === "send" ? ["send", "post"] : [q.kind]).map(k => `vyre://${cfg.space}/outbox/${k}/${q.via}`);
         for (const g of [...(await grantsStore.provider.forSubject(last.actor, undefined, { chain }))].filter((/** @type {any} */ x) => x.status === "active" && x.space === cfg.space && Array.isArray(x.actions) && x.actions.includes("gate.act-standing") && String(x.source || "").startsWith("gate:standing:")).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.id < b.id ? -1 : 1))) {
