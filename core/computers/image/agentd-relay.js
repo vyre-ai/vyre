@@ -9,7 +9,7 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs";
-import { asAgent, asBrowser } from "./agentd.js";
+import { asAgent, asBrowser, browserOf } from "./agentd.js";
 
 export const RELAY_PORT = 5910;
 /** The address vyred has, written by computerd when it pins it (computerd/peer-file.js). */
@@ -80,7 +80,7 @@ export function createRelay(o) {
       if (!u || (open.get(u.uid) || 0) >= maxPerAgent) return void sock.destroy();
       open.set(u.uid, (open.get(u.uid) || 0) + 1);
       // the helper and its one fixed word come from the ticket's kind, never from text the ticket carried
-      const child = spawn(u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color" }), "/usr/bin/python3", "-I", TERM, String(u.session)] : [...(u.kind === "cdp" ? asBrowser(u) : asAgent(u)), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"]);
+      const child = spawn(u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color", DISPLAY: `:${u.display}`, XAUTHORITY: browserOf(u).xauth }), "/usr/bin/python3", "-I", TERM, String(u.session)] : [...asBrowser(u), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"]);
       let done = false;
       const finish = () => { if (done) return; done = true; open.set(u.uid, Math.max(0, (open.get(u.uid) || 1) - 1)); try { child.stdin?.end(); } catch {} try { sock.destroy(); } catch {} };
       child.on("error", finish); child.on("exit", finish); sock.on("close", finish);

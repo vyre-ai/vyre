@@ -18,7 +18,7 @@ DOWNLOADS = "/var/lib/vyre/downloads/ag%d" % N
 MAX_MSG = 16 * 1024 * 1024
 MAX_PENDING = 32 * 1024 * 1024
 IDLE = 600
-ENV = {"HOME": BASE, "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "DISPLAY": ":%d" % (20 + N - 20000), "XAUTHORITY": "/var/lib/vyre/x/ag%d/xauth" % N}
+ENV = {"HOME": BASE, "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8", "DISPLAY": ":%d" % (20 + N - 20000), "XAUTHORITY": BASE + "/xauth"}
 
 # What the profile says before Chrome reads it: no password store, no autofill, no sign-in or sync, and where downloads go (a fixed folder, no prompt).
 PREFS = {

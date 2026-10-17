@@ -30,24 +30,35 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
   assert.match(env, /\/usr\/bin\/env -i HOME=\/home\/ag20000 USER=ag20000 LOGNAME=ag20000 PATH=\/usr\/local\/bin:\/usr\/bin:\/bin LANG=C\.UTF-8 DISPLAY=:20$/);
 });
 
-test("the screen is its own display on a unix socket (no TCP port), the password is a file in the agent's own folder and never on the command line", () => {
-  const [, , xvnc, wm, chrome] = planStartScreen(U);
+test("the screen is the browser uid's: its own display on a unix socket (no TCP port), its password a file in the browser's folder, never on the command line; the agent gets only an untrusted cookie", () => {
+  const [rm, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   const s = xvnc.join(" ");
+  assert.match(s, /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 /, "Xvnc runs as the browser uid, not the agent's");
   assert.match(s, / \/usr\/bin\/Xvnc :20 /);
-  assert.match(s, /-rfbport -1 -rfbunixpath \/var\/lib\/vyre\/agents\/ag20000\/vnc\.sock -rfbunixmode 0600/);
-  assert.match(s, /-rfbauth \/var\/lib\/vyre\/agents\/ag20000\/vnc\.pass/);
-  assert.equal(socketOf(U), "/var/lib/vyre/agents/ag20000/vnc.sock");
+  assert.match(s, /-rfbport -1 -rfbunixpath \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.sock -rfbunixmode 0600/);
+  assert.match(s, /-rfbauth \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.pass/);
+  assert.equal(socketOf(U), "/var/lib/vyre/browsers/agb21000/vnc.sock");
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /password=|-passwd/i);
-  assert.match(wm.join(" "), /DISPLAY=:20 XAUTHORITY=\/var\/lib\/vyre\/x\/ag20000\/xauth \/usr\/bin\/fluxbox$/);
-  assert.match(s, /-auth \/var\/lib\/vyre\/x\/ag20000\/xauth /, "the display lets in whoever holds the cookie");
+  // the trusted cookie is the browser uid's and 0600; the one the agent reads is generated as UNTRUSTED by the running server
+  assert.match(s, /-auth \/var\/lib\/vyre\/browsers\/agb21000\/xauth /);
+  assert.match(mode.join(" "), /\/usr\/bin\/chmod 0600 \/var\/lib\/vyre\/browsers\/agb21000\/xauth$/);
+  assert.match(trusted.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* \/usr\/bin\/xauth -f \/var\/lib\/vyre\/browsers\/agb21000\/xauth source -$/);
+  assert.match(String(/** @type {any} */ (trusted).input), /^add :20 \. [0-9a-f]{32}\n$/);
+  assert.match(untrusted.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* XAUTHORITY=\/var\/lib\/vyre\/browsers\/agb21000\/xauth .* \/usr\/bin\/xauth -f \/var\/lib\/vyre\/x\/ag20000\/xauth generate :20 \. untrusted$/);
+  assert.ok(/** @type {any} */ (untrusted).retry.tries > 1, "it waits for the server to be up");
+  assert.match(chmodU.join(" "), /\/usr\/bin\/chmod 0640 \/var\/lib\/vyre\/x\/ag20000\/xauth$/);
+  assert.match(rm.join(" "), /\/usr\/bin\/rm -f \/var\/lib\/vyre\/browsers\/agb21000\/xauth \/var\/lib\/vyre\/x\/ag20000\/xauth \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.sock$/);
+  assert.match(wm.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* DISPLAY=:20 XAUTHORITY=\/var\/lib\/vyre\/browsers\/agb21000\/xauth \/usr\/bin\/fluxbox$/, "the window manager is a trusted client of the browser uid");
   assert.match(chrome.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 .* \/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py$/, "Chrome is started by the holder as the agent's browser uid, with no argument and no debug port");
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /remote-debugging-port|--user-data-dir/, "no TCP debug port, and no flag to steer from outside the holder");
+  // nothing of the screen runs as the agent
+  assert.ok(planStartScreen(U).every(step => !step.join(" ").includes("--reuid=20000")), "no start step runs as the agent's own uid");
 });
 
 test("the long-running steps are marked in the plan, and the others are not", () => {
-  const [cookie, mode, xvnc, wm, chrome] = planStartScreen(U);
+  const [, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   for (const step of [xvnc, wm, chrome]) assert.equal(/** @type {any} */ (step).detach, true);
-  assert.equal(/** @type {any} */ (cookie).detach, undefined); assert.equal(/** @type {any} */ (mode).detach, undefined);
+  for (const step of [trusted, mode, untrusted, chmodU]) assert.equal(/** @type {any} */ (step).detach, undefined);
   for (const step of [...planStopScreen(U), ...planWipeHome(U), ...planCreate(U), ...planRemove(U)]) assert.equal(/** @type {any} */ (step).detach, undefined, step.join(" "));
 });
 
@@ -57,11 +68,9 @@ test("two agents get two displays, sockets and profiles that never overlap", () 
   assert.doesNotMatch(a, /ag20001|:21 |=20001/); assert.doesNotMatch(b, /ag20000|:20 |=20000/);
 });
 
-test("sleeping signals only the agent's uid and its browser uid, each as itself, and never the tmux server", () => {
+test("sleeping signals only the browser uid's processes (the browser, the window manager, the screen), as itself, and never the tmux server", () => {
   const steps = planStopScreen(U);
-  const [browser, wm, xvnc] = steps;
-  assert.ok(browser.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && browser.slice(-5).join(" ") === "-TERM -u 21000 -x chromium");
-  for (const x of [wm, xvnc]) assert.ok(x.join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && x.includes("20000"));
+  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && x.slice(-5, -1).join(" ") === "-TERM -u 21000 -x"), "the browser, the window manager and the screen are all the browser uid's");
   assert.deepEqual(steps.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
   assert.ok(!steps.flat().includes("tmux"));
 });

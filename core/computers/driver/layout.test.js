@@ -38,7 +38,7 @@ test("the layout tar is directories only, with the owners and modes of the Docke
     const b = n + 1000;
     own(`agents/ag${n}/`, n, n, 0o700); own(`agents/ag${n}/home/`, n, n, 0o700);
     own(`browsers/agb${b}/`, b, b, 0o700); own(`browsers/agb${b}/profile/`, b, b, 0o700);
-    own(`x/ag${n}/`, n, b, 0o2750);       // the agent's, read by the browser's group
+    own(`x/ag${n}/`, b, n, 0o2750);       // the browser's, read by the agent's group: it holds the agent's UNTRUSTED X cookie
     own(`downloads/ag${n}/`, b, n, 0o2750); // the browser's, read by the agent's group
   }
   assert.ok(hs.every(h => !h.name.includes("..") && !h.name.startsWith("/")), "every path is inside the volume");
