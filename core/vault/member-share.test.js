@@ -26,9 +26,7 @@ async function world(t) {
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   // Who may Ben instruct: juno (he made it; Cy was given Can use) and kit (given Can use); not "team", an agent of others'
-  /** Who asked the turn now running on a chat (the Switchboard's threads.turn-asker), set by a test. */
-  const askers = new Map([["chat-1", BEN], ["chat-3", BEN]]);
-  const instructors = (/** @type {string} */ tool, /** @type {any} */ i) => tool === "threads.turn-asker" ? { data: { asker: askers.get(i.thread) || null } } : tool !== "agents.instructors" ? undefined
+  const instructors = (/** @type {string} */ tool, /** @type {any} */ i) => tool !== "agents.instructors" ? undefined
     : i.agent === "juno" ? { data: { level: "edit", made_by: BEN, shares: [CY] } } : i.agent === "kit" ? { data: { level: "use", made_by: "per_ada", shares: [BEN] } } : { error: { code: "not_found", message: "no agent" } };
   const rig = await kernelRig({ people: [BEN, CY], agents: { kit: "agt_kit", juno: "agt_juno", team: "agt_team", assistant: "agt_asst" }, call: instructors });
   const events = /** @type {any[]} */ ([]);
@@ -56,9 +54,9 @@ async function world(t) {
   const asAgentOf = (/** @type {string} */ p, a = "juno") => ({ chain: rig.assistant(rig.uid(a), p) });
   const M = v.access.members;
   const share = (/** @type {any} */ over = {}, who = BEN) => M.share({ item: LABEL, agent: "juno", origin: ORIGIN, ...over }, as(who));
-  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN, thread = undefined) => agentFill(d, { agent, item: ref, origin, ...(thread ? { thread } : {}) });
+  const fill = (/** @type {string} */ ref, agent = "juno", origin = ORIGIN) => agentFill(d, { agent, item: ref, origin });
   const everything = () => JSON.stringify({ events, audit: db.prepare("SELECT * FROM vault_audit").all(), calls, items: v.list().items });
-  return { v, rig, db, M, items, lentStore, askers, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
+  return { v, rig, db, M, items, lentStore, setLocked: (/** @type {boolean} */ b) => { locked = b; }, setLentLocked: (/** @type {boolean} */ b) => { lentLocked = b; }, as, asAgentOf, share, fill, calls, events, everything, home };
 }
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
@@ -219,91 +217,4 @@ test("a copy that cannot be brought up to date with its login is deleted with it
   assert.ok(!w.lentStore.get(BEN).has(ref));
   assert.equal((await w.rig.K.mint.list({ source: "vault:member-share:" })).length, 0, "and no grant");
   await assert.rejects(w.fill(ref), e => /** @type {any} */ (e).code === "not_found", "and the agent cannot use it");
-});
-
-test("tagging a login in a chat lends it to that chat's agent for that chat only: another chat of the same agent, another agent and a fill with no chat get nothing, and the end call takes back only the loan", async t => {
-  const w = await world(t);
-  const M = w.M;
-  const lent = await M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-1"] });
-  const ref = lent.shared.ref;
-  assert.equal(lent.notice, NOTICE);
-  assert.ok(lent.shared.expires - w.rig.clock() <= 1_800_000 + 60_000, "30 minutes by default: the end call is the normal end, the clock the backstop");
-  await stops(w.fill(ref, "juno", ORIGIN, "chat-1"));
-  await denied(w.fill(ref, "juno", ORIGIN, "chat-2"));
-  await denied(w.fill(ref, "juno", ORIGIN));
-  await denied(w.fill(ref, "kit", ORIGIN, "chat-1"));
-  await denied(w.fill(ref, "juno", OTHER, "chat-1"));
-  assert.equal(w.calls.filter(c => c.name === "computers.fill.begin").length, 1, "only the chat's own fill reached the computer");
-  // the agent is told of it in that chat only
-  assert.deepEqual((await w.v.access.listFor("juno", "chat-1")).filter(x => x.kind === "login").map(x => x.name), [ref]);
-  assert.deepEqual((await w.v.access.listFor("juno", "chat-2")).filter(x => x.kind === "login"), []);
-  assert.deepEqual((await w.v.access.listFor("juno")).filter(x => x.kind === "login"), []);
-  // in a group chat the agent serves everyone: a turn that Cy asked, or the owner, or one with no asker, gets nothing of her login even in that very chat
-  for (const asker of [CY, "per_owner", "per_ada", null]) {
-    w.askers.set("chat-1", asker);
-    await denied(w.fill(ref, "juno", ORIGIN, "chat-1"));
-  }
-  w.askers.set("chat-1", BEN);
-  await stops(w.fill(ref, "juno", ORIGIN, "chat-1"));
-  assert.equal(w.calls.filter(c => c.name === "computers.fill.begin").length, 2, "only her own turns reached the computer");
-  // her ordinary share of the same login is a different copy, and ending the turn leaves it
-  const ordinary = (await w.share()).shared.ref;
-  assert.notEqual(ordinary, ref);
-  assert.equal(await M.endFor(BEN, "chat-1"), 1);
-  await denied(w.fill(ref, "juno", ORIGIN, "chat-1"));
-  await stops(w.fill(ordinary));
-  // and unsharing the ordinary share leaves a loan to another chat
-  const again = (await M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-3"] })).shared.ref;
-  assert.deepEqual(await M.unshare({ item: LABEL }, w.as(BEN)), { ended: 1 }, "only the ordinary share");
-  await stops(w.fill(again, "juno", ORIGIN, "chat-3"));
-  assert.equal(await M.endFor(BEN, "chat-3"), 1);
-  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0);
-  assert.equal(w.lentStore.get(BEN).size, 0);
-});
-
-test("a loan is a member's own login, for one chat, short, and the same checks as a share: not the Space owner, not a note, not a locked vault", async t => {
-  const w = await world(t);
-  const M = w.M;
-  const ok = { item: LABEL, agent: "juno", origin: ORIGIN, sessions: ["chat-1"] };
-  await assert.rejects(M.shareAs("per_owner", ok), e => e.code === "denied");
-  await assert.rejects(M.shareAs("ben", ok), e => e.code === "denied");
-  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: [] }), /one chat/);
-  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["a", "b"] }), /one chat/);
-  await assert.rejects(M.shareAs(BEN, { ...ok, sessions: ["bad chat!"] }), /one chat/);
-  await assert.rejects(M.shareAs(BEN, { ...ok, expires: w.rig.clock() + 2 * 3_600_000 }), /within an hour/);
-  await M.shareAs(BEN, { ...ok, sessions: ["chat-9"], expires: w.rig.clock() + 3_000_000 });   // 50 minutes is allowed
-  await assert.rejects(M.shareAs(BEN, { ...ok, item: "a-note" }), /only a login/);
-  await assert.rejects(M.shareAs(BEN, { ...ok, agent: "assistant" }), /default assistant/);
-  w.setLocked(true);
-  await assert.rejects(M.shareAs(BEN, ok), e => e.code === "locked");
-  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0, "none of these left a copy");
-  // an agent she does not instruct herself is fine for a loan: it is that chat's agent and the grant holds in that chat only
-  w.setLocked(false);
-  await M.shareAs(BEN, { ...ok, agent: "team" });
-});
-
-test("a loan follows the login like a share: a refresh that fails, a login that vanishes or a locked vault deletes it with its grant", async t => {
-  const w = await world(t);
-  const loan = async (chat = "chat-1") => (await w.M.shareAs(BEN, { item: LABEL, agent: "juno", origin: ORIGIN, sessions: [chat] })).shared.ref;
-  const count = () => Number(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n);
-  const grants = async () => (await w.rig.K.mint.list({ source: "vault:member-share:" })).length;
-  // a refresh that throws
-  const ref = await loan();
-  const real = w.v.access.members.people.lent;
-  w.v.access.members.people.lent = () => ({ put: async () => { throw new Error("disk full"); }, remove: real(BEN).remove, get: real(BEN).get });
-  w.items.get(BEN).get(LABEL).fields.password = "fixture-NEW-password-0123456789abcdef";
-  await assert.rejects(w.M.changed(BEN, LABEL), /disk full/);
-  w.v.access.members.people.lent = real;
-  assert.equal(count(), 0); assert.equal(await grants(), 0); assert.ok(!w.lentStore.get(BEN).has(ref));
-  // a locked vault at the change
-  await loan("chat-2");
-  w.setLocked(true);
-  await assert.rejects(w.M.changed(BEN, LABEL), e => e.code === "locked");
-  w.setLocked(false);
-  assert.equal(count(), 0); assert.equal(await grants(), 0);
-  // a login that vanishes, with a loan and an ordinary share both on it
-  await loan("chat-3"); await w.share();
-  w.items.get(BEN).delete(LABEL);
-  await w.M.changed(BEN, LABEL);
-  assert.equal(count(), 0); assert.equal(await grants(), 0); assert.equal(w.lentStore.get(BEN).size, 0);
 });

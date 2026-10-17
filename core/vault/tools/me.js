@@ -161,7 +161,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
 
   // A person's app connection, for the MCP hub only: an access token for one connection in the OWNER'S vault, named by the hub row (never by a model), after a second check of who is asking
   // (core/vault/connection-token.js). The refresh token stays here. The tool is not for a person's surface or a model.
-  const tokens = new ConnectionTokens({ people, kernel: () => ctx.kernel, askerOf: async (/** @type {string} */ thread) => { const r = await ctx.call("threads.turn-asker", { thread }); return r && r.data && typeof r.data.asker === "string" ? r.data.asker : null; } });
+  const tokens = new ConnectionTokens({ people, kernel: () => ctx.kernel });
   ctx.tool("vault.connection.token", {
     internal: true,
     description: "An access token for one person's app connection, for the MCP hub: { owner, connection, write? } -> { access_token, token_type, expires_at, resource }. Only the mcp module asks; the asker's chain is checked again.",

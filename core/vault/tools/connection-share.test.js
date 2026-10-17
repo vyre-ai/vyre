@@ -110,23 +110,3 @@ test("the directory: members, groups, and only the agents she may instruct, with
   assert.deepEqual([...d.agents[0].instructors].sort(), [BOB, EVE, "per_dana"].sort());
   await assert.rejects(as("vault.me.connection.directory", {}, OWNER), /member's own vault|denied/);
 });
-
-test("a turn's lend: Fill in to that chat's agent only, held to the thread, ended with the turn and swept; her ordinary shares are not touched", async () => {
-  const { as, grants, calls, out } = rig();
-  await as("vault.me.connection.share", { name: "clio", kind: "agent", subject: "kit", level: "use" });
-  const r = await out.lendTurn(BOB, "clio", "kit", "thread_1", 9_999_999);
-  assert.equal(grants.length, 2);
-  const turn = grants.find(g => g.source === r.source);
-  assert.ok(turn && turn.source.endsWith(":turn:thread_1"));
-  assert.deepEqual(turn.actions, [...ACCESS_LEVELS.use]);
-  assert.deepEqual(turn.conditions, { where: { sessions: ["thread_1"] }, when: { expires: 9_999_999 } }, "held to that chat, with the clock as a backstop");
-  assert.deepEqual(turn.subject.actor, { kind: "agent", id: KIT, space: "spc_x" });
-  await assert.rejects(out.lendTurn(EVE, "clio", "kit", "thread_1", 1), /no connection named clio/, "not hers: she cannot lend Bob's");
-  await assert.rejects(out.lendTurn(BOB, "clio", "ghost", "thread_1", 1), /no agent/);
-  calls.length = 0;
-  assert.equal(await out.endTurn(BOB, "thread_2"), 0, "another chat's turn ends nothing here");
-  assert.equal(grants.length, 2);
-  assert.equal(await out.endTurn(BOB, "thread_1"), 1);
-  assert.equal(grants.length, 1, "only the turn's lend went; her ordinary share stays");
-  assert.deepEqual(calls.filter(c => c[0] === "mcp.sweep"), [["mcp.sweep", { owner: BOB, connection: "clio" }]]);
-});

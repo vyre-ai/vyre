@@ -15,30 +15,28 @@ export class MemberCopies {
   constructor(v, people) {
     this.v = v; this.db = v.db; this.people = people;
     this.db.exec(`CREATE TABLE IF NOT EXISTS vault_member_copies (
-      ref TEXT PRIMARY KEY, owner TEXT NOT NULL, item_h TEXT NOT NULL, agent TEXT NOT NULL, uid TEXT NOT NULL, origin TEXT NOT NULL, expires INTEGER NOT NULL, at INTEGER NOT NULL, gone INTEGER NOT NULL DEFAULT 0, thread TEXT
+      ref TEXT PRIMARY KEY, owner TEXT NOT NULL, item_h TEXT NOT NULL, agent TEXT NOT NULL, uid TEXT NOT NULL, origin TEXT NOT NULL, expires INTEGER NOT NULL, at INTEGER NOT NULL, gone INTEGER NOT NULL DEFAULT 0
     )`);
-    // a table made before a chat could lend a login has no thread column
-    try { this.db.exec("ALTER TABLE vault_member_copies ADD COLUMN thread TEXT"); } catch { /* it has one */ }
   }
 
   /** The reference an agent is told, and the audit shows: opaque, made from the four things that make the copy one. */
-  static ref(/** @type {string} */ owner, /** @type {string} */ item, /** @type {string} */ agent, /** @type {string} */ origin, /** @type {string} */ thread = "") { return "mc-" + sha(owner, item, agent, origin, ...(thread ? [thread] : [])).slice(0, 20); }
+  static ref(/** @type {string} */ owner, /** @type {string} */ item, /** @type {string} */ agent, /** @type {string} */ origin) { return "mc-" + sha(owner, item, agent, origin).slice(0, 20); }
   /** What the table keeps of a login's name: a hash, so the name stays in the member's sealed copy. */
   static itemHash(/** @type {string} */ owner, /** @type {string} */ item) { return sha("item", owner, item).slice(0, 32); }
 
   lent(/** @type {string} */ owner) { const p = this.people(); if (!p) throw bad("the member vaults are not running", "unavailable"); return p.lent(owner); }
 
   /**
-   * Keep (or refresh) the copy in the member's lend folder, and the row that finds it. @param {{ owner: string, item: string, agent: string, uid: string, origin: string, expires: number, fields: Record<string, string>, thread?: string }} c
+   * Keep (or refresh) the copy in the member's lend folder, and the row that finds it. @param {{ owner: string, item: string, agent: string, uid: string, origin: string, expires: number, fields: Record<string, string> }} c
    * @returns {Promise<string>} the reference
    */
   async put(c) {
-    const ref = MemberCopies.ref(c.owner, c.item, c.agent, c.origin, c.thread);
+    const ref = MemberCopies.ref(c.owner, c.item, c.agent, c.origin);
     /** @type {Record<string, string>} */ const body = {}; for (const k of FIELDS) if (typeof c.fields[k] === "string" && c.fields[k]) body[k] = c.fields[k];
     if (!body.password) throw bad("a login to share has a password");
     await this.lent(c.owner).put(ref, { kind: "login", description: c.item, fields: body });
-    this.db.prepare(`INSERT INTO vault_member_copies (ref, owner, item_h, agent, uid, origin, expires, at, gone, thread) VALUES (?,?,?,?,?,?,?,?,0,?)
-      ON CONFLICT(ref) DO UPDATE SET expires = excluded.expires, at = excluded.at, uid = excluded.uid, gone = 0`).run(ref, c.owner, MemberCopies.itemHash(c.owner, c.item), c.agent, c.uid, c.origin, c.expires, this.v.clock(), c.thread || null);
+    this.db.prepare(`INSERT INTO vault_member_copies (ref, owner, item_h, agent, uid, origin, expires, at, gone) VALUES (?,?,?,?,?,?,?,?,0)
+      ON CONFLICT(ref) DO UPDATE SET expires = excluded.expires, at = excluded.at, uid = excluded.uid, gone = 0`).run(ref, c.owner, MemberCopies.itemHash(c.owner, c.item), c.agent, c.uid, c.origin, c.expires, this.v.clock());
     return ref;
   }
 
@@ -47,7 +45,7 @@ export class MemberCopies {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_member_copies WHERE ref = ?").get(String(ref)));
     if (!r || r.gone) return null;
     if (Number(r.expires) <= this.v.clock()) { void this.remove(r.ref); return null; }
-    return { ref: String(r.ref), owner: String(r.owner), agent: String(r.agent), uid: String(r.uid), origin: String(r.origin), expires: Number(r.expires), thread: r.thread ? String(r.thread) : null };
+    return { ref: String(r.ref), owner: String(r.owner), agent: String(r.agent), uid: String(r.uid), origin: String(r.origin), expires: Number(r.expires) };
   }
 
   /** The values, for agentFill only: opened with the member's lend key (hers when unlocked, else the sealed server copy). @param {string} ref @returns {Promise<{ username: string, password: string, totp: string }>} */
@@ -70,25 +68,21 @@ export class MemberCopies {
     catch (e) { if (/** @type {any} */ (e).code === "not_found") this.db.prepare("DELETE FROM vault_member_copies WHERE ref = ?").run(String(ref)); }
   }
 
-  /**
-   * The references that match a person, and optionally a login (by name), an agent, a site. `thread` picks the loans a chat made (one chat's), none picks her ordinary shares (those with no chat); `all` picks both.
-   * @param {{ owner: string, item?: string, agent?: string, origin?: string, thread?: string, all?: boolean }} q
-   */
+  /** The references that match a person, and optionally a login (by name), an agent, a site. @param {{ owner: string, item?: string, agent?: string, origin?: string }} q */
   match(q) {
-    const th = q.all ? "" : q.thread ? " AND thread = ?" : " AND thread IS NULL";
-    return /** @type {any[]} */ (this.db.prepare("SELECT ref, agent, origin FROM vault_member_copies WHERE owner = ?" + (q.item ? " AND item_h = ?" : "") + (q.agent ? " AND agent = ?" : "") + (q.origin ? " AND origin = ?" : "") + th)
-      .all(...[q.owner, q.item ? MemberCopies.itemHash(q.owner, q.item) : undefined, q.agent, q.origin, q.all ? undefined : q.thread || undefined].filter(x => x !== undefined)));
+    return /** @type {any[]} */ (this.db.prepare("SELECT ref, agent, origin FROM vault_member_copies WHERE owner = ?" + (q.item ? " AND item_h = ?" : "") + (q.agent ? " AND agent = ?" : "") + (q.origin ? " AND origin = ?" : ""))
+      .all(...[q.owner, q.item ? MemberCopies.itemHash(q.owner, q.item) : undefined, q.agent, q.origin].filter(x => x !== undefined)));
   }
 
   /** What a member has shared: reference, agent, site, expiry, and her name for the login. Metadata only. @param {string} owner */
   async ofOwner(owner) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT ref, agent, origin, expires, thread FROM vault_member_copies WHERE owner = ? AND gone = 0 ORDER BY at").all(String(owner))).filter(r => Number(r.expires) > this.v.clock());
-    return Promise.all(rows.map(async r => ({ ref: String(r.ref), item: await this.label(String(r.ref), String(owner)), agent: String(r.agent), origin: String(r.origin), expires: Number(r.expires), ...(r.thread ? { chat: String(r.thread) } : {}) })));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT ref, agent, origin, expires FROM vault_member_copies WHERE owner = ? AND gone = 0 ORDER BY at").all(String(owner))).filter(r => Number(r.expires) > this.v.clock());
+    return Promise.all(rows.map(async r => ({ ref: String(r.ref), item: await this.label(String(r.ref), String(owner)), agent: String(r.agent), origin: String(r.origin), expires: Number(r.expires) })));
   }
 
-  /** The logins an agent may use from members, as the agent is told of them: a reference and the member's label, never a value. A login lent to one chat is told of in that chat only. @param {string} uid @param {string} [thread] the running chat */
-  async forAgent(uid, thread) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT ref, owner, origin, expires, thread FROM vault_member_copies WHERE uid = ? AND gone = 0").all(String(uid))).filter(r => Number(r.expires) > this.v.clock() && (!r.thread || r.thread === thread));
+  /** The logins an agent may use from members, as the agent is told of them: a reference and the member's label, never a value. @param {string} uid */
+  async forAgent(uid) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT ref, owner, origin, expires FROM vault_member_copies WHERE uid = ? AND gone = 0").all(String(uid))).filter(r => Number(r.expires) > this.v.clock());
     return Promise.all(rows.map(async r => ({ ref: String(r.ref), label: await this.label(String(r.ref), String(r.owner)), origin: String(r.origin) })));
   }
 
