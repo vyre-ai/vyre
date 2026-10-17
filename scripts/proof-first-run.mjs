@@ -76,6 +76,7 @@ async function browserDriver() {
   /** @type {any} */ let page = null;
   const pageErrors = /** @type {string[]} */ ([]);
   const consoleErrors = /** @type {string[]} */ ([]);
+  const stageTrail = /** @type {string[]} */ ([]);
   const body = async () => (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
   const d = {
     async open() {
@@ -83,10 +84,13 @@ async function browserDriver() {
       page = await ctx.newPage();
       page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200)));
       // A worker's error and a console error never reach pageerror: keep them, and print them when something fails.
-      page.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 300)); });
+      page.on("console", (/** @type {any} */ m) => {
+        if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 300));
+        else if (m.type() === "info" && String(m.text()).startsWith("vyre:stage ")) { const line = `${new Date().toISOString().slice(11, 19)} ${String(m.text()).slice(11)}`; stageTrail.push(line); console.log(`  stage ${line}`); }
+      });
       page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
-    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | and starts: ${b.slice(0, 120)}`); }); return body(); },
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen ends: ${b.slice(-260)} | the add-server stages: ${stageTrail.join("; ") || "none seen"} | console errors: ${consoleErrors.slice(-3).join(" || ") || "none"}`); }); return body(); },
     async click(/** @type {string} */ t) {
       // By role first, in this order, and the words only when no control has that name: a union of all of them takes the first in the page, which for a switch is the words beside it (they toggle nothing).
       const candidates = [page.getByRole("button", { name: t }), page.getByRole("radio", { name: t }), page.getByRole("switch", { name: t }), page.getByText(t, { exact: true })];

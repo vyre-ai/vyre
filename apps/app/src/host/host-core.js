@@ -319,6 +319,8 @@ export function createHost(o) {
       const random = o.random || ((n) => crypto.getRandomValues(new Uint8Array(n)));
       const run = createAddServer({
         client: ports.client, relay: ports.relay, autoPair: true,
+        // The stages of this run, one line each (no code, no key): what a failed first run needs in order to say where it stopped.
+        onChange: (s) => { if (typeof console !== "undefined") console.info(`vyre:stage ${s.stage}${s.error ? ` ${s.error.code}` : ""}`); },
         issue: async () => {
           const setupKey = await ports.createSetupKey();
           const secret = random(16);
