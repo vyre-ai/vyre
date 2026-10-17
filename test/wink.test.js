@@ -459,6 +459,11 @@ shardTest("wink: sharing a computer is a node.host grant with limits, and only f
   assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
   const dev = (await w.call("wink.access")).data.devices.find(x => x.id === r.paired.device);
   assert.equal(dev.offers.compute, true);
+  // the member's side was set by the person who shared (the proven caller); anyone who is not the owner cannot share a computer at all, so cannot set it
+  for (const caller of ["mcp:agent:kit", "hook", "anonymous"]) {
+    const refused = await w.call("wink.share", { device: r.paired.device, cpu: 0.5, hours_day: 8, awake: true, on_power: true }, caller);
+    assert.ok(refused.error, `${caller} cannot share a computer`);
+  }
 });
 
 shardTest("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
