@@ -51,6 +51,10 @@ unset VYRE_HOME
 - A release tag starts the node suite, the pictures, the first-run proof and every build at once, in one run, and publishes when all of them are green.
 - A pull request into a release or integration branch gets its generated files (docs reference, agent docs, architecture map) regenerated and committed for it; the golden lists never are.
 
+## Run a few test files on a runner
+
+Before you say a test is done, run it on a runner, in a few minutes, without the whole suite: `gh workflow run test-files.yml -f ref=<branch> -f files="core/x/a.test.js lib/b.test.js"`. The files are test files or globs under `core/`, `lib/`, `test/` or `kernel/` (up to 40); anything else is refused before the checkout. It sets up as the node suite does and runs the files one process each. Two of these run at once; a third waits behind one of them.
+
 ## Where things live
 
 | Folder | What is in it |
