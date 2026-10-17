@@ -29,7 +29,7 @@ A paired server or device joins the home's own network at its control address wi
 Every way into a space ends in exactly one grant. There is no hidden way in.
 
 - **A server.** In the app, **Create a space** shows one install command with a single-use pair code built in. The code is made from your identity and is good for 30 minutes. The server uses it to adopt you when it comes online. If another server answers that line first, nothing is paired and the app says so.
-- **A phone.** From a computer you are signed in on, **Add a device** makes a link the phone opens. Or the phone signs in with the space address, your username and your master password, or with GitHub and then your master password.
+- **A phone.** The phone signs in with the space address, your username and your master password, or with GitHub and then your master password.
 - **A computer.** **Add this computer** takes the space address, your username and your master password, or GitHub and then the master password. The master password unlocks your vault.
 - **A Mac, from the terminal.** `vyre link pair <address>` asks the server and shows a code. Approve it in the Vyre app with your passkey, or run `vyre link approve <code>` on the server.
 - **A person.** An invite is a link, `https://vyre.run/i/<token>`, with the role and the days it lasts picked when you make it. Whoever opens it joins. For an admin or owner role, the invited person reads you four words from their card and you type them in before they are in.

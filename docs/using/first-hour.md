@@ -41,9 +41,8 @@ sign-in**).
 1. Open the Vyre app on the phone and choose **Sign in**. Type your space address (for example
    `alex.vyre.run`), your username and your master password. Or press **Sign in with GitHub** and
    then type the master password to unlock your vault.
-2. Or add it from a computer you are already signed in on: **Devices**, **Add a device**,
-   **A phone**, **Make the link**, and open that link on the phone. If you were invited to someone
-   else's space, open the invite link instead; it looks like `https://vyre.run/i/...`.
+2. If you were invited to someone else's space, open the invite link instead; it looks like
+   `https://vyre.run/i/...`.
 3. No app yet? Open your address with `/now` at the end, for example `https://alex.vyre.run/now`,
    in Safari (iPhone) or Chrome (Android).
 4. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the

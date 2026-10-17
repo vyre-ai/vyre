@@ -15,10 +15,8 @@ when a direct path is not possible.
 
 ## Set up the phone
 
-Install the app with the steps below, then add the phone in either of two ways. From a computer you are signed in on, open
-the Vyre app, choose **Devices**, **Add a device**, **A phone**, then **Make the link**, and open that link on the phone. Or
-open the app on the phone and choose **Sign in**: type your space address, your username and your master password, or press
-**Sign in with GitHub** and then type the master password.
+Install the app with the steps below, then open it on the phone and choose **Sign in**: type your space address, your
+username and your master password, or press **Sign in with GitHub** and then type the master password.
 
 **Android**
 
