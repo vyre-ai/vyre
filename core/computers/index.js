@@ -91,7 +91,7 @@ export default {
     const memberKey = createMemberKey({
       fetch: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
       put: async value => {
-        const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value }, grants: ["computers"], onlyIfAbsent: true });
+        const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value, made_by: "computers" }, grants: ["computers"], onlyIfAbsent: true });
         if (r && r.error) throw new Error(r.error.message);
         return r && r.data;
       } });
