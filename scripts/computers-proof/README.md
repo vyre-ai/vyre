@@ -75,3 +75,9 @@ computer at a time, never a bare `vyre` command, never `docker stop`/`rm` on any
   say the home folder.
 - The image warns `cannot load font -misc-fixed-medium-r-semicondensed...` for xterm (no
   `xfonts-base`); xterm falls back to a plain bitmap font.
+
+## The agent computer proof (agents.mjs)
+
+Run by `run.sh` after the main proof, on its own container. Two agents on one computer, driven from outside the way vyred drives them (real driver, restricted proxy, agentd's one exec, the pinned relay port):
+both screens answer through the relay and a screen ticket opens once; agent A's Chrome (debugging pipe, no TCP port) keeps a persistent cookie across sleep and wake while agent B's Chrome never has it;
+a bad ticket gets no byte; agent B's uid cannot open A's debugging socket or read A's Chrome profile. It prints PASS or FAIL per step and stops at the first FAIL.
