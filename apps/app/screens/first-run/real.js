@@ -71,7 +71,6 @@ export async function openSpace(input) {
   catch (e) { return fail(e); }
 }
 
-/** @param {string} id */
 /** Pick another name for a space whose name the directory said was taken; the paired server is kept and the claim is tried again. @param {string} id @param {string} name */
 export async function renameSpace(id, name) {
   if (MOCK) return { ok: true, id, name };
@@ -79,6 +78,7 @@ export async function renameSpace(id, name) {
   catch (e) { return fail(e); }
 }
 
+/** @param {string} id */
 export async function pollSpace(id) {
   if (MOCK) return mock.pollSpace(id);
   try { return done(await tool("onboard.space.poll", { id })); }
