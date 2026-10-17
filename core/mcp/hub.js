@@ -569,7 +569,7 @@ export class Hub {
     // Fill the tool cache now, so the first session lists tools without a spawn. A server whose
     // vault grant does not exist yet fails here; that is expected (the CLI grants, then tests),
     // so it does not count against the restart budget and the add still stands.
-    const test = await this.test(n.name, { quiet: true });
+    const test = await ASKING.run(own ? { me: String(o.owner) } : undefined, () => this.test(n.name, { quiet: true }));   // a person's connection is first tried as that person
     return { ...this.view(this.must(n.name)), test };
   }
 
@@ -651,7 +651,7 @@ export class Hub {
    * restart budget does not stop a test, and a passing test clears it.
    * @param {string} name @param {{ quiet?: boolean }} [o]
    */
-  async test(name, o = {}) { return ASKING.run({ who: o.who }, () => this.testIn(name, o)); }
+  async test(name, o = {}) { return o.who ? ASKING.run({ who: o.who }, () => this.testIn(name, o)) : this.testIn(name, o); }
 
   async testIn(name, o = {}) {
     const r = this.must(name);
