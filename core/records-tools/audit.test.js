@@ -73,12 +73,12 @@ test("the audit pages through the whole log: a change after more than a page of 
   for (let i = 0; i < 130; i++) await R.create(owner, "contact", { name: `Filler ${i}`, age: 2 });
   const last = await R.create(owner, "contact", { name: "Newest", age: 3 });
   const call = async (/** @type {any} */ input) => d.registry.call("records.audit", input, "cli", { token: (await K.surfaces.open(owner, {})).token });
-  const all = (await call({ page: 10, limit: 200 })).data;
+  const all = (await call({ page: 10, limit: 200, type: "contact" })).data;
   assert.equal(all.changes.length, 132, "every create, across thirteen pages of ten");
   assert.equal(all.changes[0].record, last.urn, "the newest first");
   assert.equal(all.changes.at(-1).record, first.urn, "and the oldest is reached");
   assert.equal(all.truncated, undefined);
-  const recent = (await call({ page: 10, limit: 200, window: 40 })).data;
+  const recent = (await call({ page: 10, limit: 200, window: 40, type: "contact" })).data;
   assert.equal(recent.truncated, true, "a window that does not reach the start says so");
   assert.equal(recent.changes[0].record, last.urn, "and still holds the newest");
   assert.ok(recent.changes.length < 132);

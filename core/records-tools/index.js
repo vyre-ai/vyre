@@ -244,11 +244,12 @@ export default {
       }
       const link = (/** @type {any} */ v) => (v && typeof v === "object" ? String(v.urn || "") : typeof v === "string" ? v : "");
       const rows = [];
+      const whoOf = (/** @type {any} */ e) => String(e.actor).split("@")[0];   // the log keeps a person as person:id@space; the audit names the person
       for (const e of events) {
         if (!isChange(String(e.type))) continue;
         const [recType] = String(e.type).split(".");
         if (i.type && recType !== i.type) continue;
-        if (person && String(e.actor) !== person) continue;
+        if (person && whoOf(e) !== person) continue;
         if (project) {
           const at = (typeof d.gateway.records.attrsOf === "function" ? d.gateway.records.attrsOf(String(e.subject)) : null) || {};
           const data = e.data || {};
@@ -256,7 +257,7 @@ export default {
           if (String(at.project || "") !== project && !linked) continue;
         }
         const data = e.data || {};
-        rows.push({ seq: e.seq, time: e.time, who: e.actor, ...(e.acted_via ? { via: e.acted_via } : {}), verb: String(e.type).split(".")[1], type: recType, record: e.subject, version: data.version, changed: data.changed || [], before: data.before ?? null, after: data.after ?? null });
+        rows.push({ seq: e.seq, time: e.time, who: whoOf(e), ...(e.acted_via ? { via: e.acted_via } : {}), verb: String(e.type).split(".")[1], type: recType, record: e.subject, version: data.version, changed: data.changed || [], before: data.before ?? null, after: data.after ?? null });
       }
       rows.reverse();
       return { changes: rows.slice(0, limit), more: rows.length > limit, ...(truncated ? { truncated: true } : {}) };

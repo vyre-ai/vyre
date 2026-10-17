@@ -176,7 +176,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "push.devices", "push.key", "push.receipt", "push.seen", "push.settings", "push.subscribe", "push.test", "push.unsubscribe",
   "recall.eval", "recall.index", "recall.links", "recall.pointers", "recall.related", "recall.sealscan", "recall.sealscrub", "recall.sessions",
   "recall.setup", "recall.status", "recall.thread", "recall.transcript", "recall.turn", "recall.unwatch", "recall.watch",
-  "records.define", "records.dev-seed", "records.forget", "records.reveal", "records.sees-as",
+  "records.audit", "records.define", "records.dev-seed", "records.forget", "records.reveal", "records.sees-as",
   "relay.devices.ask-trust", "relay.devices.list", "relay.devices.mark", "relay.devices.path", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust",
   "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", "relay.pair.window.close", "relay.pair.window.confirm",
   "relay.pair.window.open", "relay.pair.window.ping", "relay.pair.window.reject", "relay.pair.window.renew", "relay.setup.status", "relay.status", "relay.web.pin",

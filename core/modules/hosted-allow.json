@@ -108,6 +108,7 @@
   "recall.turn": "searches and reads the person's past sessions",
   "records.actors": "reads the person's records as the person; sealed values stay placeholders",
   "records.create": "adds or changes a record of an existing type as the person; the kernel judges it",
+  "records.audit": "reads who changed which record as the person; only an owner or an admin sees it, and the kernel judges that",
   "records.events": "reads the person's records as the person; sealed values stay placeholders",
   "records.get": "reads the person's records as the person; sealed values stay placeholders",
   "records.holders": "reads the person's records as the person; sealed values stay placeholders",
