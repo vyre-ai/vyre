@@ -1,7 +1,7 @@
 // @ts-check
 // A member's vault chip and #Name on a chat turn resolve from THEIR OWN vault, never the owner's. The Switchboard asks the vault module (vault.me.mention.resolve), naming the asker the kernel has already
 // checked is in this chat; the vault reads only that person's own vault and answers a name, a kind and a note, never a value. An item that is not in their vault is plain text; a locked vault says so in words
-// (its own line, which the chat shows). A chip alone hands nothing to an agent. A chip that carries her yes (signed over exactly { asker, id, thread, agent }, so an origin on the chip is never passed: only what she signed is sent) (the device-signed presence the composer took at the tag, an opaque string the Vault checks and
+// (its own line, which the chat shows). A chip alone hands nothing to an agent. A chip that carries her yes (signed over { asker, id, thread, agent }, plus origin exactly when the chip names one) (the device-signed presence the composer took at the tag, an opaque string the Vault checks and
 // this file never reads) also asks the Vault to lend the item to the chat's agent for this turn (vault.me.mention.lend); the Vault refuses without a good yes, and then the chip stays a pill.
 
 const MAX = 4;
@@ -38,8 +38,10 @@ export async function memberVaultTags({ call, asker, thread, said, chips, names,
  */
 async function lendFor({ call, asker, thread, agent, id, chip }) {
   const yes = chip && typeof chip.yes === "string" && chip.yes.length <= 4096 ? chip.yes : "";
+  // A login with several sites is tagged for one: the app signs the origin into her yes when the chip names it, and the Vault checks it with the rest. Passed on only as the chip has it; a mismatch is the Vault's refusal.
+  const origin = chip && typeof chip.origin === "string" && chip.origin.length <= 253 ? chip.origin : "";
   if (!yes || !agent) return { note: null };
-  const r = await call("vault.me.mention.lend", { asker, id, thread, agent, yes }).catch(() => null);
+  const r = await call("vault.me.mention.lend", { asker, id, thread, agent, yes, ...(origin ? { origin } : {}) }).catch(() => null);
   if (!r || r.error || !r.data || r.data.lent !== true) return { note: null };
   const use = typeof r.data.use === "string" && /^[A-Za-z0-9._:-]{1,120}$/.test(r.data.use) ? r.data.use : "";
   return { note: `${typeof r.data.note === "string" && r.data.note ? r.data.note : "The agent can use it for this turn and never sees it."}${use ? ` Pass credential "${use}" to vault.request.` : ""}` };

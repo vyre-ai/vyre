@@ -78,9 +78,10 @@ test("a #Name never lends: only a picked chip that carries her yes does", async 
   assert.equal(asked.some(([tool]) => tool === "vault.me.mention.lend"), false);
 });
 
-test("an origin on a chip is not passed to the lend: her yes covers the four fields and nothing more", async () => {
+test("an origin the chip names is passed with her yes, and no origin means none is sent", async () => {
   const asked = /** @type {any[]} */ ([]);
-  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y", origin: "https://evil.example" }], names: [] });
-  const lend = asked.find(([tool]) => tool === "vault.me.mention.lend");
-  assert.deepEqual(Object.keys(lend[1]).sort(), ["agent", "asker", "id", "thread", "yes"]);
+  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y", origin: "https://app.clio.com" }], names: [] });
+  await memberVaultTags({ call: lendRig(asked, { data: { lent: true } }), asker: "per_bob", thread: "t1", said: "u1", agent: "kit", chips: [{ kind: "vault", id: "clio", yes: "y" }], names: [] });
+  const lends = asked.filter(([tool]) => tool === "vault.me.mention.lend").map(([, i]) => Object.keys(i).sort());
+  assert.deepEqual(lends, [["agent", "asker", "id", "origin", "thread", "yes"], ["agent", "asker", "id", "thread", "yes"]]);
 });
