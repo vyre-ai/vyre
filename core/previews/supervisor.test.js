@@ -19,3 +19,17 @@ test("the command is started through the limits, unchanged after them", () => {
   assert.equal(started[0].opts.env.PORT, "4100");
   sup.stop("p1");
 });
+
+test("stopping a preview whose process has pid 1 (or 0) signals no process group: kill(-1) is every process of the user", (t) => {
+  const calls = /** @type {any[][]} */ ([]);
+  t.mock.method(process, "kill", (/** @type {any[]} */ ...a) => { calls.push(a); return true; });
+  for (const pid of [1, 0]) {
+    const killed = /** @type {string[]} */ ([]);
+    const spawn = /** @type {any} */ (() => ({ stdout: null, stderr: null, on() {}, once() {}, kill: (/** @type {string} */ sig) => { killed.push(sig); }, pid }));
+    const sup = createSupervisor({ spawn, log: () => {}, now: () => 0, pollMs: 1_000_000, giveUpMs: 1_000_000 });
+    sup.start("p" + pid, { command: "true", cwd: "/tmp", port: 4101 });
+    sup.stop("p" + pid);
+    assert.deepEqual(killed, pid === 1 ? ["SIGTERM"] : [], `pid ${pid}: only the child itself is signalled`);
+  }
+  assert.deepEqual(calls, [], "process.kill was never called with a negative pid");
+});

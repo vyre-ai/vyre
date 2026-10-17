@@ -5,6 +5,7 @@
 // never goes in. Pure of Vyre: spawn and the clock are injected so tests can run a real tiny server.
 import { spawn as realSpawn } from "node:child_process";
 import net from "node:net";
+import { groupPid, killGroup } from "../../lib/group-kill.js";
 
 export const LOG_BYTES = 200 * 1024;
 /**
@@ -98,8 +99,10 @@ export function createSupervisor(o = {}) {
   function kill(child) {
     if (!child || !child.pid) return;
     const pid = child.pid;
-    try { process.kill(-pid, "SIGTERM"); } catch { try { child.kill("SIGTERM"); } catch { /* gone */ } }
-    const t = setTimeout(() => { try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } }, 3000);
+    // a pid that is not a real group (1 is kill(-1), every process of the user) is never signalled as one: only the child itself (lib/group-kill.js)
+    if (!groupPid(pid)) { try { child.kill("SIGTERM"); } catch { /* gone */ } return; }
+    if (!killGroup(pid, "SIGTERM")) { try { child.kill("SIGTERM"); } catch { /* gone */ } }
+    const t = setTimeout(() => { killGroup(pid, "SIGKILL"); }, 3000);
     t.unref?.();
     child.once("exit", () => clearTimeout(t));
   }

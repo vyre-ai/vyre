@@ -543,8 +543,7 @@ export class Switchboard {
     } catch { /* no hop record */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
-      // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
-      // Said as an event too: a surface that missed the old process's end would spin otherwise.
+      // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it. Said as an event too: a surface that missed the old process's end would spin otherwise.
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
       this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
@@ -919,8 +918,7 @@ export class Switchboard {
       if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
       this.ensureSlot(id);
     } else {
-      // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
-      // folder and project, a new id, and never the other session's process or transcript.
+      // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its folder and project, a new id, and never the other session's process or transcript.
       if (o.fork) {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
@@ -1021,8 +1019,7 @@ export class Switchboard {
     at("session socket and kernel session");
     await this.openSocket(id, rec, o.kernelTurn || null, o.accountRun || null);
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
-    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
-    // under the same thread: there is nothing of its own to resume.
+    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session under the same thread: there is nothing of its own to resume.
     at("git identity");
     o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
@@ -1040,8 +1037,7 @@ export class Switchboard {
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, chat: fresh.chat, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
       provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
-    // The surface that started it gets the keyboard. A prompt given at launch by a module (an
-    // agent asked something) is typed without taking the lease, so no surface is locked out.
+    // The surface that started it gets the keyboard. A prompt given at launch by a module (an agent asked something) is typed without taking the lease, so no surface is locked out.
     if (o.surface) this.lease(id, o.surface);
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume && !this.restoreSteers(id)) this.resumeQueued(id);
@@ -1080,8 +1076,7 @@ export class Switchboard {
    * text alone, as before.
    */
   async systemPrompt(rec, o) {
-    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
-    // the launch's append read as its facts, versioned. Without the sessions module, as before.
+    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with the launch's append read as its facts, versioned. Without the sessions module, as before.
     if (o.purpose === "capsule" && !o.agent) {
       const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}), ...(o.zone ? { zone: String(o.zone) } : {}) }).catch(() => null);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
@@ -1491,8 +1486,7 @@ export class Switchboard {
   spawn(id, o) {
     // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
     const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
-    // One credential per child, set only in that child. An agent on a setup token must not
-    // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
+    // One credential per child, set only in that child. An agent on a setup token must not quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
     // another provider's session is told where its skills were written (its driver links them into the home it runs with)
