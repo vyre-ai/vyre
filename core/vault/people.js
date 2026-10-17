@@ -15,6 +15,7 @@ import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, ensureMacColumns } from "./vault.js";
 import { ensureDir } from "./store.js";
 import { sealItemV2, openItemV2, keyObject } from "./crypto.js";
+import { sitesOf } from "./sites.js";
 import { sealConnectionKey, openConnectionKey, forgetConnectionKey } from "./people-seal.js";
 
 export const PERSON_ID = /^per_[A-Za-z0-9_-]{1,64}$/;
@@ -460,7 +461,7 @@ export class PeopleVaults {
   async list(id, { filter } = {}) {
     const f = filter ? String(filter).toLowerCase() : "";
     const conns = this.allConnections(id, this.connectionKey(id, this.key(id)));
-    const items = [...this.all(id), ...conns].filter(i => !f || i.name.toLowerCase().includes(f)).map(i => ({ name: i.name, kind: i.kind, description: i.description, fields: Object.keys(i.fields), updated: i.updated }));
+    const items = [...this.all(id), ...conns].filter(i => !f || i.name.toLowerCase().includes(f)).map(i => ({ name: i.name, kind: i.kind, description: i.description, fields: Object.keys(i.fields), updated: i.updated, ...(i.kind === "login" ? { sites: sitesOf(i.fields) } : {}) }));
     return { items };
   }
 
