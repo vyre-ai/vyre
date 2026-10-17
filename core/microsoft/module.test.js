@@ -22,13 +22,21 @@ async function setup(t, { secret, staff } = {}) {
   const db = new DatabaseSync(":memory:");
   const tools = new Map(); const events = [];
   const people = { chain: [] };
-  const ctx = { store: { db, migrate: ms => { for (const m of ms) db.exec(m); } }, vault: { fetch: async (item, o) => ({ tenant_id: g.tenant, client_id: g.clientId, client_secret: secret ?? g.secret, token_uri: g.tokenUri })[o?.field] ?? "" },
+  /** The Gate, as the module sees it through ctx.call: it files what is held, and gate.get answers an item with the requester the Gate recorded from the chain. */
+  const calls = [], items = new Map();
+  const call = async (tool, input) => {
+    calls.push({ tool, input });
+    if (tool === "gate.request") { const id = `h${items.size + 1}`; const first = people.chain.find(x => !String(x).startsWith("agent:")); items.set(id, { id, via: input.via, to: input.to, content: input.content, requester: first || null }); return { data: { id } }; }
+    if (tool === "gate.get") return items.has(input.id) ? { data: items.get(input.id) } : { error: { code: "not_found", message: "no such item" } };
+    return { data: {} };
+  };
+  const ctx = { call, store: { db, migrate: ms => { for (const m of ms) db.exec(m); } }, vault: { fetch: async (item, o) => ({ tenant_id: g.tenant, client_id: g.clientId, client_secret: secret ?? g.secret, token_uri: g.tokenUri })[o?.field] ?? "" },
     tool: (n, d) => tools.set(n, d), events: { emit: (...a) => events.push(a) }, log() {},
     kernel: { owner: "p-owner", chain: async () => ({ hops: people.chain.map(id => ({ actor: { kind: String(id).startsWith("agent:") ? "agent" : "person", id } })) }) } };
   await mod.start(ctx);
   const as = (hops, token = "t") => (name, input = {}) => { people.chain = hops; return tools.get(name).run(input, { token, caller: "mcp" }); };
   const cli = (name, input = {}) => { people.chain = []; return tools.get(name).run(input, { caller: "cli" }); };
-  return { g, db, tools, events, people, member: as(["p-alice"]), owner: as(["p-owner"]), cli };
+  return { g, db, tools, events, people, calls, items, member: as(["p-alice"]), owner: as(["p-owner"]), cli };
 }
 const addFirm = (s) => s.cli("microsoft.add", { name: "firm", domain: "firm.test", item: "m365-key", base: s.g.origin });
 const attest = async (s) => { await s.cli("microsoft.members.email", { person: "p-alice", email: "alice@firm.test" }); await s.cli("microsoft.members.email", { person: "p-owner", email: "owner@firm.test" }); };
@@ -152,14 +160,47 @@ test("a member's own send and invite go out at once from their own mailbox, neve
   assert.ok(!JSON.stringify([out, ev, s.events]).includes(s.g.secret));
 });
 
-test("an agent in the chain cannot send or invite from a member's mailbox: refused in words, and nothing reaches Graph", async t => {
+test("an agent's send or invite in a member's turn is held for that member, from their own mailbox, and nothing reaches Graph until they approve", async t => {
   const s = await setup(t); await addFirm(s); await attest(s);
-  // the chain holds Alice and an agent hop
-  const viaAgent = async (name, input) => { const before = s.g.requests.length; const k = s.tools.get(name); s.people.chain = ["p-alice", "agent:kit"]; try { await k.run(input, { token: "t", caller: "mcp:agent:kit" }); assert.fail("should refuse"); } catch (e) { assert.equal(e.code, "denied"); assert.match(e.message, /agent cannot send or invite/); } assert.equal(s.g.requests.length, before, "no request reached Graph"); };
-  await viaAgent("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" });
-  await viaAgent("microsoft.calendar.create", { title: "x", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", attendees: ["dana@harlow.example"] });
-  // a call whose chain holds no person is nobody's own act
-  await assert.rejects(s.cli("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" }), e => e.code === "denied");
+  const viaAgent = (name, input) => { s.people.chain = ["p-alice", "agent:kit"]; return s.tools.get(name).run(input, { token: "t", caller: "mcp:agent:kit" }); };
+  const posts = () => s.g.requests.filter(r => r.method === "POST").length;
+  const mail = await viaAgent("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "Refund R-9", body: "Hello Dana", why: "Dana asked" });
+  assert.equal(mail.held, "h1"); assert.match(mail.message, /alice@firm\.test/);
+  const req = s.calls.find(c => c.tool === "gate.request");
+  assert.equal(req.input.via, "microsoft:firm"); assert.equal(req.input.content.from, "alice@firm.test", "the from-address is in what the member approves");
+  assert.deepEqual(req.input.to, ["dana@harlow.example"]);
+  const inv = await viaAgent("microsoft.calendar.create", { title: "Call Dana", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00", attendees: ["dana@harlow.example"] });
+  assert.equal(inv.held, "h2");
+  await assert.rejects(viaAgent("microsoft.calendar.create", { title: "Solo", start: "2026-10-20T09:00:00", end: "2026-10-20T09:30:00" }), e => e.code === "denied" && /guests/.test(e.message), "an agent's event with no guests is not held and not written");
+  assert.equal(posts(), 0, "nothing reached Graph while the items wait");
+  // a call whose chain holds no person is nobody's own act and nobody's mailbox
+  await assert.rejects(s.cli("microsoft.mail.send", { to: ["dana@harlow.example"], subject: "x", body: "y" }), e => e.code === "no_account" || e.code === "denied");
+  assert.equal(s.items.size, 2);
+});
+
+test("the Gate's release sends exactly what the requester approved, from the requester's mailbox if it is still theirs; a revoke wins", async t => {
+  const s = await setup(t); await addFirm(s); await attest(s);
+  s.people.chain = ["p-alice", "agent:kit"];
+  const { held } = await s.tools.get("microsoft.mail.send").run({ to: ["dana@harlow.example"], subject: "Refund R-9", body: "Hello Dana" }, { token: "t", caller: "mcp:agent:kit" });
+  const item = s.items.get(held);
+  const release = (caller = "module:gate", content = item.content, id = held) => s.tools.get("microsoft.release").run({ id, to: item.to, content }, { caller });
+  await assert.rejects(release("cli"), e => e.code === "denied", "only the Gate releases");
+  await assert.rejects(release("module:gate", { ...item.content, from: "bob@firm.test" }), e => e.code === "denied" && /different mailbox/.test(e.message), "an approved message that names another mailbox is refused");
+  await assert.rejects(release("module:gate", item.content, "h99"), /no such item|not held|no_such/);
+  const out = await release();
+  assert.equal(out.sent, true); assert.equal(out.from, "alice@firm.test");
+  const post = s.g.requests.find(r => r.method === "POST");
+  assert.equal(post.path, "/v1.0/users/alice@firm.test/sendMail"); assert.equal(post.body.message.subject, "Refund R-9");
+  // the owner removes Alice's attested email before a second item is approved: that one is not sent
+  s.people.chain = ["p-alice", "agent:kit"];
+  const { held: h2 } = await s.tools.get("microsoft.mail.send").run({ to: ["dana@harlow.example"], subject: "Second", body: "x" }, { token: "t", caller: "mcp:agent:kit" });
+  await s.cli("microsoft.members.email", { person: "p-alice" });
+  const before = s.g.requests.filter(r => r.method === "POST").length;
+  await assert.rejects(s.tools.get("microsoft.release").run({ id: h2, to: s.items.get(h2).to, content: s.items.get(h2).content }, { caller: "module:gate" }), e => e.code === "denied" && /no longer set up/.test(e.message));
+  assert.equal(s.g.requests.filter(r => r.method === "POST").length, before, "the revoke won: nothing was sent");
+  // an item that does not say who asked is not sent at all
+  s.items.set("hx", { id: "hx", via: "microsoft:firm", to: ["a@b.example"], content: { from: "alice@firm.test", subject: "x", body: "y" }, requester: null });
+  await assert.rejects(s.tools.get("microsoft.release").run({ id: "hx", to: ["a@b.example"], content: s.items.get("hx").content }, { caller: "module:gate" }), /does not say whose mailbox/);
 });
 
 test("send and invite check their input: addresses, a one-line subject, a body, a sane time range and zone", async t => {
