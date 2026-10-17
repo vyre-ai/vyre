@@ -35,16 +35,18 @@ export const ACTIONS = Object.freeze([
 ]);
 
 /**
- * The three access levels of the one grant model (team/0.3.1/DESIGN-one-grant.md), each a bundle of the actions above. A level is what a person picks when they share a vault or an item; the kernel stores
- * the actions. `vault.run` (a value in a program's environment) is in none of them: it is its own explicit grant.
+ * The four access levels of the one grant model (team/0.3.1/DESIGN-one-grant.md), each a bundle of the actions above. A level is what a person picks when they share a vault or an item; the kernel stores
+ * the actions. `vault.run` (a value in a program's environment) is in none of them: it is its own explicit grant. The owner's words: use is "Fill in", reveal is "Read", edit is "Edit and rotate".
  *   use      use a credential without seeing it. `vault.call` is still an outward act: whatever the level, it waits for a yes at the Gate.
  *   reveal   use, and show the value to a person on their own screen (a fresh proof each time).
- *   manage   reveal, and change who has access and what is in the vault.
+ *   edit     reveal, and change the value or replace the key at its service.
+ *   manage   edit, and delete it, share it and change who has access.
  */
 export const ACCESS_LEVELS = Object.freeze({
   use: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call"]),
   reveal: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal"]),
-  manage: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate", "grants.create"]),
+  edit: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.rotate"]),
+  manage: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.rotate", "vault.delete", "vault.share", "grants.create"]),
 });
 /** The surfaces a Connection can be lent to, each as the chain surfaces it covers: a grant to the group `surface:<name>` reaches any chain that came in through one of them. */
 export const SURFACE_GROUPS = Object.freeze({ capsule: ["capsule"], phone: ["mobile"], chat: ["mcp"], agents: ["harness"] });
@@ -52,13 +54,13 @@ export const SURFACE_GROUPS = Object.freeze({ capsule: ["capsule"], phone: ["mob
 export const AGENT_ACTIONS = ACCESS_LEVELS.use;
 /** @param {string} level @returns {readonly string[]} the actions of a level, or throws on a name that is not one */
 export function levelActions(level) {
-  if (!Object.hasOwn(ACCESS_LEVELS, level)) throw Object.assign(new Error("an access level is use, reveal or manage"), { code: "bad_input" });
+  if (!Object.hasOwn(ACCESS_LEVELS, level)) throw Object.assign(new Error("an access level is use, reveal, edit or manage"), { code: "bad_input" });
   return /** @type {any} */ (ACCESS_LEVELS)[level];
 }
 /** The level a set of actions amounts to (the highest one it covers fully), or null. @param {readonly string[]} actions */
 export function levelOf(actions) {
   const has = new Set(actions);
-  for (const l of ["manage", "reveal", "use"]) if (/** @type {any} */ (ACCESS_LEVELS)[l].every((/** @type {string} */ a) => has.has(a))) return l;
+  for (const l of ["manage", "edit", "reveal", "use"]) if (/** @type {any} */ (ACCESS_LEVELS)[l].every((/** @type {string} */ a) => has.has(a))) return l;
   return null;
 }
 

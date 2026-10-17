@@ -53,6 +53,7 @@ test("levels: use is fill, totp, read and call; reveal adds the value; manage ad
   assert.ok(!Object.values(ACCESS_LEVELS).some(l => l.includes("vault.run")), "run is its own grant");
   assert.deepEqual([...AGENT_ACTIONS], [...ACCESS_LEVELS.use]);
   assert.equal(levelOf([...ACCESS_LEVELS.reveal]), "reveal");
+  assert.equal(levelOf([...ACCESS_LEVELS.edit]), "edit");
   assert.equal(levelOf(["vault.fill"]), null);
   assert.throws(() => levelActions("admin"), { code: "bad_input" });
 });
@@ -96,9 +97,20 @@ test("teams: an assistant reaches a team's grant by association with a person in
   assert.equal((await ask(gw, kit, "vault.read", item())).effect, "deny");
 });
 
+test("edit level: a person with Edit and rotate reads, changes and rotates, and cannot delete, share or hand out access; an assistant never holds it", async () => {
+  const { gw, g } = await rig();
+  assert.deepEqual([...ACCESS_LEVELS.edit], [...ACCESS_LEVELS.reveal, "vault.edit", "vault.rotate"]);
+  for (const a of ["vault.delete", "vault.share", "grants.create"]) assert.ok(!ACCESS_LEVELS.edit.includes(a) && ACCESS_LEVELS.manage.includes(a), a);
+  await give(g, { kind: "actor", actor: actor("person", BOB) }, "edit");
+  for (const a of ["vault.fill", "vault.read", "vault.reveal", "vault.edit", "vault.rotate"]) assert.equal((await ask(gw, personChain(BOB), a, item())).effect, "allow", a);
+  for (const a of ["vault.delete", "vault.share"]) assert.notEqual((await ask(gw, personChain(BOB), a, item())).effect, "allow", `${a} stays with manage`);
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  for (const a of ["vault.edit", "vault.rotate", "vault.reveal"]) assert.notEqual((await ask(gw, assistantOf(BOB), a, item())).effect, "allow", `an assistant acting for an editor still lacks ${a}`);
+});
+
 test("an assistant is never given reveal, change, delete, share or rotate, whoever asks", async () => {
   const { g } = await rig();
-  for (const level of ["reveal", "manage"]) {
+  for (const level of ["reveal", "edit", "manage"]) {
     const i = { subject: { kind: "actor", actor: actor("agent", "kit") }, actions: [...levelActions(level)], resource: { prefix: `${vault()}/*` }, conditions: {}, source: "vault:share" };
     await assert.rejects(() => g.create(owner(), i, P.create(i)), { code: "bad_input" }, level);
   }
