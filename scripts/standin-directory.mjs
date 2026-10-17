@@ -25,7 +25,7 @@ const arg = (/** @type {string} */ name, /** @type {string} */ fallback) => { co
 const PORT = Number(arg("port", "8787")), HOST = arg("host", "127.0.0.1"), ZONE = arg("zone", "vyre.test"), TXT = arg("txt-file", "");
 // The Vyre app's browser origins allowed to claim and update identities (the identity's own signature authenticates; CORS for resolve is open to any origin, as in the real worker).
 // Default: the real app, and the dev servers the web app uses on a test box. `--app-origins "https://a.example,http://localhost:5173"` replaces them.
-const APP_ORIGINS = arg("app-origins", "https://app.vyre.run,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://localhost:3000");
+const APP_ORIGINS = arg("app-origins", "https://web.vyre.run,https://app.vyre.run,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://localhost:3000");
 // The daily claim limit per address (the live directory's is 5). A test box that walks many installs from one address raises it here: `--claims-per-ip 50`.
 const CLAIMS_PER_IP_PER_DAY = arg("claims-per-ip", "5");
 const STATE = arg("state", ""), RESTORE_TIME = process.argv.includes("--restore-time");

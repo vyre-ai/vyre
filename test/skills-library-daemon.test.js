@@ -91,6 +91,22 @@ test("only the level's owner approves: an agent drafts for itself but cannot app
   await until(async () => (await call("skills.list", { level: "agent" })).skills.length === 1, "the approved skill to be in use");
 });
 
+test("a space skill is enforced: a personal skill with the same name does not replace it in the list or in materialise", { timeout: 180_000 }, async t => {
+  const { call, asModule } = await boot(t);
+  const skillBody = (/** @type {string} */ name, /** @type {string} */ about) => skill(name, about);
+  await call("skills.draft", { name: "house-style", level: "space", body: skillBody("house-style") }).then(r => call("skills.approve", { name: "house-style", level: "space", version: r.version }));
+  await call("skills.draft", { name: "house-style", level: "personal", body: skillBody("house-style", "My own wording for house style.") }).then(r => call("skills.approve", { name: "house-style", level: "personal", version: r.version }));
+  const listed = (await call("skills.list", { level: "space" })).skills;
+  assert.ok(listed.some((/** @type {any} */ s) => s.id === "space/house-style"), listed.map((/** @type {any} */ s) => s.id).join(", "));
+  const personal = (await call("skills.list", { level: "personal" })).skills;
+  assert.ok(!personal.some((/** @type {any} */ s) => s.name === "house-style" && s.level === "personal"), "personal house-style is hidden while space house-style stands");
+  const got = await call("skills.get", { id: "space/house-style" });
+  assert.match(got.description, /testing precedence|about this/);
+  const m = await asModule("skills.materialise", { ai: "claude", manifest: PLUGIN_LAYOUT.manifest });
+  assert.ok(m.dir && fs.existsSync(path.join(m.dir, "skills", "house-style", "SKILL.md")));
+  assert.match(fs.readFileSync(path.join(m.dir, "skills", "house-style", "SKILL.md"), "utf8"), /Do the thing carefully/, "materialise kept the space skill, not the personal override");
+});
+
 test("a plugin with code is approved only against exactly what it declares; its MCP server becomes a Connection; its hook runs in the script sandbox and an undeclared network call is refused", { timeout: 180_000 }, async t => {
   const { d, root, call, asModule } = await boot(t);
   // a status page of its own on loopback; the checked fetch is told this one address is fine

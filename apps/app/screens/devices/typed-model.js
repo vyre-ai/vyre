@@ -34,6 +34,20 @@ export function inviteReasonSay(reason) {
 }
 
 /**
+ * Why a server's typed code did not finish, from relay/client/join.js joinWithCode, as an error with a code, so the screens show these words and not "Something went wrong." (box.ts said()
+ * shows only a coded error's own words). The server's own refusal of the last step (wink.server.adopt) is its product copy and is shown as it is; a last step that never reached the server says so.
+ * @param {{ reason: string, code?: string, message?: string }} r @returns {Error & { code: string }}
+ */
+export function serverPairError(r) {
+  const code = String(r.code || r.reason || "refused");
+  const said = typeof r.message === "string" ? r.message.trim() : "";
+  const words = code === "unreachable"
+    ? "Your server stopped answering before the pairing finished, so it is not yours yet. Check that it is running, run vyre space up on it for a fresh code, then type that code here."
+    : said || inviteReasonSay(r.reason === "closed" || r.reason === "needs_identity" ? "refused" : r.reason);
+  return Object.assign(new Error(words), { code });
+}
+
+/**
  * What wink.pair.status says, as what the screen does next.
  * @param {any} s @returns {{ phase: "waiting" | "confirm" | "done" | "failed", ack?: string, words?: string[], invite?: { link: string, space?: string }, say?: string }}
  */

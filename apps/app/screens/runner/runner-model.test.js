@@ -2,7 +2,18 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import { runnerFixtures as F, REASONS, STATES } from "../../../../test/contracts/runner.fixtures.js";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { chipOf, fresher, pickPlacement, movedLine, pickSettings, parseLimit, switchNote, pickHere, hereLine, whyNotLine, DEFAULT_SETTINGS } from "./runner-model.js";
+
+test("runner: no screen moves a session on a timer; the home takes a silent computer's sessions, and only the person's tap moves one", () => {
+  // A chat on screen used to ask the box to move its session to the server whenever the computer looked offline for a minute. Every open screen did it, as "you", with no cooldown, so a computer that came and went
+  // bounced sessions and the reason shown was wrong. The home's own sweep is the one mechanism (placement-book lapsed, reason "offline", one move).
+  const src = fs.readFileSync(new URL("../../src/chat/placement.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /setInterval/, "the placement hook polls nothing");
+  const moves = src.match(/runner\.move\(/g) || [];
+  assert.equal(moves.length, 1, "one call to runner.move: the chip's tap");
+  assert.doesNotMatch(src, /runner\.move\([^)]*"server"/, "no screen names the server as the place to move to on its own");
+});
 
 test("runner: the chip says where a session runs, offers the other place, and says why it is on the server", () => {
   assert.deepEqual(chipOf({ where: "mac" }), { label: "On this Mac", tone: "ok", moveTo: "server", moveLabel: "Move to the server", why: "" });

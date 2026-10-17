@@ -21,7 +21,6 @@ export function systemSource(call: Call) {
     hooksOpen: (name: string, scheme: string, header: string, secret: string) => ask<any>("hooks.open", { name, verify: { scheme, ...(header.trim() ? { header: header.trim() } : {}), secret } }),
     hooksClose: (name: string) => ask("hooks.close", { name }),
     wink: () => maybe("network.wink.status"),
-    egress: () => maybe("computers.egress.status"),
     handback: () => maybe("computers.handback.status"),
     setHandback: (minutes: number) => ask<any>("computers.handback.set", { minutes }),
     drive: () => maybe("files.drive.status"),

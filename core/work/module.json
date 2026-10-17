@@ -513,6 +513,18 @@
         "summary": "make a chat your pinned assistant or Engineer chat",
         "reach": "anyone",
         "effect": "write"
+      },
+      {
+        "name": "work.chat.prefs",
+        "summary": "your mute and list-pin for chats, synced across devices",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.prefs.muted",
+        "summary": "whether a person muted a chat (notifications)",
+        "reach": "modules",
+        "effect": "read"
       }
     ]
   },

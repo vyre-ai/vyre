@@ -14,8 +14,13 @@ export function dayStart(now, at = Date.now()) {
   return at - sinceMidnight;
 }
 
-/** @param {(tool: string, input?: any) => Promise<any>} call */
-export async function glance(call, { at = Date.now() } = {}) {
+/** @param {(tool: string, input?: any) => Promise<any>} call @param {{ at?: number, person?: string | null }} [opts] */
+export async function glance(call, { at = Date.now(), person = null } = {}) {
+  const muted = async (/** @type {string} */ chat) => {
+    if (!person || !chat) return false;
+    const r = await call("work.chat.prefs.muted", { person, chat }).catch(() => null);
+    return Boolean(r && !r.error && r.data && r.data.muted);
+  };
   const [now, w, t, sk] = await Promise.all([
     call("context.now", {}).catch(() => null),
     call("waiting.list", { limit: 20 }).catch(() => null),
@@ -29,9 +34,11 @@ export async function glance(call, { at = Date.now() } = {}) {
   const wr = w && !w.error && w.data ? w.data : { rows: [], count: 0 };
   const threads = t && !t.error && Array.isArray(t.data) ? t.data : [];
   const named = x => String(x.name || x.agent || "a thread");
-  const running = threads.filter(x => ["starting", "working"].includes(x.canonical_status)).map(x => ({
+  /** @type {typeof threads} */ const open = [];
+  for (const x of threads) { if (!(await muted(String(x.id)))) open.push(x); }
+  const running = open.filter(x => ["starting", "working"].includes(x.canonical_status)).map(x => ({
     thread: x.id, who: named(x), project: x.project || null, step: x.canonical_status, since: x.started }));
-  const finished = threads.filter(x => x.canonical_status === "finished" && (x.last || 0) >= since).map(x => ({
+  const finished = open.filter(x => x.canonical_status === "finished" && (x.last || 0) >= since).map(x => ({
     thread: x.id, title: named(x), at: x.last }));
   const waiting = (wr.rows || []).map(r => ({ id: r.id, title: r.title, kind: r.kind }));
   const lines = [];

@@ -114,6 +114,18 @@ export function peerClient(stream, o = {}) {
       if (e) { early.delete(sid); for (const f of e.frames) { try { h.onframe(f.data, f.seq); } catch { /* the app's handler */ } } if (e.ended !== null) { streams.delete(sid); try { h.onend(e.ended); } catch { /* the app's handler */ } } }
       return { id: sid, result, close: () => { if (streams.delete(sid) && !closed) send(T.streamEnd, 0, enc.encode(JSON.stringify({ id: sid, why: "client" }))); } };
     },
+    /**
+     * Listen on a stream the server already opened (for example `chat.open` over `kernel.call`, whose result carries `{ stream }`).
+     * @param {string} sid @param {{ onframe: (data: any, seq: number) => void, onend?: (why: string) => void }} handlers @param {any} [result]
+     */
+    attachStream(sid, handlers, result) {
+      if (!sid) throw err("bad_input", "that stream id is missing");
+      const h = { onframe: handlers.onframe, onend: handlers.onend || (() => {}) };
+      streams.set(sid, h);
+      const e = early.get(sid);
+      if (e) { early.delete(sid); for (const f of e.frames) { try { h.onframe(f.data, f.seq); } catch { /* the app's handler */ } } if (e.ended !== null) { streams.delete(sid); try { h.onend(e.ended); } catch { /* the app's handler */ } } }
+      return { id: sid, result, close: () => { if (streams.delete(sid) && !closed) send(T.streamEnd, 0, enc.encode(JSON.stringify({ id: sid, why: "client" }))); } };
+    },
   };
   return api;
 }

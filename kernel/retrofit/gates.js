@@ -33,7 +33,7 @@ export function parseCaller(caller, person, thread) {
   if (c.startsWith("tailnet-guest:")) return { kind: "person", id: "guest:" + c.slice(14), ...base };
   if (ownerDevice(c)) return { kind: "person", id: "owner", device: c, ...base };
   const k = callerKind(c);
-  if (["cli", "local", "deck", "capsule", "mobile"].includes(k) && k === c) return { kind: "person", id: "owner", ...base };
+  if (["cli", "local", "deck", "capsule"].includes(k) && k === c) return { kind: "person", id: "owner", ...base };
   if (k === "mcp" || k === "harness") return { kind: "agent", id: "assistant", ...base };
   return { kind: "service", id: "legacy-" + (k.replace(/[^a-z0-9-]/gi, "-") || "unknown"), ...base };
 }
