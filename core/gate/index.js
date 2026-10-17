@@ -204,7 +204,9 @@ export default {
         // Anything else (no mark, a module that is not Vyre's own, another kind, a card already used, a made-up one) is held as ever.
         if (covered && (firstParty === true || meta0.relayedByFirstParty === true) && input.kind === "send" && (caller === `module:${String(covered.tool).split(".")[0]}` || (Array.isArray(covered.via) && covered.via.some((/** @type {string} */ m) => caller === `module:${m}`)))) {
           const { via: _via, ...mark } = covered;
-          const r = await ctx.call("approvals.cover", mark).catch(() => null);
+          // the card is the person's yes to this send, not a way round who may use the connection: a requester who could not use it herself (the kernel's own check, as gate.standing.add) is held for its owner, and the card is not spent
+          const mayUse = !by.requester || !ctx.kernel || typeof ctx.kernel.mayUseConnection !== "function" || await Promise.resolve(ctx.kernel.mayUseConnection(String(by.requester), String(input.via))).then(Boolean, () => false);
+          const r = mayUse ? await ctx.call("approvals.cover", mark).catch(() => null) : null;
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
