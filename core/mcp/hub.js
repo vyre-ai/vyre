@@ -961,8 +961,10 @@ export class Hub {
     } catch (e) {
       const err = this.scrubbed(e);
       this.markReconnect(name, e);
-      s.state = "failed";
-      s.error = cut(this.lastLine(s.lastClient) || err.message, 300);
+      // a connection the vendor no longer honours waits for its person to sign in again; it is not a server that failed to start
+      const waiting = /** @type {any} */ (e)?.code === "needs_reconnect";
+      s.state = waiting ? "needs_reconnect" : "failed";
+      s.error = waiting ? "sign in again to use this connection" : cut(this.lastLine(s.lastClient) || err.message, 300);
       if (budget) s.crashes.push(this.now());
       this.deps.emit("mcp.failed", { name, error: cut(s.error, 200) });
       this.deps.log?.(`${name} failed to start: ${cut(err.message, 200)}`);

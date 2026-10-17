@@ -12,7 +12,7 @@ import path from "node:path";
 import slack, { slackServer } from "./adapters/slack.js";
 import { start } from "../../core/daemon/index.js";
 import { call } from "../../core/daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, asOwner } from "../../test/helpers.js";
 
 const FAKE = path.join(import.meta.dirname, "..", "..", "core", "mcp", "testing", "fake-mcp.js");
 const obj = (/** @type {Record<string, any>} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
@@ -150,6 +150,7 @@ test("slack: words to a held message, nothing sent until the person approves, th
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-mac", role: "local", vault: { keystore: "file" }, apps: { dirs: [path.join(root, "Applications")] } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
+  if (d.kernel) asOwner(d, root);   // with the kernel on, a call with no person on its chain gets nothing of the Gate: these calls arrive as the owner's own device
   const cli = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const capsule = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "capsule" });
   const log = path.join(root, "slack.log");
@@ -187,6 +188,7 @@ test("slack: the server drops mid-send; the answer is lost, the item waits, and 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-mac", role: "local", vault: { keystore: "file" }, apps: { dirs: [path.join(root, "Applications")] } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
+  if (d.kernel) asOwner(d, root);   // with the kernel on, a call with no person on its chain gets nothing of the Gate: these calls arrive as the owner's own device
   const cli = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const capsule = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "capsule" });
   const log = path.join(root, "slack.log");
