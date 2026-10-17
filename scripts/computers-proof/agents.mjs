@@ -84,7 +84,7 @@ try {
   await a.close(); adapter.drop("a");
 
   await ctl.stopScreen(A); await sleep(8000);   // Chrome ends on SIGTERM and writes its profile
-  check(!/chromium/.test(shOk(["exec", CONTAINER, "sh", "-c", "ps -u 20000 -o args= || true"])), "A's Chrome is gone after sleep");
+  check(!/chromium/.test(shOk(["exec", CONTAINER, "sh", "-c", "ps -u 21000 -o args= || true"])), "A's Chrome is gone after sleep");
   await ctl.startScreen(A);
   let a2 = null;
   for (let i = 0; i < 30 && !a2; i++) { try { a2 = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
