@@ -62,7 +62,7 @@ async function world(t) {
 }
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
-const denied = (/** @type {Promise<any>} */ p, re = /not lent|denied|member/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
+const denied = (/** @type {Promise<any>} */ p, re = /not lent|not for|denied|member/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
 
 test("a member's share: one login, one agent, one site; the agent is told a reference, the member a plain line, and the agent's fill starts", async t => {
   const w = await world(t);
