@@ -89,12 +89,7 @@ export default {
       cancel: async (id, reason) => { const r = await ctx.call("gate.reject", { id, reason }); if (r && r.error) throw new Error(r.error.message); return r.data; },
       // The vendor is told to drop the token too, where the connection names how; best effort, and the hub says when it was not.
       revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
-      mayUseConnection: async c => {
-        // Asked as the person on this call when there is one (a member's connect reaches here through a module hop that carries no token of its own); a call with no person asks as the hub, as before.
-        let r = await ctx.call("vault.connection.may", c, { relay: true }).catch(() => null);
-        if (!r || r.error) r = await ctx.call("vault.connection.may", c);
-        return Boolean(r && r.data && r.data.allow === true);
-      },
+      mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
         return (t.data && t.data.thread && t.data.thread.project) || null;
@@ -114,7 +109,7 @@ export default {
 
     for (const r of hub.rows()) await offer(r.name);
 
-    const who = (meta) => whoFrom(meta.caller, meta);
+    const who = (meta) => ({ ...whoFrom(meta.caller, meta), me: () => callerMember(meta) });   // me: the member the verified call names ("" for the owner and for home work), read only when a person's connection is asked about
 
     ctx.tool("mcp.servers", {
       effect: "read",
@@ -219,7 +214,7 @@ export default {
       description: "Remove one of your own MCP servers.",
       input: obj({ name: str }, ["name"]),
       callers: MINE,
-      run: async ({ name }, meta) => { const person = await memberOnly(meta); await hub.remove({ name: ownRow(hub, personKey, String(name), person) }); try { await mine().remove(String(name)); } catch { /* none kept */ } return { removed: true }; },
+      run: async ({ name }, meta) => { const person = await memberOnly(meta); await hub.remove({ name: ownRow(hub, personKey, String(name), person) }, who(meta)); try { await mine().remove(String(name)); } catch { /* none kept */ } return { removed: true }; },
     });
 
     // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.
@@ -260,7 +255,7 @@ export default {
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
-      run: async (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove({ ...input, name: await rowName(input.name, meta) }); },
+      run: async (input, meta) => { refuseNonPerson(meta, "removes an MCP server"); return hub.remove({ ...input, name: await rowName(input.name, meta) }, who(meta)); },
     });
 
     ctx.tool("mcp.repin", {
