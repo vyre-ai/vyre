@@ -17,8 +17,8 @@ export const RECORD = path.join(REPO, "test", "test-counts.json");
 export const MUST_RUN = path.join(REPO, "test", "must-run.json");
 /** How long each file took on a CI runner, in seconds: the weights the shards are balanced by (`timings` below merges a run's into it). */
 export const TIMINGS = path.join(REPO, "test", "test-timings.json");
-/** What an unmeasured file is assumed to take. */
-export const DEFAULT_SECONDS = 6;
+/** What an unmeasured file is assumed to take: the mean of the 1600 files measured in run 39038812115 (12.8 s; the median is 1.1 s, a few long files carry the time). */
+export const DEFAULT_SECONDS = 12;
 
 /**
  * Tests that must not skip where the job has what they need (VYRE_MUST_RUN=1, which the hosted node job sets after installing it): a skip there is a green that never ran the test. `mustRun` maps a file

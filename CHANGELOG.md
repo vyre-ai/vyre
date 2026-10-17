@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- ci: test/test-timings.json now holds the measured seconds of 1600 test files (run 39038812115, per-file seconds from each shard) instead of 93 estimates, and an unmeasured file counts 12 s (the measured mean). The slowest shards of that run took 24.5 minutes against 14.8 for the fastest because the shards were balanced on the estimates; balanced on the measurements the 20 shards come out within a few percent of each other.
 - fix: train reds for the member work. `vault.me.who` is relayable by the connectors and mcp modules (RELAY_ALLOWED); `vault.me.share.agent`, `vault.me.unshare.agent` and `vault.me.shares` are on the member door (each is called as a member in core/vault/member-share-owner.test.js); the presence test lists `vault.me.connection.share` as asking presence; the access-kernel test no longer says mail has no personMay (it has one for drive.read since mail6/attachments); the member-items test files a member's agent request through a module's call, as a real mail module does, because the door keeps `gate.request` itself to the owner.
 - fix(records): on the member door the audit's person and project filters are `changed_by` and `in_project` (the door never carries identity keys); the tool reads them as person and project. `audit` is listed among the records calls the door classifies. core/work/member-tools.js, core/records-tools/index.js.
 
