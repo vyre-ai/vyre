@@ -51,7 +51,7 @@ test("project chips: All, each project once, No project; search spans title, lin
   assert.deepEqual(chips.map((c) => c.id), ["all", "Northwind", "Okafor", "none"]);
   assert.deepEqual(convosShown(items, { project: "Northwind", query: "" }).map((i) => i.title), ["Lease", "Other"]);
   assert.deepEqual(convosShown(items, { project: "none", query: "" }).map((i) => i.title), ["Intake"]);
-  assert.deepEqual(convosShown(items, { project: "all", query: "draft" }).map((i) => i.title), ["Lease"]);
+  assert.deepEqual(convosShown(items, { project: "all", query: "ready" }).map((i) => i.title), ["Lease"]);
   assert.deepEqual(convosShown(items, { project: "Okafor", query: "" }).map((i) => i.title), ["ads"]);
 });
 
