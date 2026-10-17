@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(flows): the flows.patch failure-path and Flow-setting ops are one cheat-sheet line (the sheet stays under its page cap; the tool description stays on its word baseline).
 - feat(flows): `flows.patch` reaches the failure paths: `insert` takes `into` a step with `block: "on_fail"` (that step's failure path) or `lane: "on_failure"` with `first` or `after` (the Flow's own "If the run fails" steps), and `set`, `replace`, `move` and `remove` find a step inside either by its id; `meta` takes `sends` and `returns` too. The editor and the tool now say the same things about a Flow (team/0.6/FLOWS-PARITY.md).
 - feat(computers): shared-browser profiles export/import over owner-only computerd routes, sealed on disk with space and member vault keys (`BrowserProfiles`, `cdpmux.exportAgentContext`).
 - feat(glass): Chrome downloads land in `Downloads/` under the agent home and appear in Glass Files (same `/fs` tree, read-only there).
