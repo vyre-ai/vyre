@@ -91,6 +91,7 @@ test("a grantee's direct call of an outward tool is held (no token is asked for 
   const { hub, row, asks } = tokenRig();
   const who = { person: false, agent: null, thread: null, me: async () => CY2 };
   /** @type {string[]} */ const did = [];
+  row.cache = [{ name: "send_message" }, { name: "search" }];
   hub.row = () => row; hub.inScope = async () => true; hub.must = () => row;
   hub.findTool = (/** @type {any} */ _r, /** @type {string} */ tool) => ({ tool, outward: tool === "send_message", name: tool });
   hub.hold = async () => { did.push("held"); return { held: "g1" }; };
