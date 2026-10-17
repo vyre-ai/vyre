@@ -2089,7 +2089,6 @@ export default {
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
           const link = `https://${row.name}/join/${token}`;
-          // The link to share names no server (vyre.run/i/<token>); the space's own join link rides beside it, and is what the typed code carries.
           return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
         }
         if (!ROLE_IDS.includes(i.role) && i.role !== "guest") throw refuse("A custom role can be invited into only on a space with its own server. Invite as Member, then give the role (roles.assign).", "not_kernel");
