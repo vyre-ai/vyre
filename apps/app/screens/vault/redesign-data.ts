@@ -30,6 +30,16 @@ export interface VaultData {
   setAccess?(item: VItem, who: string, level: "use" | "edit" | null): Promise<void>;
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
+  /** Mine only: save the site a login signs in to (vault.me.update merges the url field), so an agent can be lent it. Returns the bare origin saved. */
+  addSite?(item: VItem, site: string): Promise<string>;
+}
+
+/** A site as the Vault saves it: a bare https origin. Anything else is refused here, before a call. */
+export function originOf(site: string): string {
+  let u: URL;
+  try { u = new URL(/^[a-z]+:\/\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); } catch { throw new Error("That is not a web address."); }
+  if (u.protocol !== "https:" || u.username || u.password) throw new Error("Use a secure address that starts with https.");
+  return u.origin;
 }
 
 export function sampleData(): VaultData {
@@ -46,6 +56,7 @@ export function sampleData(): VaultData {
     },
     remove: async (_s, v) => { const i = items.findIndex((x) => x.id === v.id); if (i >= 0) items.splice(i, 1); },
     events: async (_s, v) => SAMPLE_EVENTS.filter((e) => e.item === v.id),
+    addSite: async (v, site) => { const o = originOf(site); const i = items.find((x) => x.id === v.id); if (i) i.sites = [...(i.sites ?? []), o]; return o; },
   };
 }
 
@@ -82,8 +93,8 @@ export function realData(call: Call): VaultData {
       }
       if (!(await hasMine(ask))) return { items: [], locked: false, noAccount: true };
       try {
-        const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number }[] }>("vault.me.list");
-        return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
+        const r = await ask<{ items: { name: string; kind: string; description: string; fields: string[]; updated: number; sites?: string[] }[] }>("vault.me.list");
+        return { locked: false, items: r.items.map((i) => { fieldsOf["me/" + i.name] = i.fields; return { id: i.name, sp: "mine", group: groupOf(i.kind, i.name), name: i.name.replace(/[-_]+/g, " "), detail: i.description || i.kind, ...(i.kind === "login" ? { sites: i.sites ?? [] } : {}), secret: "", daysLeft: null, lastUsedDays: day(i.updated), usedBy: [], shared: [] }; }) };
       } catch (e) {
         if ((e as { code?: string }).code === "locked") return { items: [], locked: true };
         throw e;
@@ -98,6 +109,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
+    async addSite(item, site) { const o = originOf(site); await ask("vault.me.update", { name: item.id, fields: { url: [...(item.sites ?? []), o].join(" ") } }); return o; },
     async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {

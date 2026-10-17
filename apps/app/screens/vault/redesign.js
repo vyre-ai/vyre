@@ -11,7 +11,7 @@ export const GROUPS = /** @type {const} */ (["AI models", "Email and sending", "
 /** Sharing levels. "use" lets an agent or flow use the item without seeing it; "edit" also lets the person change it. */
 export const LEVELS = /** @type {const} */ ({ use: { label: "Can use", help: "Uses it without seeing the value." }, edit: { label: "Can edit", help: "Can also change or replace it." } });
 
-/** @typedef {{ id: string, sp: string, group: string, sharedWithMe?: boolean, name: string, detail: string, secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
+/** @typedef {{ id: string, sp: string, group: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
 
 /** @param {VItem} v @returns {'expiring'|'expired'|'unused'|'ok'} */
 export function healthOf(v) {

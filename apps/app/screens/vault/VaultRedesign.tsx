@@ -37,10 +37,15 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   // A Needs you card for a stuck password or key opens the Add sheet for that item: /u/vault?add=<name>&kind=<login|api-key>.
-  const want = useLocalSearchParams<{ add?: string; kind?: string }>();
+  const want = useLocalSearchParams<{ add?: string; kind?: string; item?: string; site?: string }>();
   const wanted = want.add ? { name: want.add === "1" ? "" : String(want.add), kind: String(want.kind || "api-key") } : null;
   useEffect(() => { if (want.add) setAdding(true); }, [want.add]);
   const [addProblem, setAddProblem] = useState("");
+  // The chat's "Add the site to this login" opens /u/vault?item=<name>&site=1: the member's own vault, that login selected, its site box open.
+  const [siteFor, setSiteFor] = useState<string | null>(null);
+  const [siteText, setSiteText] = useState("");
+  const [siteProblem, setSiteProblem] = useState("");
+  useEffect(() => { if (want.item) { setScope("mine"); setSel(String(want.item)); if (want.site) setSiteFor(String(want.item)); } }, [want.item, want.site]);
   const [importing, setImporting] = useState(false);
   const [acc, setAcc] = useState<{ rows: { who: string; level: Level }[]; people: { id: string; name: string }[] }>({ rows: [], people: [] });
 
@@ -141,6 +146,22 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Text size="caption" strong tone="label">The value</Text>
           <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
+        {scope === "mine" && cur.sites && data.addSite ? (
+          <Sec title="Sites">
+            {cur.sites.length ? <Card flush>{cur.sites.map((u) => <Row key={u} dense title={u} />)}</Card> : <Text tone="muted">No site saved. An agent cannot be lent this login until it has one.</Text>}
+            {siteFor === cur.id || cur.sites.length ? null : <Button kind="secondary" label="Add the site" onPress={() => setSiteFor(cur.id)} />}
+            {siteFor === cur.id ? (
+              <View className="gap-s2">
+                <Field name="Site" value={siteText} onChangeText={setSiteText} placeholder="https://example.com" />
+                {siteProblem ? <Text tone="muted">{siteProblem}</Text> : null}
+                <View className="flex-row gap-s2">
+                  <Button kind="primary" label="Save site" disabled={busy} onPress={() => { setBusy(true); setSiteProblem(""); data.addSite!(cur, siteText).then(() => { setSiteFor(null); setSiteText(""); showToast("Site saved."); load(); }).catch((e) => setSiteProblem(String((e as Error)?.message || "That did not save."))).finally(() => setBusy(false)); }} />
+                  <Button kind="secondary" label="Cancel" onPress={() => { setSiteFor(null); setSiteProblem(""); }} />
+                </View>
+              </View>
+            ) : cur.sites.length ? <Button kind="secondary" label="Add another site" onPress={() => setSiteFor(cur.id)} /> : null}
+          </Sec>
+        ) : null}
         <Sec title="Used by">
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
         </Sec>

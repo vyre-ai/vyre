@@ -536,7 +536,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onKey={p.onKey}
           onSend={onSend}
           groupChat={sharedChat}
-          onAddSite={(item) => router.push({ pathname: "/u/vault", params: { item, edit: "1" } } as never)}
+          onAddSite={(item) => router.push({ pathname: "/u/vault", params: { item, site: "1" } } as never)}
           lendLater={canLend && !here.thread}
           onLendYes={here.thread && /^per_/.test(String(viewerId).replace(/^person:/, "")) && /^[a-z][a-z0-9_-]{0,39}$/.test(store.group.assistantName()) ? async (item, choose) => lendWithSite({ asker: String(viewerId).replace(/^person:/, ""), id: item, thread: here.thread as string, agent: store.group.assistantName() }, await ownSites(item), choose) : undefined}
           canStop={meta.canStop}
