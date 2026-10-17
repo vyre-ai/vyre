@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- feat(microsoft): `microsoft.accounts` is on the member list. A member gets only their own provisioned account (app, address, domain); the owner's firm-app list is unchanged, an admin is served as a member is, and a call with no person is answered for the owner's own socket only. Nobody but the owner changes the firm app.
 - refactor(spaces): the `spaces.names` tool (a Space's name and one person's Vyre name, for what a Flow run prints) moves to core/spaces/names.js, with the module's own helpers handed in, so core/spaces/index.js stays inside its file-size record. No behaviour change.
 - refactor(flows): the Flows runner's `simulate` (what a Flow would have done over a window of past events, 80 lines) moves to kernel/flows/simulate.js, and `slim` and `OUTWARD` to runner-util.js, so kernel/flows/runner.js is back under its file-size ceiling (2098 to 2029 lines). No behaviour change: the runner passes the same catalog, chains, event log, holidays, clock, zone rule and step walk.
 - fix(previews): a preview's own command runs under shell limits (no core files, files up to 1 GiB, 1,024 processes, 4,096 open files), set before the command and leaving it as written. Network egress is not limited yet: a dev server must serve on its loopback port, so it needs a wall that lets only that port through. core/previews/supervisor.js.
