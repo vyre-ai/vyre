@@ -20,19 +20,35 @@ const hex = (/** @type {string} */ h) => Uint8Array.from(h.match(/../g) || [], (
 
 /**
  * Put the Ed25519 fallback on `g.crypto.subtle`. Idempotent. Returns false when there is no subtle at all to wrap.
+ * The browser's own Ed25519 is checked once, on this subtle, with the RFC 8032 vector and its tampered twin, before any Ed25519 key is imported or any signature is answered (a call that arrives while the check is
+ * pending waits for it). Only a recorded failure of that check (a wrong answer, or a "not supported" refusal) sends Ed25519 to the fallback, whole: the same strict verify the phone and the identity path use. A
+ * browser that passes keeps answering for itself, and an error from one of its calls reaches the caller as it always did. The result lives on the subtle's marker, so another subtle runs its own check.
  * @param {any} g globalThis
  */
 export function installEd25519Fallback(g) {
   const subtle = g && g.crypto && g.crypto.subtle;
   if (!subtle || subtle.__vyreEd25519) return Boolean(subtle);
   const nativeImport = subtle.importKey.bind(subtle), nativeVerify = subtle.verify.bind(subtle);
+  /** The public key's bytes beside a key the browser imported (only after it passed the check), so a verify of a key made earlier can still be answered if needed. */
+  const state = { /** @type {"pending" | "native ok" | "fallback chosen"} */ mode: "pending", /** @type {Promise<boolean> | null} */ test: null };
+  // A copy of the bytes, never a view of the caller's buffer: the caller may overwrite or reuse it after the import (the fallback's key keeps what it is given).
+  const own = (/** @type {any} */ data) => (data instanceof ArrayBuffer ? new Uint8Array(data.slice(0)) : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)) : data);
+  /** True when the browser's own Ed25519 failed the check. Runs the check once. */
+  const brokenNative = () => state.test || (state.test = (async () => {
+    let broken;
+    try {
+      const k = await nativeImport("raw", hex(VECTOR.pub), { name: "Ed25519" }, false, ["verify"]);
+      const good = await nativeVerify({ name: "Ed25519" }, k, hex(VECTOR.sig), new Uint8Array(0));
+      const bad = await nativeVerify({ name: "Ed25519" }, k, hex(VECTOR.sig), new Uint8Array([1]));
+      broken = !(good === true && bad === false);
+    } catch (e) { broken = unsupported(e); }
+    state.mode = broken ? "fallback chosen" : "native ok";
+    return broken;
+  })());
   subtle.importKey = async (/** @type {any} */ format, /** @type {any} */ data, /** @type {any} */ algo, /** @type {any[]} */ ...rest) => {
     if (!isEd(algo) || format !== "raw") return nativeImport(format, data, algo, ...rest);
-    try { return await nativeImport(format, data, algo, ...rest); }
-    catch (e) {
-      if (!unsupported(e)) throw e;
-      return { [FALLBACK]: await methods.importKey("raw", data, algo) };
-    }
+    if (await brokenNative()) return { [FALLBACK]: await methods.importKey("raw", own(data), algo) };
+    return nativeImport(format, data, algo, ...rest);
   };
   subtle.verify = async (/** @type {any} */ algo, /** @type {any} */ key, /** @type {any} */ sig, /** @type {any} */ msg) => {
     if (key && key[FALLBACK]) {
@@ -40,11 +56,16 @@ export function installEd25519Fallback(g) {
       if (!isEd(algo)) throw Object.assign(new Error("The key is not usable with that algorithm"), { name: "InvalidAccessError" });
       return methods.verify(algo, key[FALLBACK], sig, msg);
     }
+    // Nothing is answered by an Ed25519 that has not passed the check: this call waits for it, and a browser that failed it has no native answer to give.
+    if (isEd(algo) && (await brokenNative())) throw Object.assign(new Error("Ed25519 is not supported for this key"), { name: "NotSupportedError" });
     return nativeVerify(algo, key, sig, msg);
   };
-  Object.defineProperty(subtle, "__vyreEd25519", { value: true });
+  Object.defineProperty(subtle, "__vyreEd25519", { value: state });
   return true;
 }
+
+/** What the self-check found on this page's subtle, for the first-run trail: only these two phrases. */
+export const ed25519Mode = (/** @type {any} */ g = globalThis) => (g && g.crypto && g.crypto.subtle && g.crypto.subtle.__vyreEd25519 && g.crypto.subtle.__vyreEd25519.mode === "fallback chosen" ? "fallback chosen" : "native ok");
 
 /** Can this page verify an Ed25519 signature (the browser's own or the fallback)? Checked with a known vector and a tampered one: it must say yes to the first and no to the second. */
 export async function ed25519Works(/** @type {any} */ g = globalThis) {
