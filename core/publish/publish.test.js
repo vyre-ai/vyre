@@ -31,7 +31,7 @@ const fakeSource = `export default { async start(ctx) {
     // A box-shaped home: it holds no identity of its own (the owner's key lives in their app), so "who is this device" cannot be answered; who is in which space can.
     t("spaces.self", async () => { throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" }); });
     t("spaces.merge-list", async i => ({ spaces: [...(pf().members[i.person] ? [{ space: pf().space.id, name: pf().space.name }] : []), ...(i.home === true && pf().homeMembers?.[i.person] ? [{ space: "spc_homehomehome", name: "tess.vyre.run" }] : [])] }));
-    t("spaces.membership", async i => pf().members[i.person] || null);
+    t("spaces.membership", async i => pf().members[i.person] || (pf().homeMembers?.[i.person] ? { space: "spc_homehomehome", person: i.person, role: "owner", added_by: i.person, added_at: 1 } : null));
   } else if (tools === "vault") {
     t("vault.release", async i => { const v = pf().vault[i.name]; if (v === undefined) throw new Error("no such item"); return { value: v }; });
   } else if (tools === "seal") {
