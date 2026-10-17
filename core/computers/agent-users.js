@@ -44,6 +44,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
+ *   exec?(u: { agentId: string, user: string, uid: number, display: number }, req: { argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }): Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
 
@@ -125,6 +126,15 @@ export class AgentUsers {
     if (typeof this.ctl.cdpTicket !== "function") throw new Error("this computer cannot reach an agent's Chrome");
     await this.ctl.cdpTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
     this.touchNow(id);
+  }
+
+  /** Run a command as the agent's own Linux user inside the computer; counts as use. The screen need not be up. @param {string} id @param {{ argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }} req */
+  async exec(id, req) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.exec !== "function") throw new Error("this computer cannot run commands as an agent");
+    this.touchNow(id);
+    return this.ctl.exec({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, req);
   }
 
   /** The agent's terminals (tmux sessions; they outlive the screen). @param {string} id */

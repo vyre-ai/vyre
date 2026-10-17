@@ -302,6 +302,8 @@ export default {
       turns: () => turnsRunning.size() });
     const turnsRunning = trackTurns(ctx.events.on);
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
+    // The computer died or was stopped while vyred runs: its screens went with it.
+    const offStopped = ctx.events.on("computer.stopped", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) agentUsers.asleepAll(); });
     const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
       obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });
@@ -547,6 +549,7 @@ export default {
         if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
         if (typeof offCreated === "function") offCreated();
         turnsRunning.stop();
+        if (typeof offStopped === "function") offStopped();
         keyboard.stop();
         shield.stop();
         fills.stop();

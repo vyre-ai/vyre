@@ -188,3 +188,36 @@ export function parseTerminals(text) {
   }
   return out.slice(0, 50);
 }
+
+/** Names an exec may not set: agentd builds these itself, or they change what the loader or the shell runs. */
+const EXEC_FORBIDDEN = /^(PATH|HOME|USER|LOGNAME|SHELL|DISPLAY|XAUTHORITY|IFS|ENV|BASH_ENV|LD_.*|DYLD_.*|PYTHON.*|NODE_OPTIONS|PERL.*|RUBY.*)$/;
+export const EXEC_LIMITS = Object.freeze({ argc: 64, argvBytes: 4096, stdinBytes: 8192, envCount: 16, envValueBytes: 1024, timeoutMs: 25_000, defaultTimeoutMs: 20_000, stdoutBytes: 16 * 1024, stderrBytes: 8 * 1024 });
+
+/**
+ * Run a command as the agent: its uid, no groups, no capabilities, no new privileges, the usual memory and process limits, a clean environment (HOME, USER, PATH, LANG, the agent's display and cookie, and
+ * the named variables the caller asked for, none of the forbidden names), in a folder under the agent's own home. Nothing is passed through a shell.
+ * @param {{ user: string, uid: number, display: number }} u
+ * @param {{ argv?: any, cwd?: any, env?: any }} req @param {{ memoryMb?: number, procs?: number }} [lim]
+ * @returns {string[]}
+ */
+export function planExec(u, req, lim = {}) {
+  check(u);
+  const argv = req.argv;
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > EXEC_LIMITS.argc || argv.some(x => typeof x !== "string" || x.includes("\0"))) throw new Error("a command is 1 to 64 text arguments");
+  if (!/^\/[A-Za-z0-9_.\/+-]{1,200}$/.test(argv[0]) || argv[0].includes("..")) throw new Error("the command must be an absolute path");
+  if (argv.reduce((n, x) => n + Buffer.byteLength(x) + 1, 0) > EXEC_LIMITS.argvBytes) throw new Error("the command is too long");
+  const home = homeOf(u.user);
+  const cwd = req.cwd === undefined || req.cwd === null ? home : String(req.cwd);
+  if (!/^\/[A-Za-z0-9_.\/ +@=-]{1,300}$/.test(cwd) || cwd.split("/").includes("..") || !(cwd === home || cwd.startsWith(home + "/"))) throw new Error("the folder must be inside the agent's home");
+  /** @type {Record<string, string>} */ const env = {};
+  const given = req.env === undefined || req.env === null ? {} : req.env;
+  if (typeof given !== "object" || Array.isArray(given) || Object.keys(given).length > EXEC_LIMITS.envCount) throw new Error("env is a few NAME: value pairs");
+  for (const [k, v] of Object.entries(given)) {
+    if (!/^[A-Z][A-Z0-9_]{0,40}$/.test(k) || EXEC_FORBIDDEN.test(k)) throw new Error(`${k} cannot be set`);
+    if (typeof v !== "string" || v.includes("\0") || Buffer.byteLength(v) > EXEC_LIMITS.envValueBytes) throw new Error(`the value of ${k} is not usable`);
+    env[k] = v;
+  }
+  const b = browserOf(u);
+  // the fixed variables are laid over the caller's, never the reverse
+  return [...asAgent(u, lim, { ...env, DISPLAY: `:${u.display}`, XAUTHORITY: b.xauth }), "/usr/bin/env", "-C", cwd, ...argv];
+}

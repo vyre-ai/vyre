@@ -7,6 +7,7 @@
 //   computers.agent.watch {agent, slow?} -> { ticket, path, width, height }; wakes the agent, and the one-use ticket opens ITS screen in Glass (needs use of the agent)
 //   computers.agent.terminals {agent} -> { terminals: [{ name, windows }] }; the agent's tmux sessions (needs use of the agent)
 //   computers.agent.terminal.open {agent, session} -> { ticket, path }; a one-use ticket for ONE terminal; it types as the agent, so it needs the right to edit the agent
+//   computers.exec {agent, argv, cwd?, env?, stdin?, timeoutMs?} -> { code, signal, stdout, stderr, truncated }; runs a command AS the agent's own Linux user in its computer (needs the right to edit the agent)
 //   computers.agent.reset {agent}   -> the same; empties THIS agent's home (needs the right to edit the agent)
 //
 // Who may call: someone with access to the agent. The agents module decides that and says it in one tool, `agents.level` (edit, use or none), judged against the
@@ -30,7 +31,7 @@ export function registerAgentTools(d) {
     if (r && r.error) throw Object.assign(new Error(r.error.message || "no access to that agent"), { code: r.error.code || "denied" });
     const level = r && r.data && r.data.level;
     const ok = need === "edit" ? level === "edit" : level === "edit" || level === "use";
-    if (!ok) throw Object.assign(new Error(need === "edit" ? "you cannot change that agent, so you cannot reset its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
+    if (!ok) throw Object.assign(new Error(need === "edit" ? "you cannot change that agent, so you cannot do that on its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
   };
   /** @param {any} i */
   const agentOf = i => {
@@ -74,6 +75,13 @@ export function registerAgentTools(d) {
       const a = agentOf(i); await mayUse("use", a);
       if (d.held && d.held(a)) throw Object.assign(new Error("someone is watching or has taken over this computer"), { code: "busy" });
       await d.users.sleep(a); return shape(a);
+    }, { callers: d.callers });
+
+  d.tool("computers.exec", "Run one command as this agent's own Linux user inside its computer, with a clean fixed environment (HOME, USER, PATH, LANG, its display and any NAME values you pass), in a folder under its home. argv starts with an absolute path; there is no shell. Output is cut at 16 KB (stdout) and 8 KB (stderr); the time limit is at most 25 seconds (the channel into the computer allows 30), so a long job goes in a terminal instead. Running code as the agent needs the right to edit the agent.",
+    obj({ agent: str, argv: { type: "array", items: str }, cwd: str, env: { type: "object" }, stdin: str, timeoutMs: { type: "number" } }, ["agent", "argv"]), async i => {
+      const a = agentOf(i); await mayUse("edit", a);
+      await place(a);
+      return d.users.exec(a, { argv: i.argv, ...(i.cwd !== undefined ? { cwd: i.cwd } : {}), ...(i.env !== undefined ? { env: i.env } : {}), ...(i.stdin !== undefined ? { stdin: i.stdin } : {}), ...(i.timeoutMs !== undefined ? { timeoutMs: i.timeoutMs } : {}) });
     }, { callers: d.callers });
 
   d.tool("computers.agent.reset", "Empty one agent's home on the computer: its Chrome profile and logins, files and terminal state. Nobody else's home is touched. Needs the right to edit the agent.",

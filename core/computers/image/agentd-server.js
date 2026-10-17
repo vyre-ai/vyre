@@ -7,7 +7,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { Tickets, SESSION_RE } from "./agentd-relay.js";
-import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, asAgent, execute, tolerant, RUN } from "./agentd.js";
+import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planExec, EXEC_LIMITS, asAgent, execute, tolerant, RUN } from "./agentd.js";
 
 const ACTIONS = {
   "create": planCreate, "start": planStartScreen, "stop": planStopScreen, "wipe": planWipeHome, "remove": planRemove,
@@ -33,20 +33,36 @@ const runOut = argv => new Promise(resolve => {
   execFile(argv[0], argv.slice(1), { env: {}, timeout: 10_000, maxBuffer: 64 * 1024 }, (_err, stdout) => resolve(String(stdout || "")));
 });
 
-/** @param {{ token: string, run?: (argv: string[]) => Promise<void>, out?: (argv: string[]) => Promise<string>, tickets?: Tickets }} o */
+/**
+ * Run one command and keep what it printed, within the caps. The child gets an empty environment of its own (planExec's argv carries the one it should have), the stdin it was given, and a time limit.
+ * @param {string[]} argv @param {{ stdin?: string, timeoutMs: number }} o
+ * @returns {Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>}
+ */
+const runExec = (argv, o) => new Promise(resolve => {
+  const child = execFile(argv[0], argv.slice(1), { env: {}, timeout: o.timeoutMs, killSignal: "SIGKILL", maxBuffer: 1024 * 1024, encoding: "buffer" }, (err, so, se) => {
+    const cut = (/** @type {Buffer} */ b, /** @type {number} */ n) => ({ text: b.subarray(0, n).toString("utf8"), cut: b.length > n });
+    const out = cut(so || Buffer.alloc(0), EXEC_LIMITS.stdoutBytes), er = cut(se || Buffer.alloc(0), EXEC_LIMITS.stderrBytes);
+    const e = /** @type {any} */ (err);
+    resolve({ code: e ? (typeof e.code === "number" ? e.code : null) : 0, signal: e && e.killed ? "SIGKILL" : (e && e.signal) || null, stdout: out.text, stderr: er.text, truncated: out.cut || er.cut });
+  });
+  if (child.stdin) { child.stdin.on("error", () => {}); child.stdin.end(typeof o.stdin === "string" ? o.stdin : ""); }
+});
+
+/** @param {{ token: string, run?: (argv: string[]) => Promise<void>, out?: (argv: string[]) => Promise<string>, tickets?: Tickets, exec?: typeof runExec }} o */
 export function createAgentd(o) {
   const run = o.run || runArgv;
   const tickets = o.tickets || new Tickets();
   const out = o.out || runOut;
+  const exec = o.exec || runExec;
   const same = (/** @type {string} */ a, /** @type {string} */ b) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   return http.createServer((req, res) => {
     const send = (/** @type {number} */ code, /** @type {any} */ body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     const given = String(req.headers.authorization || "").replace(/^Bearer /, "");
     if (!same(given, o.token)) return send(401, { error: { code: "denied", message: "no" } });
     const action = /^\/agents\/([a-z]+)$/.exec(String(req.url || ""))?.[1];
-    if (req.method !== "POST" || !action || !(action in ACTIONS || action === "ticket" || action === "terminals")) return send(404, { error: { code: "not_found", message: "no such action" } });
+    if (req.method !== "POST" || !action || !(action in ACTIONS || action === "ticket" || action === "terminals" || action === "exec")) return send(404, { error: { code: "not_found", message: "no such action" } });
     let raw = "";
-    req.on("data", c => { raw += c; if (raw.length > 8192) req.destroy(); });
+    req.on("data", c => { raw += c; if (raw.length > 15_000) req.destroy(); });
     req.on("end", async () => {
       try {
         const body = JSON.parse(raw || "{}");
@@ -60,6 +76,14 @@ export function createAgentd(o) {
           if (body.kind === "cdp" && session !== null) throw new Error("a debugging ticket names no terminal");
           tickets.add(String(body.ticket), u, session !== null ? "term" : body.kind === "cdp" ? "cdp" : "vnc", session);
           return send(200, { ok: true });
+        }
+        if (action === "exec") {
+          const stdin = body.stdin === undefined || body.stdin === null ? "" : body.stdin;
+          if (typeof stdin !== "string" || Buffer.byteLength(stdin) > EXEC_LIMITS.stdinBytes) throw new Error("the input is too large");
+          const t = body.timeoutMs === undefined ? EXEC_LIMITS.defaultTimeoutMs : Number(body.timeoutMs);
+          if (!Number.isInteger(t) || t < 100 || t > EXEC_LIMITS.timeoutMs) throw new Error("the time limit is 100 ms to 25 seconds");
+          const argv = planExec(u, body, body.limits || {});
+          return send(200, await exec(argv, { stdin, timeoutMs: t }));
         }
         if (action === "terminals") return send(200, { sessions: parseTerminals(await out(planTerminals(u))) });
         const steps = /** @type {any} */ (ACTIONS)[action](u, body.limits || {});
