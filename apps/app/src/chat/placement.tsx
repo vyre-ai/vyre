@@ -15,6 +15,8 @@ export function usePlacement(thread: string, real: boolean) {
   const [starting, setStarting] = useState("");
   // The same fact can arrive twice: a line is never put twice in a row.
   const say = useCallback((at: number, text: string) => setLines((l) => (l.length && l[l.length - 1].text === text ? l : [...l.slice(-4), { at, text }])), []);
+  // The screen only shows where the session runs. The home alone takes a session from a computer that stopped answering (its sweep, one move, with the reason); no screen moves a session on a timer, so a computer that
+  // comes and goes cannot bounce one back and forth, and only the session's own person moves it (the chip's tap).
   useEffect(() => {
     if (!real) return;
     let live = true;

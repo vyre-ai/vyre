@@ -100,7 +100,7 @@ export const describe = d => ({
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
   levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
-  ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secret: true } : {}),
+  ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secretSetting: true } : {}),
 });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

@@ -1,6 +1,6 @@
 ---
 title: Known gaps
-summary: What Vyre 0.5 does not do yet, what to do today instead, and what comes next.
+summary: What Vyre 0.6 does not do yet, what to do today instead, and what comes next.
 audience: users, builders, operators, agents
 owner: docs
 status: draft
@@ -8,13 +8,13 @@ status: draft
 
 # Known gaps
 
-These docs describe what the code does today. This page lists where Vyre 0.5 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
+These docs describe what the code does today. This page lists where Vyre 0.6 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
 
-## Next, in 0.6
+## Next, in 0.7
 
-The 0.6 plan is in [roadmap/0.6.md](../roadmap/0.6.md) and the 0.7 plan in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
+The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the [roadmap](roadmap.md). Screen Share (watching and taking over your agents' computers and Chrome, on every device) is later.
 
-## Known gaps in 0.5
+## Known gaps in 0.6
 
 ### A Viewer's AI cannot open the project folder
 
@@ -27,9 +27,19 @@ Renaming a project changes its short name, which keys the project's folder group
 ### Flows
 
 - A "For each" step handles up to 50 items in the editor, although the engine allows 1000, and a longer list is cut without a note on the run page.
-- An agent step has no deadline yet. A session that ends without finishing is marked stuck, but an agent that never ends is not timed out. Deadlines and failure paths in the editor are planned for 0.6.
-- A Flow email cannot yet carry CC, BCC or attachments.
-- Members cannot inspect a Flow over MCP (`flows.describe`, `flows.runs` and `flows.connections` are for owners).
+- A Flow email carries CC, BCC and up to 10 attachments of 25 MB together, from Files or from a file an earlier step made. A Flow you turned on sends without asking; a person asks only when a step is marked to approve, or when an agent held the act. An attachment is read as the lesser of the person who approved the Flow and the person who started the run, and a file changed after approval stops the send. Only mail through Gmail, Google Apps Script, a mail login, Resend, Postmark, SendGrid and Mailgun carries attachments.
+
+### Audit screen window
+
+The admin Audit screen reads the signed event log forward from its last 100,000 events and says when it stopped short. A busier Space sees the recent past first; the older events are in the log itself.
+
+### Preview isolation
+
+A preview's process can reach its own loopback port and no other network address: on macOS through the sandbox profile, on Linux through a private network with the page carried out on a unix socket. Unix sockets that live in the filesystem under the same account (not the network) stay reachable to it, as before. Where bubblewrap cannot make a private network on a Linux box, the preview runs with shell limits only and its log says there is no network wall.
+
+### Standing permissions
+
+An agent's standing permission covers a send, post or payment through one connection to named recipients, up to a daily cap. It does not cover the default assistant. A sender with no connection of its own (a shared one, such as the Space's own mail service) is open to owners and admins only, so an agent working for a member is held there and asks as before. A permission that follows a list counts only addresses written by someone who holds the connection.
 
 ### Records export is a web feature
 
@@ -37,7 +47,7 @@ CSV export is in the web app. A phone does not offer it yet.
 
 ### Members and sign-ins
 
-- A member cannot add a setup token or API key as their own AI account; the member signs in with the provider's own sign-in.
+- A member adds a setup token or API key as their own AI account in their own vault. Only that member's own chats use it; a job, a Flow and an agent never do.
 - A member's own vault holds their sign-ins, mail and calendar connections and server list. Sessions do not read other items in it yet.
 - A member's MCP servers that they sign in to inside a session are not carried to their next session.
 - The firm Microsoft 365 app is read-only. Member sends are not open.
@@ -86,9 +96,9 @@ What to do today: use the fan-out for answers, and read plans and diffs as they 
 
 ## True today, with no date
 
-- **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The Windows app is not code-signed yet, so Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
-- **Windows Hello has not been walked on a real PC.** A Windows PC claims your name with a Windows Hello passkey and the app asks you at the PC each time the key is used. This has passed its tests with a stand-in authenticator and in a Windows window on a test machine, which has no Hello. It has not been tried on a PC with Hello set up.
-- **Without Hello, the Windows key signs without asking each time.** A Windows PC with no Hello, or with Hello turned off, keeps its key in the app instead. That key is marked as one a script on the page could reach, so it cannot change who speaks for your name and a team's server does not accept it. Changes to your name's list come from your phone or your recovery code. A prompt for every signature on a computer with a TPM is not proven yet.
+- **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
+- **Windows Hello has not been walked on a real PC.** The app tries Windows Hello, then the TPM, then Windows data protection. A Hello prompt on each signature has not been shown on a PC with Hello set up, so the key is still held: it cannot change who speaks for your name, and the app asks in its own window before it signs. A hosted runner has no TPM.
+- **An install that ran only on this computer now needs a server.** That shape is removed. The install keeps its data and asks you to add a server, or to join a space on someone else's. The Mac app is Developer ID signed and notarized only when the GitHub environment `apple` has `APPLE_DEVELOPER_ID_P12`, `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_DEVELOPER_ID_IDENTITY`, `APPLE_NOTARY_KEY_P8`, `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER`. Until then the dmg is ad hoc signed.
 - **Grok video and privacy.** With a Grok account's privacy switch on, xAI does not keep your sessions and Grok cannot make video. With it off, xAI keeps sessions and may train on them, and Grok can make video. Vyre shows the choice on the account and records it, but xAI holds the setting itself.
 - **Vyre Computer cannot see everything.** It does not read cross-origin iframes. A script can get around the guard on WebRTC and on DNS hints in some forms, and by writing with `innerHTML` or building an iframe. See [Connectors](using/connectors.md).
 - **Sessions you start by hand on a box.** The sessions Vyre runs on a Docker box run as a separate user that cannot open Vyre's socket. A Claude Code you start by hand in the box's container does not, so Vyre's checks on its tool calls are the protection there. See [Presence](concepts/presence.md).

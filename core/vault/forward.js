@@ -58,7 +58,7 @@ export function startForwarder(ctx, link) {
     });
   }
   for (const tool of declared) {
-    if (tool in FORWARD || CAPSULE_ONLY.has(tool)) continue;
+    if (tool in FORWARD || CAPSULE_ONLY.has(tool) || tool.startsWith("vault.space.")) continue;
     ctx.tool(tool, {
       description: `${tool}: not on this Mac yet (vyre-core holds the vault here).`,
       input: obj, callers: CALLERS, core: true,

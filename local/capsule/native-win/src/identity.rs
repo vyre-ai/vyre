@@ -88,6 +88,138 @@ pub fn chain_summary(message: &[u8]) -> Option<String> {
     }
 }
 
+/// A server ownership proof (relay/client/finish.js pairToProofMessage), read strictly: four lines, "vyre-wink-pair-to-v1", a 32-byte key in base64url (43 characters), a relay device id
+/// (16 of a-z and 2-7) and a ticket tag (24 hex). Anything else is None, and is not signed. The server's own name is not in the bytes, so the words do not claim one.
+pub fn pair_to_summary(message: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(message).ok()?;
+    let lines: Vec<&str> = text.split('\n').collect();
+    fn all(s: &str, n: usize, ok: fn(char) -> bool) -> bool { s.chars().count() == n && s.chars().all(ok) }
+    if lines.len() != 4 || lines[0] != "vyre-wink-pair-to-v1" { return None; }
+    if !all(lines[1], 43, |c| c.is_ascii_alphanumeric() || c == '-' || c == '_') { return None; }
+    if !all(lines[2], 16, |c| c.is_ascii_lowercase() || ('2'..='7').contains(&c)) { return None; }
+    if !all(lines[3], 24, |c| c.is_ascii_digit() || ('a'..='f').contains(&c)) { return None; }
+    Some("Make the server you are pairing yours".to_string())
+}
+
+/// kernel/seal canonical: keys sorted by UTF-16 code units (the same order as `Object.keys().sort()`), no whitespace. A fraction is refused, the same as the Mac shell, so a page cannot hide a value the words would round.
+pub fn canonical(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::Null => Some("null".into()),
+        serde_json::Value::Bool(b) => Some(if *b { "true" } else { "false" }.into()),
+        serde_json::Value::String(s) => Some(json_quote(s)),
+        serde_json::Value::Number(n) => canonical_number(n),
+        serde_json::Value::Array(a) => {
+            let mut parts = Vec::with_capacity(a.len());
+            for x in a { parts.push(canonical(x)?); }
+            Some(format!("[{}]", parts.join(",")))
+        }
+        serde_json::Value::Object(o) => {
+            let mut keys: Vec<&String> = o.keys().collect();
+            keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+            let mut parts = Vec::with_capacity(keys.len());
+            for k in keys { parts.push(format!("{}:{}", json_quote(k), canonical(o.get(k)?)?)); }
+            Some(format!("{{{}}}", parts.join(",")))
+        }
+    }
+}
+
+fn json_quote(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{0008}' => out.push_str("\\b"),
+            '\u{000c}' => out.push_str("\\f"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Whole numbers inside the range JavaScript can name exactly. A fraction, or a number too large to round-trip, is None.
+fn canonical_number(n: &serde_json::Number) -> Option<String> {
+    const MAX: i64 = 9_007_199_254_740_991;
+    if let Some(i) = n.as_i64() {
+        if (-MAX..=MAX).contains(&i) { return Some(i.to_string()); }
+        return None;
+    }
+    if let Some(u) = n.as_u64() {
+        if u <= MAX as u64 { return Some(u.to_string()); }
+    }
+    None
+}
+
+fn sha256_b64url(s: &str) -> String {
+    use sha2::{Digest, Sha256};
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(s.as_bytes()))
+}
+
+/// sha-256 (base64url) of the canonical `{ op, space, fields }`. None when a field is a fraction.
+pub fn payload_hash(op: &str, space: &str, fields: &serde_json::Value) -> Option<String> {
+    let body = serde_json::json!({ "op": op, "space": space, "fields": fields });
+    Some(sha256_b64url(&canonical(&body)?))
+}
+
+fn clean_text(s: &str, max: usize) -> String {
+    let t: String = s.chars().filter(|c| !c.is_control()).collect();
+    let t = t.trim().to_string();
+    if t.chars().count() > max { format!("{}...", t.chars().take(max).collect::<String>()) } else { t }
+}
+
+/// A yes-moment proof: the card's fields and space must hash to `payload_hash`, and the proof must name a decision and a nonce. The words are the shell's.
+pub fn proof_summary(message: &[u8], fields: Option<&serde_json::Value>, space: Option<&str>) -> Option<String> {
+    let fields = fields.filter(|f| f.is_object())?;
+    let space = space?;
+    let p: serde_json::Value = serde_json::from_slice(message).ok()?;
+    let decision = p.get("decision")?.as_str()?;
+    let hash = p.get("payload_hash")?.as_str()?;
+    if p.get("nonce").is_none() { return None; }
+    if payload_hash(decision, space, fields)? != hash { return None; }
+    let what = clean_text(&decision.replace('_', " "), 60);
+    let obj = fields.as_object()?;
+    let mut keys: Vec<&String> = obj.keys().collect();
+    keys.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
+    let mut lines = vec![format!("Approve: {what}")];
+    for k in keys.into_iter().take(6) {
+        let v = match obj.get(k)? {
+            serde_json::Value::String(s) => clean_text(s, 60),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => if *b { "1" } else { "0" }.to_string(),
+            _ => "...".to_string(),
+        };
+        lines.push(format!("{}: {v}", clean_text(k, 24)));
+    }
+    Some(lines.join("\n"))
+}
+
+/// Which store may hold a new identity key. Hello, then the TPM. Software only when the person was asked and said yes.
+/// `software_yes` is None when nobody could answer, and that refuses a software key.
+/// [reviewed: trust]
+pub fn identity_key_store(hello: bool, tpm: bool, software_yes: Option<bool>) -> Result<&'static str, &'static str> {
+    if hello {
+        return Ok("windows_hello");
+    }
+    if tpm {
+        return Ok("tpm");
+    }
+    if software_yes == Some(true) {
+        return Ok("software");
+    }
+    Err("This computer has no TPM that Vyre can use.")
+}
+
+/// What the shell signs with the computer's key, in its own words: an identity-list change, a server ownership proof, or a yes-moment proof whose card matches. None is not signed. The page's caption is never read.
+pub fn sign_summary(message: &[u8], fields: Option<&serde_json::Value>, space: Option<&str>) -> Option<String> {
+    chain_summary(message).or_else(|| pair_to_summary(message)).or_else(|| proof_summary(message, fields, space))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +246,52 @@ mod tests {
         assert_eq!(chain_summary(&chain(r#"{"type":"add","entry":{"kind":"robot"}}"#)), None);
         assert_eq!(chain_summary(b"not a chain message"), None);
         assert_eq!(chain_summary(&chain("{")), None);
+    }
+
+    // relay/client/pairto-vector.test.js pins the same bytes: what the app's identity signs to own a server (wink.server.adopt's proof).
+    #[test]
+    fn a_server_ownership_proof_the_real_bytes_is_read_and_any_other_shape_is_not() {
+        use base64::Engine;
+        let real = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode("dnlyZS13aW5rLXBhaXItdG8tdjEKQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Y0hCd2NIQndjSEJ3Ywp5ZmJlcnByazJ4cTIya29iCjBiNjBjNDA2ZTZlMWE3YzM4YjY5MDBhMw").unwrap();
+        assert_eq!(sign_summary(&real, None, None).as_deref(), Some("Make the server you are pairing yours"));
+        let (b, d, t) = ("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc", "yfberprk2xq22kob", "0b60c406e6e1a7c38b6900a3");
+        for bad in [
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}\nUnlock Drive"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}\n"),
+            format!("vyre-wink-pair-to-v1\n{b}x\n{d}\n{t}"),
+            format!("vyre-wink-pair-to-v1\n{b}\nYFBERPRK2XQ22KOB\n{t}"),
+            format!("vyre-wink-pair-to-v1\n{b}\n{d}\n{t}00"),
+        ] {
+            assert_eq!(sign_summary(bad.as_bytes(), None, None), None, "{bad}");
+        }
+        assert_eq!(sign_summary(&chain(r#"{"type":"add","entry":{"kind":"code"}}"#), None, None).as_deref(), Some("Add a recovery code"));
+    }
+
+    // kernel/seal/payloadhash-vectors.json, "empty fields". The same hash the Mac shell checks before it signs a yes-moment proof.
+    #[test]
+    fn a_yes_moment_proof_is_summarised_only_when_the_card_hashes_to_its_payload_hash() {
+        let fields = serde_json::json!({});
+        assert_eq!(
+            payload_hash("grant.invite", "spc_aaaaaaaaaaaa", &fields).as_deref(),
+            Some("ZLy1LQwY-00KVALmtNpi45C5M8X9spxqjZhoPnmqLA8")
+        );
+        assert_eq!(
+            canonical(&serde_json::json!({"op": "grant.invite", "space": "spc_aaaaaaaaaaaa", "fields": {}})).as_deref(),
+            Some(r#"{"fields":{},"op":"grant.invite","space":"spc_aaaaaaaaaaaa"}"#)
+        );
+        let proof = br#"{"decision":"grant.invite","nonce":"n","payload_hash":"ZLy1LQwY-00KVALmtNpi45C5M8X9spxqjZhoPnmqLA8"}"#;
+        assert_eq!(sign_summary(proof, Some(&fields), Some("spc_aaaaaaaaaaaa")).as_deref(), Some("Approve: grant.invite"));
+        let other = serde_json::json!({"to": "someone else"});
+        assert_eq!(sign_summary(proof, Some(&other), Some("spc_aaaaaaaaaaaa")), None);
+        assert_eq!(sign_summary(proof, None, None), None);
+        let fraction = serde_json::json!({"f": 1.5});
+        assert_eq!(payload_hash("grant.revoke", "spc_aaaaaaaaaaaa", &fraction), None, "a fraction is refused");
+        let named = serde_json::json!({"to": "Sam"});
+        let hash = payload_hash("make_owner", "spc_aaaaaaaaaaaa", &named).unwrap();
+        let msg = format!(r#"{{"decision":"make_owner","nonce":"n","payload_hash":"{hash}"}}"#);
+        let said = sign_summary(msg.as_bytes(), Some(&named), Some("spc_aaaaaaaaaaaa")).unwrap();
+        assert_eq!(said, "Approve: make owner\nto: Sam");
     }
 
     #[test]
@@ -172,6 +350,16 @@ mod tests {
         assert_eq!(be[0], 31);
         assert_eq!(be[31], 0);
         assert!(secret_big_endian(&le[..31]).is_none());
+    }
+
+    #[test]
+    fn a_software_key_is_made_only_after_the_person_says_yes() {
+        assert_eq!(identity_key_store(true, false, None).unwrap(), "windows_hello");
+        assert_eq!(identity_key_store(false, true, None).unwrap(), "tpm");
+        assert_eq!(identity_key_store(false, false, Some(true)).unwrap(), "software");
+        let refused = "This computer has no TPM that Vyre can use.";
+        assert_eq!(identity_key_store(false, false, Some(false)), Err(refused));
+        assert_eq!(identity_key_store(false, false, None), Err(refused));
     }
 
     #[test]

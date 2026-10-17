@@ -15,7 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const EXTERNAL = {};
 
 const norm = (/** @type {string} */ f) => f.split(path.sep).join("/");
-const allTests = () => fs.globSync("**/*.test.*", { cwd: ROOT, exclude: p => /(^|\/)node_modules(\/|$)|^\.git$/.test(p) }).map(norm).filter(f => !f.split("/").includes("node_modules")).sort();
+const allTests = () => fs.globSync("**/*.test.*", { cwd: ROOT, exclude: p => /(^|\/)node_modules(\/|$)|(^|\/)unit-logs(\/|$)|^\.git$/.test(p) }).map(norm).filter(f => !f.split("/").includes("node_modules")).sort();
 
 test("every test file is run by the runner's globs, or names the workflow that runs it", () => {
   const covered = new Set(GLOBS.flatMap(g => fs.globSync(g, { cwd: ROOT })).map(norm));

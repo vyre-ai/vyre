@@ -27,12 +27,12 @@ Your computer tells the space's server it is there every few seconds. If it goes
 closed, the network dropped, the computer slept), the server takes the session and carries on from the last whole
 turn. A computer that was only asleep and wakes later finds it no longer has the session: it stops it and writes
 nothing, so no turn is ever run twice. When the lid opens or the computer is plugged in again, the chat offers
-"Bring back to this Mac?"; nothing moves back unless you say so.
+"Bring back to this Mac?". Under Ask, nothing moves back unless you say so; under Always allow it comes back at your next message once the computer has stayed ready (below).
+
+You choose what an allowed computer does on its own: Always allow, or Ask. Under Always allow a new chat starts here, and a session that left because the lid closed, the computer slept, went on battery or lost its network comes back at your next message, once this computer has stayed ready for a minute and two minutes have passed since the move. A session you started on this computer yourself, with no chat, comes back the same way without waiting for a message. A computer that keeps coming and going never gets a session back. Under Ask, only what you put on this computer runs here. Never is the switch off.
 
 "Move to the server" in the chat hands a session over after its current turn. Pin a session to the server to keep it
-running when you close the laptop. Settings, This computer, holds one switch for letting sessions run here, "only
-while plugged in", a processor limit and a memory limit; past a limit a session moves to the server. "Pause all"
-freezes everything running on this computer without losing anything.
+running when you close the laptop. Settings, Computer, holds this computer's name and one choice for running here: Always allow, Ask or Never, with a line saying what that means and what is running now. It is offered only where a space lets members run sessions on their own computers. A processor or memory limit is not yours to manage: past the box's defaults a session moves to the server. An assistant can pause every session on this computer with `runner.pause-all`; nothing is lost.
 
 ## What protects the space
 

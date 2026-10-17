@@ -1,6 +1,7 @@
 {
  "name": "spaces",
  "version": "0.1.0",
+ "main": "boot.js",
  "description": "Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.",
  "roles": [
   "box",
@@ -74,7 +75,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.create", "effect": "write",
+    "name": "spaces.create", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -294,7 +295,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.devices.enrol", "effect": "write",
+    "name": "spaces.devices.enrol", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -330,6 +331,11 @@
     "reach": "person"
    },
    {
+    "name": "spaces.pair.install", "outward": true, "effect": "write",
+    "reach": "person",
+    "covers": ["wink.install.issue"]
+   },
+   {
     "name": "spaces.move.plan", "effect": "read",
     "reach": "person"
    },
@@ -350,11 +356,11 @@
     "reach": "person"
    },
    {
-    "name": "spaces.members.set-role", "effect": "write",
+    "name": "spaces.members.set-role", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.remove", "effect": "write",
+    "name": "spaces.members.remove", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -363,6 +369,10 @@
    },
    {
     "name": "spaces.members.transfer", "outward": true, "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.owner.transfer", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -426,6 +436,11 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.confirm-key",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.identity.sign",
     "reach": "modules"
    },
@@ -455,6 +470,10 @@
    },
    {
     "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.published-key",
     "reach": "modules"
    },
    {

@@ -1,4 +1,5 @@
 // The pure half of a run's record: the canvas nodes the kernel painted for one run (kernel/flows/canvas.js paintRun) as the lines of what it did.
+import { nameIsSecret } from "../../src/store-core/secret-keys.js";
 export type PaintedNode = { id: string; kind?: string; label: string; state?: string; note?: string; count?: number };
 
 const WORD: Record<string, string> = { done: "Done", failed: "Failed", waiting: "Waiting", running: "Running", paused: "Paused", pending: "Not reached" };
@@ -15,6 +16,9 @@ export function recordLines(nodes: PaintedNode[]): { id: string; title: string; 
 /** Only a failed or paused run can be retried (flows.retry puts it back to work after its cause was fixed). */
 export const canRetry = (state: string): boolean => state === "failed" || state === "paused";
 
+/** A run that is paused, failed, waiting or held can be stopped (flows.cancel); one that is running or finished cannot. */
+export const canStop = (state: string): boolean => state === "paused" || state === "failed" || state === "waiting" || state === "queued";
+
 /** The words for a refused start, from the box's code. */
 export function startRefusal(code: string | undefined, message: string): string {
   if (code === "not_active") return "That Flow is paused or has no approved version, so it cannot run.";
@@ -29,7 +33,6 @@ export type Tone = "accent" | "ok" | "warn" | "err" | "plain";
 export type Ledger = { status?: string; input?: unknown; output?: unknown; error?: { code?: string; message?: string }; tries?: number; started_at?: number; finished_at?: number; wait?: { kind?: string; until?: number; deadline?: number; task?: string }; verify?: { ok?: boolean; say?: string }; skipped_by?: string; substitute?: unknown; answered?: { by?: string }; attempts_log?: { at?: number; code?: string }[]; chosen?: { doer?: string; why?: string }; task?: string };
 export type StepRow = { key: string; title: string; status: string; tone: Tone; took: string; inputs: [string, string][]; outputs: [string, string][]; error: string; wakes: string; by: string; tries: string[]; task: string };
 
-const SECRET_KEY = /secret|token|password|passwd|api[_-]?key|authorization|cookie|private/i;
 const PLACEHOLDER = /^\{\{[^}]+\}\}$/;
 export const SEALED = "Sealed value";
 
@@ -38,8 +41,8 @@ export function shownValue(v: unknown, key = ""): string {
   if (v === null || v === undefined) return "Nothing";
   if (typeof v === "object" && !Array.isArray(v) && Object.hasOwn(v as object, "sealed")) return SEALED;
   if (typeof v === "string" && PLACEHOLDER.test(v.trim())) return SEALED;
-  if (key && SECRET_KEY.test(key) && typeof v !== "object") return "Hidden";
-  const t = typeof v === "string" ? v : JSON.stringify(v, (k, x) => (k && SECRET_KEY.test(k) && typeof x !== "object" ? "Hidden" : x && typeof x === "object" && !Array.isArray(x) && Object.hasOwn(x, "sealed") ? SEALED : x));
+  if (key && nameIsSecret(key) && typeof v !== "object") return "Hidden";
+  const t = typeof v === "string" ? v : JSON.stringify(v, (k, x) => (k && nameIsSecret(k) && typeof x !== "object" ? "Hidden" : x && typeof x === "object" && !Array.isArray(x) && Object.hasOwn(x, "sealed") ? SEALED : x));
   return t.length > 140 ? `${t.slice(0, 139)}...` : t;
 }
 
@@ -82,7 +85,7 @@ export function stepRows(painted: PaintedNode[], steps: Record<string, Ledger> |
       let status = "Running", tone: Tone = "plain", wakes = "";
       const w = e.wait;
       switch (e.status) {
-        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; break;
+        case "done": status = ask ? "Approved" : "Done"; tone = "ok"; if ((e.output as any)?.cut) { status = `Done, cut at ${(e.output as any).count} of ${(e.output as any).total}`; tone = "warn"; } break;
         case "failed_handled": status = "Failed, handled"; tone = "warn"; break;
         case "skipped": status = e.substitute ? `Skipped, value given by ${e.skipped_by || "a person"}` : "Skipped"; break;
         case "failed": status = ask ? "Refused" : "Failed"; tone = "err"; break;

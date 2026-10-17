@@ -38,6 +38,21 @@ test("the hello message names the box, the identity, the entry, the time, the no
   assert.equal(chainHelloMessage("bx", { identity: "i", entry: "e", ts: 1, nonce: "n", channel: "c", pk: "ab" }).toString().endsWith("\nab"), true, "the presence key hash is part of what is signed");
 });
 
+test("an install adoption recorded as the device key's person id still admits that device's chain hello", async () => {
+  const k = key();
+  const entry = EID("d");
+  const state = { id: IDENT, kind: "person", seq: 1, head: "h", ts: T0, entries: [{ eid: entry, kind: "device", pub: k.pub, since: T0 - 3 * DAY, founder: true }] };
+  const admit = createChainAdmit({
+    boxId: async () => BOX, now: () => T0,
+    roleOf: async (id) => (id === `per_${entry}` ? "owner" : null),
+    fetchState: async (id) => (id === IDENT ? state : null),
+  });
+  const h = { identity: IDENT, entry, ts: T0, nonce: "n".repeat(20), channel: CH };
+  const r = await admit.check({ ...h, sig: k.sign(chainHelloMessage(BOX, h)) }, CH);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.role, "owner");
+});
+
 test("a chain-listed device of the owner is admitted, with the person's role and the chain position it was admitted at", async () => {
   const { admit, hello } = rig();
   const a = await admit.check(hello(), CH);

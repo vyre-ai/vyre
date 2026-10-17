@@ -174,7 +174,7 @@ Not yet:
 - save, card.fill and address.fill stay web-only in vyred, so an app cannot save a login or take
   a card or an address.
 - **Reaching vyred.** The fill listener binds loopback and refuses a Host it does not know. The
-  phone reaches it through `tailscale serve` (https) with that name in the listener's `names`.
+  phone reaches it over https at the box's own address (`https://<you>.vyre.run`), named in the listener's `names`.
 - **Credential Manager polish:** a Vyre icon on entries, last-used times, the passkey error names
   (InvalidStateError for an excluded credential comes back as an unknown error with vyred's
   message), and a button in the app that opens the Credential Manager setting.
