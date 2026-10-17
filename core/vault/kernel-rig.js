@@ -44,7 +44,7 @@ export async function kernelRig(o = {}) {
       // Mirror kernel/index.js vault.personMay (owner role only; no extra test-only shortcuts).
       personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
         if (gs.roleOf({ kind: "person", id: person, space: SPACE }) === "owner") return true;
-        try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+        try { return await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource }).then(r => r.effect === "allow" || (action === "vault.call" && r.effect === "ask" && r.reason === "needs_approval")); } catch { return false; }   // as lib/credential-held.js
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {

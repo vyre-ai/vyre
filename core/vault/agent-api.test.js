@@ -296,7 +296,8 @@ test("a lease ends the moment the person who approved it no longer holds the Con
   const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : undefined) });
   await cred("conn-cn1");
   await v.access.convertScopes();
-  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
+  // the lease's approver must hold the Connection at its own address (a Connection lent to a task is a grant on vault/<id>/connection/<id>), not only the credential derived from it
+  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } }, { resource: { prefix: `${(await v.access.urn("conn-cn1")).split("/item/")[0]}/connection/cn1` } });
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
   // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
