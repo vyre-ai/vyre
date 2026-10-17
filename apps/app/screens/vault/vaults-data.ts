@@ -11,8 +11,12 @@ export type VaultsData = {
 };
 
 /** What a member sees of the vaults shared with her: each vault and the credentials in it she can use (vault.me.vaults). Names only. */
-export type SharedVault = { id: string; name: string; items: { name: string; kind: string }[] };
-export async function memberVaults(): Promise<SharedVault[]> { return (await tool<{ vaults: SharedVault[] }>("vault.me.vaults")).vaults; }
+export type SharedVault = { id: string; name: string; items: { name: string; kind: string; can: string[] }[] };
+export async function memberVaults(): Promise<{ vaults: SharedVault[]; items: { name: string; kind: string; can: string[] }[] }> {
+  const [v, l] = await Promise.all([tool<{ vaults: SharedVault[] }>("vault.me.vaults"), tool<{ items: { name: string; kind: string; can: string[] }[] }>("vault.me.shared.list")]);
+  const inVault = new Set(v.vaults.flatMap((x) => x.items.map((i) => i.name)));
+  return { vaults: v.vaults, items: l.items.filter((i) => !inVault.has(i.name)) };
+}
 
 export function realVaults(): VaultsData {
   return {

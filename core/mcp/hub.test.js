@@ -760,3 +760,18 @@ test("removing a person's connection says whether the vendor was told to drop th
   await hub.add({ name: "plain", transport: "http", url });
   assert.deepEqual(await hub.remove({ name: "plain" }), { removed: "plain" });
 });
+
+test("a connection a person made is dialled public only, and the Space owner's rows keep the address rule they had", async () => {
+  const A = "per_alice";
+  const url = "https://mcp.example.test/mcp";
+  const { hub, opened } = fakeHub({ values: { tok: "fixture-tok-0123456789abcdef" } });
+  hub.deps.connectionToken = async () => ({ access_token: "fixture-member-token-0123456789", token_type: "Bearer" });
+  hub.deps.mayUseConnection = async () => true;
+  await hub.add({ name: "clio", transport: "http", url, auth: { type: "bearer", connection: "clio-alice" } }, { owner: A });
+  await hub.add({ name: "plain", transport: "http", url: "https://mcp.example.test/other", auth: { type: "bearer", item: "tok" } });
+  await hub.call({ server: personKey("clio", A), tool: "list_issues" }, { person: true, agent: null, thread: null }).catch(() => {});
+  await hub.call({ server: "plain", tool: "list_issues" }, { person: true, agent: null, thread: null }).catch(() => {});
+  const member = opened.find(o => o.spec.url === url), owner = opened.find(o => o.spec.url === "https://mcp.example.test/other");
+  assert.equal(typeof (member && member.opts.fetch), "function", "the member's row is given the public-only fetch");
+  assert.equal(owner && owner.opts.fetch, undefined, "the owner's row keeps the client's own default");
+});

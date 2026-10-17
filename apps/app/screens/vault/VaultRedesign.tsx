@@ -136,7 +136,15 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <Text tone="label">{cur.detail}</Text>
           {cur.daysLeft != null ? <Text size="caption" tone="label">{cur.daysLeft < 0 ? `Expired ${-cur.daysLeft} days ago` : `Expires in ${cur.daysLeft} days`}</Text> : null}
         </View>
-        {cur.kind === "connection" ? (
+        {cur.kind === "provisioned" ? (
+          <Sec title="The account">
+            <Card flush>
+              <Row dense title="Acts as" sub={cur.detail.replace(/^Acts as /, "")} />
+              <Row dense title="How it got here" sub="Provided by the firm key. Only your own mailbox, calendar and Drive." />
+              <Row dense title="Token" sub="None is stored. The firm key is used for you each time, and no one is given it." />
+            </Card>
+          </Sec>
+        ) : cur.kind === "connection" ? (
           <Sec title="The connection">
             <Card flush>
               <Row dense title="Connects to" sub={cur.detail} />
@@ -150,19 +158,19 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
         )}
-        <Sec title="Used by">
+        {cur.kind === "provisioned" ? null : <Sec title="Used by">
           {cur.usedBy.length ? <Card flush>{cur.usedBy.map((u) => <Row key={u.kind + u.name} dense title={u.name} sub={u.kind} />)}</Card> : <Text tone="muted">Nothing uses it yet.</Text>}
-        </Sec>
-        <Sec title={cur.kind === "connection" ? "Who can use it" : "Who has it"}>
+        </Sec>}
+        {cur.kind === "provisioned" ? null : <Sec title={cur.kind === "connection" ? "Who can use it" : "Who has it"}>
           {scope === "space" && data.sharing ? <ItemSharing api={data.sharing} item={cur} /> : scope === "mine" && cur.kind === "connection" && data.connectionSharing ? <ItemSharing api={data.connectionSharing} item={cur} connection /> : (
             <View className="gap-s2"><Text tone="muted">Only you. Your own vault is not shared.</Text></View>
           )}
-        </Sec>
+        </Sec>}
         <Sec title="Activity">
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
             {local.some((e) => e.item === cur.id) || events.length ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>
         </Sec>
-        <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} />{scope === "space" && data.moving ? <MoveItem api={data.moving} item={cur} onMoved={load} /> : null}</View>
+        {cur.kind === "provisioned" ? null : <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Delete" onPress={() => setDel(cur.id)} />{scope === "space" && data.moving ? <MoveItem api={data.moving} item={cur} onMoved={load} /> : null}</View>}
       </View>
     </Card>
   ) : null;

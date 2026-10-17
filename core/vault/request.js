@@ -885,10 +885,20 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     const may = async (/** @type {string} */ name, /** @type {string} */ action) => { try { return (await K.authorize({ chain, action, resource: await /** @type {any} */ (vault).access.urn(name) })).effect === "allow"; } catch { return false; } };
     return { person, may };
   };
-  tool("vault.me.shared.list", SHARED_SURFACES, "The credentials the owner shared with you that you can use: name, kind, description and hosts, never a value.", obj({}), async (_input, meta) => {
+  /** What she may do with an item: use it, show it (Read), change and rotate it (Edit and rotate). A credential is only ever used through Vyre. */
+  const canOf = async (/** @type {any} */ may, /** @type {any} */ it) => {
+    const can = [];
+    if (it.kind === "api-credential") return (await may(it.name, "vault.read")) ? ["use"] : [];
+    if (it.kind === "passkey") return [];
+    if (await may(it.name, "vault.fill") || await may(it.name, "vault.read")) can.push("use");
+    if (can.length && await may(it.name, "vault.reveal")) can.push("reveal");
+    if (can.includes("reveal") && await may(it.name, "vault.edit")) can.push("edit");
+    return can;
+  };
+  tool("vault.me.shared.list", SHARED_SURFACES, "The items the owner shared with you that you can use: name, kind, description, hosts and what you may do (use, reveal, edit), never a value.", obj({}), async (_input, meta) => {
     const { may } = await asMember(meta);
     const out = [];
-    for (const it of /** @type {any} */ (vault).list().items) if (it.kind === "api-credential" && await may(it.name, "vault.read")) out.push({ name: it.name, kind: it.kind, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) });
+    for (const it of /** @type {any} */ (vault).list().items) { const can = await canOf(may, it); if (can.length) out.push({ name: it.name, kind: it.kind, can, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) }); }
     return { items: out };
   });
   // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.
@@ -902,7 +912,8 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
       const items = [];
       for (const p of placed.filter(x => x.named === v.id)) {
         const it = /** @type {any} */ (vault).row(p.name);
-        if (it && it.kind === "api-credential" && await may(it.name, "vault.read")) items.push({ name: it.name, kind: it.kind });
+        const can = it ? await canOf(may, it) : [];
+        if (it && can.length) items.push({ name: it.name, kind: it.kind, can });
       }
       out.push({ id: v.id, name: v.name, items });
     }

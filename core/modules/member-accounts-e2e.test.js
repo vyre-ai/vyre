@@ -1,7 +1,7 @@
 // @ts-check
 // A member's own accounts, end to end, on a REAL daemon with the kernel on: an owner, two members, the real vault (the owner's and each member's own), the real google and mcp modules, a fake Google.
 // The owner adds the firm key once and attests each member's work email. What this walks:
-//   1 the member connects her own MCP server (mcp.mine.add) and it sits in HER vault: her lent-session config carries it, the other member's and the owner's do not;
+//   1 the member connects her own MCP server (mcp.mine.add): a row of the hub that is hers, its token a connection item in HER vault; no session config carries it, hers or anyone's;
 //   2 the owner cannot read her token: not through the vault tools, not through mcp.servers, not on disk (the Space's data folder holds no trace of it);
 //   3 through the firm key she reaches her own mailbox and no other: every Google call names her address, an owner or other account named in the input is refused, she cannot set her own email or add a key;
 //   4 the other member, with no work email recorded, is refused and sees nothing.
@@ -94,7 +94,7 @@ test("a member's own MCP server and her own mailbox, and nobody else's", { timeo
   const bobMine = await as("bob", "mcp.mine.list", {});
   step("bob has no vault, so sees none of hers (locked or absent, never hers)", !JSON.stringify(bobMine).includes(TOKEN) && !JSON.stringify(bobMine).includes("her-mail"));
   const spec = await d.registry.deps.memberMcpOf({ space: SPACE, person: ALICE });
-  step("her lent-session config carries the server and its header", Boolean(spec) && spec.mcpServers["her-mail"].url === "https://mcp.example.com/mail" && spec.mcpServers["her-mail"].headers.authorization === "Bearer " + TOKEN);
+  step("her lent-session config carries NO server, header or token: the hub holds her server and adds the token per call", Boolean(spec) && Object.keys(spec.mcpServers || {}).length === 0 && !JSON.stringify(spec).includes(TOKEN));
   const bobSpec = await d.registry.deps.memberMcpOf({ space: SPACE, person: BOB }).catch(() => null);
   step("bob's config does not", !bobSpec || Object.keys(bobSpec.mcpServers || {}).length === 0);
   const ownerSpec = await d.registry.deps.memberMcpOf({ space: SPACE, person: OWNER }).catch(() => null);

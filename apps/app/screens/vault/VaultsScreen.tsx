@@ -1,9 +1,10 @@
 // Vault, Vaults: the Space's named vaults. Owner surfaces; the sample world edits in memory.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, EmptyState, ErrorState, IconTile, LoadingState, Row } from "@vyre/ui";
+import { Card, EmptyState, ErrorState, LoadingState, Row } from "@vyre/ui";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { MOCK } from "../../src/real/box";
 import { VaultsPanel, type Vlt } from "./VaultsPanel";
+import { SharedItemRow } from "./MemberShared";
 import type { Directory, Level, Share, Who } from "./ShareSheet";
 import { memberVaults, realVaults, type SharedVault, type VaultsData } from "./vaults-data";
 import { AGENTS, GROUPS0, ME, PEOPLE } from "./share-sample";
@@ -16,7 +17,7 @@ const SAMPLE: Vlt[] = [
 export function VaultsScreen() {
   const [world, setWorld] = useState<{ vaults: Vlt[]; dir: Directory } | null>(null);
   const [err, setErr] = useState("");
-  const [member, setMember] = useState<SharedVault[] | null>(null);
+  const [member, setMember] = useState<{ vaults: SharedVault[]; items: { name: string; kind: string; can: string[] }[] } | null>(null);
   const data: VaultsData = useMemo(() => {
     if (!MOCK) return realVaults();
     let vs = [...SAMPLE];
@@ -33,13 +34,15 @@ export function VaultsScreen() {
   useEffect(reload, [reload]);
   const kind = (w: Who | { id: string }): Who["kind"] => ("kind" in w ? w.kind : "person");
   if (member) return (
-    <Frame title="Vaults" sub="Vaults shared with you." back="/u/vault">
-      {member.length ? member.map((v) => (
+    <Frame title="Vaults" sub="Shared with you." back="/u/vault">
+      {member.vaults.map((v) => (
         <Sec key={v.id} title={v.name}>
-          <Card flush>{v.items.length ? v.items.map((i) => <Row key={i.name} dense lead={<IconTile name="key" />} title={i.name} sub="You can have it used. You never see the key." />) : <Row dense title="Nothing you can use yet" />}</Card>
+          <Card flush>{v.items.length ? v.items.map((i) => <SharedItemRow key={i.name} item={i} onChanged={reload} />) : <Row dense title="Nothing you can use yet" />}</Card>
         </Sec>
-      )) : <EmptyState title="No vault is shared with you" body="When someone shares a vault with you, its keys show here." />}
-      <Footnote icon="shield">A shared key works through the app and your agents. It is added where it is used and never shown to you.</Footnote>
+      ))}
+      {member.items.length ? <Sec title="Shared one by one"><Card flush>{member.items.map((i) => <SharedItemRow key={i.name} item={i} onChanged={reload} />)}</Card></Sec> : null}
+      {!member.vaults.length && !member.items.length ? <EmptyState title="Nothing is shared with you" body="When someone shares a vault or an item with you, it shows here." /> : null}
+      <Footnote icon="shield">A key you can only fill in is added where it is used and never shown to you. Showing, changing or rotating one asks for your yes and is logged with your name.</Footnote>
     </Frame>
   );
   if (err) return <Frame title="Vaults" sub="Vaults of this Space." back="/u/vault"><ErrorState title="The vaults did not load" reason={err} retry={reload} /></Frame>;
@@ -48,7 +51,7 @@ export function VaultsScreen() {
   const set = (vault: string, id: string, level: Level | null) => data.share(vault, { id, kind: kind(find(id)) }, level).then(reload);
   return (
     <Frame title="Vaults" sub="Each one kept apart, shared as a whole." back="/u/vault">
-      <VaultsPanel vaults={world.vaults} dir={world.dir} me={MOCK ? ME : null} levels={MOCK ? undefined : ["use"]}
+      <VaultsPanel vaults={world.vaults} dir={world.dir} me={MOCK ? ME : null} 
         onCreate={async (name, everyone) => { await data.create(name, everyone); reload(); }}
         onAdd={(v, w) => set(v, w.id, "use")} onLevel={(v, id, l) => set(v, id, l)} onRemove={(v, id) => set(v, id, null)} onRemoveVault={async (id) => { await data.remove(id); reload(); }} />
     </Frame>

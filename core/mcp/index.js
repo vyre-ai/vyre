@@ -24,7 +24,7 @@ import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
-import { memberServers, storeOverCalls } from "../../lib/member-mcp.js";
+import { memberServers, storeOverCalls, legacyRows, remoteOk } from "../../lib/member-mcp.js";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
 import { ownRow } from "../../lib/own-row.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
@@ -168,25 +168,53 @@ export default {
       },
     });
 
+    // A member's own servers are rows of the hub, hers by owner (a per-person key), reached through the one vyre entry with the token added per call. They are not config handed to a harness. A token she pastes
+    // becomes a connection item in her own vault (vault.me.connect.put), and the row names it; older entries kept in her store are moved the first time she lists (legacyRows), then removed.
+    const memberOnly = async (/** @type {any} */ meta) => { const p = await callerMember(meta); if (!p) throw Object.assign(new Error("these are a member's own servers: the Space's owner adds a server with mcp.add"), { code: "denied" }); return p; };
+    const rowsOf = (/** @type {string} */ person) => hub.rows().filter((/** @type {any} */ r) => r.owner === person);
+    const moveLegacy = async (/** @type {string} */ person) => {
+      let entries;
+      try { entries = await mine().list(); } catch { return; }   // locked or none: nothing to move now
+      const { rows } = legacyRows(entries);
+      for (const { row, token } of rows) {
+        try {
+          const item = `mine-${row.name}-token`.slice(0, 120);
+          if (token) { const r = await ctx.call("vault.me.connect.put", { name: item, fields: { auth_kind: "bearer", token, server_url: row.url } }, { relay: true }); if (r.error) continue; }
+          await hub.add({ name: row.name, transport: row.transport, url: row.url, auth: token ? { type: "bearer", connection: item } : { type: "none" } }, { owner: person });
+          await mine().remove(row.name);
+        } catch { /* a row that cannot be made stays an entry, unused, until it can */ }
+      }
+    };
     ctx.tool("mcp.mine.list", {
       effect: "read",
       description: "The MCP servers you brought yourself (your own accounts): name and address, never a credential.",
       input: obj({}),
-      run: async () => (await mine().list()).map(s => ({ name: s.name, type: s.type, url: s.url })),
+      callers: MINE,
+      run: async (_input, meta) => { const person = await memberOnly(meta); await moveLegacy(person); return rowsOf(person).map((/** @type {any} */ r) => ({ name: r.label || r.name, type: r.transport, url: r.url ? new URL(r.url).origin + new URL(r.url).pathname : null })); },
     });
     ctx.tool("mcp.mine.add", {
       effect: "write",
-      description: "Add an MCP server to your own accounts: a name and a remote server (type http or sse, an https url, optional headers such as an authorization token). It is kept in your own vault and reaches only your sessions.",
+      description: "Add an MCP server to your own accounts: a name and a remote server (type http or sse, an https url, optionally an authorization bearer token). Your token is kept in your own vault, and the server is reached through Vyre with the token added there; nothing is handed to a session.",
       input: obj({ name: str, type: { type: "string", enum: ["http", "sse"] }, url: str, headers: { type: "object" } }, ["name", "type", "url"]),
       callers: MINE,
-      run: async ({ name, type, url, headers }) => { await mine().put(name, { type, url, ...(headers && typeof headers === "object" ? { headers } : {}) }); return { name }; },
+      run: async ({ name, type, url, headers }, meta) => {
+        const person = await memberOnly(meta);
+        if (!remoteOk({ type, url })) throw Object.assign(new Error("a server you bring is a remote one: an https address on a public host"), { code: "bad_input" });
+        const { rows, left } = legacyRows([{ name: String(name), type, url, ...(headers && typeof headers === "object" ? { headers } : {}) }]);
+        if (left.length) throw Object.assign(new Error("a server you bring takes no header other than an authorization bearer token"), { code: "bad_input" });
+        const { row, token } = rows[0];
+        const item = `mine-${row.name}-token`.slice(0, 120);
+        if (token) { const r = await ctx.call("vault.me.connect.put", { name: item, fields: { auth_kind: "bearer", token, server_url: row.url } }, { relay: true }); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
+        await hub.add({ name: row.name, transport: row.transport, url: row.url, auth: token ? { type: "bearer", connection: item } : { type: "none" } }, { owner: person });
+        return { name: row.name };
+      },
     });
     ctx.tool("mcp.mine.remove", {
       effect: "write",
       description: "Remove one of your own MCP servers.",
       input: obj({ name: str }, ["name"]),
       callers: MINE,
-      run: async ({ name }) => ({ removed: await mine().remove(name) }),
+      run: async ({ name }, meta) => { const person = await memberOnly(meta); await hub.remove({ name: ownRow(hub, personKey, String(name), person) }); try { await mine().remove(String(name)); } catch { /* none kept */ } return { removed: true }; },
     });
 
     // The row a call means. A call that carries a member's claim reaches only HER rows: the name she gives is her label, the row is hers by key and by owner, and any other row answers not_found.

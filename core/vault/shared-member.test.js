@@ -116,3 +116,14 @@ test("a member sees the vaults shared with her: a whole vault shared once lists 
   await rig.gw.grants.revoke(rig.owner(), g.id, "test", { presence: { n: 1 } });
   assert.deepEqual((await vaults(BOB)).vaults, []);
 });
+
+test("what she may do with each shared item is told to her screen: use, reveal, edit; a credential only ever use", async t => {
+  const { v, cred, list, share, person } = await mk(t);
+  await cred("graph-api");
+  await v.put({ name: "stripe", kind: "api-key", fields: { value: "sk-1" } }, "cli");
+  await share("edit", "stripe", BOB); await share("use", "graph-api", BOB);
+  assert.deepEqual((await list(BOB)).items.map((/** @type {any} */ i) => [i.name, i.can]).sort(), [["graph-api", ["use"]], ["stripe", ["use", "reveal", "edit"]]]);
+  await share("reveal", "stripe", EVE);
+  assert.deepEqual((await list(EVE)).items.map((/** @type {any} */ i) => [i.name, i.can]), [["stripe", ["use", "reveal"]]]);
+  void person;
+});

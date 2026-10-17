@@ -4,7 +4,7 @@
 /** The kernel's levels, in order, with the owner's words. use is Fill in, reveal is Read, edit is Edit and rotate. */
 export const LEVELS = /** @type {const} */ ([["use", "Fill in"], ["reveal", "Read"], ["edit", "Edit and rotate"]]);
 export const levelWord = (/** @type {string} */ l) => (LEVELS.find(x => x[0] === l) || [l, l])[1];
-export const LEVEL_HELP = { use: "Uses it, never sees it", reveal: "Also sees the value", edit: "Also changes it, rotates the key" };
+export const LEVEL_HELP = { use: "Uses it, never sees it", reveal: "Also sees the value, and can copy it", edit: "Also changes it, rotates the key" };
 
 /** The levels one grantee may hold. An agent, and anyone on an app connection, only Fill in. @param {"person"|"group"|"agent"} kind @param {{ connection?: boolean, levels?: string[] }} [o] */
 export function allowedLevels(kind, { connection = false, levels } = {}) {
@@ -30,6 +30,9 @@ export function candidates({ people, groups, agents, shares, me, q = "", everyon
     agents: keep(offeredAgents(agents, me)),
   };
 }
+
+/** The line under a share list when anyone on it can see the value (Read, or Edit and rotate): what they see they can copy. @param {{ level: string }[]} shares */
+export const copyWarning = shares => (shares.some(s => s.level === "reveal" || s.level === "edit") ? "They can see and copy this. Taking it back later doesn't undo that; rotate it if you need to." : null);
 
 /** Joins names as "A", "A and B", "A, B and C". @param {string[]} xs */
 export const joinNames = xs => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);

@@ -36,6 +36,9 @@ import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
 import * as connectionShareTools from "./tools/connection-share.js";
 import * as namedTools from "./tools/named.js";
+import * as provisionedTools from "./tools/provisioned.js";
+import * as readerTools from "./tools/reader.js";
+import * as meMentionTools from "./tools/me-mention.js";
 import { PeopleVaults } from "./people.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
@@ -529,6 +532,7 @@ export default {
     const people = new PeopleVaults({ dir: path.join(path.dirname(ctx.paths.vault), "vault-people"), sealRoot: path.dirname(ctx.paths.vault), config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     const connShare = connectionShareTools.register({ ctx, people, tool });
     meTools.register({ ctx, people, tool, onRemoved: connShare.onRemoved });
+    meMentionTools.register({ ctx, people, internal: (/** @type {string} */ n, /** @type {string} */ d, /** @type {any} */ i, /** @type {Function} */ r) => ctx.tool(n, { internal: true, description: d, input: i, run: r }) });
     // A login a member shares with an agent (member-share.js): their vault opens it, the share tools keep a copy for the agent's Chrome, and the copy follows the login: changed, removed or the member gone, it is refreshed or deleted.
     vault.access.members.people = people;
     people.onItem = async (id, name) => { try { await vault.access.members.changed(id, name); } catch (e) { ctx.log(`vault: a shared login's copy was not refreshed (${/** @type {Error} */ (e).message})`); } };
@@ -536,6 +540,7 @@ export default {
     setTimeout(() => { vault.access.copies.sweep().catch(() => {}); }, 5000).unref?.();
     sharingTools.register({ ctx, vault, tool });
     namedTools.register({ ctx, vault, tool });
+    provisionedTools.register({ ctx, tool });
     // A member who leaves loses the vault; a member whose role changes or ends has it locked again.
     try {
       const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
@@ -594,7 +599,8 @@ export default {
     const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));
     tool("vault.remind.run", ["cli", "local", "deck"], "Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.",
       obj({}), async () => remindRun(vault, call));
-    rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    const rot = rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    readerTools.register({ ctx, vault, tool, rotateItem: rot.rotateItem });
     const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
       : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
         // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to

@@ -44,7 +44,7 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
 /** The two tools with which a member uses what the owner shared with her (registered in core/vault/request.js, beside vault.request, which they run through). */
-export const SHARED_ME_TOOLS = ["vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
+export const SHARED_ME_TOOLS = ["vault.me.mention.search", "vault.me.mention.resolve", "vault.me.shared.reveal", "vault.me.shared.update", "vault.me.shared.rotate", "vault.me.provisioned", "vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
@@ -169,10 +169,10 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   const CONNECTION_KINDS = ["oauth", "bearer", "api_key"];
   ctx.tool("vault.me.connect.put", {
     internal: true,
-    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors module; the person is the call's chain.",
+    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors and mcp modules (a token a member pastes for her own server); the person is the call's chain.",
     input: obj({ name: str, fields }, ["name", "fields"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-      if (String((meta && meta.caller) || "") !== "module:connectors") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      if (!["module:connectors", "module:mcp"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const id = await memberOf(ctx.kernel, meta);
       const f = input && input.fields;
       if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });

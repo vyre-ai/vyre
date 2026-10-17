@@ -23,7 +23,7 @@
 
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { McpError } from "./client.js";
+import { McpError, publicStreamFetch } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
 import { startsLikeCredential, hasPrivateKey } from "../../lib/credential-shapes.js";
@@ -48,6 +48,8 @@ export const MIGRATIONS = [
   `ALTER TABLE mcp_servers ADD COLUMN tools_seen TEXT;`,
 ];
 
+/** The fetch a member's row connects with: public addresses only. */
+const memberFetch = publicStreamFetch();
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
 /** The person's id as the kernel writes it. */
 const PERSON = /^per_[A-Za-z0-9_-]{1,64}$/;
@@ -1010,7 +1012,8 @@ export class Hub {
       client = await this.deps.connect({ transport: "stdio", command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) }, { ...opts, env });
     } else {
       const headers = async () => ({ ...r.headers, ...(r.owner ? await this.connectionHeaders(r) : await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
-      client = await this.deps.connect({ transport: /** @type {"http"|"sse"} */ (r.transport), url: r.url }, { ...opts, headers });
+      // A person's own row is dialled public only (the box is making the connection for her); the Space owner's keeps the client's own address rule.
+      client = await this.deps.connect({ transport: /** @type {"http"|"sse"} */ (r.transport), url: r.url }, { ...opts, headers, ...(r.owner ? { fetch: memberFetch } : {}) });
     }
     return client;
   }
