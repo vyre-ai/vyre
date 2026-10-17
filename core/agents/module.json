@@ -47,7 +47,7 @@
       {
         "name": "agents.flow-say",
         "summary": "write in a Flow's chat: wake the Flow's agent for you, as you, with the Flow and its recent runs as context",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
