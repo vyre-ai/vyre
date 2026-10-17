@@ -217,6 +217,10 @@
         "effect": "write"
       },
       {
+        "name": "agents.instructors",
+        "reach": "modules"
+      },
+      {
         "name": "agents.used",
         "reach": "person",
         "effect": "read"

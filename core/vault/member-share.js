@@ -44,6 +44,10 @@ export class MemberShare {
     if (!(expires > now) || expires > now + 366 * DAY) throw bad("a share ends in the future and within a year");
     const agent = String(i.agent || "").toLowerCase();
     if (!agent || agent === "assistant") throw bad("name one of your agents; the default assistant takes no shared login", "bad_input");
+    // Only an agent she may instruct herself (she made it, or was given Can use or Can edit): a login put into an agent others also instruct is filled for whoever instructs it. Anything else is not found.
+    const who = await this.access.ctx.call("agents.instructors", { agent });
+    if (who.error || !who.data) throw bad(`no agent named ${agent.slice(0, 60)}`, "not_found");
+    const others = [...new Set([who.data.made_by, ...(Array.isArray(who.data.shares) ? who.data.shares : [])].filter((/** @type {any} */ x) => typeof x === "string" && x && x !== owner))];
     const uid = await this.access.uidOf(agent);
     if (!uid) throw bad(`no agent named ${agent.slice(0, 60)}`, "not_found");
     await this.copies.sweep();
@@ -55,7 +59,7 @@ export class MemberShare {
     try { await this.grant({ ref, owner, uid, origin, expires }); } catch (e) { await this.copies.remove(ref); throw e; }
     v.audit("member-share", ref, `person:${owner}`, true, `agent:${agent}`, { origin });
     v.emit("vault.member-shared", { ref, agent, origin });
-    return { shared: { ref, item: String(i.item), agent, origin, expires }, notice: NOTICE };
+    return { shared: { ref, item: String(i.item), agent, origin, expires }, notice: NOTICE, instructors: { others, staff: "the owner and the admins can instruct every agent" } };
   }
 
   /** End the member's shares of one login (all agents and origins, or those named). @param {{ item: string, agent?: string, origin?: string }} i @param {any} meta */
@@ -96,12 +100,18 @@ export class MemberShare {
   async changed(owner, item) {
     const rows = this.copies.match({ owner, item });
     if (!rows.length || !this.people) return 0;
-    let it = null;
-    try { it = await this.people.get(owner, { name: item }); } catch { it = null; }
-    const f = it && it.kind === "login" && it.fields && it.fields.password ? it.fields : null;
-    if (!f) return this.end({ owner, item }, "the login was removed or is no longer a login");
-    for (const r of rows) { const m = /** @type {any} */ (this.copies.find(r.ref)); if (m) await this.copies.put({ owner, item, agent: m.agent, uid: m.uid, origin: m.origin, expires: m.expires, fields: f }); }
-    return 0;
+    // Fail closed: a copy that cannot be brought up to date with the login it was taken from is deleted, with its grant, never kept as it was.
+    try {
+      let it = null;
+      try { it = await this.people.get(owner, { name: item }); } catch (e) { if (/** @type {any} */ (e).code === "locked") throw e; it = null; }
+      const f = it && it.kind === "login" && it.fields && it.fields.password ? it.fields : null;
+      if (!f) return await this.end({ owner, item }, "the login was removed or is no longer a login");
+      for (const r of rows) { const m = /** @type {any} */ (this.copies.find(r.ref)); if (m) await this.copies.put({ owner, item, agent: m.agent, uid: m.uid, origin: m.origin, expires: m.expires, fields: f }); }
+      return 0;
+    } catch (e) {
+      await this.end({ owner, item }, "the copy could not be brought up to date");
+      throw e;
+    }
   }
 
   /** The member left (removed or expired): everything they shared goes. @param {string} owner */

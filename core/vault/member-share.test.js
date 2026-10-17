@@ -25,7 +25,10 @@ async function world(t) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-member-share-"));
   const db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
-  const rig = await kernelRig({ people: [BEN, CY], agents: { kit: "agt_kit", juno: "agt_juno", assistant: "agt_asst" } });
+  // Who may Ben instruct: juno (he made it; Cy was given Can use) and kit (given Can use); not "team", an agent of others'
+  const instructors = (/** @type {string} */ tool, /** @type {any} */ i) => tool !== "agents.instructors" ? undefined
+    : i.agent === "juno" ? { data: { level: "edit", made_by: BEN, shares: [CY] } } : i.agent === "kit" ? { data: { level: "use", made_by: "per_ada", shares: [BEN] } } : { error: { code: "not_found", message: "no agent" } };
+  const rig = await kernelRig({ people: [BEN, CY], agents: { kit: "agt_kit", juno: "agt_juno", team: "agt_team", assistant: "agt_asst" }, call: instructors });
   const events = /** @type {any[]} */ ([]);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file" } }, emit: (type, p) => events.push({ type, p }), log: () => {}, clock: rig.clock });
   v.access = new Access(v, rig.ctx);
@@ -80,6 +83,7 @@ test("only the member, explicitly, for a login of theirs with a password, for a 
   await assert.rejects(w.share({ item: "nope" }), /no item named/);
   await assert.rejects(w.share({ agent: "assistant" }), /default assistant/);
   await assert.rejects(w.share({ agent: "no-such-agent" }), e => /** @type {any} */ (e).code === "not_found");
+  await assert.rejects(w.share({ agent: "team" }), e => /** @type {any} */ (e).code === "not_found", "an agent Ben may not instruct is not found, as if it did not exist");
   await assert.rejects(w.share({ origin: "not an address" }), /address/);
   await assert.rejects(w.share({ expires: Date.now() - 1000 }), /future/);
   await assert.rejects(w.share({ expires: w.rig.clock() + 400 * 86_400_000 }), /within a year/);
@@ -190,4 +194,27 @@ test("a copy that cannot be reached to delete (her vault is locked and no sealed
   await w.v.access.copies.sweep();
   assert.ok(!w.lentStore.get(BEN).has(ref), "deleted at the next chance");
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0);
+});
+
+test("the share sheet says who else can instruct the chosen agent", async t => {
+  const w = await world(t);
+  const r = await w.share();
+  assert.deepEqual(r.instructors.others, [CY], "Cy was given the agent: Ben's login will be filled when Cy asks it too");
+  assert.match(r.instructors.staff, /owner and the admins/);
+  const k = await w.share({ agent: "kit", origin: "https://other.example.com" });
+  assert.deepEqual(k.instructors.others, ["per_ada"], "kit's maker can instruct it");
+});
+
+test("a copy that cannot be brought up to date with its login is deleted with its grant, never kept as it was", async t => {
+  const w = await world(t);
+  const ref = (await w.share()).shared.ref;
+  const real = w.v.access.members.people.lent;
+  w.v.access.members.people.lent = () => ({ put: async () => { throw new Error("disk full"); }, remove: real(BEN).remove, get: real(BEN).get });
+  w.items.get(BEN).get(LABEL).fields.password = "fixture-NEW-password-0123456789abcdef";
+  await assert.rejects(w.M.changed(BEN, LABEL), /disk full/);
+  w.v.access.members.people.lent = real;
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_member_copies").get().n, 0, "no copy outlived the login it was taken from");
+  assert.ok(!w.lentStore.get(BEN).has(ref));
+  assert.equal((await w.rig.K.mint.list({ source: "vault:member-share:" })).length, 0, "and no grant");
+  await assert.rejects(w.fill(ref), e => /** @type {any} */ (e).code === "not_found", "and the agent cannot use it");
 });

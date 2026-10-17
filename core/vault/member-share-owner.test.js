@@ -35,7 +35,7 @@ test("a login a member shared with an agent cannot be seen or opened by the owne
 
   assert.ok((await ok("ben", "vault.me.account.create", { password: PW })));
   await ok("ben", "vault.me.put", { name: LABEL, kind: "login", fields: { username: "ben@personal.example", password: PASS } });
-  const uid = (await ok("owner", "agents.create", { name: "juno", kind: "agent" })).uid;
+  const uid = (await ok("ben", "agents.create", { name: "juno", kind: "agent" })).uid;   // Ben makes his own agent: only an agent he may instruct can be lent a login
   const shared = await ok("ben", "vault.me.share.agent", { item: LABEL, agent: "juno", origin: ORIGIN });
   const ref = shared.shared.ref;
   assert.equal(shared.notice, "Your agent can use this login while you're away.");
