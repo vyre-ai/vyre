@@ -17,8 +17,20 @@ test("classify: reads by verb or readOnlyHint, never with a send, write or delet
   for (const n of ["send_message", "create_issue", "delete_issue", "get_and_delete", "list_then_send", "sendmessage", "echo_env", "do_thing", "address_book_update"])
     assert.equal(out(n).outward, true, n);
   assert.equal(out("address_lookup").outward, false, "add inside a word is not a write");
-  assert.equal(out("summarize", { readOnlyHint: true }).outward, false, "the hint relaxes a name with no write word");
+  // B7 (sec53): a server's own hint never relaxes a name that says nothing. An unknown name stays
+  // outward whatever the server claims, so a write named "apply_changes" with readOnlyHint is held.
+  assert.equal(out("summarize", { readOnlyHint: true }).outward, true, "a hint alone does not make an unknown name a read");
+  assert.equal(out("apply_changes", { readOnlyHint: true }).outward, true, "the hint cannot relax an unknown write");
+  assert.equal(out("list_issues", { readOnlyHint: true }).outward, false, "a read verb with the hint is a read");
   assert.equal(out("post_update", { readOnlyHint: true }).outward, true, "the hint never relaxes a send");
+  // destructiveHint is the server saying the call deletes or overwrites: outward, kind delete, whatever the name.
+  assert.deepEqual(out("get_issue", { readOnlyHint: false, destructiveHint: true }), { outward: true, kind: "delete", off: false });
+  assert.deepEqual(out("list_issues", { destructiveHint: true }), { outward: true, kind: "delete", off: false }, "destructiveHint is never ignored");
+  assert.equal(out("list_issues", { readOnlyHint: true, destructiveHint: true }).outward, true, "read and destructive together is outward");
+  // The person's own read mode still turns a non-sending tool into a read, hint or no hint.
+  assert.equal(out("summarize", undefined, "read").outward, false, "the person's read mode wins for a tool that does not send");
+  assert.equal(out("list_issues", { destructiveHint: true }, "read").outward, true, "a read mode cannot unhold a destructive tool");
+  assert.equal(out("list_issues", { destructiveHint: true }, "off").off, true, "off still turns it off");
   assert.deepEqual(out("delete_issue"), { outward: true, kind: "delete", off: false });
   assert.equal(out("refund_payment").kind, "spend");
   assert.equal(out("send_message").kind, "send");
