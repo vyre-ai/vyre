@@ -98,7 +98,7 @@ const moduleType = o => ({
  *   fetchCredential: (item: string, field?: string) => Promise<string>, relay: (input: any) => Promise<any>,
  *   teach?: (kind: string, fact: any) => Promise<any>, senders?: Record<string, any>, fetch?: typeof fetch,
  *   now?: () => number, types?: Record<string, any>, log?: (m: string) => void,
- *   call?: (tool: string, input: any) => Promise<any> }} GateDeps
+ *   call?: (tool: string, input: any) => Promise<any>, owner?: string }} GateDeps
  */
 
 export class Gate {
@@ -198,9 +198,21 @@ export class Gate {
       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
       why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, requester);
     const summary = t.summary(dest, content);
-    const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
+    const ev = this.emitFor(requester, "gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
     if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
     return { id, state: "held", message: `Held at the Gate as ${id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
+  }
+
+  /**
+   * Emit a Gate event. An event of a member's item (its requester is not the owner) carries no destination, preview, reason or error text: the event bus is read in full by admins, and what a member
+   * asked to send is the member's own (core/gate/requester.js). Who it is, which sender and where it is filed still ride along.
+   * @param {string | null | undefined} requester @param {string} type @param {any} payload @param {any} [where]
+   */
+  emitFor(requester, type, payload, where) {
+    const mine = requester && requester !== this.deps.owner;
+    if (!mine) return this.deps.emit(type, payload, where);
+    const { to: _to, summary: _s, why: _w, reason: _r, error: _e, ...rest } = payload;
+    return this.deps.emit(type, { ...rest, requester }, where);
   }
 
   /** The sender, its type and the destinations, with the request checked the way every path checks it. */
@@ -237,7 +249,7 @@ export class Gate {
     try {
       const result = await t.send(dest, content, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch, call: this.deps.call, id });
       this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
-      this.deps.emit("gate.released", { id, kind, via, to: dest, edited: false, by, said: intent || null, agent, thread: thread || null, project: project || null }, w);
+      this.emitFor(requester, "gate.released", { id, kind, via, to: dest, edited: false, by, said: intent || null, agent, thread: thread || null, project: project || null }, w);
       return { id, state: "sent", by, result: result ?? null, message: "Sent at once: you asked for this, so it did not wait at the Gate." };
     } catch (e) {
       const error = cut(scrub(String(/** @type {Error} */ (e)?.message || e), []), 500);
@@ -245,9 +257,9 @@ export class Gate {
       const reached = /** @type {any} */ (e)?.detail?.reached;
       const known = reached === "maybe" || reached === "no" ? { reached } : {};
       const summary = t.summary(dest, content);
-      const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, w);
+      const ev = this.emitFor(requester, "gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, w);
       if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
-      this.deps.emit("gate.failed", { id, via, error: cut(error, 200), ...known }, w);
+      this.emitFor(requester, "gate.failed", { id, via, error: cut(error, 200), ...known }, w);
       return { id, state: "held", error, ...known, message: `You asked for this, but it did not go out (${error}). It is held at the Gate as ${id} for you to try again. Do not send it another way.` };
     }
   }
@@ -327,7 +339,7 @@ export class Gate {
       this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
       const edits = diff(draft, final);
       const changed = edits.removed.length > 0 || edits.added.length > 0 || JSON.stringify(dest) !== (r.draft_dest ?? r.dest);
-      this.deps.emit("gate.released", { id, kind: r.kind, via: r.via, to: dest, edited: changed, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, w);
+      this.emitFor(r.requester, "gate.released", { id, kind: r.kind, via: r.via, to: dest, edited: changed, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, w);
       if (changed && this.deps.teach) await this.teachEdit(r, dest, edits).catch(() => {});
       return { id, state: "sent", result: result ?? null };
     } catch (e) {
@@ -338,7 +350,7 @@ export class Gate {
       // app before trying again (and settle it if the words are there), "no" means try again.
       const reached = /** @type {any} */ (e)?.detail?.reached;
       const known = reached === "maybe" || reached === "no" ? { reached } : {};
-      this.deps.emit("gate.failed", { id, via: r.via, error: cut(error, 200), ...known }, w);
+      this.emitFor(r.requester, "gate.failed", { id, via: r.via, error: cut(error, 200), ...known }, w);
       return { id, state: "failed", error, ...known };
     }
   }
@@ -376,8 +388,17 @@ export class Gate {
     const done = this.db.prepare("UPDATE gate_items SET final = ?, dest = ?, by = ? WHERE id = ? AND state = 'held'")
       .run(JSON.stringify(final), JSON.stringify(dest), by || null, id);
     if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
-    this.deps.emit("gate.revised", { id, via: r.via, to: dest, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, where(r.thread, r.project));
+    this.emitFor(r.requester, "gate.revised", { id, via: r.via, to: dest, by: by || null, agent: r.agent, thread: r.thread, project: r.project }, where(r.thread, r.project));
     return this.get({ id });
+  }
+
+  /** A member left (removed or expired): what they asked to send and nobody answered is discarded, since no one else may answer a member's item. Returns how many. @param {string} person @param {string} reason */
+  rejectAllOf(person, reason) {
+    let n = 0;
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id FROM gate_items WHERE state = 'held' AND requester = ?").all(String(person)))) {
+      try { this.reject({ id: r.id, reason, by: "system" }); n++; } catch { /* answered meanwhile */ }
+    }
+    return n;
   }
 
   /** A person discarded it. Nothing is sent. @param {{ id: string, reason?: string, by?: string }} input */
@@ -386,7 +407,7 @@ export class Gate {
     const done = this.db.prepare("UPDATE gate_items SET state = 'rejected', error = ?, by = ?, decided = ? WHERE id = ? AND state = 'held'")
       .run(reason ? cut(String(reason), 500) : null, by || null, this.now(), id);
     if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
-    this.deps.emit("gate.rejected", { id, kind: r.kind, via: r.via, by: by || null, reason: reason ? cut(String(reason), 200) : null }, where(r.thread, r.project));
+    this.emitFor(r.requester, "gate.rejected", { id, kind: r.kind, via: r.via, by: by || null, reason: reason ? cut(String(reason), 200) : null }, where(r.thread, r.project));
     return { id, state: "rejected" };
   }
 
@@ -405,7 +426,7 @@ export class Gate {
     const done = this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, by = COALESCE(?, by), decided = ? WHERE id = ? AND state = 'held' AND error IS NOT NULL")
       .run(JSON.stringify(result), by || null, this.now(), id);
     if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
-    this.deps.emit("gate.settled", { id, kind: r.kind, via: r.via, outcome, by: by || null }, where(r.thread, r.project));
+    this.emitFor(r.requester, "gate.settled", { id, kind: r.kind, via: r.via, outcome, by: by || null }, where(r.thread, r.project));
     return { id, state: "sent", settled: true };
   }
 

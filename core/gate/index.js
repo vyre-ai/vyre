@@ -50,6 +50,7 @@ export default {
     const approvers = Array.isArray(opts.approvers) ? opts.approvers.map(String) : ["chat"];
 
     const gate = new Gate({
+      get owner() { return ctx.kernel && typeof ctx.kernel.owner === "string" ? ctx.kernel.owner : undefined; },
       db: ctx.store.db,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       fetchCredential: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
@@ -64,6 +65,12 @@ export default {
       call: (t, i) => ctx.call(t, i),
       log: m => ctx.log(m),
     });
+
+    // A member who leaves takes their held items with them: no one else may answer a member's item, so none is left waiting for ever.
+    try {
+      const personOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.person) || (e && e.person) || "");
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { const who = personOf(e); if (who) gate.rejectAllOf(who, "the member left"); } catch { /* not a person id */ } });
+    } catch { /* a registry with no event bus */ }
 
     const stuck = gate.recover();
     if (stuck) ctx.log(`${stuck} item(s) were mid-send when vyred stopped; back to held, marked as possibly sent`);

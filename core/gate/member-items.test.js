@@ -110,3 +110,68 @@ test("a call with no person on its chain, or a member, gets nothing of the owner
   const sent = await as(OWNER, "gate.approve", { id });
   assert.equal(sent.data?.state, "sent", "the owner approves their own item: " + JSON.stringify(sent));
 });
+
+const ADA = "per_" + "defghijklmnopqrstuvwxyzabc";
+
+test("the Gate's events for a member's item carry no destination, preview or reason, so the bus an admin reads shows none of what a member asked to send; the owner's own items keep theirs", { timeout: 120_000 }, async t => {
+  const { d, as, agentOf, OWNER } = await rig(t);
+  const bens = (await agentOf(BEN, "gate.request", ASK)).data.id;
+  await as(BEN, "gate.reject", { id: bens, reason: "Weekly update is wrong" });
+  const mine = (await as(OWNER, "gate.request", ASK)).data.id;
+  const events = d.registry.deps.events.since(0, { limit: 5000 }).filter((/** @type {any} */ e) => /^gate\./.test(e.type));
+  const of = (/** @type {string} */ id) => events.filter((/** @type {any} */ e) => e.payload && e.payload.id === id);
+  assert.ok(of(bens).length >= 2, "Ben's item raised held and rejected");
+  for (const e of of(bens)) {
+    const text = JSON.stringify(e.payload).toLowerCase();
+    for (const word of ["northwind", "weekly update", "ovens", "is wrong"]) assert.ok(!text.includes(word), `${e.type} carries ${word}`);
+    assert.equal(e.payload.requester, BEN);
+  }
+  const heldMine = of(mine).find((/** @type {any} */ e) => e.type === "gate.held");
+  assert.deepEqual(heldMine.payload.to, ["#northwind"], "the owner's own item keeps its destination in its event");
+});
+
+test("a member who leaves takes their held items with them: they are rejected, and the owner's and another member's are untouched", { timeout: 120_000 }, async t => {
+  const { d, as, agentOf, OWNER } = await rig(t);
+  const bens = (await agentOf(BEN, "gate.request", ASK)).data.id, cys = (await agentOf(CY, "gate.request", ASK)).data.id, mine = (await as(OWNER, "gate.request", ASK)).data.id;
+  d.registry.deps.events.emit("member.removed", { person: BEN });
+  const state = (/** @type {string} */ id) => d.registry.deps.db.prepare("SELECT state, error FROM gate_items WHERE id = ?").get(id);
+  assert.deepEqual({ ...state(bens) }, { state: "rejected", error: "the member left" });
+  assert.equal(state(cys).state, "held"); assert.equal(state(mine).state, "held");
+});
+
+test("every Gate path, for each kind of caller: the requester, another member, an admin, the owner, a call with no person, a module, and an item with no requester", { timeout: 180_000 }, async t => {
+  const { d, K, OWNER, as, agentOf } = await rig(t);
+  const dev = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
+  await K.gateway.grants.setRole(dev(OWNER), { person: ADA, role: "admin" }, { presence: proof() });
+  const memberItem = async () => (await agentOf(BEN, "gate.request", ASK)).data.id;
+  const legacyItem = async () => { const id = (await as(OWNER, "gate.request", ASK)).data.id; d.registry.deps.db.prepare("UPDATE gate_items SET requester = NULL WHERE id = ?").run(id); return id; };
+  const noPerson = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "local");
+  const asModule = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "module:courier");
+  const paths = [["gate.get", (/** @type {string} */ id) => ({ id })], ["gate.revise", (/** @type {string} */ id) => ({ id, edited: { text: "x" } })], ["gate.reject", (/** @type {string} */ id) => ({ id })]];
+  // a member's item
+  for (const [tool, input] of paths) {
+    const id = await memberItem();
+    for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["owner", (tl, i) => as(OWNER, tl, i)], ["admin", (tl, i) => as(ADA, tl, i)], ["Cy", (tl, i) => as(CY, tl, i)], ["no person", noPerson], ["module", asModule]]))
+      assert.equal((await call(/** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error?.code, "not_found", `${who} ${tool} on a member's item`);
+    assert.ok(!(await as(BEN, /** @type {string} */ (tool), /** @type {Function} */ (input)(id))).error, `the requester ${tool}`);
+  }
+  // held, with the count
+  const ben1 = await memberItem(), legacy = await legacyItem();
+  const ids = async (/** @type {Promise<any>} */ p) => ((await p).data || []).map((/** @type {any} */ i) => i.id).sort();
+  assert.deepEqual(await ids(as(BEN, "gate.held")), [ben1]);
+  assert.deepEqual(await ids(as(CY, "gate.held")), []);
+  assert.deepEqual(await ids(as(OWNER, "gate.held")).then(l => l.includes(ben1)), false);
+  assert.ok((await ids(as(OWNER, "gate.held"))).includes(legacy), "the owner lists the older item"); assert.ok((await ids(as(ADA, "gate.held"))).includes(legacy), "an admin lists it");
+  assert.ok(!(await ids(as(ADA, "gate.held"))).includes(ben1), "an admin does not list a member's item");
+  assert.deepEqual(await ids(noPerson("gate.held", {})), [], "a call with no person lists nothing");
+  assert.ok((await ids(asModule("gate.held", {}))).includes(legacy) && !(await ids(asModule("gate.held", {}))).includes(ben1), "a module sees the older item as before, never a member's");
+  // an item with no requester: owner and admin handle it; a member and a call with no person do not; a module does as before
+  for (const [tool, input] of paths) {
+    for (const [who, call, ok] of /** @type {[string, (t: string, i: any) => Promise<any>, boolean][]} */ ([["Ben", (tl, i) => as(BEN, tl, i), false], ["no person", noPerson, false], ["owner", (tl, i) => as(OWNER, tl, i), true], ["admin", (tl, i) => as(ADA, tl, i), true], ["module", asModule, true]])) {
+      const id = await legacyItem();
+      const r = await call(/** @type {string} */ (tool), /** @type {Function} */ (input)(id));
+      if (ok) assert.ok(!r.error, `${who} ${tool} on an older item: ${JSON.stringify(r.error)}`); else assert.equal(r.error?.code, "not_found", `${who} ${tool} on an older item`);
+    }
+  }
+  for (const [who, call] of /** @type {[string, (t: string, i: any) => Promise<any>][]} */ ([["Ben", (tl, i) => as(BEN, tl, i)], ["no person", noPerson]])) assert.equal((await call("gate.approve", { id: legacy })).error?.code, "not_found", `${who} approve on an older item`);
+});
