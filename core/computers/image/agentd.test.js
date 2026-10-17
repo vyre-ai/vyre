@@ -4,6 +4,7 @@
 import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, asAgent, execute, tolerant, homeOf, socketOf } from "./agentd.js";
 
 const U = { user: "ag20000", uid: 20000, display: 20 };
@@ -89,4 +90,14 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
   await execute(planWipeHome(U), run, { tolerate: tolerant });
   assert.equal(ran.length, 3);
   await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv.includes("/usr/bin/find")) throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
+});
+
+test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
+  const holder = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
+  assert.match(holder, /HOME = "\/home\/ag%d" % uid/);
+  assert.match(holder, /--user-data-dir=%s\/\.chrome" % HOME/);
+  assert.match(holder, /--restore-last-session/, "the tabs and their logins come back when Chrome does");
+  assert.ok(planStopScreen(U).every(x => x.includes("/usr/bin/pkill") && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
+  assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/home/ag20000")));
+  assert.ok(planRemove(U).some(x => x.includes("-delete")));
 });

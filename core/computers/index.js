@@ -22,6 +22,8 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
+import { makeAgentEndpoint } from "./agent-endpoint.js";
+import { createCdpAdapter } from "./cdp-adapter.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -136,6 +138,17 @@ export default {
         return { host: h.host, port: RELAY_PORT, password, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
       },
     };
+    /** The agent's Chrome for the code that drives it (hands, fill): a ticket with the relay for its debugging pipe, held as one link per agent in the adapter (cdp-adapter.js). */
+    const cdpAdapter = createCdpAdapter({ log: ctx.log, open: async (/** @type {string} */ agent) => {
+      const h = pool.hosts.get(SHARED_COMPUTER_ID);
+      if (!h) throw new Error(NOT_SET);
+      await pool.pin(SHARED_COMPUTER_ID);
+      const hello = crypto.randomBytes(24).toString("base64url");
+      await agentUsers.cdpTicket(agent, hello);
+      screenViewers.set(agent, (screenViewers.get(agent) || 0) + 1);
+      let released = false;
+      return { host: h.host, port: RELAY_PORT, hello: `${hello}\n`, release: () => { if (released) return; released = true; screenViewers.set(agent, Math.max(0, (screenViewers.get(agent) || 1) - 1)); agentUsers.touch(agent); } };
+    } });
     /** The agent's terminal for the terminal stream: a one-use ticket with the relay (agentd-relay.js), which starts the terminal as the agent. */
     const agentTerminal = {
       openTerminal: async (/** @type {string} */ agent, /** @type {string} */ session) => {
@@ -257,10 +270,12 @@ export default {
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
       return /** @type {any} */ (ctl)[name](u);
     };
-    const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(), emit,
+    const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
+      // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
+      emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeHome: lazy("wipeHome") } });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
-    registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
         const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
         return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
@@ -404,8 +419,13 @@ export default {
         return { ticket, path, width: w, height: h };
       });
 
+    const agentdReady = () => { const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
+
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",
       obj({ agent: str, thread: str }), async (i, { caller }) => {
+        // The space's computer, when it is there: the agent's own Chrome, whose address and token come from here and from nowhere else. (The shared headless browser below is the fallback until it is deleted.)
+        if (agentdReady()) return agentEndpoint(i, caller);
         const agent = await resolve(i, caller);
         const ep = await agentBrowser.endpoint(agent, { thread: i.thread, why: "hands" });
         return { helper: ep.helper };

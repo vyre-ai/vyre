@@ -25,6 +25,7 @@ function setup(t, extra = {}) {
     wipeHome: async (/** @type {any} */ u) => { ran.push(`wipe ${u.user}`); },
     terminals: async (/** @type {any} */ u) => [{ name: `t-${u.user}`, windows: 1 }],
     terminalTicket: async (/** @type {any} */ u, /** @type {string} */ ticket, /** @type {string} */ session) => { ran.push(`term ${u.user} ${session} ${ticket}`); },
+    cdpTicket: async (/** @type {any} */ u, /** @type {string} */ ticket) => { ran.push(`cdp ${u.user} ${ticket}`); },
     screenTicket: async (/** @type {any} */ u, /** @type {string} */ ticket) => { ran.push(`ticket ${u.user} ${ticket}`); },
   };
   const users = new AgentUsers({ db, ctl, now: () => clock.t, emit: type => events.push(type), ...extra.deps });
@@ -147,4 +148,13 @@ test("terminals are the agent's own, listed and ticketed under its own user; an 
   assert.deepEqual(await users.terminals("kit"), [{ name: "t-ag20001", windows: 1 }]);
   await users.terminalTicket("ads", "t".repeat(32), "work");
   assert.deepEqual(ran.filter(x => x.startsWith("term")), [`term ag20000 work ${"t".repeat(32)}`]);
+});
+
+test("a Chrome ticket is registered for a live agent only, under that agent's own user", async t => {
+  const { users, ran } = setup(t);
+  await users.add("ads", "Ads");
+  await assert.rejects(() => users.cdpTicket("ads", "t".repeat(32)), /Chrome is not up/);
+  await users.wake("ads");
+  await users.cdpTicket("ads", "t".repeat(32));
+  assert.deepEqual(ran.filter(x => x.startsWith("cdp")), [`cdp ag20000 ${"t".repeat(32)}`]);
 });

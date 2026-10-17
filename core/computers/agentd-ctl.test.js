@@ -98,3 +98,10 @@ test("terminals are asked for as the agent's triple and come back as a list; a t
   const bad = agentdCtl({ transport: async () => ({ status: 502, json: null }), vncKey: async () => "k" });
   await assert.rejects(() => /** @type {any} */ (bad).terminals(u), /could not list terminals/);
 });
+
+test("a Chrome ticket goes to agentd as the agent's triple, the ticket and the kind cdp", async () => {
+  /** @type {any[]} */ const sent = [];
+  const ctl = agentdCtl({ transport: async (a, b) => { sent.push([a, b]); return { status: 200, json: { ok: true } }; }, vncKey: async () => "k".repeat(32) });
+  await /** @type {any} */ (ctl).cdpTicket({ agentId: "ads", user: "ag20001", uid: 20001, display: 21 }, "t".repeat(32));
+  assert.deepEqual(sent, [["ticket", { user: "ag20001", uid: 20001, display: 21, ticket: "t".repeat(32), kind: "cdp" }]]);
+});

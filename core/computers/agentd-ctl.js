@@ -30,6 +30,8 @@ export function agentdCtl(deps) {
     wipeHome: u => post("wipe", { user: u.user, uid: u.uid, display: u.display }),
     /** register a one-use ticket for a viewer's connection to the relay (agentd-relay.js) */
     screenTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket }),
+    /** register a one-use ticket for the agent's Chrome (its debugging pipe, through the relay) */
+    cdpTicket: (u, ticket) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, kind: "cdp" }),
     /** register a one-use ticket for one terminal (a tmux session of the agent) */
     terminalTicket: (u, ticket, session) => post("ticket", { user: u.user, uid: u.uid, display: u.display, ticket, session }),
     /** the agent's tmux sessions */

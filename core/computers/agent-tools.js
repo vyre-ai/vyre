@@ -18,6 +18,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const AGENT = /^[a-z][a-z0-9._-]{1,80}$/;
 
 /**
+ * Returns `mayUse` (the agents module's level check) and `place` (the agent's place on the computer, made on first use) for the one path that needs them besides these tools: the agent's endpoint.
  * @param {{ tool: (name: string, description: string, input: any, run: (i: any, meta: any) => Promise<any>, extra?: any) => void,
  *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any) => Promise<any>, callers: string[],
  *   held?: (agent: string) => boolean, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
@@ -81,4 +82,5 @@ export function registerAgentTools(d) {
       if (!d.users.row(a)) return shape(a);
       await d.users.reset(a); return shape(a);
     }, { callers: d.callers });
+  return { mayUse, place };
 }

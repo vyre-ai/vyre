@@ -42,6 +42,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   wipeHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
+ *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
@@ -114,6 +115,15 @@ export class AgentUsers {
     if (!r || r.state !== "live") throw new Error(`${id}'s screen is not on`);
     if (typeof this.ctl.screenTicket !== "function") throw new Error("this computer cannot open a screen to an agent");
     await this.ctl.screenTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
+    this.touchNow(id);
+  }
+
+  /** Register a one-use ticket for this agent's Chrome (its debugging pipe); the agent's screen and Chrome must be up. @param {string} id @param {string} ticket */
+  async cdpTicket(id, ticket) {
+    const r = this.row(id);
+    if (!r || r.state !== "live") throw new Error(`${id}'s Chrome is not up`);
+    if (typeof this.ctl.cdpTicket !== "function") throw new Error("this computer cannot reach an agent's Chrome");
+    await this.ctl.cdpTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket);
     this.touchNow(id);
   }
 
