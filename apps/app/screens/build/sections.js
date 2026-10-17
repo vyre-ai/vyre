@@ -5,6 +5,7 @@
 /** [id, label, icon, route, prefixes]. Playbooks (templates-ux's board), Objects (the record-type editor), Kits. */
 export const BUILD_SECTIONS = /** @type {readonly [string, string, string, string, readonly string[]][]} */ ([
   ["playbooks", "Playbooks", "file", "/u/playbooks", ["/u/playbooks", "/u/templates"]],
+  ["skills", "Skills and plugins", "spark", "/u/skills", ["/u/skills"]],
   ["objects", "Objects", "list", "/u/settings/customize", ["/u/settings/customize"]],
   ["documents", "Documents", "file", "/u/documents?tab=templates", ["/u/documents"]],
   ["kits", "Kits", "box", "/u/kits", ["/u/kits"]],

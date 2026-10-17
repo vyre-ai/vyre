@@ -26,7 +26,7 @@ export const CALLERS = Object.freeze([
   // An assistant PROVEN by the daemon: the call arrived on a session's own socket (or a vouched key), so `meta.thread` is bound. Appended last so no row's order changes.
   { id: "session:mcp:agent:kit", caller: () => "mcp:agent:kit", meta: { thread: "t1", agent: "kit" } },
   { id: "session:harness:agent:kit", caller: () => "harness:agent:kit", meta: { thread: "t1", agent: "kit" } },
-  // The labels the Wink network issues (TAILSCALE-removal step 2): a visiting person in a Space, and an agent's own label. Appended last so no row's order changes.
+  // The labels the Wink network issues (the built-in network's step 2): a visiting person in a Space, and an agent's own label. Appended last so no row's order changes.
   { id: "space:alex@harlow", caller: () => "space:alex@harlow" },
   { id: "agent:kit", caller: () => "agent:kit" },
 ]);

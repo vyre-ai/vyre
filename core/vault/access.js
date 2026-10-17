@@ -179,7 +179,7 @@ export class Access {
    * Use only (a read runs, anything outward is still held), until `until` or `leaseEnd`, idempotent per task, agent and Connection, so a restart does not double it. The grant records the Kit and its version.
    * @param {{ task: string, agent: string, connections: string[], until: number }} i
    */
-  async leaseTask({ task, agent, connections, until }) {
+  async leaseTask({ task, agent, connections, until, approver }) {
     const K = this.need();
     if (!/^[A-Za-z0-9_.-]{1,80}$/.test(String(task))) throw new Error("name the task");
     if (!Array.isArray(connections) || !connections.length || connections.length > 20) throw new Error("name the Connections to lend, up to 20");
@@ -194,8 +194,12 @@ export class Access {
       const got = await this.ctx.call("connectors.connection.get", { id: String(c) });
       if (got.error) throw Object.assign(new Error(`no Connection ${String(c).slice(0, 60)} (connectors.connection.list shows them)`), { code: "not_found" });
     }
+    // the person who approved the task lends only what they hold themselves: a Connection they cannot use is refused, whatever the Kit names
+    if (typeof approver !== "string" || !approver) throw Object.assign(new Error("a lease needs the person who approved the task: without one the agent runs on its own access"), { code: "denied" });
+    const home = `vyre://${K.space}/vault/${await K.vault.personalVault()}`;
+    for (const c of connections) if (!(await K.vault.personMay(approver, "vault.call", `${home}/connection/${c}`))) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not one you may use, so it cannot be lent to this task: ask an owner to share it with you first`), { code: "denied" });
     const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
-    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until) })));
+    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until), approver: String(approver) })));
     this.v.audit("lease-lent", null, "module:flows", true, `task ${task} to ${agent}: ${connections.join(", ")} (${tag})`);
     this.v.emit("vault.lease-lent", { task, agent, connections, kit: kit.kit, version: kit.version });
     return { lent: made.length, already: connections.length - made.length };

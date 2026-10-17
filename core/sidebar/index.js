@@ -27,7 +27,7 @@ const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const str = { type: "string" };
 /** Who may call: the person's surfaces and devices, a module, and an assistant (a model session or the harness). What each may change is checked in the tool. */
-const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+const WHO = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const NO_DEFAULT = "Only an owner or an admin of this Space sets the team's sidebar. You can arrange your own.";
 

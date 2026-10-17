@@ -152,7 +152,7 @@ export function createApp(o) {
     return pairing;
   }
 
-  /** "Add a server": the app makes the install line; the caller runs it; the app finds the server, shows four words, and (once told they match) pairs. @param {{ onChange?: (s: any) => void }} [h] */
+  /** "Add a server": the app makes the install line; the caller runs it; the server adopts this identity and the app pairs without a four-word step. @param {{ onChange?: (s: any) => void }} [h] */
   function addServer(h = {}) {
     if (!me) throw new Error("this app has no identity yet");
     const flow = createAddServer({
@@ -160,6 +160,7 @@ export function createApp(o) {
       identity: async () => ({ id: me.id }),
       connect: async ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: setupClient.setupHello, webCrypto, utf8 }, { offer, key, secret }),
       pair: async (qr, ctx) => { await pairWithServer(qr, ctx); },
+      autoPair: true,
       pollMs: 100, ...(h.onChange ? { onChange: h.onChange } : {}),
     });
     return flow;

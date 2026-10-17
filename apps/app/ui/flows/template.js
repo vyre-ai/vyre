@@ -10,7 +10,7 @@ import { isRecordTrigger } from "./logic.js";
 /** @typedef {{ title: string, items: Item[], object?: string, soon?: Item[] }} Group  `object`: the object's own label, shown before a field in a chip */
 
 /** `{path}`, and for a date `{path - 1 day}`, `{path + 2 hours as date}`: a path, then an optional offset and an optional format (the engine's own grammar, logic.js). The path is group 1, the rest group 2. */
-export const TOKEN_RE = /\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}/gi;
+export const TOKEN_RE = /(?<!\{)\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}(?!\})/gi;
 
 /** The text as pieces: plain words and tokens. @param {string} text @returns {({ text: string } | { token: string, path: string, suffix: string })[]} */
 export function parseTemplate(text) {

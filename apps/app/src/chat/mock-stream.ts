@@ -90,7 +90,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   const tps = o.tps ?? 40;
   const c = new Clock();
   c.push("status", { state: "working", turn: "turn-1" });
-  c.push("user-message", { message: "m1", text: "Fix the failing date check in the intake form, then update the Northwind Bakery matter.", state: "sent" }, 40);
+  c.push("user-message", { message: "m1", text: "Fix the failing date check in the intake form, then update the Northwind Bakery project.", state: "sent" }, 40);
   c.say("a1", "I'll run the intake tests first to see exactly what fails.", tps, 200);
   c.push("tool-started", { tool_id: "tl1", tool: "Bash", kind: "terminal", summary: "npm test -- intake" }, 150);
   const lines = [
@@ -117,7 +117,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   c.push("tool-finished", {
     tool_id: "tl5", ok: true,
     result: {
-      block: "record", urn: "urn:vyre:juniper:matter:nb-0042", type: "Matter", title: "Northwind Bakery, lease dispute",
+      block: "record", urn: "urn:vyre:juniper:project:nb-0042", type: "Project", title: "Northwind Bakery, supplier dispute",
       fields: [
         { label: "Stage", kind: "stage", value: "Demand sent" },
         { label: "Lead", kind: "text", value: "Alex Rivera" },
@@ -126,7 +126,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
       ],
     },
   }, 300);
-  c.say("a4", "I found the matter. A short status note to the client needs your approval before it goes out.", tps);
+  c.say("a4", "I found the project. A short status note to the client needs your approval before it goes out.", tps);
   c.push("ask", {
     ask_id: "k1", kind: "approval", title: "Send the status note to Northwind Bakery",
     task: { block: "task", id: "tk1", title: "Send the status note to Northwind Bakery", doer: "juno", state: "needs-approval", why: "It goes to an outside person, so it waits for you.", approve: { label: "Send with Face ID", face: true }, tags: ["Matter nb-0042", "Email"] },
@@ -140,9 +140,9 @@ export function script(o: { tps?: number } = {}): Segment[] {
   d.push("tool-started", { tool_id: "tl6", tool: "memory.search", kind: "answer", summary: "Northwind Bakery, last contact" }, 150);
   d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:juniper:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:juniper:file:lease" }] } }, 300);
   d.push("tool-started", { tool_id: "tl7", tool: "draft.email", kind: "draft", summary: "Status note" }, 150);
-  d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your lease matter stands", body: "Hello,\n\nThe demand letter went out on 2 October. The landlord has until 14 October to reply. I will write again that day either way." } }, 300);
+  d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your project stands", body: "Hello,\n\nThe demand letter went out on 2 October. The landlord has until 14 October to reply. I will write again that day either way." } }, 300);
   d.push("tool-started", { tool_id: "tl8", tool: "flow.propose", kind: "flow", summary: "Follow-up on 14 Oct" }, 150);
-  d.push("tool-finished", { tool_id: "tl8", ok: true, result: { block: "flow-change", title: "Follow-up on the landlord's reply", steps: [{ op: "add", label: "Wait for 14 October" }, { op: "add", label: "Task: check for a reply, then call" }, { op: "change", label: "Stage: Demand sent to Response due" }] } }, 300);
+  d.push("tool-finished", { tool_id: "tl8", ok: true, result: { block: "flow-change", title: "Follow-up on the supplier's reply", steps: [{ op: "add", label: "Wait for 14 October" }, { op: "add", label: "Task: check for a reply, then call" }, { op: "change", label: "Stage: Demand sent to Response due" }] } }, 300);
   d.say("a5", "Sent. I added a follow-up for 14 October so the reply does not slip.", tps);
   d.push("status", { state: "waiting", turn: "turn-1" }, 60);
   return [{ gate: null, steps: first }, { gate: "k1", steps: d.steps }];
@@ -167,7 +167,7 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   const a = new Clock();
   a.push("status", { state: "working", turn: "turn-g" });
   for (const [who, name, role] of [[VIEWER, "alex", "You"], ["person:chris", "chris", "Associate"], ["assistant:kit", "kit", "Engineer"], ["assistant:juno", "juno", "Your assistant"]]) a.push("participant-joined", { who, name, role }, 5);
-  a.push("user-message", { message: "m1", text: "@alex can you look at the Northwind lease before the 3 pm call? @kit run the intake tests, @juno draft the note to the owner.", state: "sent" }, 40, { ...chris, message: "m1" });
+  a.push("user-message", { message: "m1", text: "@alex can you look at the Northwind supply contract before the 3 pm call? @kit run the intake tests, @juno draft the note to the owner.", state: "sent" }, 40, { ...chris, message: "m1" });
   a.push("mention", { who: VIEWER }, 5, { message: "m1" });
   a.push("pin", {}, 5, { ...chris, message: "m1" });
   a.push("read-marker", { upto: "@m1" }, 20, alex);
@@ -182,7 +182,7 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   k.push("tool-finished", { tool_id: "gt1", ok: true, result: { block: "terminal", command: "npm test -- intake", output: "pass 14  fail 0\n", exit: 0, note: "visible to everyone in this chat" } }, 300, { ...kit });
   k.push("presence", { who: "assistant:kit", state: "idle" }, 40);
   const j = new Clock().at(a.t);
-  j.say("j1", "Draft for the owner: the demand letter went out on 2 October and the landlord has until 14 October to reply. I will write again that day either way, and you can call before then if you prefer.", tps, 300, { ...juno, message: "j1" });
+  j.say("j1", "Draft for the owner: the payment reminder went out on 2 October and the supplier has until 14 October to reply. I will write again that day either way, and you can call before then if you prefer.", tps, 300, { ...juno, message: "j1" });
   j.push("presence", { who: "assistant:juno", state: "idle" }, 40);
 
   // After kit finishes: an approval that is chris's, a reaction, a thread reply.
@@ -193,16 +193,16 @@ export function groupScript(o: { tps?: number } = {}): Segment[] {
   b.push("reaction", { emoji: "\u{1F440}" }, 100, { ...chris, message: "j1" });
   b.push("user-message", { message: "m3", text: "Can kit also cover the leap year in the form test?", state: "sent" }, 400, { ...alex, message: "m3" });
   b.push("thread-reply", { parent: "k1" }, 5, { ...alex, message: "m3" });
-  b.push("participant-joined", { who: "person:dana", name: "dana", role: "Paralegal" }, 600);
+  b.push("participant-joined", { who: "person:dana", name: "dana", role: "Coordinator" }, 600);
 
   // Alex asks three models at once. They stream together; the local one is cut short.
   const f = new Clock().at(Math.max(j.t, b.t) + 800);
-  f.push("user-message", { message: "m5", text: "One line each: what is the biggest risk in the Northwind lease?", state: "sent" }, 0, { ...alex, message: "m5" });
+  f.push("user-message", { message: "m5", text: "One line each: what is the biggest risk in the Northwind supply contract?", state: "sent" }, 0, { ...alex, message: "m5" });
   f.push("fanout", { group: "f1", message: "m5", members: [{ message: "f1a", author: "model:sonnet" }, { message: "f1b", author: "model:opus" }, { message: "f1c", author: "model:local" }] }, 40);
   const t0 = f.t;
-  const fa = new Clock().at(t0).say("f1a", "The landlord can end the lease on 60 days notice with no cause, so the bakery has no fixed term to rely on. Ask for 24 months with a renewal right.", tps * 1.3, 120, { author: "model:sonnet", message: "f1a" });
-  const fb = new Clock().at(t0).say("f1b", "Section 4 lets the landlord pass on any tax increase without a cap. That is the cost that can grow unseen, so ask for a cap tied to the first year.", tps * 1.1, 160, { author: "model:opus", message: "f1b" });
-  const fc = new Clock().at(t0).say("f1c", "The lease has no repair duty for the landlord. Check the roof and the oven vent before", tps * 1.6, 100, { author: "model:local", message: "f1c" });
+  const fa = new Clock().at(t0).say("f1a", "The supplier can end the contract on 60 days notice with no cause, so the bakery has no fixed term to rely on. Ask for 24 months with a renewal right.", tps * 1.3, 120, { author: "model:sonnet", message: "f1a" });
+  const fb = new Clock().at(t0).say("f1b", "Clause 4 lets the supplier pass on any price increase without a cap. That is the cost that can grow unseen, so ask for a cap tied to the first year.", tps * 1.1, 160, { author: "model:opus", message: "f1b" });
+  const fc = new Clock().at(t0).say("f1c", "The contract has no delivery duty for the supplier. Check the roof and the oven vent before", tps * 1.6, 100, { author: "model:local", message: "f1c" });
   fc.push("text-cut", { note: "Stopped at this model's reply limit" }, 0, { message: "f1c" });
   const g = new Clock().at(Math.max(fa.t, fb.t, fc.t) + 100);
   g.push("status", { state: "waiting", turn: "turn-g" }, 0);
@@ -222,15 +222,15 @@ export function modelsScript(o: { tps?: number } = {}): Segment[] {
   const tps = o.tps ?? 30;
   const alex = { author: VIEWER };
   const slots = [
-    { id: "agent:kit", name: "kit on Claude", provider: "claude", message: "q1a", text: "Section 4 lets the landlord pass on any tax increase without a cap. Ask for a cap tied to the first year." },
-    { id: "model:codex/gpt-5#1", name: "kit on Codex", provider: "codex", message: "q1b", text: "The lease has no repair duty for the landlord. Check the roof and the oven vent before you sign." },
+    { id: "agent:kit", name: "kit on Claude", provider: "claude", message: "q1a", text: "Clause 4 lets the supplier pass on any price increase without a cap. Ask for a cap tied to the first year." },
+    { id: "model:codex/gpt-5#1", name: "kit on Codex", provider: "codex", message: "q1b", text: "The contract has no delivery duty for the supplier. Check the roof and the oven vent before you sign." },
     { id: "model:grok/grok-4#1", name: "Grok", provider: "grok", message: "q1c", text: "Sixty days notice with no cause is the exposure: the bakery has no fixed term to rely on." },
   ];
   const a = new Clock();
   a.push("status", { state: "working", turn: "turn-m" });
   a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
   for (const sl of slots) a.push("participant-joined", { who: sl.id, name: sl.name, role: sl.provider }, 5);
-  a.push("user-message", { message: "m1", text: "One line each: what is the biggest risk in the Northwind lease?", state: "sent" }, 40, { ...alex, message: "m1" });
+  a.push("user-message", { message: "m1", text: "One line each: what is the biggest risk in the Northwind supply contract?", state: "sent" }, 40, { ...alex, message: "m1" });
   a.push("fanout", { group: "f1", message: "m1", members: slots.map((sl) => ({ message: sl.message, author: sl.id })) }, 40);
   const t0 = a.t;
   const clocks = slots.map((sl, i) => new Clock().at(t0).say(sl.message, sl.text, tps * (1.4 - i * 0.2), 120 + i * 40, { author: sl.id, message: sl.message }, { provider: sl.provider }));
@@ -249,7 +249,7 @@ export function peopleScript(o: { tps?: number } = {}): Segment[] {
   a.push("participant-joined", { who: VIEWER, name: "alex", role: "You" }, 5);
   a.push("participant-joined", { who: "person:sam", name: "Sam", role: "Associate" }, 5);
   a.push("reply-mode", { mode: "mention", default: true }, 5);
-  a.push("user-message", { message: "p1", text: "Did the intake form come through for the Okafor estate?", state: "sent" }, 40, { author: VIEWER, message: "p1" });
+  a.push("user-message", { message: "p1", text: "Did the intake form come through for the Okafor account?", state: "sent" }, 40, { author: VIEWER, message: "p1" });
   const s = new Clock().at(a.t);
   s.say("p2", "Yes, this morning. I will call them Monday to book the first meeting.", tps, 600, { ...sam, message: "p2" });
   return [{ gate: null, steps: [a, s].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];

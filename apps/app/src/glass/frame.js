@@ -56,7 +56,41 @@ function drop() {
   host.replaceChildren();
 }
 
+/** Headless browser screencast (browser-glass): JSON frames over the same WebSocket shim. */
+function connectScreencast(m) {
+  drop();
+  snap.hidden = true;
+  code = 0; reason = "";
+  let ws;
+  try { ws = new WebSocket(String(m.url)); } catch (e) { post({ t: "down", code: 0, reason: String((e && e.message) || e), clean: false, start: true }); return; }
+  const c = document.createElement("canvas");
+  c.style.width = "100%"; c.style.height = "100%"; c.style.display = "block";
+  host.replaceChildren(c);
+  canvas = c;
+  const ctx = c.getContext("2d");
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => post({ t: "live" });
+  ws.onclose = (e) => { post({ t: "down", code: e.code, reason: e.reason || "", clean: e.wasClean }); };
+  ws.onerror = () => post({ t: "down", code: 0, reason: "the stream failed", clean: false });
+  ws.onmessage = (ev) => {
+    let text = "";
+    if (typeof ev.data === "string") text = ev.data;
+    else if (ev.data instanceof ArrayBuffer) text = new TextDecoder().decode(ev.data);
+    let msg; try { msg = JSON.parse(text); } catch { return; }
+    if (msg.t === "live" && msg.width && msg.height) { c.width = msg.width; c.height = msg.height; post({ t: "live" }); return; }
+    if (msg.t !== "frame" || !msg.data || !ctx) return;
+    const img = new Image();
+    img.onload = () => { if (canvas === c) { c.width = img.width; c.height = img.height; ctx.drawImage(img, 0, 0); keepFrame(); } };
+    img.src = `data:image/jpeg;base64,${msg.data}`;
+  };
+  window.__vyreScreencastSend = (obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
+  rfb = { viewOnly: true, disconnect: () => { try { ws.close(); } catch {} }, focus: () => {} };
+  holding = false;
+  applyHolding();
+}
+
 function connect(m) {
+  if (String(m.url || "").includes("browser-glass")) { connectScreencast(m); return; }
   drop();
   snap.hidden = snap.hidden && true;
   code = 0; reason = "";

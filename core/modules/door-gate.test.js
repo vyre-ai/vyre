@@ -3,11 +3,13 @@
 // the owner's, in words that name whom to ask; the owner is served; the harness hooks and the member's own tools still run; a server with nobody but the owner gates nothing.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome, pairDevice } from "../../test/helpers.js";
 import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
-import { refusal } from "./door-gate.js";
+import { refusal, memberSees } from "./door-gate.js";
 import { request } from "../daemon/client.js";
 import { WEB_REACH } from "./agent-reach.js";
 
@@ -19,6 +21,8 @@ const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 /** A team server: the owner, a member and an admin, each with a model session token. @param {any} t @param {boolean} team */
 async function rig(t, team = true, extra = {}) {
   const root = tempHome(t);
+  // a team server is a box on every platform: its tools (computers, publish) exist only for that role, and a Mac's default role is not it
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...extra });
   t.after(() => d.stop());
   const OWNER = d.kernel.id.owner;
@@ -86,7 +90,9 @@ test("a server with nobody but the owner gates nothing", { timeout: 200_000 }, a
 
 test("every tool the registry holds is on exactly one list, and no list names a tool that is not there", { timeout: 200_000 }, async t => {
   const { d } = await rig(t, false);
-  const held = [...d.registry.tools.entries()].filter(([, def]) => !def.internal && !def.hook).map(([n]) => n);
+  // A module that runs only on a person's own computer (roles: ["local"]: chrome, hands, voice ...) is never on a team server's box, so it has no member to place. The gate is closed by default: unlisted means refused to a member, which the last assertion holds.
+  const onBox = (/** @type {string} */ name) => { const m = d.registry.modules.get(name); return !m || !Array.isArray(m.manifest.roles) || m.manifest.roles.includes("box"); };
+  const held = [...d.registry.tools.entries()].filter(([, def]) => !def.internal && !def.hook && onBox(def.module)).map(([n]) => n);
   const lonely = held.filter(n => !MEMBER_MAY.has(n) && !OWNER_ONLY.has(n) && !PLUMBING.has(n) && !SELF_GATED.has(n));
   assert.deepEqual(lonely, [], `place these tools in core/modules/door-lists.js (MEMBER_MAY only with a test that calls it as a member; otherwise OWNER_ONLY): ${lonely.join(", ")}`);
   const twice = held.filter(n => [MEMBER_MAY.has(n), OWNER_ONLY.has(n), PLUMBING.has(n), SELF_GATED.has(n)].filter(Boolean).length > 1);
@@ -94,6 +100,7 @@ test("every tool the registry holds is on exactly one list, and no list names a 
   const all = new Set(d.registry.tools.keys());
   const stale = [...MEMBER_MAY, ...OWNER_ONLY, ...PLUMBING, ...SELF_GATED].filter(n => !all.has(n));
   assert.deepEqual(stale, [], `named on a list but not registered: ${stale.join(", ")}`);
+  for (const n of d.registry.tools.keys()) if (!onBox(/** @type {any} */ (d.registry.tools.get(n)).module) && !MEMBER_MAY.has(n) && !PLUMBING.has(n) && !SELF_GATED.has(n)) assert.equal(memberSees(n), false, `${n} runs only on a person's own computer and is unlisted: a member must not see it`);
 });
 
 test("a member's tool list leaves off the owner's tools; the owner's list is whole", { timeout: 200_000 }, async t => {
@@ -254,6 +261,7 @@ test("the tools that still show other people's matter are refused to a member, i
   }
   // her own to-dos, reminders and notes are scoped by the planner already and stay on her list
   for (const tool of ["planner.add", "planner.list", "planner.upcoming", "planner.bin", "planner.ringing", "planner.parse"]) assert.ok(MEMBER_MAY.has(tool), `${tool} stays on a member's list`);
+  assert.ok(MEMBER_MAY.has("recall.search") && !OWNER_ONLY.has("recall.search"), "recall.search is person-scoped for members (/find relay)");
 });
 
 test("every label the daemon builds for a remote caller is a member's until proof is shown: device, web, setup, space, invitee, tailnet and tailnet-guest", { timeout: 200_000 }, async t => {

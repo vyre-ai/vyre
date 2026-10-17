@@ -78,6 +78,10 @@ export type BlockCtx = {
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
   onBranchFrom?: (uuid: string) => void;
+  /** Go back to before this message (threads.rewind). */
+  onRewindTo?: (uuid: string) => void;
+  /** Ask another assistant or model for a second opinion on this answer (stream.second-opinion). */
+  onSecondOpinion?: (uuid: string) => void;
   /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
   onReplyTo?: (message: string, name: string, text?: string) => void;
   /** Tapping a quote goes to the original message and lights it up. */
@@ -88,6 +92,8 @@ export type BlockCtx = {
   onHighlight?: (h: { from: string; text: string; selected?: string; kind?: "message" | "terminal" }) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
+  /** A chat with more than one person: vault item names on cards are not shown. */
+  hideVaultNames?: boolean;
 };
 
 export const copy = async (text: string, ctx: BlockCtx) => {
@@ -475,8 +481,8 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
     case "preview": return <PreviewCard block={block as never} />;
     case "questions": return <QuestionsCard block={block as never} />;
-    case "operator": return <OperatorCard block={block as never} />;
-    case "signin": return <SigninCard block={block as never} />;
+    case "operator": return <OperatorCard block={block as never} hideVaultNames={ctx.hideVaultNames} />;
+    case "signin": return <SigninCard block={block as never} hideVaultNames={ctx.hideVaultNames} />;
     default: return <TextBlock block={block} />;
   }
 }

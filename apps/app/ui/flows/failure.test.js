@@ -124,3 +124,14 @@ test("a Flow written by the builder runs its check, its failure path and the Flo
   const made = [...(w.kernel.tables.get("matter") || new Map()).values()].map((m) => m.data.client).sort();
   assert.deepEqual(made, ["after", "too small"]);
 });
+
+test("a For each keeps the limit its author set, 50 by default, 1000 at most, and opens editable", () => {
+  const stored = (max) => flowOf([{ id: "each", kind: "repeat", over: "steps.f.rows", as: "m", ...(max === undefined ? {} : { max }), steps: [make("note", "x")] }]);
+  const d = fromDefinition(stored(200));
+  assert.equal(d.steps[0].kind, "repeat", "a limit other than 50 no longer makes it an Advanced step");
+  assert.equal(d.steps[0].max, 200);
+  assert.equal(toDefinition(d).steps[0].max, 200);
+  assert.equal(fromDefinition(stored(undefined)).steps[0].max, 50);
+  assert.equal(toDefinition({ ...d, steps: [{ ...d.steps[0], max: 5000 }] }).steps[0].max, 1000, "the engine's own limit");
+  assert.equal(toDefinition({ ...d, steps: [{ ...d.steps[0], max: "" }] }).steps[0].max, 50, "an empty box means the default");
+});

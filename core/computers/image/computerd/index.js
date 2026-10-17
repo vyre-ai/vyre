@@ -255,19 +255,6 @@ const HOME = process.env.HOME || "/home/agent";
 const CHROME_PROFILE = process.env.CHROME_PROFILE || path.join(HOME, ".chromium");
 const CHROME_LOG = process.env.CHROME_LOG || path.join(HOME, ".chromium.log");
 const SCREEN = /^[0-9]+x[0-9]+$/.test(process.env.SCREEN || "") ? String(process.env.SCREEN) : "1440x900";
-// The few sites that go out through the user's Mac (config glass.egress, core/computers/egress.js):
-// vyred passes the proxy script as a data: URL only when the setting is on and lists a site.
-// Checked against that exact shape, so nothing else ever reaches Chrome's command line through
-// it. WebRTC is kept off UDP that bypasses the proxy, or a listed site could still learn this
-// box's own address from a STUN reply. On the image this same check is entrypoint.sh's own
-// (bash), since entrypoint.sh builds Chrome's argv now, not this file; kept here too for
-// CHROME_BIN's legacy path, which still builds its own argv below.
-const PAC = process.env.VYRE_PROXY_PAC || "";
-const PAC_SHAPE = /^data:application\/x-ns-proxy-autoconfig;base64,[A-Za-z0-9+\/]+=*$/;
-if (CHROME_BIN && PAC && !PAC_SHAPE.test(PAC)) {
-  console.error("computerd: VYRE_PROXY_PAC is not a PAC data: URL; refusing to start Chrome without the sites it lists");
-  process.exit(1);
-}
 /** The id in the one browser endpoint this computerd serves: /cdp/devtools/browser/<id>. */
 const BROWSER_ID = crypto.randomUUID();
 const BROWSER_PATH = `/cdp/devtools/browser/${BROWSER_ID}`;
@@ -450,7 +437,6 @@ function chromeArgs() {
     `--user-data-dir=${CHROME_PROFILE}`,
     `--window-size=${w},${h}`,
     "--start-maximized",
-    ...(PAC ? [`--proxy-pac-url=${PAC}`, "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"] : []),
     "about:blank",
   ];
 }
@@ -741,6 +727,21 @@ const server = createServer(async (req, res) => {
       const agentId = body && body.id;
       if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
       return send(200, { disposed: mux.disposeAgentContext(agentId) });
+    }
+    if (req.method === "POST" && pathname === "/agents/profile/export") {
+      const body = await readBody(req);
+      const agentId = body && body.id;
+      if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
+      const state = await mux.exportAgentContext(agentId);
+      return send(200, { state });
+    }
+    if (req.method === "POST" && pathname === "/agents/profile/import") {
+      const body = await readBody(req);
+      const agentId = body && body.id;
+      const state = body && body.state;
+      if (typeof agentId !== "string" || !agentId) return send(400, { error: { message: "id is required" } });
+      if (!state || typeof state !== "object") return send(400, { error: { message: "state is required" } });
+      return send(200, { imported: await mux.importAgentContext(agentId, state) });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
