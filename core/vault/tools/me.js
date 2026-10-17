@@ -7,7 +7,7 @@ import { devSwitch } from "../../../kernel/devbuild.js";   // a development buil
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
-import { ConnectionTokens } from "../connection-token.js";
+import { ConnectionTokens, revokeAllowed } from "../connection-token.js";
 import { normalize as normalizeApiCredential } from "../api-request.js";
 import { revokeAtVendor } from "../connection-revoke.js";
 
@@ -209,10 +209,11 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   ctx.tool("vault.connection.revoke", {
     internal: true,
     description: "Tell the vendor to revoke a person's connection token (RFC 7009), if the connection names a revocation address: { owner, connection } -> { revoked, why }. Only the mcp module asks, after it checked the caller made the connection.",
-    input: obj({ owner: str, connection: str }, ["owner", "connection"]),
+    input: obj({ owner: str, connection: str, as: str }, ["owner", "connection"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const owner = String(input && input.owner || ""), name = String(input && input.connection || "");
+      if (!revokeAllowed(owner, input && input.as)) throw Object.assign(new Error("only the person who made a connection takes it away: ask them to remove it"), { code: "denied" });
       if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(owner) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
       const out = await revokeAtVendor({ people }, { owner, connection: name });
       return out;
