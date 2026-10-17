@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(device-tests): from work/0.6/fix53/device-tests 2d855aef5, signed by sec53 where it touches a security path: relay/client/finish.js always sends deviceName (a kind-less pick keeps its name); agents.flow-say drops the "mobile" caller; skills.decline is open to WHO_CAN as allow.json says; publish-server-space's refusal names a next step; skills and flows asks in lib/tools-asks-bank.js; test fixes (peer, spaces, one-person-surfaces list, the timings file no longer names the scan test, web/js/api.js comment).
+
 - ci(golden-refresh): the run also writes apps/app/src/real/member-routes.generated.js (scripts/gen-surface-lists.mjs) and ships it in copies-gen.tgz, so test/surface-lists.test.js can go green from the runner's output.
 
 - ci(golden-refresh): the artifact now carries docs/architecture/map.md and the files scripts/sync-copies.mjs rewrites (copies-gen.tgz, listed in copies-changed.txt), and the sitemap is kept when a page was added or removed (only a run that changes nothing but the lastmod stamps puts it back). Three tests (architecture-map, generated-copies, site-docs) stayed red after every golden commit without these.

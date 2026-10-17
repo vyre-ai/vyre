@@ -886,7 +886,7 @@ export default {
     ctx.tool("agents.flow-say", {
       description: "Write in a Flow's chat: wake the Flow's agent for you, as you, with the Flow and its recent runs as context. { agent, flow, text, run? }.",
       input: { type: "object", required: ["agent", "flow", "text"], properties: { agent: { type: "string" }, flow: { type: "string" }, text: { type: "string" }, run: { type: "string", description: "narrow the question to one run" } } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device"],
       run: async (i, meta0) => {
         const { caller } = meta0;
         if (!isPerson(caller)) throw Object.assign(new Error("only a person writes in a Flow's chat"), { code: "denied" });

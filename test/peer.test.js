@@ -876,7 +876,7 @@ test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguou
     p.on("exit", code => (code === 0 ? resolve(undefined) : reject(new Error(`setsid exit ${code}`))));
     p.on("error", reject);
   });
-  for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
+  for (let n = 0; n < 100 && !(fs.existsSync(out) && fs.statSync(out).size > 0); n++) await new Promise(r => setTimeout(r, 100));
   const noPin = JSON.parse(fs.readFileSync(out, "utf8"));
   assert.equal(noPin.error?.code, "presence_required", JSON.stringify(noPin));
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"));

@@ -1458,7 +1458,6 @@
  "test/netguard-single.test.js": 1.4,
  "test/no-cdn.test.js": 0.7,
  "test/no-deck.test.js": 0.4,
- "test/no-tailscale.test.js": 3.1,
  "test/onboard-relay-agents.test.js": 13.1,
  "test/one-identity.test.js": 18.1,
  "test/one-registry-c.test.js": 101.2,

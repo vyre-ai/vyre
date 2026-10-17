@@ -17,7 +17,7 @@ export function registerPublishServerSpace(d) {
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) throw d.refuse("That is not a space name. Use 2 to 31 letters, digits or hyphens.", "bad_name");
       const server = String(i.server || "");
       const made = await d.chosen.onChosenServer("spaces.name-here", { server, name: label }, meta, ["name", "done"], DENY);
-      if (!made || typeof made.space !== "string" || typeof made.rootPublic !== "string") throw d.refuse("The server did not give its space's key. Nothing was published.", "unavailable");
+      if (!made || typeof made.space !== "string" || typeof made.rootPublic !== "string") throw d.refuse("The server did not give its space's key. Nothing was published. Check that the server is online in Devices, then run spaces.publish-server-space again.", "unavailable");
       const claimed = await d.names.claimSpace({ name: label, rootPublic: made.rootPublic, record: { spaceId: made.space, displayName: label } });
       if (!claimed || claimed.ok !== true) throw d.refuse(String((claimed && claimed.message) || "The names directory did not take that name."), String((claimed && claimed.code) || "taken"));
       await d.chosen.onChosenServer("spaces.name-here", { server, name: label, done: true }, meta, ["name", "done"], DENY);

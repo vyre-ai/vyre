@@ -66,7 +66,7 @@ export const ALIASES = {
   },
   skills_list: {
     tool: "skills.browse",
-    description: "The skills you may use in the library (browse view; same path as skills_browse).",
+    description: "The skills you may use in the library (the same browse view the app shows).",
     input: { type: "object", properties: { level: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
     map: (a) => Object.fromEntries(["level", "limit"].filter((k) => a[k] !== undefined && a[k] !== "").map((k) => [k, a[k]])),
   },
