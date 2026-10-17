@@ -356,6 +356,7 @@
  "core/runner/runner.foundation.test.js": 18,
  "core/runner/runner.handover-slow.test.js": 6,
  "core/runner/runner.handover.test.js": 9,
+ "core/runner/runner.reopen.test.js": 1,
  "core/runner/runner.session.test.js": 10,
  "core/sessions/accounts.test.js": 12,
  "core/sessions/door-bridge.test.js": 7,

@@ -11,7 +11,7 @@ import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { place, hereBlock, deviceState } from "./placement.js";
 import { createLease } from "./lease.js";
 import { createEgress } from "./egress.js";
-import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
+import { plan, seatbeltProfile, cleanEnv, unavailable, SHIM, PROXYCMD } from "./sandbox.js";
 import { workspaceUnavailable, driverFor, fscryptSupported } from "./workspace.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
@@ -220,7 +220,9 @@ test("sandbox: the bubblewrap plan unshares everything, mounts nothing of the ho
     assert.deepEqual(binds, [fs.realpathSync(ws)], "the only writable host path is the workspace");
     const nodePath = fs.realpathSync(process.execPath);
     const hostPath = (/** @type {string} */ flag) => a.flatMap((x, i) => (x === flag ? [a[i + 1]] : [])).filter(Boolean);
-    const isHomeTree = (/** @type {string} */ p) => { try { const r = fs.realpathSync(p); return r !== nodePath && (r.startsWith("/home") || r.startsWith("/root")); } catch { return false; } };
+    // the node binary and Vyre's own two helper files (the shim and the proxy command) are single files bound read-only; where the checkout lives under /home (a CI runner's work folder) they are under it too. Nothing else may be.
+    const vyreFiles = new Set([nodePath, fs.realpathSync(SHIM), fs.realpathSync(PROXYCMD)]);
+    const isHomeTree = (/** @type {string} */ p) => { try { const r = fs.realpathSync(p); return !vyreFiles.has(r) && (r.startsWith("/home") || r.startsWith("/root")); } catch { return false; } };
     assert.ok(!hostPath("--bind").some(isHomeTree), "the host home is not mounted");
     assert.ok(!hostPath("--ro-bind").some(isHomeTree), "only the node binary may be read from under the host home, never the tree");
     assert.ok(a.some((x, i) => x === "--tmpfs" && a[i + 1] === "/home"), "HOME lives on a tmpfs inside the sandbox");
