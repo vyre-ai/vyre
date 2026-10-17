@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- ci(test-files): the job runs on ubuntu-latest always, never on the self-hosted runners, so owners' proof runs do not queue ahead of the node round. A test that needs something only our hosts have must say so, and gets a fixed label then.
+
 - ci(test-files): the input check takes any repo-relative test file or glob ending .test.js or .test.mjs (no .., not under node_modules/, at most 40 files), in place of a list of four or five top folders. The ref check, the permissions and the steps are unchanged.
 
 - ci(test-files): the workflow accepts test files and globs under apps/app/ as well as core/, lib/, test/ and kernel/ (the runner already installs apps/app's dependencies, hosted with npm ci --prefix apps/app and self-hosted with scripts/ci-prewarm.sh). Only the input check changes.

@@ -22,7 +22,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   files:
-    runs-on: ${{ vars.CI_SELF_HOSTED == '1' && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    # always GitHub-hosted: proof runs never take the self-hosted runners the node round needs
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       VYRE_NO_DIALOGS: "1"
