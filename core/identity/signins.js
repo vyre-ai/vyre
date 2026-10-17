@@ -55,7 +55,7 @@ export function registerSignins(ctx, o) {
     },
     revoke: async (/** @type {string} */ person, /** @type {string} */ device) => {
       const svc = service();
-      if (!svc) throw refuse("No sign-in door is open on this home.", "unavailable");
+      if (!svc) throw refuse("No sign-in door is open on this home. Ask the owner to turn on sign-in from other devices.", "unavailable");
       const r = svc.revokeDeviceOfPerson(person, device);
       vouched.delete(`${person}:${device}`);
       say("signin.revoked", device);
@@ -90,9 +90,9 @@ export function registerSignins(ctx, o) {
   // chain's one person hop that the door authenticated, never an input; the server's own Space only, like the skill library's.
   const memberPerson = (/** @type {any} */ extra) => {
     if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
-    if (ctx.kernel && ctx.kernel.space && String(extra.in_space) !== String(ctx.kernel.space)) throw refuse("This is for people of this server's own team.", "not_allowed");
+    if (ctx.kernel && ctx.kernel.space && String(extra.in_space) !== String(ctx.kernel.space)) throw refuse("This is for people of this server's own team. Ask the owner of this server to invite you.", "not_allowed");
     const h = extra.in_space_chain.hops && extra.in_space_chain.hops.length === 1 ? extra.in_space_chain.hops[0] : null;
-    if (!h || !h.actor || h.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(h.actor.id))) throw refuse("not found", "not_found");
+    if (!h || !h.actor || h.actor.kind !== "person" || !/^per_[a-z2-7]{26}$/.test(String(h.actor.id))) throw refuse("not found. Ask the owner of this server to add you to its team.", "not_found");
     return String(h.actor.id);
   };
   const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
