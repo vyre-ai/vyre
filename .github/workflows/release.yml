@@ -421,7 +421,7 @@ jobs:
           npm ci --no-audit --no-fund
           node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js"
           npx expo prebuild -p android --no-install --clean
-          (cd android && ./gradlew --no-daemon --parallel assembleRelease)
+          (cd android && ./gradlew --no-daemon --no-build-cache --parallel assembleRelease)
           apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
           test -f "$apk" || { echo "no release APK"; ls -R android/app/build/outputs; exit 1; }
           mkdir -p dist-android

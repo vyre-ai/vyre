@@ -221,6 +221,7 @@ test("release.yml: the Android APK is built in this run, checked, required in di
   const job = yml.slice(yml.indexOf("\n  android:\n"), yml.indexOf("\n  # Join the per-arch digests"));
   assert.match(job, /assembleRelease/);
   assert.ok(!/cache: gradle|--build-cache|actions\/cache/.test(job), "no restored cache feeds the APK the release key signs (sec53)");
+  assert.match(job, /gradlew --no-daemon --no-build-cache /, "and a gradle.properties line cannot turn the build cache back on");
   assert.ok(!/secrets\./.test(job) && !/environment:/.test(job), "the Android job holds no secret and no environment");
   assert.match(job, /Vyre-android\.apk/);
   assert.match(job, /check-apk-nothing-central/);
