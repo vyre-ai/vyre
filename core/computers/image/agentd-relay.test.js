@@ -96,7 +96,7 @@ test("agentd takes a ticket only for a real agent triple, and only with its bear
   t.after(() => server.close());
   const call = (token, body) => callAgentd({ socket, token, action: "ticket", body: JSON.stringify(body) });
   assert.equal((await call("t".repeat(40), { ...U, ticket: T1 })).status, 200);
-  assert.deepEqual(tickets.take(T1), { ...U, kind: "vnc", session: null });
+  assert.deepEqual(tickets.take(T1), { ...U, kind: "vnc", session: null, spec: null });
   assert.equal((await call("x".repeat(40), { ...U, ticket: T1 })).status, 401);
   assert.equal((await call("t".repeat(40), { user: "root", uid: 0, display: 0, ticket: T1 })).status, 400);
   assert.equal((await call("t".repeat(40), { ...U, uid: 20004, ticket: T1 })).status, 400, "a user that is not the uid's");
@@ -122,7 +122,7 @@ test("a peer that is not vyred's address is closed before it can send a ticket; 
     const s = await connect(w.port, `${T1}\n`);
     assert.equal(await closes(s), true);
     assert.equal(w.spawned.length, 0, "no process");
-    assert.deepEqual(w.tickets.take(T1), { ...U, kind: "vnc", session: null }, "the ticket was never read, so it is not spent");
+    assert.deepEqual(w.tickets.take(T1), { ...U, kind: "vnc", session: null, spec: null }, "the ticket was never read, so it is not spent");
   }
 });
 
@@ -162,7 +162,7 @@ test("agentd lists an agent's terminals through tmux run as that agent, only for
   assert.equal((await call("terminals", U, "x".repeat(40))).status, 401);
   assert.equal((await call("terminals", { user: "root", uid: 0, display: 0 })).status, 400);
   assert.equal((await call("ticket", { ...U, ticket: T1, session: "work" })).status, 200);
-  assert.deepEqual(tickets.take(T1), { ...U, kind: "term", session: "work" });
+  assert.deepEqual(tickets.take(T1), { ...U, kind: "term", session: "work", spec: null });
   assert.equal((await call("ticket", { ...U, ticket: T2, session: "a b" })).status, 400);
 });
 

@@ -44,7 +44,7 @@ test("the screen is the browser uid's: its own display on a unix socket (no TCP 
   assert.match(mode.join(" "), /\/usr\/bin\/chmod 0600 \/var\/lib\/vyre\/browsers\/agb21000\/xauth$/);
   assert.match(trusted.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* \/usr\/bin\/xauth -f \/var\/lib\/vyre\/browsers\/agb21000\/xauth source -$/);
   assert.match(String(/** @type {any} */ (trusted).input), /^add :20 \. [0-9a-f]{32}\n$/);
-  assert.match(untrusted.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* XAUTHORITY=\/var\/lib\/vyre\/browsers\/agb21000\/xauth .* \/usr\/bin\/xauth -f \/var\/lib\/vyre\/x\/ag20000\/xauth generate :20 \. untrusted$/);
+  assert.match(untrusted.join(" "), /^\/usr\/bin\/setpriv --reuid=21000 .* XAUTHORITY=\/var\/lib\/vyre\/browsers\/agb21000\/xauth \/usr\/bin\/xauth -f \/var\/lib\/vyre\/x\/ag20000\/xauth generate :20 \. untrusted$/);
   assert.ok(/** @type {any} */ (untrusted).retry.tries > 1, "it waits for the server to be up");
   assert.match(chmodU.join(" "), /\/usr\/bin\/chmod 0640 \/var\/lib\/vyre\/x\/ag20000\/xauth$/);
   assert.match(rm.join(" "), /\/usr\/bin\/rm -f \/var\/lib\/vyre\/browsers\/agb21000\/xauth \/var\/lib\/vyre\/x\/ag20000\/xauth \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.sock$/);
@@ -64,7 +64,7 @@ test("the long-running steps are marked in the plan, and the others are not", ()
 
 test("two agents get two displays, sockets and profiles that never overlap", () => {
   const a = planStartScreen(U).flat().join(" "), b = planStartScreen(B).flat().join(" ");
-  assert.match(a, /ag20000\/vnc\.sock/); assert.match(b, /ag20001\/vnc\.sock/);
+  assert.match(a, /agb21000\/vnc\.sock/); assert.match(b, /agb21001\/vnc\.sock/);
   assert.doesNotMatch(a, /ag20001|:21 |=20001/); assert.doesNotMatch(b, /ag20000|:20 |=20000/);
 });
 

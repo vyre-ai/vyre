@@ -31,7 +31,8 @@ export function registerAgentTools(d) {
     if (r && r.error) throw Object.assign(new Error(r.error.message || "no access to that agent"), { code: r.error.code || "denied" });
     const level = r && r.data && r.data.level;
     const ok = need === "edit" ? level === "edit" : level === "edit" || level === "use";
-    if (!ok) throw Object.assign(new Error(need === "edit" ? "you cannot change that agent, so you cannot do that on its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
+    // someone with no access at all hears that first; someone who may use the agent but not change it hears what needs the edit level
+    if (!ok) throw Object.assign(new Error(need === "edit" && level === "use" ? "you cannot change that agent, so you cannot do that on its computer: ask its owner" : "you cannot use that agent: ask its owner to share it with you"), { code: "denied" });
   };
   /** @param {any} i */
   const agentOf = i => {
