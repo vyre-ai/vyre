@@ -17,7 +17,7 @@ const CHIP_OF = /** @type {Record<string, string>} */ ({
 export const chipOf = (app) => CHIP_OF[String(app.category || "").toLowerCase()] || "more";
 
 /**
- * How a row's button reads. `connected` shows "Connected"; `one-tap` shows "Add" and signs in with no setup; `setup` shows "Set up" and says what the person brings first: a token they paste or the firm's
+ * How a row's button reads. `connected` shows "Connected"; `one-tap` shows "Add" and signs in with no setup; `setup` shows "Set up" and says what the person brings first: a token they paste or your team's
  * own developer app. @param {{ state: string }} app
  */
 export const buttonOf = (app) => (app.state === "connected" ? "Connected" : app.state === "one-tap" ? "Add" : "Set up");
