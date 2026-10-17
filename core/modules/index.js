@@ -1210,7 +1210,7 @@ export class Registry {
           if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
           const facts = relayedPerson(m.name, currentCall(), { isPerson, captureOrigin });
           if (!facts) return Promise.reject(Object.assign(new Error("there is no person on this call to relay: have the person start the call from their own session"), { code: "denied" }));
-          return this.call(tool, input, `module:${m.name}`, { ...(facts.origin ? { origin: facts.origin } : {}), [RELAY]: facts.relayed });
+          return this.call(tool, input, `module:${m.name}`, { firstParty: true, ...(facts.origin ? { origin: facts.origin } : {}), [RELAY]: facts.relayed });
         }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
