@@ -242,7 +242,7 @@ export default {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module", "tailnet", "device"],
-      run: async (input, meta) => { const c = mayApprove(meta.caller); await handled(input.id, meta); return gate.revise({ ...input, by: c }); },
+      run: async (input, meta) => { await handled(input.id, meta); const c = mayApprove(meta.caller); return gate.revise({ ...input, by: c }); },   // whose item it is is judged first: a caller who may not handle it is told there is no such item
     });
 
     ctx.tool("gate.approve", {
