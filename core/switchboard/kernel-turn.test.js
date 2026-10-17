@@ -24,7 +24,7 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true });
   asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -70,7 +70,7 @@ test("a turn keeps its asker for its whole run: another person's message mid-tur
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true });
   asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -105,7 +105,7 @@ async function chatDaemon(t, root) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts, { recursive: true });
   if (!fs.existsSync(path.join(root, "config.json"))) fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  return asOwner(await start({ root, presence: present, log: () => {}, kernel: true }), root);
+  return asOwner(await start({ root, presence: present, log: m => { if (/threads:/.test(String(m))) LOGS.push(String(m).slice(0, 200)); }, kernel: true }), root);
 }
 
 test("a dormant thread that the stream sends to comes back with THIS turn's chat and asker, not the thread's default session", { timeout: 90_000 }, async t => {
@@ -387,15 +387,23 @@ test("a non-staff member's chat turn with a vault chip, a Drive chip, a GitHub c
 });
 
 // What an ask or a lent item covers is the turn's asker, not the chat. The fake Claude's "demo" prompt keeps a turn busy (it asks to edit and waits), so a turn is RUNNING while the vault is asked.
+const LOGS = /** @type {string[]} */ ([]);
 const busyAs = async (d, ctxt, asker) => {
   const sent = await d.registry.call("threads.send", { thread: ctxt.thread, text: "demo", surface: "deck", chat: ctxt.chat, asker }, "module:stream");
   assert.ok(sent.data && !sent.error, JSON.stringify(sent));
-  // busy: the demo turn waits on its Edit ask, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
-  await until(async () => {
-    if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
-    const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 1 }, "cli")).data.thread.status;
-    return st === "working" || st === "waiting";
-  }, `${asker}'s turn to be busy`);
+  // busy: the turn running is THIS asker's (a stopped turn's Edit ask or asker may still be listed for a moment, and the vault is asked who asked the turn running now: threads.turn-asker, the vault's alone), and its Edit ask is
+  // waiting, or the thread says it is working or waiting (a member's turn runs on their own sign-in, so its ask may show a moment later)
+  let seen = "";
+  try {
+    await until(async () => {
+      const who = await d.registry.call("threads.turn-asker", { thread: ctxt.thread }, "module:vault");
+      const st = (await d.registry.call("threads.get", { thread: ctxt.thread, limit: 6 }, "cli")).data;
+      seen = JSON.stringify({ sent: sent.data, asker: who.data ? who.data.asker : who.error, status: st.thread.status, last: (st.events || []).slice(-6).map(e => [e.type, e.payload && (e.payload.via || e.payload.reason || e.payload.code)]) });
+      if (!who.data || who.data.asker !== asker) return false;
+      if ((await d.registry.call("threads.asks", { thread: ctxt.thread }, "cli")).data.some(a => a.tool === "Edit")) return true;
+      return st.thread.status === "working" || st.thread.status === "waiting";
+    }, `${asker}'s turn to be busy`);
+  } catch (e) { throw new Error(`${/** @type {Error} */ (e).message}; last seen: ${seen}; switchboard log: ${LOGS.slice(-12).join(" | ")}`); }
 };
 const endTurn = async (d, ctxt) => {
   await d.registry.call("threads.stop", { thread: ctxt.thread }, "cli");
@@ -426,6 +434,31 @@ test("an item the owner tags in a chat is usable on the owner's turns and not on
   await endTurn(d, c);
   await busyAs(d, c, owner);
   assert.equal((await check()).data.allowed, true, "the owner's own turn may use what the owner tagged");
+});
+
+test("a member's turn that is stopped leaves no asker behind, and the owner's turn that was waiting behind it runs as the owner: the vault is asked as the owner", { timeout: 120_000 }, async t => {
+  const c = await chipChat(t);
+  const { d, owner, BOB, thread, chat } = c;
+  await ownSignIn(d, owner);   // the owner has a sign-in of their own, as a member does: a message to a chat running on another member's sign-in is otherwise refused
+  const asker = async () => (await d.registry.call("threads.turn-asker", { thread }, "module:vault")).data.asker;
+  await busyAs(d, c, BOB);
+  assert.equal(await asker(), BOB, "Ben's turn is the one running");
+  // the owner's message while Ben's turn runs waits as its own turn: it never steers Ben's
+  const waiting = await d.registry.call("threads.send", { thread, text: "demo", surface: "deck", chat, asker: owner }, "module:stream");
+  assert.ok(waiting.data && !waiting.error && waiting.data.steered !== true, JSON.stringify(waiting));
+  assert.equal(await asker(), BOB, "and until Ben's turn ends it is still Ben's");
+  // an ask Ben made while his turn ran: it must not follow him onto the owner's turn
+  const benAsk = await d.registry.call("vault.said.record", { thread, said: "said-ben", kind: "send", to: ["ben@example.com"], what: "email ben@example.com the notes", asker: BOB }, "module:sessions");
+  assert.ok(benAsk.data && !benAsk.error, JSON.stringify(benAsk));
+  // Ben's turn is stopped: the waiting owner turn starts, and the asker is the owner's, never Ben's left over
+  await d.registry.call("threads.stop", { thread }, "cli");
+  await until(async () => (await asker()) === owner, "the owner's waiting turn to be the turn running, with the owner as its asker");
+  await d.registry.call("vault.said.record", { thread, said: "said-q", kind: "send", to: ["bob@example.com"], what: "email bob@example.com the figures", asker: owner }, "module:sessions");
+  assert.equal((await d.registry.call("vault.said.match", { kind: "send", via: "mail", to: ["bob@example.com"], thread }, "module:gate")).data.matched, true, "what the owner said covers the owner's turn that followed Ben's stopped one");
+  assert.equal((await d.registry.call("vault.said.match", { kind: "send", via: "mail", to: ["ben@example.com"], thread }, "module:gate")).data.matched, false, "and what Ben said does not: his ask is not left over on the owner's turn");
+  // and a stopped turn with nothing behind it leaves nobody as its asker
+  await endTurn(d, c);
+  await until(async () => (await asker()) === null, "a stopped turn to leave no asker");
 });
 
 test("a member's message while the owner's turn is running never steers that turn: it waits as its own turn, and the running turn's asker is still the owner", { timeout: 120_000 }, async t => {
