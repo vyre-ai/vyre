@@ -76,8 +76,10 @@ test("every registered session adapter gets the same caller, the same secret fil
   const ask = { kind: "send", via: "hooks", to: "hooks.example.test", content: { method: "POST", url: "https://hooks.example.test/x", body: "a note" } };
   const held = await d.registry.call("gate.request", ask, named);
   assert.equal(held.error, undefined, JSON.stringify(held.error));
-  // read as the daemon itself: a held item with no requester on its chain is shown to the owner, an admin or a module, and this test has no signed-in person (core/gate/requester.js)
-  const rows = await d.registry.call("gate.held", {}, "module:vyred");
+  // the owner reads it, as the local socket does: with the kernel on, a call with no person on its chain gets no held item (core/gate/requester.js), so it carries the owner's own token (as test/harness.test.js does)
+  const K = d.kernel;
+  const ownerMeta = K ? { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token } : {};
+  const rows = await d.registry.call("gate.held", {}, "local", ownerMeta);
   assert.equal(rows.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === held.data.id).agent, "kit");
   const bareAsk = await d.registry.call("gate.request", { ...ask, content: { ...ask.content, url: "https://hooks.example.test/y" } }, sessionCaller(adapters[0]));
   assert.equal(bareAsk.error, undefined, JSON.stringify(bareAsk.error));
