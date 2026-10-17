@@ -89,7 +89,7 @@ export function registerSpaceTools(ctx, seam = {}) {
       try { host = new URL(String(input.url)).host.toLowerCase(); } catch { host = ""; }
       const item = (SV.list(dirOf(input)).items.find((/** @type {any} */ i) => i.id === String(input.id)) || {}).name || String(input.id);
       /** @param {boolean} ok @param {number} status */
-      const audit = (ok, status) => { try { ctx.events && ctx.events.emit("vault.space.used", { space: String(input.space), item: String(item), host, by: String((meta && meta.caller) || ""), ok, status }); } catch { /* the audit line never blocks the call */ } };
+      const audit = (ok, status) => { try { ctx.events && ctx.events.emit("vault.space-used", { space: String(input.space), item: String(item), host, by: String((meta && meta.caller) || ""), ok, status }); } catch { /* the audit line never blocks the call */ } };
       let result;
       try {
         result = await SV.lend(dirOf(input), {
