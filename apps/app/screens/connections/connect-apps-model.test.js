@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareInput, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
+import { appsOf, extraApps, sheetOf, missing, inputOf, sharesOf, granteesOf, shareChanges, shareInput, levelToKernel, levelFromKernel, itemOfConnection } from "./connect-apps-model.js";
 
 const groups = [{ group: "work", presets: [
   { id: "linear", label: "Linear", group: "work", who: "", note: "Issues", setup: "none", via: "", connected: [] },
@@ -61,3 +61,21 @@ test("shares and grantees read from vault.access.get", () => {
 });
 
 test("the vault item of a connection", () => assert.equal(itemOfConnection({ name: "github" }), "github-auth"));
+
+test("share changes: an added person at Read is reveal, a raised level is sent once, a removed one is null, an agent stays use, an unknown name is left alone", () => {
+  const grantees = [{ who: "Alex", subject: "p1", kind: /** @type {const} */ ("person") }, { who: "Sam", subject: "p2", kind: /** @type {const} */ ("person") }, { who: "juno", subject: "juno", kind: /** @type {const} */ ("agent") }];
+  const before = [{ who: "Sam", subject: "p2", kind: /** @type {const} */ ("person"), level: "fill" }, { who: "kit", subject: "uid-9", kind: /** @type {const} */ ("agent"), level: "fill" }];
+  const out = shareChanges("github-auth", before, [{ who: "Alex", level: "read" }, { who: "Sam", level: "edit" }, { who: "juno", level: "edit" }, { who: "ghost", level: "read" }], grantees);
+  assert.deepEqual(out, [
+    { name: "github-auth", kind: "person", subject: "p1", level: "reveal" },
+    { name: "github-auth", kind: "person", subject: "p2", level: "edit" },
+    { name: "github-auth", kind: "agent", subject: "juno", level: "use" },
+    { name: "github-auth", kind: "agent", subject: "uid-9", level: null },
+  ]);
+  assert.deepEqual(shareChanges("x", before, before, grantees), []);
+});
+
+test("an agent held by its id is named through agents.list", () => {
+  const got = { people: [], access: [{ kind: "agent", subject: "uid-9", level: "use" }] };
+  assert.equal(sharesOf(got, [{ uid: "uid-9", name: "kit" }])[0].who, "kit");
+});

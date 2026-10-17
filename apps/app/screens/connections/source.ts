@@ -90,6 +90,8 @@ export function connectionsSource(call: Call) {
     shareGet: (name: string) => ask<unknown>("vault.access.get", { name }),
     shareSet: (input: Record<string, unknown>) => ask("vault.access.set", input),
     async agentList() { const r = await ask<unknown>("agents.list", {}); return (Array.isArray(r) ? r : []).filter((a): a is { name: string; uid?: string } => !!a && typeof (a as { name?: unknown }).name === "string"); },
+    /** The catalog's entries the box found one-click: what mcp.catalog adds to the curated presets. */
+    async oneClickEntries() { const r = await ask<{ entries?: unknown }>("mcp.catalog", {}); return Array.isArray(r?.entries) ? r.entries : []; },
     // vault: items, grants, connections by surface
     async vaultItems() { return pickItems(await ask("vault.list", {})); },
     /** Let a module read a vault item: a person's own act (the box asks for presence). */

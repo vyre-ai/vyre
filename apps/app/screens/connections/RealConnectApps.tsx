@@ -5,8 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, ConnectApps, ErrorState, Field, LoadingState, Sheet, ShareSheet, Text, showToast, type ConnectApp } from "@vyre/ui";
 import { connections } from "./source-real";
-import { scopeOf, stepOf, words, type Preset, type Step } from "./model";
-import { appsOf, granteesOf, inputOf, itemOfConnection, missing, sharesOf, sheetOf, shareInput } from "./connect-apps-model.js";
+import { scopeOf, words, type Preset, type Step } from "./model";
+import { appsOf, extraApps, granteesOf, inputOf, itemOfConnection, missing, shareChanges, sharesOf, sheetOf } from "./connect-apps-model.js";
 import { GuideView, openUrl, usePoll } from "./shared";
 
 type Flow = { app: ConnectApp; preset: Preset; step: Step | null; values: Record<string, string>; busy: boolean; error: string };
@@ -21,12 +21,19 @@ export default function RealConnectApps() {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [sharing, setSharing] = useState<{ app: ConnectApp; item: string; grantees: Grantee[]; held: { subject: string }[] } | null>(null);
   const [notice, setNotice] = useState("");
-  const load = useCallback(() => { connections.catalog().then((g) => { setGroups(g); setProblem(""); }).catch((e) => setProblem(words(e))); }, []);
+  const [entries, setEntries] = useState<unknown[]>([]);
+  const load = useCallback(() => {
+    connections.catalog().then((g) => { setGroups(g); setProblem(""); }).catch((e) => setProblem(words(e)));
+    connections.oneClickEntries().then(setEntries).catch(() => setEntries([]));
+  }, []);
   useEffect(load, [load]);
 
   const presets = (groups ?? []).flatMap((g) => g.presets);
-  const apps = appsOf(groups ?? [], shares) as ConnectApp[];
-  const presetOf = (a: ConnectApp) => presets.find((p) => p.id === a.id) ?? null;
+  const curated = appsOf(groups ?? [], shares) as ConnectApp[];
+  const more = extraApps(entries, curated) as ConnectApp[];
+  const apps = [...curated, ...more];
+  // A one-click row the catalog found has no curated preset: the box makes it from the entry when asked to connect it by id.
+  const presetOf = (a: ConnectApp): Preset | null => presets.find((p) => p.id === a.id) ?? (more.some((m) => m.id === a.id) ? { id: a.id, label: a.name, group: a.category, who: "", note: a.blurb, setup: "none", via: "", connected: [] } as unknown as Preset : null);
 
   const open = flow?.step?.step === "open";
   usePoll(open, () => connections.catalog().then((g) => {
@@ -68,17 +75,8 @@ export default function RealConnectApps() {
   const changeShares = async (next: ConnectApp["shares"]) => {
     if (!sharing) return;
     const conn = (sharing.app as ConnectApp & { connection?: string }).connection ?? "";
-    const before = shares[conn] ?? [];
-    const who = (n: string) => sharing.grantees.find((g) => g.who === n) ?? (sharing.held as { subject: string; who?: string }[]).find((h) => h.who === n) ?? null;
     try {
-      for (const s of next) {
-        const prev = before.find((b) => b.who === s.who);
-        const g = who(s.who) as Grantee | null;
-        if (g && (!prev || prev.level !== s.level)) await connections.shareSet(shareInput(sharing.item, g, s.level));
-      }
-      for (const b of before) {
-        if (!next.some((s) => s.who === b.who)) { const g = who(b.who) as Grantee | null; if (g) await connections.shareSet(shareInput(sharing.item, g, null)); }
-      }
+      for (const input of shareChanges(sharing.item, shares[conn] ?? [], next, sharing.grantees)) await connections.shareSet(input);
       setShares((s) => ({ ...s, [conn]: next }));
     } catch (e) { setNotice(words(e)); startShare(sharing.app); }
   };
