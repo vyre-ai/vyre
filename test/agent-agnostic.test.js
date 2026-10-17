@@ -76,7 +76,8 @@ test("every registered session adapter gets the same caller, the same secret fil
   const ask = { kind: "send", via: "hooks", to: "hooks.example.test", content: { method: "POST", url: "https://hooks.example.test/x", body: "a note" } };
   const held = await d.registry.call("gate.request", ask, named);
   assert.equal(held.error, undefined, JSON.stringify(held.error));
-  const rows = await d.registry.call("gate.held", {}, "local");
+  // read as the daemon itself: a held item with no requester on its chain is shown to the owner, an admin or a module, and this test has no signed-in person (core/gate/requester.js)
+  const rows = await d.registry.call("gate.held", {}, "module:vyred");
   assert.equal(rows.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === held.data.id).agent, "kit");
   const bareAsk = await d.registry.call("gate.request", { ...ask, content: { ...ask.content, url: "https://hooks.example.test/y" } }, sessionCaller(adapters[0]));
   assert.equal(bareAsk.error, undefined, JSON.stringify(bareAsk.error));
