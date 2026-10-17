@@ -72,7 +72,10 @@ test("a failed fill closes its tab: the wrong origin, and a form that submits by
   assert.ok(methods(get).includes("Target.closeTarget"), "the tab is closed");
   assert.equal(methods(get).filter(m => m === "Input.insertText").length, 0, "the password was never typed");
   assert.ok(g.asked.some(a => a.tool === "computers.fill.end"), "the window is ended either way");
-  // what the agent can be told: the refusal, the result, and the calls that end the window. The begin call is left out on purpose: it is the computer's own copy of the values, which it holds to scrub them (asserted above).
-  assert.ok(!JSON.stringify({ e: g.e, r: g.r, asked: g.asked.filter(a => a.tool !== "computers.fill.begin") }).includes(SECRET));
-  assert.ok(!JSON.stringify({ e: w.e, r: w.r, asked: w.asked.filter(a => a.tool !== "computers.fill.begin") }).includes(SECRET), "nor does the wrong-origin refusal");
+  // What the agent can be told. An Error stringifies to {}, so its message and code are read explicitly, for the GET-form failure and the wrong-origin refusal alike; the calls that end the window carry no value;
+  // and the computer's own begin call is the only place the values go (it holds them to scrub them: asserted in the first test).
+  const told = (/** @type {any} */ x) => JSON.stringify({ message: String(x.e && x.e.message), code: x.e && x.e.code, seen: x.e && x.e.seen, r: x.r });
+  assert.ok(!told(g).includes(SECRET) && !told(w).includes(SECRET), "no refusal or error carries a value");
+  assert.ok(!JSON.stringify(g.asked.filter(a => a.tool === "computers.fill.end")).includes(SECRET) && !JSON.stringify(w.asked.filter(a => a.tool === "computers.fill.end")).includes(SECRET));
+  assert.deepEqual([...new Set(g.asked.filter(a => JSON.stringify(a).includes(SECRET)).map(a => a.tool))], ["computers.fill.begin"], "only the begin call carries the value");
 });
