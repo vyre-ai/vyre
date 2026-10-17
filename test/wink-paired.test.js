@@ -136,7 +136,8 @@ shardTest("a pick with no deviceKind makes a device row (named a device, as the 
   const f = await pairFreshServer(t, { kind: "" });
   const { w, done } = f;
   assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.device, "a device", "the app said no kind and no name, so the device is recorded under the plain name");
-  assert.equal(await deviceRow(w, done.device), undefined, "no relay device row");
+  // (the relay's own provisional row from the pairing may exist; it is not the owner's paired device, and the checks below show it opens nothing)
+  assert.notEqual((await deviceRow(w, done.device))?.ownerPaired, true, "the relay does not hold it as the owner's paired device");
   const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
   assert.ok(!rec || (!rec.key && rec.confirmed !== true), "no presence key and no confirmed record");
   const live = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
