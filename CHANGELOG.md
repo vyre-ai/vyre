@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(memory): memory.heard reads the chat's thread only from meta.thread (the daemon's verified binding), never from a caller label, and files the agent's lesson only for a named agent; a plain session of no agent files nothing. core/memory/index.js.
+
 - ci: the timings command leaves out the one test that scans every tracked file for the retired colour word, so test/test-timings.json does not name it (the scan failed on the file); that test counts the default seconds.
 - fix(test): the chip tests give each member a sign-in and treat a working or waiting thread as busy; no secret-shaped value in a test; the project-chip search test no longer matches an agent's role. `turnRecordTags` is an allowed `needs.daemon` name in the module manifest schema. ChatPanel's Context row calls `onPage("context")` directly.
 - ci: test/test-timings.json now holds the measured seconds of 1600 test files (run 39038812115, per-file seconds from each shard) instead of 93 estimates, and an unmeasured file counts 12 s (the measured mean). The slowest shards of that run took 24.5 minutes against 14.8 for the fastest because the shards were balanced on the estimates; balanced on the measurements the 20 shards come out within a few percent of each other.
