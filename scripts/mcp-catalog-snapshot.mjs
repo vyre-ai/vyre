@@ -7,7 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRegistryPage, parsePlugins, mergeEntries, diffMarkdown } from "../lib/mcp-catalog.js";
-import { pullRegistry, readPluginRepo, REGISTRY } from "../lib/mcp-catalog-pull.js";
+import { pullRegistry, readPluginRepo, annotateProbes, REGISTRY } from "../lib/mcp-catalog-pull.js";
+import { probeServer } from "../lib/mcp-probe.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -69,6 +70,10 @@ async function main() {
   const registryPages = await pullRegistry(fetchJson, { base: o.registry });
   const plugins = o.plugins.map(x => ({ repo: x.repo, sha: x.sha, found: readPluginRepo(x.dir) }));
   const next = buildSnapshot({ registryPages, plugins, registry: o.registry, today: o.today });
+  // What each vendor-published server's sign-in needs, read from its own discovery documents. Rows already probed in the committed snapshot keep their answer until a reviewer re-probes.
+  const known = new Map((prev && Array.isArray(prev.entries) ? prev.entries : []).filter(e => e.probe).map(e => [e.id + "|" + e.url, e]));
+  next.entries = next.entries.map(e => { const k = known.get(e.id + "|" + e.url); return k ? { ...e, auth: k.auth, probe: k.probe, ...(k.verdict ? { verdict: k.verdict } : {}) } : e; });
+  next.entries = await annotateProbes(next.entries, url => probeServer(url));
   const d = decide(prev, next, o.force);
   if (!d.write) { console.log(`catalog ${d.why}`); if (d.why.startsWith("refused")) process.exit(1); return; }
   fs.mkdirSync(path.dirname(o.out), { recursive: true });
