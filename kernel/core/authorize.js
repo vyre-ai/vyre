@@ -230,13 +230,10 @@ export function matchGrant(g, action, resource, o) {
     if (!hit) return { ok: false, reason: "no_grant" };
   }
   const c = g.conditions || {};
-  if (c.when) {
-    if (c.when.expires !== undefined && c.when.expires <= o.now) return { ok: false, reason: "expired" };
-    if (c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
-  }
+  if (c.when && c.when.expires !== undefined && c.when.expires <= o.now) return { ok: false, reason: "expired" };
+  if (c.when && c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
   if (c.where && c.where.origins && !(typeof o.origin === "string" && c.where.origins.includes(o.origin))) return { ok: false, reason: "wrong_node" };
-  // a grant lent to one job thread (a task lent to the agent a wake started) is the use of that thread alone: another session of the same agent holds nothing of it
-  if (c.where && c.where.sessions && !(typeof o.thread === "string" && c.where.sessions.includes(o.thread))) return { ok: false, reason: "wrong_session" };
+  if (c.where && c.where.sessions && !(typeof o.thread === "string" && c.where.sessions.includes(o.thread))) return { ok: false, reason: "wrong_session" }; // a grant lent to one job thread is that thread's alone: another session of the same agent holds nothing of it
   return { ok: true };
 }
 
