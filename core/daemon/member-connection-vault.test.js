@@ -41,7 +41,7 @@ async function rig(t) {
   const who = { owner: OWNER, ben: BEN, cy: CY };
   /** a person's own surface: the person is the kernel's, the input names nobody */
   const as = (/** @type {"owner"|"ben"|"cy"} */ w, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
-    d.registry.call(tool, input, w === "owner" ? "cli" : "device:abcdefghijklmnop", { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
+    d.registry.call(tool, input, w === "owner" ? "cli" : (tool.startsWith("mcp.") ? "module:connectors" : "device:abcdefghijklmnop"), { token: tokens[w], ...(w === "owner" ? {} : { person: { id: "ps-" + w, kind: "passkey" } }) });
   /** a call carrying a token the kernel never issued */
   const forged = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "device:abcdefghijklmnop", { token: "forged-token-that-the-kernel-never-issued", person: { id: "ps-ben", kind: "passkey" } });
   /** Ben's assistant: an agent in Ben's turn */
@@ -111,7 +111,7 @@ test("an unshare, the deletion of a connection and the maker leaving the Space d
   const first = await send();
   step("Cy's send is held, not sent: " + JSON.stringify(first.error || first.data), first.data && first.data.held);
   const waiting = await heldOf();
-  step("it waits at the Gate, asked by Cy (so the check can fail)", waiting.length === 1 && waiting[0].requester === CY);
+  step("it waits at the Gate, asked by Cy (so the check can fail): " + JSON.stringify(waiting).slice(0, 300), waiting.length === 1 && waiting[0].requester === CY);
   step("Ben takes the share back", (await as("ben", "vault.me.connection.share", { name: item.name, kind: "person", subject: CY, level: null })).data);
   step("what Cy left waiting is gone at once", (await heldOf()).length === 0);
   step("and her next call is refused", (await send()).error);

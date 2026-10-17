@@ -58,3 +58,30 @@ test("revoking is the connection owner's own act: as = Bob is refused, as = Alic
   assert.equal(revokeAllowed(ALICE, ALICE), true);
   assert.equal(revokeAllowed(ALICE, undefined), true);
 });
+
+test("at call level a grantee at Fill in holds the connection (the call is held at the Gate for the yes); a deny never does", async () => {
+  /** @type {any[]} */ const seen = [];
+  const mk = (/** @type {boolean} */ held) => {
+    const r = rig();
+    // the kernel's personMay with the new fourth argument: allow for read; for call it is true only when asked "counts an ask"
+    /** @type {any} */ (r.tokens.kernelOf()).vault.personMay = async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ _res, /** @type {boolean} */ asks) => { seen.push({ person, action, asks }); return action === "vault.read" || (asks === true && held); };
+    return r.tokens;
+  };
+  const t = mk(true);
+  assert.equal((await ask(t, { as: CY, write: true })).access_token, `SECRET-${ALICE}`, "a Fill-in grantee's released call is asked as a call that waits for the yes");
+  assert.deepEqual(seen.at(-1), { person: CY, action: "vault.call", asks: true });
+  await refused(ask(mk(false), { as: CY, write: true }), "a deny (no grant, expired, not a member) stays a no");
+  assert.equal(seen.at(-1).asks, true);
+});
+
+import { createCredentialHeld } from "../../lib/credential-held.js";
+test("credential-held: an ask for approval or presence counts as held only when asked to count it; a deny, an expiry or a non-member never does", async () => {
+  const mk = (/** @type {any} */ res) => createCredentialHeld({ grantsStore: { roleOf: () => "member" }, gateway: { authorize: async () => res }, chains: { fromFacts: () => ({}) }, space: SPACE });
+  const ask = { effect: "ask", reason: "needs_approval" };
+  assert.equal(await mk(ask)(CY, "vault.call", "r"), false, "by default an ask is not held (the lend and the lease keep their meaning)");
+  assert.equal(await mk(ask)(CY, "vault.call", "r", true), true);
+  assert.equal(await mk({ effect: "ask", reason: "needs_presence" })(CY, "vault.call", "r", true), true);
+  for (const reason of ["no_grant", "expired", "not_a_member", "tainted"]) assert.equal(await mk({ effect: "deny", reason })(CY, "vault.call", "r", true), false, reason);
+  assert.equal(await mk({ effect: "ask", reason: "something_else" })(CY, "vault.call", "r", true), false, "an ask for any other reason is not held");
+  assert.equal(await mk({ effect: "allow" })(CY, "vault.read", "r"), true);
+});
