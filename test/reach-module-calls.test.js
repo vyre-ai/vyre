@@ -37,8 +37,6 @@ const PERSON_PROXY = new Set([
   "appmods:connectors.connection.delete",
   // core/daemon/index.js wires the lent home's compute hook: module:vyred reads a member's spaces.compute.status (the tool allows vyred for { person } ≠ self; see onlyModules in spaces.compute.status).
   "daemon:spaces.compute.status",
-  // core/computers/agent-tools.js asks agents.level what the person behind the call may do with an agent (the call carries that person; agents.level judges them, and refuses a caller that is not a person): the person calling, not a module.
-  "computers:agents.level",
 ]);
 
 /** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */
@@ -46,8 +44,12 @@ function relayAllowed() {
   const src = fs.readFileSync(path.join(root, "core", "modules", "index.js"), "utf8");
   const block = /const RELAY_ALLOWED = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(src);
   /** @type {Record<string, string[]>} */ const out = {};
-  if (!block) return out;
-  for (const m of block[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1]);
+  const read = (/** @type {string} */ text) => { for (const m of text.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...(out[m[1]] || []), ...[...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1])]; };
+  if (block) read(block[1]);
+  // the first-run entries live in core/modules/relay-context.js and are spread into RELAY_ALLOWED (...FIRST_RUN_RELAY)
+  const ctxSrc = fs.readFileSync(path.join(root, "core", "modules", "relay-context.js"), "utf8");
+  const first = /export const FIRST_RUN_RELAY = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(ctxSrc);
+  if (first && /\.\.\.FIRST_RUN_RELAY/.test(src)) read(first[1]);
   return out;
 }
 const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ src, /** @type {number} */ at) =>

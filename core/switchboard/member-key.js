@@ -13,6 +13,6 @@ export async function memberKey(ctx, a) {
   const lent = await ctx.call("vault.me.lend", { account: String(a.id) });
   if (lent.error) throw refuse(lent.error.code === "locked" ? `unlock your own vault to use ${a.label}` : `${a.label} is not available to this turn: it is a key of one person, used only in their own turns. Start the chat as that person, or choose an account of your own`, "no_credential");
   const v = lent.data && lent.data.value;
-  if (typeof v !== "string" || !v) throw refuse(`${a.label} gave no key to this turn`, "no_credential");
+  if (typeof v !== "string" || !v) throw refuse(`${a.label} gave no key to this turn: ask its owner to add the key to their vault again`, "no_credential");
   return v;
 }

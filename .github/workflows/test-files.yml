@@ -1,9 +1,9 @@
 # Run chosen test files on a runner, by hand, in a few minutes. Before telling anyone a test is done, run it here (docs/contributing). The Mac, a person's machine and the whole suite are not the way to check one file.
 #   gh workflow run test-files.yml -f ref=work/0.5.3/me/item -f files="core/identity/signins.test.js lib/invite-link.test.js"
-#   files: space-separated test files, or globs, under core/, lib/, test/ or kernel/ (core/identity/*.test.js). Anything else is refused before the checkout.
+#   files: space-separated test files, or globs, anywhere in the repository (core/identity/*.test.js, apps/app/src/host/*.test.js, records/language/compile.test.js). Each ends in .test.js or .test.mjs, has no "..", is not under node_modules/, and there are at most 40. Anything else is refused before the checkout.
 # It sets up as the node suite does (the same tools, the fscrypt volume, VYRE_MUST_RUN, npm test's tmp-guard before and after) and runs the files through scripts/test-counts.mjs: one process per file, a time limit, and the
 # check that every test a file declares ran. The result is the job's red or green and its step summary.
-# At most two of these run at once (two slots); a third waits behind one of them, and a fourth sent while one waits replaces the waiting one, so look at the run you started.
+# Every run has its own group, so runs do not wait for each other; the runners are the limit. (The earlier two-slot group used a modulo, which GitHub's expressions do not support, so the workflow could not be dispatched at all.)
 name: test-files
 on:
   workflow_dispatch:
@@ -13,13 +13,12 @@ on:
         required: true
         default: main
       files:
-        description: "Test files or globs under core/, lib/, test/ or kernel/, separated by spaces"
+        description: "Test files or globs (repo-relative, ending .test.js or .test.mjs), separated by spaces"
         required: true
 permissions:
   contents: read
 concurrency:
-  # two slots: a run takes the one its number falls on; the other slot is the other group
-  group: test-files-${{ github.run_number % 2 }}
+  group: test-files-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   files:
@@ -28,7 +27,7 @@ jobs:
     env:
       VYRE_NO_DIALOGS: "1"
     steps:
-      # What was asked for, checked before anything is checked out or run: a ref that looks like a ref, and only test files or globs of the four folders, with no way up out of them.
+      # What was asked for, checked before anything is checked out or run: a ref that looks like a ref, and only repo-relative test files or globs, with no way up out of them.
       - name: Check the inputs
         env:
           REF: ${{ inputs.ref }}
@@ -40,7 +39,8 @@ jobs:
           n=0
           for f in $FILES; do
             n=$((n + 1))
-            printf '%s' "$f" | grep -Eq '^(core|lib|test|kernel)/[A-Za-z0-9_./*{},-]+$' || { echo "::error::$f is not a test file or glob under core/, lib/, test/ or kernel/"; exit 1; }
+            printf '%s' "$f" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_./*{},-]*$' || { echo "::error::$f is not a repo-relative test file or glob (letters, digits and _ . / * { } , - only; no leading slash or dash)"; exit 1; }
+            case "$f" in node_modules/*|*/node_modules/*) echo "::error::$f is under node_modules"; exit 1;; esac
             case "$f" in *..*) echo "::error::$f goes up a folder"; exit 1;; esac
             printf '%s' "$f" | grep -Eq '\.test\.(js|mjs)$' || { echo "::error::$f does not name test files: end it in .test.js (a glob like core/identity/*.test.js is fine)"; exit 1; }
           done

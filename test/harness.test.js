@@ -31,6 +31,13 @@ function run(args, input, env) {
 }
 const hook = (piece, payload, env) => run([path.join(PLUGIN, "hooks", "hook.js"), piece], JSON.stringify(payload), env);
 
+/** The owner's own surface. With the kernel on, a call with no person on its chain gets nothing of the Gate (core/gate/requester.js: an unnamed caller sees no held item), so the owner's calls here carry the owner's token, as the local socket's do in the daemon. */
+async function ownerMeta(/** @type {any} */ d) {
+  const K = d.kernel;
+  if (!K) return {};
+  return { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token };
+}
+
 test("plugin: the manifest, hooks and MCP config are valid and point at files that exist", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "vyre");
@@ -79,7 +86,7 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  const ask = await hook("rules", { session_id: "s1", tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" } }, env);
+  const ask = await hook("rules", { session_id: "s1", tool_name: "mcp__mail__send_message", tool_input: { to: "client@example.com" } }, env);
   assert.deepEqual(JSON.parse(ask.out).hookSpecificOutput.hookEventName, "PreToolUse");
   assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
@@ -346,7 +353,7 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
   fs.symlinkSync(process.execPath, path.join(bin, "claude"));
   fs.writeFileSync(path.join(root, "standin.mjs"), STANDIN);
   const session = "5f0c2a61-7d7e-4c43-9a57-0b6f3d0e9a11";
-  const draft = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Friday", body: "Hi Dana" } };
+  const draft = { kind: "send", via: "mail", to: "client@example.com", content: { subject: "Friday", body: "Hi Dana" } };
   const calls = [
     { name: "gate_request", arguments: draft },
     { name: "gate_request", arguments: { ...draft, thread: "0b1d9c7e-0000-4000-8000-000000000000" } },
@@ -358,7 +365,7 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
     p.on("close", () => resolve(JSON.parse(s)));
   });
   assert.equal(out[0].structuredContent.state, "held", JSON.stringify(out[0]));
-  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  const held = (await d.registry.call("gate.held", {}, "local", await ownerMeta(d))).data;
   assert.equal(held.length, 1);
   assert.equal(held[0].thread, session, "filed under the session the call came from, which the model never named");
   assert.equal(out[1].isError, true);
@@ -415,11 +422,11 @@ test("mcp: the hub's tools are offered through the one vyre entry; a read reache
   const echo = (await rpc(4, "tools/call", { name: "system_echo", arguments: { text: "still here" } })).result;
   assert.equal(JSON.parse(echo.content[0].text).text, "still here");
 
-  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "dana@harlowlegal.com", text: "Friday works" } })).result;
+  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "client@example.com", text: "Friday works" } })).result;
   assert.ok(!send.isError, JSON.stringify(send));
   assert.match(send.content[0].text, /Held at the Gate|approve/i);
   assert.ok(send.structuredContent.held);
-  const held = (await d.registry.call("gate.held", {}, "local")).data;
+  const held = (await d.registry.call("gate.held", {}, "local", await ownerMeta(d))).data;
   assert.equal(held.length, 1);
   assert.equal(held[0].via, "mcp:issues");
   const calls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("call "));
@@ -484,7 +491,7 @@ test("mcp: the hub is never a route around the floor", async t => {
   assert.match((await via("mcp.release", { id: "g-1", content: {} })).content[0].text, /^no_such_tool: /);
 
   // A hub send is held, and nothing reaches the server.
-  const send = await via("chat__send_message", { to: "dana@harlowlegal.com", text: "Friday works" });
+  const send = await via("chat__send_message", { to: "client@example.com", text: "Friday works" });
   const id = send.structuredContent?.held;
   assert.ok(id, JSON.stringify(send));
   assert.deepEqual(sent(), []);
@@ -501,13 +508,13 @@ test("mcp: the hub is never a route around the floor", async t => {
 
   // A person without presence cannot approve either; with it, the send reaches the server once.
   // approving a held send is the outward yes: the person's own device sends the header its client sends, and the floor asks this presence about it
-  const approve = () => d.registry.call("gate.approve", { id }, "cli", { proof: { method: "touchid" } });
+  const approve = async () => d.registry.call("gate.approve", { id }, "cli", { proof: { method: "touchid" }, ...(await ownerMeta(d)) });
   assert.equal((await approve()).error?.code, "presence_required");
   assert.deepEqual(sent(), []);
   here = true;
   const ok = await approve();
   assert.equal(ok.data?.state, "sent", JSON.stringify(ok));
-  assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "dana@harlowlegal.com", text: "Friday works" })}`]);
+  assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "client@example.com", text: "Friday works" })}`]);
   here = false;
   // A model's approval is refused before presence is even asked; a person's is asked each time.
   assert.deepEqual(prompts, ["gate.approve cli", "gate.approve cli"], "only a person's approvals asked, and nothing else did");

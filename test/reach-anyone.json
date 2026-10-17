@@ -2632,6 +2632,10 @@
   "microsoft.calendar.create": {
    "module": "microsoft",
    "reason": "the caller's own mailbox only: the person's own invite goes out at once; an agent's invite with guests is held at the Gate for the person it acts for; an agent's event with no guests is refused, not held and not written; a call with no person is refused"
+  },
+  "microsoft.accounts": {
+   "module": "microsoft",
+   "reason": "read-only, and scoped in code by the call's verified chain (actingPerson): a member sees only her own provisioned account, the owner the firm app; the Vault's Apps list asks it as a module for the member it is serving"
   }
  }
 }

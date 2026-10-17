@@ -233,6 +233,14 @@
    "class": "held",
    "why": "always held at the Gate until the person approves"
   },
+  "microsoft.calendar.create": {
+   "class": "held",
+   "why": "a plain session has no person's own act: an agent's or a model's invite with guests is held at the member's own Gate, one with no guests is refused, a call with no person is refused"
+  },
+  "microsoft.mail.send": {
+   "class": "held",
+   "why": "a plain session has no person's own act: an agent's or a model's send is held at the member's own Gate for the person it acts for, and a call with no person is refused"
+  },
   "hands-desktop.act": {
    "class": "refused",
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"

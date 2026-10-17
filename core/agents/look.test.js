@@ -42,7 +42,8 @@ async function world(t) {
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "agents");
   await reg.start([...core, ...discover([root])], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); delete globalThis.__launched; });
-  return (tool, input = {}, caller = "local") => reg.call(tool, input, caller);
+  // the registry answers { data } or { error }: the tests read the data and expect a refusal to reject
+  return async (tool, input = {}, caller = "local") => { const r = await reg.call(tool, input, caller); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; };
 }
 
 test("a look given at creation is kept and listed", async (t) => {

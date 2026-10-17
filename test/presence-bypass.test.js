@@ -98,7 +98,11 @@ async function box(t) {
   assert.ok((await person("vault.grant", { name: "mail-token", module: "gate" })).data, "a grant needs a person too");
   const held = await call("gate.request", { kind: "send", via: "mail", to: "someone@example.com", content: { subject: "Hello", body: "Draft by the model" } }, { root, caller: "mcp" });
   assert.equal(held.data.state, "held");
-  return { root, d, mail, screen, id: held.data.id, person, signed, socket: d.paths.socket };
+  // With the kernel on, a call with no person on its chain gets nothing of the Gate. The daemon gives the owner's socket that identity only when it measures that no model is above the caller, which a test run cannot promise,
+  // so the person's own routes carry the owner's session (the header the daemon reads), as the Capsule's and the terminal's do.
+  const K = d.kernel;
+  const own = K ? { "x-vyre-kernel-session": (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token } : {};
+  return { root, d, mail, screen, id: held.data.id, person, signed, socket: d.paths.socket, own };
 }
 
 test("bypass: curl on the socket with a forged caller cannot approve", async t => {
@@ -159,9 +163,17 @@ test("bypass: a Bash tool call that tries it is denied by the floor, with vyred 
 
 test("bypass: the person's own routes still work, once each", async t => {
   const b = await box(t);
+  // A call with no person on it, even with a good signature, is refused and creates no held item: the held send stays held and nothing is sent. (With the kernel off there is no person to ask for.)
+  if (b.own["x-vyre-kernel-session"]) {
+    const bare = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: b.id }) });
+    assert.notEqual(bare.status, 200, "a person-less call does not approve: " + JSON.stringify(bare.body));
+    assert.equal(b.mail.got.length, 0, "and nothing was sent");
+    const still = await raw(b.socket, "/v1/tools/gate.held", {}, { "x-vyre-caller": "cli", ...b.own });
+    assert.ok((still.body.data || []).some((/** @type {any} */ i) => i.id === b.id), "and the held send is still held, still the owner's to answer");
+  }
   // The Capsule: a signed call.
   const header = b.signed("gate.approve", { id: b.id });
-  const ok = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": header });
+  const ok = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": header, ...b.own });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal(b.mail.got.length, 1);
   const replay = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": header });
@@ -175,7 +187,7 @@ test("bypass: the person's own routes still work, once each", async t => {
   assert.equal(b.screen.at(-1).file, "/dev/ttys007");
   const code = /type this code[^:]*: ([A-Z0-9]+)/i.exec(b.screen.at(-1).text)?.[1];
   assert.ok(code, b.screen.at(-1).text);
-  const sent = await raw(b.socket, "/v1/tools/gate.approve", input, { "x-vyre-caller": "cli", "x-vyre-presence": `tty id=${c.body.data.challenge} code=${code}` });
+  const sent = await raw(b.socket, "/v1/tools/gate.approve", input, { "x-vyre-caller": "cli", "x-vyre-presence": `tty id=${c.body.data.challenge} code=${code}`, ...b.own });
   assert.equal(sent.status, 200, JSON.stringify(sent.body));
   assert.equal(b.mail.got.length, 2);
   const notLogin = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.approve", input, method: "tty", tty: "/dev/ttys099" }, {});
@@ -184,16 +196,16 @@ test("bypass: the person's own routes still work, once each", async t => {
 
 test("bypass: revising, discarding and deleting sends nothing and asks for no proof; answering needs only a person", async t => {
   const b = await box(t);
-  const deck = { "x-vyre-caller": "deck" };
+  const deck = { "x-vyre-caller": "deck", ...b.own };
   const send = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, deck);
   assert.equal(send.body.error.code, "presence_required", "a send still asks");
-  assert.equal((await raw(b.socket, "/v1/tools/gate.revise", { id: b.id, edited: { subject: "Hello again" } }, { "x-vyre-caller": "cli" })).status, 200);
+  assert.equal((await raw(b.socket, "/v1/tools/gate.revise", { id: b.id, edited: { subject: "Hello again" } }, { "x-vyre-caller": "cli", ...b.own })).status, 200);
   assert.equal((await raw(b.socket, "/v1/tools/gate.reject", { id: b.id }, deck)).status, 200);
   assert.equal(b.mail.got.length, 0);
   // Deleting the user's data outside cannot be undone, so it asks like a send.
   const del = (await call("gate.request", { kind: "delete", via: "drive", to: "northwind-bakery", content: { method: "DELETE", url: `${b.mail.base}/files/menu.pdf` } }, { root: b.root, caller: "mcp" }));
   assert.ok(del.data, JSON.stringify(del.error));
-  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: false, since: null });
+  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck", headers: b.own })).data.presence, { required: true, covered: false, since: null });
   assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: del.data.id }, deck)).body.error.code, "presence_required");
   // A model is refused all of them, silently: no proof is asked of it.
   const other = (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "x", body: "y" } }, { root: b.root, caller: "mcp" })).data.id;

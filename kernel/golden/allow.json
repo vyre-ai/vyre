@@ -676,10 +676,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the recent runs of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
-  "tool": "flows.settle",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)): answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"
- },
- {
   "tool": "flows.simulate",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; replays recent events through a Flow without doing anything; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -1038,6 +1034,10 @@
  {
   "tool": "mentions.search",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): names matching what was typed in the # picker, grouped by kind"
+ },
+ {
+  "tool": "microsoft.accounts",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; microsoft.accounts opened to a model or a module in abd2b4892 (17 Oct 2026); the body decides: read-only, and scoped in code by the call's verified chain (actingPerson): a member sees only her own provisioned account, the owner the firm app; the Vault's Apps list asks it as a module for the member it is serving"
  },
  {
   "tool": "microsoft.calendar.create",

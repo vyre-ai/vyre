@@ -30,6 +30,7 @@ export const PERSON_ONLY = new Map([
   ["assistant.access.restore", "turns tools or areas back on for the person's own assistant: the person's own yes, never the assistant's (G23)"],
   ["work.project.level", "sets a person's level on a project (lead, contributor, viewer): a project Lead's or staff's own act on the team's seats, never an assistant's"],
   ["agents.flow-say", "writes in a Flow's chat as the person and wakes the Flow's agent for them, with the person's own grants: the person's own voice; an assistant that wants an agent to act gives it a task as itself"],
+  ["flows.settle", "retries, skips or stops a run that needs attention, in the person's own name: only a person does it, and an assistant tells them in the chat"],
   ["agents.docs.get", "reads another agent's instructions: the person's own view; an agent gets its own instructions and context at session start, never through a tool"],
   ["agents.docs.set", "writes an agent's instructions: the person's own act; an agent never edits any agent's words (a model proposes through flows.propose)"],
   ["agents.context.list", "lists an agent's context files and links: the person's own view; an agent gets its own context at session start"],
@@ -83,6 +84,9 @@ export const PERSON_ONLY = new Map([
   ["vault.me.get", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["vault.me.connection.share", "a Vault tool: the person's own act; an agent never shares or reads a connection (the owner's ruling: an agent never sees a value)"],
   ["vault.me.connection.directory", "a Vault tool: the person's own picker for sharing a connection; an agent never reads who holds a Vault item"],
+  ["vault.me.share.agent", "a Vault tool: the member's own act of letting one of her agents use one of her items; an agent never decides what an agent may use"],
+  ["vault.me.unshare.agent", "a Vault tool: the member's own act of taking an agent's use of her item away; an agent never changes who holds a Vault item"],
+  ["vault.me.shares", "a Vault tool: the member's own view of which of her items her agents hold; an agent never reads the sharing of a Vault item"],
   ["vault.me.connection.shares", "a Vault tool: the person's own view of who holds a connection; an agent never reads the sharing of a Vault item"],
   ["vault.me.provisioned", "a Vault tool: the person's own view of the accounts the firm key lets them act as; an agent reads the account through the google tools, never this list"],
   ["vault.me.shared.reveal", "needs the person's Face ID or presence: secrets, devices and vault access"],
@@ -107,7 +111,7 @@ export const PERSON_ONLY = new Map([
   ["vault.vaults.list", "a Vault tool: the person's own act or view; an agent asks for what it needs through vault.request and never reads, makes, moves or revokes Vault items, devices or grants itself (the owner's ruling: an agent never sees a value)"],
   ["microsoft.add", "connects a Microsoft account: the person's own act"],
   ["microsoft.remove", "removes a Microsoft account: the person's own act"],
-  ["microsoft.accounts", "lists the Microsoft accounts the person connected: the person's own view of their connections"],
+  ["microsoft.check", "walks the firm Microsoft 365 setup: the owner's own check of the tenant, never an agent's"],
   ["microsoft.members.email", "sets which Microsoft account sends a member's mail: the person's own act on the account"],
   ["google.members.email", "sets which Google account sends a member's mail: the person's own act on the account"],
   ["vault.access.get", "reads who holds access to the Vault: the person's own view; an agent never sees a value"],
@@ -670,7 +674,6 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
-  ["flows.settle", "answers a run that needs attention (retry, skip, stop); an assistant's answer is held for the person's tap, and an assistant may not move a stage gate on early (that is flows.advance, the person's own)"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],
