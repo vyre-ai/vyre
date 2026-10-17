@@ -527,7 +527,12 @@ export function createLentHome(o) {
       calls.set(ticket, c);
       return await settle(session, ticket, c);
     },
-    async stop(chain, i) { mine(chain, i && i.session); previews.close(String(i.session)); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    async stop(chain, i) {
+      mine(chain, i && i.session);
+      // A stop names the epoch of the stint that ended. A chat that moved to the server and came back is a newer stint of the same session: the older one's late "I ended" must not forget the row of the one now running.
+      { const r = book.get(String(i.session)); if (r && Number.isInteger(i.epoch) && r.epoch !== i.epoch) return { stopped: false, stale: true }; }
+      previews.close(String(i.session)); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true };
+    },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },

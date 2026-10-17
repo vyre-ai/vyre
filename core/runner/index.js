@@ -134,7 +134,7 @@ export default {
     const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
       const p = lenders.get(space)?.ports; if (!p) return;
       // a chat's process (lent spawn) says how it ended through its pump first, so the SDK hears the exit it really had; the home forgetting the session comes after
-      if (why === "stopped" || why === "finished") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session)).catch(() => {}); }
+      if (why === "stopped" || why === "finished") { const epoch = p.epochOf?.(session); const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session, epoch)).catch(() => {}); }   // the epoch of the stint that ended, taken now: a newer stint may have started by the time the pump is done
       else if (why === "crashed") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.requestServer?.(space, session, "crash")).catch(() => {}); }   // the SDK hears the exit code the program really had, then the home takes the session (reason crash) to carry on from the last whole turn
     };
     const forSpace = async space => {
