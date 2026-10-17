@@ -39,7 +39,7 @@ import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.j
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
-import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
+import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js"; import { endLends } from "./lend-end.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
@@ -2285,7 +2285,7 @@ export class Switchboard {
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
     const rec = this.record(id);
-    this.emit("thread.stopped", { code: code ?? null, reason }, id, rec ? rec.project : null);
+    endLends(this, id, this.turnAsker.get(id)); this.emit("thread.stopped", { code: code ?? null, reason }, id, rec ? rec.project : null);
     // The process ended with people's chat turns still waiting behind the one that was running (it was stopped, crashed, or died with the turn): they are not stranded, the thread starts again for them
     if (!this.closing && !this.once.has(id)) this.resumeWaiting(id);
   }
@@ -2361,7 +2361,7 @@ export class Switchboard {
   turnEnded(id, st, project) {
     st.turn = null;
     this.resumeTried.delete(id);
-    this.turnAsker.delete(id);
+    endLends(this, id, this.turnAsker.get(id)); this.turnAsker.delete(id);   // what a member lent for this turn ends with it
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id, "30 s after its turn ended"); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
@@ -3567,7 +3567,7 @@ export class Switchboard {
     if (st.turn) st.interrupting = true;
     if (st.proc.interrupt) await st.proc.interrupt();
     else st.proc.write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } });
-    return { thread: id, interrupted: true };
+    endLends(this, id, this.turnAsker.get(id)); return { thread: id, interrupted: true };
   }
 
   /**
@@ -3640,7 +3640,7 @@ export class Switchboard {
     try { this.deps.eraseThread?.(id); } catch (e) { this.deps.log(`deleting ${id}'s events failed: ${/** @type {Error} */ (e).message}`); }
     this.states.delete(id);
     // Not tied to the thread it names (its rows are gone): the payload carries the id.
-    this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
+    endLends(this, id, this.turnAsker.get(id)); this.turnAsker.delete(id); this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
     return { thread: id, deleted: true };
   }
 
