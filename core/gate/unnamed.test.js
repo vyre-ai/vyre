@@ -31,7 +31,7 @@ test("B8: gate.request refuses an `unnamed` key from a model, a session or the C
   const K = d.kernel, OWNER = K.id.owner;
   const dev = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
   const tokenOf = async (/** @type {any} */ c) => ({ token: (await K.surfaces.open(c, {})).token });
-  const body = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Re: intake", body: "Hi." } };
+  const body = { kind: "send", via: "mail", to: "client@example.com", content: { subject: "Re: fixture", body: "Hi." } };
   for (const caller of ["cli", "mcp", "mcp:agent:juno"]) {
     const r = await d.registry.call("gate.request", { ...body, unnamed: true }, caller, await tokenOf(dev(OWNER)));
     assert.ok(r.error, `${caller} sent unnamed and was not refused`);
@@ -61,8 +61,8 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   // A hub server with one outward tool, on a real vyred (stdio child, its calls logged to a file).
   await ok("mcp.add", { name: "web", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"],
     vars: { FAKE_MCP_LOG: logFile, FAKE_MCP_TOOLS: JSON.stringify([{ name: "send_message", inputSchema: { type: "object" } }]) } });
-  // The person gives juno a standing permission to send to harlowlegal.com addresses through this server.
-  await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mcp:web", to: { patterns: ["*@harlowlegal.com"] }, daily_cap: 5 });
+  // The person gives juno a standing permission to send to example.com addresses through this server.
+  await ok("gate.standing.add", { agent: "juno", kind: "send", via: "mcp:web", to: { patterns: ["*@example.com"] }, daily_cap: 5 });
 
   // Unnamed: no recipient argument, so the destination would only be the server's name. Held, and the server never sees it.
   const unnamed = await callAs({ text: "hi" });
@@ -71,7 +71,7 @@ test("B8 real vyred: a standing permission for an agent on a hub server does not
   assert.equal(calls(logFile), 0, "the server was not called for the unnamed send");
 
   // Named, inside the scope: the same standing permission covers it, so it goes out with no question (the positive control).
-  const named = await callAs({ to: "dana@harlowlegal.com", text: "hi" });
+  const named = await callAs({ to: "client@example.com", text: "hi" });
   assert.ok(!named.error, JSON.stringify(named.error));
   await until(() => calls(logFile) === 1);
 });
