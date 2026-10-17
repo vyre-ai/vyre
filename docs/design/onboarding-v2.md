@@ -26,7 +26,7 @@ After identity, the optional **Sign in to an AI** step lists every login-able ad
 
 ## Approvals
 
-Every outward first-run write (`onboard.person.create`, `onboard.space.*`, `onboard.member.link`, `onboard.computer.add`, `onboard.phone.add`, `onboard.github.finish`, `onboard.agent.signin`, …) is held for a one-tap approval when the caller is `mcp:agent:<name>`. Passwords and recovery keys are refused from model callers.
+Every outward first-run write (`onboard.person.create`, `onboard.space.*`, `onboard.member.link`, `onboard.computer.add`, `onboard.github.finish`, `onboard.agent.signin`, …) is held for a one-tap approval when the caller is `mcp:agent:<name>`. Passwords and recovery keys are refused from model callers. Another device or a phone has no first-run step of its own: it signs in with the space address, the username and the master password.
 
 ## What was removed
 
