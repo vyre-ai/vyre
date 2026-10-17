@@ -40,9 +40,9 @@ export async function kernelRig(o = {}) {
     proofFrom: () => ({ presence: { n: Math.random() } }),
     vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p),
       // Mirror kernel/index.js vault.personMay (owner role only; no extra test-only shortcuts).
-      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource) => {
+      personMay: async (/** @type {string} */ person, /** @type {string} */ action, /** @type {string} */ resource, /** @type {boolean} */ asks) => {
         if (gs.roleOf({ kind: "person", id: person, space: SPACE }) === "owner") return true;
-        try { return (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect === "allow"; } catch { return false; }
+        try { const e = (await gw.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).effect; return e === "allow" || (asks === true && e === "ask"); } catch { return false; }
       } }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full, /** @type {string} */ thread, /** @type {string} */ person) => {
