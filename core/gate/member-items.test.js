@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const BEN = "per_" + "bcdefghijklmnopqrstuvwxyza", CY = "per_" + "cdefghijklmnopqrstuvwxyzab";
@@ -27,7 +27,7 @@ async function rig(t) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
   writeModule(path.join(root, "modules"), "courier", { requires: ["gate"], does: { tools: ["courier.release", "courier.got"] } }, COURIER);
-  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const K = d.kernel, OWNER = K.id.owner;
   const chain = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "direct", session: "s" });
@@ -81,4 +81,32 @@ test("two members who ask for the same thing hold two items, each their own", { 
   assert.deepEqual((await as(BEN, "gate.held")).data.map((/** @type {any} */ i) => i.id), [a]);
   assert.deepEqual((await as(CY, "gate.held")).data.map((/** @type {any} */ i) => i.id), [b]);
   assert.equal((await as(BEN, "gate.reject", { id: b })).error?.code, "not_found", "Ben cannot discard Cy's item");
+});
+
+test("a call with no person on its chain, or a member, gets nothing of the owner's items on any of the five tools; the owner's own surfaces still handle them", { timeout: 180_000 }, async t => {
+  const { d, K, OWNER, as } = await rig(t);
+  const mk = async () => (await as(OWNER, "gate.request", ASK)).data.id;
+  const id = await mk();
+  const five = (/** @type {string} */ i) => [["gate.get", { id: i }], ["gate.approve", { id: i }], ["gate.revise", { id: i, edited: { text: "x" } }], ["gate.reject", { id: i }]];
+  // (a) a non-module call with no person (no token: the registry gives it no verified person) and a member: not_found, and nothing listed
+  for (const [tool, input] of five(id)) {
+    assert.equal((await d.registry.call(tool, input, "local")).error?.code, "not_found", `no person: ${tool}`);
+    assert.equal((await as(BEN, tool, input)).error?.code, "not_found", `member: ${tool}`);
+  }
+  assert.deepEqual((await d.registry.call("gate.held", {}, "local")).data, [], "no person: nothing listed");
+  assert.deepEqual((await as(BEN, "gate.held")).data, [], "a member: nothing listed");
+  // (b) the presence line is one fixed sentence: the same for the owner's item and for an id that does not exist, and none of the item's words
+  const line = await d.registry.tools.get("gate.approve").presence.summary({ id });
+  assert.equal(line, await d.registry.tools.get("gate.approve").presence.summary({ id: "ffffffffffffffffff" }));
+  for (const word of ["Weekly update", "Ovens", "northwind", "courier"]) assert.ok(!line.toLowerCase().includes(word.toLowerCase()), word);
+  // (c) the owner's own surfaces (cli, deck, local, each with the owner's verified token) still see, approve and reject the owner's own items
+  for (const caller of ["cli", "deck", "local"]) {
+    const token = (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: OWNER, path: "direct", session: "s" }), {})).token;
+    const one = await mk();
+    assert.equal((await d.registry.call("gate.get", { id: one }, caller, { token })).data?.id, one, `${caller} gets`);
+    assert.ok((await d.registry.call("gate.held", {}, caller, { token })).data.some((/** @type {any} */ i) => i.id === one), `${caller} lists`);
+    assert.equal((await d.registry.call("gate.reject", { id: one }, caller, { token })).data?.state, "rejected", `${caller} rejects`);
+  }
+  const sent = await as(OWNER, "gate.approve", { id });
+  assert.equal(sent.data?.state, "sent", "the owner approves their own item: " + JSON.stringify(sent));
 });

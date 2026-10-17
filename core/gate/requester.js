@@ -16,13 +16,18 @@ export async function personOnChain(K, meta) {
 export const isMemberItem = (row, K) => Boolean(row && typeof row.requester === "string" && row.requester && row.requester !== (K && K.owner));
 
 /**
- * May the person on this call see and answer the item? A member's item: only its requester, so a call with no person on its chain gets nothing. Any other item (the owner's own, or one with no requester): as
- * before, which is the owner and the admins and any caller with no person; a plain member never sees it, since the door now lets members call the Gate for their own items.
- * @param {any} row @param {string | null} person @param {any} K
+ * May the person on this call see and answer the item? A member's item: only its requester. Any other item (the owner's own, or one with no requester): the owner and the admins, and a module (the internal
+ * callers that hold no person: a sender's release tool, the approvals queue); a plain member never sees it, and neither does any other call with no person on its chain (a chain that could not be read fails
+ * closed, since members now reach the Gate for their own items). A build with no kernel has no roles, so everything is as before.
+ * @param {any} row @param {string | null} person @param {any} K @param {boolean} isModule whether the caller is a module (its label starts with "module:")
  */
-export function mayHandle(row, person, K) {
+export function mayHandle(row, person, K, isModule = false) {
   if (isMemberItem(row, K)) return person !== null && person === row.requester;
-  if (person === null || !K || typeof K.roleOf !== "function") return true;
+  if (!K || typeof K.roleOf !== "function") return true;
+  if (person === null) return isModule;
   const role = K.roleOf(person);
   return role === "owner" || role === "admin";
 }
+
+/** Whether a call's caller label is a module's. @param {any} meta */
+export const fromModule = meta => String((meta && meta.caller) || "").startsWith("module:");

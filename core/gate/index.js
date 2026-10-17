@@ -21,7 +21,7 @@
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
 import { isPerson } from "../../lib/caller.js";
 import { COVERED } from "../../lib/covered.js";
-import { personOnChain, mayHandle, isMemberItem } from "./requester.js";
+import { personOnChain, mayHandle, fromModule } from "./requester.js";
 import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
@@ -31,14 +31,8 @@ const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "
 /** A model's call: Claude through MCP, in an agent's thread or not. */
 const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
 
-// Presence summaries (security, docs/adr/0004-presence.md): what the person sees on the
-// terminal or in the dialog before they prove they are there, so they never approve, revise or
-// discard blind. gate.get's own shape, not a made-up one: `to`, `draft`, `final`.
-const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
-const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
-// An MCP call held by the hub keeps its words in `arguments` (a Slack post's text or payload).
-const wordsOf = a => (a && typeof a === "object" ? a.text || a.payload || a.message || a.body || a.content : "") || "";
-const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments) || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+// Presence summaries (docs/adr/0004-presence.md): the line shown before the person proves they are there. Approving shows a fixed line and never an item's words, destination or kind: the prompt appears before
+// the call is checked, to whoever asked, so it must tell a caller who may not handle an item nothing about it. The words reach a person who may handle it in what the Gate returns.
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
@@ -92,7 +86,7 @@ export default {
     const handled = async (id, meta, o = {}) => {
       const r = gate.row(id);
       if (o.ownSender && String(meta && meta.caller || "").startsWith("module:") && r.sender_module === String(meta.caller).slice(7)) return r;
-      if (!mayHandle(r, await personOnChain(ctx.kernel, meta), ctx.kernel)) throw Object.assign(new Error(`nothing at the Gate has id ${id}: it may be answered or expired; read what is waiting at the Gate again`), { code: "not_found" });
+      if (!mayHandle(r, await personOnChain(ctx.kernel, meta), ctx.kernel, fromModule(meta))) throw Object.assign(new Error(`nothing at the Gate has id ${id}: it may be answered or expired; read what is waiting at the Gate again`), { code: "not_found" });
       return r;
     };
 
@@ -221,7 +215,7 @@ export default {
       input: obj({ thread: str, project: str }),
       // Held drafts are the person's own words and recipients: the person's surfaces and modules, as gate.get.
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "space", "agent"],
-      run: async (input, meta) => { const person = await personOnChain(ctx.kernel, meta); return withPresence(gate.held({ ...input, visible: r => mayHandle(r, person, ctx.kernel) }), meta.peer); },
+      run: async (input, meta) => { const person = await personOnChain(ctx.kernel, meta); return withPresence(gate.held({ ...input, visible: r => mayHandle(r, person, ctx.kernel, fromModule(meta)) }), meta.peer); },
     });
 
     ctx.tool("gate.get", {
@@ -247,12 +241,9 @@ export default {
         when: ({ id }) => needsProof(id),
         // One passkey or Touch ID opens a ~30 minute session on that device, and the sends after it ride it.
         session: ({ id }) => needsProof(id),
-        summary: async ({ id, edited }) => {
-          const it = gate.get({ id });
-          // The prompt is shown before the call is checked, to whoever asked: a member's item is described, not quoted, so a caller who may not handle it learns nothing of its words.
-          if (isMemberItem(it, ctx.kernel)) return `Send ${it.kind} via ${it.via} that a member asked for`;
-          return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`;
-        },
+        // The prompt is shown before the call is checked, to whoever asked, so it says nothing of any item: not its words, not its destination, not whether the id exists. The words appear only to a person who may
+        // handle the item, in what the Gate returns.
+        summary: async () => "Approve something held at the Gate",
       },
       run: async (input, meta) => { const c = mayApprove(meta.caller); await handled(input.id, meta); return gate.approve({ ...input, by: c }); },
     });
