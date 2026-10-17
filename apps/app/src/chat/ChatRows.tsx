@@ -160,11 +160,11 @@ export function UserText({ text, pending, tone }: { text: string; pending: boole
 
 /** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
 function StreamText({ store, k, text, done, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
-  // Before the first word arrives the bubble holds only the caret, so it never shows as an empty grey blob.
-  if (!text) return done ? null : <Caret />;
+  // Before the first word arrives the bubble holds three dots, so it never shows as an empty grey blob (three quiet dots say it is writing).
+  if (!text) return done ? null : <Text accessibilityLabel="Writing" tone="label">{"\u2022 \u2022 \u2022"}</Text>;
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
-  return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} tail={showsCaret({ done }) ? <Caret /> : undefined} />;
+  return <Markdown size="body" text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} tail={showsCaret({ done }) ? <Caret /> : undefined} />;
 }
 
 export function Skeleton({ w, h = 12, r = 6 }: { w: number | `${number}%`; h?: number; r?: number }) {
