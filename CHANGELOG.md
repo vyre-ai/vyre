@@ -144,9 +144,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(app): the operator card shows live Glass on web, Mac and Windows; the full-screen view uses `LiveScreen` with watch and take-over.
 - feat(hands-chrome): `chrome.net` on the box captures page traffic over CDP (`start` / `list`).
 - test(relay): the channel test for a replayed frame waits for the close with a bounded poll instead of a fixed 30 ms, which a slow Windows runner missed.
-
-## 0.6
-
 - ci: a draft pull request runs the node tests on Node 24 only (5 shards); marking it ready starts the Node 22 and 24 run (node.yml now listens for ready_for_review), and release branches and main keep both. lumen-mac no longer also runs on a push to a work branch that has a pull request (it ran twice). The other heavy workflows (lumen-win, vault-mac, design, sessions-sdk, app, design-pictures) already run only when their paths change, and box-image decides from the package contents.
 - test(door gate): the team-server rigs of core/modules/door-gate.test.js and door-gate-roles.test.js write a box config (role box) before they start, because the computers and publish tools exist only for that role and a Mac's default is not it: the two files failed on the macOS job (vault-mac) for that reason.
 
@@ -183,7 +180,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - ci(app): the app's CI checks every file of the web export against the release manifest's own path rule (relay/app/manifest.js `PATH`, now exported) with apps/app/scripts/check-export-names.mjs, so a chunk named with a character the signed manifest refuses fails the app's check, not the release's last step.
 - test(design-pictures): a picture that draws nothing (a fixture still unpainted on a slow runner) is waited for and, if it stays blank, fails as a rule fault instead of being written as a reference; a manual run of the workflow can write the references (update input).
 - fix(vault): a vault wipe finds a sealing process from the folder's own record, not from a listing of processes: the process that spawns the sealer writes `<seal dir>/sealer.pid` at once and removes it when the sealer exits, and the wipe refuses while that pid is a live sealing process (a record whose process is gone is ignored). A sealer that has not appeared in `ps` yet can no longer slip past it. [kernel +4]
-## Unreleased
+- ci(regen): on a pull request into a release branch, regen.yml runs scripts/team/regen.mjs on Linux in a read-only job and, when the docs reference and index, the agent docs or the architecture map are stale, a second job with the write token applies only those paths as a commit to the PR branch (never the golden lists, which change through golden-refresh) and starts node, app, box-image and design-pictures on the new commit; a fork's pull request fails with the stale files named. Nobody edits generated files by hand.
+- test(daemon): `stopDaemonBounded` ends only the children that appeared after it was called, not every child of the test process, so a file's own earlier children and the daemon's own start-up children are left to their owners; a file may pass a `keep` function for one it starts later on purpose. Tested in test/stop-daemon-bounded.test.js.
+- docs(git): the branch model is written down: `main` is the release, `release/<x.y>` holds each version being built, `work/<x.y>/<who>/<item>` holds one item and merges into its release branch, and a patch is x.y.z cut from the release tag. Branches whose work was not in main were kept under `refs/archive/` and listed on the `archive` branch before the rest were deleted.
+
+## 0.5.7
+
+- fix(app): the Mac app finishes setting up a server (the page's token slot is the null origin's, the paired session starts with the key reported at pairing, unlocking with the master password works in the browser, the first-run steps carry codes, and the Remove-it screen has its test entry) (work/0.5.6/app53/vault dcb55da1c).
+- release: 0.5.7 carries all of 0.5.6 (release notes in release/notes/0.5.7.md).
+
+## 0.5.6
+
+- feat(vault): a space's vault waits for the first save with approval; the host poll defers only on presence_required, the first put in the server's own space makes the vault key in the same call (only for a person, and only after the item is acceptable), the device that finished the first adoption may make it once without a fresh approval inside a short window, and the Vault screen shows one calm line while the vault is not made yet (work/0.5.6/app53/vault).
+- release: 0.5.6 carries all of 0.5.5 (release notes in release/notes/0.5.6.md).
+
 ## 0.5.5
 
 - fix(app): a pairing that ends without showing words (the server already knows its owner) no longer leaves ready() waiting forever: adding a server completes. A first adoption now has a 120 s deadline that fails with "The server did not answer the pairing", the app logs each step of the pairing stage, and the server logs when setup-offer is entered and how it ends. The first-run proof prints the steps when the pairing does not finish A server whose answer names a different owner than the identity being paired is refused (bad_owner), and the add-server card shows the word box only when there are words (work/0.5.4/app53/adopt-trace).
@@ -432,13 +442,6 @@ Release summary (the plain-words version is release/notes/0.5.3.md): a new first
 - fix(flows): when a task is withdrawn at its due time, the agent's thread that is stopped is the one the wake itself recorded (agents.woken by task), never the thread named in the task's form, which the doer can edit.
 - feat(flows): an agent, assign or ask step has a due time (`timeout_ms`, up to 90 days; for an agent the Space's default `flows.agent_due_hours`, 24 hours). Past it the Flows service withdraws the task (new kernel transition `flow_deadline`, action `tasks.withdraw`, event `task.withdrawn`, ADR 0057): nobody can start, hand in or reopen it, the agent's session ends, its lend of the task is dead at once and taken back, what it held for a yes is cancelled with the reason in the approvals queue, and the step fails with `timeout` and runs its nested steps.
 - ci: a pull request's newer push cancels its older run in node, app, box-image and design-pictures (the work/ test alone never matched a pull request's ref); main, release branches and tags never cancel. box-image and design-pictures already run only when their inputs change.
-## 0.6
-
-- ci(regen): on a pull request into a release branch, regen.yml runs scripts/team/regen.mjs on Linux in a read-only job and, when the docs reference and index, the agent docs or the architecture map are stale, a second job with the write token applies only those paths as a commit to the PR branch (never the golden lists, which change through golden-refresh) and starts node, app, box-image and design-pictures on the new commit; a fork's pull request fails with the stale files named. Nobody edits generated files by hand.
-## 0.6
-
-- test(daemon): `stopDaemonBounded` ends only the children that appeared after it was called, not every child of the test process, so a file's own earlier children and the daemon's own start-up children are left to their owners; a file may pass a `keep` function for one it starts later on purpose. Tested in test/stop-daemon-bounded.test.js.
-- docs(git): the branch model is written down: `main` is the release, `release/<x.y>` holds each version being built, `work/<x.y>/<who>/<item>` holds one item and merges into its release branch, and a patch is x.y.z cut from the release tag. Branches whose work was not in main were kept under `refs/archive/` and listed on the `archive` branch before the rest were deleted.
 
 ## 0.5.1
 

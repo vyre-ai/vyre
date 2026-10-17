@@ -72,7 +72,9 @@ export default {
       request: async input => {
         // A held call is asked as the member on this call (the tool named her from the verified chain, one person and no agent), so the item is hers at the Gate; with no member it is filed as before.
         const st = /** @type {any} */ (ASKING.getStore()), member = st ? (typeof st.me === "string" ? st.me : (st.who && !st.who.agent && typeof st.who.me === "function" ? String(await Promise.resolve(st.who.me()).catch(() => "") || "") : "")) : "";
-        return data(await ctx.call("gate.request", input, member ? { relay: true } : undefined));
+        // an agent's turn is relayed too: the Gate sees the person and the agent on the verified chain (the requester, and a standing permission for that agent), which a plain nested call does not carry
+        const agentTurn = Boolean(st && st.who && st.who.agent);
+        return data(await ctx.call("gate.request", input, member || agentTurn ? { relay: true } : undefined));
       },
       item: async id => data(await ctx.call("gate.get", { id })),
       agentKind: async agent => {

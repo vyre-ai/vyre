@@ -241,9 +241,9 @@ try {
     await drv.shot("02-recovery-key");
     await drv.turnOn("I saved it");
     await drv.click("Continue");
-    await drv.waitFor(AI_SIGNIN_COPY.title);
-    await drv.click(AI_SIGNIN_COPY.skip);
-    await drv.waitFor("Your space");
+    // No AI step here: a page with no daemon has no server to sign an AI in on yet. It comes after the space is online.
+    const next = await drv.waitFor("Your space");
+    if (new RegExp(AI_SIGNIN_COPY.title).test(next)) throw new Error("the AI sign-in showed before any server exists");
     const r = await fetch(`${ins.names}/v1/ids/resolve?name=${USERNAME}`);
     const j = /** @type {any} */ (await r.json());
     if (r.status !== 200 || !j.data || !/^per_[a-z2-7]{26}$/.test(String(j.data.id))) throw new Error(`the directory has no identity for ${USERNAME}: ${r.status}`);
@@ -290,6 +290,16 @@ try {
     if (/four words|words match/i.test(t)) throw new Error("the online screen asks for words");
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
     await drv.click("Continue");
+    // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
+    const ai = await drv.waitFor("Sign in to an AI", 30_000);
+    if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
+    await drv.shot("04b-ai-signin");
+    // Continue with nothing signed in does not leave the step (it starts the sign-in on the paired server and shows what came back, or says why not); only Skip for now goes on.
+    await drv.click("Continue");
+    await new Promise((r) => setTimeout(r, 5000));
+    const still = await drv.text();
+    if (/You're in/.test(still) || !/Sign in to an AI/.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
+    await drv.click("Skip for now");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
