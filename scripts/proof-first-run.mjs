@@ -79,7 +79,7 @@ async function browserDriver() {
   const d = {
     async open() { if (page) await page.close().catch(() => {}); page = await ctx.newPage(); page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200))); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
-    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { throw new Error(`${e.message}. The screen says: ${(await body()).slice(0, 300)}`); }); return body(); },
+    async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen says (start): ${b.slice(0, 200)} ... (end): ${b.slice(-700)}`); }); return body(); },
     async click(/** @type {string} */ t) {
       const el = page.getByRole("button", { name: t }).or(page.getByRole("radio", { name: t })).or(page.getByRole("switch", { name: t })).or(page.getByText(t, { exact: true })).first();
       await el.click({ timeout: 15_000 });
@@ -157,7 +157,10 @@ try {
     await drv.fill("Master password", PASSWORD);
     await drv.fill("Confirm master password", PASSWORD);
     await drv.click("Create");
-    const t = await drv.waitFor("Save your recovery key", 120_000);
+    // Creating the identity stretches the master password with Argon2id (64 MiB, 3 passes) in the page: seconds on a fast machine, longer on a hosted runner. The step says how long it took.
+    const started = Date.now();
+    const t = await drv.waitFor("Save your recovery key", 400_000);
+    console.log(`  identity created in ${Math.round((Date.now() - started) / 1000)} s`);
     const m = /[A-Z2-7]{4}(?:-[A-Z2-7]{2,4}){6}/i.exec(t);
     if (!m) throw new Error(`no recovery key on the screen: ${t.slice(0, 200)}`);
     recoveryKey = m[0];
