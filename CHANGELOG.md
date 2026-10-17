@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- ci(golden-refresh): the artifact now carries docs/architecture/map.md and the files scripts/sync-copies.mjs rewrites (copies-gen.tgz, listed in copies-changed.txt), and the sitemap is kept when a page was added or removed (only a run that changes nothing but the lastmod stamps puts it back). Three tests (architecture-map, generated-copies, site-docs) stayed red after every golden commit without these.
+- test(test-files): scripts/test-files-workflow.test.js asserts the run_id group (a group of its own per run) that the workflow has had since the two-slot modulo, which GitHub cannot parse, was replaced.
+
 - ci(test-files): the job runs on ubuntu-latest always, never on the self-hosted runners, so owners' proof runs do not queue ahead of the node round. A test that needs something only our hosts have must say so, and gets a fixed label then.
 
 - ci(test-files): the input check takes any repo-relative test file or glob ending .test.js or .test.mjs (no .., not under node_modules/, at most 40 files), in place of a list of four or five top folders. The ref check, the permissions and the steps are unchanged.
