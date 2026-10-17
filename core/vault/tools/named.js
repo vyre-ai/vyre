@@ -60,7 +60,7 @@ export function register({ ctx, vault, tool }) {
       vault.audit("move", r.name, "owner", true, to ? `vault:${to}` : "the Space's own");
       return { moved: r.name, vault: to ?? null };
     },
-    presence("Move an item to another vault", ({ item, vault: to }) => `Move ${quoted(item)} ${to ? "to another vault" : "back to the Space's own"}; what was shared on it is taken back`));
+    presence("Move an item to another vault", ({ item, vault: to }) => `Move ${quoted(item)} ${to ? "to another vault; its holders become the people and agents that vault is shared with" : "back to the Space's own, where only you hold it"}; what was shared on it is taken back`));
 
   tool("vault.named.remove", PEOPLE, "Remove an empty vault. Whatever was shared on it is taken back.", obj({ id: str }, ["id"]), async ({ id }, meta) => {
     await known(meta, String(id));

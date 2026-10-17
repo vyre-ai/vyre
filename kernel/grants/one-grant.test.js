@@ -128,8 +128,14 @@ test("teams hold agents: a listed agent reaches the team's grant with use only, 
 });
 
 test("everyone in the Space: space:people reaches every member and nobody else, space:agents every agent with use only, and neither needs a team", async () => {
-  const { gw, g } = await rig();
+  const { gw, g, gs } = await rig();
   await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  // space:agents is the Space's registered agents only: not an agent of another Space, not one that was never added (a model slot's hop is of this kind), not a person
+  assert.equal(gs.inTeam("space:agents", actor("agent", "kit")), true);
+  assert.equal(gs.inTeam("space:agents", { kind: "agent", id: "kit", space: "spc_other" }), false, "another Space's agent");
+  assert.equal(gs.inTeam("space:agents", actor("agent", "model:fake/slot#1")), false, "an agent never registered here, as a model slot is");
+  assert.equal(gs.inTeam("space:agents", actor("person", ALICE)), false, "a person is not an agent");
+  assert.equal(gs.inTeam("space:people", actor("agent", "kit")), false, "an agent is not one of the people");
   await give(g, { kind: "group", id: "space:people" }, "reveal");
   await give(g, { kind: "group", id: "space:agents" }, "use");
   for (const who of [ALICE, BOB, CAROL]) assert.equal((await ask(gw, personChain(who), "vault.reveal", item())).effect, "allow", `${who} is a member`);

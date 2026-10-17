@@ -266,7 +266,7 @@ export function createGrantsStore(cfg) {
     }
     // The Space-wide groups (K4): every person who is a member, and every agent of the Space. An agent through either holds use and nothing more (the authorizer's group rule).
     if (id === "space:people") return Boolean(actor) && actor.kind === "person" && memberOk(actor);
-    if (id === "space:agents") return Boolean(actor) && actor.kind === "agent";
+    if (id === "space:agents") return Boolean(actor) && actor.kind === "agent" && actor.space === cfg.space && actors.has(actorKey(actor));
     const t = teams.get(id);
     if (!t || !actor) return false;
     if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
