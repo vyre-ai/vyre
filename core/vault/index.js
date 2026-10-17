@@ -206,8 +206,10 @@ export default {
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
     tool("vault.put", [...SURFACES, ...PHONE, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
-      async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, onlyIfAbsent: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
+      async ({ value, grants, onlyIfAbsent, relay: relayRules, ...input }, { caller }) => {
+        // `onlyIfAbsent` (modules): create the item, or answer { existed: true } and write nothing, grant nothing and replace nothing.
+        if (onlyIfAbsent && caller.startsWith("module:") && !String(input.name).includes("/") && vault.row(input.name)) return { existed: true };
         // `value` is the kind's own field: a PAT's token, a secret's value.
         if (value !== undefined) input.fields = { ...(input.fields || {}), [defaultField(input.kind || "secret") || "value"]: value };
         if (!input.fields) throw new Error("give the item a value or fields");

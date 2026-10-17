@@ -38,6 +38,7 @@ import { BrowserGlass } from "./browser-glass.js";
 import { BrowserProfiles, AGENT_BROWSER_PROFILE_KEY } from "./browser-profiles.js";
 import { resolveMemberBrowserProfileKey } from "../../lib/member-browser-profile-key.js";
 import { resolveAgentBrowserProfileKey } from "../../lib/agent-browser-profile-key.js";
+import { createMemberKey } from "./member-key.js";
 import { personIdOf } from "./person-id.js";
 import { beginPrivateMemberBrowser, sealMemberBrowserOnHandback } from "./member-browser-handback.js";
 import * as config from "../config/index.js";
@@ -87,13 +88,13 @@ export default {
     const emit = (type, payload, where) => ctx.events.emit(type, payload, where);
     // The key every shared-computer member token and every agent's VNC password is derived from: a Space vault item only this module reads. Nothing else provisions it, so the first use makes it (random, 32 bytes),
     // once even when calls race, and reads it back through the same declared-needs check as any later use. If it cannot be made (the vault is locked) the caller gets the vault's own refusal.
-    /** @type {Promise<string> | null} */ let memberKeyP = null;
-    const memberKey = () => memberKeyP || (memberKeyP = (async () => {
-      try { const v = await ctx.vault.fetch(MEMBER_TOKEN_ITEM); if (v) return String(v); } catch { /* not there yet */ }
-      const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value: crypto.randomBytes(32).toString("base64url") }, grants: ["computers"] });
-      if (r && r.error) throw new Error(r.error.message);
-      return String(await ctx.vault.fetch(MEMBER_TOKEN_ITEM));
-    })().catch(e => { memberKeyP = null; throw e; }));
+    const memberKey = createMemberKey({
+      fetch: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM),
+      put: async value => {
+        const r = await ctx.call("vault.put", { name: MEMBER_TOKEN_ITEM, kind: "secret", description: "Derives the shared computers' member tokens and the agents' screen passwords (created automatically).", fields: { value }, grants: ["computers"], onlyIfAbsent: true });
+        if (r && r.error) throw new Error(r.error.message);
+        return r && r.data;
+      } });
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg,
       memberTokenKey: () => memberKey() });
     const dataRoot = (ctx.paths && ctx.paths.data) || (ctx.paths && ctx.paths.root ? `${ctx.paths.root}/data` : "data");
