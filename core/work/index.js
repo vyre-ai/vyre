@@ -770,7 +770,7 @@ export default {
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         // A chat with more than one person always runs on the server: a chat running on a computer moves there first (one line in the chat, no question); nothing is added if it cannot move.
-        await moveBeforeJoin({ kernel: kernelOf(), chain, call: (tool, i) => ctx.call(tool, i), chat: String(input.chat), add: input.add_people });
+        await moveBeforeJoin({ kernel: kernelOf(), chain, call: (tool, i, o) => ctx.call(tool, i, o), chat: String(input.chat), add: input.add_people });
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },

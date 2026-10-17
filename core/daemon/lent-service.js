@@ -88,7 +88,7 @@ export function lentPlacements(registry, extra = {}) {
     cancelRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).cancelAsk(session, person),
     bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => {
       const h = homeOf(space), row = h ? h.book.find(session, person) : null;
-      if (h && row && row.chat && h.isGroup(row.chat)) throw Object.assign(new Error("a chat with more than one person always runs on the server"), { code: "conflict" });
+      if (h && row && row.chat && typeof h.isGroup === "function" && h.isGroup(row.chat)) throw Object.assign(new Error("a chat with more than one person always runs on the server, so leave it there (runner.placement shows where it runs)"), { code: "conflict" });
       return book(space).bringBack(session, person);
     },
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
