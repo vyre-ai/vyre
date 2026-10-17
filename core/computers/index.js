@@ -19,6 +19,7 @@ import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
 import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.js";
 import { agentdCtl, execTransport } from "./agentd-ctl.js";
+import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -212,8 +213,9 @@ export default {
     const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
     const lazy = name => async u => {
       const driver = pool.driver;
-      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function") throw new Error(NOT_SET);
-      const exec = (/** @type {string[]} */ argv, /** @type {string} */ input) => /** @type {any} */ (driver).execIn(argv, input);
+      const box = pool.row(SHARED_COMPUTER_ID);
+      if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
+      const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
       return /** @type {any} */ (ctl)[name](u);
     };

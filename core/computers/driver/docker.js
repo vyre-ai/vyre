@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
-import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar } from "./policy.js";
+import { REQUIRED_CAPS, BOOT, bootTar, AGENT_TOKENS, agentTokensTar, AGENTD_EXEC, allowAgentdExec } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -263,6 +263,52 @@ export class DockerDriver {
   async seedAgentTokens(id, agents) {
     await this.own(id);
     await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(AGENT_TOKENS.dir)}`, agentTokensTar(agents));
+  }
+
+  /**
+   * Run agentd's client in the computer (the one exec policy.js allows): `input` goes on standard input, the answer comes back on standard output. Errors never carry the input.
+   * @param {string} id @param {string} input @returns {Promise<{ code: number, stdout: string }>}
+   */
+  async execIn(id, input) {
+    const c = await this.own(id);
+    if (Buffer.byteLength(input) > AGENTD_EXEC.maxInput) throw new Error("the request to the agent computer is too large");
+    const body = { AttachStdin: true, AttachStdout: true, AttachStderr: false, Tty: false, Cmd: [...AGENTD_EXEC.cmd], User: AGENTD_EXEC.user };
+    const ok = allowAgentdExec((c.Config && c.Config.Labels) || {}, body);
+    if (!ok.ok) throw new Error(ok.why);
+    const made = /** @type {any} */ (await this.must("POST", `/containers/${encodeURIComponent(id)}/exec`, body));
+    const execId = String(made && made.Id || "");
+    if (!/^[a-f0-9]{8,128}$/.test(execId)) throw new Error("the Engine made no exec");
+    const stdout = await new Promise((resolve, reject) => {
+      const payload = Buffer.from(JSON.stringify({ Detach: false, Tty: false }));
+      const req = http.request({ ...this.target, method: "POST", path: `${API}/exec/${execId}/start`, timeout: AGENTD_EXEC.timeoutMs,
+        headers: { host: "docker", authorization: `Bearer ${this.bearer}`, "content-type": "application/json", "content-length": payload.length, connection: "Upgrade", upgrade: "tcp" } });
+      /** @type {Buffer[]} */ const out = [];
+      let got = 0, done = false;
+      const finish = (/** @type {Error | null} */ err, /** @type {string} */ text = "") => { if (done) return; done = true; if (err) reject(err); else resolve(text); };
+      req.on("timeout", () => { req.destroy(); finish(new Error("the agent computer did not answer in time")); });
+      req.on("error", e => finish(new Error(`docker exec: ${e.message}`)));
+      req.on("upgrade", (_res, socket) => {
+        let buf = Buffer.alloc(0);
+        socket.on("data", chunk => {
+          buf = Buffer.concat([buf, chunk]);
+          // the Engine multiplexes standard output and error in frames: 1 byte stream, 3 zero bytes, a 4-byte big-endian length, the bytes
+          while (buf.length >= 8) {
+            const len = buf.readUInt32BE(4);
+            if (buf.length < 8 + len) break;
+            if (buf[0] === 1) { got += len; if (got > AGENTD_EXEC.maxOutput) { socket.destroy(); return finish(new Error("the agent computer answered with too much")); } out.push(buf.subarray(8, 8 + len)); }
+            buf = buf.subarray(8 + len);
+          }
+        });
+        socket.on("end", () => finish(null, Buffer.concat(out).toString("utf8")));
+        socket.on("error", e => finish(new Error(`docker exec: ${e.message}`)));
+        socket.write(input);
+        socket.end();
+      });
+      req.on("response", res => { res.resume(); finish(new Error(`docker exec start: status ${res.statusCode}`)); });
+      req.end(payload);
+    });
+    const info = /** @type {any} */ (await this.must("GET", `/exec/${execId}/json`));
+    return { code: info && typeof info.ExitCode === "number" ? info.ExitCode : 1, stdout: String(stdout) };
   }
 
   async start(id) { await this.own(id); await this.must("POST", `/containers/${encodeURIComponent(id)}/start`, undefined, [304]); }

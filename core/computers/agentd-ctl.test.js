@@ -22,8 +22,9 @@ async function world(t) {
   await new Promise(r => server.on("listening", () => r(null)));
   t.after(() => server.close());
   // the same call vyred makes with `docker exec`, here run in-process against the real unix socket
-  const exec = async (/** @type {string[]} */ argv, /** @type {string} */ input) => {
-    const res = await callAgentd({ socket, token: "t".repeat(40), action: argv[argv.length - 1], body: input });
+  const exec = async (/** @type {string} */ input) => {
+    const req = JSON.parse(input);
+    const res = await callAgentd({ socket, token: "t".repeat(40), action: req.action, body: JSON.stringify(req.body) });
     return { code: res.status >= 200 && res.status < 300 ? 0 : 1, stdout: res.text };
   };
   const ctl = agentdCtl({ transport: execTransport(exec), vncKey: async () => "k".repeat(32) });

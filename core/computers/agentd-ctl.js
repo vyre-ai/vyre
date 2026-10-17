@@ -31,11 +31,11 @@ export function agentdCtl(deps) {
 }
 
 /**
- * vyred's way into agentd: `exec(argv, input)` runs a command in the computer (docker exec -i, the exact shape policy.js allows) and returns its status and output. The body goes on standard input.
- * @param {(argv: string[], input: string) => Promise<{ code: number, stdout: string }>} exec
+ * vyred's way into agentd: `exec(input)` runs /opt/agentd/client in the computer (docker exec -i as agentctl, the one shape policy.js allows) and returns its status and output. The request goes on standard input.
+ * @param {(input: string) => Promise<{ code: number, stdout: string }>} exec
  */
 export const execTransport = exec => async (action, body) => {
-  const r = await exec(["node", "/opt/agentd/agentd-client.js", action], JSON.stringify(body));
+  const r = await exec(JSON.stringify({ action, body }));
   let json = null; try { json = JSON.parse(r.stdout); } catch { /* not json */ }
   return { status: r.code === 0 ? 200 : (json && json.error ? 400 : 502), json };
 };

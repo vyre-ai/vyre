@@ -319,3 +319,39 @@ test("policy: a computer is made with every capability dropped, only SETUID and 
     assert.equal(allowCreate(await mutate(t, patch), CONFIG).ok, false);
   }
 });
+
+// ---- the one exec into a computer: agentd's client, as agentctl (sec53's conditions, 18 Oct 2026) ----
+import { allowAgentdExec, AGENTD_EXEC } from "./policy.js";
+
+const OK_LABELS = { "run.vyre": "1", "vyre.managed": "true", "vyre.computer": "browser-shared" };
+const EXEC = () => ({ AttachStdin: true, AttachStdout: true, AttachStderr: false, Tty: false, Cmd: ["/opt/agentd/client"], User: "agentctl" });
+
+test("the exec into agentd is allowed in exactly one shape", () => {
+  assert.deepEqual(allowAgentdExec(OK_LABELS, EXEC()), { ok: true });
+  assert.deepEqual(AGENTD_EXEC.cmd, ["/opt/agentd/client"]);
+  assert.equal(AGENTD_EXEC.user, "agentctl");
+});
+
+test("every deviation from the agentd exec is refused: another command or argument, user, environment, tty, working directory, privilege, key or container", () => {
+  /** @type {Array<[string, (b: any) => any]>} */
+  const cases = [
+    ["another command", b => ({ ...b, Cmd: ["/bin/sh"] })],
+    ["an argument", b => ({ ...b, Cmd: ["/opt/agentd/client", "start"] })],
+    ["no command", b => ({ ...b, Cmd: [] })],
+    ["root", b => ({ ...b, User: "root" })],
+    ["an agent's uid", b => ({ ...b, User: "20000" })],
+    ["no user", b => { const { User, ...r } = b; return r; }],
+    ["an environment", b => ({ ...b, Env: ["A=b"] })],
+    ["a tty", b => ({ ...b, Tty: true })],
+    ["a working directory", b => ({ ...b, WorkingDir: "/" })],
+    ["privileged", b => ({ ...b, Privileged: true })],
+    ["stderr attached", b => ({ ...b, AttachStderr: true })],
+    ["stdin not attached", b => ({ ...b, AttachStdin: false })],
+    ["an unknown key", b => ({ ...b, DetachKeys: "ctrl-p" })],
+    ["a list", () => []],
+    ["nothing", () => null],
+  ];
+  for (const [what, make] of cases) assert.equal(allowAgentdExec(OK_LABELS, make(EXEC())).ok, false, what);
+  assert.equal(allowAgentdExec({ "run.vyre": "1" }, EXEC()).ok, false, "a container that is not ours");
+  assert.equal(allowAgentdExec({ "com.example.app": "postgres" }, EXEC()).ok, false, "someone else's container");
+});

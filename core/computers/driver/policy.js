@@ -276,6 +276,26 @@ export function allowExec(labels, cmd) {
 }
 
 /**
+ * The ONE exec vyred may make into a computer to reach agentd (sec53, 18 Oct): the container is one of ours, the user is the dedicated `agentctl` (never root, never an agent's uid), the
+ * command is exactly [/opt/agentd/client] with no argument, no environment, no tty, no working directory, no privilege, stdin and stdout attached and stderr not. The request travels
+ * on stdin and the answer on stdout. Anything else, in any field, is refused: an unknown key is as bad as a wrong value.
+ */
+export const AGENTD_EXEC = Object.freeze({ cmd: ["/opt/agentd/client"], user: "agentctl", maxInput: 16 * 1024, maxOutput: 64 * 1024, timeoutMs: 30_000 });
+const AGENTD_EXEC_KEYS = ["AttachStderr", "AttachStdin", "AttachStdout", "Cmd", "Tty", "User"];
+
+/** @param {Record<string, any>} labels @param {any} body the exec create body @returns {{ ok: true } | { ok: false, why: string }} */
+export function allowAgentdExec(labels, body) {
+  if (!isComputerLabels(labels)) return { ok: false, why: "not an agent's computer (missing the managed/computer label pair)" };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { ok: false, why: "the exec body must be an object" };
+  const keys = Object.keys(body).sort();
+  if (JSON.stringify(keys) !== JSON.stringify(AGENTD_EXEC_KEYS)) return { ok: false, why: `the exec body must name exactly ${AGENTD_EXEC_KEYS.join(", ")}` };
+  if (body.User !== AGENTD_EXEC.user) return { ok: false, why: "the exec runs as agentctl and no one else" };
+  if (JSON.stringify(body.Cmd) !== JSON.stringify(AGENTD_EXEC.cmd)) return { ok: false, why: "the exec runs /opt/agentd/client with no argument" };
+  if (body.Tty !== false || body.AttachStdin !== true || body.AttachStdout !== true || body.AttachStderr !== false) return { ok: false, why: "no tty; standard input and output attached, standard error not" };
+  return { ok: true };
+}
+
+/**
  * The other operations the proxy lets through (start, stop, pause, unpause, inspect, list,
  * remove, volume inspect): the same container check as exec, since none of them takes a body
  * worth checking.

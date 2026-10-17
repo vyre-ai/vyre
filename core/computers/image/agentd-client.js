@@ -1,5 +1,5 @@
 // @ts-check
-// agentd-client: `docker exec -i <computer> node /opt/agentd/agentd-client.js <action>` with the JSON body on standard input. It reads the token from the root-only file, calls agentd over its unix
+// agentd-client: `/opt/agentd/client` run by `docker exec -i` as the dedicated agentctl user, with the request on standard input. It reads the token from the root-only file, calls agentd over its unix
 // socket and prints agentd's JSON answer; exit status 0 for 2xx, 1 otherwise. This is vyred's only way into agentd.
 
 import http from "node:http";
@@ -19,10 +19,13 @@ export function callAgentd(o) {
   });
 }
 
-async function main() {
-  const body = await new Promise(r => { let b = ""; process.stdin.on("data", c => { b += c; }); process.stdin.on("end", () => r(b)); });
-  const res = await callAgentd({ socket: process.env.AGENTD_SOCKET || "/run/agentd.sock", token: fs.readFileSync(process.env.AGENTD_TOKEN_FILE || "/var/lib/vyre/.agentd-token", "utf8").trim(), action: String(process.argv[2] || ""), body: String(body) });
+/** The client vyred runs with `docker exec -i` as agentctl: the request is {"action", "body"} on standard input, the answer is agentd's JSON on standard output, exit 0 for 2xx. */
+export async function main() {
+  const raw = await new Promise(r => { let b = ""; process.stdin.on("data", c => { b += c; if (b.length > 16 * 1024) process.exit(2); }); process.stdin.on("end", () => r(b)); });
+  /** @type {any} */ let req;
+  try { req = JSON.parse(String(raw)); } catch { process.stderr.write("the request is not JSON\n"); process.exit(2); }
+  const res = await callAgentd({ socket: process.env.AGENTD_SOCKET || "/var/lib/vyre/agentd/agentd.sock", token: fs.readFileSync(process.env.AGENTD_TOKEN_FILE || "/var/lib/vyre/agentd/token", "utf8").trim(),
+    action: String(req && req.action || ""), body: JSON.stringify(req && req.body || {}) });
   process.stdout.write(res.text);
   process.exit(res.status >= 200 && res.status < 300 ? 0 : 1);
 }
-if (process.argv[1] && process.argv[1].endsWith("agentd-client.js")) main().catch(e => { process.stderr.write(String(e.message) + "\n"); process.exit(1); });

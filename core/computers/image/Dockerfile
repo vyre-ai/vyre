@@ -136,7 +136,10 @@ RUN for n in $(seq 20000 20063); do \
     done \
     && chown vyre:vyre /var/lib/vyre/agents && chmod 0711 /var/lib/vyre/agents
 COPY agentd.js agentd-server.js agentd-main.js agentd-client.js /opt/agentd/
-RUN printf '{"type":"module"}\n' > /opt/agentd/package.json
+RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
+    && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
+    && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
+    && mkdir -p /var/lib/vyre/agentd && chown agentctl:agentctl /var/lib/vyre/agentd && chmod 0700 /var/lib/vyre/agentd
 COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 RUN chmod 0755 /usr/local/bin/agentd-vncpass
 COPY computerd /opt/computerd
