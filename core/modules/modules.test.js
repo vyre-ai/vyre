@@ -1168,15 +1168,19 @@ test("modules: the agents module relays a person to threads.send and to nothing 
   const { agentsMayRelay } = await import("./index.js");
   assert.equal(agentsMayRelay("threads.send"), true);
   assert.equal(agentsMayRelay("threads.release"), true);
-  for (const tool of ["threads.start", "threads.delete", "threads.answer", "vault.put", "gate.request", "settings.set", "agents.create", "memory.write", ""]) assert.equal(agentsMayRelay(tool), false, tool);
+  assert.equal(agentsMayRelay("flows.describe"), true, "agents.flow-say reads the Flow as the person");
+  assert.equal(agentsMayRelay("flows.runs"), true);
+  for (const tool of ["threads.start", "threads.delete", "threads.answer", "vault.put", "gate.request", "settings.set", "agents.create", "memory.write", "flows.run", "flows.settle", "flows.advance", "flows.update", ""]) assert.equal(agentsMayRelay(tool), false, tool);
 });
 
 test("modules: the agents relay check lets threads.send through and throws for every other tool, vault.reveal among them", async () => {
   const { checkAgentsRelay } = await import("./index.js");
   assert.doesNotThrow(() => checkAgentsRelay("threads.send", "deck"));
   assert.doesNotThrow(() => checkAgentsRelay("threads.release", "deck"));
+  assert.doesNotThrow(() => checkAgentsRelay("flows.describe", "deck"));
+  assert.doesNotThrow(() => checkAgentsRelay("flows.runs", "deck"));
   for (const tool of ["vault.reveal", "vault.put", "threads.delete", "gate.request", "settings.set"]) {
-    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send and threads\\.release only`), tool);
+    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send, threads\\.release, flows\\.describe and flows\\.runs only`), tool);
   }
 });
 
