@@ -526,6 +526,7 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          groupChat={sharedChat}
           canStop={meta.canStop}
           stopping={meta.stopping}
           onStop={async () => { const why = await store.interrupt(); if (why) setNote(why); }}
