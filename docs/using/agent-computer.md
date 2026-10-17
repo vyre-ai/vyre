@@ -31,8 +31,10 @@ Open the screen to watch what the agent is doing in Chrome, as it does it. Watch
 Some sites have no connection Vyre can use, such as an ads account. For those, you sign in once and the agent works from your session.
 
 1. Open the agent's screen and press Take control. The agent stops acting while you type.
-2. Sign in to the site in the agent's Chrome, the same way you would on your own computer. Use the Vault to fill your password so you do not type it.
+2. Sign in to the site in the agent's Chrome, the same way you would on your own computer.
 3. Press Stop controlling, or leave it. Control goes back to the agent after a few minutes with no input (Settings, Devices, has the number of minutes).
+
+Typing a password here shows it to this agent. Save it in your Vault and let Vyre fill it instead. Anything you type on the agent's screen goes through the agent's own session of the computer, and the agent can see it.
 
 From then on the agent uses the signed-in session. You do not need to do this again unless the site signs you out.
 
@@ -52,7 +54,7 @@ The agent has Chrome's full developer tools in its own Chrome. It can read the n
 
 ## Passwords: the Vault only
 
-Chrome's own password manager is switched off in every agent's Chrome. It does not save passwords, does not offer to, does not check them against leaks and does not fill addresses or cards. The pages that list saved passwords and cards cannot be opened. Nothing else in Chrome is closed off.
+Each agent's Chrome runs as its own separate user on the computer, apart from the agent's terminal and files, so the agent's shell cannot read Chrome's memory or profile. Chrome's own password manager is switched off in every agent's Chrome. It does not save passwords, does not offer to, does not check them against leaks and does not fill addresses or cards. The pages that list saved passwords and cards cannot be opened. Nothing else in Chrome is closed off.
 
 Your Vault is the only place passwords live. When an agent needs to sign in, the Vault fills the login into the page and the agent never sees the stored password. The agent can use what a sign-in produces, the signed-in session, its cookies and tokens, because that is what working on the site means. It cannot read the password itself. The Vault only fills logins that you shared with that agent, only on the site they belong to.
 
@@ -85,7 +87,7 @@ Reset empties one agent's home: its Chrome profile and signed-in sites, its file
 
 ## Updates
 
-When Vyre updates, the agent computer is brought to the matching version on its own a short moment after the server starts. Every agent's screen is closed first so Chrome saves its profile, then the computer is replaced and every agent keeps its signed-in sites and files. Terminal jobs that were running end, because the computer they ran in is replaced. Wait for a long job to finish before you update, or run it again afterwards.
+When Vyre updates, the agent computer is brought to the matching version on its own a short moment after the server starts. Every agent's screen is closed first so Chrome saves its profile, then the computer is replaced and every agent keeps its signed-in sites and files. On a server that was set up before this version, the computer is remade the same way the first time. The update waits up to 30 minutes for agent work and terminal jobs to finish, then goes ahead and tells you what it interrupted. Terminal jobs that were running end, because the computer they ran in is replaced. Wait for a long job to finish before you update, or run it again afterwards.
 
 If someone is watching or controlling an agent's screen, the update waits until they let go. The owner can also run it at any time with `computers.update`.
 
