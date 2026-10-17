@@ -80,13 +80,13 @@ test("a share that allows reads only refuses an outward act; a revoked share and
   const g = await share("graph-api", person(BOB), "use", { actions: ["vault.read"] });
   assert.equal((await ask({ credential: "graph-api", ...GET }, BOB)).kind, "read");
   await assert.rejects(ask({ credential: "graph-api", ...POST }, BOB), { code: "denied" }, "reads only: no outward act, not even held");
-  await rig.gw.grants.revoke(rig.owner(), g.id, { presence: { n: 1 } });
+  await rig.gw.grants.revoke(rig.owner(), g.id, "test", { presence: { n: 1 } });
   await assert.rejects(ask({ credential: "graph-api", ...GET }, BOB), { code: "not_found" });
   assert.equal(net.calls.length, 1);
   await assert.rejects(ask({ credential: "graph-api", ...GET }, "per_owner"), /member's own vault|denied/, "the owner is refused here");
 });
 
-test("a team share reaches the people in the team and stops when they leave it; an expired share stops by the clock", async t => {
+test("a team share reaches the people in the team and stops when they leave it", async t => {
   const { cred, ask, share, rig, GET } = await mk(t);
   await cred("graph-api");
   const team = await rig.gw.grants.teams.set(rig.owner(), { name: "Billing", members: [BOB] });
