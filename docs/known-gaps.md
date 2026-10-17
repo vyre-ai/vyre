@@ -16,6 +16,10 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
+### A member's own AI key in a chat shared with others
+
+When two members talk in one chat, a member's own AI key is not yet lent to the chats they start there. A turn that needs it fails closed: it says the member has no AI sign-in for it, and no key reaches anyone. Add your own AI account under Settings, and ask in a chat you started yourself. The fix is polish item 3 for 0.6.1; the lent-key test for two members in one chat (core/stream/person-turns-live.test.js) stays red until then.
+
 ### Long runs of rows you may not see
 
 A list or a search of a type whose rows are private by project looks through up to 20 pages of hidden rows before it gives up. If more than that lie between you and the next row you may read, the page comes back empty with no way to continue. Nothing hidden is shown; ask an owner or an admin, or filter the list.
