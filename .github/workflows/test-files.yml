@@ -3,7 +3,7 @@
 #   files: space-separated test files, or globs, under core/, lib/, test/ or kernel/ (core/identity/*.test.js). Anything else is refused before the checkout.
 # It sets up as the node suite does (the same tools, the fscrypt volume, VYRE_MUST_RUN, npm test's tmp-guard before and after) and runs the files through scripts/test-counts.mjs: one process per file, a time limit, and the
 # check that every test a file declares ran. The result is the job's red or green and its step summary.
-# At most two of these run at once (two slots); a third waits behind one of them, and a fourth sent while one waits replaces the waiting one, so look at the run you started.
+# Every run has its own group, so runs do not wait for each other; the runners are the limit. (The earlier two-slot group used a modulo, which GitHub's expressions do not support, so the workflow could not be dispatched at all.)
 name: test-files
 on:
   workflow_dispatch:
@@ -18,8 +18,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  # two slots: a run takes the one its number falls on; the other slot is the other group
-  group: test-files-${{ github.run_number % 2 }}
+  group: test-files-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   files:
