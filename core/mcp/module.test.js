@@ -429,12 +429,21 @@ test("mcp.catalog: a person searches the reviewed catalog and sees which entries
   const http = await startFakeMcpHttp(t, {});
   const file = path.join(tempHome(t), "catalog.json");
   const entry = (id, name, url, over = {}) => ({ id, name, vendor: "northwind.com", description: `${name} for the bakery`, category: "ops", url, transport: "http", auth: "none", headers: [], verified: true, basis: "test", sources: [], ...over });
-  fs.writeFileSync(file, JSON.stringify({ v: 1, generated: "2026-10-19", entries: [entry("com.northwind/notes", "Northwind Notes", http.url), entry("com.northwind/orders", "Northwind Orders", "https://orders.example.test/mcp", { auth: "unknown", verified: false })] }));
+  fs.writeFileSync(file, JSON.stringify({ v: 1, generated: "2026-10-19", entries: [entry("com.northwind/notes", "Northwind Notes", http.url), entry("com.northwind/orders", "Northwind Orders", "https://orders.example.test/mcp", { auth: "unknown", verified: false }),
+    entry("com.notion/mcp", "Notion Official", "https://mcp.notion.com/mcp", { auth: "oauth", probe: { result: "dcr-advertised" }, verdict: "one-click" }),
+    entry("com.vendor/app", "Vendor App", "https://mcp.vendor-app.example.com/mcp", { auth: "oauth", probe: { result: "dcr-advertised" } })] }));
+  process.env.VYRE_CATALOG_TEST_FILE = "1";
+  t.after(() => { delete process.env.VYRE_CATALOG_TEST_FILE; });
   const v = await vyred(t, { mcp: { catalog: file } });
   const all = (await v.cli("mcp.catalog", {})).data;
-  assert.equal(all.total, 2);
+  assert.equal(all.total, 4);
   assert.equal(all.generated, "2026-10-19");
-  assert.deepEqual(all.entries.map(e => [e.id, e.connected, e.oneClick]), [["com.northwind/notes", false, false], ["com.northwind/orders", false, false]]);
+  const row = id => all.entries.find(e => e.id === id);
+  assert.equal(row("com.northwind/notes").oneClick, false, "verified but never probed");
+  assert.equal(row("com.northwind/orders").oneClick, false);
+  assert.deepEqual([row("com.notion/mcp").oneClick, row("com.notion/mcp").preset], [true, "notion"], "a curated preset already serves that address, so it connects with that one");
+  assert.equal(row("com.vendor/app").oneClick, true);
+  assert.match(row("com.vendor/app").preset, /^x-vendor-app-[0-9a-f]{4}$/, "a made preset for an address no curated preset serves");
   assert.equal((await v.cli("mcp.add", { name: "notes", transport: "http", url: http.url })).data.test.ok, true);
   assert.deepEqual((await v.cli("mcp.catalog", { connected: true })).data.entries.map(e => e.id), ["com.northwind/notes"]);
   assert.deepEqual((await v.cli("mcp.catalog", { query: "orders" })).data.entries.map(e => e.id), ["com.northwind/orders"]);

@@ -140,7 +140,11 @@ export default {
         // "connected" means a server this caller may use (the same scope as mcp.servers): a member does not learn which apps the owner connected beyond what her sessions can reach.
         const w = who(meta), memo = {}, connectedKeys = new Set();
         for (const r of hub.rows()) if (r.url && await hub.inScope(r, w, memo)) connectedKeys.add(urlKey(r.url));
-        return { ...searchCatalog(snapshot.entries, input || {}, connectedKeys), generated: snapshot.generated };
+        const found = searchCatalog(snapshot.entries, input || {}, connectedKeys);
+        // The preset to connect with: the curated one when a curated preset already serves that address (it keeps its reviewed sign-in), else the one made from the entry.
+        const served = new Map(curated.presets().filter(p => p.url).map(p => [urlKey(p.url), p.id]));
+        const entries = found.entries.map(e => (e.oneClick && served.has(urlKey(e.url)) ? { ...e, preset: served.get(urlKey(e.url)) } : e));
+        return { ...found, entries, generated: snapshot.generated };
       },
     });
 
