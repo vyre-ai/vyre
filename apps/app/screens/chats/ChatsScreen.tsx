@@ -60,6 +60,7 @@ export default function ChatsScreen() {
     { label: "New chat", onPress: () => go("/u/chats/new") },
     { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
     { label: "New agent", onPress: () => go("/u/settings/assistants/new") },
+    { label: "New email", onPress: () => go("/u/mail/compose") },
   ];
   const view = chatsView({ from: chats.from, gap, rows, live: status === "live" });
   return (
