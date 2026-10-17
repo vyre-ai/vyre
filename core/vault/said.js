@@ -120,7 +120,11 @@ const out = r => ({ id: r.id, thread: r.thread, said: r.said, kind: r.kind, chan
 
 export class SaidIntents {
   /** @param {import("./vault.js").Vault} vault */
-  constructor(vault) { this.vault = vault; }
+  constructor(vault) {
+    this.vault = vault;
+    /** Who asked the turn running on a thread (the Switchboard knows), or null: set by register. An ask recorded for one person is matched only against their own turn. @type {((thread: string) => Promise<string | null>) | null} */
+    this.askerOf = null;
+  }
 
   /**
    * Store one intent. The caller has already been checked as sessions or assistant.
@@ -210,7 +214,10 @@ export class SaidIntents {
     await this.vault.key();
     const lineage = [...new Set([...(where.thread ? [where.thread] : []), ...(where.lineage || [])].map(String))];
     const intents = this.rows().map(out);
-    const m = matchIntent(call, intents, lineage, where.asker ?? null);
+    // Every way to this question (the Gate, a use check, a request, a fill) asks here, so the asker is found here: the thread's own turn, else a thread it descends from.
+    let asker = where.asker ?? null;
+    if (!asker && this.askerOf && intents.some(x => x.limits && x.limits.asker)) for (const th of lineage) { asker = await this.askerOf(th).catch(() => null); if (asker) break; }
+    const m = matchIntent(call, intents, lineage, asker);
     if (!m) return m;
     // A tagged login that is used keeps its conversation's lending alive: the idle clock restarts.
     const hit = intents.find(x => x.id === m.id);
@@ -252,6 +259,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  */
 export function register({ vault, internal, tool, emit, call: callTool }) {
   const said = new SaidIntents(vault);
+  // The Switchboard knows who asked the turn running on a thread (threads.turn-asker, modules only); it is never read from a caller's input.
+  if (callTool) said.askerOf = thread => callTool("threads.turn-asker", { thread }).then(r => (r && r.data && typeof r.data.asker === "string" ? r.data.asker : null));
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
     obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs, window_minutes: { type: "number" },
@@ -265,9 +274,7 @@ export function register({ vault, internal, tool, emit, call: callTool }) {
     obj({ kind: str, channel: str, via: str, to: strs, amount: { type: "number" }, payee: str, currency: str, agent: str, consume: { type: "boolean" }, thread: str, lineage: strs, at: { type: "integer" } }, ["kind"]),
     async input => {
       const { thread, lineage, consume, ...call } = input;
-      // Who asked the turn that is making this call: the Switchboard knows (a chat turn's asker), and an ask recorded for one person covers only their turn. No answer is no asker, which covers nothing bound to a person.
-      const asker = thread && callTool ? await callTool("threads.turn-asker", { thread }).then(r => (r && r.data && typeof r.data.asker === "string" ? r.data.asker : null)).catch(() => null) : null;
-      const m = await said.match(call, { thread, lineage, asker }, consume === true);
+      const m = await said.match(call, { thread, lineage }, consume === true);
       return m ? { matched: true, id: m.id } : { matched: false };
     });
 
@@ -299,12 +306,12 @@ export function register({ vault, internal, tool, emit, call: callTool }) {
   }
 
   internal("vault.mention.resolve", "The person tagged #item in their own turn: record that this thread (and the threads under it) may use the item, bound to the hosts it has now. Only sessions and the assistant; answers what the tag grants, never a value.",
-    obj({ id: str, thread: str, said: str }, ["id", "thread"]),
-    async ({ id, thread, said: ref }, { caller }) => {
+    obj({ id: str, thread: str, said: str, asker: str }, ["id", "thread"]),
+    async ({ id, thread, said: ref, asker }, { caller }) => {
       if (!RESOLVERS.includes(String(caller))) { vault.audit("mention-resolve", String(id || "") || null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant resolve a # tag"); }
       const it = pickable().find(x => x.name === String(id));
       if (!it) throw Object.assign(new Error(`no vault item ${String(id).slice(0, 60)} (vault.list shows them)`), { code: "not_found" });
-      const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts } },
+      const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts }, ...(asker ? { asker } : {}) },
         RESOLVERS.includes(String(caller)) && String(caller) !== "module:mentions" ? String(caller) : "module:sessions");
       return { name: it.name, hint: `${it.kind}${it.hosts.length ? " · " + it.hosts.join(", ") : ""}`, hosts: it.hosts, note: "You may use this credential through vault.request and connectors. You never see its value.", grant: { use: true, hosts: it.hosts }, intent: r.id };
     });

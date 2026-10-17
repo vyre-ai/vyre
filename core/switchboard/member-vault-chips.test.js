@@ -33,3 +33,17 @@ test("a locked vault says so in the vault's own words, once, and a refusal that 
   assert.equal(tags[0].note, "Unlock your vault to tag one of your own items.");
   assert.deepEqual(await memberVaultTags({ call: async () => { throw new Error("boom"); }, asker: "per_bob", thread: "t", said: "u", chips: [{ kind: "vault", id: "x" }], names: [] }), []);
 });
+
+test("the asker is the one the caller passes from the verified turn, never a field of a chip", async () => {
+  const asked = /** @type {any[]} */ ([]);
+  const tags = await memberVaultTags({ call: rig({ "my-login": { kind: "login" } }, asked), asker: "per_bob", thread: "t1", said: "u1", chips: [{ kind: "vault", id: "my-login", asker: "per_owner", person: "per_owner" }], names: [] });
+  assert.equal(tags.length, 1);
+  assert.deepEqual(asked.map(([, i]) => i.asker), ["per_bob"], "a chip that names another person changes nothing");
+});
+
+test("the item's description never reaches the tag: only its name and kind do", async () => {
+  const call = async () => ({ data: { name: "my-login", kind: "login", hint: "login: my private note about the bank", note: "Only its name is shown in the chat, never the value." } });
+  const [tag] = await memberVaultTags({ call, asker: "per_bob", thread: "t1", said: "u1", chips: [{ kind: "vault", id: "my-login" }], names: [] });
+  assert.equal(JSON.stringify(tag).includes("private note"), false);
+  assert.equal(tag.hint, "login");
+});

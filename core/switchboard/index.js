@@ -2576,7 +2576,7 @@ export class Switchboard {
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
     const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
     if (!names.length && !picked.chips.length && !picked.tags.length && !ownVault.length) return [];
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta), asker: turn && turn.asker || null }) : [];
     const tags = [...resolved, ...picked.tags, ...ownVault];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;

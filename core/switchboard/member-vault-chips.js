@@ -22,7 +22,8 @@ export async function memberVaultTags({ call, asker, thread, said, chips, names 
     }
     const d = r.data && typeof r.data === "object" ? r.data : null;
     if (!d) continue;
-    out.push({ kind: "vault", id, name: String(d.name || id), hint: d.hint ? String(d.hint) : d.kind ? String(d.kind) : null, hosts: [], note: typeof d.note === "string" && d.note ? d.note : null, outside: false });
+    out.push({ kind: "vault", id, name: String(d.name || id), hint: d.kind ? String(d.kind) : null,   // the kind only: the vault's hint carries the start of the item's description, which can be a private note and has no place in the thread's text or events
+     hosts: [], note: typeof d.note === "string" && d.note ? d.note : null, outside: false });
   }
   return out;
 }
