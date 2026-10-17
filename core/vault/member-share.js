@@ -89,11 +89,20 @@ export class MemberShare {
     return { shares: await this.copies.ofOwner(owner), notice: NOTICE };
   }
 
-  /** May this agent sign in with this copy at this origin: the kernel's grant, asked every time. @param {{ ref: string, owner: string, uid: string, origin: string }} copy @param {string} origin */
+  /** May this agent sign in with this copy at this origin: the share's own live grant and the member still in the Space, asked every time. @param {{ ref: string, owner: string, uid: string, origin: string }} copy @param {string} origin */
   async allowedCopy(copy, origin) {
     const o = exactOrigin(origin), K = this.access.K;
-    if (!K || !o || o !== copy.origin || typeof K.agentMay !== "function") return false;
-    return Boolean(await K.agentMay(copy.uid, "vault.fill", connectionUrn(K.space, copy.owner, copy.ref), o));
+    if (!K || !o || o !== copy.origin) return false;
+    // The share is the grant (no per-conversation lend): the copy is live (find() already drops an expired or removed one), it is for this agent and this site, the grant the share made for exactly that agent and
+    // site has not been taken back or run out (the vault module made it and lists it by its source), and the member is still in the Space. Anything else is no.
+    try {
+      const live = (await K.mint.list({ source: `${SOURCE}:${copy.ref}` })) || [];
+      const grantOk = live.some((/** @type {any} */ g) => g && g.subject && g.subject.actor && String(g.subject.actor.id) === String(copy.uid) && Array.isArray(g.actions) && g.actions.includes("vault.fill")
+        && g.conditions && g.conditions.where && Array.isArray(g.conditions.where.origins) && g.conditions.where.origins.includes(o));
+      if (!grantOk) return false;
+      const ms = K.grants && K.grants.members ? await K.grants.members.list(await K.chain({})) : null;
+      return Array.isArray(ms) && ms.some((/** @type {any} */ m) => String(m.person) === String(copy.owner));
+    } catch { return false; }
   }
 
   /** The member changed or removed a login of theirs: every copy of it is refreshed from the new one, or deleted if it is gone or no longer a login with a password. @param {string} owner @param {string} item */
