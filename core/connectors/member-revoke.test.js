@@ -50,6 +50,7 @@ test("a member removing their connection sends the vendor's revoke to the vendor
 
   const gone = await asBen("connectors.disconnect", { name: "fakevendor" });
   step("Ben disconnects: " + JSON.stringify(gone.error || gone.data), !gone.error);
+  console.error("DBG gone", JSON.stringify(gone));
   step("the answer says the vendor was told: revoked true", gone.data && gone.data.revoked === true && typeof gone.data.why === "string", JSON.stringify(gone.data));
   step("his hub row is gone", !((await asBen("mcp.servers")).data || []).some((/** @type {any} */ x) => x.owner === BEN));
   step("the vendor was told, once", auth.revocations.length === 1);

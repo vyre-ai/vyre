@@ -610,8 +610,8 @@ export class Hub {
       await this.cancelHeld(row, () => true, "the connection was removed");
       revoked = { revoked: false, why: "the hub has no way to tell the vendor" };
       if (typeof this.deps.revokeConnection === "function") {
-        try { const r = await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); revoked = { revoked: Boolean(r && r.revoked === true), why: String((r && r.why) || "") }; }
-        catch (e) { revoked = { revoked: false, why: "the vendor could not be told" }; this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); }
+        try { const r = await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); console.error("DBG revoke", JSON.stringify(r)); revoked = { revoked: Boolean(r && r.revoked === true), why: String((r && r.why) || "") }; }
+        catch (e) { console.error("DBG revoke threw", this.message(e)); revoked = { revoked: false, why: "the vendor could not be told" }; this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); }
       }
     }
     await this.stopServer(name, "removed");
