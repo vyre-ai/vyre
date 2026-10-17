@@ -80,7 +80,9 @@ test("every registered session adapter gets the same caller, the same secret fil
   const K = d.kernel;
   const ownerMeta = K ? { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-own", person: K.id.owner, path: "direct", session: "s" }), {})).token } : {};
   const rows = await d.registry.call("gate.held", {}, "local", ownerMeta);
-  assert.equal(rows.data.find((/** @type {{ id: string, agent: string|null }} */ row) => row.id === held.data.id).agent, "kit");
+  const row = (rows.data || []).find((/** @type {{ id: string, agent: string|null }} */ r) => r.id === held.data.id);
+  assert.ok(row, `the held item ${held.data.id} is in the owner's list: ${JSON.stringify(rows).slice(0, 400)}`);
+  assert.equal(row.agent, "kit");
   const bareAsk = await d.registry.call("gate.request", { ...ask, content: { ...ask.content, url: "https://hooks.example.test/y" } }, sessionCaller(adapters[0]));
   assert.equal(bareAsk.error, undefined, JSON.stringify(bareAsk.error));
   const rowsBare = await d.registry.call("gate.held", {}, "local");
