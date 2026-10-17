@@ -29,7 +29,8 @@ test("adding a person to a chat that runs on a computer: one line, the chat move
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  // the home keeps a lent computer's work sealed under a key of its own for the space: a test without a drive gives it one
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, lentKeyOf: () => Buffer.alloc(32, 7) });
   asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
