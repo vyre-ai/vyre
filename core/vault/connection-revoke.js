@@ -21,6 +21,9 @@ export async function revokeAtVendor({ people, fetch: f = httpFetch }, { owner, 
   let url;
   try { url = new URL(endpoint); } catch { return { revoked: false, why: "the recorded revocation address is not an address" }; }
   if (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) return { revoked: false, why: "the recorded revocation address is not https" };   // plain http only for this machine, which the guarded fetch itself allows only under tests
+  // The token and the client secret go only to the sign-in's own origin: the revocation address must be on the origin of the token address (or the issuer) the connection already trusts, or nothing is sent.
+  const trusted = [fields.token_uri, fields.issuer].map(u => { try { return new URL(String(u)).origin; } catch { return ""; } }).filter(Boolean);
+  if (!trusted.includes(url.origin)) return { revoked: false, why: "the revocation address is not on the sign-in's own origin, so nothing was sent" };
   const body = new URLSearchParams({ token, token_type_hint: fields.refresh_token ? "refresh_token" : "access_token", ...(fields.client_id ? { client_id: fields.client_id } : {}), ...(fields.client_secret ? { client_secret: fields.client_secret } : {}) });
   try {
     const res = await f(url, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: body.toString(), redirect: "manual", signal: AbortSignal.timeout(15_000) });

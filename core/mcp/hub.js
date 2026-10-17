@@ -596,11 +596,11 @@ export class Hub {
     return this.view(this.must(n.name));
   }
 
-  async remove({ name }, o = {}) {
+  async remove({ name }) {
     const row = this.must(name);
     // A person's connection can be taken away only by the person who made it; what it was holding at the Gate, and the vendor's own token, go with it.
     if (row.owner) {
-      if (o.checked !== true && !(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
+      if (!(await this.mayUse(row, null, "own"))) throw fail("denied", `${name} is another person's connection: only they can remove it`);
       await this.cancelHeld(row, () => true, "the connection was removed");
       if (typeof this.deps.revokeConnection === "function") { try { await this.deps.revokeConnection({ owner: row.owner, connection: row.connection }); } catch (e) { this.deps.log?.(`mcp ${name}: the vendor's token was not revoked (${this.message(e)})`); } }
     }
