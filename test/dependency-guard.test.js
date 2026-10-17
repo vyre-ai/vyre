@@ -84,7 +84,8 @@ test("every dependency in every manifest has a line saying why no existing one s
 const builtin = n => ["fs", "net", "child_process", "crypto", "http", "https", "path", "os", "url", "dns", "stream", "zlib", "tls", "dgram", "readline", "worker_threads", "events", "util", "assert", "buffer", "querystring", "cluster", "vm", "perf_hooks", "async_hooks"].includes(n);
 
 test("server code imports only packages some manifest declares", () => {
-  const rootDeps = new Set(Object.keys(JSON.parse(read("package.json")).dependencies || {}));
+  const rootPkg = JSON.parse(read("package.json"));
+  const rootDeps = new Set([...Object.keys(rootPkg.dependencies || {}), ...Object.keys(rootPkg.optionalDependencies || {})]);
   const okay = new Set([...rootDeps, ...Object.keys(ALLOWED.undeclaredImports || {})]);
   // A real import: `import ... from "x"`, a closing `} from "x"`, `import "x"`, `import("x")`, `require("x")` (not the same words in a message or a comment).
   const re = /^\s*(?:import\b[^'"]*\bfrom|\}\s*from|import)\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]/;

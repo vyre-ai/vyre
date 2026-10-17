@@ -366,7 +366,7 @@ const isFlowLike = v => v && typeof v === "object" && !Array.isArray(v) && v.for
 
 // ---------------------------------------------------------------- Flow: stored to text
 
-const FLOW_ORDER = ["name", "label", "description", "authorship", "caps", "trigger", "concurrency", "lock", "stuck_after_ms", "group", "steps", "on_failure"];
+const FLOW_ORDER = ["name", "label", "description", "authorship", "caps", "trigger", "concurrency", "lock", "stuck_after_ms", "group", "sends", "returns", "steps", "on_failure"];
 const TRIGGER_ORDER = TRIGGER_KEY_ORDER;
 const STEP_PROP_ORDER = ["label", "type", "from", "match", "record", "to", "assistant", "action", "resource", "connector", "method", "path", "url", "language", "over", "as", "if", "for_ms", "until", "event", "where", "timeout_ms", "on_timeout", "limit", "sort", "title", "instructions", "form", "input", "inputs", "outputs", "labels", "needs", "set", "update", "query", "headers", "body", "drive", "how", "template", "checker", "output", "await", "max", "then", "else", "steps", "source"];
 

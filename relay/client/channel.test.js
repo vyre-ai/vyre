@@ -14,7 +14,8 @@ import { nobleCrypto } from "./noble.js";
 import { nodeNoble, ROUTE } from "./testing.js";
 import { EMPTY } from "./bytes.js";
 
-const wait = ms => new Promise(r => setTimeout(r, ms));
+/** Waits until `fn()` is true, polling every 10 ms for at most `ms` (a slow runner gets the time it needs; a pass costs only what the event takes). */
+const until = async (fn, ms = 5000) => { const end = Date.now() + ms; while (!fn() && Date.now() < end) await new Promise(r => setTimeout(r, 10)); };
 
 function wire(tap = (_dir, b) => b) {
   const ends = { device: /** @type {any} */ (null), box: /** @type {any} */ (null) };
@@ -158,7 +159,7 @@ test("channel interop: a frame the relay replays to the device closes its channe
   s.end();
   const res = collect(s);
   res.catch(() => {});
-  await wait(30);
+  await until(() => channel.closed);
   assert.equal(channel.closed, true);
 });
 

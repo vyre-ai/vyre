@@ -23,10 +23,11 @@ export function Chip({ children, tone = "plain", icon, className, onPress, selec
   const { phone } = useUiTheme();
   const t = selected ? "selected" : tone;
   const body = (
-    <View style={{ minHeight: phone ? 26 : 24 }} className={cn(chip({ tone: t }), onPress && "border border-transparent", selected && "border-primary", className)}>
+    <View style={{ minHeight: onPress ? (phone ? 44 : 32) : phone ? 26 : 24 }} className={cn(chip({ tone: t }), onPress && "border border-transparent", selected && "border-primary", className)}>
       {icon ? <Icon name={icon} size={12} tone={t === "plain" ? "text-2" : t === "selected" ? "text" : t === "sealed" ? "warn" : t === "space" ? "text-2" : t} /> : null}
       <Text size="caption" medium tone={ink[t]}>{children}</Text>
     </View>
   );
-  return onPress ? <Pressable accessibilityRole="button" accessibilityState={{ selected: !!selected }} onPress={onPress} className="self-start">{body}</Pressable> : body;
+  // A chip that is pressed is a button: on a phone its tap area is 44 high (the chip itself stays 26, centred in it), so the touch target is real and not a hitSlop.
+  return onPress ? <Pressable accessibilityRole="button" accessibilityState={{ selected: !!selected }} onPress={onPress} className="self-start" style={phone ? { minHeight: 44, justifyContent: "center" } : undefined}>{body}</Pressable> : body;
 }

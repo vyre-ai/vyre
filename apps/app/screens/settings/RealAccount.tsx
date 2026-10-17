@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { Linking, View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
@@ -15,6 +15,9 @@ import { agentsList, entries as loadEntries, identity as loadIdentity, removeEnt
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
+import { LOCK_CHOICES } from "../../src/shell/lock-gate.js";
+import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/lock-setting";
+import { lockIdentity } from "../unlock/real.js";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -24,6 +27,10 @@ export function RealAccount() {
   const [err, setErr] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autoLock, setAutoLock] = useState("15");
+  useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
+  const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
+  const lockNow = () => { void lockIdentity().then((r) => { if (r.ok) lockChanged(); else showToast(r.message); }); };
   const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); }, []);
   useEffect(load, [load]);
   const newCode = () => { setBusy(true); replaceCode().then((r) => { const c = codeOf(r); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
@@ -43,6 +50,12 @@ export function RealAccount() {
             </Card>
           </Group>
           <GithubCard />
+          <Group title="Lock" note="Locking forgets your unlocked keys on this device. The master password opens them again.">
+            <Card className="gap-s3">
+              <Segmented label="Lock after" value={autoLock} onChange={chooseLock} options={LOCK_CHOICES as unknown as [string, string][]} />
+              <View className="flex-row"><Button size="sm" icon="lock" label="Lock now" onPress={lockNow} /></View>
+            </Card>
+          </Group>
           <Group title="Recovery">
             <Card className="gap-s3">
               <Text strong>Recovery code</Text>

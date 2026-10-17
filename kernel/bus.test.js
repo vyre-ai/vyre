@@ -35,6 +35,11 @@ test("events: a payload that looks like a secret is refused", t => {
   assert.throws(() => ev.emit("x", "thing.happened", { password: "hunter2hunter2" }), /looks like a secret/);
 });
 
+test("events: a vault pass id is not a secret value", t => {
+  const ev = fresh(t);
+  assert.doesNotThrow(() => ev.emit("vault", "pass.created", { pass: "p_" + "a".repeat(20), holder: "teammate", items: ["api-token"], mode: "relayed" }));
+});
+
 test("events: listeners hear exact, family and all patterns; one bad listener stops nobody", t => {
   const ev = fresh(t);
   const heard = [];

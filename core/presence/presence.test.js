@@ -521,7 +521,7 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
   const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
     webauthn: { verifyAssertion: async a => { seen.push(a.origins || null); return { ok: true, signCount: 0 }; } } });
   const spkiOf = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spkiOf(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spkiOf(), alg: -7, rp_id: "vyre.tail0000.wink.example", credential_id: "boxcredential1" });
   p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spkiOf(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1",
     device: "abcdefghijklmnop", origin: "https://app.vyre.run" });
   const PHONE = { kind: "device", stableId: "abcdefghijklmnop" }, OTHER = { kind: "device", stableId: "qrstuvwxyz234567" };
@@ -533,7 +533,7 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
     return { offered: c.webauthn.allowCredentials.map(x => x.id), rpId: c.webauthn.rpId, ok: v.ok };
   };
   // The Deck is offered only the box's passkey, and the phone's web passkey does not prove there.
-  assert.deepEqual(await proveWith(null, "boxcredential1"), { offered: ["boxcredential1"], rpId: "vyre.tail0000.ts.net", ok: true });
+  assert.deepEqual(await proveWith(null, "boxcredential1"), { offered: ["boxcredential1"], rpId: "vyre.tail0000.wink.example", ok: true });
   assert.equal((await proveWith(null, "webcredential1")).ok, false);
   // The relayed browser is offered only its own, checked against app.vyre.run's origin.
   assert.deepEqual(await proveWith(PHONE, "webcredential1"), { offered: ["webcredential1"], rpId: "app.vyre.run", ok: true });
@@ -554,7 +554,7 @@ test("presence: a passkey with no device binding proves for no relayed device, a
   const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
     webauthn: { verifyAssertion: async () => ({ ok: true, signCount: 0 }) } });
   const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spki(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spki(), alg: -7, rp_id: "vyre.tail0000.wink.example", credential_id: "boxcredential1" });
   // the same rp as a browser's, but enrolled with no device: nothing ties it to a relayed device
   p.enroll({ kind: "passkey", name: "loose", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "loosecredential1" });
   p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1", device: "abcdefghijklmnop", origin: "https://app.vyre.run" });

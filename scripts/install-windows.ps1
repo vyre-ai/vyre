@@ -11,10 +11,9 @@
 # GitHub's https for SHA256SUMS; every later update is verified by the app against the Vyre release key, and
 # anything unsigned is refused there. This file is also what https://vyre.run/w serves (scripts/build-site.sh).
 #
-# Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
-# the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
-# N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default: the newest
-# stable vX.Y.Z GitHub release that carries VyreSetup.exe).
+# Env: VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default: the newest
+# stable vX.Y.Z GitHub release that carries VyreSetup.exe). A VYRE_CODE left in this process is
+# cleared before the app starts. It is never written to a file and never passed as an argument.
 #
 #   -Uninstall     stop the app, remove the tray/autostart/protocol-key registration and the
 #                  install dir (reviewer W-M5/N-L3: also revokes this device's session on the box
@@ -128,17 +127,12 @@ if ($Uninstall) {
 
 Test-ConstrainedLanguageMode
 
-# The setup code (reviewer N-M5): read from the environment only, per B2/B3. NEVER written to a
-# file, NEVER passed as an argv token (both would leak it into process-list snapshots or disk).
-$code = $env:VYRE_CODE
-if (-not $code) {
-    $code = Read-Host -Prompt "Enter your Vyre setup code" -AsSecureString
-    $code = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [System.Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($code))
-}
-
+# A Windows PC is a device. This script installs the app. Pairing on that PC is wink.server.adopt,
+# which confirms the published key through spaces.identity.confirm-key, the same check as the install
+# line, the setup page, a Mac server and a phone. The app does not run the server boot, so a
+# VYRE_CODE in this process is cleared before the app starts.
 if ($DryRun) {
-    Write-Host "(dry run) would install to $InstallDir, register autostart, launch with the setup code"
+    Write-Host "(dry run) would install to $InstallDir, register autostart, and start the app"
     exit 0
 }
 
@@ -166,8 +160,8 @@ $app = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
 if (-not (Test-Path $app)) { throw "The installer finished but $app is not there." }
 Register-VyreAutostart -ExePath $app
 
-# The setup code is not handed to the app yet: how the app claims with it is launch's contract,
-# still open. Until then the app starts at its own first-run screen, and $code stays in memory only.
+# Clear the server install code before the app starts. Start-Process inherits this process's environment.
+if ($null -ne $env:VYRE_CODE) { Remove-Item Env:\VYRE_CODE -ErrorAction SilentlyContinue }
 Start-Process -FilePath $app
 
 Write-Host ""

@@ -25,6 +25,7 @@ import fs from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 import { within } from "../../lib/within.js";
 import { createHash } from "node:crypto";
 import { change as changeTags } from "../../lib/tags.js";
@@ -707,7 +708,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as when a person sends to a thread): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
       // Callable by a model session too (the assistant asks its agents; a plain session may ask within its own project): who actually may is decided in the body (modelMay, HD-9).
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"],
       run: async (i, meta0) => {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
@@ -742,7 +743,8 @@ export default {
         const sendWords = async thread => {
           await capNotice(thread);
           if (!byPerson || herAccountThread) return use("threads.send", { thread, text: i.text, surface });
-          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
+          const relay = personCallOpts(caller, meta0) || { as: String(caller) };
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, relay);
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };
@@ -792,7 +794,10 @@ export default {
           // the one process vyred owns, so there is no second writer on the transcript; holding
           // the lease past the reply would only lock the user's other screens out of the agent.
           // Released as the one who typed: the person for a person's ask (the lease is theirs), this module otherwise (a surface name is never an identity).
-          if (thread && i.wait !== false) await ctx.call("threads.release", { thread, surface }, ...(byPerson ? [{ as: String(caller) }] : []));
+          if (thread && i.wait !== false) {
+            const relay = personCallOpts(caller, meta0);
+            await ctx.call("threads.release", { thread, surface }, ...(byPerson && relay ? [relay] : []));
+          }
         }
       },
     });
@@ -1050,7 +1055,7 @@ export default {
       callers: ["module"],
       run: async ({ name, uid }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent and vault modules only; agents.list shows the agents"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault" && c !== "module:gate") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent, vault and gate modules only; agents.list shows the agents"), { code: "denied" });
         if (uid !== undefined) { const r = /** @type {any} */ (db.prepare("SELECT name FROM agents_agents WHERE uid = ?").get(String(uid))); return { name: r ? String(r.name) : null }; }
         return { uid: must(String(name).toLowerCase()).uid };
       },

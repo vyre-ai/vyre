@@ -14,7 +14,7 @@ permissions:
   contents: read
 concurrency:
   group: box-image-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') }}
 jobs:
   detect:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
   build-smoke:
     needs: detect
     if: needs.detect.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       IMAGE: vyre-box:ci

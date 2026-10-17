@@ -7,7 +7,7 @@ LIMIT=${1:-240}; PAR=${2:-4}
 mkdir -p unit-logs
 GLOBS='core/**/*.test.js kernel/**/*.test.js records/**/*.test.js stores/**/*.test.js test/**/*.test.js web/**/*.test.js modules/**/*.test.js local/*/*.test.js relay/**/*.test.js names/**/*.test.js apps/test/*.test.js apps/app/**/*.test.js lib/**/*.test.js'
 shopt -s globstar nullglob
-FILES=(); for g in $GLOBS; do for f in $g; do FILES+=("$f"); done; done
+FILES=(); for g in $GLOBS; do for f in $g; do [[ "$f" == *node_modules* ]] && continue; FILES+=("$f"); done; done
 printf '%s\n' "${FILES[@]}" | sort -u > unit-files.txt
 echo "files: $(wc -l < unit-files.txt)"
 run_one() {
