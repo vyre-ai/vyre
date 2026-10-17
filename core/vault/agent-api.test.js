@@ -14,6 +14,7 @@ import { Access } from "./access.js";
 import { register } from "./request.js";
 import { kernelRig, SPACE } from "./kernel-rig.js";
 import { connectionUrn } from "./connection-token.js";
+import * as connectionMay from "./tools/connection-may.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -230,6 +231,26 @@ test("a connection may be used by the caller's own chain at the level the kernel
   await rig.gw.grants.create(rig.owner(), { subject: { kind: "actor", actor: { kind: "person", id: "per_cy", space: SPACE } }, actions: ["vault.read"], resource: { prefix: connectionUrn(SPACE, "per_ben", "clio-token") }, conditions: {}, source: "vault:share" }, { presence: { n: Math.random() } });
   assert.equal(await theirs(rig.person("per_cy"), "read"), true, "a share at read reaches it");
   assert.equal(await theirs(rig.person("per_cy"), "call"), false, "and not an outward tool");
+});
+
+test("vault.connection.may reads the CALLER's chain from the turn's token, never the hub module's own; only the mcp module may ask", async t => {
+  const { cred, give, v, rig } = await mk(t, { people: ["per_ben", "per_cy"] });
+  await cred("clio-token");
+  await v.access.convertScopes();
+  const tools = new Map();
+  connectionMay.register({ vault: v, internal: (name, _d, _i, run) => tools.set(name, { run }) });
+  const ben = { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } };
+  await give("clio-token", ben, { actions: ["vault.read", "vault.call"] });
+  // the kernel names the chain from the turn's token; a hop with no token of its own gets the service chain of a module, which holds no grant on anyone's item
+  const people = { tok_ben: "per_ben", tok_cy: "per_cy" };
+  rig.K.chain = async meta => (meta && people[meta.token] ? rig.person(people[meta.token]) : rig.person("per_module_service"));
+  const ask = (meta, level = "read", extra = {}) => tools.get("vault.connection.may").run({ connection: "clio-token", level, ...extra }, { caller: "module:mcp", ...meta });
+  assert.deepEqual(await ask({ token: "tok_ben" }), { allow: true }, "the turn's token names Ben, who holds the item");
+  assert.deepEqual(await ask({ token: "tok_ben" }, "call"), { allow: true });
+  assert.deepEqual(await ask({ token: "tok_cy" }), { allow: false }, "the turn's token names Cy, who holds nothing: the hub module's own standing does not stand in");
+  assert.deepEqual(await ask({}), { allow: false }, "a hop that lost the turn's token falls to the module's service chain and gets nothing");
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:kit", "module:gate"])
+    await assert.rejects(tools.get("vault.connection.may").run({ connection: "clio-token", level: "read" }, { caller, token: "tok_ben" }), e => e.code === "denied", caller);
 });
 
 test("an agent that rides a person's surface label is held to its grants like any model: no grant, no call; the right agent runs", async t => {
