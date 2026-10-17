@@ -42,7 +42,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.j
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
-import { mayReadHomeVault } from "../../lib/account-source.js";
+import { memberKey } from "./member-key.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -4039,17 +4039,9 @@ export default {
       if (a.kind === "login") return { auth: "subscription", env: {} };
       const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
-      // A key or token of one person that is not kept in their own vault is never read from the home's vault: it would be the owner's item, used in a member's turn.
-      if (!mayReadHomeVault(a)) throw Object.assign(new Error(`${a.label} is not kept in its owner's own vault, so no turn can use it. Add it again from the account's owner.`), { code: "denied" });
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
-      let v = launcherProvider && !a.person && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
-      // A member's own key or token is in THEIR vault and is lent for their own turn only: the vault finds the person from this turn's verified chain, and refuses an account that is not theirs or a locked vault.
-      if (v === undefined && a.person && a.kind !== "login" && a.own_vault) {
-        const lent = await ctx.call("vault.me.lend", { account: String(a.id) });
-        if (lent.error) throw Object.assign(new Error(lent.error.code === "locked" ? `unlock your own vault to use ${a.label}` : `${a.label} is not available to this turn: it is a key of one person, used only in their own turns. Start the chat as that person, or choose an account of your own`), { code: "no_credential" });
-        v = lent.data && lent.data.value;
-      }
+      let v = a.person ? await memberKey(ctx, a) : launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;   // a person's key is lent from their own vault for this turn, never read from the home's (member-key.js)
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
