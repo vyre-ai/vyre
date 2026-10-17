@@ -16,9 +16,9 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
-### A member's own AI key in a chat shared with others
+### A member's own AI account in chats
 
-When two members talk in one chat, a member's own AI key is not yet lent to the chats they start there. A turn that needs it fails closed: it says the member has no AI sign-in for it, and no key reaches anyone. Add your own AI account under Settings, and ask in a chat you started yourself. The fix is polish item 3 for 0.6.1; the lent-key test for two members in one chat (core/stream/person-turns-live.test.js) stays red until then.
+A member's own AI account isn't used for their chats yet; those chats run on the space's AI account if it has one, otherwise the turn stops with a clear message. No one's key ever reaches another person. Fixed in the next update. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
 
 ### Long runs of rows you may not see
 
