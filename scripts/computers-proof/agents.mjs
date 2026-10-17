@@ -131,6 +131,33 @@ try {
   const ownGrab = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "import -window root /tmp/browser-grab.png >/dev/null 2>&1; echo $?"]);
   check(ownGrab === "0", "the screen's owner can capture its own screen", ownGrab);
   check(grab !== "0", "an untrusted client cannot capture the screen (other clients' windows)", `exit ${grab}`);
+  // Keystrokes. The claim is that code running as the agent, with the cookie it has, cannot capture or inject input on the screen. Each is tested with a positive control as the screen's owner, because the
+  // defaults of the X SECURITY extension have changed between server versions and a test that cannot fail proves nothing.
+  const asOwner = ["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth"];
+  const asUntrusted = ["exec", "-u", "20000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
+  const recordPy = "import ctypes\\nx=ctypes.CDLL('libX11.so.6');t=ctypes.CDLL('libXtst.so.6')\\nx.XOpenDisplay.restype=ctypes.c_void_p\\nd=x.XOpenDisplay(None)\\nerrs=[]\\nH=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p)\\ncb=H(lambda a,b:(errs.append(1),0)[1])\\nx.XSetErrorHandler(cb)\\nt.XRecordAllocRange.restype=ctypes.c_void_p\\nr=t.XRecordAllocRange()\\nc=ctypes.c_ulong(3)\\nrs=(ctypes.c_void_p*1)(r)\\nt.XRecordCreateContext.restype=ctypes.c_ulong\\nt.XRecordCreateContext(ctypes.c_void_p(d),0,ctypes.byref(c),1,rs,1)\\nx.XSync(ctypes.c_void_p(d),0)\\nprint('refused' if errs else 'allowed')";
+  const ownerRecord = shOk([...asOwner, CONTAINER, "python3", "-c", recordPy]);
+  check(ownerRecord === "allowed", "XRecord works for the screen's owner (the control)", ownerRecord);
+  const agentRecord = shOk([...asUntrusted, CONTAINER, "python3", "-c", recordPy]);
+  check(agentRecord === "refused", "(a) XRecord is refused to the agent's cookie", agentRecord);
+  // a probe window of the owner's that takes keys; the owner's xev logs what reaches it
+  shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "rm -f /var/lib/vyre/browsers/agb21000/xev.log; (xev -geometry 300x200+10+10 -name keyprobe > /var/lib/vyre/browsers/agb21000/xev.log 2>&1 &) ; sleep 2; xdotool search --name keyprobe | head -1 > /var/lib/vyre/browsers/agb21000/probe.id"]);
+  const wid = shOk(["exec", "-u", "21000", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/probe.id"]);
+  check(/^\d+$/.test(wid), "the owner's key probe window is up", wid);
+  shOk([...asOwner, CONTAINER, "sh", "-c", `xdotool windowfocus ${wid}; sleep 1`]);
+  const keys = () => shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "grep -c KeyPress /var/lib/vyre/browsers/agb21000/xev.log || true"]);
+  shOk([...asOwner, CONTAINER, "xdotool", "key", "q"]); await sleep(800);
+  check(Number(keys()) >= 1, "the owner's own key reaches its probe (the control)", keys());
+  const keysBefore = Number(keys());
+  shOk([...asUntrusted, CONTAINER, "xdotool", "key", "z"]); await sleep(800);
+  check(Number(keys()) === keysBefore, "(b) XTEST from the agent's cookie injects no key into the owner's window", `${keysBefore} -> ${keys()}`);
+  // (c) an untrusted client may not listen to another client's window while the owner types into it
+  shOk(["exec", "-u", "20000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth", CONTAINER, "sh", "-c", `(timeout 6 xev -id ${wid} > /tmp/agent-xev.log 2>&1 &) ; sleep 1`]);
+  shOk([...asOwner, CONTAINER, "xdotool", "key", "w"]); await sleep(1500);
+  const heard = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "grep -c KeyPress /tmp/agent-xev.log || true"]);
+  check(Number(heard) === 0, "(c) a client with the agent's cookie gets no key event of the owner's window", `${heard} key events; ${shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "head -c 200 /tmp/agent-xev.log"]).slice(0, 120)}`);
+  const ownerHeard = shOk([...asOwner, CONTAINER, "sh", "-c", `timeout 4 xev -id ${wid} > /tmp/owner-xev.log 2>&1 & sleep 1; xdotool key e; sleep 1.5; grep -c KeyPress /tmp/owner-xev.log || true`]);
+  check(Number(ownerHeard) >= 1, "the owner's own listener does hear it (the control)", ownerHeard);
   const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);
   check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
   const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
