@@ -7,6 +7,7 @@
 //   const k = createKernel({ space, ..., store, log, grants: { forSubject, get }, members: { has } }); // your own store, log or grants (a test rig)
 //   k.gateway.records / .events / .grants / .seal / .audit / .tasks   k.chains.fromFacts(...)   k.log   k.store   k.limits
 import { defineExtending } from "../lib/types-extend.js";
+import { createCredentialHeld } from "../lib/credential-held.js";
 import { createGateway } from "./gateway/index.js";
 import { createMemoryStore } from "./store/memory.js";
 import { createEventLog } from "./core/events.js";
@@ -116,8 +117,7 @@ export async function createKernel(cfg) {
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
-  /** Does this person hold the vault credential now (an answer only)? The owner holds all of the vault they own; anyone else, what a grant gives. Asked for a lend and, at each use, of a lease's approver. @param {string} person @param {string} action @param {string} resource */
-  const holdsCredential = async (person, action, resource) => grantsStore.roleOf({ kind: "person", id: person, space: cfg.space }) === "owner" || Promise.resolve().then(() => gateway.authorize({ chain: chains.fromFacts({ kind: "device", device_key_id: "lend-check", person, path: "direct", session: "lend-check" }), action, resource })).then(r => r.effect === "allow", () => false);
+  const holdsCredential = createCredentialHeld({ grantsStore, get gateway() { return gateway; }, chains, space: cfg.space });
   /**
    * May this person use the vault connection a Gate sender goes through now: `mail:<connection>` and `google:<connection>` name one; anything else has no connection of its own and counts as yes.
    * @param {string} person @param {string} via
@@ -189,7 +189,7 @@ export async function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, listHas, approverHolds: (/** @type {string} */ p, /** @type {string} */ a, /** @type {string} */ r) => (grantsStore ? holdsCredential(p, a, r) : true), attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, listHas, approverHolds: (/** @type {string} */ p, /** @type {string} */ a, /** @type {string} */ r) => (grantsStore ? holdsCredential(p, a, r) : false), attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
   const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, port: roomPort, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;

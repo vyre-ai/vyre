@@ -13,6 +13,9 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import { Access } from "./access.js";
 import { register } from "./request.js";
 import { kernelRig, SPACE } from "./kernel-rig.js";
+import { createGateway } from "../../kernel/gateway/index.js";
+import { createMemoryStore } from "../../kernel/store/memory.js";
+import { createEventLog } from "../../kernel/core/events.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -211,6 +214,9 @@ test("a lease ends the moment the person who approved it no longer holds the Con
   const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
+  // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
+  const blind = createGateway({ space: SPACE, store: createMemoryStore({ clock: rig.clock }), log: createEventLog({ space: SPACE, clock: rig.clock }), chains: rig.chains, clock: rig.clock, grantsStore: rig.gs, presence: { check: async () => null }, owner: rig.K.owner, hasPresenceSession: () => true });
+  assert.notEqual((await blind.authorize({ chain: rig.assistant(rig.uid("kit")), action: "vault.call", resource: await v.access.urn("conn-cn1") })).effect, "allow", "a lease with nothing to ask is refused");
   await rig.gw.grants.revoke(rig.owner(), share.id, "left the project", { presence: { n: 1 } });
   await assert.rejects(ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit"), /needs a grant/, "Ben lost it: the lease he carried holds nothing, though the task is still open and the lease still stands");
 });
