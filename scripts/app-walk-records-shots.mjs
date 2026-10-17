@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// app-walk-records-shots: screenshots of the Records list and board for one type (default walk_matter, made by scripts/app-walk-paired-device.mjs), as the box's owner (a stand-in person session). TEST ONLY; run it
+// app-walk-records-shots: screenshots of the Records list and board for one type (default walk_matter, a type the box already holds), as the box's owner (a stand-in person session). TEST ONLY; run it
 // from an ssh login shell, in the foreground.
 //   node scripts/app-walk-records-shots.mjs --dist apps/app/dist-fr --socket <home>/.vyre/vyred.sock [--type walk_matter] [--out dir]
 import fs from "node:fs";

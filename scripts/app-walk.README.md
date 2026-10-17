@@ -63,7 +63,6 @@ Run both scripts from an ssh login shell, in the foreground: the stand-in phone 
 
 Rebuilding awbox's home (5 Oct): moving a home from the file key to the sealing process broke its records store ("no such record" for every caller). A fresh home works: stop `vyre-aw`, move `~/awbox/home` aside, copy back `.vyre/dev-presence-stand-in`, write a minimal `.vyre/config.json`, start the unit once and stop it, run `dev-enrol-software-key.mjs --home ~/awbox/home/.vyre`, start it, `relay.enable` with a `--yes pair` proof, then `records.dev-seed` (stand-in header). With platform-3's 25a54b468 (the home Space is its owner's, so a paired device is enrolled) the paired-device walk is 6 of 6 including `records.define` from the device without a prompt.
 
-The paired-device walk also defines a type with a link, a stage and a sealed field (`walk_matter`) and adds a record from the device; `scripts/app-walk-records-shots.mjs --dist apps/app/dist-fr --socket ~/awbox/home/.vyre/vyred.sock` screenshots its Records list and board as the owner. The broken pre-rebuild home is archived at `~/awbox-private/awbox-home-broken-5oct.tgz` on testbox (for platform-3 to confirm the cause).
 
 ## The plain-words walk
 
