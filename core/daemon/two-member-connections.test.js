@@ -96,7 +96,7 @@ test("two members' own app connections: each is used, listed and removed by its 
     step(`${label} cannot remove Ben's`, (await as(w, "mcp.remove", { name: benRow.name })).error);
   }
   step("Ben's row is still there", (await rowsOf("ben")).some((/** @type {any} */ s) => s.name === benRow.name));
-  step("Ben can test his own", !(await as("ben", "mcp.test", { name: benRow.name })).error);
+  const benTest = await as("ben", "mcp.test", { name: benRow.name }); step("Ben can test his own: " + JSON.stringify(benTest).slice(0, 300), !benTest.error);
   step("Ben can restart his own", !(await as("ben", "mcp.restart", { name: benRow.name })).error);
 
   // ---- Ben's assistant (an agent in Ben's turn) is not Ben: it cannot remove, update, test or restart his connection, and the connection is still there afterwards
