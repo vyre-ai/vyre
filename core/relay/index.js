@@ -253,9 +253,6 @@ export default {
         WebSocket: seam.WebSocket, log: m => ctx.log(m),
         // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
         ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
-        // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
-        onsignin: m => { try { ctx.events.emit("relay.signin-asked", m); } catch {} },
-        oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
           try { ctx.events.emit(s === "connected" ? "relay.connected" : "relay.disconnected", s === "connected" ? {} : { why: why || "" }); } catch {}
         },
@@ -507,8 +504,8 @@ export default {
     // after the person has picked the right words), and only then does `enrol` run: the row, the presence key, the notice. A no, a timeout, or relay.devices.drop makes the waiting pairing
     // vanish: its channels are closed, a reconnect is refused ("not a paired device"), and the ticket, taken at redemption, stays spent.
     const PENDING_MS = seam.pendingMs || 5 * 60_000, PENDING_MAX = 8, PENDING_GRACE_MS = 10_000;
-    /** The one tool a waiting pairing may call, by what its ticket was for. A phone and a ring phone ask about the computer's question; a server's scanner completes its own adoption. */
-    const PENDING_TOOLS = Object.freeze({ phone: ["wink.phone.wait"], ring: ["wink.phone.wait"], server: ["wink.server.adopt"] });
+    /** The one tool a waiting pairing may call, by what its ticket was for. A server's scanner completes its own adoption. */
+    const PENDING_TOOLS = Object.freeze({ server: ["wink.server.adopt"] });
     /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
     const pendingPairs = new Map();
     /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
@@ -956,38 +953,6 @@ export default {
         return seed ? { expiresAt: minted.expiresAt, connected: minted.connected, confirmed: minted.confirmed } : minted;
       },
     });
-    ctx.tool("relay.signin.watch", {
-      internal: true,
-      description: "Serve a name's sign-in requests: the locator derived from the name (relay/client/signin.js signinLoc). The relay hands each request for it to this box as the relay.signin-asked event { loc, s }, and tells a device that asks nothing about whether any box does. Modules only.",
-      input: obj({ loc: str, on: { type: "boolean" } }, ["loc"]),
-      run: async input => {
-        const loc = String(input.loc);
-        if (!/^[A-Za-z0-9_-]{43}$/.test(loc)) throw fail("bad_input", "the locator is 43 base64url characters");
-        // A watch only listens: it never turns the relay on or starts its link. With the relay off there is nothing to watch on; the wink module asks again when relay.connected fires.
-        if (!settings().enabled || !link) return { watching: false, supported: false };
-        if (input.on === false) link.signinUnwatch(loc); else link.signinWatch(loc);
-        return { watching: input.on !== false, supported: link.signins() };
-      },
-    });
-    ctx.tool("relay.code.alloc", {
-      internal: true,
-      description: "Ask the relay for a free typed-code rendezvous for this box (5 minutes, one at a time). Answers { rv, exp }, or null when the relay is busy, away or has no typed codes. Modules only.",
-      input: obj(),
-      run: async () => { await keys.ready(); if (!settings().enabled) save({ enabled: true }); startLink(); if (link) await link.ready(); return (link && link.codes() ? await link.codeAlloc() : null); },
-    });
-    ctx.tool("relay.code.release", {
-      internal: true,
-      description: "Give the typed-code rendezvous back. Modules only.",
-      input: obj(),
-      run: async () => { link?.codeRelease(); return { released: true }; },
-    });
-    ctx.tool("relay.code.reply", {
-      internal: true,
-      description: "Answer a typed code's message (the relay.code-asked event): q is its id, m the reply in base64url, or none to refuse. Modules only.",
-      input: obj({ q: str, m: str }, ["q"]),
-      run: async input => { link?.codeReply(String(input.q), typeof input.m === "string" ? input.m : null); return { sent: true }; },
-    });
-
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj({ seed: str }),

@@ -2046,14 +2046,6 @@ export default {
       const rootPublic = (await attestedKeyOf(row.id)) || (k ? k.publicKey : null);
       return c && c.pin && rootPublic ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, rootPublic) } : {};
     };
-    /** The short typed code for an invite's own link (RC1): wink makes it, so it carries this same link and nothing else. Best effort: with no relay or no typed codes the invite is just the link (`code` null). @param {string} link @param {string} space */
-    const typedCodeFor = async (link, space) => {
-      try {
-        const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
-        const d = r && !r.error && r.data ? r.data : null;
-        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
-      } catch { return { code: null }; }
-    };
     tool("spaces.invites.create", "Make a join link for a role. A temp or member invite can name projects. Owners and admins, unless managers may invite.",
       obj({ space: str, role: { type: "string", description: "owner, admin, manager, member, temp (or guest), or the id of a custom role (roles.list)" }, scope: { type: "array", items: str }, seats: { type: "array", items: { type: "object" }, description: "Projects the joiner is put on when they accept: [{ project, level: lead | contributor | viewer }], contributor by default" }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async (i, meta) => {
@@ -2090,11 +2082,11 @@ export default {
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
           const link = `https://${row.name}/join/${token}`;
           // The link to share names no server (vyre.run/i/<token>); the space's own join link rides beside it, and is what the typed code carries.
-          return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until, ...(await typedCodeFor(link, row.name)) };
+          return { id: rec.id, link: i.alias ? link : publicInviteLink(token), join_link: link, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until };
         }
         if (!ROLE_IDS.includes(i.role) && i.role !== "guest") throw refuse("A custom role can be invited into only on a space with its own server. Invite as Member, then give the role (roles.assign).", "not_kernel");
         const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role === "guest" ? "temp" : i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
-        return { id: r.id, link: i.alias ? r.link : publicInviteLink(r.token), join_link: r.link, token: r.token, ...(await typedCodeFor(r.link, row.name)) };
+        return { id: r.id, link: i.alias ? r.link : publicInviteLink(r.token), join_link: r.link, token: r.token };
       });
     tool("spaces.invites.confirm", "As the inviter of an admin or owner: confirm the fingerprint words the invitee reads to you. Their invite waits for this.", obj({ space: str, id: str, words: str }, ["space", "id", "words"]), async (i, meta) => {
       const row = spaceOf(i.space);
