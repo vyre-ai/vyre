@@ -139,14 +139,14 @@ export function refNodes(text: string): React.ReactNode {
   return parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text));
 }
 export function RefText({ text, style }: { text: string; style?: object }) {
-  return <Text size="read" selectable style={style}>{refNodes(text)}</Text>;
+  return <Text size="body" selectable style={style}>{refNodes(text)}</Text>;
 }
 
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
 export function UserText({ text, pending, tone }: { text: string; pending: boolean; tone?: "inverse" }) {
   const style = pending ? { opacity: 0.55 } : undefined;
   const names = [...new Set(partsOf(text).flatMap((p) => ("vault" in p ? [p.vault] : [])))];
-  if (!names.length) return <Text size="read" selectable tone={tone} style={style}>{text}</Text>;
+  if (!names.length) return <Text size="body" selectable tone={tone} style={style}>{text}</Text>;
   return (
     <View style={{ gap: 6 }}>
       <RefText text={text} style={style} />

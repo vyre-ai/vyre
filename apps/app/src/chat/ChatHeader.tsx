@@ -77,7 +77,7 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
           style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
           {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
           <Text numberOfLines={1} style={{ flexShrink: 1 }}>
-            <Text strong>{title}</Text>
+            <Text medium>{title}</Text>
             {project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
           </Text>
         </Pressable>

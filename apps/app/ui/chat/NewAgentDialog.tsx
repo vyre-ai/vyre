@@ -52,19 +52,19 @@ export function NewAgentDialog({ open, onClose, values, onChange, projects, busy
           ))}
         </View>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36 }}>
-          <Text strong tone="muted">More options</Text>
+          <Text medium tone="muted">More options</Text>
           <Icon name={more ? "chevron-up" : "chevron-down"} size={16} tone="label" />
         </Pressable>
         {more ? (
           <View style={{ gap: 16 }}>
             <Field label="Job" value={values.job} onChangeText={(job) => onChange({ job })} multiline lines={3} placeholder="What it does, and what it must ask you before doing." />
             <View style={{ gap: 4 }}>
-              <Text strong>Works in</Text>
+              <Text medium>Works in</Text>
               {projects === null ? <Text tone="muted">Looking.</Text> : !projects.length ? <Text tone="muted">No projects yet. It will see none until you add some.</Text>
                 : projects.map((p) => <Row key={p.slug} dense title={p.name} end={<Switch label={p.name} on={values.projects.includes(p.slug)} onChange={() => toggle(p.slug)} />} />)}
             </View>
             <View style={{ gap: 8 }}>
-              <Text strong>Runs on</Text>
+              <Text medium>Runs on</Text>
               <Segmented label="Runs on" value={values.runsOn} onChange={(runsOn) => onChange({ runsOn })} options={[["subscription", "Your Claude plan"], ["key", "An API key with a budget"]]} />
               {values.runsOn === "key" ? <Field label="Monthly budget in dollars" kind="number" value={values.budget} onChangeText={(budget) => onChange({ budget })} help="It stops when the budget is spent." /> : <Text size="caption" tone="label">Uses your plan's allowance.</Text>}
             </View>

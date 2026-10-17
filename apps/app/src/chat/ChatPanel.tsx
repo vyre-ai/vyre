@@ -210,7 +210,7 @@ export function ChatPanel(p: ChatPanelProps) {
       {others.length === 1
         ? <Avatar of={markRef(others[0].family === "assistant" ? "agent" : "person", others[0].name, others[0].id)} size={56} />
         : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
-      <Text size="title" strong numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
+      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
       <ChatTags chat={p.chat} thread={p.thread} />
     </View>
   );
@@ -240,7 +240,7 @@ export function ChatPanel(p: ChatPanelProps) {
   const head = (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4, minHeight: 56 }}>
       {p.page !== "root" ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={back} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 }}><Icon name="chev-l" size={20} tone="text" /></Pressable> : null}
-      <Text size="title" strong style={{ flex: 1 }} numberOfLines={1}>{p.page === "root" ? "" : p.page === "file" && p.file ? p.file.split("/").pop() : TITLES[p.page]}</Text>
+      <Text size="title" medium style={{ flex: 1 }} numberOfLines={1}>{p.page === "root" ? "" : p.page === "file" && p.file ? p.file.split("/").pop() : TITLES[p.page]}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={p.onClose} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20 }}><Icon name="x" size={18} tone="label" /></Pressable>
     </View>
   );
