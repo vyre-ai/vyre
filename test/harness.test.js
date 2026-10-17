@@ -79,7 +79,7 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  const ask = await hook("rules", { session_id: "s1", tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" } }, env);
+  const ask = await hook("rules", { session_id: "s1", tool_name: "mcp__mail__send_message", tool_input: { to: "client@example.com" } }, env);
   assert.deepEqual(JSON.parse(ask.out).hookSpecificOutput.hookEventName, "PreToolUse");
   assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
@@ -346,7 +346,7 @@ test("sessions: an MCP call says which session it is in, and gate.request files 
   fs.symlinkSync(process.execPath, path.join(bin, "claude"));
   fs.writeFileSync(path.join(root, "standin.mjs"), STANDIN);
   const session = "5f0c2a61-7d7e-4c43-9a57-0b6f3d0e9a11";
-  const draft = { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Friday", body: "Hi Dana" } };
+  const draft = { kind: "send", via: "mail", to: "client@example.com", content: { subject: "Friday", body: "Hi Dana" } };
   const calls = [
     { name: "gate_request", arguments: draft },
     { name: "gate_request", arguments: { ...draft, thread: "0b1d9c7e-0000-4000-8000-000000000000" } },
@@ -415,7 +415,7 @@ test("mcp: the hub's tools are offered through the one vyre entry; a read reache
   const echo = (await rpc(4, "tools/call", { name: "system_echo", arguments: { text: "still here" } })).result;
   assert.equal(JSON.parse(echo.content[0].text).text, "still here");
 
-  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "dana@harlowlegal.com", text: "Friday works" } })).result;
+  const send = (await rpc(5, "tools/call", { name: "issues__send_message", arguments: { to: "client@example.com", text: "Friday works" } })).result;
   assert.ok(!send.isError, JSON.stringify(send));
   assert.match(send.content[0].text, /Held at the Gate|approve/i);
   assert.ok(send.structuredContent.held);
@@ -484,7 +484,7 @@ test("mcp: the hub is never a route around the floor", async t => {
   assert.match((await via("mcp.release", { id: "g-1", content: {} })).content[0].text, /^no_such_tool: /);
 
   // A hub send is held, and nothing reaches the server.
-  const send = await via("chat__send_message", { to: "dana@harlowlegal.com", text: "Friday works" });
+  const send = await via("chat__send_message", { to: "client@example.com", text: "Friday works" });
   const id = send.structuredContent?.held;
   assert.ok(id, JSON.stringify(send));
   assert.deepEqual(sent(), []);
@@ -507,7 +507,7 @@ test("mcp: the hub is never a route around the floor", async t => {
   here = true;
   const ok = await approve();
   assert.equal(ok.data?.state, "sent", JSON.stringify(ok));
-  assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "dana@harlowlegal.com", text: "Friday works" })}`]);
+  assert.deepEqual(sent(), [`call send_message ${JSON.stringify({ to: "client@example.com", text: "Friday works" })}`]);
   here = false;
   // A model's approval is refused before presence is even asked; a person's is asked each time.
   assert.deepEqual(prompts, ["gate.approve cli", "gate.approve cli"], "only a person's approvals asked, and nothing else did");
