@@ -30,7 +30,7 @@ import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
 import { parseServerQr } from "../core/wink/pairing.js";
-import { nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
+import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer } from "../relay/client/serverpair.js";
 import workerDir, * as WD from "../names/worker/index.js";
 import { createRuntime } from "../relay/worker/fake-cf.js";
@@ -535,4 +535,146 @@ shardTest("wink: a device.paired event alone registers no device (ring, code, ti
   for (const gone of ["wink.phone.open", "wink.code.open", "devices.signin", "onboard.phone.add"]) {
     assert.equal(w.d.registry.tools.has(gone), false, `${gone} is not a tool any more`);
   }
+});
+
+const PROBED = ["relay.devices.list", "wink.access", "relay.status", "system.info", "wink.pair.targets", "threads.list", "term.list", "vault.list", "presence.person.start", "presence.enroll", "relay.devices.remove", "relay.devices.drop", "relay.pair.pending.confirm",
+  "relay.pair.ticket", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
+  "wink.offer.set", "wink.pair.server", "wink.storage.remove", "wink.device.key", "wink.relay.apply", "about.text", "identity.sign"];
+
+/** A device that redeemed a server ticket and is a waiting pairing: its id and the ticket's seed. */
+async function pairDevice(t, w) {
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const seed = parseServerQr(made.qr).seed;
+  const r = await redeem(t, w, seed, "Redeemer");
+  return { id: r.paired.device, seed };
+}
+/** The app's side of a server ask (commit, hear nb, reveal) with the ticket's seed: the words, and a call that completes the adopt. */
+async function askServer(w, id, seed, owner) {
+  const na = newNonce(), commit = await nonceCommit(na), ticket = seed ? Buffer.from(seed).toString("base64url") : "";
+  const base = { commit, ...(seed ? { tag: await ticketTag(ticket) } : {}) };
+  const mk = more => w.call("wink.server.adopt", { owner, identity: owner.id, pairing: { ...base, ...more } }, `device:${id}`, {});
+  const r1 = (await mk({})).data;
+  const r2 = (await mk({ reveal: na })).data;
+  return { na, nb: r1.nb, ticket, first: r1, words: r2.words, until: r2.until, again: () => mk({ reveal: na }) };
+}
+
+shardTest("wink: a release drops the adopter's relay device and a refused adopt drops the stranger's; wink.access is empty and the device is refused afterwards", async t => {
+  const w = await world(t);
+  const appd = await pairDevice(t, w);
+  const app = appd.id;
+  const as = id => `device:${id}`;
+  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const adopt = (id, extra = {}) => w.call("wink.server.adopt", { owner: { kind: "identity", id: me.id }, identity: me.id }, as(id), { ...extra });
+  // Q-1: the first adoption waits for a yes from the person at the server (a local screen), then the same device completes it
+  const first = await askServer(w, app, appd.seed, { kind: "identity", id: me.id });
+  const asked = await until(async () => { const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return q && q.asking ? q : null; });
+  assert.match(first.words, /^[a-z]+ [a-z]+ [a-z]+$/, "the app shows three words");
+  assert.equal(asked.choices.length, 3, "the server shows three choices");
+  assert.equal(asked.words, undefined, "and never the right words");
+  assert.ok(asked.choices.includes(first.words), "one of them is the app's words");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true }, "cli", PROOF)).error?.code, "words_needed", "a bare yes is refused");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: asked.choices.indexOf(first.words) + 1 }, "cli", PROOF)).data.answered, true);
+  const fin = await first.again();
+  assert.ok(fin.data?.owner, JSON.stringify(fin.error));
+  // a second device is refused (naming the owner) and nothing of it is left on the box
+  const stranger = (await pairDevice(t, w)).id;
+  const refused = await adopt(stranger);
+  assert.ok(refused.error, "refused");
+  assert.match(refused.error.message, /already belongs to Personal/);
+  await until(async () => !(await relayHas(w, stranger)));
+  assert.ok(!(await w.call("wink.access")).data.devices.some(d => d.id === stranger), "no row for the refused device");
+  assert.ok(await relayHas(w, app), "the adopter is still there while it owns the box");
+  // the release: the box lets go, then the adopter's device is gone too
+  const rel = await w.call("wink.server.release", {}, as(app), {});
+  assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
+  await until(async () => !(await relayHas(w, app)));
+  await until(async () => (await w.call("wink.access")).data.devices.every(d => d.id !== app));
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
+  // the relay is what authenticates a device's calls: with its row removed it is refused there (4401), never admitted as device:<id> again
+  const row = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === app);
+  assert.equal(row, undefined, "the relay no longer knows it");
+});
+
+shardTest("wink: the app's side carries the proof: pair.server without presence is refused, a space pairing by a non-admin is refused, an admin passes; the server's own side stays presence-free", async t => {
+  const w = await world(t);
+  const bare = { peer: A.peer, person: A.person };
+  const own = (await w.call("wink.pair.targets", {})).data.targets[0];
+  // no presence proof: refused before anything is checked or typed
+  const none = await w.call("wink.pair.server", { payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", target: { kind: "identity", id: own.id } }, SCREEN, bare);
+  assert.equal(none.error?.code, "presence_required", JSON.stringify(none));
+  const noneSpace = await w.call("wink.pair.server", { payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", target: { kind: "space", id: w.status.space || "spc_aaaaaaaaaaaa" } }, SCREEN, bare);
+  assert.equal(noneSpace.error?.code, "presence_required");
+  // with presence: a space the person does not administer is refused, then a payload that is not a ticket is a plain bad input (the checks passed)
+  assert.equal((await w.call("wink.pair.server", { payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", target: { kind: "space", id: "spc_aaaaaaaaaaaa" } })).error?.code, "not_admin");
+  const spaces = (await w.call("wink.pair.targets", {})).data.targets.filter(x => x.kind === "space");
+  assert.ok(spaces.length >= 1, "the owner of this box administers its space");
+  assert.equal((await w.call("wink.pair.server", { payload: "hello", target: { kind: "space", id: spaces[0].id } })).error?.code, "bad_input");
+  assert.equal((await w.call("wink.pair.server", { payload: "hello", target: { kind: "identity", id: own.id } })).error?.code, "bad_input");
+  // the headless server has no Touch ID: its two calls take no proof
+  const open = await w.call("wink.server.code", {}, SCREEN, bare);
+  assert.ok(open.data?.qr, JSON.stringify(open.error));
+});
+
+shardTest("Q-1, real daemon: the box makes a QR and a long code with no typed code; a scan only pairs the device, the server asks, and its three words equal what the scanning side derives from its own keys", async t => {
+  const w = await world(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  assert.ok(made.qr && made.art, "the QR and the long code");
+  const scan = parseServerQr(made.qr);
+  assert.ok(scan);
+  // a scan pairs the device with the box and nothing more: the box has no owner yet
+  const paired = await pairTicket(scan.seed, { relay: w.status.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t) });
+  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const mine = await askServer(w, paired.device, scan.seed, { kind: "identity", id: me.id, name: "Alex" });
+  const asked = await until(async () => { const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return q && q.asking ? q : null; });
+  assert.match(asked.name, /^Alex \(id [A-Za-z0-9]{1,6}\)$/, "the claimed name carries the first characters of the identity id");
+  const right = await pairWords(paired.box, paired.device, { ticket: mine.ticket, nonceA: mine.na, nonceB: mine.nb });
+  assert.equal(mine.words, right, "the app derives the words from the keys, the ticket and the two fresh nonces");
+  assert.ok(asked.choices.includes(right), "the server's choices hold the same words, among two decoys");
+  assert.ok(!(await w.call("wink.access")).data.devices.some(d => d.id === "self"), "no owner while the question is open");
+  // a stranger cannot answer, a person at the server can
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, `device:${paired.device}`, {})).error?.code, "person_session_required", "a paired device with no person session is refused before the tool runs (reach person)");
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: asked.choices.indexOf(right) + 1 }, "cli", PROOF)).data.answered, true);
+  const fin = await mine.again();
+  assert.ok(fin.data?.owner, JSON.stringify(fin.error));
+  // the same ticket cannot be used for a second pairing: the relay refuses the second scanner, and the box does not know another ticket
+  await assert.rejects(() => pairTicket(scan.seed, { relay: w.status.url, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }));
+});
+
+shardTest("X-1, real daemon and relay: a server's QR redeemer reaches only wink.server.adopt; the pick at the server console decides; no or a timeout leaves nothing and spends the ticket", async t => {
+  const w = await world(t, { pendingMs: 2500 });
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const scan = parseServerQr(made.qr);
+  const r = await redeem(t, w, scan.seed, "Eve's app");
+  assert.equal(r.paired.pending, true);
+  assert.equal(await relayHas(w, r.paired.device), false, "no relay device for a server's scanner before the confirm");
+  const c = r.open();
+  for (const tool of PROBED) { const o = await over(c, tool, {}); assert.ok(o.status === 404 || o.status === 403 || o.status === 0, `${tool} is not reachable by a server's scanner (got ${o.status})`); }
+  // its one door: wink.server.adopt, which only asks the person at the server; nobody owns the box and no device exists
+  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const owner = { kind: "identity", id: me.id, name: "Alex" };
+  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
+  const first = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag } });
+  assert.equal(first.status, 200, JSON.stringify(first));
+  const second = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag, reveal: na } });
+  assert.equal(second.body.data.pending, true);
+  assert.equal(await relayHas(w, r.paired.device), false, "asking made no device");
+  assert.equal((await w.call("wink.access")).data.devices.some(d => d.id === "self"), false);
+  // the question is the server console's: a model client, a hook, a paired device and the scanner itself cannot see or answer it
+  const right = await pairWords(r.paired.box, r.paired.device, { ticket: Buffer.from(scan.seed).toString("base64url"), nonceA: na, nonceB: first.body.data.nb });
+  for (const caller of ["mcp", "harness", "hook", "module:evil", "session:s1", "agent:kit", "tailnet:owner", `device:${r.paired.device}`, "anonymous"]) {
+    assert.ok((await w.call("wink.server.pairing", {}, caller, PROOF)).error, `${caller} cannot see the question`);
+    assert.ok((await w.call("wink.server.pair.answer", { yes: true, pick: 1 }, caller, PROOF)).error, `${caller} cannot answer it`);
+  }
+  const q = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data;
+  assert.ok(q.asking && q.choices.includes(right));
+  // the person says yes with the right pick: only then does the relay make the device, and the scanner's call returns the owner
+  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(right) + 1 }, "cli", PROOF)).data.yes, true);
+  const done = await over(c, "wink.server.adopt", { owner, identity: me.id, pairing: { commit, tag, reveal: na } });
+  assert.ok(done.body?.data?.owner, JSON.stringify(done));
+  const row = await until(() => deviceRow(w, r.paired.device));
+  assert.ok(row, "the device exists after the yes");
+  assert.equal(row.presence, true, "with its presence key, made only now");
 });

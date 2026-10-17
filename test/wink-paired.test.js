@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { start } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
@@ -900,4 +900,31 @@ shardTest("the My Cloud upgrade end to end: a space made on the person's server 
   for (const rid of ids) { const g = await dcall("records.get", { urn: `vyre://${id}/note/${rid}` }); assert.ok(!g.error && g.data.record.data.title, JSON.stringify(g.error)); }
   const late = await dcall("records.create", { space: home, type: "note", data: { title: "late" } });
   assert.equal(late.error && late.error.code, "moved", "Personal takes no new records");
+});
+
+/** A phone-kind device paired as a server is, with a person session started from its own key. */
+async function pairedOnKernel(t) {
+  const f = await pairFreshServer(t, { kind: "phone" });
+  const { w, dk, ks, done: paired } = f;
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = (await over(c, "presence.person.pair-challenge", {})).body.data.challenge;
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ch}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  const sessionId = started.body.data.id;
+  return { w, paired, sessionId };
+}
+
+shardTest("a paired phone's Space list, as the daemon makes the call for it: the device's row names the owner, so the facts carry the owner as the person on the chain and spaces.list answers the owner's Spaces; the bare device label alone is nobody (ledger row 54)", async t => {
+  const a = await pairedOnKernel(t);
+  const label = `device:${a.paired.device}`, via = { person: { id: a.sessionId } };
+  const info = await a.w.d.registry.call("relay.device.info", { id: a.paired.device }, "module:vyred");
+  const rec = await a.w.d.registry.call("wink.device.record", { id: a.paired.device }, "module:vyred");
+  const facts = callerFacts(label, { caller: label }, via, a.w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
+  assert.ok(facts && facts.kind === "device" && facts.person === a.w.d.kernel.id.owner, `the daemon builds a person chain for the paired device: ${JSON.stringify(facts)}`);
+  const listed = await a.w.d.registry.call("spaces.list", {}, label, { ...via, kernelFacts: facts });
+  assert.ok(!listed.error && listed.data.length > 0 && listed.data.some((/** @type {any} */ x) => x.id === a.w.d.kernel.id.space && x.role === "owner" && x.label === "personal"), `the paired phone lists the owner's Spaces: ${JSON.stringify(listed).slice(0, 300)}`);
+  const bare = await a.w.d.registry.call("spaces.list", {}, label, via);
+  assert.deepEqual(bare.error ? [] : bare.data, [], "the device label with no chain facts is nobody: the daemon always adds the facts for a paired device, so the app never makes this call");
 });
