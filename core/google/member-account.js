@@ -28,5 +28,5 @@ export function forMember(all, member, input = {}) {
   if (!keys.length) throw fail("the owner has not added a firm Google Workspace key; connect your own account instead", "no_account");
   const usable = keys.filter(k => domainOf(email) === String(k.domain || domainOf(k.email)).toLowerCase());
   if (!usable.length) throw fail("your email is outside the firm key's domain", "denied");
-  return usable.map(k => ({ name: `${k.name.slice(0, 20)}-m${crypto.createHash("sha256").update(member.id).digest("hex").slice(0, 8)}`, member: member.id, email, auth: { type: "service-account", item: k.auth.item, subject: email }, ...(k.base ? { base: k.base } : {}), added: k.added || 0 }));
+  return usable.map(k => ({ name: `${k.name.slice(0, 20)}-m${crypto.createHash("sha256").update(member.id).digest("hex").slice(0, 8)}`, key: k.name, member: member.id, email, auth: { type: "service-account", item: k.auth.item, subject: email }, ...(k.base ? { base: k.base } : {}), added: k.added || 0 }));
 }

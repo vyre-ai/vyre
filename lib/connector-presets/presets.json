@@ -256,6 +256,10 @@
     "as": [
      "https://mcp.notion.com"
     ]
+   },
+   "token": {
+    "label": "MCP token",
+    "help": "On a Business or Enterprise plan, a workspace owner makes one in the Notion Developer portal: New MCP token. Paste it here."
    }
   },
   {

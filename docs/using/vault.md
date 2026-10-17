@@ -285,6 +285,16 @@ vyre vault agent revoke <id>
 
 The agent `kit` may sign in to that one site with that one login until the expiry, and never reads the login. It is a grant in your Space, the same kind as every other: the agent, the action (fill), the login, the exact origin and the expiry. Only you give it, on your own session. When Claude asks, the request waits and you approve it with `vyre vault approve <id>`. Taking it away needs no one, and deleting the login ends every grant on it.
 
+### Share a login from your own vault with an agent
+
+A member can let one agent sign in with one login from their own vault, on one site, until an expiry (up to a year; a week if you say nothing). Your agent can use this login while you're away. The agent never sees the login: its Chrome types it, and nothing returned to the agent or written to a log carries it.
+
+- You pick an agent you may instruct yourself: one you made, or one you were given Can use or Can edit on. The share sheet names who else can instruct that agent, because they can have it sign in with your login too. The owner and the admins can instruct every agent.
+- Sharing opens the login in your vault, so you must be unlocked. A copy of that one login is then kept in your own vault, in the folder of what you lend, sealed under a lend key. The lend key is the only part of your vault the server can open, so the server can use the logins you chose to lend and nothing else of yours. The copy is readable by the server process while the share lasts. A leaked state folder exposes the logins a member chose to lend, and nothing else of that member's.
+- The owner and the admins cannot list, read or copy it with any Vault tool.
+- The copy is deleted, and its grant ended, the moment the share ends: you unshare it, it expires, you change or remove the login, or you leave the Space. If the copy cannot be brought up to date after you change the login, it is deleted, not kept.
+- Tools: `vault.me.share.agent`, `vault.me.unshare.agent` and `vault.me.shares`. They are for the member alone, never for an assistant acting for them.
+
 ## Which agents can call an API credential
 
 An agent, or your assistant, calls an API credential only through a grant in your Space: its project's linked vault, a vault shared with it, or a lease for one task. Without one the call is refused (it is not held), and the agent's Vault list shows only the credentials it holds a grant for. A read inside a grant runs at once; anything that changes something at the service still waits for your yes, grant or not. You and a thread you tagged with the credential (`#name`) use it by right.
@@ -384,6 +394,35 @@ An item before `--` is `<name>`, `<name>.<field>`, `VAR=<name>` or `VAR=<name>.<
 variable is the name in capitals (`stripe-live` becomes `STRIPE_LIVE`). A value the child prints
 shows as `<concealed by vyre>`. These need presence, so Claude's own shell cannot use them to read
 a value.
+
+## Sharing inside your Space
+
+Each person has their own vault inside the Space. Owners and admins share the Space's items and whole vaults, and make groups. A member shares her own app connections (at Fill in) and the logins she chooses to lend to an agent she may instruct. What is shared can go to people, groups of people and agents, or to agents, in any mix. Three levels:
+
+| Level | What they can do |
+|---|---|
+| Fill in | Use it without seeing it. A login is filled in by their agent, an API key is used through Vyre. |
+| Read | Also see the value, on their own screen. |
+| Edit and rotate | Also change it and replace the key at its service. |
+
+An agent only ever holds Fill in, and you can only share with agents you may instruct yourself: an agent others also instruct would use what you gave it for them. Anything an agent sends, pays or deletes still waits for a yes. Taking a share away works at once.
+
+**Groups** (Settings, Groups) are named sets of people and agents that owners and admins make, so one share reaches all of them. An agent in a group holds Fill in and nothing more.
+
+**Vaults** keep things apart: your own, a client's, the marketing team's. A vault is shared as a whole, with a person, a group, an agent or everyone in the Space (every member at the level you pick, every agent at Fill in). Moving an item into a vault takes back what was shared on it, and whoever the vault is shared with then holds it. Point a project at a vault and its agents use the keys without seeing them.
+
+In this release members use shared API keys at Fill in. Read and Edit and rotate are kept off the share sheets for members until a member can use them; the owner's own screens are unchanged.
+
+## App connections, and what the server holds
+
+An app you connect (Clio, Notion, Google and the like) is a connection in your own vault. You can share it at Fill in only: whoever holds the share can have the app used as you, and never gets the token, because Vyre adds it where the app is called. Anything that sends or changes data still waits for your yes. Deleting the connection, taking a share away, or leaving the Space ends every share on it and clears what those people left waiting for approval.
+
+Two things are kept on the server so that agents and Flows keep working while you are signed out, and each is a key of its own:
+
+- **The connection key.** Your connections are sealed under a key that lives inside your vault. A copy of that key alone is sealed for the server. It opens your app connections and nothing else: not your passwords, cards or notes. A stolen copy of the server's files gives someone your connection tokens, so revoke at the app if a server is ever lost.
+- **The lend key.** A login you share with an agent is copied into your vault under a second key, sealed for the server the same way, so the agent can sign in while you are away. It opens only the logins you chose to lend, and the copy is deleted when you stop sharing. A stolen copy of the server's files gives someone those lent logins and nothing else of yours.
+
+Resetting a forgotten password rotates both keys. A connection made by an earlier build, stored as an ordinary item of kind connection, is not read any more; connect the app again.
 
 ## Share with another person
 

@@ -121,12 +121,22 @@ test("the groups: every tool is registered, owner-only, in one group, and no gro
 
 test("mcp.mine.*: a Member calls her own MCP accounts (the gate lets them through and the vault's own person check judges her), a Guest is refused; the owner-only firm-key tools stay refused to her", { timeout: 200_000 }, async t => {
   const { as } = await rig(t);
-  for (const tool of ["mcp.mine.list", "mcp.mine.add", "mcp.mine.remove"]) {
+  for (const tool of ["mcp.catalog", "mcp.mine.list", "mcp.mine.add", "mcp.mine.remove"]) {
     assert.ok(MEMBER_MAY.has(tool) && !OWNER_ONLY.has(tool), `${tool} is on a Member's list alone`);
     assert.ok(!gated(await as("member", tool, { name: "x", type: "http", url: "https://x.example.com/mcp" }), tool), `${tool}: a Member is not turned away by the gate`);
     assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
   }
   for (const tool of ["google.members.email", "google.add", "mcp.add"]) assert.ok(OWNER_ONLY.has(tool) && !MEMBER_MAY.has(tool), `${tool} stays the owner's`);
+});
+
+test("connecting an app from the catalog: a Member calls the six connect tools (the module keeps her connection her own), a Guest is refused; the rest of the module stays the owner's", { timeout: 200_000 }, async t => {
+  const { as } = await rig(t);
+  for (const tool of ["connectors.catalog", "connectors.connect", "connectors.connect.finish", "connectors.connect.cancel", "connectors.disconnect", "connectors.list"]) {
+    assert.ok(MEMBER_MAY.has(tool) && !OWNER_ONLY.has(tool), `${tool} is on a Member's list alone`);
+    assert.ok(!gated(await as("member", tool, { preset: "notion", id: "x", url: "https://x.example.com/", name: "notion" }), tool), `${tool}: a Member is not turned away by the gate`);
+    assert.ok(met(await as("guest", tool, {}), guestRefusal()), `${tool}: a Guest is refused with a next step`);
+  }
+  for (const tool of ["connectors.scope", "connectors.connection.create", "connectors.declare"]) assert.ok(OWNER_ONLY.has(tool) && !MEMBER_MAY.has(tool), `${tool} stays the owner's`);
 });
 
 test("the roles tools: a Member reads roles.list, get, catalogue and tools (her own), a Guest only roles.tools; writes stay the owner's and an admin's", { timeout: 200_000 }, async t => {

@@ -509,3 +509,17 @@ test("gate: two identical asks with no chat behind them are two asks (a person's
   assert.notEqual(a.id, b.id);
   assert.equal(gate.held().length, 2);
 });
+
+test("gate: an item keeps the person who asked, the same ask by two people is two items, and a list can be narrowed to what a person may see", async () => {
+  const { gate } = setup();
+  const a = ask(gate, {}); // no requester: as before
+  const mine = gate.request({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: DRAFT, thread: "t1" }, { agent: "juno", requester: "per_ben" });
+  const again = gate.request({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: DRAFT, thread: "t1" }, { agent: "juno", requester: "per_ben" });
+  const theirs = gate.request({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: DRAFT, thread: "t1" }, { agent: "juno", requester: "per_cy" });
+  assert.equal(again.id, mine.id, "the same person's re-run is the same item");
+  assert.notEqual(theirs.id, mine.id, "another person's identical ask is its own item");
+  assert.equal(gate.get({ id: mine.id }).requester, "per_ben");
+  assert.equal(gate.get({ id: a.id }).requester, null);
+  assert.deepEqual(gate.held({ visible: r => r.requester === "per_ben" }).map(i => i.id), [mine.id]);
+  assert.equal(gate.held().length, 3, "with no filter it lists everything, as before");
+});

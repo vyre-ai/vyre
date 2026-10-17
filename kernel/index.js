@@ -399,7 +399,7 @@ export async function createKernel(cfg) {
           const issuer = String(g.source).split(":")[3] || "";
           const role = issuer ? grantsStore.roleOf({ kind: "person", id: issuer, space: cfg.space }) : null;
           if (!(role === "owner" || role === "admin" || (issuer && q.agentOwner === issuer))) continue;
-          if (!(await mayUseVia(issuer, q.via))) continue;
+          if (!(await mayUseVia(issuer, q.via)) || (/^(?:microsoft:|google-firm:)/.test(q.via) ? issuer !== String(first.actor.id) : !/^(?:mail|google):[A-Za-z0-9_.-]{1,80}$/.test(q.via) && !["owner", "admin"].includes(grantsStore.roleOf({ kind: "person", id: String(first.actor.id), space: cfg.space })))) continue;   // firm-key mailbox (microsoft:, google-firm:): its issuer's own turns only; the Space's static sender: staff turns only
           if (!(await toAllows(c.to, q.to, (l, a) => listHas(l, a, q.via)))) continue;
           if (q.kind === "spend") {
             const amount = Number(q.amount);

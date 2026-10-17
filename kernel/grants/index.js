@@ -264,9 +264,13 @@ export function createGrantsStore(cfg) {
       if (actor.kind === "agent") return m.agents.includes(actor.id);
       return false;
     }
+    // The Space-wide groups (K4): every person who is a member, and every agent of the Space. An agent through either holds use and nothing more (the authorizer's group rule).
+    if (id === "space:people") return Boolean(actor) && actor.kind === "person" && memberOk(actor);
+    if (id === "space:agents") return Boolean(actor) && actor.kind === "agent" && actor.space === cfg.space && actors.has(actorKey(actor));
     const t = teams.get(id);
     if (!t || !actor) return false;
     if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
+    if (actor.kind === "agent" && (t.agents || []).includes(actor.id)) return true;
     if (actor.kind === "agent" && chain && Array.isArray(chain.hops)) return chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person" && t.members.includes(x.actor.id) && memberOk(x.actor));
     return false;
   };
@@ -296,7 +300,7 @@ export function createGrantsStore(cfg) {
     // A named action must exist; a pattern is checked at use (it covers only what existed at action_set_version).
     for (const a of i.actions) if (!a.includes("*") && !reg().has(a)) throw new KernelError("bad_input", `${a} is not an action`);
     // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
-    if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
+    if (s.kind === "group" && !(teams.has(String(s.id)) || s.id === "space:people" || s.id === "space:agents" || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
     if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
     // A surface is some chain's way in, and `chat` and `agents` are the model's: a grant to a surface is use of a credential and no more, whoever makes it.
     if (s.kind === "group" && String(s.id).startsWith("surface:") && i.actions.some((/** @type {string} */ a) => !ACCESS_LEVELS.use.includes(a))) throw new KernelError("bad_input", "a grant to a surface is use of a credential and nothing more");
@@ -1032,7 +1036,9 @@ export function createGrantsStore(cfg) {
       if (!Array.isArray(list) || list.length > 200 || list.some((/** @type {any} */ m) => typeof m !== "string" || !memberships.has(m))) throw new KernelError("bad_input", "a team holds up to 200 people, each a member of this Space");
       if ([...teams.values()].some(x => x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "a team with that name already exists");
       if (!prior && teams.size >= 200) throw new KernelError("bad_input", "a Space holds up to 200 teams");
-      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), by: issuer.id, at: clock() });
+      const ags = t.agents !== undefined ? t.agents : prior ? prior.agents || [] : [];
+      if (!Array.isArray(ags) || ags.length > 200 || ags.some((/** @type {any} */ a) => typeof a !== "string" || !actors.has(actorKey({ kind: "agent", id: a, space: cfg.space })))) throw new KernelError("bad_input", "a team holds up to 200 agents, each an agent of this Space");
+      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), agents: freeze([...new Set(ags)].sort()), by: issuer.id, at: clock() });
       teams.set(rec.id, rec);
       await note(chain, "team.set", urn("team", rec.id), { team: rec }, d.decision);
       return rec;

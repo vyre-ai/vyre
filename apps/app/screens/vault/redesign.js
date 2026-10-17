@@ -6,12 +6,12 @@ export const REVEAL_MS = 60_000;
 export const CLIPBOARD_MS = 30_000;
 
 /** The groups, in the order the list, the sidebar panel and the Add picker show them (one list, so the three agree). */
-export const GROUPS = /** @type {const} */ (["AI models", "Email and sending", "Phone and texts", "Google and Microsoft", "Code and hosting", "Messaging", "Logins", "SSH keys", "Secure notes", "Any API key"]);
+export const GROUPS = /** @type {const} */ (["Apps you connected", "AI models", "Email and sending", "Phone and texts", "Google and Microsoft", "Code and hosting", "Messaging", "Logins", "SSH keys", "Secure notes", "Any API key"]);
 
 /** Sharing levels. "use" lets an agent or flow use the item without seeing it; "edit" also lets the person change it. */
 export const LEVELS = /** @type {const} */ ({ use: { label: "Can use", help: "Uses it without seeing the value." }, edit: { label: "Can edit", help: "Can also change or replace it." } });
 
-/** @typedef {{ id: string, sp: string, group: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
+/** @typedef {{ id: string, sp: string, group: string, kind?: string, sharedWithMe?: boolean, name: string, detail: string, sites?: string[], secret: string, daysLeft?: number | null, lastUsedDays?: number | null, usedBy: { kind: 'flow'|'agent'|'connection'|'project', name: string }[], shared: { who: string, level: 'use'|'edit' }[] }} VItem */
 
 /** @param {VItem} v @returns {'expiring'|'expired'|'unused'|'ok'} */
 export function healthOf(v) {
@@ -93,6 +93,7 @@ export const PROVIDER_GROUP = {
  */
 export function groupOf(kind, name = "", provider = "") {
   const n = name.toLowerCase();
+  if (kind === "connection") return "Apps you connected";
   if (provider && Object.hasOwn(PROVIDER_GROUP, provider)) return PROVIDER_GROUP[provider];
   if (kind === "login" || kind === "card" || kind === "identity" || kind === "authenticator" || kind === "passkey") return "Logins";
   if (kind === "ssh-key") return "SSH keys";

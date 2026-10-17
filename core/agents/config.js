@@ -283,6 +283,22 @@ export function register(ctx, h) {
     },
   });
 
+  // Who can instruct an agent, for the Vault's share of a login with it (core/vault/member-share.js): only an agent the person may instruct (made it, or was given Can use or Can edit) can be lent a login, and the share
+  // sheet says who else can instruct it. Answers not_found for an agent the person may not instruct, the same as for one that does not exist.
+  ctx.tool("agents.instructors", {
+    internal: true,
+    description: "Whether the person on this call may instruct an agent, and who else can: { agent } -> { level, made_by, shares }. Only the vault module asks; an agent the person may not instruct is not found.",
+    input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+    run: async ({ agent }, meta) => {
+      if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module asks who can instruct an agent"), { code: "denied" });
+      const nope = () => Object.assign(new Error(`no agent named ${String(agent).slice(0, 60)}`), { code: "not_found" });
+      let a; try { a = h.must(agent); } catch { throw nope(); }
+      const level = await levelOf(meta, a);
+      if (level === "none") throw nope();
+      return { level, made_by: a.owner || null, shares: (await sharedWith(a).catch(() => [])).map((/** @type {any} */ g) => String(g.subject)) };
+    },
+  });
+
   ctx.tool("agents.used", {
     description: "Where an agent is used: its chats, and the flows that name it as a doer.",
     input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },

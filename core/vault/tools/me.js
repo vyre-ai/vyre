@@ -6,6 +6,8 @@
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
+import { ConnectionTokens } from "../connection-token.js";
+import { revokeAtVendor } from "../connection-revoke.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
 const PERSON_SURFACES = [...THE_SURFACES, "device", "web"];
@@ -39,13 +41,18 @@ export const ME_TOOLS = ["vault.me.account.create", "vault.me.account.unlock", "
   "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove"];
 
 /** Modules-only tools on a member's own vault (reach modules, never a person's surface or a model): the gate lets them through, each one resolves its person from the chain. */
-export const ME_MODULE_TOOLS = ["vault.me.release"];
+/** The two tools with which a member uses what the owner shared with her (registered in core/vault/request.js, beside vault.request, which they run through). */
+export const SHARED_ME_TOOLS = ["vault.me.vaults", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.share", "vault.me.connection.shares", "vault.me.connection.directory"];
+/** The surfaces a member's own session comes in through (a model's labels are not among them). */
+export const MEMBER_SURFACES = PERSON_SURFACES;
+
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
-export function register({ ctx, people, tool }) {
+export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   /** @param {(id: string, input: any, meta: any) => any} fn */
   const mine = fn => async (/** @type {any} */ input, /** @type {any} */ meta) => fn(await memberOf(ctx.kernel, meta), input || {}, meta);
 
@@ -85,7 +92,7 @@ export function register({ ctx, people, tool }) {
   tool("vault.me.store.put", STORE_CALLERS, "Write one entry of your own store.", obj({ key: str, value }, ["key", "value"]), storeOnly(async (id, i) => { await store(id).put(i.key, i.value); return { key: i.key, stored: true }; }));
   tool("vault.me.store.list", STORE_CALLERS, "Every entry of your own store.", obj({}), storeOnly(id => store(id).list()));
   tool("vault.me.store.remove", STORE_CALLERS, "Delete one entry of your own store.", obj({ key: str }, ["key"]), storeOnly(async (id, i) => ({ removed: await store(id).remove(i.key) })));
-  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine((id, i) => people.remove(id, i)),
+  tool("vault.me.remove", PERSON_SURFACES, "Delete an item of your own vault.", obj({ name: str }, ["name"]), mine(async (id, i) => { const conn = await people.service(id).has(String(i.name)).catch(() => false); const r = await people.remove(id, i); if (conn) await onRemoved(id, String(i.name)); return r; }),
     presence("Delete an item of your own vault", ({ name }) => `Delete ${String(name).slice(0, 64)} from your own vault`));
   // One field of one of the member's own items, handed to the module that uses it for her (files: her Dropbox token for a linked folder). Modules only (reach "modules", like vault.release), only the
   // module and item named here, and only for the one person in the call's chain: no `person` input, so the owner's vault and another member's are out of reach, and an agent's turn is refused.
@@ -102,6 +109,78 @@ export function register({ ctx, people, tool }) {
       const value = it.fields[String(input.field || "value")];
       if (typeof value !== "string" || !value) throw new Error(`no ${String(input.field || "value")} on ${input.name}`);
       return { person: id, value };
+    },
+  });
+  // Who is asking, for the modules that make a row for the asker (mcp.add): the Space owner, or the one member in the chain. Nothing else: an assistant in the chain, two people, an unreadable
+  // chain or a model's label all answer denied, so a caller that cannot be named is never treated as the owner. The person is the chain's, never the input's.
+  ctx.tool("vault.me.who", {
+    internal: true,
+    description: "Who this call is made for: { kind: \"owner\" } or { kind: \"member\", person }. Only the mcp and connectors modules ask.",
+    input: obj({}),
+    run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
+      if (!["module:mcp", "module:connectors"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const K = ctx.kernel;
+      let c;
+      try { c = await K.chain(meta || {}); } catch { throw Object.assign(new Error("who is asking could not be read"), { code: "denied" }); }
+      const hops = c && Array.isArray(c.hops) ? c.hops : [];
+      if (hops.some((/** @type {any} */ h) => h && h.actor && h.actor.kind !== "person")) throw Object.assign(new Error("an assistant is not a person: ask as yourself"), { code: "denied" });
+      const ids = [...new Set(hops.filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id)))];
+      if (ids.length !== 1) throw Object.assign(new Error("one person is asking, or none is"), { code: "denied" });
+      return String(K.owner) === ids[0] ? { kind: "owner" } : { kind: "member", person: ids[0] };
+    },
+  });
+
+  // The connectors module stores a finished sign-in as an item of kind "connection" in the vault of the person who signed in, never in the owner's and never for a person the input names. The person
+  // is the chain's; connected_by is set here from it, so a caller cannot label a connection as another person's. A new connection is made, an existing one of the same name is updated (a refresh).
+  const CONNECTION_KINDS = ["oauth", "bearer", "api_key"];
+  ctx.tool("vault.me.connect.put", {
+    internal: true,
+    description: "Store a connection (a finished app sign-in or a pasted token) in the signed-in member's own vault: { name, fields } -> { name, created }. Only the connectors module; the person is the call's chain.",
+    input: obj({ name: str, fields }, ["name", "fields"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:connectors") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const id = await memberOf(ctx.kernel, meta);
+      const f = input && input.fields;
+      if (!f || typeof f !== "object" || !CONNECTION_KINDS.includes(String(f.auth_kind))) throw Object.assign(new Error("a connection needs auth_kind: oauth, bearer or api_key"), { code: "bad_input" });
+      if (typeof f.server_url !== "string" || !/^https:\/\//.test(f.server_url)) throw Object.assign(new Error("a connection needs the https address of its server (server_url)"), { code: "bad_input" });
+      const fields = { ...f, connected_by: id };
+      const svc = people.service(id), name = String(input.name);
+      if (await svc.has(name)) {
+        const cur = await svc.get(name);
+        if (cur.fields.connected_by && cur.fields.connected_by !== id) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+      } else {
+        // A name an ordinary item of hers already has is refused (checked when her vault is open; a sealed-only call cannot see ordinary items, which the connection key does not open).
+        let clash = false;
+        try { clash = (await people.list(id, {})).items.some((/** @type {any} */ i) => i.name === name); } catch (e) { if (/** @type {any} */ (e).code !== "locked") throw e; }
+        if (clash) throw Object.assign(new Error("that name is not a connection of yours"), { code: "denied" });
+      }
+      return svc.put(name, `connection to ${new URL(f.server_url).host}`, fields);
+    },
+  });
+
+  // A person's app connection, for the MCP hub only: an access token for one connection in the OWNER'S vault, named by the hub row (never by a model), after a second check of who is asking
+  // (core/vault/connection-token.js). The refresh token stays here. The tool is not for a person's surface or a model.
+  const tokens = new ConnectionTokens({ people, kernel: () => ctx.kernel });
+  ctx.tool("vault.connection.token", {
+    internal: true,
+    description: "An access token for one person's app connection, for the MCP hub: { owner, connection, write? } -> { access_token, token_type, expires_at, resource }. Only the mcp module asks; the asker's chain is checked again.",
+    input: obj({ owner: str, connection: str, write: { type: "boolean" } }, ["owner", "connection"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      return tokens.token(input || {}, meta);
+    },
+  });
+  // The person took the connection away (the hub asks, after it checked they are the one who made it): tell the vendor to drop the token where the connection says how. Only the mcp module asks; nothing comes back but whether it was revoked.
+  ctx.tool("vault.connection.revoke", {
+    internal: true,
+    description: "Tell the vendor to revoke a person's connection token (RFC 7009), if the connection names a revocation address: { owner, connection } -> { revoked, why }. Only the mcp module asks, after it checked the caller made the connection.",
+    input: obj({ owner: str, connection: str }, ["owner", "connection"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:mcp") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const owner = String(input && input.owner || ""), name = String(input && input.connection || "");
+      if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(owner) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)) throw Object.assign(new Error("name the person and the connection"), { code: "bad_input" });
+      const out = await revokeAtVendor({ people }, { owner, connection: name });
+      return out;
     },
   });
 }

@@ -424,3 +424,30 @@ test("an added module cannot put a command or a vault environment in the hub, bu
   const mine = await v.cli("mcp.add", { name: "mine", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { GH_TOKEN: "gh-token" } });
   assert.ok(mine.data, JSON.stringify(mine));
 });
+
+test("mcp.catalog: a person searches the reviewed catalog and sees which entries are connected; a model is refused, and so is a model's mcp.repin", async t => {
+  const http = await startFakeMcpHttp(t, {});
+  const file = path.join(tempHome(t), "catalog.json");
+  const entry = (id, name, url, over = {}) => ({ id, name, vendor: "northwind.com", description: `${name} for the bakery`, category: "ops", url, transport: "http", auth: "none", headers: [], verified: true, basis: "test", sources: [], ...over });
+  fs.writeFileSync(file, JSON.stringify({ v: 1, generated: "2026-10-19", entries: [entry("com.northwind/notes", "Northwind Notes", http.url), entry("com.northwind/orders", "Northwind Orders", "https://orders.example.test/mcp", { auth: "unknown", verified: false }),
+    entry("com.notion/mcp", "Notion Official", "https://mcp.notion.com/mcp", { auth: "oauth", probe: { result: "dcr-advertised" }, verdict: "one-click" }),
+    entry("com.vendor/app", "Vendor App", "https://mcp.vendor-app.example.com/mcp", { auth: "oauth", probe: { result: "dcr-advertised" } })] }));
+  process.env.VYRE_CATALOG_TEST_FILE = "1";
+  t.after(() => { delete process.env.VYRE_CATALOG_TEST_FILE; });
+  const v = await vyred(t, { mcp: { catalog: file } });
+  const all = (await v.cli("mcp.catalog", {})).data;
+  assert.equal(all.total, 4);
+  assert.equal(all.generated, "2026-10-19");
+  const row = id => all.entries.find(e => e.id === id);
+  assert.equal(row("com.northwind/notes").oneClick, false, "verified but never probed");
+  assert.equal(row("com.northwind/orders").oneClick, false);
+  assert.deepEqual([row("com.notion/mcp").oneClick, row("com.notion/mcp").preset], [true, "notion"], "a curated preset already serves that address, so it connects with that one");
+  assert.equal(row("com.vendor/app").oneClick, true);
+  assert.match(row("com.vendor/app").preset, /^x-vendor-app-[0-9a-f]{4}$/, "a made preset for an address no curated preset serves");
+  assert.equal((await v.cli("mcp.add", { name: "notes", transport: "http", url: http.url })).data.test.ok, true);
+  assert.deepEqual((await v.cli("mcp.catalog", { connected: true })).data.entries.map(e => e.id), ["com.northwind/notes"]);
+  assert.deepEqual((await v.cli("mcp.catalog", { query: "orders" })).data.entries.map(e => e.id), ["com.northwind/orders"]);
+  assert.ok((await v.agent("kit", "t-1")("mcp.catalog", {})).error, "an agent does not browse the catalog");
+  assert.ok((await v.agent("kit", "t-1")("mcp.repin", { name: "notes", seen: "0123456789ab" })).error, "an agent never approves changed tool text");
+  assert.ok((await v.session("t-1")("mcp.repin", { name: "notes", seen: "0123456789ab" })).error, "nor does a person's Claude session");
+});

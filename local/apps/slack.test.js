@@ -170,9 +170,10 @@ test("slack: words to a held message, nothing sent until the person approves, th
   assert.equal(held.said, "Slack → #general: the ovens are in · waiting for your approval");
   assert.deepEqual(lines(), [], "a held message reached Slack before approval");
 
-  // What the person proves against names the channel and the words, not a blank.
+  // What the person proves against is a fixed line: the prompt is shown before the call is checked, so it says nothing of any item (the words are in the held card the person reads).
   const def = /** @type {any} */ (d.registry).tools.get("gate.approve");
-  assert.equal(await def.presence.summary({ id: held.held.id }), 'Send send via mcp:slack to C0001GENERAL: "the ovens are in"');
+  assert.equal(await def.presence.summary({ id: held.held.id }), "Approve something held at the Gate");
+  assert.equal(await def.presence.summary({ id: "no-such-item" }), "Approve something held at the Gate", "an id that does not exist reads the same");
 
   const out = await capsule("gate.approve", { id: held.held.id });
   assert.equal(out.data && out.data.state, "sent", JSON.stringify(out));
