@@ -60,8 +60,8 @@ export async function adoptServer(paired, o) {
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(o.ticket);
     const mark = o.typed ? { typed_tag: tag } : { tag };
-    // The server answers the first call at once (it only starts the ask and sends its nonce). One that never answers is a server that is stuck, not one waiting for a person: say so after a minute.
-    const FIRST_MS = o.firstAdoptMs ?? 60_000;
+    // The server answers the first call at once (it only starts the ask and sends its nonce). One that never answers is a server that is stuck, not one waiting for a person: say so after two minutes (the directory it asks can be out of reach for about a minute).
+    const FIRST_MS = o.firstAdoptMs ?? 120_000;
     /** @type {any} */ let firstTimer;
     const first = await Promise.race([
       adopt({ ...base, pairing: { commit, ...mark } }),
