@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.5.4
+
+- release: 0.5.4 carries all of 0.5.3, which was tagged but never published because its first-run install proof ran in a Chromium 130 with no Ed25519 in WebCrypto; that was a bug in the proof, not in the app. The proof now uses a Chromium that has Ed25519, checks for it, waits longer for the identity with its timing, and the Mac proof presses the switch by its label. Version 0.5.4 in package.json, package-lock.json and the Claude Code plugin manifest (scripts/bump-version.mjs). The v0.5.3 tag stays.
+
 ## 0.5.3
 
 Release summary (the plain-words version is release/notes/0.5.3.md): a new first run on the web, the Mac app and the Windows app (identity with a master password and recovery key, then one install command that pairs the server by itself); sign in from any device with the space address, username and master password, or GitHub; usernames at vyre.run/u/name and invite links at vyre.run/i/token; a card on your other devices for each new sign-in, with Not me; the app on the web at web.vyre.run; run on your own computer (Settings, Computer: Always allow, Ask, Never), with group chats always on the server; Tailscale removed from the Mac's outbound path and the vault passes; security fixes to pairing, the vault, GitHub linking and chat; the old typed-code, four-words, Solo and Install flows removed. The entries below are the changes themselves.
