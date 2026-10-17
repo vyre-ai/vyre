@@ -24,6 +24,7 @@ import { COVERED } from "../../lib/covered.js";
 import { personOnChain, mayHandle, fromModule } from "./requester.js";
 import { chainPerson } from "../../lib/member-scope.js";
 import { inputHash } from "../presence/index.js";
+import { roleAtLeast } from "../../lib/spaces/members.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -409,7 +410,7 @@ export default {
         const via = i.via ? String(i.via) : "";
         if (via && !(await K.mayUseConnection(person, via))) throw Object.assign(new Error("you cannot use that connection yourself, so you cannot let an agent use it: ask the owner to share it with you first"), { code: "denied" });
         // a member (not an owner or admin) gives one only for their own mailbox or a connection they hold, never for the Space's own sender or for "any"
-        if (!["owner", "admin"].includes(K.roleOf(person)) && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
+        if (!roleAtLeast(K.roleOf(person), "admin") && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
         if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)} (agents.list shows the agents you can instruct)`), { code: "not_found" });
@@ -425,7 +426,7 @@ export default {
         const K = needK();
         // the one person on the verified chain (lib/member-scope.js); a member sees only the permissions they gave, staff see all
         const me = (await chainPerson(K, meta)) || "";
-        const staff = ["owner", "admin"].includes(K.roleOf(me));
+        const staff = roleAtLeast(K.roleOf(me), "admin");
         const rows = (await K.mint.list({ source: "gate:standing:" })).filter((/** @type {any} */ g) => !i.agent || String(g.source).split(":")[2] === String(i.agent));
         const out = [];
         for (const g of rows) {

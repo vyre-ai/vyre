@@ -151,7 +151,7 @@ export default {
     /** An agent's send in a member's turn is held at that member's own Gate, showing the address it leaves from; the owner never sees or approves it. @param {any} acct @param {string[]} to @param {any} content @param {any} input */
     const holdForMember = async (acct, to, content, input, meta) => {
       if (!(await actingPerson(ctx.kernel, meta))) throw fail("there is no person behind this call, so there is no mailbox to send from", "denied");
-      const r = await ctx.call("gate.request", { kind: "send", via: `microsoft:${acct.name}`, to, content: { from: acct.mailbox, ...content }, ...(typeof input.why === "string" && input.why.trim() ? { why: input.why.trim().slice(0, 1000) } : {}) });
+      const r = await ctx.call("gate.request", { kind: "send", via: `microsoft:${acct.name}`, to, content: { from: acct.mailbox, ...content }, ...(meta.agent ? { agent: String(meta.agent) } : {}), ...(meta.thread ? { thread: String(meta.thread) } : {}), ...(typeof input.why === "string" && input.why.trim() ? { why: input.why.trim().slice(0, 1000) } : {}) }, { relay: true });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data;
     };
