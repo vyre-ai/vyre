@@ -20,7 +20,7 @@ const EXTS = [".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json"];
 /** Every change here runs every test. */
 const EVERYTHING = [/(^|\/)package(-lock)?\.json$/, /^\.github\/(workflows|actions)\//, /^kernel\/core\//, /^core\/modules\//, /^scripts\/(test-counts|mac-test-guard|ci-select)\./, /^test\/(helpers\.js|must-run\.json|test-counts\.json|tmp-guard\.mjs)$/, /^\.nvmrc$/, /(^|\/)tsconfig[^/]*\.json$/];
 /** Changes that run no test of their own: notes, plans and the team's files. */
-const INERT = [/^team\//, /^release\/notes\//, /\.md$/, /^LICENSE/, /^\.gitignore$/];
+const INERT = [/^test\/test-timings\.json$/, /^team\//, /^release\/notes\//, /\.md$/, /^LICENSE/, /^\.gitignore$/];
 /** The generated docs and what they are generated from: their one check. */
 const DOCS = [/^docs\//, /(^|\/)module\.json$/];
 /** A change that can differ on Windows: the files test:windows and windows-socket-acl cover. */

@@ -73,7 +73,7 @@ test("windows authenticode: a signed installer is verified, and a missing secret
 
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/lumen-win\.yml/);
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android, first-run\]/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac, android, first-run, node, pictures\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
@@ -214,7 +214,10 @@ test("release.yml: a tag that already has a release is refused in prepare before
 });
 
 test("release.yml: the Android APK is built in this run, checked, required in dist under both names, and the notes say it is sideloaded", () => {
-  assert.match(yml, /\n  android:\n    needs: prepare\n/);
+  // The Android job starts with the run (it is the longest job and holds nothing that signs): it has no needs, takes its version from the tag, and the release job still needs prepare, which refuses a bad tag.
+  assert.match(yml, /\n  android:\n    runs-on: ubuntu-latest\n/);
+  assert.ok(!/\n  android:\n    needs:/.test(yml), "android waits for nothing");
+  assert.match(yml, /TAG: \$\{\{ github\.event_name == 'push' && github\.ref_name \|\| inputs\.tag \}\}\n        run: \|\n          VERSION=\$\{TAG#v\}/, "its version is the tag's, the same expression prepare uses");
   const job = yml.slice(yml.indexOf("\n  android:\n"), yml.indexOf("\n  # Join the per-arch digests"));
   assert.match(job, /assembleRelease/);
   assert.ok(!/secrets\./.test(job) && !/environment:/.test(job), "the Android job holds no secret and no environment");
@@ -225,4 +228,17 @@ test("release.yml: the Android APK is built in this run, checked, required in di
   const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(step, /refusing to release without it/);
   assert.match(step, /sideload/);
+});
+
+test("release.yml: the whole node suite and the pictures run in this run beside the builds, start at once with no secret, and a release is not published unless both passed", () => {
+  for (const [name, file] of [["node", "node.yml"], ["pictures", "design-pictures.yml"]]) {
+    assert.match(yml, new RegExp(`\\n  ${name}:\\n    uses: \\./\\.github/workflows/${file.replace(".", "\\.")}\\n    permissions:\\n      contents: read\\n`), `${name} is a plain call with read-only contents, no needs, no secrets`);
+    const called = fs.readFileSync(path.join(REPO, ".github/workflows", file), "utf8");
+    assert.match(called, /\n  workflow_call:/, `${file} can be called`);
+  }
+  assert.ok(!/\n  node:\n    needs:/.test(yml) && !/\n  pictures:\n    needs:/.test(yml), "they wait for nothing");
+  const releaseIf = yml.slice(yml.indexOf("\n  release:\n"), yml.indexOf("runs-on:", yml.indexOf("\n  release:\n")));
+  assert.match(releaseIf, /needs\.node\.result == 'success'/);
+  assert.match(releaseIf, /needs\.pictures\.result == 'success'/);
+  assert.ok(!/node\.result == 'skipped'|pictures\.result == 'skipped'/.test(releaseIf), "a skipped check blocks the release");
 });

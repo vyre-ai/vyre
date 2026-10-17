@@ -343,6 +343,17 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
+  # The checks a release needs, started at once beside prepare and the builds, in the same run and on the same commit (not after them, and not as a second run to start by hand): the whole node suite (node.yml, Node 24, balanced
+  # shards) and the pictures (design-pictures.yml). `release` needs both, so a release is published as soon as everything is green, with nothing to re-run for the same commit.
+  node:
+    uses: ./.github/workflows/node.yml
+    permissions:
+      contents: read
+  pictures:
+    uses: ./.github/workflows/design-pictures.yml
+    permissions:
+      contents: read
+
   # The new first run, end to end on real machines with no vyred on the client (first-run-e2e.yml): identity, a space, the one install command run by the real installer on a Linux server (headless browser) and
   # on a Mac server (the Mac app built here and installed from a dmg); the server pairs to the creator and the app says Ready. A release is not published unless this passes.
   first-run:
@@ -382,8 +393,9 @@ jobs:
   # The Android app, as a release file: Vyre-android.apk and Vyre_<version>_android.apk. This job builds the app's release build, which Expo's template signs with its public debug key;
   # no secret and no release key is used here. It is sideloaded (installed from the file, not from a store). On a publish the release job (the one in the protected environment) signs it again
   # with Vyre's own Android key before it is listed in the signed SHA256SUMS, and check-release-dist.mjs --android-release refuses any APK not signed by the pinned release certificate.
+  # Starts with the run, not after prepare: it holds no secret and signs nothing here, and it needs only the version, which is the tag (prepare checks the tag and package.json agree, and `release` needs prepare, so a
+  # wrong tag still publishes nothing). It was the longest job of v0.5.1 (23 of the run's 47 minutes), so it was the critical path; Gradle's caches are kept between releases.
   android:
-    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -399,16 +411,21 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
+          cache-dependency-path: |
+            apps/app/package-lock.json
+            apps/app/app.json
       - name: "Build the release APK (no sample world: it talks to the person's own Vyre)"
         working-directory: apps/app
         env:
           EXPO_NO_TELEMETRY: "1"
-          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
         run: |
+          VERSION=${TAG#v}
           npm ci --no-audit --no-fund
           node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js"
           npx expo prebuild -p android --no-install --clean
-          (cd android && ./gradlew --no-daemon assembleRelease)
+          (cd android && ./gradlew --no-daemon --build-cache --parallel assembleRelease)
           apk=$(ls android/app/build/outputs/apk/release/*.apk | head -1)
           test -f "$apk" || { echo "no release APK"; ls -R android/app/build/outputs; exit 1; }
           mkdir -p dist-android
@@ -502,9 +519,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web, windows, mac, android, first-run]
+    needs: [prepare, images, manifests, app-web, windows, mac, android, first-run, node, pictures]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped') && needs.first-run.result == 'success'
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && needs.android.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped') && needs.first-run.result == 'success' && needs.node.result == 'success' && needs.pictures.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the

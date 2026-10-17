@@ -18,6 +18,8 @@ on:
       - "design-refs/**"
       - ".github/workflows/design-pictures.yml"
   workflow_dispatch:
+  # release.yml calls this beside the builds, so the pictures are checked in the same run as the release.
+  workflow_call:
 permissions:
   contents: read
 concurrency:

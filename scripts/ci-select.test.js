@@ -54,8 +54,8 @@ test("a file that more than a third of the tests reach picks all, one just under
 });
 
 test("notes run nothing; the generated docs and module manifests run the docs check alone", () => {
-  const t = { ...base(), "test/docs-check.test.js": "", "docs/reference/tools.md": "", "core/x/module.json": "{}", "team/0.5.3/host53.md": "", "README.md": "" };
-  assert.deepEqual(pick(t, ["team/0.5.3/host53.md", "README.md"]).files, []);
+  const t = { ...base(), "test/docs-check.test.js": "", "docs/reference/tools.md": "", "core/x/module.json": "{}", "team/0.5.3/host53.md": "", "README.md": "", "test/test-timings.json": "{}" };
+  assert.deepEqual(pick(t, ["team/0.5.3/host53.md", "README.md", "test/test-timings.json"]), { all: false, files: [], docs: false, windows: false, why: [], uncovered: [] }, "the shard weights move no test");
   for (const f of ["docs/reference/tools.md", "core/x/module.json"]) {
     const r = pick(t, [f]);
     assert.deepEqual([r.all, r.files, r.docs], [false, ["test/docs-check.test.js"], true], f);
