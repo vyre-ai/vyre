@@ -26,8 +26,12 @@ export async function spacePorts(): Promise<SpacePorts> {
       const { loadPairings } = await import("../api/relay");
       const before = new Set(Object.keys((await loadPairings()).items));
       const session = serverSession(code, undefined, { ...(ctx && ctx.pageKey ? { pageKey: ctx.pageKey } : {}), addAnother: true, identity: who as PairIdentity });
+      const step = (what: string) => { try { console.info(`vyre:stage step ${what}`); } catch { /* no console */ } };
+      step("pair: waiting for the three words");
       await session.ready!();
+      step("pair: words seen, waiting for the server to record this identity");
       await session.confirm();
+      step("pair: server recorded this identity");
       // The pairing this call made is the one that was not there before.
       const made = Object.values((await loadPairings()).items).find((p) => !before.has(p.box)) || null;
       return made ? { box: made.box, route: made.route, relay: made.relay, name: String(made.name || "") } : null;
