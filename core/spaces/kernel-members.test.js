@@ -96,3 +96,17 @@ test("invites.revoke and invites.list go to the kernel when it offers them, and 
   await assert.rejects(old.invites.revoke(k, "inv_a"), e => e.code === "unavailable" && /cannot cancel/.test(e.message));
   await assert.rejects(old.invites.list(k), e => e.code === "unavailable");
 });
+
+import { kernelTeamSpaces } from "./kernel-members.js";
+test("kernelTeamSpaces: the home's own Space is listed only when asked for with `home` and only for a member of it; a non-member and the default get none", async () => {
+  const OWNER = "per_owner", STRANGER = "per_stranger", HOME = "spc_home";
+  const K = { space: HOME, spaces: { list: () => [], describe: (/** @type {string} */ id) => (id === HOME ? { name: "tess" } : null) }, membership: async (/** @type {string} */ p, /** @type {string} */ id) => ({ member: id === HOME && p === OWNER }) };
+  assert.deepEqual(await kernelTeamSpaces(K, OWNER), [], "by default the home stays out, as in spaces.list");
+  assert.deepEqual((await kernelTeamSpaces(K, OWNER, { home: true })).map(s => [s.space, s.name]), [[HOME, "tess.vyre.run"]], "a one-Space install: the owner's only Space is the home, and it is listed by name");
+  assert.deepEqual(await kernelTeamSpaces(K, STRANGER, { home: true }), [], "a non-member of the home gets none even when asked");
+  assert.deepEqual(await kernelTeamSpaces(K, OWNER, { home: false }), []);
+  // a hosted team Space is listed as before, with or without `home`
+  const K2 = { ...K, spaces: { list: () => ["spc_team"], describe: () => null }, membership: async () => ({ member: true }) };
+  assert.deepEqual((await kernelTeamSpaces(K2, OWNER)).map(s => s.space), ["spc_team"]);
+  assert.deepEqual((await kernelTeamSpaces(K2, OWNER, { home: true })).map(s => s.space).sort(), ["spc_home", "spc_team"].sort());
+});

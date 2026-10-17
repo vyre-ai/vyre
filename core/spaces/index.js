@@ -2307,11 +2307,11 @@ export default {
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
       return { person: s.id, space: row ? { id: row.id, name: row.name } : null, spaces: mine.map(r => ({ id: r.id, name: r.name })) };
     }, { internal: true });
-    tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
+    tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str, home: { type: "boolean", description: "also list the home's own Space when the person is a member of it" } }, ["person"]), async i => {
       const p = String(i.person);
       const mineList = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === p || await membershipRow(r.id, p))) mineList.push({ space: r.id, name: r.name, color: null, link: `https://${r.name}` });
-      return { spaces: [...mineList, ...(await kernelTeamSpaces(K, p)).filter(k => !mineList.some(x => x.space === k.space))] };   // the kernel's own team Spaces too (a server has no rows of its own)
+      return { spaces: [...mineList, ...(await kernelTeamSpaces(K, p, { home: i.home === true })).filter(k => !mineList.some(x => x.space === k.space))] };   // the kernel's own team Spaces too (a server has no rows of its own)
     }, { internal: true });
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
