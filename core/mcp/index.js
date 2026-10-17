@@ -80,6 +80,10 @@ export default {
         const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
         return a ? a.projects : [];
       },
+      // A person's connection is used by whoever the Vault says holds its item; the call inherits the turn's chain, so the Vault reads the caller from the kernel.
+      // The access token for a person's connection, asked of the Vault at the moment of the request: the call inherits the turn, so the Vault checks the asker again. Only the short-lived token comes back.
+      connectionToken: async c => { const r = await ctx.call("vault.connection.token", c); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
         return (t.data && t.data.thread && t.data.thread.project) || null;
@@ -123,7 +127,17 @@ export default {
       description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } (none means you and the assistant only; a named agent needs a scope that names it, or a #tag on its thread) and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
-      run: (input, meta) => { refuseNonPerson(meta, "adds an MCP server"); refuseProcess(input, meta); return hub.add(input); },
+      run: async (input, meta) => {
+        refuseNonPerson(meta, "adds an MCP server");
+        refuseProcess(input, meta);
+        // A server a member adds is HER row: the owner is the person in the verified chain (the Vault names them), never anything in the input. A call that carries a claim and cannot be named is refused,
+        // not treated as the Space owner's; a call with no claim at all (the home's own work) is the Space's, as before.
+        const claims = Boolean(meta && (typeof meta.token === "string" || (meta.kernelFacts && typeof meta.kernelFacts === "object")));
+        if (!claims) return hub.add(input);
+        const w = await ctx.call("vault.me.who", {}, { relay: true });
+        if (w.error) throw Object.assign(new Error(w.error.message), { code: w.error.code || "denied" });
+        return w.data && w.data.kind === "member" ? hub.add(input, { owner: w.data.person }) : hub.add(input);
+      },
     });
 
     // A team member's own servers ("Your accounts"): kept in THEIR personal vault, for the person the kernel names for the call, never one the input names. A member's call arrives here with its token

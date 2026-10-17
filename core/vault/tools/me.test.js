@@ -8,6 +8,9 @@ import path from "node:path";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { TEST_KDF } from "../testing.js";
 import { PeopleVaults } from "../people.js";
+import { ConnectionTokens } from "../connection-token.js";
+import { openConnectionKey, wrapPath } from "../people-seal.js";
+import { openItemV2 } from "../crypto.js";
 import { gateTools, MEMBER_ALLOWED, MEMBER_REFUSAL } from "../member-gate.js";
 import { register, ME_TOOLS, ME_MODULE_TOOLS, memberOf, ME_REFUSAL } from "./me.js";
 
@@ -15,12 +18,12 @@ const OWNER = "per_" + "o".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per
 const PW = "a long master password";
 const hop = (/** @type {string} */ kind, /** @type {string} */ id) => ({ actor: { kind, id } });
 
-function rig(/** @type {import("node:test").TestContext} */ t) {
+function rig(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ kernelExtra = {}, /** @type {any} */ peopleExtra = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-me-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF });
+  const people = new PeopleVaults({ dir: home, testKdf: TEST_KDF, ...peopleExtra });
   t.after(() => people.close());
-  const kernel = { owner: OWNER, hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) };
+  const kernel = { owner: OWNER, space: "spc_aaaaaaaaaaaa", hasOtherMembers: async () => true, chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }), ...kernelExtra };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = gateTools({ kernel, tool: (/** @type {string} */ n, /** @type {any} */ d) => reg.set(n, d) });
   register({ ctx, people, tool: (n, callers, description, input, run) => ctx.tool(n, { description, input, callers, run }) });
@@ -31,8 +34,12 @@ function rig(/** @type {import("node:test").TestContext} */ t) {
     const meta = { caller: "device:abcdefghijklmnop", token: "t", hops: who ? [hop("person", who)] : [], ...extra };
     try { return { data: await reg.get(name).run(input, meta) }; } catch (e) { return { error: /** @type {any} */ (e) }; }
   };
-  return { call, reg, people };
+  return { call, reg, people, home };
 }
+
+/** A connection made the one way it can be: the connectors module, for the person in the chain. */
+const SRV = "https://mcp.example.test/mcp";
+const conn = (/** @type {any} */ call, /** @type {string} */ name, /** @type {any} */ fields, /** @type {string} */ who) => call("vault.me.connect.put", { name, fields: { server_url: SRV, ...fields } }, who, { caller: "module:connectors" });
 
 test("the gate lets through exactly the vault.me.* names, and every one is registered", async t => {
   const { reg } = rig(t);
@@ -143,4 +150,164 @@ test("vault.me.release hands her Dropbox token to the files module only, for the
   // a locked vault answers locked, never a value
   people.lock(BOB);
   assert.equal((await asFiles({ name: "dropbox" }, BOB)).error.code, "locked");
+});
+
+test("vault.connection.token: the hub gets a short-lived token for the owner's connection, after a second check of who is asking; the refresh token never leaves", async t => {
+  const asked = [];
+  const { call, people } = rig(t, { authorize: async (/** @type {any} */ q) => { asked.push(q); const ok = q.chain.hops.some((/** @type {any} */ h) => h.actor.id === EVE) && q.action === "vault.read"; return { effect: ok ? "allow" : "deny" }; } });
+  await call("vault.me.account.create", { password: PW }, BOB);
+  const future = String(Date.now() + 3_600_000);
+  await conn(call, "clio", { auth_kind: "oauth", client_id: "c", token_uri: "https://auth.example.test/token", refresh_token: "REFRESH-SECRET-0001", access_token: "ACCESS-0001-abcdefghij", expires_at: future, resource: "https://mcp.example.test/mcp" }, BOB);
+  await conn(call, "pit", { auth_kind: "bearer", token: "PIT-TOKEN-0001-abcdefghij" }, BOB);
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
+  const hub = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.connection.token", input, who, { caller: "module:mcp", ...extra });
+  // the owner of the connection, alone in the chain: the stored access token, never the refresh token
+  const own = (await hub({ owner: BOB, connection: "clio" }, BOB)).data;
+  assert.equal(own.access_token, "ACCESS-0001-abcdefghij"); assert.equal(own.token_type, "Bearer"); assert.equal(own.resource, "https://mcp.example.test/mcp");
+  assert.ok(!JSON.stringify(own).includes("REFRESH-SECRET"), "the refresh token never leaves");
+  assert.equal((await hub({ owner: BOB, connection: "pit" }, BOB)).data.access_token, "PIT-TOKEN-0001-abcdefghij");
+  // only the mcp module asks
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.connection.token", { owner: BOB, connection: "clio" }, BOB, { caller })).error?.code, "denied", caller);
+  // a colleague is asked of the kernel: allowed only with a grant for a read; a write needs vault.call
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, EVE)).data.access_token, "ACCESS-0001-abcdefghij");
+  assert.equal(asked.at(-1).resource, "vyre://spc_aaaaaaaaaaaa/vault/" + BOB + "/item/clio");
+  assert.equal((await hub({ owner: BOB, connection: "clio", write: true }, EVE)).error.code, "denied");
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, "per_" + "z".repeat(26))).error.code, "denied");
+  // an assistant acting for the owner is not the owner alone: it needs a grant too
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+  // not a connection, no such one, the Space owner, a bad name
+  assert.equal((await hub({ owner: BOB, connection: "claude" }, BOB)).error.code, "not_found");
+  assert.match((await hub({ owner: BOB, connection: "nope" }, BOB)).error.message, /no item named nope/);
+  assert.equal((await hub({ owner: OWNER, connection: "clio" }, OWNER)).error.code, "denied");
+  assert.equal((await hub({ owner: "bob", connection: "clio" }, BOB)).error.code, "bad_input");
+  // a locked vault answers locked, never a value
+  people.lock(BOB);
+  assert.equal((await hub({ owner: BOB, connection: "clio" }, BOB)).error.code, "locked");
+});
+
+test("sealed server copy: a connection keeps working while its owner is locked, the person's own vault does not, and no plaintext key is written", async t => {
+  const sealRoot = fs.mkdtempSync(path.join(SCRATCH, "vyre-seal-"));
+  t.after(() => fs.rmSync(sealRoot, { recursive: true, force: true }));
+  const { call, people, home } = rig(t, {}, { sealRoot });
+  const made = await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  await conn(call, "clio", { auth_kind: "oauth", client_id: "c", token_uri: "https://auth.example.test/token", refresh_token: "REFRESH-OLD-0001", access_token: "ACCESS-OLD-0001-abcdefghij", expires_at: String(Date.now() - 1000), resource: "https://mcp.example.test/mcp" }, BOB);
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob-private" } }, BOB);
+  await conn(call, "evepit", { auth_kind: "bearer", token: "EVE-PIT-0001-abcdefghij" }, EVE);
+  let posted = 0;
+  const fetch = async (/** @type {string} */ _u, /** @type {any} */ o) => { posted++; assert.match(String(o.body), /refresh_token=REFRESH-OLD-0001/); return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: "ACCESS-NEW-0002-abcdefghij", refresh_token: "REFRESH-NEW-0002", expires_in: 3600 }) }; };
+  const tokens = new ConnectionTokens({ people, kernel: { owner: OWNER, space: "spc_aaaaaaaaaaaa", chain: async (/** @type {any} */ m) => ({ hops: m.hops || [] }) }, fetch });
+  const asBob = { caller: "module:mcp", hops: [hop("person", BOB)] };
+  // nobody is unlocked now
+  people.lock(BOB); people.lock(EVE);
+  assert.equal((await call("vault.me.get", { name: "claude" }, BOB)).error.code, "locked", "her own vault still needs the master password");
+  assert.equal((await call("vault.me.get", { name: "clio" }, BOB)).error.code, "locked");
+  // the hub's token tool still refreshes through the sealed copy, and saves the rotated refresh token
+  const r = await tokens.token({ owner: BOB, connection: "clio" }, asBob);
+  assert.equal(r.access_token, "ACCESS-NEW-0002-abcdefghij"); assert.equal(posted, 1);
+  assert.ok(!JSON.stringify(r).includes("REFRESH"), "no refresh token leaves");
+  await call("vault.me.account.unlock", { password: PW, secretKey: made.data.secretKey }, BOB);
+  assert.equal((await people.service(BOB).get("clio")).fields.refresh_token, "REFRESH-NEW-0002", "the rotation was saved to the item");
+  people.lock(BOB);
+  // only connection items open this way: a note or an AI sign-in is refused, a locked vault with no seal is locked
+  await assert.rejects(() => tokens.token({ owner: BOB, connection: "claude" }, asBob), { code: "not_found" });
+  await assert.rejects(() => people.service(BOB).get("claude"), { code: "not_found" });
+  // the seal is bound to the person: Bob's wrap moved to Eve's place opens nothing
+  const bobFile = wrapPath(sealRoot, BOB), eveFile = wrapPath(sealRoot, EVE);
+  assert.ok(fs.existsSync(bobFile) && fs.existsSync(eveFile));
+  assert.notEqual(openConnectionKey(sealRoot, BOB), null);
+  const keep = fs.readFileSync(eveFile);
+  fs.copyFileSync(bobFile, eveFile);
+  assert.equal(openConnectionKey(sealRoot, EVE), null, "a wrap moved to another person's place opens nothing");
+  fs.writeFileSync(eveFile, keep);
+  // no plaintext copy of any key under the state folder: scan every file for the raw key bytes of the unlocked vault
+  await call("vault.me.account.unlock", { password: PW, secretKey: made.data.secretKey }, BOB);
+  const dump = (/** @type {string} */ d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? dump(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const raw = people.slot(BOB).vault.pvk.export();
+  assert.equal(raw.length, 32);
+  const ckRaw = openConnectionKey(sealRoot, BOB).export();
+  for (const f of [...dump(sealRoot), ...dump(home)]) { assert.ok(!fs.readFileSync(f).includes(raw), `${f} holds the raw vault key`); assert.ok(!fs.readFileSync(f).includes(ckRaw), `${f} holds the raw connection key`); }
+  // leaving the Space removes the seal
+  people.destroy(BOB);
+  assert.equal(openConnectionKey(sealRoot, BOB), null);
+  await assert.rejects(() => tokens.token({ owner: BOB, connection: "clio" }, asBob), { code: "locked" });
+});
+
+test("vault.me.connect.put: the connectors module stores a sign-in in the signing-in member's own vault, labelled by the chain, never by the input", async t => {
+  const { call, people } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.account.create", { password: PW }, EVE);
+  const put = (/** @type {any} */ input, /** @type {string | null} */ who, /** @type {any} */ extra = {}) => call("vault.me.connect.put", input, who, { caller: "module:connectors", ...extra });
+  const f = { auth_kind: "oauth", server_url: "https://mcp.example.test/mcp", client_id: "c", refresh_token: "R1", token_uri: "https://auth.example.test/token" };
+  assert.equal((await put({ name: "clio", fields: { ...f, connected_by: EVE } }, BOB)).data.created, true);
+  const got = (await call("vault.me.get", { name: "clio" }, BOB)).data;
+  assert.equal(got.kind, "connection"); assert.equal(got.fields.connected_by, BOB, "connected_by is the chain's person, not the input's");
+  assert.deepEqual(Object.keys(got.fields).sort(), ["auth_kind", "connected_by", "server_url"], "the person sees what it connects to and never a token");
+  assert.equal((await call("vault.me.get", { name: "clio" }, EVE)).error.message, "no item named clio", "nothing lands in another person's vault");
+  assert.equal((await put({ name: "clio", fields: { ...f, refresh_token: "R2" } }, BOB)).data.created, false, "a second sign-in updates it");
+  assert.equal((await people.service(BOB).get("clio")).fields.refresh_token, "R2");
+  for (const caller of ["module:mcp", "module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await call("vault.me.connect.put", { name: "x", fields: f }, BOB, { caller })).error?.code, "denied", caller);
+  assert.equal((await put({ name: "x", fields: { ...f, auth_kind: "magic" } }, BOB)).error.code, "bad_input");
+  assert.equal((await put({ name: "x", fields: { ...f, server_url: "http://plain.example.test" } }, BOB)).error.code, "bad_input");
+  await call("vault.me.put", { name: "claude", fields: { token: "sk-bob" } }, BOB);
+  assert.equal((await put({ name: "claude", fields: f }, BOB)).error.code, "denied", "it never overwrites an item that is not a connection");
+  assert.equal((await put({ name: "clio", fields: f }, OWNER)).error.message, ME_REFUSAL, "the owner's connections stay in the owner's vault");
+  assert.equal((await put({ name: "clio", fields: f }, BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
+});
+
+test("a connection is made only by connect.put: the general tools cannot create, edit or read the secret of one", async t => {
+  const { call } = rig(t);
+  await call("vault.me.account.create", { password: PW }, BOB);
+  assert.equal((await call("vault.me.put", { name: "forged", kind: "connection", fields: { auth_kind: "oauth", token_uri: "https://evil.example.test/token", connected_by: EVE } }, BOB)).error.code, "denied");
+  await conn(call, "clio", { auth_kind: "bearer", token: "TOKEN-SECRET-0001" }, BOB);
+  assert.equal((await call("vault.me.update", { name: "clio", fields: { token_uri: "https://evil.example.test/token" } }, BOB)).error.code, "denied");
+  assert.ok(!JSON.stringify((await call("vault.me.get", { name: "clio" }, BOB)).data).includes("TOKEN-SECRET"));
+  assert.ok((await call("vault.me.list", {}, BOB)).data.items.some((/** @type {any} */ i) => i.name === "clio" && i.kind === "connection"), "it is listed");
+  assert.equal((await call("vault.me.remove", { name: "clio" }, BOB)).data.removed, "clio", "the person can remove it");
+  assert.match((await call("vault.me.get", { name: "clio" }, BOB)).error.message, /no item named clio/);
+});
+
+test("the sealed key is a connection key: by cryptography it opens connection items and nothing else in the vault; reset rotates it", async t => {
+  const sealRoot = fs.mkdtempSync(path.join(SCRATCH, "vyre-seal2-"));
+  t.after(() => fs.rmSync(sealRoot, { recursive: true, force: true }));
+  const { call, people } = rig(t, {}, { sealRoot });
+  await call("vault.me.account.create", { password: PW }, BOB);
+  await call("vault.me.put", { name: "claude", kind: "ai-signin", fields: { token: "sk-bob-private" } }, BOB);
+  await conn(call, "clio", { auth_kind: "bearer", token: "CONN-TOKEN-0001-abcdefghij" }, BOB);
+  const sealed = openConnectionKey(sealRoot, BOB);
+  assert.ok(sealed, "the server holds a key");
+  const list = (/** @type {string} */ d) => fs.readdirSync(d).filter(f => f.endsWith(".json"));
+  const folder = people.folder(BOB);
+  const open = (/** @type {any} */ k, /** @type {string} */ dir, /** @type {any} */ at, /** @type {string} */ f) => openItemV2(k, at(BOB, f.slice(0, -5)), JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+  const [conF] = list(people.connDir(BOB)), [ordF] = list(people.itemDir(BOB));
+  assert.equal(open(sealed, people.connDir(BOB), people.atConn.bind(people), conF).fields.token, "CONN-TOKEN-0001-abcdefghij", "the sealed key opens the connection");
+  assert.throws(() => open(sealed, people.itemDir(BOB), people.at.bind(people), ordF), "the sealed key cannot open an ordinary item");
+  assert.throws(() => openItemV2(sealed, people.at(BOB, "ck"), JSON.parse(fs.readFileSync(path.join(folder, "ck.json"), "utf8"))), "nor the file that holds the connection key");
+  assert.ok(!fs.readFileSync(path.join(people.itemDir(BOB), ordF), "utf8").includes("sk-bob-private"));
+  // the service reads connections only
+  await assert.rejects(() => people.service(BOB).get("claude"), { code: "not_found" });
+  await assert.rejects(() => people.service(BOB).update("claude", { token: "x" }), { code: "not_found" });
+  // a reset rotates the connection key: the old sealed key opens nothing, the new one does, and the connection still works
+  people.rotateConnectionKey(BOB, people.slot(BOB));
+  const fresh = openConnectionKey(sealRoot, BOB);
+  assert.throws(() => open(sealed, people.connDir(BOB), people.atConn.bind(people), conF), "the old key opens nothing now");
+  assert.equal(open(fresh, people.connDir(BOB), people.atConn.bind(people), conF).fields.token, "CONN-TOKEN-0001-abcdefghij");
+  people.lock(BOB);
+  assert.equal((await people.service(BOB).get("clio")).fields.token, "CONN-TOKEN-0001-abcdefghij", "still served from the sealed copy while locked");
+  // leaving removes the seal
+  people.destroy(BOB);
+  assert.equal(openConnectionKey(sealRoot, BOB), null);
+});
+
+test("vault.me.who names the owner or the one member in the chain, to the mcp and connectors modules only, and refuses what it cannot name", async t => {
+  const { call } = rig(t);
+  const who = (/** @type {string | null} */ p, /** @type {any} */ extra = {}) => call("vault.me.who", {}, p, { caller: "module:mcp", ...extra });
+  assert.deepEqual((await who(BOB)).data, { kind: "member", person: BOB });
+  assert.deepEqual((await who(OWNER)).data, { kind: "owner" });
+  assert.deepEqual((await who(BOB, { caller: "module:connectors" })).data, { kind: "member", person: BOB });
+  assert.deepEqual((await who(BOB, { hops: [hop("person", BOB)], person: EVE })).data, { kind: "member", person: BOB }, "a person field changes nothing");
+  for (const caller of ["module:files", "cli", "device:abcdef", "mcp", "mcp:agent:juno"]) assert.equal((await who(BOB, { caller })).error?.code, "denied", caller);
+  assert.equal((await who(null)).error.code, "denied");
+  assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("person", EVE)] })).error.code, "denied");
+  assert.equal((await who(BOB, { hops: [hop("person", BOB), hop("agent", "kit")] })).error.code, "denied");
 });
