@@ -81,7 +81,7 @@ This review applies to the servers in the Space's hub. The servers a member brin
 
 ## Removing an app connection
 
-Removing a connection takes it out of Vyre and discards what it was holding at the Gate. Vyre also tells the vendor to drop the token, but only when the vendor named a revocation address on its own sign-in origin (the token goes nowhere else). If the vendor named none, revoke the token in the app yourself, in its list of connected apps.
+Removing a connection takes it out of Vyre and discards what it was holding at the Gate. Vyre also tells the vendor to drop the token, but only when the vendor named a revocation address on its own sign-in origin (the token goes nowhere else). The answer to Disconnect says which happened. If the vendor named none, revoke the token in the app yourself, in its list of connected apps.
 
 ## Hold and approve a send
 
