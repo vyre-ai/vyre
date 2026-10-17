@@ -26,7 +26,7 @@ export async function kernelRig(o = {}) {
   const presence = { check: async () => null };
   const log = createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
-  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
+  const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true, approverHolds: (/** @type {string} */ p, /** @type {string} */ a, /** @type {string} */ r) => K.vault.personMay(p, a, r) });
   await gs.bootstrap({ owner: OWNER });
   for (const who of o.people || []) await gw.grants.setRole(owner(), { person: who, role: "member" }, { presence: { n: Math.random() } });
   const K = {
