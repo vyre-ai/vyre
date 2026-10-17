@@ -93,6 +93,7 @@ test("a Flow sends CC, BCC, a file from Files and a document its Documents step 
   await K.gateway.ask.decide(admin, card.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: card.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
   const failed = await finalState(run3);
   assert.equal(failed.state, "failed");
-  assert.match(JSON.stringify(failed), /Rota week 1\.pdf changed after you approved this message, so nothing was sent\. Approve it again\./);
+  // the registry binds the yes to exactly this call, attachments' hashes included: a file edited after the yes no longer matches it, and that refusal is the authority (the attachment's own "changed after you approved" text is for the Gate's release)
+  assert.match(JSON.stringify(failed), /needs the person's approval for exactly this call/);
   assert.equal(posted.length, 1, "nothing more went out");
 });

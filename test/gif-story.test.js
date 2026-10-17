@@ -371,7 +371,7 @@ test("a text goes out on one yes through the person's own Twilio item: connected
   const input = { via: "sms", to: "+15555550199", body: "Your hearing moved to Tuesday." };
   const dana = await w.d.kernel.gateway.records.create(w.chain, "contact", { name: "Dana Harlow", phone: "+15555550199" });
   const card = await approved(w, "comms.send", input);
-  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
+  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card, ...(await w.meta()) });   // the person's own client carries the person (comms relays the call to the mail module as them)
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   await until(() => posted.length === 1, "Twilio was asked for the text");
   assert.equal(posted[0].url, `https://api.twilio.com/2010-04-01/Accounts/AC${"a".repeat(32)}/Messages.json`);
@@ -396,7 +396,7 @@ test("an e-mail from comms.send reaches a real mail account on one yes: the acco
   assert.ok((accounts.accounts || accounts).length >= 1, `the account is there: ${JSON.stringify(accounts).slice(0, 300)}`);
   const input = { via: "email", to: "dana@harlow.test", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/1/abc" };
   const card = await approved(w, "comms.send", input);
-  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
+  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card, ...(await w.meta()) });   // the person's own client carries the person (comms relays the call to the mail module as them)
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   await until(() => fake.sent.length === 1, "the mail server received the message");
   assert.deepEqual(fake.sent[0].rcpt, ["dana@harlow.test"]);
@@ -422,7 +422,7 @@ test("an e-mail from comms.send reaches a firm's Gmail on one yes: the Google ac
   const input = { via: "email", to: "dana@harlowlegal.com", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123" };
   const dana = await w.d.kernel.gateway.records.create(w.chain, "contact", { name: "Dana Harlow", email: "dana@harlowlegal.com" });
   const card = await approved(w, "comms.send", input);
-  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
+  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card, ...(await w.meta()) });   // the person's own client carries the person (comms relays the call to the mail module as them)
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   await until(() => fake.mail.sent.length === 1, "Gmail received the message");
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
