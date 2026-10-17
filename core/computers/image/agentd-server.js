@@ -14,20 +14,17 @@ const ACTIONS = {
 
 /** @param {string[]} argv @returns {Promise<void>} */
 const runArgv = argv => new Promise((resolve, reject) => {
+  // agentd's own environment never reaches a child: every step carries the environment it needs (asAgent), the rest is empty.
+  const opts = { env: {}, timeout: 30_000 };
   const input = /** @type {any} */ (argv).input;
-  if (typeof input === "string") {
-    const child = execFile(argv[0], argv.slice(1), { timeout: 30_000 }, err => (err ? reject(new Error(`${argv[0]} failed`)) : resolve()));
-    child.stdin?.end(input);
-    return;
-  }
-  // Xvnc, the window manager and Chrome stay up after agentd moves on, so they are started detached and not waited for.
-  const longRunning = argv.some(a => a === "Xvnc" || a === "fluxbox" || a === "chromium");
-  if (longRunning) {
-    const child = execFile(argv[0], argv.slice(1), { stdio: "ignore", detached: true }, () => {});
+  if (/** @type {any} */ (argv).detach === true) {
+    // a screen, a window manager, Chrome: started detached and not waited for
+    const child = execFile(argv[0], argv.slice(1), { env: {} }, () => {});
     child.unref();
     return resolve();
   }
-  execFile(argv[0], argv.slice(1), { timeout: 30_000 }, err => (err ? reject(new Error(`${argv[0]} failed`)) : resolve()));
+  const child = execFile(argv[0], argv.slice(1), opts, err => (err ? reject(new Error(`${argv[0]} failed`)) : resolve()));
+  if (typeof input === "string") child.stdin?.end(input);
 });
 
 /** @param {{ token: string, run?: (argv: string[]) => Promise<void> }} o */
@@ -49,7 +46,7 @@ export function createAgentd(o) {
         const steps = /** @type {any} */ (ACTIONS)[action](u, body.limits || {});
         if (action === "start" && typeof body.vncPassword === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.vncPassword)) {
           // The password goes to a helper that runs AS the agent and reads it from standard input: never an argument, never a plain file.
-          steps.unshift(Object.assign([...asAgent(u), "agentd-vncpass", `${RUN}/${u.user}/vnc.pass`], { input: body.vncPassword }));
+          steps.unshift(Object.assign([...asAgent(u, body.limits || {}), "/usr/local/bin/agentd-vncpass", `${RUN}/${u.user}/vnc.pass`], { input: body.vncPassword }));
         }
         await execute(steps, run, { tolerate: tolerant });
         send(200, { ok: true });

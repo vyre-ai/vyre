@@ -399,6 +399,6 @@ test("isolation (static): the image makes the 64 agent users itself, each in its
 
 test("isolation (static): agentd starts nothing as root: every agent process goes through setpriv with no capabilities and no new privileges", () => {
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
-  assert.match(agentd, /"--inh-caps=-all", "--no-new-privs"/);
+  assert.match(agentd, /"--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs"/);
   assert.match(agentd, /"--clear-groups"/);
 });

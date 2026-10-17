@@ -26,11 +26,11 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   await w.ctl.stopScreen(U);
   await w.ctl.wipeHome(U);
   await w.ctl.removeUser(U);
-  assert.ok(w.ran.some(a => a.includes("mkdir") && a.includes("/home/ag20000")));
-  assert.ok(w.ran.some(a => a.includes("Xvnc")));
-  assert.ok(w.ran.some(a => a.includes("pkill") && a.includes("chromium")));
-  assert.ok(w.ran.some(a => a.includes("find") && a.includes("/home/ag20000")));
-  assert.ok(w.ran.filter(a => a.includes("find")).length === 2, "wipe and remove each empty folders");
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/mkdir") && a.includes("/home/ag20000")));
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/Xvnc")));
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/pkill") && a.includes("chromium")));
+  assert.ok(w.ran.some(a => a.includes("/usr/bin/find") && a.includes("/home/ag20000")));
+  assert.ok(w.ran.filter(a => a.includes("/usr/bin/find")).length === 2, "wipe and remove each empty folders");
 });
 
 test("the VNC password reaches a helper that runs as the agent, on standard input, is derived per agent, and is on no command line", async t => {
@@ -40,14 +40,14 @@ test("the VNC password reaches a helper that runs as the agent, on standard inpu
   assert.equal(w.files.stdin, pw);
   assert.notEqual(pw, vncPasswordFor("k".repeat(32), "kit"), "every agent has its own");
   assert.ok(!w.ran.flat().join(" ").includes(pw), "never an argument");
-  assert.ok(w.ran[0].join(" ").startsWith("setpriv --reuid=20000 ") && w.ran[0].includes("agentd-vncpass"), "run as the agent, before Xvnc starts");
+  assert.ok(w.ran[0].join(" ").startsWith("/usr/bin/setpriv --reuid=20000 ") && w.ran[0].includes("/usr/local/bin/agentd-vncpass"), "run as the agent, before Xvnc starts");
 });
 
 test("a wrong token or a body outside the agent ranges is refused and runs nothing", async t => {
   const w = await world(t);
   const bad = await fetch(`${w.url}/agents/create`, { method: "POST", headers: { authorization: "Bearer nope" }, body: "{}" });
   assert.equal(bad.status, 401);
-  for (const body of [{ user: "root", uid: 0, display: 20 }, { user: "ag20000", uid: 1000, display: 20 }, { user: "ag20000", uid: 20000, display: 3 }]) {
+  for (const body of [{ user: "root", uid: 0, display: 20 }, { user: "ag20000", uid: 1000, display: 20 }, { user: "ag20000", uid: 20000, display: 3 }, { user: "ag20001", uid: 20000, display: 20 }]) {
     const r = await fetch(`${w.url}/agents/create`, { method: "POST", headers: { authorization: "Bearer tok" }, body: JSON.stringify(body) });
     assert.equal(r.status, 400, JSON.stringify(body));
   }

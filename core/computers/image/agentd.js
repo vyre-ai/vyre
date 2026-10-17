@@ -22,21 +22,31 @@ export const HOMES = "/home";
 export const RUN = "/var/lib/vyre/agents";
 const USER_RE = /^ag[a-z0-9]{1,28}$/;
 const MIN_UID = 20000;
+/** The image makes this many agent users; a request outside them is refused. */
+const MAX_UID = 20063;
+/** The environment every agent process gets: nothing from agentd, so nothing it holds (a token) reaches an agent, and a PATH that cannot be bent. */
+const PATH_SAFE = "/usr/local/bin:/usr/bin:/bin";
 
-/** @param {{ user: string, uid: number, display: number }} u */
+/** The only triple agentd accepts: the user is ag<uid>, the uid is one the image made, the display follows from the uid. @param {{ user: string, uid: number, display: number }} u */
 function check(u) {
-  if (!USER_RE.test(String(u.user))) throw new Error(`"${u.user}" is not an agent user name`);
-  if (!Number.isInteger(u.uid) || u.uid < MIN_UID) throw new Error(`uid ${u.uid} is below the agent range`);
-  if (!Number.isInteger(u.display) || u.display < 20 || u.display > 200) throw new Error(`display ${u.display} is not an agent display`);
+  if (!Number.isInteger(u.uid) || u.uid < MIN_UID || u.uid > MAX_UID) throw new Error(`uid ${u.uid} is not one of the agent users`);
+  if (u.user !== `ag${u.uid}` || !USER_RE.test(String(u.user))) throw new Error(`"${u.user}" is not an agent user name for uid ${u.uid}`);
+  if (u.display !== 20 + (u.uid - MIN_UID)) throw new Error(`display ${u.display} is not the display of uid ${u.uid}`);
 }
 
 /** The home of a user. @param {string} user */
 export const homeOf = user => `${HOMES}/${user}`;
 
-/** The argv prefix that runs something as the agent's uid with nothing extra: no capabilities, no new privileges, its own group only, limited and niced. @param {{ user: string, uid: number }} u @param {{ memoryMb?: number, procs?: number }} [lim] */
-export function asAgent(u, lim = {}) {
-  return ["setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--no-new-privs",
-    "--", "prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, "nice", "-n", "5"];
+/**
+ * The argv prefix that runs something as the agent's uid with nothing extra: every capability set emptied (inheritable, ambient, bounding), no new privileges, no groups, limited
+ * and niced, with an environment built from nothing. Absolute paths throughout, so no PATH can be bent. @param {{ user: string, uid: number }} u
+ * @param {{ memoryMb?: number, procs?: number }} [lim] @param {Record<string, string>} [env] extra variables for the child (DISPLAY, HOME)
+ */
+export function asAgent(u, lim = {}, env = {}) {
+  const vars = { HOME: homeOf(u.user), USER: u.user, LOGNAME: u.user, PATH: PATH_SAFE, LANG: "C.UTF-8", ...env };
+  return ["/usr/bin/setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs",
+    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, "/usr/bin/nice", "-n", "5",
+    "/usr/bin/env", "-i", ...Object.entries(vars).map(([k, v]) => `${k}=${v}`)];
 }
 
 /** Check the agent's private home and run folder (both made at image build) and make sure they are 0700, as the agent. Idempotent. @param {{ user: string, uid: number, display: number }} u */
@@ -44,36 +54,44 @@ export function planCreate(u) {
   check(u);
   const home = homeOf(u.user);
   return [
-    [...asAgent(u), "mkdir", "-p", home, `${RUN}/${u.user}`],
-    [...asAgent(u), "chmod", "0700", home, `${RUN}/${u.user}`],
+    [...asAgent(u), "/usr/bin/mkdir", "-p", home, `${RUN}/${u.user}`],
+    [...asAgent(u), "/usr/bin/chmod", "0700", home, `${RUN}/${u.user}`],
   ];
 }
 
+/** Marks a plan step as one that keeps running after agentd moves on (a screen, a window manager, Chrome), so agentd starts it and does not wait. @param {string[]} argv */
+export const longRunning = argv => Object.assign(argv, { detach: true });
+
 /**
- * Start the agent's screen: Xvnc on its own display and VNC port (5900 + display), a window manager, and Chrome with the agent's own profile. The VNC password
- * is written to a file only that agent's runtime folder holds, then handed to Xvnc by path, never on the command line.
+ * Start the agent's screen: Xvnc on its own display and on a unix socket in the agent's run folder (mode 0600, owned by the agent; no TCP port, so no other agent can reach it
+ * and a VncAuth password's 8 significant characters guard nothing a stranger can reach), a window manager, and Chrome with the agent's own profile. The VNC password file is
+ * written by the agent's own helper from standard input; Xvnc reads it by path.
  * @param {{ user: string, uid: number, display: number }} u @param {{ memoryMb?: number, procs?: number, size?: string }} [lim]
  */
 export function planStartScreen(u, lim = {}) {
   check(u);
   const home = homeOf(u.user);
-  const as = asAgent(u, lim);
   const D = `:${u.display}`;
+  const as = (/** @type {Record<string, string>} */ env = {}) => asAgent(u, lim, env);
   return [
-    [...as, "Xvnc", D, "-geometry", lim.size || "1440x900", "-depth", "24", "-rfbport", String(5900 + u.display), "-rfbauth", `${RUN}/${u.user}/vnc.pass`, "-SecurityTypes", "VncAuth", "-AlwaysShared"],
-    [...as, "env", `DISPLAY=${D}`, "fluxbox"],
-    [...as, "env", `DISPLAY=${D}`, `HOME=${home}`, "chromium", `--user-data-dir=${home}/.chrome`, "--no-first-run", "--restore-last-session", `--disk-cache-dir=${home}/.cache/chrome`],
+    longRunning([...as(), "/usr/bin/Xvnc", D, "-geometry", lim.size || "1440x900", "-depth", "24", "-rfbport", "-1", "-rfbunixpath", socketOf(u), "-rfbunixmode", "0600",
+      "-rfbauth", `${RUN}/${u.user}/vnc.pass`, "-SecurityTypes", "VncAuth", "-AlwaysShared"]),
+    longRunning([...as({ DISPLAY: D }), "/usr/bin/fluxbox"]),
+    longRunning([...as({ DISPLAY: D }), "/usr/bin/chromium", `--user-data-dir=${home}/.chrome`, "--no-first-run", "--restore-last-session", `--disk-cache-dir=${home}/.cache/chrome`]),
   ];
 }
+
+/** The agent's screen socket. @param {{ user: string }} u */
+export const socketOf = u => `${RUN}/${u.user}/vnc.sock`;
 
 /** Stop the agent's screen and Chrome, as the agent (it can signal its own processes and no one else's). Its tmux server, and whatever runs in it, is left alone. @param {{ user: string, uid: number, display: number }} u */
 export function planStopScreen(u) {
   check(u);
   const as = asAgent(u);
   return [
-    [...as, "pkill", "-TERM", "-u", String(u.uid), "-x", "chromium"],
-    [...as, "pkill", "-TERM", "-u", String(u.uid), "-x", "fluxbox"],
-    [...as, "pkill", "-TERM", "-u", String(u.uid), "-x", "Xvnc"],
+    [...as, "/usr/bin/pkill", "-TERM", "-u", String(u.uid), "-x", "chromium"],
+    [...as, "/usr/bin/pkill", "-TERM", "-u", String(u.uid), "-x", "fluxbox"],
+    [...as, "/usr/bin/pkill", "-TERM", "-u", String(u.uid), "-x", "Xvnc"],
   ];
 }
 
@@ -83,9 +101,9 @@ export function planWipeHome(u) {
   const home = homeOf(u.user);
   const as = asAgent(u);
   return [
-    [...as, "pkill", "-KILL", "-u", String(u.uid)],
-    [...as, "find", home, "-mindepth", "1", "-delete"],
-    [...as, "chmod", "0700", home],
+    [...as, "/usr/bin/pkill", "-KILL", "-u", String(u.uid)],
+    [...as, "/usr/bin/find", home, "-mindepth", "1", "-delete"],
+    [...as, "/usr/bin/chmod", "0700", home],
   ];
 }
 
@@ -94,8 +112,8 @@ export function planRemove(u) {
   check(u);
   const as = asAgent(u);
   return [
-    [...as, "pkill", "-KILL", "-u", String(u.uid)],
-    [...as, "find", homeOf(u.user), `${RUN}/${u.user}`, "-mindepth", "1", "-delete"],
+    [...as, "/usr/bin/pkill", "-KILL", "-u", String(u.uid)],
+    [...as, "/usr/bin/find", homeOf(u.user), `${RUN}/${u.user}`, "-mindepth", "1", "-delete"],
   ];
 }
 
@@ -108,4 +126,4 @@ export async function execute(steps, run, o = {}) {
 }
 
 /** Steps that are fine to fail: stopping what is not running. @param {string[]} argv */
-export const tolerant = argv => argv.includes("pkill");
+export const tolerant = argv => argv.includes("/usr/bin/pkill");

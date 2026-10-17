@@ -5,7 +5,11 @@
 import crypto from "node:crypto";
 
 /** An agent's VNC password, derived from a vault-held key so it is never stored: stable for the agent, different for every agent. @param {string} key @param {string} agentId */
-export const vncPasswordFor = (key, agentId) => crypto.createHmac("sha256", key).update(`agent-vnc\n${agentId}`).digest("base64url").slice(0, 24);
+export const vncPasswordFor = (key, agentId) => {
+  // its own derived key, so a leak of one use of the member-token key never maps to the other
+  const derived = Buffer.from(crypto.hkdfSync("sha256", key, "", "vyre agent computer vnc password v1", 32));
+  return crypto.createHmac("sha256", derived).update(`agent-vnc\n${agentId}`).digest("base64url").slice(0, 24);
+};
 
 /** @param {{ url: string, token: string, vncKey: () => Promise<string>, fetch?: typeof fetch, limits?: () => { memoryMb?: number, procs?: number, size?: string } }} deps @returns {import("./agent-users.js").Ctl} */
 export function agentdCtl(deps) {
