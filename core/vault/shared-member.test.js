@@ -1,6 +1,6 @@
 // @ts-check
-// A member uses what the Space owner shared with her (vault.me.shared.list and vault.me.shared.request): the kernel decides on HER chain, on the item's address; Fill in covers reads and an outward
-// act still waits at the Gate; an item not shared is indistinguishable from one that does not exist; the key is added at the vault's home and never reaches her. A real grants store behind
+// A member uses what the Space owner shared with her (vault.me.shared.list and vault.me.shared.request): the kernel decides on HER chain, on the item's address; Fill in covers her own reads and sends
+// (a person's own act is never held; an agent acting for her is held at the Gate); an item not shared is indistinguishable from one that does not exist; the key is added at the vault's home and never reaches her. A real grants store behind
 // core/vault/kernel-rig.js and the real relay over a fake network.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
