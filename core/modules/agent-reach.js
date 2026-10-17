@@ -112,6 +112,7 @@ export const PERSON_ONLY = new Map([
   ["microsoft.add", "connects a Microsoft account: the person's own act"],
   ["microsoft.remove", "removes a Microsoft account: the person's own act"],
   ["microsoft.accounts", "lists the Microsoft accounts the person connected: the person's own view of their connections"],
+  ["microsoft.check", "walks the firm Microsoft 365 setup: the owner's own check of the tenant, never an agent's"],
   ["microsoft.members.email", "sets which Microsoft account sends a member's mail: the person's own act on the account"],
   ["google.members.email", "sets which Google account sends a member's mail: the person's own act on the account"],
   ["vault.access.get", "reads who holds access to the Vault: the person's own view; an agent never sees a value"],

@@ -6,6 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - fix(ci): test-files.yml's concurrency group is test-files-${{ github.run_id }}. The earlier group, test-files-${{ github.run_number % 2 }}, used a modulo, which GitHub's expressions do not support, so the workflow failed to parse and could not be dispatched. The two-slot limit is gone; each run has its own group.
 
+- fix(train): `microsoft.check`, `vault.me.share.agent`, `vault.me.unshare.agent`, `vault.me.shares` and `mcp.repin` are classified person only (a person's own act, never an agent's); a Microsoft hold that could not go out at once carries the Gate's error in its answer; the member-accounts test expects a member's own send to go out (Option A); the Apps Script test compares plain data across the fake script's realm.
 - fix(modules): core/modules/relay-allowed.js imports FIRST_RUN_RELAY from relay-context.js. The relay table moved out of core/modules/index.js (to keep it under its line budget) spreads that list, and the move left the import behind, so the daemon and the docs harvest failed at load with a ReferenceError.
 
 - fix(memory): memory.heard reads the chat's thread only from meta.thread (the daemon's verified binding), never from a caller label, and files the agent's lesson only for a named agent; a plain session of no agent files nothing. core/memory/index.js.

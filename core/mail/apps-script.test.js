@@ -315,7 +315,7 @@ test("send with files: the script gets each file as a blob, a reply carries them
   const a = appsScriptAdapter();
   const files = [{ filename: "rota.pdf", contentType: "application/pdf", bytes: Buffer.from("PDF-1") }];
   assert.deepEqual(await a.send(cfg, fields(fake.url), { to: DANA, subject: "Rota", body: "Attached.", attachments: files }), { sent: true });
-  assert.deepEqual(fake.sent.at(-1).files, [{ name: "rota.pdf", type: "application/pdf", text: "PDF-1" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(fake.sent.at(-1).files)), [{ name: "rota.pdf", type: "application/pdf", text: "PDF-1" }]);   // the fake script runs in its own realm: compare the plain data
   await a.send(cfg, fields(fake.url), { to: [DANA], subject: "Re: Order for Friday", body: "Here.", in_reply_to: "<order-2@northwind-bakery.example>", attachments: files });
   assert.equal(fake.sent.at(-1).kind, "reply");
   assert.deepEqual(fake.sent.at(-1).files.map(f => f.name), ["rota.pdf"]);

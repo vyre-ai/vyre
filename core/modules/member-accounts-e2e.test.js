@@ -74,7 +74,7 @@ test("a member's own MCP server and her own mailbox, and nobody else's", { timeo
   const list = await as("alice", "google.calendar.next", {});
   step("her calendar is hers" + JSON.stringify(list.error || ""), !list.error && fake.apiCalls().filter(c => c.path.startsWith("/calendar/")).every(c => c.subject === A_MAIL));
   const sent = await as("alice", "google.mail.send", { to: "x@y.test", subject: "s", body: "b" });
-  step("a send from the firm mailbox is refused for now", Boolean(sent.error));
+  step("a member's own send from the firm mailbox goes out at once, as her (not held, not refused)" + JSON.stringify(sent.error || ""), !sent.error && !sent.held);
   const own = await as("alice", "google.members.email", { person: ALICE, email: O_MAIL });
   step("she cannot set her own work email (or the owner's)", Boolean(own.error) && (await owner("google.members.email", {})).data.find(r => r.person === ALICE).email === A_MAIL);
   const key = await as("alice", "google.add", { name: "k2", email: A_MAIL, firm: true, domain: "firm.test", auth: { type: "service-account", item: "firm-sa" } });
