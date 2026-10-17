@@ -190,7 +190,8 @@ export function createAddServer(o) {
         try { offer = await chan.call("wink.server.setup-offer", { identity: me.id }); break; }
         catch (e) {
           const x = /** @type {any} */ (e);
-          const waiting = x && (x.code === "unavailable" || /could not confirm this key/i.test(String(x.message || "")));
+          // The code decides. The words alone are used only when the channel carried no code at all (a transport that drops codes): a denial has the same words and must stop at once.
+          const waiting = Boolean(x) && (x.code === "unavailable" || (!x.code && /could not confirm this key/i.test(String(x.message || ""))));
           if (!waiting || mine !== run || now() >= state.expiresAt) throw e;
           await sleep(pollMs);
           if (mine !== run) return;
