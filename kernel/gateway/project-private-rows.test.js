@@ -190,5 +190,17 @@ test("a built-in private type pages the same way: a cursor only when a readable 
   const some = await R.query(dev(BOB), "team-member", { page: { limit: 2 } });
   assert.equal(some.rows.length, 2, "the team reads its own seats");
   assert.ok(some.next_cursor, "and pages on");
+  // one at a time: the cursor continues after the row given, with no row repeated, and the pages together are every seat she may read
+  const seen = [];
+  let cur = undefined;
+  for (let i = 0; i < 20; i++) {
+    const one = await R.query(dev(BOB), "team-member", { page: { limit: 1, ...(cur ? { cursor: cur } : {}) } });
+    assert.ok(one.rows.length <= 1);
+    for (const r of one.rows) seen.push(r.id);
+    if (!one.next_cursor) break;
+    cur = one.next_cursor;
+  }
+  assert.equal(new Set(seen).size, seen.length, "no row twice");
+  assert.ok(seen.length >= 6, "every seat she may read, one page at a time");
   assert.equal((await R.query(owner, "team-member", { page: { limit: 50 } })).rows.length >= 6, true);
 });

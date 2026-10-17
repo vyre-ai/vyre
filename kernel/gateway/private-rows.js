@@ -92,12 +92,14 @@ export function createPrivateRows(d) {
  * @param {{ page: { cursor?: string } }} spec @param {(page: any) => Promise<{ rows: any[], next_cursor?: string }>} getPage @param {(row: any) => Promise<boolean>} ok
  */
 export async function visiblePage(spec, getPage, ok) {
+  // each page asks only for what is still missing, so the cursor lands exactly after the last row examined and nothing is skipped or trimmed; with no limit the first page that has a readable row is the answer
+  const want = Number.isInteger(/** @type {any} */ (spec.page).limit) && /** @type {any} */ (spec.page).limit > 0 ? /** @type {any} */ (spec.page).limit : null;
   let cursor = spec.page.cursor, rows = /** @type {any[]} */ ([]), next;
   for (let pages = 0; pages < 10; pages++) {
-    const p = await getPage({ ...spec.page, ...(cursor ? { cursor } : {}) });
-    rows = []; for (const x of p.rows) if (await ok(x)) rows.push(x);
+    const p = await getPage({ ...spec.page, ...(want ? { limit: want - rows.length } : {}), ...(cursor ? { cursor } : {}) });
+    for (const x of p.rows) if (await ok(x)) rows.push(x);
     next = p.next_cursor;
-    if (rows.length || !next) break;
+    if (!next || (want ? rows.length >= want : rows.length > 0)) break;
     cursor = next;
   }
   let more = false;

@@ -48,6 +48,7 @@ async function world(t) {
   };
   await v.key();
   const calls = /** @type {any[]} */ ([]);
+  current.calls = calls;
   const makeCdp = () => ({ connect: async () => { throw Object.assign(new Error("stand-in browser: stop here"), { code: "stand_in" }); }, close: async () => {} });
   const logs = /** @type {string[]} */ ([]);
   const d = { vault: v, said: new SaidIntents(v), log: (/** @type {string} */ m) => { logs.push(m); }, makeCdp, call: async (/** @type {string} */ name, /** @type {any} */ input) => { calls.push({ name, input }); return name === "computers.fill.begin" ? { data: { fill: "f1", cdpUrl: "http://127.0.0.1:9", token: "" } } : { data: { ended: true } }; } };
@@ -63,8 +64,11 @@ async function world(t) {
 
 const stops = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => /** @type {any} */ (e).code === "stand_in");
 /** After a share ended its copy is gone, so the agent is told there is no such login (not_found), or that it is not lent (denied): either way nothing fills. */
-const gone = (/** @type {Promise<any>} */ p) => assert.rejects(p, e => ["denied", "not_found"].includes(/** @type {any} */ (e).code));
-const denied = (/** @type {Promise<any>} */ p, re = /not lent|not for|denied|member/) => assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message));
+/** The calls the current world recorded: a refused fill must not have begun the agent's computer, which is where a value would move. */
+const current = { calls: /** @type {any[]} */ ([]) };
+const begins = () => current.calls.filter(c => c.name === "computers.fill.begin").length;
+const gone = async (/** @type {Promise<any>} */ p) => { const before = begins(); await assert.rejects(p, e => ["denied", "not_found"].includes(/** @type {any} */ (e).code)); assert.equal(begins(), before, "a refused fill moved no value: its computer was never begun"); };
+const denied = async (/** @type {Promise<any>} */ p, re = /not lent|not for|denied|member/) => { const before = begins(); await assert.rejects(p, e => /** @type {any} */ (e).code === "denied" && re.test(/** @type {Error} */ (e).message)); assert.equal(begins(), before, "a refused fill moved no value: its computer was never begun"); };
 
 test("a member's share: one login, one agent, one site; the agent is told a reference, the member a plain line, and the agent's fill starts", async t => {
   const w = await world(t);
