@@ -57,10 +57,10 @@ const flat = data => {
  * refuses or is absent means plain text, no grant. Before the mentions mechanism exists, a name is
  * a vault item alone (vault.mention.resolve by exact name, which records the "use"
  * intent with the item's own hosts; sessions never records a use intent itself).
- * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any, opts?: any) => Promise<any> }} o
+ * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any, opts?: any) => Promise<any>, asker?: string | null }} o
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
  */
-export async function resolveTags({ names, chips = [], thread, said, call }) {
+export async function resolveTags({ names, chips = [], thread, said, call, asker = null }) {
   /** @type {{ kind: string, id: string, name?: string, direct?: boolean }[]} */
   const picked = chips.filter(c => c && typeof c.kind === "string" && c.id != null && String(c.id)).map(c => ({ kind: c.kind, id: String(c.id) })).slice(0, MAX_MENTIONS);
   const out = [];
@@ -84,7 +84,7 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
   for (const c of picked) {
     // With no mentions mechanism a vault tag goes to vault directly: it records the "use" intent with the item's own hosts.
     const direct = Boolean(c.direct);
-    const r = await (direct ? call("vault.mention.resolve", { id: c.id, thread, said }) : call("mentions.resolve", { kind: c.kind, id: c.id, thread, said })).catch(() => null);
+    const r = await (direct ? call("vault.mention.resolve", { id: c.id, thread, said, ...(asker ? { asker } : {}) }) : call("mentions.resolve", { kind: c.kind, id: c.id, thread, said, ...(asker ? { asker } : {}) })).catch(() => null);
     const d = r && !r.error && r.data && typeof r.data === "object" ? r.data : null;
     if (!d) continue;
     add({ kind: c.kind, id: c.id, name: String(d.name || c.name || c.id), hint: d.hint ? String(d.hint) : null, hosts: Array.isArray(d.hosts) ? d.hosts.map(String) : [], note: typeof d.note === "string" && d.note ? d.note : null,

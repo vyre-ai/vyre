@@ -2,7 +2,7 @@
 // me-mention: a member's own #item chip in a chat turn. In a group chat the turn arrives with an asker (a person the kernel has already checked is in the chat), and the Switchboard resolves the chips for THAT
 // person: the answer comes from her own vault only, never the owner's, and is a name, a kind and a note, never a value. Her vault needs her unlock (people.js keeps the lease per person); a locked one says so
 // in words the chat can show. Only the Switchboard asks, and its module is named `threads`, so its caller label is module:threads and nothing broader (the person is its to name, and is checked here to be a member and not the owner). This is the picker and the chip; what a chip LETS an agent do with
-// her item in that turn is a separate step (the owner's # tag records a use; hers will use the lend path), and nothing here grants it.
+// her item in that turn is not this tool's: nothing here grants it (it is used by reference, #Vault.<Name>, in 0.7).
 
 const PERSON = /^per_[A-Za-z0-9_-]{1,64}$/;
 const str = { type: "string" };
@@ -42,3 +42,4 @@ export function register({ ctx, people, internal }) {
       return { id: it.name, name: it.name, kind: it.kind, hint: hintOf(it), note: "Only its name is shown in the chat, never the value." };
     });
 }
+

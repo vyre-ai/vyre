@@ -39,7 +39,7 @@ import { SKILLS_PREFIX, SKILLS_CAPS, skillsKeyOk } from "../../lib/skills-seed.j
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
-import { recordTags } from "./record-tags.js";
+import { recordTags } from "./record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { memberKey } from "./member-key.js";
@@ -2571,13 +2571,13 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    await this.hearActs(id, text, uuid, pasted, rec.project);
-    if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
+    if (!(turn && turn.asker && turn.memberTurn)) await this.hearActs(id, text, uuid, pasted, rec.project, turn && turn.asker);   // words in a chat record asks only when the owner wrote them: a member's words never record what the owner asked for
+    const ownVault = turn && turn.memberTurn && turn.asker ? await memberVaultTags({ call: this.deps.call.bind(this.deps), asker: turn.asker, thread: id, said: uuid, chips, names: mentionsOf(text, pasted), agent: rec.agent || null }) : [];   // a member's own vault, never the owner's if (turn && turn.memberTurn) chips = chips.filter(c => c && (c.kind === "record" || c.kind === "collection" || c.kind === "account")); const names = turn && turn.memberTurn ? [] : mentionsOf(text, pasted);
     // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
-    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
-    if (!names.length && !picked.chips.length && !picked.tags.length) return [];
-    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta) }) : [];
-    const tags = [...resolved, ...picked.tags];
+    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips, turn) : { chips, tags: [] };
+    if (!names.length && !picked.chips.length && !picked.tags.length && !ownVault.length) return [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: ingressProviderCall(this.deps.call.bind(this.deps), asCaller, relayMeta), asker: turn && turn.asker || null }) : [];
+    const tags = [...resolved, ...picked.tags, ...ownVault];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
   }
@@ -2588,15 +2588,15 @@ export class Switchboard {
    * this thread's project and PR; each intent it returns is recorded as the person (vault.said.record). Doubt records
    * nothing. The thread's own PR is github.session.pr's answer, used only when it is exactly one. Pasted spans are taken
    * out first, so someone else's words never ask.
-   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project
+   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project @param {string|null} [asker] the chat turn's asker, kept with each ask this records
    */
-  async hearActs(id, text, uuid, pasted, project) {
+  async hearActs(id, text, uuid, pasted, project, asker = null) {
     // lib/said/hear.js decides what was asked from the person's own words and the facts it reads through `call`
     // (never a fresh watchers.card: the hash is the card as shown); this records what it returns.
     const turnsSince = at => Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_turns WHERE thread = ? AND at >= ?").get(id, at)).n) || 0;
     const intents = await heardActs({ text, pasted, project, thread: id, call: (tool, input) => this.deps.call(tool, input), turnsSince }).catch(() => []);
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, ...(asker ? { asker } : {}), kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
@@ -3640,7 +3640,7 @@ export class Switchboard {
     try { this.deps.eraseThread?.(id); } catch (e) { this.deps.log(`deleting ${id}'s events failed: ${/** @type {Error} */ (e).message}`); }
     this.states.delete(id);
     // Not tied to the thread it names (its rows are gone): the payload carries the id.
-    this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
+    this.turnAsker.delete(id); this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
     return { thread: id, deleted: true };
   }
 
@@ -4077,7 +4077,7 @@ export default {
       // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
       chatFor: ctx.chatFor || null,
       // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
-      recordTags: (/** @type {any[]} */ chips) => recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() }),
+      recordTags: (/** @type {any[]} */ chips, /** @type {any} */ turn) => (turn && turn.asker ? (ctx.turnRecordTags ? ctx.turnRecordTags({ asker: turn.asker, space: turn.space || null, chips }) : recordTags(chips, { kernel: ctx.kernel, chain: null })) : recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() })),
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
@@ -4491,7 +4491,7 @@ export default {
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
-        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # and @ tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too. An account chip (kind account, id codex, or codex:<account> when a provider has several) runs this one turn on that provider: it gets the session's memory and files, the reply names it, and the session stays on its own provider. A person's surface only. Refused in plain words, with no fallback, when that account is signed out or out of usage." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, yes: str, origin: str } }, description: "The # and @ tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too. An account chip (kind account, id codex, or codex:<account> when a provider has several) runs this one turn on that provider: it gets the session's memory and files, the reply names it, and the session stays on its own provider. A person's surface only. Refused in plain words, with no fallback, when that account is signed out or out of usage." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): Lumen's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
@@ -4526,7 +4526,7 @@ export default {
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
-        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta, { memberTurn: Boolean(kt && ctx.kernel && !(await isStaffPerson(ctx.kernel, String(kt.asker)))) }) : [];
+        const heard = (mine || (kt && sb.knows(i.thread) && !sb.sentBefore(uuid))) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : [], caller, meta, { memberTurn: Boolean(kt && !(ctx.kernel && sb.canon(String(kt.asker)) === sb.canon(String(ctx.kernel.owner)))), ...(kt ? { asker: kt.asker, ...(kt.space ? { space: kt.space } : {}) } : {}) }) : [];
         const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
@@ -5058,7 +5058,7 @@ export default {
       },
     }); registerTranscriptTools(ctx, sb, str);
     registerRecallSessions(ctx, sb, str, optsOf);
-    ctx.tool("threads.origin", {
+    registerTurnAsker(ctx, sb); ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {

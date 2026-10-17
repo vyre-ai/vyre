@@ -7,11 +7,10 @@ import assert from "node:assert/strict";
 import { register } from "./me-mention.js";
 
 const BOB = "per_bob", EVE = "per_eve", OWNER = "per_owner";
-
 function rig() {
-  const vaults = /** @type {Record<string, any[]>} */ ({ [BOB]: [{ name: "passport", kind: "login", description: "Passport portal", fields: ["username", "password"], updated: 1 }, { name: "clio-conn", kind: "connection", description: "connection to mcp.clio.test", fields: ["server_url"], updated: 2 }], [EVE]: [{ name: "airline", kind: "login", description: "", fields: ["password"], updated: 3 }] });
+  const vaults = /** @type {Record<string, any[]>} */ ({ [BOB]: [{ name: "passport", kind: "login", description: "Passport portal", fields: ["username", "password"], updated: 1 }, { name: "clio-conn", kind: "connection", description: "connection to mcp.clio.test", fields: ["server_url"], updated: 2 }, { name: "bobs-api", kind: "api-credential", description: "Bob's API key", fields: ["config", "secret"], updated: 3 }, { name: "key", kind: "api-key", description: "", fields: ["value"], updated: 3 }, { name: "pk", kind: "passkey", description: "", fields: ["x"], updated: 4 }], [EVE]: [{ name: "airline", kind: "login", description: "", fields: ["password"], updated: 3 }] });
   const locked = new Set(/** @type {string[]} */ ([]));
-  const people = { list: async (/** @type {string} */ id, /** @type {any} */ o = {}) => { if (locked.has(id)) throw Object.assign(new Error("your vault is locked: unlock it with your master password"), { code: "locked" }); const f = o.filter ? String(o.filter).toLowerCase() : ""; return { items: (vaults[id] || []).filter(i => !f || i.name.includes(f)) }; } };
+  const people = { get: async (/** @type {string} */ id, /** @type {any} */ o) => ({ fields: o.name === "passport" ? { url: "https://passport.example.test/login" } : {} }), list: async (/** @type {string} */ id, /** @type {any} */ o = {}) => { if (locked.has(id)) throw Object.assign(new Error("your vault is locked: unlock it with your master password"), { code: "locked" }); const f = o.filter ? String(o.filter).toLowerCase() : ""; return { items: (vaults[id] || []).filter(i => !f || i.name.includes(f)) }; } };
   const reg = /** @type {Map<string, any>} */ (new Map());
   const ctx = { kernel: { owner: OWNER, grants: { members: { list: async () => [{ person: BOB }, { person: EVE }] } }, chain: async () => ({ hops: [] }) } };
   register({ ctx, people: /** @type {any} */ (people), internal: (n, _d, _i, run) => reg.set(n, { run }) });

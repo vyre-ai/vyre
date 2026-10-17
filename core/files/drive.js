@@ -772,7 +772,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
     ctx.tool("files.mentions.resolve", {
       description: "Make a tagged file readable in the chat it was tagged in. The box does this; a Mac has no chats of its own.",
-      input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
+      input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" }, asker: { type: "string" } } },
       callers: ["module"],
       run: async () => { throw refuse("that file is not available; use the box, where a tag is resolved in the chat it was tagged in", "not_found"); },
     });

@@ -7,6 +7,7 @@ import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
 import { ConnectionTokens } from "../connection-token.js";
+import { normalize as normalizeApiCredential } from "../api-request.js";
 import { revokeAtVendor } from "../connection-revoke.js";
 
 /** The surfaces of a person: a model's labels (mcp, harness, agents) are not among them. */
@@ -70,7 +71,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   tool("vault.me.account.status", PERSON_SURFACES, "Whether you have a vault here and whether it is unlocked.", obj({}), mine(id => people.status(id)));
 
   tool("vault.me.put", PERSON_SURFACES, "Add an item to your own vault (an AI sign-in, a mail or calendar connection, a note).",
-    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => people.put(id, i)),
+    obj({ name: str, kind: str, description: str, fields }, ["name", "fields"]), mine((id, i) => { if (String(i.kind) === "api-credential") { try { normalizeApiCredential(JSON.parse(String(i.fields && i.fields.config || ""))); } catch (e) { throw Object.assign(new Error(`an API credential needs a valid config: ${String(/** @type {Error} */ (e).message).slice(0, 120)}`), { code: "bad_input" }); } } return people.put(id, i); }),
     presence("Add an item to your own vault", ({ name }) => `Add ${String(name).slice(0, 64)} to your own vault`));
   tool("vault.me.get", PERSON_SURFACES, "Read one item of your own vault, value included.", obj({ name: str }, ["name"]), mine((id, i) => people.get(id, i)),
     presence("Read an item of your own vault", ({ name }) => `Show ${String(name).slice(0, 64)} from your own vault`));
