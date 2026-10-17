@@ -127,6 +127,17 @@ test("teams hold agents: a listed agent reaches the team's grant with use only, 
   assert.equal((await ask(gw, kit, "vault.read", item())).effect, "deny");
 });
 
+test("everyone in the Space: space:people reaches every member and nobody else, space:agents every agent with use only, and neither needs a team", async () => {
+  const { gw, g } = await rig();
+  await g.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  await give(g, { kind: "group", id: "space:people" }, "reveal");
+  await give(g, { kind: "group", id: "space:agents" }, "use");
+  for (const who of [ALICE, BOB, CAROL]) assert.equal((await ask(gw, personChain(who), "vault.reveal", item())).effect, "allow", `${who} is a member`);
+  assert.equal((await ask(gw, assistantOf(OWNER, "kit"), "vault.read", item())).effect, "allow", "an agent of the Space uses it");
+  for (const a of ["vault.reveal", "vault.edit", "vault.rotate", "vault.share", "vault.delete"]) assert.notEqual((await ask(gw, assistantOf(OWNER, "kit"), a, item())).effect, "allow", `${a} is never an agent's`);
+  await assert.rejects(() => give(g, { kind: "group", id: "space:everyone" }, "use"), { code: "bad_input" }, "only the two named groups exist");
+});
+
 test("an assistant is never given reveal, change, delete, share or rotate, whoever asks", async () => {
   const { g } = await rig();
   for (const level of ["reveal", "edit", "manage"]) {
