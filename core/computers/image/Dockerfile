@@ -128,11 +128,13 @@ RUN mkdir -p /etc/chromium/policies/managed \
 
 # The agents' users (owner decision, 18 Oct 2026: one computer per space, one Linux user per agent). The root is read-only at run time, so
 # the users are made here: ag20000 to ag20063, each its own group, no extra group, no login shell worth the name, home /home/ag<uid>
-# (made 0700 by agentd when an agent is added). agentd (agentd.js) only prepares a home and starts the agent's screen; it never adds a user.
+# and their homes and run folders are made here too, each owned by its uid and 0700 (a new volume copies them as they are). agentd keeps only CAP_SETUID and CAP_SETGID: it chowns nothing and starts every agent process as that uid.
 RUN for n in $(seq 20000 20063); do \
-      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/home/ag$n" "ag$n"; \
+      groupadd -g "$n" "ag$n" && useradd -M -u "$n" -g "$n" -s /bin/bash -d "/home/ag$n" "ag$n" \
+      && mkdir -p "/home/ag$n" "/var/lib/vyre/agents/ag$n" \
+      && chown "$n:$n" "/home/ag$n" "/var/lib/vyre/agents/ag$n" && chmod 0700 "/home/ag$n" "/var/lib/vyre/agents/ag$n"; \
     done \
-    && mkdir -p /run/agents && chmod 0711 /run/agents
+    && chown vyre:vyre /var/lib/vyre/agents && chmod 0711 /var/lib/vyre/agents
 COPY agentd.js agentd-server.js /opt/agentd/
 COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 RUN chmod 0755 /usr/local/bin/agentd-vncpass

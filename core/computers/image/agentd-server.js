@@ -6,8 +6,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
-import fs from "node:fs";
-import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, execute, tolerant, RUN } from "./agentd.js";
+import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, asAgent, execute, tolerant, RUN } from "./agentd.js";
 
 const ACTIONS = {
   "create": planCreate, "start": planStartScreen, "stop": planStopScreen, "wipe": planWipeHome, "remove": planRemove,
@@ -15,6 +14,12 @@ const ACTIONS = {
 
 /** @param {string[]} argv @returns {Promise<void>} */
 const runArgv = argv => new Promise((resolve, reject) => {
+  const input = /** @type {any} */ (argv).input;
+  if (typeof input === "string") {
+    const child = execFile(argv[0], argv.slice(1), { timeout: 30_000 }, err => (err ? reject(new Error(`${argv[0]} failed`)) : resolve()));
+    child.stdin?.end(input);
+    return;
+  }
   // Xvnc, the window manager and Chrome stay up after agentd moves on, so they are started detached and not waited for.
   const longRunning = argv.some(a => a === "Xvnc" || a === "fluxbox" || a === "chromium");
   if (longRunning) {
@@ -25,10 +30,9 @@ const runArgv = argv => new Promise((resolve, reject) => {
   execFile(argv[0], argv.slice(1), { timeout: 30_000 }, err => (err ? reject(new Error(`${argv[0]} failed`)) : resolve()));
 });
 
-/** @param {{ token: string, run?: (argv: string[]) => Promise<void>, writeFile?: typeof fs.writeFileSync }} o */
+/** @param {{ token: string, run?: (argv: string[]) => Promise<void> }} o */
 export function createAgentd(o) {
   const run = o.run || runArgv;
-  const write = o.writeFile || fs.writeFileSync;
   const same = (/** @type {string} */ a, /** @type {string} */ b) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   return http.createServer((req, res) => {
     const send = (/** @type {number} */ code, /** @type {any} */ body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -44,9 +48,8 @@ export function createAgentd(o) {
         const u = { user: String(body.user), uid: Number(body.uid), display: Number(body.display) };
         const steps = /** @type {any} */ (ACTIONS)[action](u, body.limits || {});
         if (action === "start" && typeof body.vncPassword === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.vncPassword)) {
-          // vncpasswd's file format is not the plain text; the image's helper converts it (agentd-vncpass), run before Xvnc starts
-          write(`${RUN}/${u.user}/vnc.plain`, body.vncPassword, { mode: 0o600 });
-          steps.unshift(["agentd-vncpass", `${RUN}/${u.user}/vnc.plain`, `${RUN}/${u.user}/vnc.pass`, String(u.uid)]);
+          // The password goes to a helper that runs AS the agent and reads it from standard input: never an argument, never a plain file.
+          steps.unshift(Object.assign([...asAgent(u), "agentd-vncpass", `${RUN}/${u.user}/vnc.pass`], { input: body.vncPassword }));
         }
         await execute(steps, run, { tolerate: tolerant });
         send(200, { ok: true });

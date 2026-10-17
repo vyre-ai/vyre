@@ -9,11 +9,11 @@ import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const flat = steps => steps.map(s => s.join(" "));
 
-test("a new agent's home is its own and private (0700, owned by its uid)", () => {
+test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
-  assert.ok(steps.includes("chmod 0700 /home/ag20000 /run/agents/ag20000"));
-  assert.ok(steps.includes("chown 20000:20000 /home/ag20000 /run/agents/ag20000"));
-  assert.ok(!steps.some(s => /useradd|groupadd/.test(s)), "the image's root is read-only: the users are made when it is built");
+  assert.ok(!steps.some(x => /useradd|groupadd|chown/.test(x)), "agentd never adds a user or chowns: it has no capability to");
+  assert.ok(steps.every(x => x.startsWith("setpriv --reuid=20000 --regid=20000")), "every step runs as the agent");
+  assert.ok(steps.some(x => x.endsWith("chmod 0700 /home/ag20000 /var/lib/vyre/agents/ag20000")));
 });
 
 test("every agent process runs through setpriv as that uid: no capabilities, no new privileges, no groups, limited", () => {
@@ -29,7 +29,7 @@ test("the screen is its own display and VNC port, the password is a file in the 
   const s = xvnc.join(" ");
   assert.match(s, / Xvnc :20 /);
   assert.match(s, /-rfbport 5920 /);
-  assert.match(s, /-rfbauth \/run\/agents\/ag20000\/vnc\.pass/);
+  assert.match(s, /-rfbauth \/var\/lib\/vyre\/agents\/ag20000\/vnc\.pass/);
   assert.doesNotMatch(planStartScreen(U).flat().join(" "), /password=|-passwd/i);
   assert.match(wm.join(" "), /DISPLAY=:20 fluxbox/);
   assert.match(chrome.join(" "), /--user-data-dir=\/home\/ag20000\/\.chrome/);
@@ -42,20 +42,22 @@ test("two agents get two displays, ports and profiles that never overlap", () =>
   assert.doesNotMatch(a, /ag20001|:21|20001/); assert.doesNotMatch(b, /ag20000|:20 |20000/);
 });
 
-test("sleeping signals only this agent's uid and never its tmux server", () => {
+test("sleeping signals as the agent, only its uid, and never its tmux server", () => {
   const steps = planStopScreen(U);
-  assert.ok(steps.every(s => s[0] === "pkill" && s.includes("-u") && s.includes("20000") && s.includes("-x")));
-  assert.deepEqual(steps.map(s => s[s.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
+  assert.ok(steps.every(x => x.join(" ").startsWith("setpriv --reuid=20000 ") && x.includes("pkill") && x.includes("-u") && x.includes("20000") && x.includes("-x")));
+  assert.deepEqual(steps.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
   assert.ok(!steps.flat().includes("tmux"));
 });
 
-test("reset empties the home and keeps the folder, its owner and its mode; it names no other path", () => {
-  const steps = flat(planWipeHome(U));
-  assert.deepEqual(steps, ["pkill -KILL -u 20000", "find /home/ag20000 -mindepth 1 -delete", "chown 20000:20000 /home/ag20000", "chmod 0700 /home/ag20000"]);
+test("reset empties the home as the agent and keeps the folder and its mode; it names no other path", () => {
+  const steps = planWipeHome(U);
+  assert.ok(steps.every(x => x.join(" ").startsWith("setpriv --reuid=20000 --regid=20000 --clear-groups")));
+  assert.deepEqual(steps.map(x => x.slice(x.indexOf("nice") + 3).join(" ")), ["-n 5 pkill -KILL -u 20000", "-n 5 find /home/ag20000 -mindepth 1 -delete", "-n 5 chmod 0700 /home/ag20000"]);
 });
 
-test("remove empties exactly its home and run folder and leaves the image user", () => {
-  assert.deepEqual(flat(planRemove(U)), ["pkill -KILL -u 20000", "find /home/ag20000 /run/agents/ag20000 -mindepth 1 -delete"]);
+test("remove empties exactly its home and run folder as the agent and leaves the image user", () => {
+  const last = planRemove(U).pop() || [];
+  assert.deepEqual(last.slice(last.indexOf("find")), ["find", "/home/ag20000", "/var/lib/vyre/agents/ag20000", "-mindepth", "1", "-delete"]);
 });
 
 test("a user name, uid or display outside the agent ranges is refused before anything runs", () => {
@@ -68,8 +70,9 @@ test("a user name, uid or display outside the agent ranges is refused before any
 
 test("a step fails the plan unless it is one that may fail (stopping what is not running)", async () => {
   /** @type {string[]} */ const ran = [];
-  const run = async argv => { ran.push(argv[0]); if (argv[0] === "pkill") throw new Error("nothing to kill"); };
+  const name = argv => argv[argv.indexOf("nice") + 3];
+  const run = async argv => { ran.push(name(argv)); if (name(argv) === "pkill") throw new Error("nothing to kill"); };
   await execute(planWipeHome(U), run, { tolerate: tolerant });
-  assert.deepEqual(ran, ["pkill", "find", "chown", "chmod"]);
-  await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv[0] === "find") throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
+  assert.deepEqual(ran, ["pkill", "find", "chmod"]);
+  await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv.includes("find")) throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
 });

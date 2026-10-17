@@ -1,8 +1,7 @@
 #!/bin/sh
-# agentd-vncpass PLAIN OUT UID: turn a plain VNC password file into Xvnc's password file, owned by the agent's uid and 0600, and delete the plain one.
+# agentd-vncpass OUT: read a plain VNC password on standard input and write Xvnc's password file to OUT (0600). agentd runs this AS the agent's uid, so the file is
+# the agent's own and the password never exists as an argument or as a plain file.
 set -eu
-plain="$1"; out="$2"; uid="$3"
-vncpasswd -f < "$plain" > "$out"
-chown "$uid:$uid" "$out"
-chmod 0600 "$out"
-rm -f "$plain"
+out="$1"
+umask 077
+vncpasswd -f > "$out"

@@ -10,7 +10,7 @@ import { agentdCtl, vncPasswordFor } from "./agentd-ctl.js";
 async function world(t) {
   /** @type {string[][]} */ const ran = [];
   /** @type {Record<string, string>} */ const files = {};
-  const server = createAgentd({ token: "tok", run: async argv => { ran.push(argv); }, writeFile: ((p, c) => { files[String(p)] = String(c); }) });
+  const server = createAgentd({ token: "tok", run: async argv => { ran.push(argv); if (/** @type {any} */ (argv).input !== undefined) files["stdin"] = /** @type {any} */ (argv).input; } });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(null)));
   t.after(() => server.close());
   const url = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
@@ -26,21 +26,21 @@ test("the Ctl port reaches agentd: create, start, stop, wipe and remove each run
   await w.ctl.stopScreen(U);
   await w.ctl.wipeHome(U);
   await w.ctl.removeUser(U);
-  assert.ok(w.ran.some(a => a[0] === "mkdir" && a.includes("/home/ag20000")));
+  assert.ok(w.ran.some(a => a.includes("mkdir") && a.includes("/home/ag20000")));
   assert.ok(w.ran.some(a => a.includes("Xvnc")));
-  assert.ok(w.ran.some(a => a[0] === "pkill" && a.includes("chromium")));
-  assert.ok(w.ran.some(a => a[0] === "find" && a.includes("/home/ag20000")));
-  assert.ok(w.ran.filter(a => a[0] === "find").length === 2, "wipe and remove each empty folders");
+  assert.ok(w.ran.some(a => a.includes("pkill") && a.includes("chromium")));
+  assert.ok(w.ran.some(a => a.includes("find") && a.includes("/home/ag20000")));
+  assert.ok(w.ran.filter(a => a.includes("find")).length === 2, "wipe and remove each empty folders");
 });
 
-test("the VNC password reaches a file in the agent's run folder, is derived per agent, and is on no command line", async t => {
+test("the VNC password reaches a helper that runs as the agent, on standard input, is derived per agent, and is on no command line", async t => {
   const w = await world(t);
   await w.ctl.startScreen(U);
   const pw = vncPasswordFor("k".repeat(32), "ads");
-  assert.equal(w.files["/run/agents/ag20000/vnc.plain"], pw);
+  assert.equal(w.files.stdin, pw);
   assert.notEqual(pw, vncPasswordFor("k".repeat(32), "kit"), "every agent has its own");
   assert.ok(!w.ran.flat().join(" ").includes(pw), "never an argument");
-  assert.equal(w.ran[0][0], "agentd-vncpass", "converted before Xvnc starts");
+  assert.ok(w.ran[0].join(" ").startsWith("setpriv --reuid=20000 ") && w.ran[0].includes("agentd-vncpass"), "run as the agent, before Xvnc starts");
 });
 
 test("a wrong token or a body outside the agent ranges is refused and runs nothing", async t => {

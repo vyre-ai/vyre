@@ -391,9 +391,10 @@ test("isolation (static): the image makes the 64 agent users itself, each in its
   assert.match(DOCKERFILE, /for n in \$\(seq 20000 20063\)/);
   assert.match(DOCKERFILE, /groupadd -g "\$n" "ag\$n" && useradd -M -u "\$n" -g "\$n" -s \/bin\/bash -d "\/home\/ag\$n" "ag\$n"/);
   assert.doesNotMatch(DOCKERFILE.split("for n in $(seq 20000")[1].split("COPY agentd.js")[0], / -G /, "an agent user belongs to no other group");
-  assert.match(DOCKERFILE, /mkdir -p \/run\/agents && chmod 0711 \/run\/agents/);
+  assert.match(DOCKERFILE, /mkdir -p "\/home\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n"/, "each home and run folder is made at build");
+  assert.match(DOCKERFILE, /chown "\$n:\$n" "\/home\/ag\$n" "\/var\/lib\/vyre\/agents\/ag\$n" && chmod 0700/, "owned by its own uid, 0700");
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
-  assert.doesNotMatch(agentd, /\[\s*"(useradd|groupadd|userdel|sudo|su)"/, "the root is read-only and no agent gets admin");
+  assert.doesNotMatch(agentd, /"(useradd|groupadd|userdel|sudo|su|chown)"/, "the root is read-only, agentd has no CAP_CHOWN and no agent gets admin");
 });
 
 test("isolation (static): agentd starts nothing as root: every agent process goes through setpriv with no capabilities and no new privileges", () => {
