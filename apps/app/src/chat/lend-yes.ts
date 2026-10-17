@@ -2,6 +2,13 @@
 // biometric prompt) and signs a yes over exactly the call vault.me.mention.lend will make: the fields { asker, id, thread, agent }, and nothing wider. The chip carries it to the message; the
 // Switchboard passes it through untouched and the Vault checks it. This file makes no decision about it. Where this device cannot take a biometric (a browser), there is no signer and no yes: the
 // chip then names the item and lends nothing.
+//
+// The yes is the same one the other vault moments take (lib/one-yes-sign.js signOf "vault", the proof the phone's Face ID key or a browser's passkey signs): the Vault checks it with its own yes(), over
+// exactly { asker, id, thread, agent }, single use and fresh. It travels as base64url of the JSON proof.
+
+import { signOf } from "../../../../lib/one-yes-sign.js";
+import { payloadHash } from "../real/payload-hash.js";
+import { b64url } from "../auth/person.ts";
 
 export const LEND_OP = "vault.me.mention.lend";
 
@@ -29,4 +36,20 @@ export async function lendYes(f: LendFields): Promise<string | null> {
 /** A picked chip with her yes on it, for a vault item only; any other kind is returned as it was. */
 export function withYes<T extends { kind: string }>(mention: T, yes: string | null): T & { yes?: string } {
   return mention.kind === "vault" && yes ? { ...mention, yes } : mention;
+}
+
+/** What a device that can sign a yes offers (src/personal/signer.ts yesSigner). */
+export type YesDevice = { signPresence(req: any): Promise<any> };
+
+/**
+ * A LendSigner over a device that signs a yes: the vault moment, for op vault.me.mention.lend and exactly these fields, with the card's words for the prompt. Returns base64url of the JSON proof (the
+ * form the Vault reads), or null when the prompt was closed. The same one-copy helpers the other vault yeses use make the request, so the Vault checks exactly what was signed.
+ */
+export function lendSignerFor(o: { device: YesDevice; person: string; space: string }): LendSigner {
+  return async (op, fields) => {
+    const sign = signOf("vault", { op, fields });
+    const proof = await o.device.signPresence({ op: sign.op, space: o.space, fields: sign.fields, payload_hash: payloadHash(sign.op, o.space, sign.fields), prompt: `Let ${fields.agent} use ${JSON.stringify(fields.id)} for this turn, without seeing it`, person: o.person });
+    if (!proof) return null;
+    return b64url(new TextEncoder().encode(JSON.stringify(proof)));
+  };
 }
