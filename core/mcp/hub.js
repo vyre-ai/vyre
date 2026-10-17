@@ -726,8 +726,12 @@ export class Hub {
    */
   async mayUse(r, who, level, as = undefined) {
     if (typeof this.deps.mayUseConnection !== "function") return false;
-    // The person who made the connection, alone on this call (no agent behind it), uses and removes it: the tool that took the call named them from the verified chain (who.me), so the answer does not depend on a hop that carries no person.
-    if (r.owner && as === undefined && who && !who.agent && typeof who.me === "function" && (level === "read" || level === "own")) { const me = await Promise.resolve(who.me()).catch(() => ""); if (me && me === r.owner) return true; }
+    // The person on this call, named by the tool that took it from the verified chain (who.me), is who the Vault is asked about: a hop between the tool and the Vault carries no person of its own. Their own connection is theirs
+    // to use and to remove; one shared with them is answered by the Vault's own check of that person. An assistant (who.agent) or a call with no member is asked as before.
+    if (r.owner && as === undefined && who && !who.agent && typeof who.me === "function" && (level === "read" || level === "call" || level === "own")) {
+      const me = await Promise.resolve(who.me()).catch(() => "");
+      if (me) { if (level === "own") return me === r.owner; as = me; }
+    }
     try { return (await this.deps.mayUseConnection({ owner: r.owner, connection: r.connection, level, ...(as !== undefined ? { as } : {}) }, who)) === true; } catch { return false; }
   }
 
