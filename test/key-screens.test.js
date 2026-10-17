@@ -21,6 +21,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^(agents\/index|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page: live status and a conversation entry of their own, owned by the agents team"],
   [/^tags\/index\.tsx$/, "the tag directory: a list of tags with counts and a tag editor of its own, owned by the records team"],
   [/^(documents|files|vault-more)\.tsx$/, "Files, Documents and the vault's second page: a tree, a viewer and an upload of their own, owned by the files and vault teams"],
+  [/^u\/skills\/index\.tsx$/, "the skills library (skills 0.6): drafts, versions and an approve or decline of their own, owned by the skills team; wave 0.6"],
   [/^(flows\/new|playbooks|playbooks\/\[id\]|record\/new)\.tsx$/, "creation and board pages (a new Flow, a Playbook and its board, a new record): forms and a board of their own, owned by the flows, projects and records teams"],
   [/^chats\/(?!index\.tsx$)/, "the conversation (and the new-chat page): a live stream with a composer; the list (chats/index.tsx) is one list block; chat has its own renderer and the glance card (ChatCard) sits beside it"],
   [/^glass\/|^wink\/|^setup\//, "a live device or screen stream, a pairing flow"],
