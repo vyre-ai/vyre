@@ -10,10 +10,10 @@ test("only an https join link of a space is passed on, encoded once or twice", (
   const good = "https://juniper.vyre.run/join/7Kq2-M9";
   assert.equal(joinLink(good), good);
   assert.equal(joinLink(encodeURIComponent(good)), good);
-  assert.equal(joinTarget(good), "/u/install/join", "the token is not in the address");
+  assert.equal(joinTarget(good), "/onboard?path=join", "the token is not in the address");
   assert.equal(takeJoin(0), good);
   for (const bad of ["http://juniper.vyre.run/join/x", "https://juniper.vyre.run/other/x", "javascript:alert(1)", "", undefined, "https://h.vyre.run/join/"]) assert.equal(joinLink(bad), null);
-  assert.equal(joinTarget("nope"), "/u/install/join");
+  assert.equal(joinTarget("nope"), "/onboard?path=join");
 });
 
 test("a real invite token is payload.signature, so a dot is part of it", () => {
@@ -34,7 +34,7 @@ test("JL-1: the token is held in memory once, never in the address, and never sh
   assert.equal(withoutToken(tok), "https://h.vyre.run/join/…");
   assert.ok(!withoutToken(tok).includes("eyJ"));
   assert.equal(cleanAddress("https://app.vyre.run/app/join?link=https%3A%2F%2Fh.vyre.run%2Fjoin%2Fx.y#frag"), "/app/join");
-  assert.equal(joinTarget("nope"), "/u/install/join");
+  assert.equal(joinTarget("nope"), "/onboard?path=join");
   assert.equal(takeJoin(), null, "a bad link holds nothing");
 });
 
@@ -57,4 +57,16 @@ test("the held link does not survive an accept or a cancel", () => {
   assert.equal(takeJoin(10), "https://h.vyre.run/join/a.b");
   clearJoin();
   assert.equal(takeJoin(20), null, "even inside the double-run window nothing is left after clearJoin");
+});
+
+test("the link an owner shares, https://vyre.run/i/<token>, is a join link too; vyre.run has no /join/ path and no other path counts", () => {
+  clearJoin();
+  const tok = "https://vyre.run/i/inv_0123456789abcdef0123456789abcdef.eyJjaGFpbiI6e319";
+  assert.equal(joinLink(tok), tok);
+  assert.equal(joinLink(`${tok}/`), `${tok}/`);
+  for (const bad of ["https://vyre.run/join/x", "https://vyre.run/i/", "https://vyre.run/i/a b", "https://vyre.run/i/../x", "http://vyre.run/i/abcdefgh", "https://vyre.run/other/abcdefgh"]) assert.equal(joinLink(bad), null, bad);
+  assert.equal(withoutToken(tok), "https://vyre.run/i/…");
+  assert.equal(joinTarget(tok), "/u/install/join");
+  assert.equal(takeJoin(), tok);
+  clearJoin();
 });

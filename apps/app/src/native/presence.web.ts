@@ -26,10 +26,6 @@ export async function presenceSupport(): Promise<PresenceSupport> {
   };
 }
 
-export async function approveAndSign(_message: string, _what: string): Promise<PresenceResult> {
-  return refusal("unavailable");
-}
-
 export async function confirmHere(_what: string): Promise<PresenceResult> {
   return refusal("unavailable");
 }

@@ -11,7 +11,7 @@ import { avatarBytesToCode } from "@vyre/relay-client/avatarcode.js";
 import { DRAWN_CODE_SCAN } from "../install/first-run.js";
 import { WinkScan, canReadDrawnCode } from "../../src/native/WinkScan";
 import { SCAN_SAY, type WinkScanEvent } from "../../src/native/wink-scan-model";
-import { TYPED, inviteReasonSay, leftOf, redeemSay } from "./typed-model.js";
+import { TYPED, inviteReasonSay, leftOf, redeemSay, serverPairError } from "./typed-model.js";
 import { RC } from "../shell/rc";
 
 /** What a finished typing gives back: an invitation's link, to accept as a pasted one is. */
@@ -34,7 +34,7 @@ export async function redeemPairing(code: string, onAck: (ack: string, expires?:
   const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s: { state: string; code?: string; expires?: number }) => { if (s.state === "ack" && s.code) onAck(s.code, typeof s.expires === "number" ? s.expires : undefined); },
     pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: inputs?.presenceKey ?? await presenceKey(), deviceKind: inputs?.deviceKind ?? (about.kind === "web" ? "web" : "phone"), keyStorage: inputs?.keyStorage ?? "software" },
     ...(inputs ? { server: { owner: inputs.owner, signIdentity: inputs.signIdentity, deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage, crypto: relayCrypto(), keyStore: relayKeyStore() } } : {}) });
-  if (!r.ok) throw new Error(("message" in r && r.message) || inviteReasonSay(r.reason === "closed" ? "refused" : r.reason === "needs_identity" ? "refused" : r.reason));
+  if (!r.ok) throw serverPairError(r);
   await afterPaired(r.paired);
   return {};
 }

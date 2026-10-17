@@ -11,9 +11,9 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, asOwner, kernelCaller } from "../../test/helpers.js";
 import { vapidKeys, vapidAuth, encrypt } from "./webpush.js";
-import { isQuiet, testHooks } from "./index.js";
+import { isQuiet, testHooks, threadFromPath } from "./index.js";
 
 const subtle = crypto.webcrypto.subtle;
 const u8 = b => new Uint8Array(b);
@@ -82,6 +82,33 @@ test("webpush: RFC 8291 Appendix A, byte for byte", () => {
     Buffer.from("When I grow up, I want to be a watermelon"), { salt: Buffer.from("DGv6ra1nlYgDCS1FRnbzlw", "base64url"), ecdh });
   assert.equal(body.toString("base64url"), "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_" +
     "yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN");
+});
+
+test("push: threadFromPath reads a Deck thread path", () => {
+  assert.equal(threadFromPath("/threads/th_abc"), "th_abc");
+  assert.equal(threadFromPath("/needs/x"), "");
+});
+
+test("push: a muted chat does not notify the person's devices", async t => {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  asOwner(d, root);
+  const deck = kernelCaller(d, root, "deck");
+  const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const phone = await browser();
+  await deck("push.key");
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys }, label: "Phone" });
+  assert.equal((await deck("work.chat.prefs", { chat: "t-quiet", muted: true })).data.muted, true);
+  const before = svc.got.length;
+  d.events.emit("assistant", "push.proactive", { title: "A teammate finished", path: "/threads/t-quiet", tag: "mute-1" }, {});
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(svc.got.length, before, "muted thread: no push");
+  d.events.emit("assistant", "push.proactive", { title: "A teammate finished", path: "/threads/t-live", tag: "mute-2" }, {});
+  await until(() => svc.got.length > before, "unmuted thread pushes");
 });
 
 test("push: quiet hours, across midnight and in a time zone", () => {
@@ -542,6 +569,7 @@ test("push: no payload carries thread, goal, message or teammate text: every sen
     "identity.entry-added": { seq: 1, eid: "e1", entry: { eid: "e1", label: text(1) } },
     "identity.recovered": { seq: 2, label: text(1) },
     "identity.device-removed": { eid: "e2", label: text(1) },
+    "signin.new-device": { device: "dev_1", at: 1_790_000_000_000, name: text(1), label: text(2), address: text(3), username: text(4) },
   };
   for (const type of Object.keys(NOTES)) assert.ok(type in events, `${type} has no free-text probe: add one`);
   for (const [type, payload] of Object.entries(events)) {
@@ -559,4 +587,18 @@ test("push: no payload carries thread, goal, message or teammate text: every sen
   // Whatever a sender puts in a message, only the fixed fields are sent.
   const wire = outgoing({ kind: "goal", title: "t", path: "/goals/g", tag: "x", at: 0, body: text(1), text: text(2), summary: text(3), thread: text(4) });
   assert.deepEqual(Object.keys(wire).sort(), ["at", "kind", "path", "tag", "title"]);
+});
+
+test("push: a new device signing in rings the person's other devices, loudly, with fixed words and no button that has no target", async () => {
+  const { NOTES, outgoing } = await import("./index.js");
+  const made = NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_000 } }, {});
+  assert.equal(made.kind, "notice", "a notice is always on and is not counted in the daily budget");
+  assert.equal(made.loud, true);
+  assert.equal(made.actions, undefined, "a sign-in is a session with no revoke, so no Remove button");
+  assert.equal(made.title, "A new device signed in to your space. Check it was you");
+  assert.equal(made.path, "/settings?section=devices");
+  assert.notEqual(made.tag, NOTES["signin.new-device"]({ payload: { device: "dev_2", at: 1_790_000_000_000 } }, {}).tag, "two devices are two notices");
+  assert.equal(made.tag, NOTES["signin.new-device"]({ payload: { device: "dev_1", at: 1_790_000_000_001 } }, {}).tag, "the same device in the same second is one notice");
+  assert.ok(!made.path.includes("dev_1"), "the path carries no device id");
+  assert.ok(JSON.stringify(outgoing({ ...made, at: 0 })).includes("Check it was you"));
 });

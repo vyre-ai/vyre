@@ -12,6 +12,7 @@
 
 import { validTimeZone } from "./zone.js";
 import { SCHEDULE_KEYS, checkSchedule, describeWindow } from "./schedule.js";
+import { parse, evaluate, truthy } from "./expr.js";
 
 /** @typedef {{ path: string, message: string }} Problem */
 /**
@@ -202,4 +203,20 @@ export function recordTrigger(t, trig, slim) {
     ...(trig.caught_up ? { caught_up: true, missed: trig.missed || 0 } : {}),
     ...(trig.tz ? { tz: trig.tz } : {}),
   };
+}
+
+/** Does an event pattern (`noun.past-verb`, `noun.*`) match a type? @param {string} pattern @param {string} type */
+export const typeMatches = (pattern, type) => pattern === type || (pattern.endsWith(".*") && type.startsWith(pattern.slice(0, -1)));
+
+/**
+ * Does this event trigger this Flow? Returns the scope the Flow reads (`trigger` and `event`), or null. An error in the condition is "no".
+ * @param {any} t the Flow's trigger @param {any} env an event envelope
+ */
+export function triggerScope(t, env) {
+  let scope = null;
+  if (t.on === "event" && eventPatterns(t).some(e => typeMatches(e, env.type)) && fieldPasses(t, env)) scope = { trigger: env.data ?? {}, event: env };
+  else if (t.on === "stage" && env.type === "record.stage-entered" && env.data && env.data.type === t.type && env.data.stage === t.stage) scope = { trigger: env.data, event: env };
+  if (!scope) return null;
+  if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
+  return scope;
 }

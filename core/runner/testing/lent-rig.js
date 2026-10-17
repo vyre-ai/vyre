@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { SCRATCH } from "../../../test/scratch.mjs";
+import { runnerScratch } from "../../../test/scratch.mjs";
 import { createKernel } from "../../../kernel/index.js";
 import { canonical, sha256 } from "../../../kernel/core/canonical.js";
 import { createRemoteServer } from "../../../kernel/remote/server.js";
@@ -34,7 +34,7 @@ function fakeSealer() {
 export async function rig(t, o = {}) {
   const acceptCap = o.acceptCap;
   const keyOf = o.keyIsDevice ? "dev_laptop" : "KEY_LAPTOP";
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dir = runnerScratch("lw-"); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const sealer = fakeSealer();
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => (o.secret ? o.secret : { secret: "v" }) });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });

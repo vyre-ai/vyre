@@ -54,7 +54,7 @@ export function personOf(pid) {
   // given it, and never reach its own ps-from-PATH or tmux.
   const look = procTable();
   const inside = insideClaude(pid, { look });
-  if (inside.inside) return { person: false, why: "inside a Claude session" };
+  if (inside.inside) return { person: false, why: "inside a coding-agent session" };
   if (inside.unknown) return { person: false, why: "its ancestry can't be read to the top" };
   if (!loginOf(pid, /** @type {any} */ (look))) return { person: false, why: "no login terminal" };
   return { person: true, why: "a login terminal" };

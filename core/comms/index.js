@@ -11,7 +11,7 @@ import { hold as holdFiles, release as releaseFiles } from "../../lib/connectors
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const fail = (/** @type {string} */ message, /** @type {string} */ code = "failed", /** @type {any} */ detail) => Object.assign(new Error(message), { code, ...(detail ? { detail } : {}) });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "module", "mcp", "harness"];
+const CALLERS = ["cli", "local", "deck", "capsule", "device", "module", "mcp", "harness"];
 /** A text message is one Twilio message up to this long (they split it into segments themselves). */
 export const SMS_MAX = 1600;
 /** The most numbers one yes covers. */

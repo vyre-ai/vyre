@@ -30,6 +30,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var enclave: MacEnclave?
     /// This Mac's agreement key (MacAgree.swift): ECDH for opening a wrapped chat key, no prompt per use.
     var agreement: MacAgree?
+    /// The relay device key (MacRelayKey.swift): the page's dials to its servers use it, and it never reaches the page.
+    var relayKey: MacRelayKey?
     /// Whether a local vyred answers right now; set by the Capsule at launch.
     var vyredUp: () -> Bool = { false }
     /// The shell's own yes before the page may wipe this Mac's identity key (reviewer-3 LOW): a native alert the page cannot draw over. A fake in tests.
@@ -115,6 +117,41 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         if w.frame.origin == .zero { w.center() }
         window = w
         view.load(URLRequest(url: Self.start))
+    }
+
+    // MARK: The driven mode (AgentDrive.swift), for the first-run proof
+    // Only the driven mode calls these, and it starts only in a test home (DriveGuard). A person's app has no way to reach them.
+
+    /// Runs a script in the page and answers its value as a JSON string, or the page's own error.
+    func driveEval(_ script: String, done: @escaping (String?, String?) -> Void) {
+        guard let web else { return done(nil, "the window is not open") }
+        web.callAsyncJavaScript("return JSON.stringify(await (async () => { \(script) })());", arguments: [:], in: nil, in: .page) { result in
+            switch result {
+            case .success(let v): done(v as? String, nil)
+            case .failure(let e): done(nil, e.localizedDescription)
+            }
+        }
+    }
+
+    /// A left click at a point of the page (CSS pixels from its top left), sent to this window alone as a mouse event, the way a person's mouse would arrive.
+    func driveClick(x: Double, y: Double) -> Bool {
+        guard let web, let w = window else { return false }
+        let p = web.convert(NSPoint(x: x, y: y), to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) else { return false }
+            w.sendEvent(e)
+        }
+        return true
+    }
+
+    /// The window's picture, as a PNG file.
+    func driveShot(path: String, done: @escaping (Bool) -> Void) {
+        guard let web else { return done(false) }
+        web.takeSnapshot(with: nil) { image, _ in
+            guard let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) else { return done(false) }
+            done((try? png.write(to: URL(fileURLWithPath: path))) != nil)
+        }
     }
 
     // MARK: Splash
@@ -233,6 +270,12 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         case "agree.agree":
             guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
             reply(id, ["secret": MacIdentity.b64url(secret)])
+        case "relay.public":
+            guard let pub = relayKey?.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep the key it reaches your servers with." : "There is no relay key on this Mac."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pub)])
+        case "relay.dh":
+            guard let peer = (args["peer"] as? String).flatMap(MacIdentity.unb64url), let shared = relayKey?.dh(peer: peer) else { return reply(id, ["error": "This Mac could not open a channel to your server with its key."]) }
+            reply(id, ["shared": MacIdentity.b64url(shared)])
         case "setup.server":
             reply(id, ["error": "To use this Mac as a server, run the install line in Terminal."])
         case "enclave.public":
@@ -398,6 +441,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
+        relayKey: {
+          public: function (create) { return call("relay.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          dh: function (peer) { return call("relay.dh", { peer: peer }).then(function (r) { return r.shared; }); }
+        },
         presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },

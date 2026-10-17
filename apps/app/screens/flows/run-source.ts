@@ -1,5 +1,5 @@
 // Starting a Flow and retrying a run on the real vyred, over an injected `call` (the app's box connection, or a fake box in a test).
-// flows.start is the person's own run (kernel/flows runner.start, checked against their chain); flows.retry is a person's own call too.
+// flows.start is the person's own run (kernel/flows runner.start, checked against their chain); flows.retry and flows.cancel are a person's own calls too.
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 
 export function runSource(call: Call) {
@@ -12,5 +12,7 @@ export function runSource(call: Call) {
     /** Start now. `key` makes a repeat tap the same run, not two. */
     startReal: (id: string, key: string, input: Record<string, unknown> = {}) => ask<{ id?: string; run?: string }>("flows.start", { id, input, key }),
     retryReal: (run: string) => ask<{ ok: boolean }>("flows.retry", { run }),
+    /** Stop a run that is paused, failed, waiting or held: it is kept, marked stopped, and what it waits on is withdrawn. */
+    cancelReal: (run: string) => ask<{ ok: boolean; state?: string | null }>("flows.cancel", { run }),
   };
 }

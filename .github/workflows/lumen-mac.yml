@@ -2,7 +2,7 @@
 name: lumen-mac
 on:
   push:
-    branches: ["main", "work/**"]
+    branches: ["main", "release/**"]   # a branch with a pull request runs through the pull request, not twice (push and pull_request)
     paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/lumen-mac.yml"]
   pull_request:
     paths: ["local/capsule/**", "!local/capsule/native-win/**"]
@@ -11,7 +11,7 @@ permissions:
   contents: read
 concurrency:
   group: lumen-mac-${{ github.ref }}
-  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') }}
 jobs:
   detect:
     runs-on: ubuntu-latest
