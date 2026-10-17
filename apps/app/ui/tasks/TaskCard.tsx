@@ -4,6 +4,8 @@ import { View } from "react-native";
 import { AskCard } from "../components/AskCard";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
+import { FormFields } from "../components/FormFields";
+import { blank, isQuestions, missing, submission } from "../components/form-fields-model.js";
 import { showToast } from "../components/Toast";
 import { snoozeNeed } from "../../src/state/snooze";
 import { DatePick, FilePick, LaterMenu, type AskFile } from "./AskControls";
@@ -27,8 +29,12 @@ export function TaskCard({ world, task, showSpace, hero, onAction, onOpen }: { w
   const m = cardFor(world, task, { showSpace });
   const spTag = m.tags.find((t) => t.kind === "space");
   const [value, setValue] = useState("");
+  // A question with a form: the fields sit above Yes, and Yes hands in the answers (nothing is sent while a required one is empty).
+  const questions = isQuestions(task.form) && m.actions.some((a) => a.id === "yes") ? (task.form as any[]) : null;
+  const [answers, setAnswers] = useState<Record<string, string | boolean>>(() => (questions ? blank(questions) : {}));
+  const [tried, setTried] = useState(false);
   const sw = swipeActions(m.actions.map((a) => a.id));
-  const bind = (list: typeof sw.leading): SwipeAction[] => list.map((a) => ({ ...a, onPress: () => (a.id === "open" ? onOpen() : onAction(a.id)) }) as SwipeAction);
+  const bind = (list: typeof sw.leading): SwipeAction[] => list.map((a) => ({ ...a, onPress: () => (a.id === "open" || (a.id === "yes" && questions) ? onOpen() : onAction(a.id)) }) as SwipeAction);
   // A check or approval with no draft sentence says who asked: "kit asked. Needs your approval to send."
   const doer = aid(task.doer);
   const asked = m.reason === "check" && !task.ext?.result?.draft && doer && doer !== world.me ? `${nameOf(world, doer)} asked. ` : "";
@@ -55,10 +61,20 @@ export function TaskCard({ world, task, showSpace, hero, onAction, onOpen }: { w
       tags={m.tags.filter((t) => t.tone === "warn").slice(0, 2).map((t) => ({ text: t.text, tone: t.tone as never }))}
       onTitlePress={onOpen}
       actions={[
-        ...actions.map((a) => ({ label: a.label, kind: a.kind, icon: a.icon as never, onPress: () => (a.id === "open" ? onOpen() : onAction(a.id, value)) })),
+        ...actions.map((a) => ({ label: a.label, kind: a.kind, icon: a.icon as never, onPress: () => {
+          if (a.id === "open") { onOpen(); return; }
+          if (a.id === "yes" && questions) {
+            const lacking = missing(questions, answers);
+            if (lacking.length) { setTried(true); showToast(`Answer ${lacking[0]} first.`); return; }
+            onAction("yes", undefined, submission(questions, answers));
+            return;
+          }
+          onAction(a.id, value);
+        } })),
         ...(kind === "yes_no" ? [{ label: "See what will happen", kind: "ghost" as const, onPress: onOpen }] : []),
       ]}
     >
+      {questions ? <FormFields fields={questions} values={answers} onChange={setAnswers} showMissing={tried} now={world.now} /> : null}
       {kind === "date" && m.inline ? (
         <View className="gap-s2">
           <DatePick label={m.inline.label} value={value} onChange={setValue} now={world.now} />

@@ -28,7 +28,8 @@ import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { openVyreDoor } from "./vyre-door.js";
-import { createSessionSync, restore, ROOTS } from "./sync.js";
+import { createSessionSync, restore, ROOTS, syncRootsFor } from "./sync.js";
+import { lentProcessProvider } from "../sessions/drivers/lent-agent.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
@@ -223,7 +224,8 @@ export function createRunner(o) {
       const lines = await o.sync.getTranscript(s.session, Number.isInteger(s.seed.from) && s.seed.from >= 1 ? s.seed.from : 1);
       if (lines.length) {
         const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
-        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native)) : null;
+        const prov = s.provider || lentProcessProvider(s.command) || "claude";
+        const file = o.seedFile ? await o.seedFile(work, seen, String(s.seed.native), prov) : null;
         if (file) writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
       }
     }
@@ -237,7 +239,8 @@ export function createRunner(o) {
       }
     }
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), ...(s.folder ? { roots: ROOTS.filter(r => r.dir !== "files") } : {}), log: m => emit({ type: "sync", session: s.session, m }) });
+    const agentRoots = syncRootsFor(s.provider || lentProcessProvider(s.command));
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), roots: [{ dir: "files", remote: "files" }, ...(s.folder ? [] : agentRoots)], log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const internet = effectiveNetwork(s.network, o.lenderCap) === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
@@ -472,6 +475,15 @@ export function createRunner(o) {
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
     async fence(session) { const h = live.get(session); if (!h || h.released) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    /** The lease is not open and the workspace key is off the filesystem (including after lock-pending retries). */
+    async whenSecured(timeoutMs = 120_000) {
+      const t0 = now();
+      while (now() - t0 < timeoutMs) {
+        if (lease.state !== "open" && !driver.isMounted(dir)) return;
+        await sleep(50);
+      }
+      throw Object.assign(new Error("the workspace did not finish locking"), { code: "timeout" });
+    },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },

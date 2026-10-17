@@ -115,7 +115,7 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   fs.mkdirSync(fp, { recursive: true });
   const { writeModule } = await import("./helpers.js");
   writeModule(fp, "zz-room", { does: { tools: [{ name: "zz-room.peek", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
-    export default { async start(ctx) { ctx.tool("zz-room.peek", { effect: "read", run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
+    export default { async start(ctx) { ctx.tool("zz-room.peek", { effect: "read", run: async (i, meta) => ({ caller: meta.caller, stamped: typeof meta.token === "string", room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const ctx = d.registry.context(realManifest);
@@ -140,8 +140,7 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   inThread.push(a.pid);
   const got = (await a.done).body.data;
   assert.equal(got.caller, "mcp:agent:kit", "whatever the client claims, the listener names the agent");
-  assert.match(got.token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
-  assert.notEqual(got.token, "forged.token");
+  assert.equal(got.stamped, true, "the socket stamped the session's kernel credential; egress never returns the token itself");
   assert.deepEqual(got.room, { group: false }, "the session's own chat, a chat of one person");
   // ended: the kernel stops honouring the token, the socket refuses and nothing is sent unstamped
   await ks.end();

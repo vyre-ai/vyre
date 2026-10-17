@@ -3,6 +3,8 @@
 // computers; a Guest has the smaller GUEST_MAY; a custom role (Member-based) turns on the tool groups it names and no more; a change of role is read at the next call; the owner and admins are served as before.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
@@ -21,6 +23,8 @@ const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 /** A team server: the owner, two members and a guest, each with a model session token. @param {any} t */
 async function rig(t, scoped = /** @type {string[] | undefined} */ (undefined)) {
   const root = tempHome(t);
+  // a team server is a box on every platform: its tools (computers, publish) exist only for that role, and a Mac's default role is not it
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...(scoped ? { doorScopedGroups: scoped } : {}) });
   t.after(() => d.stop());
   const OWNER = d.kernel.id.owner;

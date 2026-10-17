@@ -17,7 +17,7 @@ const WHY = {
 const ASK_MS = 5 * 60_000;
 /** One new ask per this long per boot: a label that anyone with a shell has must not be a way to nag the owner's phone. */
 const NEW_ASK_MS = 10 * 60_000;
-const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "device"];
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

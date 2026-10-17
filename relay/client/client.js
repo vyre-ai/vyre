@@ -61,11 +61,25 @@ export function defaultVisibility() {
 /** What the relay passes on, exactly, when the box says it removed this device (close code 4401). It is the relay's claim, not proof. */
 export const REMOVED = "device removed";
 
-/** The device's static key from the store, made and stored on first use. */
+/** The key each store last gave or made in this run, by store. @type {WeakMap<object, Promise<any>>} */
+const heldKeys = new WeakMap();
+
+/**
+ * The device's static key from the store, made and stored on first use. A key made here is kept for the run beside the store: a store that does not give back
+ * what it was handed (the Mac app's WKWebView answers its IndexedDB read with nothing) would otherwise make a new key on every dial, so the key a pairing
+ * enrolled is not the key its next call dials with, and the box refuses it ("not a paired device"). Two dials at once on an empty store share one make.
+ * A key the store does give is the one used.
+ */
 export async function deviceKey({ keyStore, crypto }) {
-  let k = await keyStore.get();
-  if (!k) { k = await crypto.generateKeyPair(); await keyStore.set(k); }
-  return k;
+  const k = await keyStore.get();
+  if (k) { heldKeys.set(keyStore, Promise.resolve(k)); return k; }
+  let made = heldKeys.get(keyStore);
+  if (!made) {
+    made = (async () => { const n = await crypto.generateKeyPair(); await keyStore.set(n); return n; })();
+    heldKeys.set(keyStore, made);
+    made.catch(() => { if (heldKeys.get(keyStore) === made) heldKeys.delete(keyStore); });
+  }
+  return made;
 }
 
 const defaults = o => ({

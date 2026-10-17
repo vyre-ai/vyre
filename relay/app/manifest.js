@@ -15,7 +15,8 @@ import { utf8, fromUtf8, hex, base64url, fromBase64url } from "../client/bytes.j
 export const MANIFEST = "release-manifest.json";
 export const SIGNATURE = "release-manifest.sig";
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
-const PATH = /^(?!\/)(?!.*\.\.)[\w./@[\]+-]{1,200}$/;   // [ ] and + for the web export's chunk names of dynamic and special routes, e.g. "[flow]-<hash>.js" and "+not-found-<hash>.js" (the only characters a full export uses beyond these); still no "..", no leading "/"
+/** A file path a manifest may list (exported so the app's CI can check its export against the same rule: apps/app/scripts/check-export-names.mjs). */
+export const PATH = /^(?!\/)(?!.*\.\.)[\w./@[\]+-]{1,200}$/;   // [ ] and + for the web export's chunk names of dynamic and special routes, e.g. "[flow]-<hash>.js" and "+not-found-<hash>.js" (the only characters a full export uses beyond these); still no "..", no leading "/"
 
 const subtle = () => globalThis.crypto.subtle;
 

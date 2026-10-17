@@ -16,9 +16,12 @@ import { createFolder, headerState, type Frame as FoldFrame, type Item, type Lay
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
+import { hasSessionCache, loadSessionCache, saveSessionCache } from "./session-cache.js";
+import { newUuid } from "@vyre/chat-core/composer-state.js";
+import { decryptUserMessage, openPrivateKey } from "./private-text.js";
 
 
-export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
+export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; saved: boolean; rev: number };
 export type PerfSink = (name: "paint.delta" | "paint.first", ms: number) => void;
 export type ChatStore = {
   readonly session: string;
@@ -75,6 +78,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   let replay = true;
   let looping = false;
   let stopping = false;
+  /** @type {Frame[]} */ let frameLog: Frame[] = [];
+  const cached = loadSessionCache(session);
+  if (cached?.frames?.length) frameLog = cached.frames as Frame[];
   /** Delta frames waiting to be seen: their message, the length that must show, and when they were emitted. */
   const pending: { key: string; end: number; t: number; first: boolean }[] = [];
   const seenFirst = new Set<string>();
@@ -123,6 +129,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     let meta = false;
     let reset = false;
     let groupChanged = false;
+    let sawGap = false;
     const v = source.viewer?.();
     if (v && v !== group.viewer) { group.setViewer(v); groupChanged = true; }
     for (const f of frames) {
@@ -131,6 +138,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       for (const k of g.touched) touched.add(k);
       const before = folder.status.state;
       const r = folder.apply(f as FoldFrame);
+      if (r.gap) sawGap = true;
       if (folder.status.state !== before) meta = true;
       if (r.dup) continue;
       if (r.reset) { reset = true; layout = true; meta = true; continue; }
@@ -143,6 +151,15 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       if (isKind(f, "text-done")) finished.add("a:" + f.data.message);
       if (isKind(f, "status") || isKind(f, "user-message")) meta = true;
       for (const k of r.touched) touched.add(k);
+      if (isKind(f, "user-message") && f.data?.enc) {
+        const ukey = "u:" + f.data.message;
+        void decryptUserMessage(f.data.enc, openPrivateKey).then((plain) => {
+          if (plain && folder.setUserText(ukey, plain)) {
+            notifyRow(ukey);
+            for (const fn of [...layoutSubs]) fn();
+          }
+        });
+      }
     }
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }
     const now = nowMs();
@@ -159,6 +176,13 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     // A reply that streams repaints at the frame clock; its first characters show on the next frame.
     if (meta || layout) bumpMeta();
     if (groupChanged) for (const f of [...groupSubs]) f();
+    if (sawGap && conn) {
+      const from = folder.last;
+      conn.close();
+      conn = source.connect({ from, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
+    }
+    frameLog = frameLog.concat(frames).slice(-400);
+    saveSessionCache(session, { head: folder.last, frames: frameLog });
   }
   function onFrame(f: Frame) {
     buffer.push(f);
@@ -166,8 +190,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   }
 
   /** The words show at once, dimmed, and the box's own row replaces them; a refusal (or a throw) takes them back out and says why. */
-  async function withOptimistic(text: string, run: () => Promise<string | null>): Promise<string | null> {
-    const key = folder.addOptimistic(text);
+  async function withOptimistic(text: string, message: string, run: () => Promise<string | null>): Promise<string | null> {
+    const key = folder.addOptimistic(text, message);
     for (const f of [...layoutSubs]) f();
     let why: string | null;
     try { why = await run(); } catch (e) { why = e instanceof Error && e.message ? e.message : "That did not send."; }
@@ -176,7 +200,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   }
 
   /** The plain send: the group route, the session's own, or the source's. */
-  async function sendPlain(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
+  async function sendPlain(text: string, o?: { message?: string; mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
@@ -192,6 +216,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     session,
     start() {
       if (conn) return;
+      if (frameLog.length && folder.last === 0) {
+        for (const f of frameLog) onFrame(f);
+        flush();
+        replay = true;
+      }
       conn = source.connect({ from: folder.last, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     },
     stop() { conn?.close(); conn = null; },
@@ -211,11 +240,12 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       if (metaSnap) return metaSnap;
       const s = folder.status;
       const h = headerState({ state: s.state, stopping: s.stopping || stopping });
-      return (metaSnap = { state: s.state, turn: s.turn, stopping: s.stopping || stopping, word: h.word, busy: h.busy, canStop: h.canStop, queue: folder.queue(), connection, rev: metaRev });
+      return (metaSnap = { state: s.state, turn: s.turn, stopping: s.stopping || stopping, word: h.word, busy: h.busy, canStop: h.canStop, queue: folder.queue(), connection, saved: hasSessionCache(session) || frameLog.length > 0, rev: metaRev });
     },
     async send(text, o) {
       if (!text.trim()) return null;
-      return withOptimistic(text, () => sendPlain(text, o));
+      const message = newUuid();
+      return withOptimistic(text, message, () => sendPlain(text, { ...o, message }));
     },
     async interrupt() {
       if (!store.meta().canStop) return null;
@@ -239,7 +269,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     learnNames(list) { if (group.learn(list)) for (const f of [...groupSubs]) f(); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
-      return withOptimistic(text, async () => {
+      const message = newUuid();
+      return withOptimistic(text, message, async () => {
       const a = withActions(source);
       if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
         const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...chipsOf(o.mentions), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });

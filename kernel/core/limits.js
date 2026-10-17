@@ -30,6 +30,13 @@ export function createLimits(cfg) {
       note(chain, "grant.used", urn(cfg.space, "grant", grant), { grant });
     },
 
+    /** Would one more act fit this grant's rate window? Does not count the act. */
+    rateAllows(/** @type {any} */ chain, /** @type {string} */ grant, /** @type {{ n: number, per_seconds: number }} */ r) {
+      const k = `${grant}|${actorOf(chain)}`, now = clock(), from = now - r.per_seconds * 1000;
+      const w = (windows.get(k) || []).filter(t => t > from);
+      return w.length < r.n;
+    },
+
     /** `rate`: at most `n` acts per `per_seconds` for this actor on this grant. */
     rate(/** @type {any} */ chain, /** @type {string} */ grant, /** @type {{ n: number, per_seconds: number }} */ r) {
       const k = `${grant}|${actorOf(chain)}`, now = clock(), from = now - r.per_seconds * 1000;

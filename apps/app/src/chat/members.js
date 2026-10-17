@@ -44,3 +44,18 @@ export function whereLine(places, chat) {
   const name = row.computer.trim();
   return row.online === false ? `${name} is offline` : `On ${name}`;
 }
+
+/**
+ * When this chat's session is on another of your computers (runner.places), offer carry on here.
+ * @param {any} places runner.places answer @param {string} chat @param {string | null} localDevice this device's id when known
+ * @returns {{ machine?: string, name?: string } | null}
+ */
+export function awayOf(places, chat, localDevice = null) {
+  const rows = Array.isArray(places) ? places : Array.isArray(places?.places) ? places.places : [];
+  const row = rows.find((/** @type {any} */ r) => r && r.chat === chat && r.session);
+  if (!row) return null;
+  if (localDevice && row.device === localDevice) return null;
+  const name = typeof row.computer === "string" && row.computer.trim() ? row.computer.trim() : null;
+  if (!name && row.online !== false) return null;
+  return { ...(row.device ? { machine: String(row.device) } : {}), ...(name ? { name } : {}) };
+}
