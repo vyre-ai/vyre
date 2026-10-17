@@ -13,7 +13,7 @@ import { resolveInstallOnline } from "../../lib/install-online.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { loginAdapters } from "../../lib/agent-adapters.js";
 import { canAssign } from "../../lib/spaces/members.js";
-import { commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
+import { SPACE_NAME_SAY, commandOk, spaceKey, inviteDays, inviteRole, parseInvite, passwordOk, personRoutes, placeKind, usernameOf } from "../../lib/first-run-shape.js";
 import { modelSuppliedSecret, SECRET_REFUSED } from "../../lib/master-secret.js";
 import { modelCaller } from "../modules/needs-you-hold.js";
 import { httpFetch } from "../../lib/http.js";
@@ -326,7 +326,8 @@ export function registerFirstRun(ctx, io) {
       const { held, personId } = await heldOf(meta);
       const place = placeKind(kind);
       if (!place) throw bad("Pick a Linux server or an always-on Mac.");
-      const label = usernameOf(name) || "space";
+      const label = usernameOf(name);
+      if (!label) throw bad(SPACE_NAME_SAY.required);
       const issued = await personCall("wink.install.issue", { os: place });
       const command = issued && typeof issued.line === "string" ? issued.line : "";
       if (!commandOk(command)) throw bad("The install command is not one this app can show.");

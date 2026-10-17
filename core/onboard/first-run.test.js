@@ -237,7 +237,8 @@ test("the install command is the pairing line, and an invite goes through the sp
   assert.equal(commandOk(opened.command), true);
   assert.match(opened.command, /VYRE_CODE=/);
   assert.equal(opened.code, undefined);
-  const mac = await tools.get("onboard.space.open").run({ kind: "mac" }, {});
+  await assert.rejects(() => tools.get("onboard.space.open").run({ kind: "mac" }, {}), (e) => e.code === "bad_input" && /Name your space/.test(e.message), "no name, no default label");
+  const mac = await tools.get("onboard.space.open").run({ kind: "mac", name: "studio" }, {});
   assert.match(mac.command, /install-mac-server\.sh/);
   const polled = await tools.get("onboard.space.poll").run({ id: opened.id }, { caller: "cli" });
   assert.equal(polled.online, false);

@@ -190,6 +190,8 @@ test("the space steps need the identity unlocked, and locking stops a line that 
   await assert.rejects(() => host.call("onboard.space.open", { kind: "windows" }), (e) => e.code === "locked");
   await host.call("identity.unlock", { password: PASSWORD });
   await assert.rejects(() => host.call("onboard.space.open", { kind: "windows" }), /Linux server or an always-on Mac/);
+  // A space is named by the person: leaving the name empty must not default to a shared label (the first person in the world would hold it and everyone after be told "taken").
+  for (const name of [undefined, "", "  ", "ab", "Not Valid!"]) await assert.rejects(() => host.call("onboard.space.open", { kind: "linux", ...(name === undefined ? {} : { name }) }), (e) => e.code === "bad_input" && /Name your space/.test(e.message), String(name));
   assert.equal((await host.call("onboard.space.poll", { id: open.id })).online, false);
 });
 
