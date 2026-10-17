@@ -241,9 +241,9 @@ try {
     await drv.shot("02-recovery-key");
     await drv.turnOn("I saved it");
     await drv.click("Continue");
-    await drv.waitFor(AI_SIGNIN_COPY.title);
-    await drv.click(AI_SIGNIN_COPY.skip);
-    await drv.waitFor("Your space");
+    // No AI step here: a page with no daemon has no server to sign an AI in on yet. It comes after the space is online.
+    const next = await drv.waitFor("Your space");
+    if (new RegExp(AI_SIGNIN_COPY.title).test(next)) throw new Error("the AI sign-in showed before any server exists");
     const r = await fetch(`${ins.names}/v1/ids/resolve?name=${USERNAME}`);
     const j = /** @type {any} */ (await r.json());
     if (r.status !== 200 || !j.data || !/^per_[a-z2-7]{26}$/.test(String(j.data.id))) throw new Error(`the directory has no identity for ${USERNAME}: ${r.status}`);
