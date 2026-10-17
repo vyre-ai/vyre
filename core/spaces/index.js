@@ -1303,7 +1303,7 @@ export default {
     // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
     // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
     /** @type {Promise<any> | null} */ let homeKeyMaking = null;
-    const nameHere = async (i, meta) => {
+    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.", obj({ name: str, done: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
       if (i.server !== undefined) return chosenServer({ ctx, identity, K, remoteCall, refuse }).onChosenServer("spaces.name-here", i, meta, ["name", "done"], "Only this home's owner can name a space on a server.");
       if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
       let person = null;
@@ -1332,9 +1332,8 @@ export default {
         await kv.put("home-named", { name: label, at: now() });
       }
       return { space: id, existed: true, rootPublic: have.publicKey };
-    };
-    tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.", obj({ name: str, done: { type: "boolean" }, server: str }, ["name"]), nameHere);
-    registerPublishServerSpace({ tool, obj, str, refuse, local: (i, meta) => nameHere(i, meta), chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names });
+    });
+    registerPublishServerSpace({ tool, obj, str, refuse, chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.

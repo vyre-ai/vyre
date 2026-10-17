@@ -362,10 +362,8 @@ export function registerFirstRun(ctx, io) {
           try {
             // The server this install line paired, named by the pairing the line started: never the newest or the only one.
             const server = status && typeof status.server === "string" && status.server ? status.server : "";
-            // this daemon redeemed the line itself, so it IS the server: its own space is named here (nothing is guessed about another server)
-            const here = !server && Boolean(status && status.local === true);
-            if (!server && !here) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
-            await personCall("spaces.publish-server-space", here ? { local: true, name: row.name } : { server, name: row.name });
+            if (!server) throw Object.assign(new Error("Your server did not finish connecting. Start again."), { code: "pair" });
+            await personCall("spaces.publish-server-space", { server, name: row.name });
             row.published = true;
           } catch (e) {
             const x = /** @type {any} */ (e);

@@ -296,10 +296,9 @@ shardTest("the invitee door, real daemon and relay: a stranger's channel with th
   await assert.rejects(() => session.call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
 });
 
-shardTest("a key that is a waiting or paired device here is not admitted as an invitee", async t => {
+shardTest("a key that only completed a ticket pairing is a stranger's key: no device, only the invitee door", async t => {
   const w = await world(t);
   const crypt = nodeCrypto();
-  // a key that is already a paired device here is not admitted by the invitee hello (it must come as that device)
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const ks = keystore(t);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ks });
@@ -308,7 +307,28 @@ shardTest("a key that is a waiting or paired device here is not admitted as an i
   const r = await openChannel({ relay: w.status.url, route: paired.route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
   t.after(() => r.channel.close(1000, "done"));
   assert.ok(r.reply, "the channel opened (the box is reachable)");
-  assert.ok(!r.reply.invitee, "a waiting pairing's key is not an invitee");
+  // an unconfirmed pairing is forgotten (relay/index.js: "paired by a code anyone could hold"): the key has no device row and is treated as any stranger's key
+  assert.equal(r.reply.device, undefined, "no device");
+  assert.ok(r.reply.invitee, "it gets the invitee door, as every stranger does");
+  assert.equal(((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).length, 0, "the ticket pairing made no device row");
+  // and that door gives it nothing else
+  const head = h => new Promise(res => { const s = r.channel.open(h); s.onhead = x => res({ status: x && x.status, s }); s.onreset = () => res({ status: 0, s }); });
+  for (const h of [{ method: "GET", path: "/v1/tools" }, { method: "POST", path: "/v1/tools/system.info", headers: {} }, { method: "GET", path: "/v1/events" }, { ws: "/v1/streams/glass/screen" }]) {
+    const x = await head(h);
+    assert.ok(x.status === 403 || x.status === 400 || x.status === 0, `${JSON.stringify(h).slice(0, 40)} is refused (${x.status})`);
+  }
+  assert.equal((await head({ peer: "wink", space: "home" })).status, 400, "a plain peer stream has no invitee hello");
+});
+
+shardTest("a key that is a CONFIRMED device here is not admitted as an invitee: it must come as that device", async t => {
+  const f = await pairFreshServer(t);
+  const crypt = nodeCrypto();
+  const keys = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
+  const box = Buffer.from(f.done.box, "base64url");
+  const r = await openChannel({ relay: f.w.status.url, route: f.done.route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  t.after(() => r.channel.close(1000, "done"));
+  assert.ok(r.reply, "the channel opened (the box is reachable)");
+  assert.ok(!r.reply.invitee, "a confirmed device's key is not an invitee");
 });
 
 shardTest("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", async t => {
