@@ -19,8 +19,8 @@ permissions:
   contents: read
 concurrency:
   group: node-${{ github.ref }}
-  # The integration tip (work/lead-*) never cancels: a run finishes and the newest tip waits behind it, so a full result always arrives.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && github.ref_name != 'work/stage-0.2') }}
+  # The integration tip (work/lead-*) and the train (work/*/train) never cancel: a run finishes and the newest tip waits behind it, so a full result always arrives.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (startsWith(github.ref_name, 'work/') && !startsWith(github.ref_name, 'work/lead-') && !endsWith(github.ref_name, '/train') && github.ref_name != 'work/stage-0.2') }}
 jobs:
   # What this run needs. Everything on main, integrate/**, release/**, the train (work/*/ship53/train), the lead's tips and a manual dispatch; on any other work branch and on pull requests only the tests a change can
   # reach through imports, with everything when the change reaches every test (a lockfile, a workflow, the kernel core: scripts/ci-select.mjs). It also decides the docs check and the Windows jobs.
