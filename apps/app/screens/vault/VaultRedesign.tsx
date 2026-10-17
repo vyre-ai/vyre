@@ -121,7 +121,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
 
   const list = err ? <ErrorState title="The vault did not answer" reason={err} retry={load} /> : items === null ? <LoadingState /> : (
     <View className="gap-s3">
-      {scope === "space" && noSpaceVault ? <Text tone="muted">Your vault opens the first time you save something with Touch ID or a passkey.</Text> : null}
+      {scope === "space" && noSpaceVault ? <Text tone="muted">Your vault opens the first time something is saved to it with Touch ID or a passkey.</Text> : null}
       {nav.kind !== "all" ? <View className="flex-row items-center justify-between gap-s2"><Text tone="label">{nav.kind === "group" ? nav.group : nav.kind === "expiring" ? "Expiring" : "Shared with me"}</Text><Button kind="ghost" size="sm" label="Show everything" onPress={() => setNav({ kind: "all" })} /></View> : null}
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (

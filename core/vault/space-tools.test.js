@@ -100,3 +100,32 @@ test("a lent value never reaches the response, the audit line, the log or an err
   assert.equal(JSON.stringify(r.events).includes(SECRET), false, "no event carries the value");
   assert.equal(r.logs.join("\n").includes(SECRET), false, "no log line carries the value");
 });
+
+test("the first put in this server's own space makes the space's vault key in the same call; another space id, grant and use still say there is no vault yet", async () => {
+  const r = rig({ members: [ALICE] });
+  const item = { id: "stripe", name: "Stripe key", value: SECRET, hosts: ["api.stripe.com"] };
+  const put = await r.call("vault.space.put", { space: SPACE, ...item });
+  assert.ok(put);
+  assert.equal((await r.call("vault.space.status", { space: SPACE })).exists, true);
+  assert.deepEqual((await r.call("vault.space.list", { space: SPACE })).items.map((/** @type {any} */ i) => i.id), ["stripe"]);
+  assert.deepEqual(r.events.find((e) => e[0] === "vault.space-created")?.[1], { space: SPACE, by: "first put" });
+  assert.ok(!JSON.stringify([r.events, r.logs]).includes(SECRET), "no value in an event or a log line");
+  // Another space id makes nothing.
+  const other = "spc_bbbbbbbbbb";
+  await assert.rejects(() => r.call("vault.space.put", { space: other, ...item }), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
+  // Granting, rotating and using a space with no vault say so, and make nothing.
+  await assert.rejects(() => r.call("vault.space.grant", { space: other, person: ALICE, pub: x25519Pair().pub }), (/** @type {any} */ e) => e.code === "not_found");
+  await assert.rejects(() => r.call("vault.space.rotate", { space: other }), (/** @type {any} */ e) => e.code === "not_found");
+  await assert.rejects(() => r.call("vault.space.use", { space: other, id: "stripe", url: "https://api.stripe.com/v1" }), (/** @type {any} */ e) => e.code === "not_found");
+  assert.equal((await r.call("vault.space.status", { space: other })).exists, false);
+  // A server that cannot say which space is its own makes no key.
+  const blind = rig({ noKernel: true });
+  await assert.rejects(() => blind.call("vault.space.put", { space: SPACE, ...item }), (/** @type {any} */ e) => e.code === "not_found");
+});
+
+test("vault.space.put always asks for the person's approval, so the key made by the first put is made only with it", () => {
+  const r = rig();
+  const p = r.tools.get("vault.space.put").presence;
+  assert.ok(p && typeof p.summary === "function" && typeof p.when !== "function");
+});

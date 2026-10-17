@@ -71,15 +71,13 @@ export function realData(call: Call): VaultData {
     };
   };
   /** The space's id when its own vault key is not made yet, else null. A server that cannot say leaves the screen as it was. */
-  let noVaultSpace = "";
   async function spaceVaultId(): Promise<string | null> {
-    noVaultSpace = "";
     try {
       const me = await ask<{ space?: string }>("records.me");
       const space = String(me?.space ?? "");
       if (!/^spc_[a-z2-7]{8,}$/.test(space)) return null;
       const st = await ask<{ exists?: boolean }>("vault.space.status", { space });
-      if (st?.exists === false) { noVaultSpace = space; return space; }
+      if (st?.exists === false) return space;
     } catch { /* leave it */ }
     return null;
   }
@@ -111,11 +109,7 @@ export function realData(call: Call): VaultData {
     async unlock(password) { await unlockMine(ask, deviceKeys, password); },
     async create(password) { await createMine(ask, deviceKeys, password); },
     async lock() { await ask("vault.me.account.lock"); },
-    async add(scope, req) {
-      await ask(req.tool, req.input);
-      // The first thing saved in a space whose vault key was left for later: the key is made now, and the server asks for the person's approval (Touch ID or a passkey) in its own way. Saving has already worked.
-      if (scope === "space" && noVaultSpace) { const space = noVaultSpace; noVaultSpace = ""; await ask("vault.space.create", { space }).catch(() => {}); }
-    },
+    async add(_scope, req) { await ask(req.tool, req.input); },
     async remove(scope, item) { await ask(scope === "space" ? "vault.delete" : "vault.me.remove", { name: item.id }); },
     async events(scope, item) {
       if (scope !== "space") return [];
