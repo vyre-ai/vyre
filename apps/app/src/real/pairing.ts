@@ -246,7 +246,7 @@ export async function afterPaired(r: { relay: string; route: string; box: string
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
   // Each step has its own code, so a window that cannot open the paired session says which step (the first-run trail carries the code and the error's name, never its text).
-  const at = async <T>(code: string, f: () => Promise<T>): Promise<T> => { try { return await f(); } catch (e) { throw Object.assign(new Error((e as Error)?.message || code), { code, name: (e as Error)?.name || "Error" }); } };
+  const at = async <T>(code: string, f: () => Promise<T>): Promise<T> => { try { return await f(); } catch (e) { throw Object.assign(new Error((e as Error)?.message || code), { code, name: (e as { code?: string })?.code || (e as Error)?.name || "Error" }); } };
   const { startPaired, channelCall, pairedKey, relayCrypto, relayKeyStore, about, deviceName } = await at("paired_load", async () => ({ ...(await import("../auth/paired")), ...(await import("../auth/paired-key")), ...(await import("../api/relay")) }));
   const ch = await at("paired_channel", () => channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about }));
   try {
