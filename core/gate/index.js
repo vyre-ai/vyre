@@ -153,8 +153,10 @@ export default {
         const currency = input.kind === "spend" && input.content && typeof input.content === "object" && typeof input.content.currency === "string" ? input.content.currency : undefined;
         const maker = agentName ? await ctx.call("agents.maker", { agent: String(agentName) }).catch(() => null) : null;
         const agentOwner = maker && !maker.error && maker.data && typeof maker.data.made_by === "string" ? maker.data.made_by : null;
-        return await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
-      } catch { return null; }
+        const got = await ctx.kernel.standingFor(meta, { kind: String(input.kind), via: String(input.via), to, ...(amount !== undefined ? { amount } : {}), ...(currency ? { currency } : {}), agentOwner });
+        console.error("DBG standingCover:", got ? "COVERED" : "NOT covered", "via", input.via, "to", JSON.stringify(to), "agent", agentName, "owner", agentOwner);
+        return got;
+      } catch (e) { console.error("DBG standingCover threw", String(e && e.message || e)); return null; }
     };
     const said = async (input, thread, agent) => {
       try {
@@ -208,6 +210,7 @@ export default {
           if (r && r.data && r.data.ok === true) return gate.sendNow({ ...input, ...filing }, { ...by, by: `card:${covered.card}` });
         }
         // A person's standing permission for this agent (a kernel grant): inside its connection, recipients, amount and daily cap the act goes out with no question; outside it, one ask as always.
+        console.error("DBG gate.request caller", caller, "agent", by.agent, "requester", by.requester);
         const standing = await standingCover(input, meta0, by.agent);
         if (standing) return gate.sendNow({ ...input, ...filing }, { ...by, by: `standing:${standing.grant}` });
         const intent = await said(input, filing.thread, by.agent);
