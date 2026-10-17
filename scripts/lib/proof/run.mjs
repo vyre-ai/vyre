@@ -39,7 +39,7 @@ export function createRun(o) {
         say(line); log(line); results.push({ name, ok: null, why: /** @type {Error} */ (e).message, ms: Date.now() - t0 }); done.set(name, false);
         return false;
       }
-      const why = String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e).replace(/\s+/g, " ").slice(0, 400);
+      const why = String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e).replace(/\s+/g, " ").slice(0, 3000);
       const code = /** @type {any} */ (e) && /** @type {any} */ (e).code ? ` [${/** @type {any} */ (e).code}]` : "";
       const line = `FAIL  ${name}: ${why}${code}`;
       say(line); log(line); if (/** @type {any} */ (e) && /** @type {any} */ (e).stack) log(String(/** @type {any} */ (e).stack));
