@@ -412,7 +412,7 @@ export default {
         if (!["owner", "admin"].includes(K.roleOf(person)) && !/^(?:microsoft:|google-firm:|mail:|google:)/.test(via)) throw Object.assign(new Error("name the connection this permission is for: a member gives one only for their own mailbox or a connection they hold"), { code: "denied" });
         const u = await ctx.call("agents.uid", { name: agentName });
         const uid = u && !u.error && u.data && u.data.uid;
-        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)} (agents.list shows the agents you can instruct)`), { code: "not_found" });
+        if (!uid) throw Object.assign(new Error(`no agent named ${agentName.slice(0, 60)}: check the name of an agent you can instruct`), { code: "not_found" });
         const id = await K.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(uid), space: K.space } }, actions: ["gate.act-standing"], resource: { prefix: `vyre://${K.space}/outbox/${i.kind}${via ? `/${via}` : ""}` }, conditions, source: `gate:standing:${agentName}:${person}`, reason: "a person's standing permission for an agent" });
         return { id, agent: agentName, kind: i.kind, via: via || null, to, ...(conditions.rate ? { daily_cap: conditions.rate.n } : { max_amount: conditions.max_amount, daily_amount: conditions.daily_amount, currency: conditions.currency }), ...(i.follow_lists === true && lists.length ? { following: lists, warning: `Anyone who can edit these lists can change who ${agentName} sends to.` } : {}) };
       },
@@ -445,7 +445,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const K = needK();
         const g = (await K.mint.list({ source: "gate:standing:" })).find((/** @type {any} */ x) => x.id === String(i.id));
-        if (!g) throw Object.assign(new Error("no such standing permission (gate.standing.list shows them)"), { code: "not_found" });
+        if (!g) throw Object.assign(new Error("no such standing permission: ask the owner which ones exist"), { code: "not_found" });
         await grantor(K, meta, String(g.source).split(":")[2]);
         await K.mint.end({ id: String(i.id), reason: "a standing permission was taken away" });
         return { revoked: String(i.id) };

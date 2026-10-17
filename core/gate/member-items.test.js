@@ -34,7 +34,7 @@ async function rig(t) {
   for (const p of [BEN, CY]) await K.gateway.grants.setRole(chain(OWNER), { person: p, role: "member" }, { presence: proof() });
   const ownerTok = (await K.surfaces.open(chain(OWNER), {})).token;
   const uid = (await d.registry.call("agents.create", { name: "juno", kind: "agent" }, "cli", { token: ownerTok })).data.uid;
-  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool === "gate.revise" ? "device" : "deck", { token: (await K.surfaces.open(chain(person), {})).token });
+  const as = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, tool === "gate.revise" ? "cli" : "deck", { token: (await K.surfaces.open(chain(person), {})).token });
   // A member's agent reaches the Gate through a module's tool (mail.send, microsoft.mail.send ...), which files the request in the agent's own turn: the door keeps gate.request itself to the owner, and a module call is not at
   // the door. The courier stands in for that module with the agent's token, so the Gate sees the same verified chain.
   const agentOf = async (/** @type {string} */ person, /** @type {string} */ tool, /** @type {any} */ input = {}) =>
