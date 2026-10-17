@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
+import { usePathname } from "expo-router";
 import { ThemeProvider as UiThemeProvider } from "@vyre/ui";
 import { MOCK } from "../real/box";
 import { useTheme } from "../theme/theme";
 import { UnlockScreen } from "../../screens/unlock/UnlockScreen";
 import { identityState, lockIdentity } from "../../screens/unlock/real.js";
-import { applyCover, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
+import { applyCover, coverExempt, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
 import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
 
 /**
@@ -50,7 +51,8 @@ export function UnlockGate({ children }: { children: ReactNode }) {
   }, [wanted, minutes, refresh]);
 
   // Fail closed: until the first read answers, and whenever a read fails, the app stays covered. Under the cover the app is inert on the web (no keyboard, no screen reader) and hidden on a phone.
-  const view = MOCK ? "none" : lockView(status, loaded);
+  const path = usePathname();
+  const view = MOCK || coverExempt({ proofBuild: process.env.EXPO_PUBLIC_VYRE_PROOF === "1", path }) ? "none" : lockView(status, loaded);
   const covered = view !== "none";
   useEffect(() => {
     if (Platform.OS === "web") applyCover(under.current as unknown as Parameters<typeof applyCover>[0], covered);
