@@ -267,10 +267,9 @@ export function ChatComposer(p: ComposerProps) {
   const choose = (o: { pick: string; urn?: string; kind?: string }) => {
     if (!trig) return;
     if (trig.kind === "command" && p.onLocalCommand?.(o.pick)) { setText(""); setCaret(0); input.current?.focus(); return; }
-    // One of her own vault items goes into the message as the plain text #Vault.<Name>: nothing is lent and no yes is made; Vyre fills the value in only where it leaves, and asks her there.
-    const ref = o.kind === "vault" && /^[A-Za-z][A-Za-z0-9_-]{0,127}$/.test(o.pick);
-    if (trig.kind !== "command" && trig.kind !== "person" && o.urn && o.kind !== "vault") picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
-    const r = pick(text, trig, ref ? "Vault." + o.pick : o.pick);
+    // One of her own vault items is a named pill: it grants nothing.
+    if (trig.kind !== "command" && trig.kind !== "person" && o.urn) picked.current.set(o.pick, { kind: o.kind ?? "record", id: o.urn, name: o.pick });
+    const r = pick(text, trig, o.pick);
     setText(r.text);
     setCaret(r.caret);
     input.current?.focus();

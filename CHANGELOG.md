@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6
 
+- fix(app): for 0.6 the # picker keeps the named pill for her own vault items (it grants nothing); the `#Vault.<Name>` text moves to 0.7 (work/0.7/chat6/refs).
 - refactor(app): vault references replace the turn lend. Picking one of her own vault items in the composer writes the plain text `#Vault.<Name>` and makes no chip and no yes. Removed `lend-yes.ts` and its test, the "Which site?" picker, the no-site button and the lend wiring in `ChatScreen` (DESIGN-vault-references.md).
 - test(app): `siteUpdate` (redesign.js) builds the site-save call; a login's own `url` is never in it, only `urls`. Tested.
 - fix(app): saving a site on a login writes the merged origins to `urls` and leaves the login's own `url` alone. `originOf` (redesign.js) also refuses an address with a path, query or fragment; test added.

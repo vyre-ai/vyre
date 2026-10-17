@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mentionsIn, triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel, peopleOnly } from "./composer-model.js";
+import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel, peopleOnly } from "./composer-model.js";
 
 test("@, # and / open their pickers at the caret", () => {
   assert.equal(triggerAt("ask @ju", 7)?.kind, "person");
@@ -78,11 +78,4 @@ test("a chat between people sends to the people: shared and set to mention, or s
   assert.equal(peopleOnly({ shared: true, replyMode: "every", ais: 0 }), false);
   assert.equal(peopleOnly({ shared: true, replyMode: null, ais: 2 }), false, "unset with an AI in it is unchanged");
   assert.equal(peopleOnly({ shared: false, replyMode: "mention", ais: 0 }), false, "one person alone keeps their AI");
-});
-
-test("picking one of her own vault items writes the plain text #Vault.<Name> and tags nothing", () => {
-  const r = triggerAt("use #cli", 8);
-  assert.equal(pick("use #cli", r, "Vault.ClientLogin_Dana").text, "use #Vault.ClientLogin_Dana ");
-  // nothing was picked into the tag map, so the message carries no chip for the Switchboard to act on
-  assert.deepEqual(mentionsIn("use #Vault.ClientLogin_Dana ", new Map()), []);
 });
