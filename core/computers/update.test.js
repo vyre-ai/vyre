@@ -206,3 +206,15 @@ test("force replaces a computer that looks current", async t => {
   const r = await up.run({ force: true });
   assert.equal(r.replaced, true);
 });
+
+test("a computer whose state volume has the old layout is replaced and the new container's volume has the agents' folders", async t => {
+  const w = await world(t, { image: "vyre/computer:0.5" });
+  w.mk({ version: "0.5.3" }).noteCreated();
+  const vol = String(containers(w.driver)[0].spec.browserVolume);
+  w.driver.volumes.set(vol, { layout: 1 });   // as an older image left it: none of the agents' folders
+  w.pool.opts.image = "vyre/computer:0.6";
+  const r = await w.mk({ version: "0.6.0" }).run();
+  assert.equal(r.state, "updated");
+  assert.equal(containers(w.driver)[0].spec.browserVolume, vol, "the same volume");
+  assert.equal(w.driver.volumes.get(vol)?.layout, 2, "its folders were put right before the new container started");
+});

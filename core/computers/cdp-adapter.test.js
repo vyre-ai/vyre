@@ -250,3 +250,28 @@ test("the adapter listens on loopback only, its tokens are 256-bit random values
   await a.cdp.send("Mark.a", {}); await b.cdp.send("Mark.b", {});
   assert.ok(w.chromes.a.seen.includes("Mark.a") && !w.chromes.a.seen.includes("Mark.b") && !w.chromes.b.seen.includes("Mark.a"));
 });
+
+test("an agent's browser-level auto-attach does not take over a session the fill already owns", async t => {
+  const w = await world(t, attaching());
+  const agent = await w.open("a");
+  const FILL = "f".repeat(43);
+  await w.adapter.shield("a", true, { fill_token: FILL });
+  const fill = new Cdp({ cdpUrl: `${agent.ep.url}/cdp`, token: FILL });
+  t.after(() => fill.close());
+  const sf = (await fill.send("Target.attachToTarget", { targetId: "login" })).sessionId;
+  // while the fill is signing in, Chrome says (to the one shared connection) that it attached to the very target the fill is on, and re-announces the fill's own session
+  w.chromes.a.emit({ method: "Target.attachedToTarget", params: { sessionId: sf, targetInfo: { targetId: "login", type: "page" }, waitingForDebugger: false } });
+  w.chromes.a.emit({ method: "Target.attachedToTarget", params: { sessionId: "S-auto", targetInfo: { targetId: "login", type: "page" }, waitingForDebugger: false } });
+  await new Promise(r => setTimeout(r, 60));
+  // the fill is still the owner of both its own session and nothing of the agent's making: the agent attaches after the window and sets auto-attach
+  /** @type {any[]} */ const heardFill = [];
+  fill.on(m => heardFill.push(m));
+  const hands = new Cdp({ cdpUrl: `${agent.ep.url}/cdp`, token: agent.ep.token });
+  t.after(() => hands.close());
+  await w.adapter.shield("a", false);
+  await hands.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  w.chromes.a.emit({ method: "Target.attachedToTarget", params: { sessionId: sf, targetInfo: { targetId: "login", type: "page" } } });
+  await new Promise(r => setTimeout(r, 60));
+  await assert.rejects(() => hands.send("Runtime.evaluate", { expression: "document.cookie" }, sf), /not yours/, "the fill's session is not the agent's, by auto-attach or otherwise");
+  await assert.rejects(() => hands.send("Runtime.evaluate", { expression: "1" }, "S-auto"), /not yours/, "and a session Chrome attached on its own belongs to no client");
+});

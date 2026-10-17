@@ -207,3 +207,21 @@ test("agentd registers a cdp ticket only as exactly that kind, and the holder's 
   assert.match(py, /os\.chmod\(SOCK, 0o600\)/);
   assert.match(py, /else:\n\s+c\.close\(\)/, "a second client is refused, never allowed to replace the first");
 });
+
+test("the terminal's tmux server and every shell in it inherit only the built environment: HOME, USER, LOGNAME, PATH, LANG and TERM, nothing of agentd's", async t => {
+  const w = await world(t);
+  w.tickets.add(T1, U, "term", "work-1");
+  const s = await connect(w.port, `${T1}\n`);
+  await new Promise(r => setTimeout(r, 100));
+  s.destroy();
+  const argv = w.spawned[0];
+  const env = argv.slice(argv.indexOf("-i") + 1, argv.indexOf("/usr/bin/python3")).map(a => a.split("=")[0]);
+  assert.equal(argv[argv.indexOf("/usr/bin/env") + 1], "-i", "started from an empty environment");
+  assert.deepEqual(env.sort(), ["HOME", "LANG", "LOGNAME", "PATH", "TERM", "USER"]);
+  const py = fs.readFileSync(new URL("./agentd-term.py", import.meta.url), "utf8");
+  assert.doesNotMatch(py, /VYRE|TOKEN|environ\.update|putenv|os\.environ\[(?!"TERM")/, "the helper adds only TERM");
+  assert.match(py, /os\.execv\("\/usr\/bin\/tmux"/, "tmux is started with the helper's environment, as it is");
+  const relay = fs.readFileSync(new URL("./agentd-relay.js", import.meta.url), "utf8");
+  assert.doesNotMatch(relay, /process\.env/, "the relay hands nothing of its own environment on");
+  assert.match(relay, /env: \{\}/, "and spawns with an empty environment under the built one");
+});
