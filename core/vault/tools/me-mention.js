@@ -13,7 +13,7 @@ const hintOf = (/** @type {any} */ i) => `${i.kind}${i.description ? " · " + St
 
 const TURN_MS = 30 * 60_000;
 /** What can be lent to an agent for a turn: a login (the copy-and-grant of member-share.js) and an app connection (a connection share). Anything else is not lent. */
-const LENDABLE = new Set(["login", "connection"]);
+const LENDABLE = new Set(["login", "connection", "api-credential"]);
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults, internal: (name: string, description: string, input: any, run: Function) => void,
@@ -69,7 +69,12 @@ export function register({ ctx, people, internal, define, now = Date.now, lend =
       try { items = (await people.list(owner, {})).items; } catch (e) { throw locked(e); }
       const it = items.find((/** @type {any} */ i) => i.name === String(input.id));
       if (!it) throw Object.assign(new Error(`no item of yours named ${String(input.id).slice(0, 60)}`), { code: "not_found" });
-      if (!LENDABLE.has(it.kind)) throw bad("that kind of item is not lent to an agent: a login or an app connection is");
+      if (!LENDABLE.has(it.kind)) throw bad("that kind of item is not lent to an agent: a login, an app connection or an API key is");
+      if (it.kind === "api-credential") {
+        if (!lend.credential) throw Object.assign(new Error("lending an API key needs the member credentials"), { code: "unavailable" });
+        const l = await lend.credential.lend(owner, { item: it.name, agent, thread, expires });
+        return { lent: true, name: it.name, agent, until: expires, use: l.credential, note: "The agent can call it through vault.request with the name in use, for this turn, and never sees the key. It ends when the turn ends." };
+      }
       if (it.kind === "connection") {
         if (!lend.connection) throw Object.assign(new Error("lending a connection needs the Vault's connection shares"), { code: "unavailable" });
         await lend.connection.lendTurn(owner, it.name, agent, thread, expires);
@@ -90,6 +95,7 @@ export function register({ ctx, people, internal, define, now = Date.now, lend =
       let ended = 0;
       if (lend.connection) ended += await lend.connection.endTurn(owner, thread);
       if (lend.login) ended += await lend.login.endFor(owner, thread);
+      if (lend.credential) ended += await lend.credential.endFor(owner, thread);
       return { ended };
     });
 }

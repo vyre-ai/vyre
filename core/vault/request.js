@@ -40,6 +40,7 @@ import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import { memberOf, MEMBER_SURFACES as SHARED_SURFACES } from "./tools/me.js";
+import { NAME as LENT } from "./member-credential.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
   readerMayRead, scopeAllows, modelMayRead,
@@ -153,7 +154,7 @@ export function httpsTransport({ url, address, method, headers, body, timeoutMs 
 /**
  * @typedef {{ lookup?: (hostname: string) => Promise<{ address: string, family: number }[]>, transport?: (s: Send) => Promise<Reply>,
  *   call?: (tool: string, input: any) => Promise<any>, said?: { match: (call: any, where?: any) => Promise<{ id: string } | null> },
- *   now?: () => number, log?: (m: string) => void }} RequestDeps
+ *   lentCreds?: import("./member-credential.js").MemberCredential, now?: () => number, log?: (m: string) => void }} RequestDeps
  */
 
 export class ApiRequests {
@@ -277,10 +278,10 @@ export class ApiRequests {
   /**
    * Check and classify a request. Throws with a reason a person can act on; touches no network
    * except the DNS lookup checkTarget does.
-   * @param {any} input @param {string} name the credential
+   * @param {any} input @param {string} name the credential @param {{ agent: string, thread?: string }} [lent] the agent and chat a lent copy is asked for (see cred)
    */
-  async plan(input, name) {
-    const { row, config, secret } = await this.vault.apiCredential(name);
+  async plan(input, name, lent) {
+    const { row, config, secret } = await this.cred(name, lent);
     const method = String(input.method || "").toUpperCase();
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
@@ -312,6 +313,19 @@ export class ApiRequests {
     return { name: row.name, ver: Number(row.ver || 0), config, secret, method, url, href, headers, body, kind: cls.kind, classified: cls, parsed, actingAs, hash,
       to: parsed.recipients.length ? parsed.recipients : [url.hostname],
       summary: cls.kind === "read" ? "" : summarize({ kind: cls.kind, method, url: href, actingAs, parsed }) };
+  }
+
+  /**
+   * The credential a request names: the Vault's own, or a copy a member lent to one chat's agent (a `lent-` name). A lent copy is served only when the call says which agent and chat it is for and the kernel's grant
+   * for exactly that agent and chat still holds; the forwarding route and a held call's release never name one, so a lent name is never served there.
+   * @param {string} name @param {{ agent: string, thread?: string }} [lent]
+   */
+  async cred(name, lent) {
+    const l = this.deps.lentCreds;
+    if (!LENT.test(name)) return this.vault.apiCredential(name);
+    const c = l && lent && lent.thread ? await l.credential(name) : null;
+    if (!c || !l || (await l.effect(name, lent.agent, "vault.read", lent.thread)) === "deny") throw bad(`${printable(name, 40)} is not available here`, "denied");
+    return c;
   }
 
   // ---- authentication ----
@@ -646,8 +660,10 @@ export class ApiRequests {
       try { reader = (((await this.vault.apiCredential(name)).config.readers) || []).some(x => x.module === mod); } catch { reader = false; }
     }
     if (mod && !reader) this.granted(name, mod, watcher, audit);
+    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
+    const isModel = caller === "mcp" || caller.startsWith("mcp:") || agentClaim(caller) !== null; // Claude, or any agent label on any surface (cli:agent:kit is the agent, not the person); the daemon's own pass route (runner:pass:) is neither
     let plan;
-    try { plan = await this.plan(input, name); }
+    try { plan = await this.plan(input, name, isModel && agentName ? { agent: String(agentName).toLowerCase(), ...(meta.thread ? { thread: meta.thread } : {}) } : undefined); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
     if (reader && !(plan.kind === "read" && readerMayRead(plan.config, String(mod), plan.url.pathname + plan.url.search))) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: ${mod} may only read the paths named for it`);
@@ -670,12 +686,11 @@ export class ApiRequests {
 
     // A model (an agent or the assistant) reaches a credential only through a kernel grant of its own: its project's linked vault, a vault shared with it, or a task lease (the kernel decides: access.js
     // effectFor). A read inside a grant runs with no prompt; anything outward is held for a person whatever the grant says. The person's own session and a thread the person tagged with this credential use it by right.
-    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
-    const isModel = caller === "mcp" || caller.startsWith("mcp:") || agentClaim(caller) !== null; // Claude, or any agent label on any surface (cli:agent:kit is the agent, not the person); the daemon's own pass route (runner:pass:) is neither
     const access = /** @type {any} */ (this.vault).access;
     if (isModel && !tagged && access && access.K) {
       const who = access.modelName(/** @type {any} */ (meta), caller);
-      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call", undefined, meta.thread)) === "deny") {
+      const action = plan.kind === "read" ? "vault.read" : "vault.call";
+      if ((LENT.test(name) && this.deps.lentCreds ? await this.deps.lentCreds.effect(name, who, action, meta.thread) : await access.effectFor(who, name, action, undefined, meta.thread)) === "deny") {
         audit(false, `${plan.method} ${plan.url.hostname} refused: no grant for ${who}`);
         throw bad(`${name} is not available to ${who === "assistant" ? "the assistant" : `the agent ${who}`}: it needs a grant (its project's vault, a vault shared with it, or a lease for the task)`, "denied");
       }

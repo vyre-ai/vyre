@@ -421,6 +421,7 @@ Two things are kept on the server so that agents and Flows keep working while yo
 
 - **The connection key.** Your connections are sealed under a key that lives inside your vault. A copy of that key alone is sealed for the server. It opens your app connections and nothing else: not your passwords, cards or notes. A stolen copy of the server's files gives someone your connection tokens, so revoke at the app if a server is ever lost.
 - **The lend key.** A login you share with an agent is copied into your vault under a second key, sealed for the server the same way, so the agent can sign in while you are away. It opens only the logins you chose to lend, and the copy is deleted when you stop sharing. A stolen copy of the server's files gives someone those lent logins and nothing else of yours.
+- **An API key you tag in a chat.** Tag one of your own API keys (one kept in the credential itself, with its hosts) and your chat's agent can call those hosts with it for that turn. Vyre adds the key at home, only to the credential's own hosts; a redirect to another host is refused, and the agent never sees the key. Anything that sends, changes or deletes still waits for a person. The loan ends with the turn, and only in that chat.
 
 Resetting a forgotten password rotates both keys. A connection made by an earlier build, stored as an ordinary item of kind connection, is not read any more; connect the app again.
 
