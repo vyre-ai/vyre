@@ -15,7 +15,7 @@ import { trail } from "./trail.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
-import { BROWSER_TOO_OLD, ed25519Works, ed25519Why } from "../identity/webcrypto-web.js";
+import { BROWSER_TOO_OLD, ed25519Works, ed25519Mode } from "../identity/webcrypto-web.js";
 import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
@@ -240,7 +240,7 @@ export function createHost(o) {
       const existing = await o.store.load();
       if (existing) return { username: existing.username, id: existing.id, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
       // The identity chain verifies Ed25519 signatures with WebCrypto (or the fallback webcrypto.ts installs): a browser with neither is told so, not given the chain's own words.
-      if (!(await ed25519Works())) { trail(`ed25519 check failed: ${ed25519Why()}`); throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
+      { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const seed = (o.random || ((n) => crypto.getRandomValues(new Uint8Array(n))))(32);
       const key = await fromSeed(seed);
       const code = await reserve(name);
@@ -282,7 +282,7 @@ export function createHost(o) {
       if (!addr) throw bad("Use the address of a space, like juniper.vyre.run.");
       if (!name || !password) throw Object.assign(new Error(BAD), { code: "bad_login" });
       if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
-      if (!(await ed25519Works())) { trail(`ed25519 check failed: ${ed25519Why()}`); throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
+      { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const begun = await door(addr.space, { op: "begin", username: name });
       const kdf = acceptKdf(begun.kdf);
       const d = await deriveLogin(String(password).normalize("NFKC"), String(begun.salt), kdf);
