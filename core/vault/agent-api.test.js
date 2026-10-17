@@ -296,7 +296,7 @@ test("a lease ends the moment the person who approved it no longer holds the Con
   const { cred, ask, give, GET, v, rig } = await mk(t, { people: ["per_ben"], call: (tool, i) => (tool === "flows.kit.credentials" ? (kits[i.task] ? { data: kits[i.task] } : { error: { code: "not_found", message: "no task" } }) : tool === "connectors.connection.get" ? { data: { id: i.id } } : undefined) });
   await cred("conn-cn1");
   await v.access.convertScopes();
-  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } });
+  const share = await give("conn-cn1", { kind: "actor", actor: { kind: "person", id: "per_ben", space: SPACE } }, { resource: { prefix: `vyre://${SPACE}/vault/${await rig.gs.personalVault()}/connection/cn1` } });   // the lease asks about the Connection's own address
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until: rig.clock() + 3_600_000, approver: "per_ben" });
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit")).kind, "read", "while Ben holds it, the agent he lent it to can use it");
   // a gateway with no way to ask whether the approver still holds it (no store behind it) lets a lease carry nothing: an error, not a pass
@@ -313,6 +313,7 @@ test("a lease held to a job's thread works in that thread only: another session 
   await v.access.convertScopes();
   const until = rig.clock() + 3_600_000;
   await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner });
+  console.log("[diag2] grants", JSON.stringify((await rig.gw.grants.list(rig.owner(), {})).filter(g => String(g.source).startsWith("vault:")).map(g => ({ s: g.source, sub: g.subject.actor && g.subject.actor.id, a: g.actions, r: g.resource.prefix, c: g.conditions }))), "urn", await v.access.urn("conn-cn1"));
   assert.equal((await ask({ credential: "conn-cn1", ...GET }, "mcp:agent:kit", { thread: "other" })).kind, "read", "before the job has a thread, the lease is the agent's in any session");
   assert.deepEqual(await v.access.leaseTask({ task: "task-1", agent: "kit", connections: ["cn1"], until, approver: rig.K.owner, thread: "job-1" }), { lent: 1, already: 0 }, "held to the job's thread");
   const live = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:lease:task-1" && g.status === "active");
