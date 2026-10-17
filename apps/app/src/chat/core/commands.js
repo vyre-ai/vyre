@@ -21,7 +21,7 @@ import { scoreFields, compareScores } from "./match.js";
 /**
  * source: "session" (built in), "project", "user", "plugin", "skill", "vyre". local: the composer
  * does it itself, nothing is sent.
- * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move" }} Command
+ * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move"|"skills" }} Command
  */
 
 /** @type {readonly Command[]} */
