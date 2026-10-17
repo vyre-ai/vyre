@@ -276,4 +276,6 @@ test("microsoft.accounts is the owner's firm-app list or a member's own account 
   assert.ok(Array.isArray(await accounts({ caller: "cli" })));
   const mine = await s.member("microsoft.accounts");
   assert.ok(Array.isArray(mine) && mine.every((/** @type {any} */ a) => !("item" in a)), "a member's rows never name the firm app's vault item");
+  const everything = JSON.stringify([mine, await accounts({ caller: "cli" })]);
+  for (const bad of [s.g.secret, "client_secret", "tenant_id"]) assert.ok(!everything.includes(String(bad)), `no credential or secret in an answer: ${String(bad).slice(0, 12)}`);
 });
