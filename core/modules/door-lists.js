@@ -18,7 +18,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "projects.docs.get", "projects.docs.set", "projects.refs.add", "projects.refs.list", "projects.refs.remove",
   "appmods.card", "appmods.catalog", "appmods.list", "appmods.screens", "appmods.status",
   "vault.me.account.create", "vault.me.account.lock", "vault.me.account.reset", "vault.me.account.status", "vault.me.account.unlock", "vault.me.get", "vault.me.list", "vault.me.put", "vault.me.remove", "vault.me.update", "vault.me.store.get", "vault.me.store.list", "vault.me.store.put", "vault.me.store.remove",
-  "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
+  "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
   "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
@@ -145,7 +145,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "link.macs", "link.pair.approve", "link.pair.deny", "link.pair.poll", "link.pair.request", "link.peers", "link.pending", "link.rename", "link.reply", "link.serve",
   "link.status", "link.unpair",
   "mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "mail.test",
-  "mcp.add", "mcp.call", "mcp.remove", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
+  "mcp.add", "mcp.call", "mcp.remove", "mcp.repin", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
   "memory.backup.restore", "memory.backup.run", "memory.backup.status", "memory.contradictions", "memory.correct", "memory.corrections", "memory.curate", "memory.device",
   "memory.follow", "memory.heard", "memory.identity.enroll", "memory.identity.grant", "memory.identity.lock", "memory.identity.move", "memory.identity.revoke",
   "memory.identity.status", "memory.identity.unlock.begin", "memory.identity.unlock.finish", "memory.markers", "memory.me", "memory.merge", "memory.mute",

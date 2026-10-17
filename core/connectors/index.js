@@ -16,6 +16,7 @@ import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
@@ -37,9 +38,11 @@ export default {
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
 
+    const curated = catalogFrom(ctx.config);
     const conn = connections({
       db: ctx.store.db,
-      catalog: catalogFrom(ctx.config),
+      catalog: curated,
+      snapshot: snapshotCatalog(loadSnapshot(ctx.config), curated),
       fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
       // The vault item is this module's own: one it did not make is never replaced.
       save: async (item, fields, { kind, description, hosts, grants }) => {
@@ -98,7 +101,7 @@ export default {
       description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `scope` { projects, agents } is who may use it, the shape a server carries; left out, a server is open to every project and agent and a credential (Microsoft, personal Google) is for you and the assistant only. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
       input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, scope: { type: "object" }, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
-      run: (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || "") }),
+      run: (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || ""), by: meta && meta.person && meta.person.id ? String(meta.person.id) : "" }),
     });
 
     ctx.tool("connectors.connect.finish", {
@@ -115,6 +118,16 @@ export default {
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
       run: input => conn.cancel(input),
+    });
+
+    ctx.tool("connectors.needs-reconnect", {
+      internal: true,
+      description: "The hub reports a sign-in the vendor refused after a fresh token: the connection is marked so its person connects again.",
+      input: obj({ item: str }, ["item"]),
+      run: (input, { caller }) => {
+        if (caller !== "module:mcp") throw Object.assign(new Error("only the hub reports a refused sign-in"), { code: "denied" });
+        return conn.needsReconnect(input);
+      },
     });
 
     ctx.tool("connectors.scope", {
