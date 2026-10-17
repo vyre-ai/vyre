@@ -30,7 +30,7 @@ import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
 import { parseServerQr } from "../core/wink/pairing.js";
-import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
+import { nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer } from "../relay/client/serverpair.js";
 import workerDir, * as WD from "../names/worker/index.js";
 import { createRuntime } from "../relay/worker/fake-cf.js";
