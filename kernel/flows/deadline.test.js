@@ -117,19 +117,21 @@ test("only the Flows service withdraws: an agent, a person, another module and t
     ["a person (a member's key rides this)", w.kernel.as(ALEX)],
     ["another module", w.kernel.moduleChain({ module: "wink", approver: ALEX })],
     ["the run's own chain", w.kernel.chainFor({ flow: "t", approver: ALEX, run: "run_x" })],
+    ["the approver's hop with the Flows service beside it (no role carries tasks.withdraw, so the person hop holds none)", w.kernel.moduleChain({ module: "flows", approver: ALEX })],
+    ["another service alone", w.kernel.as({ kind: "service", id: "wink" })],
   ];
   for (const [who, chain] of refused) await assert.rejects(() => w.kernel.tasksApi.withdraw(chain, task, {}), /./, who);
   assert.equal((await w.kernel.tasksApi.get(w.kernel.sysChain(), task)).state, "ready", "nothing changed");
-  const done = await w.kernel.tasksApi.withdraw(w.kernel.moduleChain({ module: "flows", approver: ALEX }), task, { reason: "test" });
+  const done = await w.kernel.tasksApi.withdraw(w.kernel.withdrawChain(), task, { reason: "test" });
   assert.equal(done.state, "skipped");
 });
 
 test("a withdrawal is safe to repeat and changes nothing the second time", async () => {
   const { w, run } = await start([agent({ timeout_ms: 100 * HOUR })]);
   const task = taskOf(await run());
-  const flows = w.kernel.moduleChain({ module: "flows", approver: ALEX });
+  const flows = w.kernel.withdrawChain();
   const first = await w.kernel.tasksApi.withdraw(flows, task, {});
-  await assert.rejects(() => w.kernel.tasksApi.withdraw(flows, task, {}), /skipped/);
+  await assert.rejects(() => w.kernel.tasksApi.withdraw(flows, task, {}), e => /** @type {any} */ (e).code === "bad_state" || /skipped/.test(/** @type {Error} */ (e).message));
   assert.equal((await w.kernel.tasksApi.get(w.kernel.sysChain(), task)).withdrawn.at, first.withdrawn.at);
 });
 
@@ -156,7 +158,7 @@ test("a run that crashed after the withdrawal and before it failed the step ends
   const { w, run, pass } = await start([agent({ timeout_ms: HOUR, on_fail: { then: "continue", steps: [make("late", "late")] } })]);
   const task = taskOf(await run());
   // the crash: the kernel ended the task, but the runner did not get to write the result
-  await w.kernel.tasksApi.withdraw(w.kernel.moduleChain({ module: "flows", approver: ALEX }), task, {});
+  await w.kernel.tasksApi.withdraw(w.kernel.withdrawChain(), task, {});
   const r = await pass(HOUR + 1000);
   assert.equal(r.state, "done", JSON.stringify(r.error));
   assert.equal(matters(w).filter((m) => m === "late").length, 1, "its failure steps ran exactly once");

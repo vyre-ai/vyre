@@ -16,7 +16,7 @@ export async function world(o = {}) {
   const kernel = new RealKernel({ now: () => clock.t, actions: { "email.send": { risk: "outward.send" }, "email.draft": { risk: "write" } } });
   if (which === "real") { kernel.setRole("attorney", [ALEX, BOB]); kernel.setRole("manager", [BOB]); kernel.addActor({ kind: "agent", id: "research" }); kernel.addActor({ kind: "agent", id: "intake" }); kernel.addActor({ kind: "service", id: "flows" }); }
   const emitted = [];
-  const chains = { forFlow: x => kernel.chainFor(x), forModule: x => kernel.moduleChain(x), forDoer: x => kernel.moduleChain({ module: "flows", approver: x.approver }) };
+  const chains = { forFlow: x => kernel.chainFor(x), forModule: x => kernel.moduleChain(x), forDoer: x => kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => kernel.withdrawChain() };
   // the Flows service's own chain, as the daemon builds it (core/daemon/flows-host.js flowsChain): the owner person, then the service hop. The Flow record types are protected, and this is the chain that passes.
   const sysChain = kernel.moduleChain({ module: "flows", approver: kernel.ownerActor(), tainted: false });
   const store = o.store === "records" ? new RecordsFlowStore({ kernel, chain: sysChain, space: SPACE }) : new MemoryFlowStore();
