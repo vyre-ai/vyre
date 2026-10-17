@@ -5,7 +5,7 @@ import { createHost } from "./host-core.js";
 import { hostStore } from "./host-store";
 import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
-import { shellSetupDone } from "../shell/shell";
+import { shellKind, shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
 import { installEd25519Fallback } from "../identity/webcrypto-web.js";
 
@@ -57,6 +57,7 @@ async function deviceId(): Promise<string> {
 
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
-  if (!host) host = createHost({ store: hostStore, directory: directory(), github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone });
+  // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
+  if (!host) host = createHost({ store: hostStore, directory: directory(), github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac" });
   return host;
 }

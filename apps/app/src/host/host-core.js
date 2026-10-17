@@ -219,7 +219,7 @@ export function createHost(o) {
           madeHere = String(p.box);
         }
         const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
-        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
+        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), ...(o.softwareKeyHere ? { noFingerprintYet: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";
