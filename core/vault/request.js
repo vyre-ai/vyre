@@ -688,6 +688,10 @@ export class ApiRequests {
 
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
 
+    // A member making an outward call herself, with a credential shared with her at a level that allows it (vault.me.shared.request: a lone person in the chain, checked there), is not held: the sends a
+    // person makes themselves are never held (owner's ruling). An agent acting for her still reaches the Gate below.
+    if (meta.byPerson === true) return { ...(await this.execute(plan, { who: caller })), kind: plan.kind };
+
     // A watcher has no card to wait behind: it runs reads and is refused anything outward.
     if (watcher) {
       audit(false, `${plan.method} ${plan.url.hostname} ${plan.kind} refused: a watcher only reads`);
@@ -887,7 +891,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     for (const it of /** @type {any} */ (vault).list().items) if (it.kind === "api-credential" && await may(it.name, "vault.read")) out.push({ name: it.name, kind: it.kind, ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) });
     return { items: out };
   });
-  tool("vault.me.shared.request", SHARED_SURFACES, "HTTP call to a vendor API with a credential the owner shared with you; Vyre adds the key and you never see it. Reads run at once; sends, payments and deletes wait for a person.",
+  tool("vault.me.shared.request", SHARED_SURFACES, "HTTP call to a vendor API with a credential the owner shared with you; Vyre adds the key and you never see it. Reads and, when the share allows it, your own sends, changes and payments go out at once: they are yours.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, operation: str, input: { type: "object" } }, ["credential"]),
     async (input, meta) => {
       const { person, may } = await asMember(meta);
@@ -895,7 +899,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
       // not shared = not there, whatever the name
       if (!(await may(name, "vault.read"))) throw bad(`no credential named ${name.slice(0, 80)} is shared with you`, "not_found");
       const { watcher: _w, ...rest } = input;
-      return api.request(rest, { caller: `member:${person}`, authorize: may });
+      return api.request(rest, { caller: `member:${person}`, authorize: may, byPerson: true });
     });
 
   internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",

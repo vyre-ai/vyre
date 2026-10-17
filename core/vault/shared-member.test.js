@@ -53,7 +53,7 @@ async function mk(t) {
   return { v, rig, net, gate, secrets, cred, list, ask, share, person, GET, POST, tools };
 }
 
-test("a credential not shared with her is not there; shared at Fill in she reads it and an outward act is held; the key never reaches her", async t => {
+test("a credential not shared with her is not there; shared at Fill in she reads it and her own outward act goes out unheld; the key never reaches her", async t => {
   const { cred, list, ask, share, person, net, gate, secrets, GET, POST } = await mk(t);
   await cred("graph-api");
   assert.deepEqual((await list(BOB)).items, [], "nothing shared, nothing listed");
@@ -68,13 +68,13 @@ test("a credential not shared with her is not there; shared at Fill in she reads
   const r = await ask({ credential: "graph-api", ...GET }, BOB);
   assert.equal(r.kind, "read"); assert.equal(net.calls.length, 1);
   assert.ok(!JSON.stringify(r).includes(secrets["graph-api"]) && !JSON.stringify(await list(BOB)).includes(secrets["graph-api"]), "no value reaches her");
-  const held = await ask({ credential: "graph-api", ...POST }, BOB);
-  assert.ok(held.held, "an outward act waits for a person whatever the share says");
-  assert.equal(net.calls.length, 1); assert.equal(gate.items.size, 1);
+  const sent = await ask({ credential: "graph-api", ...POST }, BOB);
+  assert.ok(!sent.held && sent.kind !== "read", "her own outward act is hers: it goes out, it is not held");
+  assert.equal(net.calls.length, 2); assert.equal(net.calls[1].method, "POST"); assert.equal(gate.items.size, 0, "nothing waits at the Gate for a person's own act");
   await assert.rejects(ask({ credential: "graph-api", ...GET }, EVE), { code: "not_found" });
 });
 
-test("a share that allows reads only refuses an outward act; a revoked share and a removed member stop the next call; the owner uses the owner's tools", async t => {
+test("a share that allows reads only refuses an outward act (not even held); a revoked share and a removed member stop the next call; the owner uses the owner's tools", async t => {
   const { cred, ask, share, person, rig, net, GET, POST } = await mk(t);
   await cred("graph-api");
   const g = await share("graph-api", person(BOB), "use", { actions: ["vault.read"] });
