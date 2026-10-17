@@ -60,7 +60,9 @@ test("a member's words in a Flow chat wake the agent as that member, and only fo
   const ok = await asBen("agents.flow-say", { agent: "juno", flow: open, text: "Why did run 8 fail?" });
   assert.ok(ok.data && ok.data.thread, JSON.stringify(ok.error));
   const s = await until(() => seen.find(q => q.thread === ok.data.thread), "the woken job's kernel session").catch(async (/** @type {any} */ e) => {
-    const g = JSON.stringify((await asOwner("threads.get", { thread: ok.data.thread, limit: 30 })).data || {}).slice(0, 1500);
+    const th = (await asOwner("threads.get", { thread: ok.data.thread, limit: 30 })).data || {};
+    const flat = (/** @type {any} */ o) => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => !["cwd", "name", "id", "chat", "agent", "project"].includes(k) && (v === null || ["string", "number", "boolean"].includes(typeof v))).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 160) : v]));
+    const g = JSON.stringify({ thread: flat(th.thread), last: ((th.turns || th.items || th.messages || []).slice(-3)).map((/** @type {any} */ x) => flat(x)) });
     throw new Error(`${e.message}; seen ${JSON.stringify(seen)}; the thread: ${g}`);
   });
   assert.equal(s.runas, BEN, "the job acts as the member who wrote");
