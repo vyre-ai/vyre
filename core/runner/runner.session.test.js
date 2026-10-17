@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { createEgress } from "./egress.js";
 import { fakeSpace } from "./testing/fake-space.js";
 import { driverFor, fscryptSupported } from "./workspace.js";
-import { rig, waitFor, findOnDisk, diskPlaintextSearch, SKIP, upstream, get, tmp, rm } from "./runner-test-lib.js";
+import { rig, waitFor, findOnDisk, diskPlaintextSearch, SKIP, upstream, get, tmp, rm } from "./testing/runner-test-lib.js";
 test("runner: a session runs on this computer, sees only its workspace, reaches only the proxy, and the server stays idle", { skip: SKIP || false, timeout: 90_000 }, async t => {
   const r = await rig(t);
   const h = await r.launch(r.runner, "s1");
