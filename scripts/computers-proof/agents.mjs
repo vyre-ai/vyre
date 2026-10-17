@@ -135,6 +135,33 @@ try {
   check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
   const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
   check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", "ok");
+  // (4) a streaming run: it runs as the agent's uid in a good folder, and a link in the home that leads out of it (to /etc, to another agent's home) is refused by the helper's realpath check
+  const run = (cwd, argv = ["/usr/bin/id", "-u"]) => new Promise(async (resolve, reject) => {
+    const ticket = crypto.randomBytes(24).toString("base64url");
+    try { await ctl.runTicket(A, ticket, { argv, cwd }); } catch (e) { return resolve({ registered: false, why: e.message }); }
+    const s = net.connect(RELAY_PORT, ip); let buf = Buffer.alloc(0); const out = { registered: true, stdout: "", exit: null };
+    s.on("connect", () => s.write(`${ticket}\n`)); s.on("error", reject);
+    s.on("data", c => {
+      buf = Buffer.concat([buf, c]);
+      while (buf.length >= 5 && buf.length >= 5 + buf.readUInt32BE(1)) {
+        const kind = buf[0], n = buf.readUInt32BE(1), payload = buf.subarray(5, 5 + n); buf = buf.subarray(5 + n);
+        if (kind === 0) out.stdout += payload.toString(); else if (kind === 2) { out.exit = JSON.parse(payload.toString()); s.destroy(); resolve(out); }
+      }
+    });
+    setTimeout(() => { s.destroy(); resolve(out); }, 8000);
+  });
+  const AH = "/var/lib/vyre/agents/ag20000/home";
+  shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `ln -sfn /etc ${AH}/to-etc && ln -sfn /var/lib/vyre/agents/ag20001/home ${AH}/to-other && mkdir -p ${AH}/work`]);
+  const good = await run(`${AH}/work`);
+  check(good.exit && good.exit.code === 0 && good.stdout.trim() === "20000", "a run starts as the agent's uid in a folder of its home", good);
+  for (const link of ["to-etc", "to-other"]) {
+    const bad = await run(`${AH}/${link}`);
+    check(bad.registered && bad.exit && bad.exit.error && /inside the agent's home/.test(bad.exit.error) && bad.stdout === "", `a run through a link out of the home (${link}) is refused by the helper and prints nothing`, bad);
+  }
+  const outside = await run("/etc");
+  check(outside.registered === false, "a folder outside the home is refused when the ticket is registered", outside.why);
+  const asOther = shOk(["exec", "-u", "20001", CONTAINER, "ls", AH]);
+  check(denied(asOther), "another agent cannot list this agent's home", asOther.slice(-80));
   await b.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");
   console.log("agent computer proof: all checks passed");
