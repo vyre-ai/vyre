@@ -892,7 +892,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     return { items: out };
   });
   // The vaults shared with a member, with the credentials in each that she can use. A vault is the kernel's record; she holds one by a grant on it (a whole vault shared once) and sees what her chain may read.
-  tool("vault.me.vaults", SHARED_SURFACES, "The vaults shared with you, and the credentials in each that you can use: names and hosts, never a value.", obj({}), async (_input, meta) => {
+  tool("vault.me.vaults", SHARED_SURFACES, "The vaults shared with you, and the credentials in each that you can use: names and kinds, never a value.", obj({}), async (_input, meta) => {
     const { may } = await asMember(meta);
     const K = /** @type {any} */ (vault).access.K, chain = await K.chain(meta);
     const placed = /** @type {any[]} */ (/** @type {any} */ (vault).db.prepare("SELECT name, named FROM vault_items WHERE named IS NOT NULL").all());

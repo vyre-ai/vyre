@@ -397,7 +397,7 @@ a value.
 
 ## Sharing inside your Space
 
-Each person has their own vault inside the Space. You add items to it and share them with people, groups of people and agents, or with agents, in any mix. Three levels:
+Each person has their own vault inside the Space. Owners and admins share the Space's items and whole vaults, and make groups. A member shares her own app connections (at Fill in) and the logins she chooses to lend to an agent she may instruct. What is shared can go to people, groups of people and agents, or to agents, in any mix. Three levels:
 
 | Level | What they can do |
 |---|---|
