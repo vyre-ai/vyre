@@ -15,6 +15,8 @@ export function boxOrigin(): string;
 export function socket(path: string): Promise<WebSocket>;
 /** A read, now, never queued. */
 export function call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<Result<T>>;
+/** A tool call through the real box layer (multi-server routing and mocks). */
+export function tool<T = unknown>(name: string, given?: Record<string, unknown>, opts?: { server?: string }): Promise<T>;
 /** A write through the outbox: shown as sending at once, gone on the box's answer. */
 export function send<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string }): Promise<{ key: string; answered: Promise<Result<T>> }>;
 /** Send a write waiting on presence again, with a proof bound to its exact input. */

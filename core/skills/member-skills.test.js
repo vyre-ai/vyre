@@ -34,7 +34,7 @@ async function world(t) {
 }
 
 test("skills is a group of the Space kernel's remote calls, and every call of it is a row of the member door's one table", () => {
-  assert.deepEqual([...CALLS.skills].sort(), ["approve", "draft", "get", "list", "versions"]);
+  assert.deepEqual([...CALLS.skills].sort(), ["approve", "browse", "decline", "draft", "get", "list", "rollback", "versions"]);
   assert.deepEqual(Object.keys(MEMBER_TOOLS).filter(k => k.startsWith("skills.")).map(k => k.slice(7)).sort(), [...CALLS.skills].sort());
 });
 

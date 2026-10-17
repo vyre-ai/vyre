@@ -45,6 +45,7 @@ SYS_RAN=0
 PATH_ADDED=0
 BUSY=0
 CODE=${VYRE_CODE:-}
+unset VYRE_CODE
 # The release files come from VYRE_BOX_URL, else from `box-url` beside this script (a prerelease app names its own tag's release assets there, the
 # rc channel; the files are verified against the pinned release key either way, so the URL chooses a source and never a trust), else vyre.run/box.
 _here=""; [ -f "$0" ] && _here=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
@@ -333,7 +334,7 @@ preflight() {
     else die "Vyre needs Node 22.5 or newer. Install it from https://nodejs.org, then run this line again."; fi
   fi
   if [ -n "$CODE" ]; then
-    printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
+    printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$|^[A-Za-z0-9_-]{239}$' \
       || die "that setup code does not look right. Copy the install line from your browser again."
   fi
   if [ "$SYSTEM" = 1 ]; then step "this Mac is ready"
@@ -791,6 +792,7 @@ start_service() {
 # talking to. Words that still cannot be read are said so, with the one command that shows them.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  if [ "${#CODE}" -eq 239 ]; then say "  This server pairs itself. Go back to the Vyre app."; return 0; fi
   n=0
   while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
     out=$("$BIN/vyre" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
@@ -980,11 +982,11 @@ ns=$(shasum -a 256 "$nb" | cut -d" " -f1)
 
 system_install() {
   if [ "$DRY" = 1 ]; then say "would run, under one sudo: a fixed root step that copies the verified release into a root-owned folder and runs the installer from there (it asks for your password)"; return 0; fi
-  # The full install is a server: core is told so by its own plist. With the app's install line, core is also told the fingerprint of the app's key that line carries (the last 16 bytes of the setup code:
-  # public, never the secret) and takes that one key first, within the hour. The code goes to this node on its stdin, never on a command line.
+  # The full install is a server: core is told so by its own plist. With the app's install line, core is also told the fingerprint of the setup key that line carries
+  # (the last 16 bytes of a 43-character code, or bytes 69 to 85 of a 239-character install code: public, never the secret) and takes that one key first, within the hour. The code goes to this node on its stdin, never on a command line.
   set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$BIN/vyre-serve" --server
   if [ -n "$CODE" ]; then
-    fp=$(printf '%s' "$CODE" | "$(wrapper_node)" -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{const b=Buffer.from(s.trim(),"base64url");if(b.length!==32)process.exit(1);process.stdout.write(b.subarray(16).toString("hex"))})') || fp=""
+    fp=$(printf '%s' "$CODE" | "$(wrapper_node)" -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{const b=Buffer.from(s.trim(),"base64url");const fp=b.length===32?b.subarray(16):b.length===179&&b[0]===2?b.subarray(69,85):null;if(!fp||fp.length!==16)process.exit(1);process.stdout.write(fp.toString("hex"))})') || fp=""
     printf '%s' "$fp" | grep -Eq '^[0-9a-f]{32}$' || die "that setup code does not look right. Copy the install line from your browser again."
     set -- "$@" --first-key-fp "$fp"
   fi

@@ -66,7 +66,7 @@ export async function claimIdentity(o) {
  * @param {Omit<Parameters<typeof claimIdentity>[0], "key"> & { rp?: string, webauthn?: { create(o: any): Promise<any>, get(o: any): Promise<any> } }} o
  */
 export async function claimIdentityWithPasskey(o) {
-  // The page decides where a passkey may be made (passkeyRp): app.vyre.run in a release build, also http://localhost in a development one. Anywhere else it is refused before the browser is asked,
+  // The page decides where a passkey may be made (passkeyRp): web.vyre.run or app.vyre.run in a release build, also http://localhost in a development one. Anywhere else it is refused before the browser is asked,
   // with the words that say where to go; that origin pairs as its own device with the typed code instead. A page with no location (a test with its own authenticator) uses the default.
   const origin = typeof globalThis.location !== "undefined" ? globalThis.location.origin : undefined;
   const rp = o.rp || (origin === undefined ? "app.vyre.run" : passkeyRp(origin, { dev: typeof process !== "undefined" && process.env.NODE_ENV !== "production" }));

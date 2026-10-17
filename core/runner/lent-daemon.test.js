@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { SCRATCH } from "../../test/scratch.mjs";
+import { SCRATCH, runnerScratch } from "../../test/scratch.mjs";
 import { tempHome } from "../../test/helpers.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
@@ -38,7 +38,8 @@ test("a chat on a computer run by the real daemon: placed with no yes, tools and
     http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers) => { asked.push([thread, p, headers["x-vyre-caller"]]); return p.endsWith("/harness.rules") ? { status: 200, body: JSON.stringify({ data: { decision: "deny", reason: "from the home" } }) } : { status: 200, body: JSON.stringify({ data: { tool: p.split("/").pop(), you: `mcp:thread:${thread}` } }) }; },
     specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   // the app's daemon on the lender: the real one, with the runner, whose home for the Space is the server above
-  const root = tempHome(t);
+  const root = process.env.VYRE_FSCRYPT_DIR && process.platform === "linux" ? runnerScratch("ld-root-") : tempHome(t);
+  if (process.env.VYRE_FSCRYPT_DIR && process.platform === "linux") t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "Office Mac", role: "local", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   // the machine reads as awake and plugged in, so the result does not depend on the hosted runner's power state
   seams.set(root, { heartbeatMs: 300, beatTimeoutMs: 1500, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });

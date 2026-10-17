@@ -34,7 +34,7 @@
 /**
  * Every container and volume this file's own labels touch carries a fixed `run.vyre: "1"` marker
  * (docker.js), independent of whatever `computers.labelPrefix` a box configures - but box's own
- * infrastructure containers (docker-api, tailscale, vyre itself) carry that same fixed marker
+ * infrastructure containers (docker-api, the network node, vyre itself) carry that same fixed marker
  * too, so it alone cannot tell an agent's computer apart from vyred's own container. The
  * `<prefix>.managed=true` / `<prefix>.computer=<agent>` pair is the real discriminator, and the
  * prefix is configurable, so this looks for the shape rather than a literal key.

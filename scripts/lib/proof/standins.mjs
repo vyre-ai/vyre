@@ -26,18 +26,18 @@ async function waitPort(port, host, ms = 15_000) {
 }
 
 /**
- * @param {{ out: string, host?: string, publicHost?: string, liveRelay?: string }} o `host` is where they listen (127.0.0.1, or 0.0.0.0 for a container); `publicHost` is the address a server in a container uses for them.
+ * @param {{ out: string, host?: string, publicHost?: string, liveRelay?: string, ports?: { relay?: number, names?: number }, appOrigins?: string }} o `host` is where they listen (127.0.0.1, or 0.0.0.0 for a container); `publicHost` is the address a server in a container uses for them.
  */
 export async function startStandins(o) {
   const host = o.host || "127.0.0.1", pub = o.publicHost || "127.0.0.1";
   fs.mkdirSync(o.out, { recursive: true });
   // --live-relay: the real relay is the transport only (pairing tickets and channels are its normal use); the names directory stays the stand-in, so no name is ever written for real.
   const relay = o.liveRelay ? null : createRelay({});
-  const relayUrl = relay ? await relay.listen(0, host) : "";
+  const relayUrl = relay ? await relay.listen(o.ports?.relay || 0, host) : "";
   const relayPort = relay ? Number(new URL(relayUrl.replace(/^ws/, "http")).port) : 0;
-  const port = await freePort();
+  const port = o.ports?.names || await freePort();
   const logFd = fs.openSync(path.join(o.out, "standin-directory.log"), "a");
-  const dir = spawn(process.execPath, [path.join(repo, "scripts/standin-directory.mjs"), "--port", String(port), "--host", host, "--zone", "vyre.test", "--claims-per-ip", "1000"], { stdio: ["ignore", logFd, logFd] });
+  const dir = spawn(process.execPath, [path.join(repo, "scripts/standin-directory.mjs"), "--port", String(port), "--host", host, "--zone", "vyre.test", "--claims-per-ip", "1000", ...(o.appOrigins ? ["--app-origins", o.appOrigins] : [])], { stdio: ["ignore", logFd, logFd] });
   await waitPort(port, host === "0.0.0.0" ? "127.0.0.1" : host);
   return {
     relay: o.liveRelay || (o.publicHost ? `ws://${pub}:${relayPort}` : `ws://127.0.0.1:${relayPort}`), names: `http://127.0.0.1:${port}`,

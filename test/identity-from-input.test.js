@@ -21,6 +21,7 @@ const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narro
   [/^spaces\./, "member", "target", "the person whose computer is lent or stopped; authorized against the caller's own chain"],
   [/^bridges\./, "person", "target", "the person whose view or reference is read or shared; the bridge checks the caller's own chain can act for them"],
   [/^vault\.(emergency\.|members\.|offboard$)/, "person", "target", "the person added, removed or asked of; the Vault checks the caller's own chain"],
+  [/^vault\.space\.(grant|rotate)$/, "person", "target", "the member the space vault key is wrapped to or dropped for; membership is checked against the caller's own chain"],
   [/^vault\.emergency\./, "owner", "target", "whose vault an emergency request is for; checked against the caller's chain"],
   [/^vault\.relay$/, "owner", "target", "the owner whose vault is relayed; callers cli, local, module only"],
   [/^wink\.(server|storage)\./, "owner", "target", "what the server or storage belongs to: yourself by default, or a Space you administer; checked against the caller's chain"],

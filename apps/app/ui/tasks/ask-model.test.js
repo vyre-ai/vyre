@@ -14,10 +14,10 @@ const find = (w, title) => nowModel(w).needs.find((t) => t.title === title);
 test("each kind of ask in the sample world gets its own control", async () => {
   const w = await world();
   const kind = (title) => { const t = find(w, title); return t ? askKind(cardFor(w, t), t) : null; };
-  assert.equal(kind("Signing date"), "date");
+  assert.equal(kind("Launch date"), "date");
   assert.equal(kind("Add a signature photo"), "file");
   assert.equal(kind("Approve a $720 refund for Priya Shah"), "yes_no");
-  assert.equal(kind("Check the court docket"), "credential");
+  assert.equal(kind("Check the supplier portal"), "credential");
   assert.equal(kind("Send the Q3 report to Dana Reyes"), "send");
 });
 
@@ -28,16 +28,16 @@ test("a stuck task that is not about a credential stays a plain stuck card", () 
 });
 
 test("the Vault item comes from the fix's own action, else a quoted name beside the word Vault, never a guess", () => {
-  assert.equal(vaultItemOf({ stuck: { suggested_fix: { text: "x", action: { kind: "open_vault_item", resource: "vyre://s/vault/court-portal" } } } }), "court-portal");
+  assert.equal(vaultItemOf({ stuck: { suggested_fix: { text: "x", action: { kind: "open_vault_item", resource: "vyre://s/vault/supplier-portal" } } } }), "supplier-portal");
   assert.equal(vaultItemOf({ stuck: { suggested_fix: { text: 'Update "stripe-key" in the Vault.' } } }), "stripe-key");
   assert.equal(vaultItemOf({ stuck: { suggested_fix: { text: 'Update "stripe-key" somewhere.' } } }), null);
   assert.equal(vaultItemOf({ stuck: { suggested_fix: { text: "Update the password in the Vault." } } }), null);
-  assert.equal(vaultAddRoute({ stuck: { reason: "The password changed.", suggested_fix: { text: "x", action: { kind: "open_vault_item", resource: "court-portal" } } } }), "/u/vault?add=court-portal&kind=login");
+  assert.equal(vaultAddRoute({ stuck: { reason: "The password changed.", suggested_fix: { text: "x", action: { kind: "open_vault_item", resource: "supplier-portal" } } } }), "/u/vault?add=supplier-portal&kind=login");
   assert.equal(vaultAddRoute({ stuck: { reason: "The key was revoked.", suggested_fix: { text: "x" } } }), "/u/vault?add=1&kind=api-key");
 });
 
 test("a file lands where the ask says, else the project's folder, else the record's, and never climbs out", () => {
-  assert.equal(landing({ output: { kind: "file", target: "Signed documents/2026" } }).folder, "Signed documents/2026");
+  assert.equal(landing({ output: { kind: "file", target: "Signed-off files/2026" } }).folder, "Signed-off files/2026");
   assert.equal(landing({ output: { kind: "file", target: "../../etc/x" } }).folder, "etc/x");
   assert.equal(landing({ project: "vyre://s/project/p9", output: { kind: "file", target: "Hero image" } }).folder, "Projects/p9/files");
   assert.equal(landing({ output: { kind: "file", target: "Hero image" } }, { recordTitle: "Jane Doe" }).folder, "Records/Jane Doe");

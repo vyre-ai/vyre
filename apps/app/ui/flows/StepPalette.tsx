@@ -13,10 +13,10 @@ import { searchChoices } from "./logic.js";
  * What a step can be, in groups (Logic, Records, Calculate, Send, AI, Work) with a search box. Typing narrows the list, the arrow keys move the highlight, Enter picks it and Escape closes it; every row is also focusable, so Tab and Enter work
  * too. A choice the engine cannot do yet is shown and marked Coming.
  */
-export function StepPalette({ onPick, onCancel }: { onPick: (kind: string) => void; onCancel: () => void }) {
+export function StepPalette({ onPick, onCancel, without }: { onPick: (kind: string) => void; onCancel: () => void; /** Kinds that do not belong here (a failure path runs one step after another, so it has no Side by side). */ without?: string[] }) {
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
-  const groups = searchChoices(q);
+  const groups = searchChoices(q).map((g) => ({ ...g, items: g.items.filter((c) => !without?.includes(c.kind)) })).filter((g) => g.items.length);
   const all = groups.flatMap((g) => g.items);
   const cur = all[Math.min(at, Math.max(0, all.length - 1))];
   const pickCur = () => { if (cur && !("soon" in cur && cur.soon)) onPick(cur.kind); };

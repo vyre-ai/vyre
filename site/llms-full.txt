@@ -2,7 +2,7 @@
 
 Vyre is the agentic command center for AI-native teams. Our mission is to help every professional services team become AI-native. People and agents share chats, records, tasks, files and automations (Flows) on a server the team owns, and anything that leaves the team waits for a person's yes. Open source (Apache 2.0), self-hosted, any model: Claude, Codex, Grok and OpenRouter through your own subscriptions or keys. Reach it from the Vyre app on a Mac, on Windows, on a phone, or in a browser.
 
-Release 0.5.1. Updated 2026-10-14. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.5.1. Updated 2026-10-16. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - People and agents in the same chats. @ a teammate or an agent, # a record, a file or a project. Anyone in the Space can make an agent and share it with a person or a role as use-only or full.
@@ -111,7 +111,7 @@ Connecting a stack: Vyre can be extended by integrating your Zoho, QuickBooks, R
 2. Install the app from https://github.com/vyre-ai/vyre/releases/latest: Vyre-aarch64.dmg or Vyre-x86_64.dmg on a Mac, VyreSetup.exe on Windows. Both are sideloaded (not signed with a store identity yet).
 3. Open the app, paste the code and save the recovery code.
 4. Choose Join a team, Add a server (a Linux machine, or a Mac that stays on; With Records is recommended) or, on a Mac, Use My Home.
-5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. Confirm the four words in the app.
+5. To add a server, run the one line the app shows on it, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the app> sh`. The server installs Vyre and pairs itself.
 6. Add your phone from the app: Vyre-android.apk from the release on Android (sideloaded); iPhone has no App Store app yet.
 
 ## What it costs
