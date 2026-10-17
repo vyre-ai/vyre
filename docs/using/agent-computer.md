@@ -36,6 +36,8 @@ Some sites have no connection Vyre can use, such as an ads account. For those, y
 
 Typing a password here shows it to this agent. Save it in your Vault and let Vyre fill it instead. Anything you type on the agent's screen goes through the agent's own session of the computer, and the agent can see it.
 
+The agent's screen is run by the browser's own user, not the agent's, and the agent's programs only get an untrusted pass to it. Once that is confirmed on a live install this warning is lifted; until then, treat anything you type there as visible to the agent.
+
 From then on the agent uses the signed-in session. You do not need to do this again unless the site signs you out.
 
 ## Logins survive sleep
@@ -59,6 +61,10 @@ Each agent's Chrome runs as its own separate user on the computer, apart from th
 Your Vault is the only place passwords live. When an agent needs to sign in, the Vault fills the login into the page and the agent never sees the stored password. The agent can use what a sign-in produces, the signed-in session, its cookies and tokens, because that is what working on the site means. It cannot read the password itself. The Vault only fills logins that you shared with that agent, only on the site they belong to.
 
 While a login is being filled, the agent's view of the page is hidden for that moment.
+
+## Sessions
+
+When an agent runs a Claude Code, Codex or Grok session, it runs inside the agent's own computer as the agent's own user, in its own terminal and files. The session reaches its AI provider through Vyre, never directly, and holds only a token for that one session, not a provider key.
 
 ## Downloads
 
