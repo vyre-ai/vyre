@@ -430,3 +430,16 @@ test("a Mac window says on its online answer that fingerprint approvals are not 
     assert.equal(done.noFingerprintYet === true, mac, mac ? "the Mac window says it" : "the browser does not");
   }
 });
+
+test("a relaunched host is locked: a tool that needs the key answers locked until the master password opens it", async (t) => {
+  const { d, store, pp, host } = await ready(t);
+  // the same kept identity in a new page (a relaunch): nothing of the key survives in memory
+  const again = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5 });
+  assert.equal((await again.call("identity.status", {})).unlocked, false, "the new page holds no key");
+  await assert.rejects(() => again.call("onboard.space.open", { kind: "linux", name: "alex-space" }), (e) => e.code === "locked", "the answer is the locked one");
+  await assert.rejects(() => again.call("identity.unlock", { password: "zebra quartz mango pillow" }), (e) => e.code === "bad_password", "a wrong password is refused and opens nothing");
+  assert.equal((await again.call("identity.status", {})).unlocked, false);
+  await again.call("identity.unlock", { password: "correct horse battery staple" });
+  assert.equal((await again.call("identity.status", {})).unlocked, true, "the right password opens it");
+  void host;
+});
