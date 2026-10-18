@@ -300,12 +300,12 @@ export default {
     // The skills module asks, before it updates a plugin server's row, whose row it is. Names only. Only the skills module asks.
     ctx.tool("mcp.key.row", {
       internal: true,
-      description: "Whose a plugin server's row is: { name } -> { bound: { plugin, level, person, owner? } } or null. Only the skills module asks.",
+      description: "Whose a plugin server's row is: { name } -> { exists, bound: { plugin, level, person, owner? } | null }. Only the skills module asks.",
       input: obj({ name: str }, ["name"]),
       run: async (input, meta) => {
         if (String(meta && meta.caller) !== "module:skills") throw Object.assign(new Error("only the skills module asks whose a plugin server's row is"), { code: "denied" });
         const r = hub.row(String(input.name));
-        return { bound: r && r.auth.bound ? { plugin: r.auth.bound.plugin, level: r.auth.bound.level, person: r.auth.bound.person, ...(r.auth.bound.owner ? { owner: true } : {}) } : null };
+        return { exists: Boolean(r), bound: r && r.auth.bound ? { plugin: r.auth.bound.plugin, level: r.auth.bound.level, person: r.auth.bound.person, ...(r.auth.bound.owner ? { owner: true } : {}) } : null };
       },
     });
 

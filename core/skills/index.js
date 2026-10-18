@@ -116,7 +116,7 @@ export default {
       agentOwner: async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.list", {}); const l = r && !r.error && Array.isArray(r.data) ? r.data : []; const a = l.find((/** @type {any} */ x) => x.name === name); return a && a.owner ? String(a.owner) : null; } catch { return null; } },
       projectOwner: async (/** @type {string} */ slug) => { try { const rows = (await ctx.kernel.records.query(ctx.kernel.serviceChain("skills"), "project", { filter: { field: "slug", op: "eq", value: slug }, page: { limit: 1 } })).rows; const o = rows[0] && rows[0].data.owner; return o && o.actor ? String(o.actor.id) : null; } catch { return null; } },
       mcpAdd: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.add", server); if (r.error) throw new Error(r.error.message); return r.data; },
-      mcpRow: async (/** @type {string} */ name) => { const r = await ctx.call("mcp.key.row", { name }); return r && !r.error && r.data && r.data.bound ? { auth: { bound: r.data.bound } } : null; },
+      mcpRow: async (/** @type {string} */ name) => { const r = await ctx.call("mcp.key.row", { name }); return r && !r.error && r.data ? { exists: r.data.exists === true, auth: { bound: r.data.bound } } : null; },
       mcpUpdate: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.update", server); if (r.error) throw new Error(r.error.message); return r.data; },
       log: (/** @type {string} */ m) => ctx.log(m),
     });

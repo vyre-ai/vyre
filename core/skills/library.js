@@ -84,6 +84,18 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
    * @param {any} p @param {any} m @param {any} rec @param {any} as @param {Record<string, unknown> | undefined} items @returns {Promise<string>} the row's name
    */
   async function addKeyed(p, m, rec, as, items) {
+    const { server, bound, row } = await keyedServer(p, m, rec, as, items);
+    try { await mcpAdd?.(server); }
+    catch (e) {
+      if (!mcpUpdate || !/already a server/.test(String(/** @type {Error} */ (e).message))) throw e;
+      // The row exists. It is updated only when it is this same plugin's own row (checked before the approval, too); the code is replaced and the old choice with it.
+      await sameOwner(row, bound);
+      await mcpUpdate(server);
+    }
+    return row;
+  }
+  /** The hub row for one keyed server and who it is bound to. */
+  async function keyedServer(/** @type {any} */ p, /** @type {any} */ m, /** @type {any} */ rec, /** @type {any} */ as, /** @type {Record<string, unknown> | undefined} */ items) {
     const chosen = items && typeof items === "object" ? items : {};
     /** @type {Record<string, string>} */ const env = {};
     for (const n of m.needs) { const v = chosen[`${m.name}.${n.var}`]; if (typeof v === "string" && v) env[n.var] = v; }
@@ -91,16 +103,20 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
     const level = String(rec.data.level), scope = level === "space" ? "" : String(rec.data.scope || as.id);
     const row = keyRowName({ plugin: p.name, server: m.name, level, scope });
     const bound = { plugin: p.name, level, person: level === "personal" && rec.data.scope ? String(rec.data.scope) : String(as.id), ...(owner ? { owner: true } : {}), approver: `${role === "owner" ? "the owner" : role === "admin" ? "an admin" : "a member"} (${String(as.id).slice(0, 8)})`, needs: m.needs.map((/** @type {any} */ n) => ({ var: n.var, label: n.label })) };
-    const server = { name: row, transport: "stdio", command: m.command, args: m.args || [], env, auth: { type: "env", bound } };
-    try { await mcpAdd?.(server); }
-    catch (e) {
-      if (!mcpUpdate || !/already a server/.test(String(/** @type {Error} */ (e).message))) throw e;
-      // The row exists. It is updated only when it is this same plugin's own row (same plugin, level, whose it is); another plugin's row, or one made by hand, is never taken over: the grants made to it would serve different code.
-      const have = mcpRow ? await mcpRow(row) : null, hb = have && have.auth && have.auth.bound;
-      if (!hb || hb.plugin !== bound.plugin || hb.level !== bound.level || hb.person !== bound.person || Boolean(hb.owner) !== Boolean(bound.owner)) throw fail("conflict", "another plugin already uses that server name");
-      await mcpUpdate(server);
-    }
-    return row;
+    return { row, bound, server: { name: row, transport: "stdio", command: m.command, args: m.args || [], env, auth: { type: "env", bound } } };
+  }
+  /** A row of that name that is not this plugin's own (same plugin, level, whose it is) is never taken over: the grants made to it would serve different code. */
+  async function sameOwner(/** @type {string} */ row, /** @type {any} */ bound) {
+    const have = mcpRow ? await mcpRow(row) : null;
+    if (!have || !have.exists) return;
+    const hb = have.auth && have.auth.bound;
+    if (!hb || hb.plugin !== bound.plugin || hb.level !== bound.level || hb.person !== bound.person || Boolean(hb.owner) !== Boolean(bound.owner)) throw fail("conflict", "another plugin already uses that server name");
+  }
+  /** Before a version is made the one in use: every keyed server of the plugin has a row that is free or its own, or the approval is refused and nothing changes. */
+  async function checkKeyed(/** @type {any} */ rec, /** @type {any} */ as) {
+    if (rec.data.kind !== "plugin") return;
+    const p = JSON.parse(String(rec.data.body));
+    for (const m of p.mcp || []) if (m.needs && m.needs.length) { const { row, bound } = await keyedServer(p, m, rec, as, undefined); await sameOwner(row, bound); }
   }
   const roleOf = async (/** @type {any} */ person) => { const m = kernel().membership ? await kernel().membership(person.id).catch(() => null) : null; return m && typeof m.role === "string" ? m.role : ""; };
 
@@ -146,6 +162,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
       const p = JSON.parse(String(rec.data.body));
       if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: it declares ${JSON.stringify(declared(p))}. Approve with ack: "${ackOf(p)}" to say yes to exactly that${keyNote(p, rec.data.level).keys ? ` ${keyNote(p, rec.data.level).keys}` : ""}`, { declares: declared(p), ack: ackOf(p), ...keyNote(p, rec.data.level) });
     }
+    await checkKeyed(rec, person);
     return make(rec, person, undefined, i.items);
   }
 
@@ -159,6 +176,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
     if (!old) throw fail("not_found", `no version ${i.to} of ${i.name}`);
     if (!(await mayApprove(person, old.data.level, scope, old.data.owner || null))) throw fail("not_allowed", "only the owner rolls a skill back");
     if (old.data.kind === "plugin") { const p = JSON.parse(String(old.data.body)); if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: approve with ack: "${ackOf(p)}"`, { declares: declared(p), ack: ackOf(p) }); }
+    await checkKeyed(old, person);
     const rec = await kernel().records.create(svc(), TYPE, { name: old.data.name, level: old.data.level, scope, version: have[0].data.version + 1, state: "draft", kind: old.data.kind, body: old.data.body, hash: old.data.hash, owner: old.data.owner || "", proposer: `person:${person.id}`, note: `rolled back to version ${i.to}` });
     return make(rec, person, `rolled back to version ${i.to}`, i.items);
   }
