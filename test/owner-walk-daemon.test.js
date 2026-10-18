@@ -110,6 +110,8 @@ test("2. a member's private note is hers alone: the owner cannot read it", { tim
   assert.ok(made.data && made.data.id, `she can write a note: ${JSON.stringify(made).slice(0, 200)}`);
   const hers = await callAs(miaChain, "planner.list", { state: "all" });
   assert.ok((hers.data || []).some((/** @type {any} */ x) => x.title === "Mia's private thought"), `she lists it: ${JSON.stringify(hers).slice(0, 300)}`);
+  const back = await callAs(miaChain, "planner.get", { item: made.data.id });
+  assert.equal(back.data && back.data.title, "Mia's private thought", `and she reads it back by id: ${JSON.stringify(back).slice(0, 300)}`);
   const ownerList = await call("planner.list", { state: "all" });
   assert.ok(!(ownerList || []).some((/** @type {any} */ x) => x.title === "Mia's private thought"), "the owner's list does not hold it");
   const peek = await callAs(ownerChain, "planner.get", { item: made.data.id });
