@@ -217,7 +217,8 @@
         "name": "work.project.chat",
         "summary": "a project's group chat, made on first use, with who is missing from it",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project"
       },
       {
         "name": "work.chat.threads",
@@ -241,7 +242,8 @@
         "name": "work.chat.thread.new",
         "summary": "start a new thread in the chat of you and these people",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project"
       },
       {
         "name": "work.thread.fork",
@@ -263,7 +265,8 @@
         "name": "work.agent.thread.new",
         "summary": "start a new thread with an agent; the old ones stay",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project"
       },
       {
         "name": "work.chat.create",

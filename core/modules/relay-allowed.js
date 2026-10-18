@@ -8,7 +8,7 @@ export const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move", "wink.install.issue"],
   memory: ["spaces.storage."],
   flows: ["work.flow.origin"], // a draft Flow made from a chat keeps that chat, as the person who made it (work checks they are in it)
-  work: ["spaces.storage.", "vault.uses.for", "spaces.members.list", "flows.runs", "flows.attention", "flows.list"], // vault.uses.for: the timeline asks, as the person looking; spaces.members.list: the names of those a person adds to a chat, asked as that person
+  work: ["spaces.storage.", "vault.uses.for", "spaces.members.list", "flows.runs", "flows.attention", "flows.list", "gate.held"], // vault.uses.for: the timeline asks, as the person looking; spaces.members.list: the names of those a person adds to a chat, asked as that person
   publish: ["previews.folder"], previews: ["publish.quick"], // a files preview card publishes its own folder, as the person who pressed it (publish asks previews.folder); the share sheet's "anyone with the link" is the same press (previews.share, a person's own act, hands the person to publish.quick, which holds it for one yes)
   providers: ["sessions.providers.snapshot"], vault: ["flows.connections"], // providers: the accounts a person may choose are theirs; vault: which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
