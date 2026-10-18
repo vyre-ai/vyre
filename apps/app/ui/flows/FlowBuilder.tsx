@@ -3,27 +3,24 @@ import { ScrollView, View } from "react-native";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
-import { Field } from "../components/Field";
 import { IconTile } from "../components/IconTile";
 import { Row } from "../components/Row";
-import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
-import { FormulaBox } from "./FormulaBox";
 import { StepCard } from "./StepCard";
+import { TriggerFields } from "./TriggerFields";
 import { FlowSettings } from "./FlowSettings";
 import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
 import { ContextBox } from "./ContextBox";
-import { EVERY_CHOICES, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, choiceOf, flowSentence, isRecordTrigger, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
+import { choiceOf, flowSentence, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
+import { canTurnOff } from "./failure.js";
 import { useUiTheme } from "../theme";
 import { addTo, canMove, duplicateDeep, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 import type { LaneRef } from "./tree.js";
 
 export type { Draft, DraftStep, Options };
-
-const pick = (list: { name: string; label: string }[]): [string, string][] => list.map((x) => [x.name, x.label]);
 
 /**
  * The Flow builder: a Flow read as a sentence. Across the top the whole Flow in one line ("When a record is created in RefundRequests, create a RefundRequests record, then hand it to the
@@ -45,6 +42,8 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, on
   const openRoot: Root = openStep && flat(draft.steps).some((x) => x.id === openStep.id) ? "steps" : "onFailure";
   const t = draft.trigger;
   const setTrig = (patch: Record<string, unknown>) => set({ trigger: { ...t, ...patch } });
+  const more = draft.moreTriggers ?? [];
+  const setMore = (i: number, patch: Record<string, unknown>) => set({ moreTriggers: more.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
 
   return (
     <View className="gap-s4">
@@ -59,21 +58,17 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, on
       <View className="min-w-0 flex-1 gap-s4">
       <Text size="caption" tone="label">{accessNote ?? "Each step can only read and write what the person who added it can reach. It runs with the access of the person who approved it, and pauses if that is lost."}</Text>
       <View>
-        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
+        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={more.length ? `${more.length + 1} ways to start` : t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${[t, ...more].map((x) => triggerPhrase(x, options)).join(", or when ")}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
           last={false}>
-          {t.kind === "advanced" ? <Text tone="muted">This Flow starts in a way the builder cannot show yet. It is kept as it is.</Text> : null}
-          {t.kind === "advanced" ? null : <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />}
-          {isRecordTrigger(t) || t.kind === "removed" ? <Select label="Object" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setTrig({ type })} /> : null}
-          {t.kind === "changed" && t.type ? <Select label="Only when this field changes" value={t.field ?? ""} options={[["", "Any field"], ...((options.types.find((x) => x.name === t.type)?.fields ?? []).map((f) => [f.name, f.label] as [string, string]))]} onChange={(field) => setTrig({ field })} /> : null}
-          {t.kind === "changed" ? <Select label="If the record changes again" value={t.again ?? "replace"} options={[["replace", "Start over"], ["keep", "Keep both"]]} onChange={(again) => setTrig({ again })} /> : null}
-          {t.kind === "stage" ? (stagesOf(options, t.type).length ? <Select label="Stage" value={t.stage ?? ""} options={stageChoices(options, t.type, t.stage)} placeholder="Choose a stage" onChange={(stage) => setTrig({ stage })} /> : <Field label="Stage" value={t.stage ?? ""} onChangeText={(stage) => setTrig({ stage })} placeholder="For example Drafting" />) : null}
-          {t.kind === "form" ? <Field label="Form name" value={t.path ?? ""} onChangeText={(path) => setTrig({ path })} placeholder="For example contact" help="Your site's form posts to this name." /> : null}
-          {t.kind === "schedule" ? <Select label="How often" value={t.every ?? ""} options={EVERY_CHOICES.map((x) => [x, x] as [string, string])} placeholder="Choose" onChange={(every) => setTrig({ every })} /> : null}
-          {t.kind === "schedule" && TIMED.has(t.every ?? "") ? <Field label="At what time" value={t.at ?? "09:00"} onChangeText={(at) => setTrig({ at })} placeholder="09:00" help="24-hour time in your space's time zone, such as 09:00 or 17:30." /> : null}
-          {t.kind === "event" ? <Select label="What happens" value={t.event ?? ""} options={eventChoices(options, t.event)} placeholder="Choose" onChange={(event) => setTrig({ event })} /> : null}
-          {t.kind === "watcher" ? <Field label="Watcher name" value={t.watcher ?? ""} onChangeText={(watcher) => setTrig({ watcher })} placeholder="For example new-mail" help="The name of a watcher in your space: a mailbox or a folder it watches. The steps start with the new item." /> : null}
-          {["created", "changed", "removed", "event", "watcher"].includes(t.kind) ? <FormulaBox label="Only when (optional, a formula)" value={t.where ?? ""} onChange={(where) => setTrig({ where })} placeholder="For example trigger.after.amount > 500" /> : null}
-          {t.kind === "signup" ? <Text tone="muted">Runs when someone signs up through your sign-up form. The person's name and email are what the steps start with.</Text> : null}
+          {more.length ? <Text size="caption" tone="label" strong>Starts it, trigger 1</Text> : null}
+          <TriggerFields t={t} setTrig={setTrig} options={options} />
+          {more.map((x, i) => (
+            <View key={i} className="gap-s3 border-t border-edge pt-s3">
+              <View className="flex-row items-center gap-s2"><Chip tone="accent">or</Chip><Text size="caption" tone="label" strong className="flex-1">{`Trigger ${i + 2}`}</Text>{readOnly ? null : <Button kind="ghost" size="sm" icon="x" label="Remove" onPress={() => set({ moreTriggers: more.filter((_, j) => j !== i) })} />}</View>
+              <TriggerFields t={x} setTrig={(patch) => setMore(i, patch)} options={options} />
+            </View>
+          ))}
+          {readOnly || more.length >= 7 ? null : <View className="flex-row"><Button kind="secondary" size="sm" icon="plus" label="Add trigger" onPress={() => set({ moreTriggers: [...more, { kind: "created", type: "" }] })} /></View>}
         </StepCard>
 
         <Lane lane={{ parent: null, key: "" }} steps={draft.steps} root="steps" ctx={ctx} />
@@ -138,6 +133,7 @@ function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: 
           {mv.up ? <Button kind="ghost" size="sm" icon="chevron-up" label="Move up" onPress={() => change(root, moveDeep(mine, s.id, -1))} /> : null}
           {mv.down ? <Button kind="ghost" size="sm" icon="chevron-down" label="Move down" onPress={() => change(root, moveDeep(mine, s.id, 1))} /> : null}
           <Button kind="ghost" size="sm" icon="copy" label="Duplicate" onPress={() => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }} />
+          {canTurnOff(s.kind) ? <Button kind="ghost" size="sm" icon="eye-off" label={s.enabled === false ? "Turn on" : "Turn off"} onPress={() => setStep(s.id, { enabled: s.enabled === false ? undefined : false })} /> : null}
           <Button kind="ghost" size="sm" icon="trash" label="Remove step" onPress={() => { change(root, removeDeep(mine, s.id)); setOpen(null); }} />
         </View>
       )}
@@ -198,6 +194,7 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
         onUp={!readOnly && mv.up ? () => change(root, moveDeep(mine, s.id, -1)) : undefined} onDown={!readOnly && mv.down ? () => change(root, moveDeep(mine, s.id, 1)) : undefined}
         docked={ctx.docked}
         onDuplicate={readOnly ? undefined : () => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }}
+        off={s.enabled === false} onToggleOff={readOnly || !canTurnOff(s.kind) ? undefined : () => setStep(s.id, { enabled: s.enabled === false ? undefined : false })}
         onRemove={readOnly ? undefined : () => { change(root, removeDeep(mine, s.id)); setOpen(null); }}>
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
       </StepCard>

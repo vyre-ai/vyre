@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, eventChoices, EVENT_CHOICES } from "./logic.js";
+import { fromDefinition, toDefinition, eventChoices, EVENT_CHOICES, flowSentence, draftProblems } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const flowOf = (trigger) => ({ format: 1, name: "t", label: "T", authorship: "builder", trigger, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
@@ -64,4 +64,39 @@ test("the renamed words: a record moves to a stage, I press Run, At a set time, 
   assert.equal(label(TRIGGERS, "schedule", "id"), "At a set time");
   assert.equal(label(STEP_CHOICES, "find", "kind"), "Look up records");
   assert.equal(label(STEP_CHOICES, "subflow", "kind"), "Run another Flow");
+});
+
+test("a Flow with several triggers opens as the first plus the others, says them with or, and saves back as triggers", () => {
+  const triggers = [{ on: "event", event: "matter.created", where: "trigger.amount > 5" }, { on: "time", every_ms: 900000 }];
+  const stored = { format: 1, name: "t", label: "T", authorship: "builder", triggers, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] };
+  assert.deepEqual(checkFlow(stored), []);
+  const d = fromDefinition(stored);
+  assert.equal(d.trigger.kind, "created");
+  assert.equal(d.moreTriggers.length, 1);
+  assert.equal(d.moreTriggers[0].kind, "schedule");
+  const back = toDefinition(d, O);
+  assert.deepEqual(back.triggers, triggers);
+  assert.equal(back.trigger, undefined, "a Flow has either trigger or triggers");
+  assert.deepEqual(checkFlow(back), []);
+  assert.match(flowSentence(d, O), /, or when /);
+  const one = toDefinition({ ...d, moreTriggers: [] }, O);
+  assert.deepEqual(one.trigger, triggers[0]);
+  assert.equal(one.triggers, undefined);
+});
+
+test("each trigger is checked on its own, named when there is more than one", () => {
+  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "event", event: "matter.created" }, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
+  const two = { ...d, trigger: { kind: "created", type: "matter" }, moreTriggers: [{ kind: "watcher", watcher: "" }] };
+  assert.deepEqual(draftProblems(two, O), ["Trigger 2: Name the watcher."]);
+});
+
+test("a step turned off keeps enabled false and stays an editable step", () => {
+  const stored = { format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" }, enabled: false }] };
+  assert.deepEqual(checkFlow(stored), []);
+  const d = fromDefinition(stored);
+  assert.equal(d.steps[0].kind, "create", "not an Advanced step");
+  assert.equal(d.steps[0].enabled, false);
+  assert.equal(toDefinition(d, O).steps[0].enabled, false);
+  const on = { ...d, steps: [{ ...d.steps[0], enabled: undefined }] };
+  assert.equal("enabled" in toDefinition(on, O).steps[0], false, "turned on again, the key goes");
 });

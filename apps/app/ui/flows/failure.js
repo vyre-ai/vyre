@@ -18,6 +18,10 @@ export const RETRY_WHY = [
 
 const BLOCKS = ["decide", "repeat", "parallel"];
 const POLICY = ["timeout_ms", "retry", "on_fail", "verify"];
+/** `enabled: false` turns a step off: the run skips it and says so. Any step but a lane may carry it. */
+const OFF = "enabled";
+/** Whether a step of this kind can be turned off. @param {string} kind */
+export const canTurnOff = (kind) => kind !== "branch" && kind !== "advanced";
 
 /** The policy keys a stored step of this kind may carry (kernel/flows/schema.js: a block or a subflow takes a failure path and a check, a wait no time limit, a lane nothing). @param {string} kind @returns {string[]} */
 export function policyKeys(kind) {
@@ -38,6 +42,7 @@ const only = (/** @type {any} */ o, /** @type {string[]} */ ks) => Object.keys(o
 /** Whether a stored policy value is one the panel can show and write back unchanged. @param {string} key @param {any} v */
 function showable(key, v) {
   switch (key) {
+    case "enabled": return v === false;
     case "timeout_ms": return Number.isInteger(v);
     case "retry": return v === false || (isObj(v) && only(v, ["attempts", "backoff_ms", "on"]));
     case "verify": return isObj(v) && only(v, ["check", "essential", "say", "readback"]);
@@ -51,7 +56,7 @@ function showable(key, v) {
  * @param {any} s @returns {{ plain: any, policy: Record<string, any> }}
  */
 export function splitPolicy(s) {
-  const allowed = policyKeys(s.kind);
+  const allowed = canTurnOff(s.kind) ? [...policyKeys(s.kind), OFF] : policyKeys(s.kind);
   /** @type {Record<string, any>} */ const policy = {};
   /** @type {Record<string, any>} */ const plain = {};
   for (const [k, v] of Object.entries(s)) (allowed.includes(k) && showable(k, v) ? policy : plain)[k] = v;
@@ -68,7 +73,7 @@ export function policyDraft(policy, stepFrom) {
 /** The policy keys of a draft step as stored. @param {DraftStep} s @param {(x: DraftStep) => any} defOf */
 export function policyDefinition(s, defOf) {
   /** @type {Record<string, any>} */ const out = {};
-  for (const k of policyKeys(s.kind)) {
+  for (const k of canTurnOff(s.kind) ? [...policyKeys(s.kind), OFF] : policyKeys(s.kind)) {
     const v = s[k];
     if (v === undefined) continue;
     out[k] = k === "on_fail" ? { ...v, steps: (v.steps || []).map(defOf) } : v;
@@ -88,6 +93,7 @@ export function span(ms) {
 /** What a step's policy says, as the clause that follows its summary ("", or ", tries up to 3 times, runs 2 steps if it fails"). @param {DraftStep} s */
 export function policyWords(s) {
   const bits = [];
+  if (s.enabled === false) bits.push("is turned off and skipped");
   if (s.timeout_ms !== undefined) bits.push(`gives up after ${span(s.timeout_ms)}`);
   if (s.retry === false) bits.push("never tries again");
   else if (isObj(s.retry) && s.retry.attempts !== undefined) bits.push(`tries up to ${s.retry.attempts} time${s.retry.attempts === 1 ? "" : "s"}`);

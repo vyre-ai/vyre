@@ -8,7 +8,7 @@
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
 /** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
-/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
+/** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], moreTriggers?: Trigger[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `moreTriggers` is every trigger after the first (stored as `triggers`, any of them starts a run); `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
 /** @typedef {{ id: string, name: string, provider: string, step: string }} Cred  a vault item a Send step can use (never its value); `step` is the action that uses it */
 /** @typedef {{ name: string, label: string, staff?: boolean }} AgentOpt  `staff`: made by an owner or an admin, the only agents that may approve */
@@ -193,7 +193,7 @@ export function flowSentence(d, o) {
   const shown = parts.slice(0, 3);
   const rest = parts.length - shown.length;
   const body = !shown.length ? "do nothing yet" : shown.join(", then ") + (rest > 0 ? `, then ${rest} more step${rest === 1 ? "" : "s"}` : "");
-  return `When ${triggerPhrase(d.trigger, o)}, ${body}.`;
+  return `When ${[d.trigger, ...(d.moreTriggers || [])].map((t) => triggerPhrase(t, o)).join(", or when ")}, ${body}.`;
 }
 
 /** What a step still needs before the Flow can be saved, in words, or null. @param {DraftStep} s @param {Options} o */
@@ -239,7 +239,16 @@ function kindProblem(s, o) {
 export function draftProblems(d, o) {
   const out = [];
   if (!d.name.trim()) out.push("Give the Flow a name.");
-  const t = d.trigger;
+  const more = d.moreTriggers || [];
+  [d.trigger, ...more].forEach((t, i) => { for (const m of triggerProblems(t)) out.push(more.length ? `Trigger ${i + 1}: ${m}` : m); });
+  if (!d.steps.length) out.push("Add a first step.");
+  flat([...d.steps, ...(d.onFailure || [])]).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
+  return out;
+}
+
+/** What one trigger still needs, in words. @param {Trigger} t @returns {string[]} */
+export function triggerProblems(t) {
+  const out = [];
   if (isRecordTrigger(t) && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "stage" && !(t.stage || "").trim()) out.push("Name the stage that starts it.");
   if (t.kind === "schedule" && !t.every) out.push("Choose how often it runs.");
@@ -247,8 +256,6 @@ export function draftProblems(d, o) {
   if (t.kind === "removed" && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
-  if (!d.steps.length) out.push("Add a first step.");
-  flat([...d.steps, ...(d.onFailure || [])]).forEach((s, i) => { const p = stepProblem(s, o); if (p) out.push(`Step ${i + 1}: ${p}`); });
   return out;
 }
 
@@ -641,6 +648,9 @@ export function peopleOf(s) {
   return { ...(s.checker ? { checker: doer(s.checker) } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
 }
 
+/** A draft trigger as stored. @param {Trigger} t */
+const storedTrigger = (t) => (t.kind === "advanced" ? t.raw : triggerDefinition(t));
+
 /** The stored Flow for a draft. @param {Draft} d @param {Options} [o] */
 export function toDefinition(d, o) {
   DATE_TOKENS = dateTokens(d, o);
@@ -659,7 +669,7 @@ function dateTokens(d, o) {
 
 /** @param {Draft} d */
 function writeDefinition(d) {
-  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), trigger: d.trigger.kind === "advanced" ? d.trigger.raw : triggerDefinition(d.trigger), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.onFailure && d.onFailure.length ? { on_failure: d.onFailure.map((s) => stepDefinition(s, d)) } : {}), ...(d.rest || {}) };
+  return { format: 1, name: d.id || slug(d.name), label: d.name.trim(), authorship: /** @type {const} */ ("builder"), ...(d.group ? { group: d.group } : {}), ...(d.moreTriggers && d.moreTriggers.length ? { triggers: [d.trigger, ...d.moreTriggers].map(storedTrigger) } : { trigger: storedTrigger(d.trigger) }), steps: d.steps.map((s) => stepDefinition(s, d)), ...(d.onFailure && d.onFailure.length ? { on_failure: d.onFailure.map((s) => stepDefinition(s, d)) } : {}), ...(d.rest || {}) };
 }
 
 /** A fresh step with sensible choices from the others. @param {string} kind @param {Draft} d @param {Options} o @returns {DraftStep} */
@@ -945,10 +955,11 @@ function stepFromKind(s) {
  * @param {any} flow @returns {Draft}
  */
 export function fromDefinition(flow) {
-  const { format: _f, name, label, authorship: _a, group, trigger, steps, on_failure, ...rest } = flow;
+  const { format: _f, name, label, authorship: _a, group, trigger, triggers, steps, on_failure, ...rest } = flow;
+  const list = Array.isArray(triggers) && triggers.length ? triggers : [trigger];
   const handler = Array.isArray(on_failure) && on_failure.length ? { onFailure: on_failure.map(stepFrom) } : {};
   const kept = Array.isArray(on_failure) && on_failure.length ? rest : on_failure === undefined ? rest : { ...rest, on_failure };
-  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(trigger), steps: (steps || []).map(stepFrom), ...handler, ...(Object.keys(kept).length ? { rest: kept } : {}) };
+  return { id: name, name: label || name, ...(group ? { group } : {}), trigger: triggerFrom(list[0]), ...(list.length > 1 ? { moreTriggers: list.slice(1).map(triggerFrom) } : {}), steps: (steps || []).map(stepFrom), ...handler, ...(Object.keys(kept).length ? { rest: kept } : {}) };
 }
 
 /** Who a question can go to: a person or a team or role. The engine refuses an agent for a question. @param {Options} o @returns {[string, string][]} */
