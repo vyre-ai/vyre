@@ -348,6 +348,9 @@ test("through the member door a joined member reads a record's history, board to
   await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" });
   // history: her change, with her as the actor; a logged call and a note
   await w.as(ANA, "records.log", { urn: deal.urn, kind: "call", text: "Spoke to Okafor" });
+  { const tryMake = async (/** @type {any} */ extra) => gw.records.create(gw.serviceChain("planner"), "note", { title: "t", state: "open", person: ANA, visibility: "private", record: deal.urn, ...extra }, { on_behalf: w.chainOf(ANA) }).then(() => "ok", (/** @type {any} */ e) => `${e.code}: ${e.message}`);
+    const probe = [await tryMake({}), await tryMake({ source: "records" }), await tryMake({ created: 1, updated: 1 })];
+    assert.deepEqual(probe, ["ok", "ok", "ok"], "which field of the log's note is refused"); }
   await w.as(ANA, "records.log", { urn: deal.urn, kind: "note", text: "Wants a warmer blue" });
   const items = (await w.as(ANA, "records.history", { urn: deal.urn })).items;
   assert.ok(items.some((/** @type {any} */ x) => /stage/.test(x.text) && x.actor.id === ANA), JSON.stringify(items.map((/** @type {any} */ x) => x.text)));
