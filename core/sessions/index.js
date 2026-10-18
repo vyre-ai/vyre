@@ -53,6 +53,7 @@ export const MODEL_ALIASES = Object.freeze([
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 import { createAccountsService } from "./accounts-service.js";
+import { memberAccountBases, memberBaseOk, memberBases } from "./member-endpoints.js";
 
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
@@ -463,6 +464,8 @@ export default {
         // A member's account is a sign-in of their own (a login, run as the account's own user), or a key or setup token that lives in THEIR OWN vault (vault.me.*): the item is checked there, never in the home's
         // vault (the owner's), and the key is read only at the start of that member's own turn (vault.me.lend). Nobody else's turn, and no agent's job, uses it.
         const who = await ownerOfAccount(meta);
+        // A member's account is sent to its provider's own address only (or xAI's): they do not choose an address on this machine or elsewhere.
+        if (who && i.base_url !== undefined && !memberBaseOk(i.base_url, memberAccountBases(String(i.provider)))) throw Object.assign(new Error("that address is not one a member's account can use"), { code: "denied" });
         const wanted = i.kind || (i.vault_item ? "api-key" : "login");
         if (who && wanted !== "login") {
           if (!["api-key", "setup-token"].includes(String(wanted)) || !i.vault_item) throw Object.assign(new Error("add your own key or setup token as an item of your own vault first, then add the account naming that item"), { code: "bad_input" });
@@ -522,6 +525,8 @@ export default {
         if (!i.check_only && (await ownerOfAccount(meta))) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
+        // A member (a check only: they cannot store through this tool) may not name an address of their own: the kind's own, or xAI's, and nothing else, so the check cannot probe this machine or another host.
+        if (i.check_only && (await ownerOfAccount(meta)) && !memberBaseOk(i.base_url, memberBases(String(i.kind)))) throw Object.assign(new Error("that address is not one a key can be checked at"), { code: "denied" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
