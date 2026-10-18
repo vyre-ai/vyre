@@ -249,7 +249,7 @@ test("an agent holding the reviewer slot is woken once per hand-in when the task
   const calls = /** @type {any[]} */ ([]);
   const mk = (/** @type {any} */ t) => createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {} } }, chain: () => ({}), clock: () => NOW, log: () => {},
     lendSlot: async (x, agent, slot) => { calls.push(`lend ${x.id} ${agent} ${slot}`); }, bindSlot: async (x, agent, slot, th) => { calls.push(`bind ${slot} ${th}`); }, reclaimSlots: async id => { calls.push(`reclaim ${id}`); },
-    callModule: async (tool, input) => { calls.push(tool === "agents.wake" ? { wake: input } : tool); return { thread: "th", already: false }; } });
+    callModule: async (tool, input) => { if (tool === "agents.wake-rounds") return { rounds: 0 }; calls.push(tool === "agents.wake" ? { wake: input } : tool); return { thread: "th", already: false }; } });
   const reviewed = task({ state: "in_review", reviewer: { kind: "agent", id: "rev" }, payload: { payload_hash: "abcdef0123456789zz" }, guides: { instructions: { reviewer: "check the tone" }, skills: { reviewer: [{ id: "s/voice", name: "voice", hash: "h", checklist: ["names the firm"] }] } }, details: { client: "Jane" } });
   await mk(reviewed)({ type: "task.in-review", data: { task: { id: "t1" } } });
   assert.equal(calls[0], "lend t1 rev reviewer");
