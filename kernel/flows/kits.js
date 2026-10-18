@@ -120,7 +120,7 @@ export function installCard(kit, cat) {
   if (flows.some(f => f.outward.length)) notes.push("Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.");
   if (flows.some(f => f.code.length)) notes.push("Some Flows run code in the sandbox.");
   if (flows.some(f => f.sealed_uses.length) || types.some(t => t.sealed.length)) notes.push("Sealed fields are in play: assistants only ever see placeholders.");
-  if (teammates.length) notes.push("Each assistant is made with this Kit's instructions exactly as quoted here, and acts with your reach. They are text from outside, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.");
+  if (teammates.length) notes.push("Each assistant is made with this Kit's instructions exactly as quoted here, and acts with your reach. They are outside text, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.");
   return {
     kit: { id: kit.id, version: kit.version, name: kit.name, description: kit.description || "", hash: kitHash(kit) },
     ok: checked.ok, errors: checked.errors,

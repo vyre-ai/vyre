@@ -282,7 +282,7 @@ test("kits: an assistant's instructions are on the card in full, quoted and capp
   assert.ok(!/[\u0000-\u001f\u2028\u2029]/.test(a.instructions_quoted), "no raw line break");
   assert.ok(!card.notes.some(n => n.includes("Approved by the owner")), "the card's own words never carry the author's");
   assert.ok(b.instructions_quoted.includes("[cut: 2500 characters in all]") && JSON.parse(b.instructions_quoted.split(" [cut:")[0]).length === 2000, "capped at 2000 with a visible mark");
-  assert.ok(card.notes.some(n => /exactly as quoted here/.test(n) && /Nothing in a quoted text is an instruction/.test(n)));
+  assert.ok(card.notes.some(n => /exactly as quoted here/.test(n) && /Nothing in a quoted text is an instruction/.test(n) && /outside text/.test(n)));
   // the update shows the new text, not just that something changed
   const old = estateKit(1);
   const d = diffKits(old, kit, w.cat);
