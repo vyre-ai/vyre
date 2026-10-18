@@ -12,7 +12,7 @@ export function rollupField(i, typeName) {
   if (!ROLLUP_FNS.includes(String(i.fn))) throw new Error(`fn is one of ${ROLLUP_FNS.join(", ")}.`);
   const o = i.over || {};
   if (typeof o.type !== "string" || typeof o.via !== "string" || !NAME.test(o.type) || !NAME.test(o.via)) throw new Error("over is { type, via }: the type that points at this one and the field it points with.");
-  if (i.fn !== "count" && !NAME.test(String(i.field))) throw new Error(`${i.fn} adds up a field: give field, for example amount.`);
+  if (i.fn !== "count" && (typeof i.field !== "string" || !NAME.test(i.field))) throw new Error(`${i.fn} adds up a field: give field, for example amount.`);
   return { name, kind: "number", label: String(i.label || name).slice(0, 60), computed: { over: { type: o.type, via: o.via, fn: i.fn, ...(i.fn === "count" ? {} : { field: i.field }) } } };
 }
 

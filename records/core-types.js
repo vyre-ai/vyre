@@ -389,6 +389,33 @@ export const SAMPLE_LEDGER = {
   fields: [text("urns", "Addresses (JSON)", { required: true })],
 };
 
+/**
+ * What a contact or an organization is to the Space, as role types (kernel: a type marked `role`; one row per role a holder has, each with its own stage). A person can be a Lead and a Client at once. The names carry
+ * a `role-` prefix so a Kit's own `lead` stays its own. The Space edits the list and the stages like any other type (records.pipeline.set, records.type.update); records.role.set puts a role on a record.
+ * @param {string} name @param {string} label @param {"contact" | "organization"} holder @param {string} color @param {{ name: string, probability?: number }[]} [stages] @param {string[]} [ended]
+ */
+const roleType = (name, label, holder, color, stages = [], ended = []) => ({
+  // the type's label is unique in a Space (a person's define refuses a second type with the same words, and a Kit may have its own Lead); `role_label` is what the screens call the role
+  name, label: `${label} role${holder === "organization" && /^(Vendor|Partner)$/.test(label) ? " (company)" : ""}`, role_label: label, icon: "IconTag", color, hidden_in_records: true, role: { link: "holder", ...(ended.length ? { ended } : {}) },
+  fields: [
+    f("link", "holder", holder === "contact" ? "Person" : "Company", { to: holder, required: true }),
+    ...(stages.length ? [f("stage", "stage", "Stage", { options: stages.map((s) => s.name) })] : []),
+    f("date", "since", "Since"),
+    text("note", "Note"),
+  ],
+  ...(stages.length ? { stages } : {}),
+});
+export const ROLE_TYPES = Object.freeze([
+  roleType("role-lead", "Lead", "contact", "orange", [{ name: "New" }, { name: "Talking" }, { name: "Won" }, { name: "Lost" }], ["Won", "Lost"]),
+  roleType("role-client", "Client", "contact", "green", [{ name: "Active" }, { name: "Past" }], ["Past"]),
+  roleType("role-partner", "Partner", "contact", "purple"),
+  roleType("role-vendor", "Vendor", "contact", "red"),
+  roleType("role-teammate", "Teammate", "contact", "blue"),
+  roleType("role-customer", "Customer", "organization", "green"),
+  roleType("role-org-vendor", "Vendor", "organization", "red"),
+  roleType("role-org-partner", "Partner", "organization", "purple"),
+]);
+
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
   hidden_in_records: true, name: "record-layout", label: "Layout", icon: "IconLayout",
