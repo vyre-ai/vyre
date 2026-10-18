@@ -31,8 +31,37 @@ function textOf(b, what) {
   return b.toString("utf8");
 }
 
+/**
+ * The front matter, read strictly over the raw text. The lenient reader the library uses (frontMatter) skips any line it does not recognise, but another reader of the same file (Claude Code's YAML) accepts forms
+ * it skips: a quoted key, a space before the colon, a flow mapping, a key that starts with a symbol, a tab, a byte-order mark, a repeated key. So the member path refuses everything but this shape:
+ *   ---
+ *   name: <text>
+ *   description: <text>           (indented lines may continue it)
+ *   ---
+ * with CRLF taken as LF. The first line that does not fit is named, shortened.
+ * @param {string} raw
+ */
+export function strictFrontMatter(raw) {
+  const lines = String(raw).replace(/\r\n/g, "\n").split("\n");
+  const show = (/** @type {string} */ l) => JSON.stringify(l.length > 40 ? l.slice(0, 40) + "..." : l);
+  const refuse = (/** @type {string} */ l, /** @type {string} */ why) => bad(`the front matter of a member's skill is a name and a description and nothing else: ${show(l)} ${why}`);
+  if (lines[0] !== "---") throw bad("a member's skill starts with a line that is exactly --- (no blank line, space or mark before it), then name and description, then --- on a line of its own");
+  const end = lines.indexOf("---", 1);
+  if (end < 0) throw bad("the front matter has no closing --- line");
+  let seen = { name: 0, description: 0 }, inDescription = false;
+  for (const l of lines.slice(1, end)) {
+    if (!l.trim()) continue;
+    const m = /^(name|description): ?(\S.*)$/.exec(l);
+    if (m) { seen[/** @type {"name"|"description"} */ (m[1])]++; inDescription = m[1] === "description"; if (seen[/** @type {"name"|"description"} */ (m[1])] > 1) throw refuse(l, "is a second one"); continue; }
+    if (inDescription && /^ +\S/.test(l)) { if (/^ +[^\s:]+\s*:(\s|$)/.test(l)) throw refuse(l, "looks like a key inside the description"); continue; }
+    throw refuse(l, "is not name or description");
+  }
+  if (!seen.name) throw bad("the front matter has a name");
+}
+
 /** @param {string} t @param {string} fallback */
 function skillFrom(t, fallback) {
+  strictFrontMatter(t);
   const { data } = frontMatter(t);
   const extra = Object.keys(data).filter(k => !KEYS.has(k));
   if (extra.length) throw bad(`a member's skill has a name and a description in its front matter and nothing else; remove ${extra.slice(0, 5).map(k => k.slice(0, 40)).join(", ")}`);
