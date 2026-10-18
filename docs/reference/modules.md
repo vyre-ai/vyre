@@ -59,7 +59,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
-| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 16 | 11 | cli, deck |
+| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 19 | 11 | cli, deck |
 | [`mcpconn`](#mcpconn) | `core/mcpconn` | `box`, `local` | 9 | 3 | cli |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
@@ -613,7 +613,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [16](tools.md#mcp), 3 of them only for other modules
+- Tools: [19](tools.md#mcp), 5 of them only for other modules
 - Emits: [11 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
