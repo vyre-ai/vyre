@@ -620,7 +620,7 @@ export default {
         guard(caller, "list agents");
         const full = await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, ...(a.fallback_model ? { fallback_model: a.fallback_model } : {}), effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.

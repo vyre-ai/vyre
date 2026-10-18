@@ -192,6 +192,7 @@
   "threads.busy",
   "threads.chat-of",
   "threads.chat-stop",
+  "threads.fork-point",
   "threads.chat-switch",
   "threads.chat-thread",
   "threads.claimed",

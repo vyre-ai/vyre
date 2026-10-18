@@ -220,7 +220,7 @@ export default {
       { type: "object", properties: { provider: { type: "string", description: "Whose models: claude (default), codex, grok ..." } } },
       async i => modelsOf(i && typeof i.provider === "string" && i.provider ? i.provider : "claude"));
 
-    tool("sessions.accounts.models", "The models one AI account offers, by its provider: { account } -> { account, provider, kind, models: [{ id, label }] }. Only an account you may see.",
+    tool("sessions.accounts.models", "The models one AI account offers: { account } -> { models: [{ id, label }] }. Only an account you may see.",
       { type: "object", required: ["account"], properties: { account: str } },
       async (i, meta) => {
         const row = accounts.list(undefined, await personOf(meta)).find(a => a.id === String(i.account));

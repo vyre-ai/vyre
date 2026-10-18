@@ -1993,6 +1993,42 @@
    "module": "work",
    "reason": "guarded: the caller must be in the chat (the kernel's chat read on their own chain), the file is read under their own chain (drive.read), and the writes go to the stream's and the switchboard's module-only import tools"
   },
+  "work.agent.thread.new": {
+   "module": "work",
+   "reason": "starts a new thread (a chat with one agent) for the caller as themselves; the kernel authorizes the chat create and the key ring comes from the caller's device"
+  },
+  "work.agent.threads": {
+   "module": "work",
+   "reason": "read-only: the caller's own threads with one agent, only chats the kernel lets them read"
+  },
+  "work.chat.summary": {
+   "module": "work",
+   "reason": "read-only: one row per chat the caller may read, from the kernel's chat read"
+  },
+  "work.chat.thread.new": {
+   "module": "work",
+   "reason": "starts another thread in a chat the caller is already in, as themselves; the kernel authorizes the create and the ring comes from the device"
+  },
+  "work.chat.threads": {
+   "module": "work",
+   "reason": "read-only: the threads of one chat the caller may read"
+  },
+  "work.flow.threads": {
+   "module": "work",
+   "reason": "read-only: the caller's Flow runs as threads, filtered by flows.runs mayInspect"
+  },
+  "work.person.shared": {
+   "module": "work",
+   "reason": "read-only: chats and projects the caller shares with one person, each read through the kernel as the caller"
+  },
+  "work.thread.add-people": {
+   "module": "work",
+   "reason": "moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
+  },
+  "work.thread.fork": {
+   "module": "work",
+   "reason": "starts a new thread from a chosen message of one the caller is in; the cut is checked by the switchboard and the kernel authorizes the new chat"
+  },
   "work.chat.list": {
    "module": "work",
    "reason": "read-only: the chat rows the caller may read through Records (title, project, who, when, status, where it lives); `open` comes from the kernel's chat read, never from the record's people; the kernel: every call is authorized with the chain the kernel builds for the caller"
