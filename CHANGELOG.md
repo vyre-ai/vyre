@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(records): roll-ups. records.rollup.add adds a count, sum, average, minimum or maximum over the records that point at a record (the store keeps it current). A type with amount, probability and weighted_value fields keeps weighted_value (amount x probability / 100) up to date whenever its amount or probability is written, so a roll-up can sum it.
 - feat(records): layouts. records.layout.get answers how a type is shown to you (columns, sort, group, structured filters, header fields per role, related lists, field groups), your own choices laid over the Space's with the source of each key; records.layout.set saves it for the Space (an owner's or admin's act) or for you.
 - ci(gen-kits-branch): also recompiles an app's own Kit (core/appmods/catalog/*.kit.ts to .kit.json), and starts when records/core-types.js changes, since Kits restate core types.
 - feat(records): fast fields. records.field.add makes a field work at once (the value is kept in the record's extra bag, shown as ordinary data); records.field.promote makes it a real field of the store and moves the values (safe to repeat); records.field.status lists where each is. Filters and sorts wait for the real field. Core types People, Companies, Tasks, Relationships and Projects carry the bag; the fields are rows of the hidden quick-field type.
