@@ -86,6 +86,20 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   assert.deepEqual([bens.agents.length, bens.groups.length, bens.people.length], [0, 1, 1], "a member's list is her own chats");
   assert.equal(bens.people[0].person, OWNER);
   assert.ok((await d.registry.call("work.chat.summary", {}, "mcp", {})).error, "a call with no person has no list");
+
+  // where a chat lives is derived: only me is Personal; anyone else in it makes it a Space chat; a chat shared with Ben is in Ben's list although it sits in the owner's Personal project
+  assert.equal(juno.place, "personal", "an agent thread of mine is Personal");
+  assert.equal(sum.groups[0].place, "space");
+  assert.equal(sum.people[0].place, "space");
+  assert.deepEqual(sum.groups[0].faces.people.map((/** @type {any} */ f) => f.id).sort(), [OWNER, BEN].sort(), "the faces are the people, with ids");
+  assert.deepEqual(sum.groups[0].faces.agents.map((/** @type {any} */ f) => f.name), ["juno"], "and the agents, by name");
+  assert.ok(sum.groups[0].faces.people.every((/** @type {any} */ f) => "name" in f), "each face has a name field");
+  const benList = (await ok(BEN, "work.chat.list")).chats;
+  assert.deepEqual(benList.map((/** @type {any} */ r) => r.title).sort(), ["ben dm", "with ben"], "Ben sees the chats he is in");
+  assert.ok(benList.every((/** @type {any} */ r) => r.place === "space" && Array.isArray(r.faces.people)), "and they are Space chats");
+  const ownerList = (await ok(OWNER, "work.chat.list")).chats;
+  assert.ok(ownerList.every((/** @type {any} */ r, /** @type {number} */ i, /** @type {any[]} */ all) => i === 0 || String(all[i - 1].last_active) >= String(r.last_active)), "newest first");
+  assert.deepEqual(ownerList.filter((/** @type {any} */ r) => r.place === "personal").map((/** @type {any} */ r) => r.title).sort(), ["first thread", "kit's thread", "second thread"]);
 });
 
 test("a Flow's runs are its threads, and the chat list has one row per Flow with runs", { timeout: 240_000 }, async t => {

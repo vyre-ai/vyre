@@ -15,6 +15,29 @@ async function agentKeys(ctx, agent) {
   return keys;
 }
 
+/**
+ * Where a chat lives, from its project and who is in it: a project of its own is "project"; otherwise (the unfiled Personal or the old General) it is "personal" while only the caller is in it and "space" once anyone else is.
+ * @param {any} project the project record's data, or null @param {number} people how many people are in the chat
+ */
+export function placeOf(project, people) {
+  const unfiled = !project || project.personal_of || project.slug === "general";
+  return unfiled ? (people > 1 ? "space" : "personal") : "project";
+}
+
+/** The faces a row shows: people with their names (from the Space's member list) and agents with theirs. @param {any} ctx @param {any} k */
+export async function facesOf(ctx, k) {
+  const person = new Map(), agent = new Map();
+  const m = await ctx.call("spaces.members.list", { space: k.space }, { relay: true }).catch(() => null);
+  for (const r of (m && m.data && Array.isArray(m.data.members) ? m.data.members : [])) if (r && r.person) person.set(String(r.person), r.name ? String(r.name) : null);
+  const known = await ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
+  for (const a of Array.isArray(known) ? known : []) if (a && a.name) { agent.set(String(a.name), String(a.name)); if (a.uid) agent.set(String(a.uid), String(a.name)); }
+  return {
+    people: (/** @type {string[]} */ ids) => ids.map(id => ({ id, name: person.get(id) || null })),
+    agents: (/** @type {string[]} */ ids) => ids.map(id => ({ id, name: agent.get(id) || id })),
+    agentName: (/** @type {string} */ id) => agent.get(id) || id,
+  };
+}
+
 /** The messages others made in a chat after this person's read marker, from the stream's own tables; 0 when there is none. @param {any} db @param {string} who @param {string} chat */
 function unreadOf(db, who, chat) {
   if (!db || !who) return 0;
@@ -100,9 +123,9 @@ export async function summarize(d, extra) {
   if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "the chat list is a person's own: ask from your own session");
   const me = String(hop.actor.id);
   const db = d.ctx.store && d.ctx.store.db;
-  const names = new Map();
-  const known = await d.ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
-  for (const a of Array.isArray(known) ? known : []) if (a && a.name) { names.set(String(a.name), String(a.name)); if (a.uid) names.set(String(a.uid), String(a.name)); }
+  const faces = await facesOf(d.ctx, k);
+  const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, { urn: p.urn, name: p.data.name, slug: p.data.slug, personal_of: p.data.personal_of }]));
+  const projectOf = (/** @type {any} */ rec) => (rec.project && rec.project.urn ? projects.get(rec.project.urn) || null : null);
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const pins = d.pinnedOf(me);
   const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
@@ -111,11 +134,12 @@ export async function summarize(d, extra) {
   for (const r of rows) {
     let c; try { c = k.chats.read(chain, r.data.chat); } catch { continue; }
     const ppl = [...c.people], agents = [...c.assistants];
-    const base = { chat: String(r.data.chat), title: String(r.data.title || "") || "New chat", last_active: r.data.last_active || r.data.started || null, unread: unreadOf(db, me, r.data.chat) };
+    const proj = projectOf(r.data), place = placeOf(proj, ppl.length);
+    const base = { chat: String(r.data.chat), title: String(r.data.title || "") || "New chat", last_active: r.data.last_active || r.data.started || null, unread: unreadOf(db, me, r.data.chat), place, project: place === "project" && proj ? { urn: proj.urn, name: proj.name } : null, faces: { people: faces.people(ppl), agents: faces.agents(agents) } };
     if (ppl.length === 1 && agents.length === 1) {
       const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
       const list = byAgent.get(String(agents[0])) || [];
-      list.push({ ...threadRow({ ...r.data, agents }, runs, base.unread), pinned: pins.get(String(r.data.chat)) || null });
+      list.push({ ...threadRow({ ...r.data, agents }, runs, base.unread), place: base.place, project: base.project, pinned: pins.get(String(r.data.chat)) || null });
       byAgent.set(String(agents[0]), list);
     } else if (ppl.length === 2 && agents.length === 0) {
       people.push({ kind: "person", person: ppl.find((/** @type {string} */ p) => p !== me) || null, ...base });
@@ -127,7 +151,7 @@ export async function summarize(d, extra) {
   for (const [agent, threads] of byAgent) {
     threads.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
     const live = threads.find(t => t.state === "needs_you") || threads.find(t => t.state === "live") || null;
-    const row = { kind: "agent", agent, name: names.get(agent) || agent, threads: threads.length, latest: threads[0], live, needs_you: threads.some(t => t.state === "needs_you"), unread: threads.reduce((n, t) => n + (Number(t.unread) || 0), 0) };
+    const row = { kind: "agent", agent, name: faces.agentName(agent), place: threads[0].place, threads: threads.length, latest: threads[0], live, needs_you: threads.some(t => t.state === "needs_you"), unread: threads.reduce((n, t) => n + (Number(t.unread) || 0), 0) };
     if (threads.some(t => t.pinned === "assistant")) pinned.push(row); else agentRows.push(row);
   }
   const newest = (/** @type {any} */ a, /** @type {any} */ b) => String((b.latest && b.latest.last_active) || b.last_active || "").localeCompare(String((a.latest && a.latest.last_active) || a.last_active || ""));

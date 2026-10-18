@@ -34,7 +34,7 @@ import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
-import { registerThreads } from "./threads.js";
+import { registerThreads, placeOf, facesOf } from "./threads.js";
 import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -580,9 +580,16 @@ export default {
         const projects = new Map(projRows.map((/** @type {any} */ p) => [p.urn, p.data.name]));
         // Personal is private: a chat filed in somebody else's Personal project is not listed (R031-03)
         const others = new Set(projRows.filter((/** @type {any} */ p) => p.data.personal_of && p.data.personal_of !== personId).map((/** @type {any} */ p) => p.urn));
-        rows = rows.filter((/** @type {any} */ r) => !(r.data.project && others.has(r.data.project.urn)));
+        // Personal is private to its person; a chat that others are in with her is hers to see, whatever project it is filed under
+        rows = rows.filter((/** @type {any} */ r) => mine.has(r.data.chat) || !(r.data.project && others.has(r.data.project.urn)));
+        const faces = await facesOf(ctx, k);
+        const pinfo = new Map(projRows.map((/** @type {any} */ p) => [p.urn, { urn: p.urn, name: p.data.name, slug: p.data.slug, personal_of: p.data.personal_of }]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
-          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
+          const proj = r.data.project && r.data.project.urn ? pinfo.get(r.data.project.urn) || null : null;
+          const kc = (() => { try { return k.chats.read(chain, r.data.chat); } catch { return null; } })();
+          const ppl = kc ? [...kc.people] : String(r.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).filter(Boolean), ags = kc ? [...kc.assistants] : [];
+          const place = placeOf(proj, ppl.length);
+          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null, place, project: place === "project" && proj ? { urn: proj.urn, name: proj.name } : null, faces: { people: faces.people(ppl), agents: faces.agents(ags) } };
           if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
