@@ -74,7 +74,7 @@ test("run switch: a stop that fails to end the lending still leaves it off, and 
 test("run switch: the note under the switch names where it is shared and what happens when it is turned off", () => {
   const on = { ...DEFAULT_SETTINGS, enabled: true };
   assert.match(switchNote(on, ["Acme", "Studio"]), /Shared with Acme and Studio\./);
-  assert.match(switchNote(on, []), /^Sessions may run on this Mac/);
+  assert.match(switchNote(on, []), /^Sessions may run on My Computer/);
   assert.match(switchNote({ ...DEFAULT_SETTINGS, enabled: false }), /You approve once/);
   assert.match(switchNote({ ...DEFAULT_SETTINGS, enabled: false }), /Turn it off any time/);
 });

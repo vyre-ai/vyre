@@ -179,8 +179,8 @@ export function ChatComposer(p: ComposerProps) {
         { key: "hash", group: "Insert", label: "Tag a record", leading: <Icon name="hash" size={18} />, hint: "#", run: () => { setPop(null); setMenuQ(""); insert("#"); } },
       ];
       if (p.runsOn) {
-        rows.push({ key: "mac", group: "Runs on", label: "This Mac", leading: <Icon name="laptop" size={18} />, checked: p.runsOn === "mac", run: () => { if (p.runsOn !== "mac") p.onRunsOn?.(); closePop(); } });
-        rows.push({ key: "server", group: "Runs on", label: "The server", leading: <Icon name="box" size={18} />, checked: p.runsOn === "server", run: () => { if (p.runsOn !== "server") p.onRunsOn?.(); closePop(); } });
+        rows.push({ key: "mac", group: "Runs on", label: "My Computer", leading: <Icon name="laptop" size={18} />, checked: p.runsOn === "mac", run: () => { if (p.runsOn !== "mac") p.onRunsOn?.(); closePop(); } });
+        rows.push({ key: "server", group: "Runs on", label: "Space's Cloud", leading: <Icon name="box" size={18} />, checked: p.runsOn === "server", run: () => { if (p.runsOn !== "server") p.onRunsOn?.(); closePop(); } });
       }
       if (working) {
         rows.push({ key: "steer", group: "While it works", label: "Send now, steering the reply", leading: <Icon name="bolt" size={18} />, checked: mode === "steer", hint: "Enter", run: () => { setMode("steer"); closePop(); } });
@@ -397,7 +397,7 @@ export function ChatComposer(p: ComposerProps) {
   const stateChips = (
     <>
       {working && mode === "queue" ? <ChipToken icon="clock" label="Queued for the end of the turn" onRemove={() => setMode("steer")} removeLabel="Send now instead" /> : null}
-      {p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server") ? <ChipToken icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "Runs on this Mac" : "Runs on the server"} onPress={p.onRunsOn} /> : null}
+      {p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server") ? <ChipToken icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "Runs on My Computer" : "Runs on Space's Cloud"} onPress={p.onRunsOn} /> : null}
     </>
   );
   const hasState = (working && mode === "queue") || (!!p.runsOn && p.runsOn !== (p.runsOnDefault ?? "server"));
