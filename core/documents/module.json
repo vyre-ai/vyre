@@ -57,6 +57,11 @@
         "reach": "anyone"
       },
       {
+        "name": "documents.signing.audit",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
         "name": "documents.signing.remind",
         "outward": true,
         "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
