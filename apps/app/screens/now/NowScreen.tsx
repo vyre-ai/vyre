@@ -21,7 +21,6 @@ import { RecordsSetup } from "./RecordsSetup";
 import { HomeHeader } from "./HomeHeader";
 import { HomeAgents } from "./HomeAgents";
 import { AskDock } from "./AskDock";
-import { HomeToday } from "./HomeToday";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
@@ -64,7 +63,6 @@ export default function NowScreen() {
       {real ? <AwayCard /> : null}
       {real ? <SignInAgain /> : null}
       {real ? <WaitingOnYou /> : null}
-      {real && calendar ? <HomeToday items={calendar as never} now={q.data?.now ?? Date.now()} onOpen={(record) => go(`/u/records/${encodeURIComponent(record)}`)} /> : null}
       {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />

@@ -41,10 +41,3 @@ export function agentCards(rows) {
 /** How many agents are working now, for the summary line. @param {{ live: boolean }[]} cards */
 export const workingCount = (cards) => cards.filter((a) => a.live).length;
 
-/** The Today strip: what is on today in time order, what has passed marked, and the next one found. @param {{ id: string, at: number, title: string, sub?: string }[]} items @param {number} now @param {number} [limit] */
-export function todayStrip(items, now, limit = 6) {
-  const sorted = [...(Array.isArray(items) ? items : [])].filter((i) => i && typeof i.at === "number").sort((a, b) => a.at - b.at);
-  const rows = sorted.slice(0, limit).map((i) => ({ ...i, past: i.at < now }));
-  const next = rows.find((r) => !r.past);
-  return { rows, nextId: next ? next.id : null, more: Math.max(0, sorted.length - rows.length) };
-}
