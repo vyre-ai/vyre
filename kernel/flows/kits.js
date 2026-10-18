@@ -258,7 +258,7 @@ export class RecordsKitStore {
  *   chains: { forFlow: (o: any) => any },
  *   clock?: () => number,
  *   installerRole?: (approver: ActorRef) => Promise<string> | string,
- *   ports?: { teammates?: { create: (chain: any, t: any) => Promise<any>, remove: (chain: any, name: string) => Promise<any> },
+ *   ports?: { teammates?: { create: (chain: any, t: any) => Promise<any>, remove: (chain: any, name: string, id?: string, by?: any) => Promise<any> },
  *             define?: (chain: any, types: any[]) => Promise<any> },
  * }} KitOptions
  */
@@ -407,7 +407,8 @@ export class KitManager {
         } else if (existing) { const cur = await this.k.records.get(chain, type, existing); if (cur) await this.k.records.update(chain, type, existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "teammate") {
-        if (this.ports.teammates) await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external" });
+        // The port answers { id } for an assistant it made; that id is what a removal checks, so a same-named assistant of the person's own is never taken away with the Kit.
+        if (this.ports.teammates) { const made = await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external", by: p.approver }); if (made && made.id) row.refs[key] = made.id; }
       }
       if (!row.added.includes(key)) row.added.push(key);
       await this.store.put(row);
@@ -415,7 +416,7 @@ export class KitManager {
     // a removed part of an update goes away: its Flow is switched off, its definition records are deleted
     if (row.from) {
       const keep = new Set(parts.map(x => `${x.kind}:${x.name}`));
-      for (const gone of kitParts(row.from).filter(x => !keep.has(`${x.kind}:${x.name}`))) await this.#drop(chain, row, gone);
+      for (const gone of kitParts(row.from).filter(x => !keep.has(`${x.kind}:${x.name}`))) await this.#drop(chain, row, gone, p.approver);
     }
     row.status = "installed"; row.from = null; row.at = this.now();
     await this.store.put(row);
@@ -436,7 +437,7 @@ export class KitManager {
   }
 
   /** @param {any} chain @param {any} row @param {Part} part */
-  async #drop(chain, row, part) {
+  async #drop(chain, row, part, by) {
     const key = `${part.kind}:${part.name}`;
     if (part.kind === "flow") { const id = row.flows[part.name]; if (id) { await this.runner.store.disable(id); this.runner.cache = null; delete row.flows[part.name]; } }
     else if (["template", "role", "view"].includes(part.kind)) {
@@ -445,7 +446,12 @@ export class KitManager {
       // a role another installed Kit still uses stays; it goes with the last Kit that holds it
       const heldElsewhere = ref && (await this.store.list()).some((/** @type {any} */ r) => r.kit_id !== row.kit_id && r.refs && Object.values(r.refs).includes(ref));
       if (ref) { const cur = heldElsewhere ? null : await this.k.records.get(chain, type, ref); if (cur && !cur.deleted_at) await this.k.records.remove(chain, type, ref, cur.version); delete row.refs[key]; }
-    } else if (part.kind === "teammate" && this.ports.teammates) await this.ports.teammates.remove(chain, part.name);
+    } else if (part.kind === "teammate") {
+      // only an assistant this Kit made (its id was kept) is removed with it
+      const ref = row.refs[key];
+      if (this.ports.teammates && ref) await this.ports.teammates.remove(chain, part.name, ref, by);
+      delete row.refs[key];
+    }
     row.added = row.added.filter((/** @type {string} */ x) => x !== key);
   }
 
@@ -462,7 +468,7 @@ export class KitManager {
     if (d.effect !== "allow") throw Object.assign(new Error(d.effect === "ask" ? "removing a Kit needs a person's yes first" : "you may not remove Kits here"), { code: d.effect === "ask" ? "needs_approval" : d.reason });
     const chain = this.#chain(cat, kitId, approver);
     const parts = kitParts(row.kit);
-    for (const part of parts.filter(p => p.kind !== "type" && p.kind !== "seed")) await this.#drop(chain, row, part);
+    for (const part of parts.filter(p => p.kind !== "type" && p.kind !== "seed")) await this.#drop(chain, row, part, approver);
     /** @type {string[]} */ const removedTypes = [], keptTypes = [];
     for (const part of parts.filter(p => p.kind === "type")) {
       const any = await this.k.records.query(chain, part.name, { page: { limit: 1 } });

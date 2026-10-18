@@ -12,7 +12,7 @@ async function kitWorld() {
   w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
   const created = [];
   const kits = new KitManager({ kernel: w.kernel, runner: w.runner, store: new MemoryKitStore(), catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
-    ports: { teammates: { create: async (c, t) => created.push(t), remove: async (c, n) => { const i = created.findIndex(x => x.name === n); if (i >= 0) created.splice(i, 1); } } } });
+    ports: { teammates: { create: async (c, t) => { created.push(t); return { id: t.name }; }, remove: async (c, n) => { const i = created.findIndex(x => x.name === n); if (i >= 0) created.splice(i, 1); } } } });
   const caller = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
   w.offs.push(w.kernel.onEvent(e => { void kits.onEvent(e); }, "kits"));
   // removing a Kit is an admin act: a person's own chain (the real kernel does not give it to an automation's)

@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(flows): a Kit's assistants (its `teammates` part) are made when the Kit is installed and removed when it is removed. The flows host provides the `teammates` port: each assistant is made with agents.create and removed with agents.delete as the person who approved, on their own session, so the grants are the ones that person would need by hand. An assistant of the same name that is already there is left alone and never claimed, and removing the Kit takes away only the ones it made (their ids are kept in the Kit's row). Before, installing a Kit with assistants created nothing and removing it kept them. Test: core/daemon/kit-teammates.test.js.
 - refactor(kernel): kernel/tasks/card.js is named not-base in kernel/size.test.js (sec53 ruling, 19 Oct 2026: the card formats a task and signs nothing); its two card tests join test/must-run.json. With acct6's tasks.js trim the trusted base is 9669 against the cap of 9673, with no further relabelling available: any growth needs the lead's cap ruling.
 - refactor(kernel): checkOutput moves from kernel/tasks/tasks.js to kernel/tasks/output-check.js, and store/query.js, tasks/output-check.js and modules/probe.js are named not-base in kernel/size.test.js (sec53 signed each, 19 Oct 2026). Behaviour is unchanged; the trusted base falls from 9972 to 9771 lines.
 - fix(reach): flows.step.test has its reason in test/reach-anyone.json.
