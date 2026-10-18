@@ -8,6 +8,9 @@ import { useShell } from "../shell/shared";
 import { useSidebar } from "../shell/sidebar";
 import { RecordTimeline } from "./RecordTimeline";
 import { Connections } from "./Connections";
+import { HeaderFields } from "./HeaderFields";
+import { useTypeLayout } from "./layout-state";
+import { pinnedFacts } from "../../ui/records/logic.js";
 import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
 import { relatedRecords } from "../../ui/views/logic.js";
@@ -24,6 +27,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
   const env = useFieldEnv(world, open, openTag);
   const mv = useMoveStage(env, reload);
+  const lay = useTypeLayout(rec?.type);
   const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const events = useRecordEvents(rec?.urn);
@@ -47,12 +51,14 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const title = titleOf(def, rec);
   const space = SPACES.find((s) => s.id === rec.labels?.source_spaces?.[0])?.name;
   const vd = viewDefOf(def);
+  const pinned: string[] | undefined = Array.isArray(lay.layout?.header_fields?.default) ? lay.layout.header_fields.default : undefined;
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2">{admin ? <Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
       <View className="flex-row flex-wrap items-center gap-s2 px-s4 pt-s2">
-        {factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>)}
+        {(pinned ? pinnedFacts(def, rec, pinned).map(([l, v]) => <Chip key={l}>{v === null ? `${l}: Add` : `${l}: ${v}`}</Chip>) : factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>))}
+        <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
         {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
       </View>
       <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>

@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf, viaOf, prefillFromLink } from "./logic.js";
+import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf, viaOf, prefillFromLink, pinnedFacts } from "./logic.js";
 
 const FIELDS = [
   { name: "notes", label: "Notes", kind: "rich_text" },
@@ -93,4 +93,13 @@ test("a new record started from a page begins linked to it, and only through a r
   assert.deepEqual(prefillFromLink(def, "client", "vyre://s/contact/1"), { client: { urn: "vyre://s/contact/1" } });
   assert.deepEqual(prefillFromLink(def, "name", "vyre://s/contact/1"), {});
   assert.deepEqual(prefillFromLink(def, "", ""), {});
+});
+
+test("pinned fields show in the person's order, an empty one as null, and a hidden or sealed one not at all", () => {
+  const def = { fields: [{ name: "name", label: "Name", kind: "text" }, { name: "value", label: "Value", kind: "money" }, { name: "owner", label: "Owner", kind: "text" }, { name: "ssn", label: "SSN", kind: "sealed" }, { name: "secret", label: "Secret", kind: "text", seal: true }] };
+  const rec = { data: { name: "A", value: { amount: 24000, currency: "USD" }, owner: "" } };
+  assert.deepEqual(pinnedFacts(def, rec, ["owner", "value", "name"]), [["Owner", null], ["Value", "$24,000"], ["Name", "A"]]);
+  assert.deepEqual(pinnedFacts(def, rec, ["ssn", "secret", "nope", "value"]), [["Value", "$24,000"]]);
+  assert.deepEqual(pinnedFacts(def, rec, undefined), []);
+  assert.equal(pinnedFacts(def, rec, Array.from({ length: 12 }, () => "name")).length, 8, "at most eight");
 });
