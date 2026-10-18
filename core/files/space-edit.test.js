@@ -52,9 +52,12 @@ test("a move never overwrites: an existing file or folder at the destination is 
   assert.equal(r.calls.some((c) => c[0] === "put" || c[0] === "delete"), false);
 });
 
-test("if the old path cannot be removed, the copy stays and the error is the kernel's", async () => {
+test("if the old path cannot be removed, the copy stays and the error says so (partial), so nobody retries into a conflict", async () => {
   const r = rig({ "a/x.txt": "1" }, { askOnDelete: true });
-  assert.equal(await code(r.run("files.drive.space.move", { from: "a/x.txt", to: "b/x.txt" })), "needs_approval");
+  const e = await r.run("files.drive.space.move", { from: "a/x.txt", to: "b/x.txt" }).then(() => null, (x) => x);
+  assert.equal(e.code, "partial");
+  assert.match(e.message, /copied to b\/x\.txt, but the old file a\/x\.txt could not be removed: needs approval/);
+  assert.deepEqual(e.detail, { copied_to: "b/x.txt", left_at: "a/x.txt", reason: "needs_approval" });
   assert.equal(r.files.get("a/x.txt")?.toString(), "1", "the original is still there");
   assert.equal(r.files.get("b/x.txt")?.toString(), "1", "and so is the copy: nothing was lost");
 });
@@ -98,4 +101,23 @@ test("paths are checked at the entry", async () => {
   const r = rig({ "a/x.txt": "1" });
   for (const p of ["../x", "/abs", "a//b", "a\\b", ""]) assert.equal(await code(r.run("files.drive.space.delete", { path: p })), "bad_input", JSON.stringify(p));
   assert.equal(await code(r.run("files.drive.space.move", { from: "a/x.txt", to: "../out" })), "bad_input");
+});
+
+test("a folder delete that is refused part way stops there and says how many went and where it stopped", async () => {
+  const r = rig({ "d/1.txt": "1", "d/2.txt": "2", "d/3.txt": "3" });
+  const real = r.calls; void real;
+  /** @type {any} */ const tool = r.tools.get("files.drive.space.delete");
+  // make the second delete refuse: wrap the fake through a rig with a drive that fails on d/2.txt
+  const files = new Map([["d/1.txt", "1"], ["d/2.txt", "2"], ["d/3.txt", "3"]]);
+  const drive = {
+    stat: async (_c, p) => { if (!files.has(p)) throw nf(); return { size: 1 }; },
+    listPage: async (_c, prefix) => ({ entries: [...files.keys()].filter((k) => k.startsWith(prefix)).map((path) => ({ path })), next: null }),
+    delete: async (_c, p) => { if (p === "d/2.txt") throw Object.assign(new Error("needs approval"), { code: "needs_approval" }); files.delete(p); return {}; },
+  };
+  /** @type {Map<string, any>} */ const tools = new Map();
+  registerSpaceEdit({ tool: (n, d) => tools.set(n, d), call: async () => ({}), kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: { drive }, surfaces: {} }), chainIn: async () => person } });
+  void tool;
+  const out = await tools.get("files.drive.space.delete").run({ path: "d" }, {});
+  assert.deepEqual(out, { path: "d", kind: "folder", deleted: 1, stopped_at: "d/2.txt", reason: "needs approval", code: "needs_approval" });
+  assert.deepEqual([...files.keys()], ["d/2.txt", "d/3.txt"], "what was refused and what came after it are still there");
 });

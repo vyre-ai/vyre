@@ -50,7 +50,11 @@ export function registerSpaceEdit(ctx) {
     if (st && typeof st.size === "number" && st.size > MAX_MOVE) throw refuse(`a file here moves up to ${MAX_MOVE / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
     const bytes = await drive.get(d.chain, from);
     await drive.put(d.chain, to, bytes, {});            // the new path is written first
-    await drive.delete(d.chain, from);                  // then the old one is tombstoned; if this is refused the copy stays and nothing is lost
+    try { await drive.delete(d.chain, from); }          // then the old one is tombstoned
+    catch (e) {
+      // the copy stays and so does the original: say so, so nobody retries into a conflict at the destination
+      throw Object.assign(refuse(`copied to ${to}, but the old file ${from} could not be removed: ${e instanceof Error ? e.message : "refused"}`, "partial"), { detail: { copied_to: to, left_at: from, reason: /** @type {any} */ (e)?.code } });
+    }
     return { from, to, kind, moved: 1 };
   }
 
@@ -60,7 +64,7 @@ export function registerSpaceEdit(ctx) {
   tool("files.drive.space.rename", "Rename a file or folder in place in the Space's Drive: { space?, path, name }. `name` is the new last part of the path.",
     obj({ space: str, path: str, name: str }, ["path", "name"]), (i, d, drive) => { const p = pathOf(i.path), n = nameOf(i.name), up = parent(p); return move(d, drive, p, up ? `${up}/${n}` : n); });
 
-  tool("files.drive.space.delete", `Delete a file, or the files of a folder (at most ${MAX_FOLDER_DELETE} at once), from the Space's Drive: { space?, path }. A delete is a version: files.drive.versions lists it and files.drive.restore brings the file back. An outward act, so the kernel may ask first and the answer says so.`,
+  tool("files.drive.space.delete", `Delete a file, or the files of a folder (at most ${MAX_FOLDER_DELETE} at once), from the Space's Drive: { space?, path }. A delete is a version: files.drive.versions lists it and files.drive.restore brings the file back. An outward act, so the kernel may ask first and the answer says so. A folder delete can stop part way: the answer then names how many went, where it stopped and why.`,
     obj({ space: str, path: str }, ["path"]), async (i, d, drive) => {
       const p = pathOf(i.path), kind = await kindOf(drive, d.chain, p);
       if (kind === "none") throw refuse("there is nothing at that path", "not_found");
@@ -75,7 +79,10 @@ export function registerSpaceEdit(ctx) {
       }
       if (files.length > MAX_FOLDER_DELETE) throw refuse(`that folder holds more than ${MAX_FOLDER_DELETE} files; delete part of it first`, "too_large");
       let deleted = 0;
-      for (const f of files) { await drive.delete(d.chain, f); deleted++; }
+      for (const f of files) {
+        try { await drive.delete(d.chain, f); deleted++; }
+        catch (e) { return { path: p, kind, deleted, stopped_at: f, reason: e instanceof Error ? e.message : "refused", code: /** @type {any} */ (e)?.code ?? null }; }   // stop at the first refusal and say what was done
+      }
       return { path: p, kind, deleted };
     });
 }
