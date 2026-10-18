@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
-import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
-import { newMenuItems, templateNoun, templateStage } from "./template-stage.js";
+import { newMenuItems, templateNoun } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { tagsOf, tally } from "../tags/model.js";
-import { StatusPill } from "../components/StatusPill";
 import { EmptyState } from "../components/States";
 import { Fab } from "../components/Fab";
 import { IconButton } from "../components/Button";
@@ -15,7 +13,8 @@ import { Icon, ICON_NAMES, type IconName } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
-import { recordTitle, spaceName, taskFraction, who, type World } from "./model";
+import { recordTitle, spaceName, who, type World } from "./model";
+import { rowFacts } from "./project-row.js";
 import { useUiTheme } from "../theme";
 import { SpaceTag } from "../components/SpaceTag";
 
@@ -54,8 +53,13 @@ function ProjectTile({ id, icon, size }: { id: string; icon?: string; size: numb
   return <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), backgroundColor: color[TINTS[hash(id) % TINTS.length]], alignItems: "center", justifyContent: "center" }}><Icon name={name} size={size >= 44 ? 20 : 16} tone="text-2" /></View>;
 }
 
-/** The first name of an owner, whole: never cut with dots. */
-const firstName = (n: string) => String(n || "").trim().split(/\s+/)[0] || "";
+/** Up to four faces, overlapped, for who is on a project. */
+function Faces({ ids, world }: { ids: string[]; world: World }) {
+  const shown = ids.map((id) => who(world, id)).filter(Boolean);
+  if (!shown.length) return null;
+  return <View className="flex-row items-center" accessible accessibilityLabel={`On it: ${shown.map((a: any) => a.name).join(", ")}`}>{shown.map((a: any, n: number) => <View key={a.id} style={{ marginLeft: n ? -6 : 0 }}><ActorMark who={a} size="sm" /></View>)}</View>;
+}
+
 
 /**
  * Projects, calm: a header (count, search with "/", Filter, New), the playbook chip when the list is narrowed to one, and one row per project: a tint tile with the playbook's icon, the name with
@@ -78,9 +82,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const work = workTypes(items);
   const word = q.trim().toLowerCase();
   const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!tag || tagsOf(i.row.data?.tags).includes(tag)) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
-  const ownerOf = (i: Item) => { const f = i.def.fields.find((x: any) => x.kind === "actor"); return f ? aid(i.row.data?.[f.name]?.actor) : ""; };
-  const stageOf = (i: Item) => { const pinned = templateStage(i.row.data); if (pinned) return pinned; const sf = stageFieldOf(i.def); const stages: string[] = sf ? stageNames(i.def, sf) : []; return { stages, at: sf ? stages.indexOf(String(i.row.data?.[sf.name] ?? "")) : -1 }; };
-  const tasksOf = (i: Item) => taskFraction(world.tasks.filter((t) => t.record === i.row.urn));
+  const factsOf = (i: Item) => rowFacts(world, i);
   const spaceId = (i: Item): string | undefined => i.row.labels?.source_spaces?.[0];
   const manySpaces = new Set(shown.map(spaceId).filter(Boolean)).size > 1;
   const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) : null) || i.def.label;
@@ -120,29 +122,28 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
       items={[{ label: "Open", onPress: () => onOpen(i.row.id) }, ...(onRename ? [{ label: "Rename", onPress: () => onRename(i.row) }] : []), ...(onArchive ? [{ label: "Archive", onPress: () => onArchive(i.row) }] : [])]}
     />
   );
-  const stagePill = (i: Item, needsYou = false) => { const s = stageOf(i); if (s.at < 0 || !s.stages.length) return <Text tone="faint">{"–"}</Text>; return <StatusPill at={s.at + 1} of={s.stages.length} needsYou={needsYou} />; };
-  const ownerCell = (i: Item) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted">{firstName(a.name)}</Text></View> : null; };
 
   const wideRow = (i: Item, k: number) => {
-    const t = tasksOf(i);
+    const t = factsOf(i);
     return (
       <View key={i.row.id}>
         {k > 0 ? <Divider /> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={`${recordTitle(world, i.row)}, ${sub(i)}`} onPress={() => onOpen(i.row.id)} onHoverIn={() => setActive(k)}
           style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingHorizontal: 16, minHeight: 64, backgroundColor: active === k ? color.hover : "transparent" }}>
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={36} />
-          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Text size="secondary" tone="label" numberOfLines={1}>{sub(i)}</Text></View>
+          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text></View>
           {tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}
-          <View style={{ width: 120 }}>{stagePill(i)}</View>
+          <View style={{ width: 90 }}><Text size="secondary" tone="muted" numberOfLines={1}>{sub(i)}</Text></View>
           <View style={{ width: 92 }}><TaskBar done={t.done} total={t.total} /></View>
-          <View style={{ width: 120 }}>{ownerCell(i)}</View>
+          <View style={{ width: 84 }}><Faces ids={t.team} world={world} /></View>
+          <View style={{ width: 120 }}><Text size="secondary" tone="faint" numberOfLines={1}>{t.moved}</Text></View>
           {rowMenu(i)}
         </Pressable>
       </View>
     );
   };
   const phoneRow = (i: Item, k: number) => {
-    const t = tasksOf(i);
+    const t = factsOf(i);
     return (
       <View key={i.row.id}>
         {k > 0 ? <Divider inset={68} /> : null}
@@ -150,8 +151,8 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={44} />
           <View className="min-w-0 flex-1 gap-s1">
             <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
-            <Text size="secondary" tone="label" numberOfLines={1}>{sub(i)}</Text>
-            <View className="flex-row flex-wrap items-center gap-s2">{stagePill(i)}{t.total ? <TaskBar done={t.done} total={t.total} /> : null}{ownerCell(i)}</View>
+            <Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text>
+            <View className="flex-row flex-wrap items-center gap-s2">{t.total ? <TaskBar done={t.done} total={t.total} /> : null}<Faces ids={t.team} world={world} />{t.moved ? <Text size="caption" tone="faint">{t.moved}</Text> : null}</View>
           </View>
           {rowMenu(i)}
         </Pressable>
