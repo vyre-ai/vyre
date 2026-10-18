@@ -348,14 +348,12 @@ test("through the member door a joined member reads a record's history, board to
   await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" });
   // history: her change, with her as the actor; a logged call and a note
   await w.as(ANA, "records.log", { urn: deal.urn, kind: "call", text: "Spoke to Okafor" });
-  { const tryMake = async (/** @type {any} */ extra) => gw.records.create(gw.serviceChain("planner"), "note", { title: "t", state: "open", person: ANA, visibility: "private", record: deal.urn, ...extra }, { on_behalf: w.chainOf(ANA) }).then(() => "ok", (/** @type {any} */ e) => `${e.code}: ${e.message}`);
-    const probe = [await tryMake({}), await tryMake({ body: "b", source: "records", created: 1, updated: 1 })];
-    const viaTool = await w.d.registry.call("records.log", { urn: deal.urn, kind: "note", text: "probe" }, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(ANA), {})).token });
-    assert.deepEqual([probe, viaTool.error ? `${viaTool.error.code}: ${viaTool.error.message}` : "ok"], [["ok", "ok"], "ok"], "the log's note"); }
-  await w.as(ANA, "records.log", { urn: deal.urn, kind: "note", text: "Wants a warmer blue" });
+  assert.equal(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "note", text: "Wants a warmer blue" })), "bad_input", "a note is written from the Notes tab, into the team's planner");
+  await w.as(ANA, "records.log", { urn: deal.urn, kind: "meeting", text: "Met Okafor" });
   const items = (await w.as(ANA, "records.history", { urn: deal.urn })).items;
   assert.ok(items.some((/** @type {any} */ x) => /stage/.test(x.text) && x.actor.id === ANA), JSON.stringify(items.map((/** @type {any} */ x) => x.text)));
   assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "the call");
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "meeting" && /Okafor/.test(x.text)), "the meeting");
   // another member does not get a record she cannot read, and a kind that is not a call, meeting or note is refused
   assert.ok(await code(w.as(BEN, "records.log", { urn: `vyre://${w.space}/deal/0192f5a0-0000-7000-8000-000000000001`, kind: "call", text: "x" })), "a record that is not there");
   assert.ok(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "email", text: "x" })), "an email is not logged this way");

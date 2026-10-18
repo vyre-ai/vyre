@@ -390,6 +390,8 @@ export default {
       const clean = Object.fromEntries(Object.entries(src).filter(([k]) => MEMBER_KEYS[i.call].includes(k)));
       // the audit's two filters cross the door under names that are not identity keys; the tool reads them as person and project
       if (i.call === "audit") { if ("changed_by" in clean) { clean.person = clean.changed_by; delete clean.changed_by; } if ("in_project" in clean) { clean.project = clean.in_project; delete clean.in_project; } }
+      // a note is the team planner's Note (planner.serve); this door logs a call or a meeting
+      if (i.call === "log" && clean.kind === "note") throw refuse("Write a note from the Notes tab: it goes to the team's planner.", "bad_input");
       const d = await door.open({}, extra);
       // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
       const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
