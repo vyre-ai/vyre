@@ -102,6 +102,15 @@ export async function setAssistant(input) {
   return { ok: true, name: String(input.name || "").toLowerCase(), display: input.name, look: input.look };
 }
 
+export async function listAssistantModels() {
+  return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] }] };
+}
+
+/** @param {string} model */
+export async function setAssistantModel(model) {
+  return { ok: true, name: "juno", model };
+}
+
 export async function loadProgress() {
   return { ok: true, ...progress };
 }

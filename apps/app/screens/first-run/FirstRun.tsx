@@ -15,14 +15,14 @@ import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ACCOUNTS_COPY, defaultLabel, labelProblem } from "./ai-accounts-model.js";
-import { ASSISTANT_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
+import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, setAssistant, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -88,6 +88,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
   const [asName, setAsName] = useState("");
+  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
+  const [modelPick, setModelPick] = useState("");
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
@@ -140,6 +142,20 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     void listAgentProviders().then((r) => {
       if (!live || !r.ok || !Array.isArray(r.providers)) return;
       setAgents(r.providers.map((p: { id: string; label?: string }) => ({ id: String(p.id), label: String(p.label || p.id) })));
+    });
+    return () => { live = false; };
+  }, [shot, screen]);
+
+  useEffect(() => {
+    if (shot || screen !== "setup.model") return;
+    let live = true;
+    void listAssistantModels().then((r) => {
+      if (!live) return;
+      if (!r.ok) { setModels([]); return; }
+      const list = Array.isArray(r.accounts) ? r.accounts : [];
+      setModels(list);
+      const firstWith = list.find((a: { models: unknown[] }) => a.models.length);
+      if (firstWith) setModelPick((cur) => cur || `${firstWith.id}:${firstWith.models[0].id}`);
     });
     return () => { live = false; };
   }, [shot, screen]);
@@ -524,13 +540,44 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
           const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
-          go("ready");
+          setAsName(String(r.display || name));
+          go("setup.model");
         }) }}>
         <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
           onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "setup.model") {
+    const who = asName.trim() || ASSISTANT_COPY.suggestion;
+    const picked = (models || []).flatMap((a) => a.models.map((m) => ({ key: `${a.id}:${m.id}`, model: m.id })));
+    const chosen = picked.find((p) => p.key === modelPick);
+    return (
+      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={models && !models.length ? MODEL_COPY.none : MODEL_COPY.lead} failure={failure}
+        secondary={{ label: "Keep the default", onPress: () => go("ready") }}
+        primary={{ label: "Continue", loading: busy, disabled: busy || (models !== null && models.length > 0 && !chosen), onPress: () => void run(async () => {
+          if (chosen) { const r = await setAssistantModel(chosen.model); if (!r.ok) { setFailure(r.message); return; } }
+          go("ready");
+        }) }}>
+        {models === null ? <Text tone="muted">Looking at your AI accounts...</Text> : null}
+        {(models || []).map((a) => (
+          <View key={a.id} style={{ gap: 6 }} accessibilityLabel={a.label}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ProviderBadge provider={a.provider} size={20} /><Text tone="label">{a.label}</Text></View>
+            {a.models.map((m) => {
+              const k = `${a.id}:${m.id}`;
+              return (
+                <Pressable key={k} accessibilityRole="radio" accessibilityLabel={`${a.label}, ${m.label}`} accessibilityState={{ selected: modelPick === k }} onPress={() => setModelPick(k)}
+                  style={{ padding: 12, borderRadius: 12, borderWidth: modelPick === k ? 2 : 0.5, borderColor: modelPick === k ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+                  <Text>{m.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </FlowStep>
     );
   }

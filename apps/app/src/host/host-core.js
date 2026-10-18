@@ -539,6 +539,38 @@ export function createHost(o) {
       return { name: String(a.name), display: String(a.display || display), look: look || null };
     },
 
+    // The model step: what each connected AI account offers, and the Assistant's default among them. Reads the accounts the person just signed in (sessions.accounts.list) and what each offers
+    // (sessions.accounts.models, else the provider's own list), and keeps the pick with agents.update. Only ids, labels and names come back: never a credential.
+    "onboard.assistant.models": async () => {
+      if (!o.space) throw unsupported();
+      const { box } = await serverOfThisRun("Pick a model once your space is online.");
+      const ports = await o.space.load();
+      const list = /** @type {any} */ (await ports.call("sessions.accounts.list", {}, box));
+      const rows = (Array.isArray(list) ? list : list && Array.isArray(list.accounts) ? list.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
+      const modelsOf = async (/** @type {any} */ a) => {
+        /** @type {any} */ let r;
+        try { r = await ports.call("sessions.accounts.models", { account: a.id }, box); } catch { r = null; }
+        let models = r && Array.isArray(r.models) ? r.models : null;
+        if (!models || !models.length) { try { const p = /** @type {any} */ (await ports.call("sessions.models", { provider: String(a.provider || "claude") }, box)); models = Array.isArray(p) ? p : p && Array.isArray(p.models) ? p.models : []; } catch { models = []; } }
+        return models.filter((/** @type {any} */ m) => m && typeof m.id === "string").slice(0, 60).map((/** @type {any} */ m) => ({ id: String(m.id).slice(0, 120), label: String(m.label || m.id).slice(0, 120) }));
+      };
+      const accounts = [];
+      for (const a of rows.slice(0, 12)) accounts.push({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), models: await modelsOf(a) });
+      return { accounts };
+    },
+    "onboard.assistant.model": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box } = await serverOfThisRun("Pick a model once your space is online.");
+      const model = String((input && input.model) || "").trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw bad("That is not a model name.", "bad_model");
+      const ports = await o.space.load();
+      const l = /** @type {any} */ (await ports.call("agents.list", {}, box));
+      const a = (Array.isArray(l) ? l : l && Array.isArray(l.agents) ? l.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant");
+      if (!a || !a.name) throw bad("Your Assistant is not made yet.", "assistant_not_made");
+      await ports.call("agents.update", { name: String(a.name), model }, box);
+      return { name: String(a.name), model };
+    },
+
     "onboard.space.list": async () => {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");

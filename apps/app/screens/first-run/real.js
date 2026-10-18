@@ -139,6 +139,20 @@ export async function setAssistant(input) {
   catch (e) { return fail(e); }
 }
 
+/** What each connected AI account offers, for the model step. */
+export async function listAssistantModels() {
+  if (MOCK) return mock.listAssistantModels();
+  try { return done(await tool("onboard.assistant.models", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** Keep the Assistant's default model. @param {string} model */
+export async function setAssistantModel(model) {
+  if (MOCK) return mock.setAssistantModel(model);
+  try { return done(await tool("onboard.assistant.model", { model })); }
+  catch (e) { return fail(e); }
+}
+
 export async function loadProgress() {
   if (MOCK) return mock.loadProgress();
   try { return done(await tool("onboard.first.progress", {})); }

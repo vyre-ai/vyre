@@ -343,6 +343,11 @@ try {
     await drv.fill("Name", ASSISTANT);
     await drv.shot("04c-assistant");
     await drv.click("Continue");
+    // The model step lists each connected account's own models (none here: nothing was signed in), and Continue goes on to Ready.
+    const md = await drv.waitFor(`How should ${ASSISTANT} think?`, 60_000);
+    if (/You're in/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
+    await drv.shot("04d-model");
+    await drv.click("Continue");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.

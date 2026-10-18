@@ -18,6 +18,14 @@ export const WELCOME_COPY = Object.freeze({
   badSpace: "Use the name of a space, like juniper.",
 });
 
+/** The model step's words. */
+export const MODEL_COPY = Object.freeze({
+  /** @param {string} name */
+  title: (name) => `How should ${name} think?`,
+  lead: "Its default. You can pick a different one in any chat.",
+  none: "No AI account is connected yet. You can pick a model later in Settings.",
+});
+
 /** The Assistant step: its words, and the name offered until the person types one (the server's own fallback is the same). */
 export const ASSISTANT_COPY = Object.freeze({
   title: "Name your Assistant.",
