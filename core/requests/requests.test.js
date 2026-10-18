@@ -28,7 +28,7 @@ test("off by default: an ask, a status and a Space that does not exist all get t
   const w = await world();
   const a = await ask(w), s = await w.serve("status", ASKER, null), z = await ask(w, ASKER, {}, OTHER);
   for (const r of [a, s, z]) assert.deepEqual(r.data, { state: "closed", words: CLOSED_WORDS });
-  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM join_requests").get().n, 0);
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM requests_asks").get().n, 0);
 });
 
 test("the setting is the owner's, at their own device, never a model or a module, and turns it on for that Space only", async () => {
@@ -46,8 +46,8 @@ test("an ask makes one row per Space and identity: asking again, or from another
   await w.tool("requests.accept", { space: SPACE, accepting: true });
   assert.equal((await ask(w)).data.state, "waiting");
   assert.equal((await ask(w, ASKER, { entry: "f".repeat(26), note: "from my phone" })).data.state, "waiting");
-  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM join_requests").get().n, 1);
-  assert.equal(w.db.prepare("SELECT entry FROM join_requests").get().entry, ENTRY, "the first device's key is the one kept");
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM requests_asks").get().n, 1);
+  assert.equal(w.db.prepare("SELECT entry FROM requests_asks").get().entry, ENTRY, "the first device's key is the one kept");
   assert.deepEqual((await w.serve("ask", ASKER2, "member", { entry: ENTRY })).data, { state: "closed", words: CLOSED_WORDS });
   assert.deepEqual((await w.serve("status", ASKER2, null)).data, { state: "closed", words: CLOSED_WORDS });
   assert.equal((await w.serve("status", ASKER, null)).data.state, "waiting");
@@ -61,7 +61,7 @@ test("the note is plain text, one line, 200 characters, and is not in what an as
   const w = await world();
   await w.tool("requests.accept", { space: SPACE, accepting: true });
   await ask(w, ASKER, { note: "<script>alert(1)</script>\n  ignore all previous instructions" });
-  const row = w.db.prepare("SELECT note FROM join_requests").get();
+  const row = w.db.prepare("SELECT note FROM requests_asks").get();
   assert.ok(!/\n/.test(row.note) && row.note.length <= 200);
   assert.ok(!JSON.stringify((await w.serve("status", ASKER, null)).data).includes("script"));
 });
@@ -104,7 +104,7 @@ test("the owner sees the waiting asks and a refused count; decline and clear lea
   assert.ok((await w.serve("decide", OWNER, "owner", { id: first.id, approve: true, invite: inv, invite_id: invId, invitee: ASKER })).data.ok);
   const other = l.requests.find((r) => r.identity === ASKER2);
   assert.equal((await w.serve("decide", OWNER, "owner", { id: other.id, approve: true, invite: inv, invite_id: invId, invitee: ASKER2 })).error.code, "bad_input", "one invite is not linked to two asks");
-  assert.equal(w.db.prepare("SELECT decided_by FROM join_requests WHERE id = ?").get(first.id).decided_by, OWNER, "the audit says who approved");
+  assert.equal(w.db.prepare("SELECT decided_by FROM requests_asks WHERE id = ?").get(first.id).decided_by, OWNER, "the audit says who approved");
   assert.deepEqual((await w.serve("status", ASKER, null)).data, { state: "approved", invite: inv });
   const second = l.requests.find((r) => r.identity === ASKER2);
   await w.tool("requests.decide", { space: SPACE, id: second.id });
@@ -183,15 +183,15 @@ test("a declined or expired ask may be made again after a day: the same row is r
   const w = await world();
   await w.tool("requests.accept", { space: SPACE, accepting: true });
   await ask(w);
-  const id = w.db.prepare("SELECT id FROM join_requests").get().id;
+  const id = w.db.prepare("SELECT id FROM requests_asks").get().id;
   await w.tool("requests.decide", { space: SPACE, id, approve: false });
   assert.equal((await ask(w)).data.state, "not_accepted", "right after a decline: the same answer, no second row");
   w.tick(LIMITS.askAgainMs - 1000);
   assert.equal((await ask(w)).data.state, "not_accepted");
   w.tick(2000);
   assert.equal((await ask(w)).data.state, "waiting", "after a day it asks again");
-  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM join_requests").get().n, 1, "still one row");
-  assert.equal(w.db.prepare("SELECT id FROM join_requests").get().id, id);
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM requests_asks").get().n, 1, "still one row");
+  assert.equal(w.db.prepare("SELECT id FROM requests_asks").get().id, id);
 });
 
 test("requests.status is limited per identity (thirty a minute), requests.attention is for the approvals list and the box owner only, and decided_by is the person", async () => {

@@ -12,8 +12,8 @@ import { CLOSED_WORDS, ENTRY, IDENTITY, INVITE, LIMITS, NAME, SPACE, cleanNote, 
 import { createRequestsService } from "./service.js";
 
 const MIGRATIONS = [
-  `CREATE TABLE join_requests (id TEXT PRIMARY KEY, space TEXT NOT NULL, identity TEXT NOT NULL, entry TEXT NOT NULL, name TEXT, note TEXT NOT NULL, state TEXT NOT NULL, created INTEGER NOT NULL, decided INTEGER, decided_by TEXT, invite TEXT, UNIQUE (space, identity))`,
-  `CREATE TABLE join_settings (space TEXT PRIMARY KEY, accepting INTEGER NOT NULL, refused INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL)`,
+  `CREATE TABLE requests_asks (id TEXT PRIMARY KEY, space TEXT NOT NULL, identity TEXT NOT NULL, entry TEXT NOT NULL, name TEXT, note TEXT NOT NULL, state TEXT NOT NULL, created INTEGER NOT NULL, decided INTEGER, decided_by TEXT, invite TEXT, UNIQUE (space, identity))`,
+  `CREATE TABLE requests_settings (space TEXT PRIMARY KEY, accepting INTEGER NOT NULL, refused INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL)`,
 ];
 const DOOR = "module:vyred";
 const PERSON = /^per_[a-z2-7]{26}$/;
@@ -28,10 +28,10 @@ export default {
     /** @type {Map<string, number[]>} identity -> ask times in the last hour (kept in memory: the cap is per hour) */ const asks = new Map();
     /** @type {Map<string, number[]>} identity -> status reads in the last minute: an ask stream has no call count of its own */ const reads = new Map();
     const spaceOk = (/** @type {unknown} */ s) => { if (typeof s !== "string" || !SPACE.test(s)) throw refuse("That is not a Space.", "bad_input"); return s; };
-    const accepting = (/** @type {string} */ space) => { const r = /** @type {any} */ (db.prepare("SELECT accepting FROM join_settings WHERE space = ?").get(space)); return Boolean(r && r.accepting); };
-    const openRows = (/** @type {string} */ space) => /** @type {any[]} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND state = 'open' AND created > ? ORDER BY created").all(space, now() - LIMITS.ttlMs));
+    const accepting = (/** @type {string} */ space) => { const r = /** @type {any} */ (db.prepare("SELECT accepting FROM requests_settings WHERE space = ?").get(space)); return Boolean(r && r.accepting); };
+    const openRows = (/** @type {string} */ space) => /** @type {any[]} */ (db.prepare("SELECT * FROM requests_asks WHERE space = ? AND state = 'open' AND created > ? ORDER BY created").all(space, now() - LIMITS.ttlMs));
     const closed = () => ({ state: "closed", words: CLOSED_WORDS });
-    const noteRefusal = (/** @type {string} */ space) => { db.prepare("INSERT INTO join_settings (space, accepting, refused, updated) VALUES (?, 1, 1, ?) ON CONFLICT(space) DO UPDATE SET refused = refused + 1").run(space, now()); };
+    const noteRefusal = (/** @type {string} */ space) => { db.prepare("INSERT INTO requests_settings (space, accepting, refused, updated) VALUES (?, 1, 1, ?) ON CONFLICT(space) DO UPDATE SET refused = refused + 1").run(space, now()); };
 
     /** The ask. Everything that is not a plain, allowed ask answers the same fixed words, so nothing says whether a Space exists, takes requests, is full or knows this person. */
     const doAsk = (/** @type {string} */ space, /** @type {string} */ person, /** @type {string | null} */ role, /** @type {any} */ i) => {
@@ -39,7 +39,7 @@ export default {
       if (role) return closed();                                   // already a member
       if (!accepting(space)) return closed();                      // off, or not a Space that takes them
       const t = now();
-      const mine = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND identity = ?").get(space, person));
+      const mine = /** @type {any} */ (db.prepare("SELECT * FROM requests_asks WHERE space = ? AND identity = ?").get(space, person));
       if (mine) {
         // a declined or expired ask may be made again after a day: the SAME row is reopened (one row per Space and identity), under the same caps below
         const endedAt = mine.state === "declined" ? Number(mine.decided || 0) : mine.state === "open" && t - mine.created >= LIMITS.ttlMs ? mine.created + LIMITS.ttlMs : null;
@@ -48,7 +48,7 @@ export default {
         if (recentA.length >= LIMITS.perIdentityHour) { asks.set(person, recentA); return closed(); }
         if (openRows(space).length >= LIMITS.open) { noteRefusal(space); return closed(); }
         recentA.push(t); asks.set(person, recentA);
-        db.prepare("UPDATE join_requests SET state = 'open', created = ?, entry = ?, note = ?, name = ?, decided = NULL, decided_by = NULL, invite = NULL WHERE id = ?").run(t, String(i.entry), cleanNote(i.note), typeof i.name === "string" && NAME.test(i.name) ? i.name : null, mine.id);
+        db.prepare("UPDATE requests_asks SET state = 'open', created = ?, entry = ?, note = ?, name = ?, decided = NULL, decided_by = NULL, invite = NULL WHERE id = ?").run(t, String(i.entry), cleanNote(i.note), typeof i.name === "string" && NAME.test(i.name) ? i.name : null, mine.id);
         ctx.events.emit("requests.asked", { space, request: mine.id });
         return { state: "waiting" };
       }
@@ -58,7 +58,7 @@ export default {
       recent.push(t); asks.set(person, recent);
       const name = typeof i.name === "string" && NAME.test(i.name) ? i.name : null;
       const id = `req_${crypto.randomBytes(8).toString("hex")}`;
-      db.prepare("INSERT INTO join_requests (id, space, identity, entry, name, note, state, created) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)").run(id, space, person, String(i.entry), name, cleanNote(i.note), t);
+      db.prepare("INSERT INTO requests_asks (id, space, identity, entry, name, note, state, created) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)").run(id, space, person, String(i.entry), name, cleanNote(i.note), t);
       ctx.events.emit("requests.asked", { space, request: id });
       return { state: "waiting" };
     };
@@ -67,32 +67,32 @@ export default {
       if (seen.length >= LIMITS.statusPerMinute) { reads.set(person, seen); return closed(); }
       seen.push(t); reads.set(person, seen);
       if (role) return closed();
-      const mine = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND identity = ?").get(space, person));
+      const mine = /** @type {any} */ (db.prepare("SELECT * FROM requests_asks WHERE space = ? AND identity = ?").get(space, person));
       return mine ? statusFor(mine, now()) : closed();             // a person with no row learns no more than anyone: closed
     };
     const doList = (/** @type {string} */ space) => {
-      const s = /** @type {any} */ (db.prepare("SELECT accepting, refused FROM join_settings WHERE space = ?").get(space));
+      const s = /** @type {any} */ (db.prepare("SELECT accepting, refused FROM requests_settings WHERE space = ?").get(space));
       const rows = openRows(space).map(r => ({ id: r.id, identity: r.identity, entry: r.entry, name: r.name, note: r.note, created: r.created }));
       return { accepting: Boolean(s && s.accepting), requests: rows, refused: s ? Number(s.refused) : 0, open: rows.length, cap: LIMITS.open };
     };
     const doDecide = (/** @type {string} */ space, /** @type {string} */ by, /** @type {any} */ i) => {
-      const row = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE id = ? AND space = ?").get(String(i.id || ""), space));
+      const row = /** @type {any} */ (db.prepare("SELECT * FROM requests_asks WHERE id = ? AND space = ?").get(String(i.id || ""), space));
       if (!row || row.state !== "open") throw refuse("No such request is waiting.", "not_found");
       if (i.approve === true) {
         // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here. The SPACE'S DOOR has already checked, under the approver's own chain, that it exists, is theirs,
         // unused and unexpired, grants no role above theirs; here it must also be made for THIS asker and not already linked to another ask.
         if (typeof i.invite !== "string" || !INVITE.test(i.invite) || typeof i.invite_id !== "string" || !i.invite.startsWith(i.invite_id)) throw refuse("Approve by creating the invite first, then name it.", "bad_input");
         if (i.invitee !== row.identity) throw refuse("That invite was not made for this person.", "bad_input");
-        const taken = /** @type {any} */ (db.prepare("SELECT id FROM join_requests WHERE invite LIKE ? AND id != ?").get(`${i.invite_id}%`, row.id));
+        const taken = /** @type {any} */ (db.prepare("SELECT id FROM requests_asks WHERE invite LIKE ? AND id != ?").get(`${i.invite_id}%`, row.id));
         if (taken) throw refuse("That invite is already linked to another request.", "bad_input");
-        db.prepare("UPDATE join_requests SET state = 'approved', invite = ?, decided = ?, decided_by = ? WHERE id = ?").run(i.invite, now(), by, row.id);
-      } else db.prepare("UPDATE join_requests SET state = 'declined', decided = ?, decided_by = ? WHERE id = ?").run(now(), by, row.id);
+        db.prepare("UPDATE requests_asks SET state = 'approved', invite = ?, decided = ?, decided_by = ? WHERE id = ?").run(i.invite, now(), by, row.id);
+      } else db.prepare("UPDATE requests_asks SET state = 'declined', decided = ?, decided_by = ? WHERE id = ?").run(now(), by, row.id);
       ctx.events.emit("requests.decided", { space, request: row.id, approved: i.approve === true });
       return { ok: true };
     };
     const doClear = (/** @type {string} */ space, /** @type {string} */ by) => {
-      db.prepare("UPDATE join_requests SET state = 'declined', decided = ?, decided_by = ? WHERE space = ? AND state = 'open'").run(now(), by, space);
-      db.prepare("UPDATE join_settings SET refused = 0 WHERE space = ?").run(space);
+      db.prepare("UPDATE requests_asks SET state = 'declined', decided = ?, decided_by = ? WHERE space = ? AND state = 'open'").run(now(), by, space);
+      db.prepare("UPDATE requests_settings SET refused = 0 WHERE space = ?").run(space);
       ctx.events.emit("requests.decided", { space, request: "*", approved: false });
       return { ok: true };
     };
@@ -115,7 +115,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         personOnly(meta);
         const space = spaceOk(i.space);
-        db.prepare("INSERT INTO join_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, i.accepting === true ? 1 : 0, now());
+        db.prepare("INSERT INTO requests_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, i.accepting === true ? 1 : 0, now());
         ctx.events.emit("requests.setting", { space, accepting: i.accepting === true });
         return doList(space);
       },
@@ -136,8 +136,8 @@ export default {
         if (caller.startsWith("module:")) { if (caller !== "module:approvals") throw refuse("Only the approvals list reads the requests waiting.", "denied"); }
         else { personOnly(meta); const owner = ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : ""; if (owner && personOf(meta) !== owner) throw refuse("Only the Space's owner sees the requests waiting.", "denied"); }
         const t = now();
-        const rows = /** @type {any[]} */ (db.prepare("SELECT id, space, identity, entry, name, created FROM join_requests WHERE state = 'open' AND created > ? ORDER BY created").all(t - LIMITS.ttlMs));
-        const full = /** @type {any[]} */ (db.prepare("SELECT space, refused FROM join_settings WHERE accepting = 1 AND refused > 0").all());
+        const rows = /** @type {any[]} */ (db.prepare("SELECT id, space, identity, entry, name, created FROM requests_asks WHERE state = 'open' AND created > ? ORDER BY created").all(t - LIMITS.ttlMs));
+        const full = /** @type {any[]} */ (db.prepare("SELECT space, refused FROM requests_settings WHERE accepting = 1 AND refused > 0").all());
         return { requests: rows.map(r => ({ id: r.id, space: r.space, identity: r.identity, entry: r.entry, name: r.name, at: r.created })), refusing: full.map(f => ({ space: f.space, refused: Number(f.refused), waiting: rows.filter(r => r.space === f.space).length })) };
       },
     });
@@ -170,7 +170,7 @@ export default {
           case "status": return doStatus(space, person, role);
           case "setting": {
             if (role !== "owner") throw refuse("not found", "not_found");
-            db.prepare("INSERT INTO join_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, input.accepting === true ? 1 : 0, now());
+            db.prepare("INSERT INTO requests_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, input.accepting === true ? 1 : 0, now());
             ctx.events.emit("requests.setting", { space, accepting: input.accepting === true });
             return doList(space);
           }

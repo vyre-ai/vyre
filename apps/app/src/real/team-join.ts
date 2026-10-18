@@ -131,14 +131,16 @@ export async function invitesHere(): Promise<boolean> {
   return peerWanted() && (await holdsName());
 }
 
+/** A page with no daemon (the hosted web app) keeps the person's name in its own host, not in this store: the Space's door still answers it as the device its server paired, and the calls that need the person's yes go through the server's own tools. */
+const nameHere = async (): Promise<boolean> => Boolean(await loadIdentity().catch(() => null));
+
 async function inviteDeps(space: string) {
-  const mine = await loadIdentity();
-  if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const mine = await loadIdentity().catch(() => null);
   const { openPeer } = await import("./peer");
   const { kernelWire } = await import("./kernel-wire.js");
   const { DIRECTORY } = await import("./install");
-  const yes = await yesSigner(mine);
-  const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
+  const yes = mine ? await yesSigner(mine) : null;
+  const wire = kernelWire(await openPeer(), space, { person: mine?.id ?? "", ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
 
@@ -150,6 +152,7 @@ export async function teamRequests(space: string) {
 
 /** Turn "let people ask to join" on or off: the owner's own presence over the new value, signed by this device. */
 export async function teamSetting(space: string, accepting: boolean) {
+  if (!(await nameHere())) { const { tool } = await import("./box"); return tool("requests.accept", { space, accepting }); }
   const d = await inviteDeps(space);
   return d.wire.call("requests.setting", [{ accepting }]);
 }
@@ -167,6 +170,13 @@ export async function teamDecide(space: string, input: { id: string; approve: bo
 }
 
 export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
+  if (!(await nameHere())) {
+    // no name kept in this page: the paired server makes the invite (and asks for the person's yes itself), as the invite screen does
+    const { tool } = await import("./box");
+    const r = await tool<{ token?: string; needs_proof?: boolean }>("spaces.invites.create", { space: i.space, role: i.role, ...(i.to ? { to: i.to } : {}), ...(i.ttlDays ? { ttlDays: i.ttlDays } : {}) });
+    if (!r || typeof r.token !== "string") throw Object.assign(new Error("The invite needs your yes first. Approve it, then try again."), { code: "needs_presence" });
+    return r as { token: string };
+  }
   const { createTeamInvite } = await import("./team-invite.js");
   return createTeamInvite(await inviteDeps(i.space), i);
 }
