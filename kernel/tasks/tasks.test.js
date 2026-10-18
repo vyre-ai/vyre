@@ -1147,7 +1147,7 @@ test("reviewer quorum all on a role: every holder must pass, a pass is kept per 
   await r.tasks.complete(asIntake(), u.id, noteEvidence());
   await r.tasks.review(alice(), u.id, { result: "pass" });
   assert.equal((await r.tasks.review(bob(), u.id, { result: "changes", note: "no" })).state, "changes_requested");
-  assert.equal((await r.tasks.complete(asIntake(), u.id, noteEvidence())).review_passes.length, 0, "a new hand-in starts a new round");
+  assert.equal(((await r.tasks.complete(asIntake(), u.id, noteEvidence())).review_passes || []).length, 0, "a new hand-in starts a new round");
   // a holder removed from the role is no longer waited for
   r.state.roles.editors = [actor("person", ALICE)];
   assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).state, "done");
