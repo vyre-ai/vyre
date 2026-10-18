@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, EmptyState, ErrorState, Field, GroupedList, LoadingState, Menu, Row, Text, showToast, useWork } from "@vyre/ui";
+import { Button, Card, Chip, EmptyState, ErrorState, Field, LoadingState, Menu, Row, Text, showToast, useWork } from "@vyre/ui";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
-import { StartSheet, type StartExtras } from "../projects/StartSheet";
-import { errWords, projectIdOf, startWords, type Body, type Row as TemplateRow } from "./model";
+import { errWords, type Body, type Row as TemplateRow } from "./model";
 import { starterBody } from "./compose";
 import { cardOf, filterRows, playbookPath, PLAYBOOK, TEMPLATES_LABEL } from "./board";
+import { sentenceOf } from "./page";
 import { duplicateBody } from "./use";
 import { useMayMakeTemplates } from "./role";
 import { DescribeSheet } from "./DescribeSheet";
@@ -17,15 +17,6 @@ import { openEngineer } from "../engineer/openEngineer";
 import { templates } from "./templates";
 
 type Lib = Awaited<ReturnType<typeof templates.library>>;
-
-/** One segment per stage, so a playbook's shape reads at a glance; the names are for a screen reader and the stage under the pointer. */
-function StageBar({ names }: { names: string[] }) {
-  return (
-    <View className="flex-row gap-s1" accessible accessibilityLabel={`${names.length} stages: ${names.join(", ")}`}>
-      {names.map((nm, k) => <View key={`${k}:${nm}`} className="h-1 flex-1 rounded-full bg-primary" style={{ height: 4 }} />)}
-    </View>
-  );
-}
 
 /**
  * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a campaign". Live and drafts sit in
@@ -45,7 +36,6 @@ export default function TemplatesScreen() {
   const [busy, setBusy] = useState("");
   const [describing, setDescribing] = useState(false);
   const [idea, setIdea] = useState("");
-  const [starting, setStarting] = useState<TemplateRow | null>(null);
   const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
   useEffect(load, [load]);
   useEffect(() => { (rows || []).forEach((r) => { if (!bodies[r.template]) templates.get(r.template, r.live ?? r.latest).then((v) => v.body && setBodies((b) => ({ ...b, [r.template]: v.body! }))).catch(() => undefined); }); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -58,32 +48,19 @@ export default function TemplatesScreen() {
   const startBlank = () => act("new", async () => { const id = `tpl_untitled-${Math.random().toString(36).slice(2, 7)}`; const v = await templates.define(starterBody(), id, "started blank"); router.push(playbookPath(v.template) as never); });
   const install = (id: string) => act(id, async () => { const v = await templates.install(id); showToast(`${v.name} is a draft. Open it, try it, then publish it.`); router.push(playbookPath(v.template) as never); });
   const copy = (r: TemplateRow) => act(r.template, async () => { const v = await templates.get(r.template); const c = await templates.define(duplicateBody(v.body!), undefined, `a copy of ${r.name}`); showToast(`${c.name} is a draft.`); router.push(playbookPath(c.template) as never); });
-  const start = (name: string, extras: StartExtras) => act("start", async () => { const r = await templates.start(starting!.template, name, extras); setStarting(null); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); });
   const have = new Set((rows || []).map((r) => r.name));
-  const card = (r: TemplateRow, c: ReturnType<typeof cardOf>) => (
-    <MenuRow items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
-      {(menu) => (
-        <Card><View className="gap-s3 p-s4">
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${c.name}`} onPress={() => router.push(playbookPath(r.template) as never)}>
-            <View className="flex-row items-center gap-s3">
-              <IconTile icon="box" />
-              <View className="min-w-0 flex-1">
-                <Text strong numberOfLines={1}>{c.name}</Text>
-                <Text size="caption" tone="label" numberOfLines={1}>{`${c.projects} · ${c.status}`}</Text>
-              </View>
-                            {menu}
-            </View>
-          </Pressable>
-          {c.stages.length ? <StageBar names={c.stages} /> : null}
-          <Text size="caption" tone="muted" numberOfLines={1}>{c.counts || " "}</Text>
-          <Text size="caption" tone="label" numberOfLines={1}>{c.usedBy}</Text>
-          <View className="flex-row flex-wrap items-center gap-s2">
-            <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="primary" size="sm" label="Open" onPress={() => router.push(playbookPath(r.template) as never)} />}</View>
-          </View>
-        </View></Card>
-      )}
-    </MenuRow>
-  );
+  // a calm row: the playbook as one sentence, its counts and where it is used under it, Live or Draft and the version on the right
+  const row = (r: TemplateRow, c: ReturnType<typeof cardOf>) => {
+    const b = bodies[r.template];
+    return (
+      <MenuRow key={r.template} items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
+        {(menu) => (
+          <Row lead={<IconTile icon="box" />} title={b ? sentenceOf(b, true) : c.name} sub={[c.counts, c.usedBy].filter(Boolean).join(" · ")} onPress={() => router.push(playbookPath(r.template) as never)}
+            end={<View className="flex-row items-center gap-s2"><Chip tone={r.live !== null ? "ok" : "plain"}>{r.live !== null ? "Live" : "Draft"}</Chip><Text size="caption" tone="label">{`v${r.live ?? r.latest}`}</Text>{menu}</View>} />
+        )}
+      </MenuRow>
+    );
+  };
   return (
     <Frame title={TEMPLATES_LABEL} sub={rows ? `${rows.length} ${rows.length === 1 ? PLAYBOOK.one : PLAYBOOK.many}` : undefined}
       actions={mayMake ? <Menu trigger={<Button kind="primary" size="sm" icon="plus" label="New playbook" />} items={[
@@ -115,10 +92,7 @@ export default function TemplatesScreen() {
         </View>
       ) : null}
       {rows && rows.length && !items.length ? <Card><EmptyState title="No match" body="Try another word, or show All." /></Card> : null}
-      {items.length ? (
-        <GroupedList groups={[{ name: "Live" }, { name: "Drafts" }].filter((g) => items.some((i) => i.group === g.name))} items={items.map((i) => ({ ...i, group: i.group }))} itemNoun="playbooks"
-          renderItems={(list) => <View className="flex-row flex-wrap gap-s3">{list.map((i) => <View key={i.r.template} style={{ width: phone ? "100%" : 340 }}>{card(i.r, i.c)}</View>)}</View>} />
-      ) : null}
+      {items.length ? <Card flush>{items.map((i) => row(i.r, i.c))}</Card> : null}
       {showKits && lib.length ? (
         <Sec title="From Kits">
           <Card flush>
@@ -130,7 +104,6 @@ export default function TemplatesScreen() {
         </Sec>
       ) : showKits ? <Card><EmptyState title="No Kits to add from" body="None of your Kits ships a playbook yet." /></Card> : null}
       <DescribeSheet open={describing} title="Describe a playbook" question="What kind of work is this playbook for?" placeholder="For example: taking on a new estate planning client, from the first call to the signed documents" cta="Ask the Engineer" onClose={() => setDescribing(false)} onSend={(words) => { setDescribing(false); openEngineer(router, { source: "playbook", words }); }} />
-      <StartSheet noun={starting ? (bodies[starting.template]?.noun?.one || starting.noun?.one || "project") : "project"} open={starting !== null} busy={busy === "start"} onClose={() => setStarting(null)} onStart={(n, x) => void start(n, x)} />
     </Frame>
   );
 }
