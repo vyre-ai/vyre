@@ -35,6 +35,8 @@ jobs:
         with:
           node-version: 22.11.0
       - run: npm ci --no-audit --no-fund
+      # The saved Twenty database a new Space starts from, built before the install packs this checkout (stores/twenty/provision.js findGolden), as a release and the box image do: without it Records migrate from scratch on the first start, which takes ten minutes.
+      - uses: ./.github/actions/twenty-golden
       - name: The runner's address (a server in a container reaches the stand-ins there)
         run: echo "PROOF_HOST_IP=$(hostname -I | awk '{print $1}')" >> "$GITHUB_ENV"
       - name: Export the web app, pointed at the stand-ins
