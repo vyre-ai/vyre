@@ -10,6 +10,7 @@ const KIND_WORDS = { chat: "Chat", group: "Group chat", agent: "Agent", person: 
 export const convoKindWord = (k) => KIND_WORDS[k];
 
 /** @typedef {{ title: string, live?: boolean, needs?: boolean, at?: number }} ThreadInfo */
+/** What work.chat.summary says of an agent: how many threads, the latest and the live one. @typedef {{ count: number, latest?: string, at?: number, live?: string, needs?: boolean }} AgentSummary */
 
 /**
  * Where a chat lives, which the person never has to think about: Personal (only you: your agent threads), Space (it only has the people in it), Projects (a project's chat, everyone on it).
@@ -32,8 +33,16 @@ export function agentLine(ts, fallback) {
   return `${t.title}${live && live.needs ? " \u00b7 needs you" : ""}${ts.length > 1 ? ` \u00b7 ${ts.length} threads` : ""}`;
 }
 
+/** The same line from work.chat.summary's counts. @param {AgentSummary | undefined} s @param {string} fallback */
+export function summaryLine(s, fallback) {
+  if (!s || !(s.count > 0)) return fallback;
+  const t = s.live ?? s.latest;
+  if (!t) return `${s.count} ${s.count === 1 ? "thread" : "threads"}`;
+  return `${t}${s.live && s.needs ? " \u00b7 needs you" : ""}${s.count > 1 ? ` \u00b7 ${s.count} threads` : ""}`;
+}
+
 /**
- * @param {{ chats: readonly ChatRow[], agents: readonly { name: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[] }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: number, needs?: number }[] }} i
+ * @param {{ chats: readonly ChatRow[], agents: readonly { name: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[], summary?: AgentSummary }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: number, needs?: number }[] }} i
  * @returns {Convo[]}
  */
 export function convosFrom(i) {
@@ -41,6 +50,7 @@ export function convosFrom(i) {
   const aloneAgent = new Set();
   const alonePerson = new Set();
   const infoOf = new Map(i.agents.map((a) => [a.name, a.threads ?? []]));
+  const sumOf = new Map(i.agents.map((a) => [a.name, a.summary]));
   for (const c of i.chats) {
     const others = c.people.length + c.agents.length;
     if (others === 1 && c.agents.length === 1 && c.title === c.agents[0]) aloneAgent.add(c.agents[0]);
@@ -50,15 +60,15 @@ export function convosFrom(i) {
     const place = placeOf(c);
     const ts = agentOnly ? infoOf.get(c.agents[0]) ?? [] : [];
     out.push({
-      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: c.title, sub: agentOnly ? agentLine(ts, c.line) : c.line, last: c.last, project: c.project,
+      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: c.title, sub: agentOnly ? (sumOf.get(c.agents[0]) ? summaryLine(sumOf.get(c.agents[0]), c.line) : agentLine(ts, c.line)) : c.line, last: Math.max(c.last, agentOnly ? sumOf.get(c.agents[0])?.at ?? 0 : 0), project: c.project,
       projects: c.project ? [c.project] : [], chat: c.id, agent: "", person: "", open: c.open, asks: c.asks, unread: c.unread, pinned, status: c.status, dot: c.asks > 0 ? "ask" : c.unread > 0 ? "unread" : "", names: [...c.people, ...c.agents], look: "", lone: agentOnly ? "agent" : others === 1 && c.people.length === 1 ? "person" : "",
-      section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length) : 1,
+      section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length, sumOf.get(c.agents[0])?.count ?? 0) : 1,
     });
   }
   for (const a of i.agents) {
     if (aloneAgent.has(a.name)) continue;
     const ts = a.threads ?? [];
-    out.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, sub: agentLine(ts, a.role ?? ""), last: Math.max(0, ...ts.map((t) => t.at ?? 0)), project: "", projects: (a.projects ?? []).map(String), chat: "", agent: a.name, person: "", open: true, asks: 0, unread: 0, pinned: false, status: a.status ?? "", dot: "", names: [a.name], look: a.look ?? "", lone: "agent", section: "personal", threads: Math.max(1, ts.length) });
+    out.push({ id: `agent:${a.name}`, kind: "agent", title: a.name, sub: a.summary ? summaryLine(a.summary, a.role ?? "") : agentLine(ts, a.role ?? ""), last: Math.max(0, a.summary?.at ?? 0, ...ts.map((t) => t.at ?? 0)), project: "", projects: (a.projects ?? []).map(String), chat: "", agent: a.name, person: "", open: true, asks: 0, unread: 0, pinned: false, status: a.status ?? "", dot: "", names: [a.name], look: a.look ?? "", lone: "agent", section: "personal", threads: Math.max(1, ts.length, a.summary?.count ?? 0) });
   }
   for (const p of i.people) {
     if (alonePerson.has(p.name)) continue;

@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { convosFrom, convoChips, convosShown, convoKindWord, convoSections, agentLine, CONVO_TYPES, placeOf } from "./convo-model.js";
+import { convosFrom, convoChips, convosShown, convoKindWord, convoSections, agentLine, summaryLine, CONVO_TYPES, placeOf } from "./convo-model.js";
 
 const chat = (o) => ({ id: "c", title: "T", project: "", people: [], agents: [], models: [], providers: [], status: "idle", last: 0, line: "", asks: 0, unread: 0, open: true, pinned: "", ...o });
 const agent = (o) => ({ name: "kit", role: "Drafts replies", projects: [], status: "Idle", ...o });
@@ -111,4 +111,14 @@ test("an agent's row says its live thread (and that it needs you) or its latest,
   const eng = convosFrom({ chats: [chat({ id: "e", title: "Engineer", agents: ["Engineer"] })], agents: [agent({ name: "Engineer", threads: [{ title: "A", live: true }, { title: "B" }] })], people: [] })[0];
   assert.equal(eng.sub, "A \u00b7 2 threads");
   assert.equal(eng.threads, 2);
+});
+
+test("an agent's line from work.chat.summary: its live thread (needs you) or latest, and its thread count", () => {
+  assert.equal(summaryLine({ count: 3, latest: "Signup form", live: "Pricing page" }, "role"), "Pricing page \u00b7 3 threads");
+  assert.equal(summaryLine({ count: 1, live: "Book the photographer", needs: true }, "role"), "Book the photographer \u00b7 needs you");
+  assert.equal(summaryLine({ count: 2, latest: "Lead: Hana" }, "role"), "Lead: Hana \u00b7 2 threads");
+  assert.equal(summaryLine({ count: 0 }, "Builds things"), "Builds things");
+  assert.equal(summaryLine(undefined, "Builds things"), "Builds things");
+  const row = convosFrom({ chats: [], agents: [agent({ name: "Engineer", summary: { count: 4, latest: "A", at: 9 } })], people: [] })[0];
+  assert.deepEqual([row.sub, row.threads, row.last], ["A \u00b7 4 threads", 4, 9]);
 });
