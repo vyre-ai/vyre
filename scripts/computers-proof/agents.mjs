@@ -93,7 +93,10 @@ try {
   if (a === null) {
     console.log("--- processes of agent A's screen\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -E 'agb2|ag2|Xvnc|fluxbox|chromium|agentd' | grep -v grep | cut -c1-220 | head -30"]));
     console.log("--- agent A's browser folder\n" + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/browsers/agb21000 /var/lib/vyre/x/ag20000 2>&1 | head -30"]));
-    console.log("--- agentd-chrome.py by hand as the browser uid (8 s)\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "timeout 8 python3 -I /opt/agentd/agentd-chrome.py 2>&1 | head -30; echo exit $?"]));
+    const PRE = "setpriv --reuid=21000 --regid=21000 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs --";
+    for (const [label, lim] of [["with the agentd limits (--as 3 GiB, 512 procs)", "prlimit --as=3221225472 --nproc=512 --nofile=4096 --fsize=4294967296"], ["without --as", "prlimit --nproc=512 --nofile=4096 --fsize=4294967296"]]) {
+      console.log(`--- agentd-chrome.py as agentd starts it, ${label} (10 s)\n` + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", `timeout 10 ${PRE} ${lim} /usr/bin/nice -n 5 /usr/bin/env -i HOME=/var/lib/vyre/browsers/agb21000 PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 /usr/bin/python3 -I /opt/agentd/agentd-chrome.py 2>&1 | grep -v 'dbus\\|DBus' | head -12; echo "exit $?"; pgrep -u 21000 -c chromium`]));
+    }
     console.log("--- id and limits of the browser uid\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "id; ulimit -a | head -20; df -h /dev/shm | tail -1; ls -ld /var/lib/vyre/browsers/agb21000 /var/lib/vyre/browsers/agb21000/profile 2>&1"]));
   }
   check(a !== null, "agent A's Chrome answers over its debugging pipe");
