@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Avatar, AgentLookPicker, Banner, Button, Field, Row, Segmented, Sheet, Switch, Text, lookOf, markRef, partsOf, withParts, PARTS, lookSeed } from "@vyre/ui";
 import { callT } from "../real/call-tool";
-import { cardOf, changeWords, draftIdOf, modelRows, skillGroups, toggled } from "./agent-new-model.js";
+import { accountRows, cardOf, changeWords, draftIdOf, modelRows, skillGroups, toggled } from "./agent-new-model.js";
 
 /** The draft behind a new-agent task, or null while it loads or when it cannot be read. */
 export function useNewAgentDraft(taskId: string, wanted: boolean): { input: any; problem: string } | null {
@@ -56,7 +56,7 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
           ) : <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}><Button kind="ghost" size="sm" label="Skills" onPress={() => setSkillsOpen(true)} /><Button kind="ghost" size="sm" label="Model" onPress={() => setModelOpen(true)} /><Button kind="ghost" size="sm" label="Change something" onPress={() => setAsking(true)} /></View>}
         </View>
       ) : null}
-      {onSay && skillsOpen ? <SkillsSheet chosen={Array.isArray(input?.skills) ? input.skills : []} onClose={() => setSkillsOpen(false)} onUse={(names) => { setSkillsOpen(false); onSay(changeWords("skills", names.length ? names.join(", ") : "none")); }} /> : null}
+      {onSay && skillsOpen ? <SkillsSheet name={card.name} chosen={Array.isArray(input?.skills) ? input.skills : []} onClose={() => setSkillsOpen(false)} onUse={(names) => { setSkillsOpen(false); onSay(changeWords("skills", names.length ? names.join(", ") : "none")); }} /> : null}
       {onSay && modelOpen ? <ModelSheet onClose={() => setModelOpen(false)} onUse={(which, id) => { setModelOpen(false); onSay(changeWords(which === "primary" ? "model" : "fallback model", id)); }} /> : null}
       {onSay ? (
         <Sheet open={looking} onClose={() => setLooking(false)} title={`How ${card.name} looks`}>
@@ -76,11 +76,11 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
 }
 
 /** The skills the person may attach (skills.list: the agent's own, theirs, the Space's), to choose and send to the Engineer as a change. */
-function SkillsSheet({ chosen, onClose, onUse }: { chosen: string[]; onClose: () => void; onUse: (names: string[]) => void }) {
+function SkillsSheet({ name, chosen, onClose, onUse }: { name: string; chosen: string[]; onClose: () => void; onUse: (names: string[]) => void }) {
   const [data, setData] = useState<unknown>(null);
   const [on, setOn] = useState<string[]>(chosen);
   useEffect(() => { let live = true; void callT<any>("skills.list", { limit: 100 }).then((r) => { if (live) setData(r.error ? { skills: [] } : r.data); }); return () => { live = false; }; }, []);
-  const groups = skillGroups(data, on);
+  const groups = skillGroups(data, on, name);
   return (
     <Sheet open onClose={onClose} title="Skills">
       <View style={{ gap: 12 }}>
@@ -107,8 +107,8 @@ function ModelSheet({ onClose, onUse }: { onClose: () => void; onUse: (which: "p
     let live = true;
     void (async () => {
       const list = await callT<any>("sessions.accounts.list", {});
-      const accts: any[] = list.error ? [] : Array.isArray(list.data) ? list.data : Array.isArray(list.data?.accounts) ? list.data.accounts : [];
-      const out = await Promise.all(accts.slice(0, 8).map(async (a) => { const m = await callT<any>("sessions.accounts.models", { account: String(a.id) }); return { account: String(a.id), label: String(a.label || a.provider || a.id), models: m.error ? [] : modelRows(m.data) }; }));
+      const accts = list.error ? [] : accountRows(list.data);
+      const out = await Promise.all(accts.slice(0, 8).map(async (a) => { const m = await callT<any>("sessions.accounts.models", { account: a.id }); return { account: a.id, label: a.label, models: m.error ? [] : modelRows(m.data) }; }));
       if (live) setGroups(out.filter((g) => g.models.length));
     })();
     return () => { live = false; };

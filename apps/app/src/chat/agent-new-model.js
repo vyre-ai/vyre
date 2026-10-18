@@ -44,13 +44,14 @@ export const changeWords = (what, value) => `Change the new agent: ${what}: ${St
 const LEVEL_WORDS = /** @type {Record<string, string>} */ ({ agent: "For this agent", personal: "Yours", space: "The Space's", project: "A project's", account: "An account's", vyre: "Vyre's own" });
 const LEVEL_ORDER = ["agent", "personal", "space", "project", "account", "vyre"];
 
-/** skills.list's rows in groups by level (the agent's own, yours, the Space's, then the rest), each skill once; a chosen skill is marked. @param {unknown} data @param {readonly string[]} chosen @returns {{ level: string, title: string, skills: { name: string, description: string, on: boolean }[] }[]} */
-export function skillGroups(data, chosen) {
+/** skills.list's answer ({ skills: [{ id, name, level, scope?, description, tokens }], total, drafts, role }) in groups by level (the agent's own, yours, the Space's, then the rest), each skill once; a chosen skill is marked. A skill kept for ANOTHER agent (level agent, a different scope) is not offered. @param {unknown} data @param {readonly string[]} chosen @param {string} [agent] the agent being made @returns {{ level: string, title: string, skills: { name: string, description: string, on: boolean }[] }[]} */
+export function skillGroups(data, chosen, agent = "") {
   const list = /** @type {any[]} */ (data && typeof data === "object" && Array.isArray(/** @type {any} */ (data).skills) ? /** @type {any} */ (data).skills : []);
   const seen = new Set();
   /** @type {Map<string, { name: string, description: string, on: boolean }[]>} */ const by = new Map();
   for (const s of list) {
     if (!s || typeof s.name !== "string" || seen.has(s.name)) continue;
+    if (s.level === "agent" && s.scope !== agent) continue;
     seen.add(s.name);
     const lv = LEVEL_WORDS[s.level] ? String(s.level) : "vyre";
     by.set(lv, [...(by.get(lv) ?? []), { name: s.name, description: String(s.description ?? "").slice(0, 140), on: chosen.includes(s.name) }]);
@@ -60,6 +61,12 @@ export function skillGroups(data, chosen) {
 
 /** The skills after one is tapped: it goes in or out. @param {readonly string[]} chosen @param {string} name */
 export const toggled = (chosen, name) => (chosen.includes(name) ? chosen.filter((n) => n !== name) : [...chosen, name]);
+
+/** sessions.accounts.list's answer (an array of account rows { id, provider, label, kind, vault_item, ... }, or { accounts }) as { id, label }; the account's vault item is not shown. @param {unknown} data @returns {{ id: string, label: string }[]} */
+export function accountRows(data) {
+  const list = /** @type {any[]} */ (Array.isArray(data) ? data : data && typeof data === "object" && Array.isArray(/** @type {any} */ (data).accounts) ? /** @type {any} */ (data).accounts : []);
+  return list.filter((a) => a && typeof a.id === "string").map((a) => ({ id: String(a.id), label: String(a.label || a.provider || a.id) }));
+}
 
 /** The models one AI account offers (sessions.accounts.models), as rows to pick. @param {unknown} data @returns {{ id: string, label: string }[]} */
 export function modelRows(data) {
