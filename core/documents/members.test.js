@@ -92,9 +92,9 @@ test("a generate that names a record she cannot read is refused by name, and fil
   assert.match(r.error.message, /client: the record is not there, or is not yours to see/);
 });
 
-test("the tools that send or list everyone's requests are refused to a member by the door, in the owner's words", { timeout: 300_000 }, async t => {
+test("the tools that send, remind or add are refused to a member by the door, in the owner's words", { timeout: 300_000 }, async t => {
   const { as } = await rig(t);
-  for (const [tool, input] of /** @type {[string, any][]} */ ([["documents.send", { template_id: 1, email: "a@b.co" }], ["documents.signing.waiting", {}], ["documents.signing.remind", { submission: 1 }], ["documents.template.add", { name: "x", base64: LETTER() }]])) {
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["documents.send", { template_id: 1, email: "a@b.co" }], ["documents.signing.remind", { submission: 1 }], ["documents.signed-link", { submission: 1 }], ["documents.template.add", { name: "x", base64: LETTER() }]])) {
     assert.ok(gated(await as("member", tool, input), tool), `${tool}: a member meets the door`);
   }
 });
