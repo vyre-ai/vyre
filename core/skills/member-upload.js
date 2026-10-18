@@ -1,7 +1,7 @@
 // @ts-check
 // skills/member-upload: a team member's upload, read strictly. A member is not the owner and a skill is untrusted text, so this is not the owner path's reader (import.js): it accepts ONE skill and nothing else.
 //   - the file is one SKILL.md / .md, or a zip of one skill folder (SKILL.md at its top or one folder down);
-//   - every plugin shape is refused (.claude-plugin, .mcp.json, hooks, agents, commands), and so is any file in the folder that is not text of an allowed kind (.md, .txt, .csv): no scripts, no binaries;
+//   - every plugin shape is refused (the plugin manifest folder, .mcp.json, hooks, agents, commands), and so is any file in the folder that is not text of an allowed kind (.md, .txt, .csv): no scripts, no binaries;
 //   - the front matter has a name and a description and no other key (allowed-tools, hooks, mcp, model and the rest widen what a skill may do);
 //   - the limits are tighter than the owner's: a zip of 1 MB, 256 KB unpacked, 20 files, names of 120 characters, a ratio of at most 20 to 1, a SKILL.md of 64 KB;
 //   - an entry name with a backslash is refused (the reader already refuses "..", absolute names, links, encrypted and repeated entries);
@@ -13,13 +13,14 @@ import { unzip } from "../../lib/zip.js";
 import { frontMatter } from "../../lib/docs-corpus.js";
 import { skillProblems, LIMITS } from "../../lib/skill-library.js";
 import { credentialIn } from "../../lib/credential-shapes.js";
+import { PLUGIN_LAYOUT } from "../../lib/plugin-layout.js";
 import { worksWith } from "./import.js";
 
 export const MEMBER_LIMITS = Object.freeze({ zip: 1024 * 1024, inflated: 256 * 1024, entries: 20, nameLength: 120, ratio: 20, file: LIMITS.body });
 /** The kinds of file a skill folder may hold besides SKILL.md. */
 const TEXT_EXT = new Set([".md", ".txt", ".csv"]);
 /** The top-level names that make a zip a plugin, not a skill. */
-const PLUGIN_TOP = new Set([".claude-plugin", ".mcp.json", "hooks", "agents", "commands", "skills"]);
+const PLUGIN_TOP = new Set([PLUGIN_LAYOUT.manifest.split("/")[0], ".mcp.json", "hooks", "agents", "commands", "skills"]);
 const KEYS = new Set(["name", "description"]);
 const bad = (/** @type {string} */ message) => Object.assign(new Error(message), { code: "bad_input" });
 
