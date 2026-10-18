@@ -250,6 +250,11 @@
         "effect": "write"
       },
       {
+        "name": "work.flow.origin",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.fork-source",
         "reach": "modules",
         "effect": "read"

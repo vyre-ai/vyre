@@ -221,7 +221,14 @@ export async function personShared(d, extra, person) {
   }
   const together = [...team].filter(([urn, set]) => set.has(me) && set.has(person) && !(projects.get(urn) || { personal: true }).personal).map(([urn]) => ({ urn, name: /** @type {any} */ (projects.get(urn)).name })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const dm = direct.length ? chatOf(faces, me, direct) : null;
-  return { person: faces.people([person])[0], chat: dm ? { chat: dm.chat, threads: dm.threads, latest: dm.latest, last_active: dm.last_active } : null, threads: newest(both).slice(0, 20), shared_threads: both.length, projects: together };
+  // the files in the chats you both are in, newest first: read through your own chain, so only what you may open
+  /** @type {any[]} */ const files = [];
+  for (const it of both.slice(0, 20)) {
+    const got = await d.filesOf(chain, String(it.thread.thread)).catch(() => ({ files: [] }));
+    for (const f of got.files || []) files.push({ ...f, thread: it.thread.thread, thread_title: it.thread.title });
+  }
+  files.sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+  return { files: files.slice(0, 50), file_count: files.length, person: faces.people([person])[0], chat: dm ? { chat: dm.chat, threads: dm.threads, latest: dm.latest, last_active: dm.last_active } : null, threads: newest(both).slice(0, 20), shared_threads: both.length, projects: together };
 }
 
 /**
@@ -248,9 +255,12 @@ export async function chatThreads(d, extra, q) {
 /** A run's state in a thread's words: running or waiting is live, paused or failed needs the person, the rest is idle. @param {string} state */
 const runState = state => (state === "running" || state === "waiting" ? "live" : state === "paused" || state === "failed" ? "needs_you" : "idle");
 
-/** One Flow run as a thread of that Flow. @param {any} r a row of flows.runs */
-export function runThread(r) {
-  return { kind: "run", id: String(r.id), flow: String(r.flow), state: runState(String(r.state)), started: r.started_at || null, finished: r.finished_at || null, summary: r.label ? String(r.label) : null, error: r.error && r.error.message ? String(r.error.message).slice(0, 200) : null };
+/** One Flow run as a thread of that Flow. @param {any} r a row of flows.runs @param {any} [attention] its row of flows.attention, when a person has to look at it */
+export function runThread(r, attention = null) {
+  // a run held at a gate, or stuck, is waiting for a person even though its state says waiting
+  const over = ["done", "cancelled"].includes(String(r.state));
+  const asks = attention && !over ? { gate: attention.gate === true, reason: String(attention.message || attention.step_label || attention.kind || "").slice(0, 200) } : null;
+  return { kind: "run", id: String(r.id), flow: String(r.flow), state: asks ? "needs_you" : runState(String(r.state)), ...(asks ? { needs: asks } : {}), started: r.started_at || null, finished: r.finished_at || null, summary: r.label ? String(r.label) : null, error: r.error && r.error.message ? String(r.error.message).slice(0, 200) : null };
 }
 
 /**
@@ -261,20 +271,32 @@ async function runsOf(ctx, flow) {
   const r = await ctx.call("flows.runs", { ...(flow ? { id: flow } : {}), limit: 200 }, { relay: true });
   if (r && r.error) { if (r.error.code === "not_found") return []; throw fail(r.error.code || "failed", r.error.message); }
   const rows = r && Array.isArray(r.data) ? r.data : [];
-  return rows.map(runThread).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
+  // which of the runs the caller may see are waiting for a person (a held gate, a stuck step): flows.attention lists the Space's, so only the ids flows.runs already showed are used
+  const seen = new Set(rows.map((/** @type {any} */ x) => String(x.id)));
+  const att = await ctx.call("flows.attention", {}, { relay: true }).then((/** @type {any} */ a) => (a && a.data && Array.isArray(a.data.runs) ? a.data.runs : [])).catch(() => []);
+  const need = new Map(att.filter((/** @type {any} */ a) => seen.has(String(a.run))).map((/** @type {any} */ a) => [String(a.run), a]));
+  return rows.map((/** @type {any} */ x) => runThread(x, need.get(String(x.id)) || null)).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
 }
 
 /** The Flow rows of the chat list: one per Flow that has runs, with its run count and latest or live run. @param {any} ctx */
 export async function flowRows(ctx) {
   const byFlow = new Map();
   for (const t of await runsOf(ctx, null).catch(() => /** @type {any[]} */ ([]))) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
-  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
+  // a Flow's name, for the Flows that have runs the caller may see (flows.list gives every name; only these are used)
+  const names = new Map(((await ctx.call("flows.list", {}, { relay: true }).then((/** @type {any} */ x) => (x && Array.isArray(x.data) ? x.data : [])).catch(() => [])).map((/** @type {any} */ f) => [String(f.id), String(f.label || f.name || "")])));
+  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: names.get(String(flow)) || flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
     .sort((a, b) => String(b.latest.started || "").localeCompare(String(a.latest.started || "")));
 }
 
 /** The table that remembers where a fork starts: the new thread, the engine run and transcript message to fork from. Written only by work.thread.fork, read only by the stream when the fork first runs. @param {any} db */
 function forksTable(db) {
   db.exec("CREATE TABLE IF NOT EXISTS work_thread_forks (chat TEXT PRIMARY KEY, source_run TEXT NOT NULL, resume_at TEXT NOT NULL, origin TEXT NOT NULL, message TEXT NOT NULL, at INTEGER NOT NULL)");
+  return db;
+}
+
+/** The table that remembers which chat a Flow was drafted from (flows.from-chat with a chat). Written only by work.flow.origin, read only for a person in that chat. @param {any} db */
+function originsTable(db) {
+  db.exec("CREATE TABLE IF NOT EXISTS work_flow_origins (flow TEXT PRIMARY KEY, chat TEXT NOT NULL, person TEXT NOT NULL, at INTEGER NOT NULL)");
   return db;
 }
 
@@ -310,7 +332,11 @@ export function registerThreads(d) {
       const hop = chain && chain.hops && chain.hops[0];
       if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "a Flow's runs are read from a person's own session");
       const threads = await runsOf(d.ctx, String(input.flow));
-      return { flow: String(input.flow), threads, count: threads.length };
+      // "How it was made": the chat the Flow was drafted from, shown only to a person who is in that chat
+      const made = /** @type {any} */ (originsTable(d.ctx.store.db).prepare("SELECT chat, at FROM work_flow_origins WHERE flow = ?").get(String(input.flow)));
+      let origin = null;
+      if (made) { try { d.kernelOf().chats.read(chain, String(made.chat)); origin = { kind: "made", id: "made", chat: String(made.chat), title: "How it was made", state: "idle", started: new Date(Number(made.at)).toISOString() }; } catch { origin = null; } }
+      return { flow: String(input.flow), threads, ...(origin ? { made: origin } : {}), count: threads.length };
     },
   });
   d.chatTool("work.chat.threads", {
@@ -377,7 +403,7 @@ export function registerThreads(d) {
     },
   });
   d.chatTool("work.person.shared", {
-    description: "What you and one person share: your chat with them, the threads you are both in, and the projects you are both on.",
+    description: "What you and one person share: your chat with them, the threads you are both in, their files, and the projects you are both on.",
     input: obj({ person: { type: "string", description: "the person's id" } }, ["person"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => personShared(d, extra, String(input.person)),
   });
@@ -430,6 +456,20 @@ export function registerThreads(d) {
       const link = { thread: origin, message };
       if (mine) await d.hubOf().setChatFields(mine, { forked_from: JSON.stringify(link) });
       return { thread: made.chat, forked_from: link };
+    },
+  });
+  // flows.from-chat tells which chat a draft Flow came from (the assistant names the chat it works in). Only the flows module asks, as the person who made the draft, and only a chat that person is in is kept.
+  d.ctx.tool("work.flow.origin", {
+    internal: true,
+    description: "Keep the chat a draft Flow was made from: { flow, chat }. Only the flows module asks, as the person who made it.",
+    input: obj({ flow: { type: "string" }, chat: { type: "string" } }, ["flow", "chat"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      if (String(extra && extra.caller) !== "module:flows") throw fail("denied", "only the flows module keeps where a Flow was made");
+      const chain = await d.chainOf(extra);
+      try { d.kernelOf().chats.read(chain, String(input.chat)); } catch { return { kept: false }; }
+      const hop = chain.hops[0];
+      originsTable(d.ctx.store.db).prepare("INSERT OR IGNORE INTO work_flow_origins (flow, chat, person, at) VALUES (?,?,?,?)").run(String(input.flow), String(input.chat), String(hop.actor.id), Date.now());
+      return { kept: true };
     },
   });
   // The stream asks this when a thread is first answered: a fork has not run yet and starts from the point it was forked at. Nothing else asks, and a thread that already has a run is not forked again.
