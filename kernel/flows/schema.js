@@ -89,11 +89,14 @@ export function checkSlots(s, p, out) {
     const v = s[slot];
     if (v === undefined) continue;
     const at = `${p}.${slot}`;
-    if (!isObj(v)) { out.push({ path: at, message: `${slot} is { who, skills?, instructions?, quorum? }` }); continue; }
-    onlyKeys(v, ["who", "skills", "instructions", "quorum"], at, out);
+    if (!isObj(v)) { out.push({ path: at, message: `${slot} is { who, skills?, instructions?, quorum?, due?, escalate_to? }` }); continue; }
+    onlyKeys(v, ["who", "skills", "instructions", "quorum", "due", "escalate_to"], at, out);
     if (!who(v.who)) out.push({ path: `${at}.who`, message: `${slot === "approver" ? "an approver" : "a reviewer"} is person:<id>, role:<name> or teammate:<agent>${slot === "approver" ? " (a teammate approves internal work only)" : ""}` });
     if (v.skills !== undefined && !(Array.isArray(v.skills) && v.skills.length <= 10 && new Set(v.skills).size === v.skills.length && v.skills.every((/** @type {any} */ i) => typeof i === "string" && i.length > 0 && i.length <= 80))) out.push({ path: `${at}.skills`, message: "skills are up to 10 different Space skill ids" });
     if (v.instructions !== undefined && !(typeof v.instructions === "string" && v.instructions.length <= 2000)) out.push({ path: `${at}.instructions`, message: "instructions are a text of at most 2000 characters" });
+    if ((v.due === undefined) !== (v.escalate_to === undefined)) out.push({ path: `${at}.due`, message: "due and escalate_to come together: how long the step may take, and the role it passes to when late" });
+    if (v.due !== undefined && !(Number.isInteger(v.due) && v.due >= 60_000 && v.due <= 90 * 86_400_000)) out.push({ path: `${at}.due`, message: "due is a whole number of milliseconds, from a minute to 90 days" });
+    if (v.escalate_to !== undefined && !(typeof v.escalate_to === "string" && /^role:[A-Za-z0-9._:-]{1,80}$/.test(v.escalate_to))) out.push({ path: `${at}.escalate_to`, message: "escalate_to is role:<name>" });
     if (v.quorum !== undefined && !(v.quorum === "any" || (v.quorum === "all" && typeof v.who === "string" && v.who.startsWith("role:")))) out.push({ path: `${at}.quorum`, message: "quorum is any (one yes is enough), or all for a role: every holder says yes" });
   }
   if (s.approver !== undefined && s.checker !== undefined) out.push({ path: `${p}.approver`, message: "give approver, or checker (the old name), not both" });
