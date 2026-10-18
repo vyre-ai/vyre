@@ -85,13 +85,33 @@ export function boardColumns(def, rows, vd = viewDefOf(def)) {
   if (none.length) columns.push({ id: "", title: `No ${lc(g.label)}` });
   return { field: g, columns, cardFields: (vd.board.card || []).filter((/** @type {string} */ k) => k !== vd.titleField && k !== g.name).map((/** @type {string} */ k) => fieldOf(def, k)).filter(Boolean) };
 }
-/** What a board column wears beside its name: how many cards it holds, and their total when the type has a money field ("3 \u00B7 $31,000"). @param {any} def @param {any[]} items */
+/** The field a board adds up: the first money field, else a number named amount, value, total or fee. @param {any} def */
+const sumField = (def) => (def.fields || []).find((/** @type {any} */ f) => f.kind === "money") || (def.fields || []).find((/** @type {any} */ f) => f.kind === "number" && ["amount", "value", "total", "fee"].includes(f.name));
+const amountOf = (/** @type {any} */ v) => { const x = v && typeof v === "object" ? Number(v.amount) : Number(v); return Number.isFinite(x) ? x : 0; };
+
+/** What a board column wears beside its name: how many cards it holds, and their total when the type has an amount ("3 \u00B7 $31,000"). @param {any} def @param {any[]} items */
 export function columnNote(def, items) {
   const n = String(items.length);
-  const m = (def.fields || []).find((/** @type {any} */ f) => f.kind === "money");
+  const m = sumField(def);
   if (!m || !items.length) return n;
-  const sum = items.reduce((/** @type {number} */ a, /** @type {any} */ r) => { const v = val(r, m.name); const x = v && typeof v === "object" ? Number(v.amount) : Number(v); return a + (Number.isFinite(x) ? x : 0); }, 0);
+  const sum = items.reduce((/** @type {number} */ a, /** @type {any} */ r) => a + amountOf(val(r, m.name)), 0);
   return sum ? `${n} \u00B7 ${fmtMoney(sum)}` : n;
+}
+
+/**
+ * The forecast line above a deals board: what is still open, weighted by each deal's chance, and what is expected to close this month. Only for a type that has a weighted value and a close date; "" otherwise.
+ * An open deal is one whose stage is not Won or Lost. @param {any} def @param {any[]} rows @param {number} now
+ */
+export function forecastLine(def, rows, now) {
+  const has = (/** @type {string} */ n) => (def.fields || []).some((/** @type {any} */ f) => f.name === n);
+  const m = sumField(def);
+  const sf = stageField(def);
+  if (!m || !sf || !has("weighted_value") || !has("close_date")) return "";
+  const open = rows.filter((r) => !["won", "lost"].includes(String(val(r, sf.name) ?? "").toLowerCase()));
+  const weighted = open.reduce((/** @type {number} */ a, r) => a + amountOf(val(r, "weighted_value")), 0);
+  const d = new Date(now), y = d.getFullYear(), mo = d.getMonth();
+  const closing = open.reduce((/** @type {number} */ a, r) => { const c = toDate(val(r, "close_date")); return c && c.getFullYear() === y && c.getMonth() === mo ? a + amountOf(val(r, m.name)) : a; }, 0);
+  return `${fmtMoney(weighted)} weighted \u00B7 ${fmtMoney(closing)} closing this month`;
 }
 /** The column a row sits in: its value, or the "No <label>" column. @param {any} g @param {any} rec */
 export const columnOf = (g, rec) => { const v = String(val(rec, g.name) ?? ""); return optionsOf(g).includes(v) ? v : ""; };

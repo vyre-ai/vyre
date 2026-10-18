@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf, columnNote } from "./logic.js";
+import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf, columnNote, forecastLine } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -288,4 +288,17 @@ test("a board column wears its count, and its total when the type has money", ()
   assert.equal(columnNote(deal, [{ data: { value: { amount: 24000, currency: "USD" } } }, { data: { value: 7000 } }]), "2 \u00B7 $31,000");
   assert.equal(columnNote(deal, [{ data: { name: "no value" } }]), "1", "no amount, no total");
   assert.equal(columnNote({ fields: [{ name: "name", kind: "text" }] }, [{ data: {} }, { data: {} }]), "2", "no money field, just the count");
+});
+
+test("a number named amount adds up on a board too, and the deals forecast reads weighted and closing this month", () => {
+  const deal = { fields: [{ name: "amount", kind: "number" }, { name: "weighted_value", kind: "number" }, { name: "close_date", kind: "date" }, { name: "stage", kind: "stage", options: ["Lead", "Won", "Lost"] }] };
+  assert.equal(columnNote(deal, [{ data: { amount: 24000 } }, { data: { amount: 7000 } }]), "2 \u00B7 $31,000");
+  const now = new Date(2026, 9, 18).getTime();
+  const rows = [
+    { data: { amount: 10000, weighted_value: 3000, close_date: "2026-10-28", stage: "Lead" } },
+    { data: { amount: 5000, weighted_value: 1500, close_date: "2026-11-02", stage: "Lead" } },
+    { data: { amount: 9000, weighted_value: 9000, close_date: "2026-10-10", stage: "Won" } },
+  ];
+  assert.equal(forecastLine(deal, rows, now), "$4,500 weighted \u00B7 $10,000 closing this month");
+  assert.equal(forecastLine({ fields: [{ name: "amount", kind: "number" }] }, rows, now), "", "a type without a weighted value has no forecast");
 });
