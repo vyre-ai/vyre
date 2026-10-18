@@ -280,7 +280,8 @@ export default {
         const servers = [];
         for (const r of hub.rows()) {
           const waiting = await hub.missingKeys(r);
-          if (waiting.length) servers.push({ name: r.name, plugin: r.auth.bound.plugin, level: r.auth.bound.level, waiting });
+          if (waiting.length) servers.push({ name: r.name, plugin: r.auth.bound.plugin, level: r.auth.bound.level, command: [r.command, ...(r.args || [])].join(" ").slice(0, 200), approver: r.auth.bound.approver || "a person",
+            waiting: waiting.map(w => { const ref = r.env[w.var]; const item = typeof ref === "string" ? ref : ref && ref.item; return { ...w, ...(item ? { item } : {}) }; }) });
         }
         return { servers };
       },
