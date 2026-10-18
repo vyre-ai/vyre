@@ -1076,6 +1076,19 @@ export class Hub {
     } catch { return false; }
   }
 
+  /** The keys of a plugin's server that are not in place: no item chosen, or the item is not granted to this one server and variable. Names and labels only. @param {any} r @returns {Promise<{ var: string, label: string }[]>} */
+  async missingKeys(r) {
+    if (!r.auth || !r.auth.bound) return [];
+    /** @type {{ var: string, label: string }[]} */ const out = [];
+    for (const n of r.auth.bound.needs) {
+      const ref = r.env[n.var], item = typeof ref === "string" ? ref : ref && ref.item;
+      let held = false;
+      try { held = Boolean(item) && typeof this.deps.keyHeld === "function" && (await this.deps.keyHeld(item, `${r.name}.${n.var}`)) === true; } catch { held = false; }
+      if (!held) out.push({ var: n.var, label: n.label });
+    }
+    return out;
+  }
+
   /** The server cannot run until a person gives it its key: stopped if it was running, marked, and said once. @param {string} name @param {string} why */
   async waitForKey(name, why) {
     const s = this.state(name);

@@ -171,6 +171,24 @@ test("a document waiting for a signature is one quiet `signing` card naming the 
   assert.equal(hint && hint("documents.sent", { submission: 9 }), null);
 });
 
+test("a plugin server that waits for a key is one `access` card per missing variable: '<plugin> needs a key: <VAR>', with a way to open the Vault and a way to check again, and never a value", async () => {
+  const { fromKeys, OWNERS } = await import("./items.js");
+  const rows = fromKeys({ servers: [
+    { name: "p-notes-notes", plugin: "notes", level: "space", waiting: [{ var: "NOTES_API_KEY", label: "Notes API key" }, { var: "NOTES_WORKSPACE", label: "Workspace id" }] },
+    { name: "p-other-x", plugin: "other", waiting: [{ var: "not a name!", label: "bad" }] },
+    { plugin: "no name", waiting: [] },
+  ]});
+  assert.deepEqual(rows.map((/** @type {any} */ r) => [r.id, r.kind, r.title, r.detail]), [
+    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key"],
+    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id"],
+  ]);
+  assert.deepEqual(rows[0].answers.map((/** @type {any} */ a) => [a.label, a.open || a.tool]), [["Give it a key", "/u/vault"], ["Check again", "mcp.test"]]);
+  assert.equal(rows[0].facts.watcher, "p-notes-notes.NOTES_API_KEY");
+  assert.deepEqual(fromKeys(null), []);
+  const owner = OWNERS.find(o => o.name === "mcp-keys");
+  assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "mcp.keys.waiting" && owner.watch.some(w => w[0] === "mcp.needs-key"));
+});
+
 test("R031-79: a website Connection that waits for a person is one `signin` card that says what to do; a box opens the agent's computer, a stopped account can be resumed, and nothing else is a card", async () => {
   const { fromSignIn, OWNERS } = await import("./items.js");
   const rows = fromSignIn([

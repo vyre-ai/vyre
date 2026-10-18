@@ -58,6 +58,13 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.equal(sv.state, "needs_key", "no grant to this one server and variable: it waits and was never started");
   assert.deepEqual(sv.env, { NOTES_API_KEY: "notes-key" }, "the row names the item");
 
+  // the Needs-you queue shows the waiting key as one card per variable, in plain words
+  const keys = await call("mcp.keys.waiting", {});
+  assert.deepEqual(keys.servers.map((/** @type {any} */ x) => [x.name, x.plugin, x.waiting.map((/** @type {any} */ w) => w.var)]), [["p-notes-notes", "notes", ["NOTES_API_KEY"]]]);
+  const queue = await call("approvals.items", {}).catch(() => null);
+  if (queue) assert.ok(queue.items.some((/** @type {any} */ c) => c.id === "mcp:p-notes-notes:NOTES_API_KEY" && c.title === "notes needs a key: NOTES_API_KEY"), "and it is a card");
+  assert.ok(!JSON.stringify([keys, queue]).includes(VALUE));
+
   // the value is nowhere a record, a version, a listing or a file could hold it
   const everything = JSON.stringify([await call("skills.versions", { name: "notes", level: "personal" }), await call("skills.list", {}), servers, await call("mcp.tools", {}).catch(() => null)]);
   assert.ok(!everything.includes(VALUE));

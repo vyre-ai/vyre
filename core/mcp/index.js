@@ -269,6 +269,23 @@ export default {
       },
     });
 
+    // For Needs you: the plugin servers that wait for a key, one entry each with the variables not in place. Names and labels; never a value.
+    ctx.tool("mcp.keys.waiting", {
+      effect: "read",
+      description: "Plugin MCP servers waiting for a key: { servers: [{ name, plugin, level, waiting: [{ var, label }] }] }. For Needs you.",
+      input: obj({}),
+      callers: [...PEOPLE, "module"],
+      run: async (_input, meta) => {
+        refuseNonPerson(meta, "lists the servers that wait for a key");
+        const servers = [];
+        for (const r of hub.rows()) {
+          const waiting = await hub.missingKeys(r);
+          if (waiting.length) servers.push({ name: r.name, plugin: r.auth.bound.plugin, level: r.auth.bound.level, waiting });
+        }
+        return { servers };
+      },
+    });
+
     ctx.tool("mcp.remove", {
       effect: "write",
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",

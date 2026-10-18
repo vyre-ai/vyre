@@ -165,6 +165,19 @@ export const fromSignIn = rows => rows.filter(r => r && typeof r.id === "string"
 });
 
 /**
+ * mcp.keys.waiting: a plugin's MCP server that cannot start until a key is given to it. One `access` card per missing variable: "<plugin> needs a key: <VAR>", the label under it, and two ways on: open the Vault
+ * (where the person grants an item to that one server and variable) and check again. Names and labels only, never a value or an item's contents.
+ * @param {any} d
+ */
+export const fromKeys = d => (d && Array.isArray(d.servers) ? d.servers : []).filter((/** @type {any} */ s) => s && typeof s.name === "string").flatMap((/** @type {any} */ s) =>
+  (Array.isArray(s.waiting) ? s.waiting : []).filter((/** @type {any} */ w) => w && /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(String(w.var))).map((/** @type {any} */ w) => {
+    const check = { tool: "mcp.test", input: { name: String(s.name) }, fill: /** @type {string[]} */ ([]) };
+    return { id: `mcp:${clean(s.name, 40)}:${w.var}`, kind: "access", title: `${clean(s.plugin, 40) || clean(s.name, 40)} needs a key: ${w.var}`, ...opt("detail", clean(w.label, 60)), at: 0, source: "mcp-keys",
+      facts: { server: clean(s.name, 40), var: String(w.var), watcher: `${clean(s.name, 40)}.${w.var}` },
+      answer: check, answers: [{ label: "Give it a key", open: "/u/vault" }, { label: "Check again", ...check }] };
+  }));
+
+/**
  * publish.job.attention (G15): a live job whose last run failed. One `run` card each, quiet until it fails again; its answer runs it again (the helper holds the five-minute floor between runs).
  * @param {any[]} rows
  */
@@ -189,6 +202,7 @@ export const OWNERS = [
     ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },
   { name: "connectors", tool: "connectors.site.attention", map: d => fromSignIn(d && Array.isArray(d.sites) ? d.sites : []), quiet: true, watch: [
     ["connectors.*", (t, p) => (p && p.id && t === "connectors.connection-checked" ? [`connectors:${p.id}`, p.light === "green" ? "signed in" : "checked"] : null)]] },
+  { name: "mcp-keys", tool: "mcp.keys.waiting", map: fromKeys, quiet: true, watch: [["mcp.needs-key", null], ["mcp.started", null], ["mcp.updated", null], ["mcp.added", null], ["vault.granted", null], ["vault.revoked", null]] },
   { name: "publish-jobs", tool: "publish.job.attention", map: d => fromJobs(d && Array.isArray(d.jobs) ? d.jobs : []), quiet: true, watch: [
     ["deployment.*", (t, p) => (t === "deployment.job-ran" && p && p.deployment ? [`publish:${p.deployment}`, p.ok ? "ran again" : "failed"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
