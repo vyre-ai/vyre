@@ -244,6 +244,8 @@ export function registerDocuments(ctx) {
 
   // Download audit (18 Oct ruling): the audit file is fetched by the server from the app's own origin, and written under the caller's chain to Files > Signed.
   // A person's own surface only; a model, a harness or a module never gets the file.
+  /** One Download at a time per request, in this process (the in-process lock; see the note in the tool). */
+  const auditLocks = new Map();
   ctx.tool("documents.signing.audit", {
     description: "Download a request's audit file: { submission } -> { path } in Files > Signed. A person's own surface only.",
     input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
@@ -251,19 +253,27 @@ export function registerDocuments(ctx) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(i || {}, meta);
       if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
-      // A second Download does not write again: the file is already in Files > Signed, so its path is returned (the ruling, 18 Oct).
-      const path0 = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
-      let existing = null;
-      try { existing = await d.gateway.drive.stat(d.chain, path0); } catch (e) { if (/** @type {any} */ (e)?.code !== "not_found") throw e; }
-      if (savedAlready(existing)) return { path: path0, bytes: 0, already: true };
-      const r = await ctx.call("appmods.signing.audit", { name: "documents", submission: Number(i.submission) });
-      if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
-      const bytes = Buffer.from(String(r.data.bytes), "base64");
-      // An error page from the app is not an audit file: the bytes must start with the PDF signature before they are saved as one.
-      if (bytes.subarray(0, 4).toString("latin1") !== "%PDF") throw refuse("the app did not send an audit PDF", "app_refused");
-      const path = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
-      const put = await d.gateway.drive.put(d.chain, path, new Uint8Array(bytes), { base: null });
-      return { path, bytes: bytes.length, ...(put && put.version ? { version: put.version } : {}) };
+      // Two clicks on one request queue here (an in-process lock per submission): the second finds the file the first saved. A second Download
+      // does not write again; the file already in Files > Signed is returned (the ruling, 18 Oct). A cross-process race can add one more
+      // version of identical bytes, which is harmless (BACKLOG: create-only drive put).
+      const key = `audit:${Number(i.submission)}`;
+      const prior = auditLocks.get(key) || Promise.resolve();
+      const run = prior.catch(() => {}).then(async () => {
+        const path0 = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
+        let existing = null;
+        try { existing = await d.gateway.drive.stat(d.chain, path0); } catch (e) { if (/** @type {any} */ (e)?.code !== "not_found") throw e; }
+        if (savedAlready(existing)) return { path: path0, bytes: 0, already: true };
+        const r = await ctx.call("appmods.signing.audit", { name: "documents", submission: Number(i.submission) });
+        if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+        const bytes = Buffer.from(String(r.data.bytes), "base64");
+        // An error page from the app is not an audit file: the bytes must start with the PDF signature before they are saved as one.
+        if (bytes.subarray(0, 4).toString("latin1") !== "%PDF") throw refuse("the app did not send an audit PDF", "app_refused");
+        const put = await d.gateway.drive.put(d.chain, path0, new Uint8Array(bytes), { base: null });
+        return { path: path0, bytes: bytes.length, ...(put && put.version ? { version: put.version } : {}) };
+      });
+      auditLocks.set(key, run);
+      run.finally(() => { if (auditLocks.get(key) === run) auditLocks.delete(key); }).catch(() => {});
+      return run;
     },
   });
 
