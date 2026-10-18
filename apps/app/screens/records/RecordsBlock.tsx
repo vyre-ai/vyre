@@ -64,7 +64,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const named = (["list", "board", "calendar"] as ViewKind[]).flatMap((k) => storedViewsOf(full, k));
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
-  const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : "list";
+  const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const all = world.byType[def.name] || [];
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
   const rows = listRows(def, all, chips, query, lctx);
