@@ -5,10 +5,12 @@
 // updater refuses a pulled release that lacks them. Reads dist/notes.md; touches nothing else; never reads the environment.
 import fs from "node:fs";
 import path from "node:path";
+import { TWENTY_TESTED_REF, POSTGRES_IMAGE, REDIS_IMAGE } from "../stores/twenty/provision.js";
 
 const [dir, version, channel, commit, min_from, box, computer] = process.argv.slice(2);
 if (!dir || !version || !channel || !commit || !min_from) { console.error("usage: write-release-json.mjs <dist> <version> <channel> <commit> <min_from> [<box-ref> <computer-ref>]"); process.exit(2); }
 const platforms = ["linux/amd64", "linux/arm64"];
-const images = box ? { box: { ref: box, platforms }, computer: { ref: computer, platforms } } : undefined;
+// the Records store's images (Twenty, its database and cache), pinned by digest in the code; named here so an installer can pull them while it installs
+const images = box ? { box: { ref: box, platforms }, computer: { ref: computer, platforms }, store: [TWENTY_TESTED_REF, POSTGRES_IMAGE, REDIS_IMAGE] } : undefined;
 fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
   notes: fs.readFileSync(path.join(dir, "notes.md"), "utf8"), ...(images ? { images } : {}) }, null, 2) + "\n");

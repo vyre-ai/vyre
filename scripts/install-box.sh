@@ -650,6 +650,8 @@ verify_up() {
   done
   # The Space helper goes in now, before the wait for modules: the container's entry holds the daemon back until the helper has proved the firewall for this start (core/spawner/space-wall.sh), so
   # waiting for modules first can never end. A reinstall also finds the helper's record of the old image here, and replaces it with this one (no `sudo vyre space-helper install` by hand).
+  # the Records images started pulling during the signature step: let them finish before the helper asks for the same ones
+  [ -z "${PREPULL:-}" ] || wait "$PREPULL" 2>/dev/null || true
   install_space_helper
   # Running is not enough: a box whose modules did not start (a build the kernel does not recognise as signed) answers its socket with nothing behind it. Say so, loudly, with the reason.
   [ "${VYRE_MODULES_TRIES:-60}" != 0 ] || return 0   # a test seam: the tests' stub docker runs no daemon
@@ -950,6 +952,11 @@ read_release() {
   j=$(tr -d '\n' <"$TMP/release.json")
   BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
   COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  # The images the Records store needs (Twenty, its database, its cache), named by digest in the signed release.json, so they can be pulled while the rest installs. Optional: a release that names none pulls them later, as before.
+  STORE_REFS=$(printf '%s' "$j" | sed -n 's/.*"store": *\[\([^]]*\)\].*/\1/p' | tr ',' ' ' | tr -d '"')
+  for ref in $STORE_REFS; do
+    printf '%s' "$ref" | grep -Eq '^[a-z0-9./_-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$' || die "release.json names a Records image that is not pinned by digest. Nothing was installed."
+  done
   if [ -z "$BOX_REF" ] && [ "${VYRE_BUILD:-}" != tgz ]; then
     die "release.json names no image digest for the box, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
   fi
@@ -988,6 +995,11 @@ verify_images() {
     fi
   done
   dk docker pull -q "$BOX_REF" >/dev/null
+  # The Records store's images, pulled in the background while the rest installs (the Space helper pulls and records them again later, then finding them here; a pull that fails here is that later pull's to report).
+  if [ -n "${STORE_REFS:-}" ] && [ "$DRY" = 0 ]; then
+    ( for ref in $STORE_REFS; do dk docker pull -q "$ref" >/dev/null 2>&1 || true; done ) &
+    PREPULL=$!
+  fi
   done_step "signed by Vyre's release workflow, and pulled by digest"
 }
 

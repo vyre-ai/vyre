@@ -63,13 +63,13 @@ const runAsync = (env, args) => new Promise(resolve => {
 const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
 
 /** A file:// release site: the box files, a SHA256SUMS over them, and release.json. */
-function site(base, { images = true, pin = true, extra = /** @type {Record<string,string>} */ ({}) } = {}) {
+function site(base, { images = true, pin = true, store = /** @type {string[] | undefined} */ (undefined), extra = /** @type {Record<string,string>} */ ({}) } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
   const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
     VERSION: "0.2.0\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
-    "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
+    "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] }, ...(store ? { store } : {}) } } : {}) }, null, 2),
   };
   Object.assign(files, extra);
   for (const [n, c] of Object.entries(files)) fs.writeFileSync(path.join(dir, n), c);
@@ -194,6 +194,19 @@ test("install-box.sh v2: a release with digests is cosign-checked against the wo
   assert.ok(!calls.includes("manifest inspect"), "no tag lookup when the release names a digest");
   assert.ok(!fs.existsSync(path.join(b.dir, "vyre.tgz")) && !fs.existsSync(path.join(b.dir, "src")), "nothing built from source");
   assert.match(r.stdout, /signed by Vyre's release workflow/);
+});
+
+test("install-box.sh v2: the Records store's images that release.json names are pulled by digest during the install; a tag there is refused", t => {
+  const STORE = ["twentycrm/twenty:v2.44.0@sha256:" + "c".repeat(64), "postgres:16.4-alpine@sha256:" + "d".repeat(64), "redis:7.4-alpine@sha256:" + "e".repeat(64)];
+  const b = box(t);
+  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { store: STORE }) }, ["--yes"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  for (const ref of STORE) assert.ok(b.calls().includes(`docker pull -q ${ref}`), `${ref} pulled:\n${b.calls()}`);
+  const c = box(t);
+  const bad = run({ ...c.env, VYRE_BOX_URL: site(c.base, { store: ["twentycrm/twenty:latest"] }) }, ["--yes"]);
+  assert.notEqual(bad.status, 0, "a Records image without a digest is refused");
+  assert.match(bad.stdout + bad.stderr, /not pinned by digest/);
+  assert.ok(!c.calls().includes("docker pull"), "nothing was pulled");
 });
 
 test("install-box.sh v2: a failed signature check stops the install before anything is laid out", t => {
