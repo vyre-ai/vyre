@@ -8,7 +8,7 @@ export function shareLevels(type) {
 }
 
 /** Whether a record is one the share control belongs on. @param {string} type */
-export const isShareable = (type) => type === "record-note" || type === "event";
+export const isShareable = (type) => type === "note" || type === "record-note" || type === "event";
 
 /** One line for a Busy block: "Busy, Oct 20, 10:00 to 11:00" or "Busy, Oct 20, all day". @param {{ starts_at: any, ends_at?: any, all_day?: boolean }} b */
 export function busyWords(b) {

@@ -6,11 +6,12 @@ import assert from "node:assert/strict";
 import { busyWords, isShareable, shareLevels } from "./share-model.js";
 
 test("a note has three levels, an event two", () => {
-  assert.deepEqual(shareLevels("record-note").map(([k]) => k), ["private", "record", "space"]);
+  assert.deepEqual(shareLevels("note").map(([k]) => k), ["private", "record", "space"]);
   assert.deepEqual(shareLevels("event").map(([k]) => k), ["private", "space"]);
 });
 
 test("only notes and events carry the control", () => {
+  assert.equal(isShareable("note"), true);
   assert.equal(isShareable("record-note"), true);
   assert.equal(isShareable("event"), true);
   assert.equal(isShareable("deal"), false);
