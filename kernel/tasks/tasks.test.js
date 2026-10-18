@@ -886,3 +886,13 @@ test("request: the kernel records the first person on the verified chain as requ
   assert.equal(bySvc.requested_for, undefined, "no person on the chain, no requested_for");
   assert.ok(Object.isFrozen(mine));
 });
+
+test("the card tells the approver's client what to sign: the same fields the kernel checks", async () => {
+  const r = rig();
+  const A = alice();
+  const t = await toNeedsCheck(r);
+  const c = await r.tasks.card(A, t.id);
+  assert.deepEqual(c.sign, { op: "task.decide", fields: { task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision } });
+  assert.equal((await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.sign(A, ALICE, c.sign.op, c.sign.fields) })).state, "done");
+  assert.equal((await r.tasks.card(A, t.id)).sign, undefined, "a task that is not waiting for a check has nothing to sign");
+});

@@ -13568,7 +13568,7 @@ Approve or reject a task waiting for a check. The person's own act, with their p
 
 ### `tasks.get`
 
-One task, or null when it is not there or not the caller's to read.
+One task, or null. Waiting for a check: sign is what the approver signs.
 
 - Input:
   - `id` string, required
