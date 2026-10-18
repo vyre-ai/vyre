@@ -19,8 +19,8 @@ export function measureCalm() {
 export function HalftoneField({ phone }: { phone?: boolean }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const { color } = useUiTheme();
-  const ink = useRef({ text: color.text || "#888888", accent: color.accent || "#7c5cff" });
-  ink.current = { text: color.text || "#888888", accent: color.accent || "#7c5cff" };
+  const ink = useRef({ text: color.text, accent: color.accent });
+  ink.current = { text: color.text, accent: color.accent };
   useEffect(() => {
     const c = ref.current;
     const x = c?.getContext("2d");

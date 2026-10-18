@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Linking, Pressable, Text as RNText, TextInput, View } from "react-native";
 import { Appear, VyreMark, useAppearance, useUiTheme } from "@vyre/ui";
+import { hourOf } from "../../src/time/show.js";
 import { pickGreeting } from "./greetings.js";
 import { CONTENT_ID } from "./field-state.js";
 import { THEME_CHOICES, WELCOME_COPY, addressFrom, lastSpace } from "./welcome-model.js";
@@ -12,7 +13,7 @@ function useGreeting() {
   const [g] = useState(() => {
     const s = store();
     let last = ""; try { last = s ? s.getItem("vyre-greet") || "" : ""; } catch { /* nothing remembered */ }
-    const pick = pickGreeting({ hour: new Date().getHours(), last });
+    const pick = pickGreeting({ hour: hourOf(Date.now()), last });
     try { if (s) s.setItem("vyre-greet", pick[0]); } catch { /* nothing remembered */ }
     return pick;
   });
@@ -30,7 +31,7 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
   const [bad, setBad] = useState("");
   const person = useAppearance((s) => s.person);
   const setPerson = useAppearance((s) => s.setPerson);
-  const text = color.text || "#111", text2 = color.text2 || "#555", faint = color.label || "#888", edge = color.edgeStrong || "#8884", surface = color.surface1 || "#fff8";
+  const text = color.text, text2 = color.text2, faint = color.label, edge = color["edge-strong"], surface = color["surface-1"];
   const go = () => {
     const a = addressFrom(space);
     if (!a) { setBad(WELCOME_COPY.badSpace); return; }
@@ -63,10 +64,10 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
               accessibilityLabel="Space name" returnKeyType="go" style={[{ flex: 1, minWidth: 0, color: text, fontSize: 16, fontWeight: "500", textAlign: "right", paddingVertical: 0 }, { outlineStyle: "none" } as object]} />
             <RNText style={{ color: faint, fontSize: 16, marginLeft: 1, marginRight: 8 }}>{WELCOME_COPY.suffix}</RNText>
             <Pressable accessibilityRole="button" accessibilityLabel="Continue" onPress={go} style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: text, alignItems: "center", justifyContent: "center" }}>
-              <RNText style={{ color: color.bg || "#fff", fontSize: 18, fontWeight: "600" }}>{"→"}</RNText>
+              <RNText style={{ color: color.bg, fontSize: 18, fontWeight: "600" }}>{"→"}</RNText>
             </Pressable>
           </View>
-          {bad || failure ? <RNText style={{ color: color.err || "#c33", fontSize: 13, marginTop: 10 }} accessibilityLiveRegion="polite">{bad || failure}</RNText> : null}
+          {bad || failure ? <RNText style={{ color: color.err, fontSize: 13, marginTop: 10 }} accessibilityLiveRegion="polite">{bad || failure}</RNText> : null}
         </Appear>
         <Appear index={7} style={{ alignItems: "center", gap: 14, marginTop: 20 }}>
           <Pressable accessibilityRole="button" onPress={onStart} style={{ height: 44, paddingHorizontal: 22, borderRadius: 999, alignItems: "center", justifyContent: "center", borderWidth: 0.5, borderColor: edge, backgroundColor: surface }}>
@@ -79,7 +80,7 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
         {THEME_CHOICES.map(([v, label]) => (
           <Pressable key={v} accessibilityRole="radio" accessibilityState={{ checked: picked === v }} onPress={() => setPerson({ theme: v as "paper" | "system" | "dark" })}
             style={{ paddingHorizontal: 12, height: 28, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: picked === v ? text : "transparent" }}>
-            <RNText style={{ color: picked === v ? color.bg || "#fff" : faint, fontSize: 12, fontWeight: "500" }}>{label}</RNText>
+            <RNText style={{ color: picked === v ? color.bg : faint, fontSize: 12, fontWeight: "500" }}>{label}</RNText>
           </Pressable>
         ))}
       </View>
