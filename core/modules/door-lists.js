@@ -42,7 +42,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
   // Documents: reading a template and making a document from one. The handlers run on HER chain (lib/gateway-door.js), so the Drive and every record named are judged by what she may read and write; a
   // record she cannot read is refused by name (documents.members.test.js). Sending for signature, the waiting list and reminders stay owner-only: they send as the Space's mail and list everyone's requests.
-  "documents.generate", "documents.template.get", "documents.template.list",
+  // A signature request's timeline, its audit download and the waiting list: a member gets only the requests she sent (the module's own request table; the owner and admins get all; a request with no row is staff only).
+  "documents.generate", "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.get", "documents.template.list",
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
@@ -57,6 +58,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "recall.search",
   "records.actors", "records.audit", "records.create", "records.events", "records.forget.propose", "records.get", "records.holders", "records.kits.get", "records.kits.library",
   "releases.info",
+  "records.move", "records.layout.set", "records.layout.get", "records.relationship.add", "records.relationship.remove", "records.relationship.kinds", "records.relationship.list",
   "records.linked", "records.list", "records.me", "records.reference", "records.roles", "records.seal-put", "records.types", "records.update",
   "roles.catalogue", "roles.get", "roles.list", "roles.tools",
   "rules.get", "rules.list", "rules.test",
@@ -83,8 +85,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  // Download audit writes a signed request's audit file into the person's own Files: a person's own act, kept to the owner
-  "documents.signing.audit",
   "agents.draft.get", "agents.new.apply", "agents.new.draft", "agents.new.title",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -124,7 +124,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.status", "documents.signing.waiting", "documents.template.add",
+  "documents.signing.remind", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
@@ -190,7 +190,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "push.devices", "push.key", "push.receipt", "push.seen", "push.settings", "push.subscribe", "push.test", "push.unsubscribe",
   "recall.eval", "recall.index", "recall.links", "recall.pointers", "recall.related", "recall.sealscan", "recall.sealscrub", "recall.sessions",
   "recall.setup", "recall.status", "recall.thread", "recall.transcript", "recall.turn", "recall.unwatch", "recall.watch",
-  "records.define", "records.dev-seed", "records.forget", "records.reveal", "records.sees-as",
+  "records.define", "records.dev-seed", "records.forget", "records.history", "records.history.undo", "records.log", "records.share", "records.busy", "records.type.update", "records.role.set", "records.roles.summary", "records.link.add", "records.link.set", "records.sample.add", "records.sample.remove", "records.stats", "records.rollup.add", "records.field.add", "records.field.promote", "records.field.status", "records.pipeline.set", "records.relationship.kinds.set", "records.reveal", "records.sees-as",
   "relay.devices.ask-trust", "relay.devices.list", "relay.devices.mark", "relay.devices.path", "relay.devices.remove", "relay.devices.rename", "relay.devices.trust",
   "relay.disable", "relay.enable", "relay.join", "relay.pair.first", "relay.pair.start", "relay.pair.ticket", 
   "relay.setup.status", "relay.status", "relay.web.pin",
@@ -329,7 +329,7 @@ export const TOOL_GROUPS = Object.freeze({
   mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send", "microsoft.mail.send"]),
   calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "microsoft.calendar.create", "connectors.calendar.today"]),
   documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
-    "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.add"]),
+    "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
     "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
   publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),

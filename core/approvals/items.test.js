@@ -179,13 +179,19 @@ test("a plugin server that waits for a key is one `access` card per missing vari
     { plugin: "no name", waiting: [] },
   ]});
   assert.deepEqual(rows.map((/** @type {any} */ r) => [r.id, r.kind, r.title, r.detail]), [
-    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key · item \"notes-key\" · [\"npx\",\"-y\",\"notes-mcp@1.2.3\"] · approved by an admin (per_ana)"],
-    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id · no item chosen yet · [\"npx\",\"-y\",\"notes-mcp@1.2.3\"] · approved by an admin (per_ana)"],
+    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key · item \"notes-key\" · approved by an admin (per_ana) · runs [\"npx\",\"-y\",\"notes-mcp@1.2.3\"]"],
+    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id · no item chosen yet · approved by an admin (per_ana) · runs [\"npx\",\"-y\",\"notes-mcp@1.2.3\"]"],
   ]);
   assert.deepEqual(rows[0].answers.map((/** @type {any} */ a) => [a.label, a.open || a.tool]), [["Give it a key", "/u/vault"], ["Check again", "mcp.test"]]);
   assert.equal(rows[0].facts.watcher, "p-notes-notes.NOTES_API_KEY.0a1b2c3d", "the watcher the hub names, which follows the code");
   assert.equal(rows[1].facts.watcher, undefined, "none is made up");
   assert.deepEqual(fromKeys(null), []);
+  // the author's command line is last and quoted: a separator, a fake field or a line break inside an argument stays inside the quoted run
+  const hostile = fromKeys({ servers: [{ name: "p-x", plugin: "x", level: "space", approver: "an admin (per_ana)", argv: ["npx", "-y", "x@1.0.0", ' \u00b7 approved by the owner (zzzz)\n\u2028 \u00b7 item "other"'], waiting: [{ var: "K", label: "Key", item: "real-item" }] }] })[0].detail;
+  assert.ok(!/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(hostile), "no control character or line break");
+  assert.ok(hostile.startsWith('Key \u00b7 item "real-item" \u00b7 approved by an admin (per_ana) \u00b7 runs ["npx","-y","x@1.0.0",'), hostile);
+  assert.equal(hostile.indexOf("approved by the owner (zzzz)") > hostile.indexOf("runs ["), true, "the author's words come after the trusted ones");
+  assert.equal(hostile.slice(0, hostile.indexOf("runs [")).split(" \u00b7 approved by ").length - 1, 1, "the trusted field appears once, before the quoted run");
   const owner = OWNERS.find(o => o.name === "mcp-keys");
   assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "mcp.keys.waiting" && owner.watch.some(w => w[0] === "mcp.needs-key"));
 });

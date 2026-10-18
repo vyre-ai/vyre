@@ -145,9 +145,8 @@ export function createFlowsHost(o) {
       const lights = o.lights ? await o.lights().catch(() => ({})) : {};
       return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: await teammateNames(o.callModule, space, log), templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
-    const roleHolders = async (/** @type {string} */ role) => {
-      try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
-    };
+    // The kernel's own reading of a role (kernel/index.js roleHolders), the same one task slots use: a member whose role is that name.
+    const roleHolders = async (/** @type {string} */ role) => { try { return k.roleHolders(role); } catch { return []; } };
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
@@ -262,6 +261,17 @@ export function createFlowsHost(o) {
         const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");
         if (seat && wantSeat && wantSeat.fields.some((/** @type {any} */ f) => !seat.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantSeat] });
       } catch (e) { log(`flows: the team-member type for ${space} did not gain its level field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before an event could be shared has the old Event type: it gains `visibility` (the core definition is additive; a synced event with none is private to its owner).
+      try {
+        const ev = (await k.store.types()).find((/** @type {any} */ t) => t.name === "event"), wantEv = CORE_TYPES.find((/** @type {any} */ t) => t.name === "event");
+        if (ev && wantEv && wantEv.fields.some((/** @type {any} */ f) => !ev.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantEv] });
+      } catch (e) { log(`flows: the event type for ${space} did not gain its visibility field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before types carried their own presentation has core types without `hidden_in_records` (Templates, Playbooks, team seats and the like have screens of their own): they gain the flag.
+      try {
+        const now = await k.store.types();
+        const flagged = CORE_TYPES.filter((/** @type {any} */ w) => w.hidden_in_records === true).map((/** @type {any} */ w) => now.find((/** @type {any} */ t) => t.name === w.name)).filter((/** @type {any} */ t) => t && t.hidden_in_records !== true);
+        if (flagged.length) await gw.records.define(owner(), { change_types: flagged.map((/** @type {any} */ t) => ({ ...t, hidden_in_records: true })) });
+      } catch (e) { log(`flows: the core types for ${space} did not gain hidden_in_records: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
       // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
       try {

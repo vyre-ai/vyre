@@ -25,12 +25,12 @@ function check(ok, name, evidence) {
   if (!ok) throw new Error(`step failed: ${name}`);
 }
 
-// no `browse` here on purpose: the default is the Space's computer, never the shared browser
+// no `browse` here on purpose: with per-agent users on (agentUsers: true) the Space's computer serves the agent, never the shared browser
 fs.writeFileSync(path.join(VHOME, "config.json"), JSON.stringify({
   role: "box", machine: "server", name: "csproof-space", network: { tailscale: false },
   modules: { disable: ["names", "network", "hooks", "apps", "relay", "releases", "link", "sync", "push", "github", "google", "mail", "import", "sessions", "chat", "sight"] },
   computers: { docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
-    cpus: 2, memoryMb: 3072, screens: 2, sweepMs: 0, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, agentdWaitMs: 120_000, autoUpdate: false },
+    cpus: 2, memoryMb: 3072, screens: 2, sweepMs: 0, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, agentdWaitMs: 120_000, autoUpdate: false, agentUsers: true },
 }, null, 2));
 
 const logs = [];
