@@ -32,6 +32,7 @@ import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
 import { isAsker } from "./asker.js";
 import { presence, quoted, list } from "./tools/presence.js";
+import { keyGrantWords } from "../../lib/skill-library.js";
 import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
@@ -316,7 +317,17 @@ export default {
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how, agentKind }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller, agentKind); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
-      presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
+      presence("Let a module use a vault item", async ({ name, module, watcher, project }) => {
+        // A key for a plugin's MCP server: say what the person is giving it to (the plugin, the server's pinned command line, who approved it), not a watcher string. Nothing is released before this is shown.
+        if (module === "mcp" && watcher) {
+          try {
+            const r = await ctx.call("mcp.key.describe", { watcher: String(watcher) });
+            const d = r && !r.error && r.data ? r.data.key : null;
+            if (d) return keyGrantWords(d, name);
+          } catch { /* the plain words below */ }
+        }
+        return `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+      },
         { skip: ({ caller }) => isAsker(caller), session: () => true }));
 
     tool("vault.revoke", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
@@ -550,6 +561,15 @@ export default {
       ctx.events.on("member.removed", (/** @type {any} */ e) => { connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); try { people.destroy(personOf(e)); } catch { /* not a person id */ } });
       for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
       for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
+    } catch { /* no event bus in a bare test */ }
+    // A plugin's MCP server holds a key only while the key stays granted to it: when a grant is taken back, an item is deleted, or a member leaves, the hub is told to look again at once (it also looks every 30 s
+    // while a server runs, and before every call). The hub answers "waiting" and stops the server; nothing here carries a value.
+    try {
+      const sweepKeys = async (/** @type {any} */ input) => { try { const r = await ctx.call("mcp.sweep", input); if (r && r.error && r.error.code !== "no_such_tool") ctx.log(`vault: mcp.sweep failed: ${r.error.message}`); } catch (e) { ctx.log(`vault: mcp.sweep failed: ${/** @type {Error} */ (e).message}`); } };
+      const nameOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.name) || (e && e.name) || "");
+      ctx.events.on("vault.revoked", (/** @type {any} */ e) => { const item = nameOf(e); if (item) sweepKeys({ item }); });
+      ctx.events.on("vault.item-deleted", (/** @type {any} */ e) => { const item = nameOf(e); if (item) sweepKeys({ item }); });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, () => { sweepKeys({}); });
     } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.
     if (typeof ctx.provide === "function") ctx.provide("personalStore", (/** @type {string} */ person, /** @type {string} */ space) => people.personalStore(person, space));
