@@ -309,6 +309,14 @@ export function createFlows(o) {
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),
     "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat(), i.format),
     "flows.graph": async (chain, i) => graph((await view(i.id, [i.version])).flow, await cat()),
+    // Try one step of a Flow (stored, or an unsaved draft) on a past run's recorded inputs or sample values; nothing is changed or sent (runner.testStep).
+    "flows.step.test": async (chain, i) => {
+      const flow = i.flow || (await view(need(i, "id", "the Flow's id (flows.list), or flow: an unsaved Flow"), [i.version])).flow;
+      const approver = personOf({ hops: [chain.hops[0]] });
+      // a past run's recorded data is read only for a run of a Flow that is named (id; `flow` may then be an unsaved version of that same Flow), and with the same hiding flows.run applies for this viewer
+      if (i.run !== undefined && !(typeof i.id === "string" && i.id)) throw Object.assign(new Error("to try a step on a past run, name the Flow the run belongs to (id); flow may then be an unsaved version of it"), { code: "bad_input" });
+      return runner.testStep(flow, String(need(i, "step", "the step's id")), { approver, ...(i.run !== undefined ? { run: i.run } : {}), ...(i.sample !== undefined ? { sample: i.sample } : {}), ...(typeof i.id === "string" && i.id ? { flowId: i.id } : {}), ...(typeof i.hide_for === "string" && i.hide_for ? { hideFor: i.hide_for } : {}) });
+    },
     "flows.simulate": async (chain, i) => {
       const c = await cat();
       const flow = i.flow || (await view(i.id, [i.version])).flow;
@@ -334,7 +342,29 @@ export function createFlows(o) {
       const r = await runner.resumeFlow(i.id, o); return { ...r, control: await runner.controlState() };
     },
     "flows.control": async () => runner.controlState(),
-    "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), ...(r.parent ? { parent: r.parent.run } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
+    // The run list, filtered here and not in the editor: by Flow, state, a word (the Flow's name or label, the record, what started it, the error), and a window of start times (epoch ms or a date). `before` pages back
+    // from a start time. Up to 1000 recent runs are looked through for a word or a window.
+    "flows.runs": async (chain, i) => {
+      const time = (/** @type {string} */ k) => { const v = i[k]; if (v === undefined || v === null || v === "") return undefined; const n = typeof v === "number" ? v : Date.parse(String(v)); if (!Number.isFinite(n)) throw Object.assign(new Error(`${k} is a time: milliseconds since 1970, or a date like 2026-10-18`), { code: "bad_input" }); return n; };
+      const since = time("since"), until = time("until"), before = time("before");
+      const word = typeof i.q === "string" ? i.q.trim().toLowerCase() : "";
+      const limit = Math.min(Math.max(Number.isInteger(i.limit) ? i.limit : 200, 1), 200);
+      const wide = Boolean(word) || since !== undefined || until !== undefined;
+      let rows = await runner.listRuns({ flow: i.id, state: i.state, ...(before !== undefined ? { before } : {}), limit: wide ? 1000 : limit });
+      if (since !== undefined) rows = rows.filter(r => r.started_at >= since);
+      if (until !== undefined) rows = rows.filter(r => r.started_at <= until);
+      if (word) {
+        /** @type {Map<string, string>} */ const names = new Map();
+        const nameOf = async (/** @type {string} */ id) => { if (!names.has(id)) names.set(id, await view(id).then((/** @type {any} */ v) => `${v.flow.name} ${v.flow.label || ""}`).catch(() => "")); return names.get(id) || ""; };
+        const kept = [];
+        for (const r of rows) {
+          const hay = [await nameOf(r.flow), r.label, r.record, r.state, r.trigger && r.trigger.source, r.trigger && r.trigger.key, r.error && r.error.code, r.error && r.error.message].filter(Boolean).join(" ").toLowerCase();
+          if (hay.includes(word)) kept.push(r);
+        }
+        rows = kept;
+      }
+      return rows.slice(0, limit).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), ...(r.parent ? { parent: r.parent.run } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null }));
+    },
     "flows.run": async (chain, i) => {
       const show = (/** @type {any} */ x) => (i.hide_for ? hideRun(x, String(i.hide_for)) : x);
       const r = show(await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)")));
@@ -365,7 +395,7 @@ export function createFlows(o) {
       need(i, "run", "the run's id (flows.runs)");
       // An assistant may propose a value for a skipped step, in words; the person accepts it, and the call that carries it is theirs. A call with an assistant in its chain cannot carry the value itself.
       if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
-      await runner.retry(i.run, { skip: i.skip === true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
+      await runner.retry(i.run, { skip: i.skip === true, ...(typeof i.from === "string" && i.from ? { from: i.from } : {}), ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
     },
     // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
     "flows.attention": async () => ({ runs: await runner.attention(), ...(o.stuckTasks ? { tasks: await Promise.resolve(o.stuckTasks()).catch(() => []) } : {}) }),

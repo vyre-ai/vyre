@@ -20,6 +20,7 @@
 import { createHash } from "node:crypto";
 import { holds, stagesFor } from "../../lib/expr/conditions.js";
 import { renderBrief, evalChecklist } from "./checklist.js";
+import { slotsOf } from "./assign.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
@@ -142,7 +143,9 @@ export function createStages(o) {
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
-    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false };
+    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]) };
+    // A task with a checker, an approver or a reviewer that could not be made holds the stage: the stage never settles on the tasks that were made while the check that was meant to stand in front of it is missing.
+    const held = (/** @type {any} */ t, /** @type {string} */ why) => { if (t.checker || t.approver || t.reviewer) ent.unmade.push({ title: t.title, why }); };
     entries.set(key, ent);
     latest.set(`${e.urn}|${e.stage}`, key);
     if (o.startFlow) await automate(e, key);
@@ -154,15 +157,17 @@ export function createStages(o) {
     /** @type {Map<string, string>} */ const made = new Map();
     /** @type {{ task: string, why: string }[]} */ const skipped = [];
     for (const t of templates) {
-      const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
-      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); continue; }
+      const group = /^group:/.test(String(t.doer)) ? String(t.doer).slice(6) : null;   // a group task: the first of the role to start it takes it
+      const doer = group ? { kind: "service", id: "pool", space } : await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
+      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); held(t, `nobody can do ${t.doer}`); continue; }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
-        title: t.title, record: e.urn, stage: e.stage, doer,
+        title: t.title, record: e.urn, stage: e.stage, doer, ...(group ? { doer: undefined, pool: { role: group } } : {}),
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
+        ...(t.reviewer || t.approver ? { space_skills: true } : {}), ...(t.reviewer || t.approver ? await slotsOf(t, async (/** @type {string} */ ref) => (ref.startsWith("teammate:") ? { kind: "agent", id: ref.slice(9), space } : checkerFor(ref, space))) : {}),
         ...(noteOf(t, data) ? { note: noteOf(t, data) } : {}),
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
@@ -170,7 +175,7 @@ export function createStages(o) {
         ...(owner && t.due_offset_ms && owner.id !== doer.id ? { escalate_after: t.due_offset_ms, escalate_to: owner } : {}),
         // The kernel treats `required` as guarded (completion needs a check). A required task with no checker would wait for nobody, so the flag
         // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
-        ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),
+        ...(t.required !== false && (t.checker || t.approver || t.output.kind === "sent") ? { required: true } : {}),
       };
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
@@ -178,6 +183,7 @@ export function createStages(o) {
       catch (err) {
         emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` });
         skipped.push({ task: t.title, why: err && /** @type {any} */ (err).code === "not_a_member" ? `${doer.id} is not in this space yet` : `it could not be made: ${err instanceof Error ? err.message : String(err)}` });
+        held(t, err instanceof Error ? err.message : String(err));
         continue;
       }
       made.set(t.title, task.id);
@@ -202,12 +208,12 @@ export function createStages(o) {
 
   /** The gate for this entry on the runner. A gate is a record of what happened, so a fault in it never stops the stage. @param {any} ent @param {string | null} owner */
   async function openGate(ent, owner) {
-    if (!o.gates || !ent.tasks.length) return;
+    if (!o.gates || (!ent.tasks.length && !ent.unmade.length)) return;
     try {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -219,6 +225,13 @@ export function createStages(o) {
   /** Is the entry's stage done? If so, move the record on, once. @param {string} key */
   async function settle(key) {
     const ent = entries.get(key);
+    if (ent && !ent.advanced && ent.unmade && ent.unmade.length) {
+      // A gated task was not made: nothing moves the record on until a person fixes the template or the people and the record enters the stage again, or moves it on by hand.
+      const why = ent.unmade.map((/** @type {any} */ u) => `${u.title}: ${u.why}`).join("; ");
+      if (!ent.heldNoted) { ent.heldNoted = true; emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `the approval step could not be made: ${why}; fix the template or the people, then enter the stage again` }); }
+      await mark(ent, "tasks", { status: "waiting", output: { unmade: ent.unmade } });
+      return;
+    }
     if (!ent || ent.advanced || !ent.tasks.length) return;
     const chain = o.chain();
     const rows = [];
@@ -243,7 +256,8 @@ export function createStages(o) {
     for (const r of rows) if (!r.checkedFail && !((ent.tasks.find(/** @param {any} t */ t => t.id === r.id) || {}).checklist && r.state === "done")) await mark(ent, `task:${r.title}`, DONE.has(r.state) ? { status: "done" } : r.state === "skipped" ? { status: "skipped" } : r.state === "stuck" ? { status: "failed", error: { code: "stuck", message: "the task is stuck" } } : { status: "waiting" });
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
-    if (!ok) { if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
+    if (!ok) { if (rows.some(r => r.state === "declined")) emit("stage.declined", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "declined").map(r => r.id) });
+      if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
     await mark(ent, "tasks", { status: "done" });
     const cur = await o.kernel.records.get(chain, ent.type, ent.id);
     // The stages this record follows: its stage set when the type has sets, else the type's own list.
@@ -316,7 +330,7 @@ export function createStages(o) {
     for (const run of await o.gates.list()) {
       const g = run.gate;
       if (!g || entries.has(g.key)) continue;
-      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, run: run.id, owner: g.owner, next: g.next };
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next };
       entries.set(g.key, ent);
       latest.set(`${g.urn}|${g.stage}`, g.key);
       for (const t of ent.tasks) taskEntry.set(t.id, g.key);

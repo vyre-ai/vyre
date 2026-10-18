@@ -274,6 +274,8 @@ export function createGrantsStore(cfg) {
   const members = Object.freeze({
     has: memberOk,
     membership: (/** @type {any} */ a) => (a && a.kind === "person" ? memberships.get(a.id) : undefined),
+    /** The Space's people who could hold a task slot: members who are not temporary or viewers. */
+    people: () => [...memberships.values()].filter(m => m.role !== "temp" && m.role !== "viewer").map(m => ({ kind: "person", id: m.person, space: cfg.space })),
   });
   /** What `authorize` asks: active grants for this subject, by actor or by the role the person holds. */
   const provider = Object.freeze({
