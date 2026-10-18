@@ -54,6 +54,8 @@ const MIGRATIONS = [
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
   // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
   `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
+  // The model to run on when a launch falls back to the API-key account; empty uses `model`.
+  `ALTER TABLE agents_agents ADD COLUMN fallback_model TEXT`,
   // Built in by Vyre (the Engineer): listed like any agent, but it cannot be deleted, renamed, given projects, credentials or a computer.
   `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
   // The person granted this agent their PERSONAL memory and every project's sessions to read ("Claude Code on <this computer>"): reads only, never writes, never the person. Appended last, like every step.
@@ -161,7 +163,7 @@ export function preamble(a, { withWords = true } = {}) {
 }
 
 /** agents.update fields that change only what an agent says or which model says it. */
-const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description"]);
+const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description", "fallback_model"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 
@@ -181,7 +183,7 @@ export default {
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), look: r.look == null ? null : String(r.look), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
+      model: r.model == null ? null : String(r.model), fallback_model: r.fallback_model == null ? null : String(r.fallback_model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), look: r.look == null ? null : String(r.look), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -309,14 +311,14 @@ export default {
         // The API key only backs the subscription up. The onboarding names it before the person
         // has one, so a missing or ungranted key means no fallback, not no start.
         if (a.auth.fallback && (left == null || left > 0)) {
-          try { out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) }; }
+          try { out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(a.fallback_model ? { model: a.fallback_model } : {}), ...(left != null ? { budget_usd: left } : {}) }; }
           catch (e) { ctx.log(`agents: ${a.name} starts without its API key fallback: ${/** @type {Error} */ (e).message}`); }
         }
         return out;
       }
       if (a.auth.fallback) {
         if (left === 0) throw new Error(`${a.name} has spent its $${budget} budget on the API key`);
-        return { auth: "api-key", env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
+        return { auth: "api-key", env: envFor(await release(a, a.auth.fallback), "api-key"), ...(a.fallback_model ? { model: a.fallback_model } : {}), ...(left != null ? { budget_usd: left } : {}) };
       }
       return { auth: "ambient" };
     };
@@ -372,7 +374,7 @@ export default {
       const oriented = orientation({ ...(mine ? { agent: { name: a.name, dir: mine.dir, instructions: mine.instructions, context: mine.context } } : {}), ...(place ? { project: place } : {}) });
       const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a, { withWords: !mine }) + (oriented ? "\n\n" + oriented : "") + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
-        ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
+        ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...((creds.model || a.model) ? { model: creds.model || a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
@@ -401,9 +403,11 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, fallback_model: { type: "string", description: "the model to use when it carries on under its API-key fallback; empty uses model" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
+    /** A model name: an alias or a model id, short and plain. @param {unknown} m */
+    const modelName = m => { if (typeof m !== "string" || !/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(m)) throw Object.assign(new Error("a model is an alias like opus or sonnet, or a model id"), { code: "bad_input" }); return m; };
     const LOOK = /^s[0-7]~c[0-7]$/;
     const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7)"); };
 
@@ -616,7 +620,7 @@ export default {
         guard(caller, "list agents");
         const full = await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, ...(a.fallback_model ? { fallback_model: a.fallback_model } : {}), effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -653,6 +657,7 @@ export default {
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         if (i.look) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look, i.name);
+        if (i.fallback_model) db.prepare("UPDATE agents_agents SET fallback_model = ? WHERE name = ?").run(modelName(i.fallback_model), i.name);
         await mirror.soon();
         const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
         return note ? { ...get(i.name), note } : get(i.name);
@@ -692,6 +697,7 @@ export default {
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
         if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look || null, a.name);
+        if (i.fallback_model !== undefined) db.prepare("UPDATE agents_agents SET fallback_model = ? WHERE name = ?").run(i.fallback_model ? modelName(i.fallback_model) : null, a.name);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)

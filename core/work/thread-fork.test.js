@@ -101,6 +101,17 @@ test("a fork keeps the conversation up to and including the chosen reply, starts
   assert.equal((await call("threads.of-chat", { chat: thread }, "module:work", {})).data.runs.length, 1);
   assert.equal((await ok("work.chat.get", { chat: thread })).chat.title, "the original");
 
+  // a fork is a new chat: naming an id that already is a chat is refused, and no fork origin is written or rewritten for it
+  const reuse = await call("work.thread.fork", { thread, message: msgId, id: forked.thread, ring: ring().ring });
+  assert.equal(reuse.error?.code, "exists", JSON.stringify(reuse));
+  const reuseOwn = await call("work.thread.fork", { thread, message: msgId, id: thread, ring: ring().ring });
+  assert.equal(reuseOwn.error?.code, "exists", JSON.stringify(reuseOwn));
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM work_thread_forks").get().n, 1, "still the one fork");
+  assert.equal(d.registry.deps.db.prepare("SELECT origin FROM work_thread_forks WHERE chat = ?").get(forked.thread).origin, thread, "and its origin is as it was");
+  // a model's session cannot start a run as a fork: fork and resumeAt are the person's and the stream's
+  const sneaky = await call("threads.start", { cwd: work, prompt: "x", fork: run, resumeAt: String(firstReply.uuid) }, "mcp:agent:juno", { agent: "juno", thread: "t-sneaky" });
+  assert.ok(sneaky.error, "an agent's session does not fork: " + JSON.stringify(sneaky).slice(0, 200));
+
   // refusals: a message that is not a reply, a thread that is not yours, a message that does not exist
   const bad = await call("work.thread.fork", { thread, message: crypto.randomUUID(), ...ring() });
   assert.equal(bad.error?.code, "not_found", JSON.stringify(bad));

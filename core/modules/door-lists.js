@@ -61,7 +61,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "roles.catalogue", "roles.get", "roles.list", "roles.tools",
   "rules.get", "rules.list", "rules.test",
   "runner.move",
-  "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
+  "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.models", "sessions.accounts.signin",
   "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.list",
   "spaces.groups.list", "spaces.list", "spaces.members.list", "spaces.pair.install",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
@@ -75,7 +75,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "views.list",
   "wink.install.complete", "wink.install.issue", "wink.install.status",
   "wink.server.adopt", "wink.server.pair.answer",
-  "work.agent.thread.new", "work.agent.threads", "work.chat.summary", "work.chat.thread.new", "work.chat.threads", "work.person.shared", "work.thread.add-people", "work.flow.threads", "work.thread.fork", "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
+  "work.agent.thread.new", "work.agent.threads", "work.chat.summary", "work.chat.thread.new", "work.chat.threads", "work.person.shared", "work.chat.add-people", "work.project.chat", "work.thread.add-people", "work.flow.threads", "work.thread.fork", "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
   "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
 ]));
