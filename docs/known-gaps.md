@@ -131,3 +131,11 @@ What to do today: use the fan-out for answers, and read plans and diffs as they 
 What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.
+
+## The first-run proof's web export holds a software yes
+
+A browser has no hardware key and no phone, so the first-run proof's group walk (an owner approving an ask to join, a second person joining) gives its browsers a software yes: the page's own person key signing the proof body a phone would sign (`apps/app/src/real/proof-yes.ts`). It exists only in the export made with `EXPO_PUBLIC_VYRE_PROOF_YES=1` (the proof export in `first-run-e2e.yml`). That export must never be published, served to anyone or kept past its run: its artifact is for the run only. Every other build compiles the signer out, and `app.yml` fails the release web export, the release APK and the iOS release build if they hold its marker. A release-kind server refuses a software key and a software proof (`kernel/seal/seal.test.js` SW-2), so the signer could not say yes to one even if it got out.
+
+What to do: nothing, unless the proof export is ever linked from somewhere public; then take it down.
+
+Owner: app53, until browser-only people get a passkey yes (`team/BACKLOG.md`, "A real browser yes").
