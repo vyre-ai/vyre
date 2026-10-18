@@ -11811,7 +11811,7 @@ Upload a skill or plugin file: a SKILL.md, a .md, or a .zip of a skill folder or
   - `filename` string
   - `name` string
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
-- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `space`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `skills.list`
 
