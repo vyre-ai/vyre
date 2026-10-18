@@ -173,7 +173,7 @@ test("through the member door a member moves a record, relates two, saves her ow
   await w.as(ANA, "records.relationship.remove", { id: rel.id });
   assert.equal((await w.as(ANA, "records.relationship.list", { urn: a.urn })).relationships.length, 0);
   await w.as(ANA, "records.layout.set", { type: "deal", scope: "mine", layout: { columns: ["name"] } });
-  assert.equal((await w.as(ANA, "records.layout.get", { type: "deal" })).layout.columns.join(), "name");
+  { const got = await w.as(ANA, "records.layout.get", { type: "deal" }); const all = await w.as(w.OWNER, "records.list", { type: "record-layout" }); assert.equal(JSON.stringify(got.layout.columns), JSON.stringify(["name"]), `${JSON.stringify(got)} rows: ${JSON.stringify(all.rows.map((/** @type {any} */ r) => r.data))}`); }
   assert.equal(await code(w.as(ANA, "records.layout.set", { type: "deal", scope: "space", layout: { columns: ["name"] } })), "not_allowed");
   assert.ok(await code(w.as(ANA, "records.pipeline.set", { type: "deal", stages: [{ name: "A" }] })) !== null, "pipeline.set is not a member call");
   assert.ok((await w.as(w.OWNER, "records.layout.get", { type: "deal" })).layout.columns === undefined, "her layout is hers alone");
@@ -182,7 +182,7 @@ test("through the member door a member moves a record, relates two, saves her ow
 test("an admin cannot read a member's private note through the raw route; the member and a shared note are read", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const { PLANNER_TYPES } = await import("../planner/types.js");
-  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: PLANNER_TYPES.map((x) => JSON.parse(JSON.stringify(x))) }).catch((/** @type {any} */ e) => { if (!/exist/i.test(String(e && e.message))) throw e; });
+  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: PLANNER_TYPES.filter((x) => x.name === "note").map((x) => JSON.parse(JSON.stringify(x))) }).catch((/** @type {any} */ e) => { if (!/exist/i.test(String(e && e.message))) throw e; });
   const noteDef = (await w.d.kernel.gateway.definitions(w.ownerChain)).find((/** @type {any} */ x) => x.name === "note");
   assert.ok(noteDef && noteDef.protected === true && noteDef.fields.some((/** @type {any} */ f) => f.name === "visibility"), `the planner's Note type is defined: ${JSON.stringify(noteDef && noteDef.fields.map((/** @type {any} */ f) => f.name))}`);
   await w.d.kernel.gateway.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
