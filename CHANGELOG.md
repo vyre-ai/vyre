@@ -8,6 +8,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(flows): the Flow runner sheds code to stay under its size cap: trying one step, what a step was given and retry from a step move to kernel/flows/step-test.js, and the small pure helpers to kernel/flows/runner-helpers.js, with no change in behaviour. flows.step.test, flows.runs and flows.retry descriptions are under 25 words, and no_such_step has a catalogue entry.
+
 - fix(runner): a lease taken again while the sessions of its ended lease are still stopping keeps its workspace (contact waits for the closing and then checks the real mount); a revoked end still closes hard and deletes, and a vault answer that arrives after a revoke opens nothing and keeps no key (lease.js). Tests in core/runner/lease-race.test.js.
 - fix(guards): the polish train's suite guards. Refusals in Files move, appmods audit, sessions key check and the Vault member link now say what to do next; the partial-move code has a catalogue entry; documents.signing.status is under the 25-word cap; the Files move tools take the one person-surface list (no bare mobile); the audit link check reads that list too; the AI accounts step reads the Anthropic key shape from the shared table; the Vault migration list is one line shorter.
 
@@ -68,6 +70,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(words): "Password", never "master password", in every product string of the app, the sign-in error words and the first-run messages; recovery key and vault wording stay. The first-run proof moves with the strings in this commit.
 ## 0.6.1
 
+- feat(flows): the Flows editor's backend. A Flow may have several triggers (`triggers`, 1 to 8, each with its own condition; the run records which fired); a step may be turned off (`enabled: false`, skipped and recorded as off); `flows.retry { from }` takes a failed, paused or finished run back to a step and runs it and the steps after it again; every step's ledger entry carries its input (hidden wherever its output is, secrets masked, a sealed value never kept, up to 16 KB); `flows.runs` filters by word, time window and start time on the server. The member rule for approving a Flow reads every trigger a Flow has.
 - feat(threads): a member's own AI key is lent to her own turn (lendKey, closing the 0.6.0 known issue). The daemon (core/daemon/lend-key.js, needs.daemon "lendKey") opens a 20-second kernel session of the asker alone (no agent hop, no chat), makes the one call vault.me.lend on it through Registry.callLend as module:threads, and ends the session in a finally; the token never leaves that function. The Switchboard settles who first (core/switchboard/lend-turn.js): the verified asker of the launch or the stored asker of a turn being handed over (two that differ, or none, are refused), still in the chat at lend time, and an account that is that same person's; the Vault's pair check stays the second lock. The two skipped lent-key tests run again
 
 ## Polish

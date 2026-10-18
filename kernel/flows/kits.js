@@ -12,6 +12,7 @@
 import { checkTaskExtras } from "./checklist.js";
 import { canonical, flowHash } from "./schema.js";
 import { compileFlow } from "./compile.js";
+import { triggersOf } from "./triggers.js";
 import { ROLE_BUNDLES } from "../contracts/index.js";
 import { newId } from "./store.js";
 import { taskIdOf } from "./stages.js";
@@ -104,7 +105,7 @@ export function installCard(kit, cat) {
   const merged = checked.cat;
   const flows = parts.filter(p => p.kind === "flow").map(p => {
     const c = compileFlow({ ...p.def, authorship: "kit" }, merged);
-    return { name: p.name, label: p.def.label || p.name, trigger: p.def.trigger.on, writes: c.effects.writes, outward: c.effects.outward, services: c.effects.services, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
+    return { name: p.name, label: p.def.label || p.name, trigger: triggersOf(p.def).map(t => t.on).join(", "), writes: c.effects.writes, outward: c.effects.outward, services: c.effects.services, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
   });
   const types = parts.filter(p => p.kind === "type").map(p => ({
     name: p.name, label: p.def.label, fields: (p.def.fields || []).length, sealed: (p.def.fields || []).filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name),
@@ -167,7 +168,7 @@ export function diffKits(oldKit, newKit, cat) {
       for (const c of nf.effects.code) if (!oldCode.has(c.hash)) widenings.push({ part: label, what: `runs new code in the sandbox (${c.step})` });
       const oldSealed = new Set((of ? of.effects.sealed_uses : []).map(s => s.field));
       for (const s of nf.effects.sealed_uses) if (!oldSealed.has(s.field)) widenings.push({ part: label, what: `now uses the sealed field ${s.field}` });
-      if (before && before.def.trigger && canonical(before.def.trigger) !== canonical(p.def.trigger)) widenings.push({ part: label, what: "starts on a different trigger" });
+      if (before && triggersOf(before.def).length && canonical(triggersOf(before.def)) !== canonical(triggersOf(p.def))) widenings.push({ part: label, what: "starts on a different trigger" });
     }
     if (p.kind === "role" && before) {
       const old = new Set(before.def.abilities || []);

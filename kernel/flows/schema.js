@@ -61,6 +61,8 @@ function onlyKeys(o, allowed, path, out) {
   for (const k of Object.keys(o)) if (!allowed.includes(k)) out.push({ path: `${path}.${k}`, message: `${k} is not part of this` });
 }
 
+/** The most triggers one Flow may have. */
+const TRIGGER_MAX = 8;
 /** @param {any} t @param {Problem[]} out */
 function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, EVENT_RE, NAME_RE }); }
 
@@ -148,7 +150,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
     // (a decide or a repeat takes a failure path and a check, but no time limit or retry: a key the runner would ignore is refused, not accepted)
     // (a lane has no policy of its own: its steps do; a parallel step waits for its lanes, so a time limit or a retry on it would not mean one attempt)
     const policyKeys = s.kind === "branch" ? [] : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || s.kind === "subflow" ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
-    onlyKeys(s, ["id", "kind", "label", "added_by", ...keys, ...policyKeys], p, out);
+    onlyKeys(s, ["id", "kind", "label", "added_by", "enabled", ...keys, ...policyKeys], p, out);
+    if (s.enabled !== undefined && typeof s.enabled !== "boolean") out.push({ path: `${p}.enabled`, message: "enabled is true or false; false turns the step off (it is skipped and the run says so)" });
     if (s.added_by !== undefined && (typeof s.added_by !== "string" || !/^[A-Za-z0-9_.:-]{1,80}$/.test(s.added_by))) out.push({ path: `${p}.added_by`, message: "added_by is the id of the person who added the step" });
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
     if (s.kind === "agent" || s.kind === "assign") checkPeople(s, p, out);
@@ -370,7 +373,7 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group", "project"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "triggers", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group", "project"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
@@ -385,7 +388,11 @@ export function checkFlow(flow) {
       if (!isObj(c) || typeof c.action !== "string" || !(ACTION_RE.test(c.action) || c.action === "*.*") || typeof c.resource !== "string" || !URN_RE.test(c.resource)) out.push({ path: `caps[${i}]`, message: "a cap is { action: module.verb, resource: vyre://... }" });
     });
   }
-  checkTrigger(flow.trigger, out);
+  if (flow.triggers !== undefined) {
+    if (flow.trigger !== undefined) out.push({ path: "triggers", message: "a Flow has either trigger or triggers, not both" });
+    else if (!Array.isArray(flow.triggers) || flow.triggers.length < 1 || flow.triggers.length > TRIGGER_MAX) out.push({ path: "triggers", message: `triggers is a list of 1 to ${TRIGGER_MAX} triggers; any of them starts a run` });
+    else flow.triggers.forEach((t/** @type {any} */, i/** @type {number} */) => { const mine = /** @type {Problem[]} */ ([]); checkTrigger(t, mine); for (const pr of mine) out.push({ path: pr.path === "trigger" || pr.path.startsWith("trigger.") ? `triggers[${i}]${pr.path.slice(7)}` : pr.path, message: pr.message }); });
+  } else checkTrigger(flow.trigger, out);
   const ids = new Set();
   const budget = { count: 0 };
   checkSteps(flow.steps, "steps", out, ids, 0, budget);
