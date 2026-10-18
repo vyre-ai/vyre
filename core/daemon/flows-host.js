@@ -17,6 +17,7 @@ import { createAgentWake } from "./agent-wake.js";
 import { lendConnections, endConnections } from "./connection-lend.js";
 import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
+import { teammatePort } from "./kit-teammates.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -412,6 +413,8 @@ export function createFlowsHost(o) {
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
     guardUntilReady(flows.tools, () => typesReady, () => exhausted);
+    // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).
+    if (typeof o.callAs === "function") ports.teammates = teammatePort({ callAs: o.callAs, session: async (/** @type {string} */ id) => (await k.surfaces.open(personChain(id), { ttl_ms: 60_000 })).token, log, space });
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);
       const live = await store.active(x.flow).catch(() => null);

@@ -696,6 +696,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.step.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; tries one step of a Flow on a past run of that Flow or on sample values: reads run for real, nothing is stored, sent or emitted, and a past run is shown only as far as the caller may see it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.test.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the saved test cases of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -1272,6 +1276,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): who changed what on a record, before and after, from the signed event log; owner and admin only, read through the caller's own events.read so the kernel hides what the caller may not see"
  },
  {
+  "tool": "records.busy",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the blocks of time other people's private calendar events take up, as Busy and nothing else: read as the Space and cut to the start, the end and the all-day flag before it is answered"
+ },
+ {
   "tool": "records.create",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder"
  },
@@ -1292,6 +1300,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
  },
  {
+  "tool": "records.history",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a record's history: its changes from the event log and the calls, meetings and notes logged on it, read through the caller's own events.read and linked so the kernel hides what the caller may not see"
+ },
+ {
   "tool": "records.holders",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the holders of one role, under the caller's own chain; the kernel checks each row"
  },
@@ -1308,12 +1320,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads how a type is shown to the caller; no record data"
  },
  {
+  "tool": "records.link.set",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): connects a record through one of its link fields, and may keep the connection as a relationship, under the caller's own chain; the kernel decides who may read both ends and write the record"
+ },
+ {
   "tool": "records.linked",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the records linked to one, under the caller's own chain; the kernel decides each"
  },
  {
   "tool": "records.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists records under the caller's own chain; the kernel decides every row"
+ },
+ {
+  "tool": "records.log",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): logs a call, a meeting or a note on a record under the caller's own chain; the kernel decides who may write, and a note starts private"
  },
  {
   "tool": "records.me",
@@ -1340,8 +1360,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a record's relationships under the caller's own chain; only rows the caller may read"
  },
  {
+  "tool": "records.relationship.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): takes a relationship away under the caller's own chain; the kernel decides who may write it"
+ },
+ {
+  "tool": "records.role.set",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a role on a record, or moves its stage, under the caller's own chain; the kernel decides who may read the holder and write the role"
+ },
+ {
   "tool": "records.roles",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the role records that point at one contact, under the caller's own chain; the kernel checks each row"
+ },
+ {
+  "tool": "records.roles.summary",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a record's roles as short labels, or the count of holders by role and stage, read under the caller's own chain so only rows the caller may read are counted"
  },
  {
   "tool": "records.seal-put",
@@ -1350,6 +1382,10 @@
  {
   "tool": "records.sees-as",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows what a person or an assistant would see of a record; reads only"
+ },
+ {
+  "tool": "records.stats",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): counts and totals of the records the caller may read, grouped by a stage or choice field, through the kernel's own aggregate; no record data leaves it"
  },
  {
   "tool": "records.types",
@@ -1648,8 +1684,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks for a task under the caller's own chain; the kernel decides who may"
  },
  {
+  "tool": "tasks.review",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the reviewer slot's holder passes the work or asks for changes; never the doer, a helper or anyone under the doer; a pass never frees an outward output"
+ },
+ {
   "tool": "tasks.submit",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): hands in a doer's work for a check; the kernel decides"
+ },
+ {
+  "tool": "tasks.update",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the doer or a helper adds details, a progress note or outputs while the task is theirs to work; the kernel rechecks the hold on every write"
  },
  {
   "tool": "team.charter.draft",

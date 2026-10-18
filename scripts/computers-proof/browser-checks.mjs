@@ -57,11 +57,11 @@ for (const u of ["about:blank#control", "file:///etc/passwd", "chrome://version"
   await sleep(500);
 }
 
-// 3. Downloads. The agent may point them only at computerd's own folder; a download into the
-//    agent's home is refused; a real download lands in that folder, readable by the agent uid.
+// 3. Downloads. Chrome saves into a folder the BROWSER uid owns, outside every folder the agent owns (group: the agent's, setgid, 2750): the agent can read a download and cannot place or swap anything there
+//    (e2e review MEDIUM 3). The agent may point downloads only at that folder (computerd's own check); its home is refused; a real download lands there, readable by the agent uid.
+const dl = "/var/lib/vyre/browser/downloads";
 try { await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: "/home/agent/Downloads" }); say(false, "cdp download path /home/agent/Downloads", "accepted"); }
 catch (e) { say(true, "cdp download path /home/agent/Downloads refused", e.message); }
-const dl = "/var/lib/vyre/browser/downloads";
 try { await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl }); say(true, `cdp download path ${dl} accepted`, "ok"); }
 catch (e) { say(false, `cdp download path ${dl}`, e.message); }
 const payload = Buffer.from("harlow legal proof download\n").toString("base64");
@@ -69,14 +69,17 @@ await cdp.send("Page.navigate", { url: `data:text/html,<a id=a download=csproof.
 await sleep(1200);
 await cdp.send("Runtime.evaluate", { expression: "document.getElementById('a').click()", userGesture: true }, sessionId).catch(() => {});
 let listing = "";
-for (let i = 0; i < 20; i++) { await sleep(500); listing = sh("1000:1000", `ls -la ${dl} /home/agent/Downloads`); if (/csproof\.txt/.test(listing) && !/\.crdownload/.test(listing)) break; }
-console.log("--- ls -la (download folder, then /home/agent/Downloads)\n" + listing);
+for (let i = 0; i < 20; i++) { await sleep(500); listing = sh("1000:1000", `ls -la ${dl}`); if (/csproof\.txt/.test(listing) && !/\.crdownload/.test(listing)) break; }
+console.log(`--- ls -la ${dl}\n` + listing + "\n--- ls -ld\n" + sh("1000:1000", `ls -ld ${dl}`));
 const inFolder = sh("1000:1000", `ls ${dl}`).includes("csproof.txt");
-const inHome = sh("1000:1000", "ls /home/agent/Downloads").includes("csproof.txt");
 say(inFolder, `download landed in ${dl}`, inFolder ? "csproof.txt present" : "not there");
-say(!inHome, "download did NOT land in /home/agent/Downloads (by design, see entrypoint.sh: the agent owns that folder)", inHome ? "present there" : "absent");
 const asAgent = sh("1000:1000", `cat ${dl}/csproof.txt`);
 say(asAgent.includes("harlow legal proof download"), "the agent uid can read the downloaded file", asAgent);
+const plantErr = sh("1000:1000", `touch ${dl}/planted 2>&1; ln -s /var/lib/vyre/browser/chromium ${dl}/swap 2>&1`);
+const planted = sh("1000:1000", `ls ${dl}`).split("\n");
+say(!planted.includes("planted") && !planted.includes("swap"), "the agent cannot create a file or a link inside the downloads folder", plantErr.slice(-160));
+const swap = sh("1000:1000", `mv ${dl} ${dl}.old 2>&1; ls -d ${dl} 2>&1`);
+say(swap.includes(dl) && !/\.old$/m.test(swap), "the agent cannot move the downloads folder away", swap.slice(-120));
 sh("1002:1002", `rm -f ${dl}/csproof.txt`);
 console.log(`known failures (0.6.1, to fix in 0.6.2): ${known.length ? known.join("; ") : "none ran"}`);
 process.exit(failed);
