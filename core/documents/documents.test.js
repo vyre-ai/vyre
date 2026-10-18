@@ -32,7 +32,8 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
   };
   /** @type {Map<string, any>} */ const tools = new Map();
   const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
-  const store = { migrate: (/** @type {string[]} */ ms) => { for (const m of ms) db.exec(m); }, db };
+  // the real store keeps what it has applied; a rig that shares a database with another rig (the member checks) meets its table again, which is not an error
+  const store = { migrate: (/** @type {string[]} */ ms) => { for (const m of ms) { try { db.exec(m); } catch (e) { if (!/already exists/.test(String(/** @type {Error} */ (e).message))) throw e; } } }, db };
   const ctx = { store, config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
     kernel: { space: SPACE, owner: "per_alex", membership: async (/** @type {string} */ p) => ({ member: p !== "per_removed", role: p === "per_alex" ? "owner" : p === "per_admin" || p === "per_removed" ? "admin" : "member" }), for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
