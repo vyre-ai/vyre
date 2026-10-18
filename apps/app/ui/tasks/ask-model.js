@@ -9,7 +9,7 @@ const CREDENTIAL = /\b(vault|password|passphrase|credential|api key|token|sign-?
 
 /**
  * The control a card asks the person to use.
- * @param {{ reason: "check"|"do"|"stuck"|null, inline?: { kind: string }, actions: { id: string }[] }} card cardModel's result
+ * @param {{ reason: "check"|"review"|"do"|"stuck"|null, inline?: { kind: string }, actions: { id: string }[] }} card cardModel's result
  * @param {any} task
  * @returns {"date"|"text"|"file"|"yes_no"|"send"|"check"|"credential"|"stuck"|"todo"|"watch"}
  */

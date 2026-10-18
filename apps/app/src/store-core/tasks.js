@@ -223,7 +223,8 @@ export function ownerOf(id, actors) {
  */
 export function needsReason(task, me, actors = {}) {
   if (aid(task.checker) === me && task.state === "needs_check") return "check";
-  if (task.reviewer && aid(task.reviewer) === me && task.state === "in_review") return "review";
+  const reviewer = /** @type {any} */ (task).reviewer;
+  if (reviewer && aid(reviewer) === me && task.state === "in_review") return "review";
   if (aid(task.doer) === me && task.state === "ready") return "do";
   if (task.state === "stuck" && (aid(task.doer) === me || ownerOf(aid(task.doer), actors) === me)) return "stuck";
   return null;
@@ -406,7 +407,7 @@ export function howSentence(task, ctx) {
 
 /**
  * The line a card shows as its title. A task can carry its own (`ext.say`); otherwise the title, with "is ready" when a draft waits for its checker.
- * @param {Task} task @param {"check"|"do"|"stuck"|null} reason @param {Who[]|Record<string, Who>} [actors]
+ * @param {Task} task @param {"check"|"review"|"do"|"stuck"|null} reason @param {Who[]|Record<string, Who>} [actors]
  */
 export function cardTitle(task, reason, actors = {}) {
   const say = task.ext?.say;
