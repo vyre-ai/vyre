@@ -91,6 +91,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
+  const [asDone, setAsDone] = useState(false);
+  const [asLookSeed, setAsLookSeed] = useState("");
   const [signedIn, setSignedIn] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -558,6 +560,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             })} />
           </>
         ) : null}
+        {online ? <Text tone="muted">Records keep setting up in the background, so you do not have to wait for them.</Text> : null}
         {online && noFingerprint ? <Text tone="muted">Approvals that need your fingerprint are not available on this Mac yet.</Text> : null}
         {online && paired ? (
           <>
@@ -605,6 +608,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
           setAsName(String(r.display || name));
+          setAsLookSeed(full); setAsDone(true);
           go("setup.model");
         }) }}>
         <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
@@ -649,7 +653,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
     <FlowStep steps={steps} hero mark="done" title="You're all set."
-      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
+      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : asDone ? `${asName.trim() || ASSISTANT_COPY.suggestion} and Engineer are waiting in Chats. Say hi.` : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
       primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
@@ -664,6 +668,12 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setCurrent(String(r.current || id));
           if (r.name) setSpace(String(r.name));
         })} />
+      ) : null}
+      {asDone && spaces.length <= 1 ? (
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 28 }} accessibilityLabel="Waiting in Chats">
+          <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", asName.trim() || ASSISTANT_COPY.suggestion, undefined, asLookSeed)} size={56} /><Text size="caption" tone="muted">{asName.trim() || ASSISTANT_COPY.suggestion}</Text></View>
+          <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", "Engineer")} size={56} /><Text size="caption" tone="muted">Engineer</Text></View>
+        </View>
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
       <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your password.`}</Text>
