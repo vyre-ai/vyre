@@ -41,7 +41,7 @@ export function lineOf(r: ListRow): string {
 export function toItem(r: ListRow): RealItem {
   return {
     id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), icon: iconOf(r.kind), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
-    grants: r.grants.map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
+    grants: (r.grants ?? []).map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
   };
 }
 
