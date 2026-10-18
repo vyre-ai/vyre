@@ -48,7 +48,7 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   if (shown) assert.match(JSON.stringify(shown), /Mine\./, "and still says what the person wrote");
   assert.ok(!JSON.stringify(shown || {}).includes("This is the Kit's text"), "the Kit did not rewrite it");
 
-  await call("flows.kit.remove", { kit: "front-desk" });
+  await call("flows.kit.remove", { id: "front-desk" });
   const gone = await agents();
   assert.ok(!gone.some((/** @type {any} */ a) => a.name === "desk-helper"), "removing the Kit removes the assistant it made");
   assert.ok(gone.some((/** @type {any} */ a) => a.name === "my-own"), "and keeps the one that was already there");
