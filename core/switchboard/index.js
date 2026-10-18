@@ -1018,7 +1018,7 @@ export class Switchboard {
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
-      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? await lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
+      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? () => lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
@@ -4053,7 +4053,7 @@ export default {
     };
     // An account's credential from the vault (the item must be granted to this module), as the
     // environment variable its provider's CLI reads. A "login" account has none: its HOME does.
-    const accountEnv = async (/** @type {any} */ a, /** @type {{ asker: string, space?: string | null } | undefined} */ turn) => {
+    const accountEnv = async (/** @type {any} */ a, /** @type {(() => Promise<{ asker: string, space?: string | null }>) | undefined} */ turn) => {
       if (a.kind === "login") return { auth: "subscription", env: {} };
       const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });

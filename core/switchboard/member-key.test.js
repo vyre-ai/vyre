@@ -26,3 +26,12 @@ test("a locked vault says to unlock it, another refusal says the key is one pers
   await assert.rejects(memberKey(ctxOf({ data: {} }), acct(), turn), e => e.code === "no_credential" && /gave no key/.test(e.message));
   await assert.rejects(memberKey(ctxOf({ data: { value: "" } }), acct(), turn), e => e.code === "no_credential");
 });
+
+test("the turn may be given as a function, asked only when a key is to be lent: a refusal before that never asks it", async () => {
+  let asked = 0;
+  const lazy = async () => { asked++; return { asker: "per_ben", space: null }; };
+  await assert.rejects(memberKey(ctxOf({ data: { value: "sk-fixture-0123456789" } }), acct({ own_vault: 0 }), lazy), e => e.code === "denied");
+  assert.equal(asked, 0, "not kept in its owner's vault: the turn is never settled");
+  assert.equal(await memberKey(ctxOf({ data: { value: "sk-fixture-0123456789" } }), acct(), lazy), "sk-fixture-0123456789");
+  assert.equal(asked, 1);
+});
