@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
@@ -127,7 +127,7 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
   const rest = lanes.filter((l) => l.key === "on_fail");
   const side = !phone && (s.kind === "decide" || s.kind === "parallel") && main.length >= 2;
   const laneView = (l: (typeof lanes)[number], wide: boolean) => (
-    <View key={l.key} className={wide ? "min-w-0 flex-1 gap-s1 rounded-card border border-edge bg-surface-2 p-s3" : "ml-s6 gap-s1 border-l-2 border-edge pl-s3"}>
+    <View key={l.key} className={wide ? "w-[360px] flex-none gap-s1 rounded-card border border-edge bg-surface-2 p-s3" : "ml-s6 gap-s1 border-l-2 border-edge pl-s3"}>
           <View className="flex-row items-center gap-s2 pb-s1"><Chip tone={l.key === "else" || l.key === "on_fail" ? "warn" : "accent"}>{l.label}</Chip>{l.key === "on_fail" ? <Text size="caption" tone="label">{s.on_fail?.then === "continue" ? "when it fails, then the Flow carries on" : "when it fails, then the Flow stops"}</Text> : s.kind === "decide" && l.key === "then" ? <Text size="caption" tone="label">when the condition holds</Text> : s.kind === "decide" && l.key === "else" ? <Text size="caption" tone="label">when it does not</Text> : null}</View>
           <Lane lane={{ parent: s.id, key: l.key }} steps={laneSteps(s, l.key)} ctx={ctx} root={root} inHandler={inHandler || l.key === "on_fail"} />
         </View>
@@ -141,9 +141,9 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
       </StepCard>
       {side ? (
-        <View className="ml-s6 flex-row items-start gap-s3 pb-s3">
+        <ScrollView horizontal showsHorizontalScrollIndicator={main.length > 2} className="ml-s6 flex-none grow-0" contentContainerStyle={{ gap: 12, paddingBottom: 12, alignItems: "flex-start" }}>
           {main.map((l) => laneView(l, true))}
-        </View>
+        </ScrollView>
       ) : null}
       {(side ? rest : lanes).map((l) => laneView(l, false))}
       {s.kind === "parallel" && !readOnly ? (
