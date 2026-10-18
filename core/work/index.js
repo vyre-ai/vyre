@@ -262,9 +262,9 @@ export default {
       input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { kernelOf(); return { muted: chatPrefsOf().isMuted(String(i.person), String(i.chat)) }; } });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
-      input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" }, kind: { type: "string", enum: ["stages", "client", "ongoing", "simple"] } }, ["name"]),
+      input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" }, kind: { type: "string", enum: ["stages", "client", "ongoing", "simple"] }, stages: { type: "array", items: { type: "string" } } }, ["name"]),
       run: async (input, extra) => {
-        const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug, kind: input.kind });
+        const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug, kind: input.kind, stages: input.stages });
         return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope, kind: rec.data.kind ?? "simple" };
       },
     });

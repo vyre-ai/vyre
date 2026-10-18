@@ -146,7 +146,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const name = String(i.name || "").trim();
     if (!name) throw fail("bad_input", "name the project");
     const k = kernel(), h = hub();
-    const made = await h.createProject(chain, { name, repo: i.repo, client: i.client, slug: i.slug, ...(o.markerBy ? { markerBy: o.markerBy } : {}) });
+    const made = await h.createProject(chain, { name, repo: i.repo, client: i.client, slug: i.slug, kind: "stages", ...(o.markerBy ? { markerBy: o.markerBy } : {}) });
     const first = body.stages[0].name;
     const lead = (body.roles || []).find((/** @type {any} */ r) => r.lead && r.agent);
     const proj = await k.records.update(chain, "project", made.id, {

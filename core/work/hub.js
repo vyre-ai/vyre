@@ -26,6 +26,10 @@ const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED =
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
 /** How a project runs (records/core-types.js): chosen at New project; the Personal project has none. */
 const PROJECT_KINDS = ["stages", "client", "ongoing", "simple"];
+/** A Stages project pins its stage names the way a playbook project does (kernel/flows/stages.js reads `template_snapshot`) and sits in the first. @param {readonly string[]} names */
+const stageFields = (names) => ({ template_snapshot: JSON.stringify({ name: "Stages", stages: names.map((name) => ({ name })) }), template_stage: names[0] });
+/** The stages a Stages project starts with when none are named; the person edits them. */
+export const DEFAULT_STAGES = Object.freeze(["Brief", "Draft", "Review", "Launch", "Wrap up"]);
 const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope", "personal_of"], [CHAT]: ["chat", "people", "agents", "former", "started", "last_active", "status", "drive", "location"] };
 /** The only part of the Drive the hub ever moves. */
 const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
@@ -54,14 +58,15 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return id ? { actor: { kind: "person", id: String(id), space: kernel.space } } : null;
   };
   /** @param {any} caller the chain the record is made under (the person's own); the folder marker is the service's */
-  async function createProject(caller, { name, repo, client, slug, personal_of, owner, markerBy, kind }) {
+  async function createProject(caller, { name, repo, client, slug, personal_of, owner, markerBy, kind, stages }) {
     const nm = String(name || "").trim();
     if (!nm || nm.length > 120) throw Object.assign(new Error("a project has a name of up to 120 characters"), { code: "bad_input" });
     if (kind !== undefined && !PROJECT_KINDS.includes(kind)) throw Object.assign(new Error(`a project runs as ${PROJECT_KINDS.join(", ")}`), { code: "bad_input" });
+    if (stages !== undefined && (kind !== "stages" || !Array.isArray(stages) || stages.length < 1 || stages.length > 12 || stages.some((x) => typeof x !== "string" || !x.trim() || x.trim().length > 60 || x !== x.trim()) || new Set(stages).size !== stages.length)) throw Object.assign(new Error("a Stages project names 1 to 12 different stages of up to 60 characters each"), { code: "bad_input" });
     if (slug !== undefined && !(typeof slug === "string" && SLUG_RE.test(slug))) throw Object.assign(new Error("the short name is lower case letters, numbers and dashes"), { code: "bad_input" });
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name; pick another (projects.list shows the taken ones)"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
-    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(kind ? { kind } : {}), ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
+    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(kind ? { kind } : {}), ...(kind === "stages" ? stageFields(stages ?? DEFAULT_STAGES) : {}), ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
       // the person who makes a project owns it: the Project's own files open for its owner and its team (kernel/gateway/project-members.js), so a project nobody owned would have files nobody could open
       ...(ownerOf(caller, owner) ? { owner: ownerOf(caller, owner) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
     // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
