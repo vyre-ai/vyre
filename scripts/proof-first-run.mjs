@@ -294,8 +294,8 @@ try {
 
   await run.step(S("create a space: the screen shows one install command with a one-time code"), async () => {
     await drv.click("Create a space");
-    await drv.waitFor("Where should it run?");
-    await drv.click(server === "mac" ? "Always-on Mac" : "Linux server");
+    await drv.waitFor("Connect your server.");
+    await drv.click(server === "mac" ? "macOS" : "Linux");
     await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
     await drv.click("Show the command");
     const t = await drv.waitFor("Waiting for it to come online", 90_000);

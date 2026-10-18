@@ -67,7 +67,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [recovery, setRecovery] = useState(shot?.recovery || "");
   const [paste, setPaste] = useState("");
   const [review, setReview] = useState<Review | null>(shot?.screen === "join.review" ? { link: shot.link || "", role: "member", space: shot.space || "juniper" } : null);
-  const [kind, setKind] = useState<"linux" | "mac" | "">("");
+  const [kind, setKind] = useState<"linux" | "mac" | "">("linux");
   const [command, setCommand] = useState(shot?.command || "");
   const [waitId, setWaitId] = useState("");
   const [online, setOnline] = useState(false);
@@ -457,7 +457,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "create.kind") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Where should it run?" lead="One install command, then this screen waits until it is online." failure={failure}
+      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste one line into it. This screen waits until it is online." failure={failure}
         primary={{ label: "Show the command", disabled: !kind || !usernameOf(space), loading: busy, onPress: () => void run(async () => {
           const wanted = usernameOf(space);
           if (!wanted) { setFailure(SPACE_NAME_SAY.required); return; }
@@ -476,10 +476,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           go("create.wait");
         }) }}>
         <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={usernameOf(space) ? `Its address will be ${usernameOf(space)}.vyre.run` : SPACE_NAME_SAY.required} error={space && !usernameOf(space) ? SPACE_NAME_SAY.required : undefined} />
-        <ChoiceList label="Where it runs" value={kind} onChange={setKind} options={[
-          { value: "linux", title: "Linux server", sub: "A cloud machine or any computer that stays on.", icon: "server" },
-          { value: "mac", title: "Always-on Mac", sub: "A Mac that stays awake.", icon: "laptop" },
-        ]} />
+        <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />
       </FlowStep>
     );
   }

@@ -128,9 +128,8 @@ await walk("new person joins a space", async (t) => {
 await walk("new person creates a space and waits", async (t) => {
   await identity(t);
   await t.pick("Create a space");
-  await t.at("Where should it run?");
-  if (await t.enabled("Show the command")) throw new Error("the command waits until a place is chosen");
-  await t.pick("Linux server");
+  await t.at("Connect your server.");
+  await t.pick("Linux");
   await t.type("Space name", "x");
   await t.sees("Name your space");
   if (await t.enabled("Show the command")) throw new Error("the command waits until the space has a valid name");
