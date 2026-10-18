@@ -46,7 +46,7 @@ export default function ProjectScreen() {
   // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
   const makeTemplate = async (slug: string) => {
     setMaking(true);
-    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Edit it, try it, then publish it.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
+    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Look it over, test it, then go live.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
   };
   const { width } = useWindowDimensions();
   const go = (p: string) => router.push(p as never);
