@@ -502,7 +502,7 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.compile-text": "checks text as a Flow without storing it",
   "flows.graph": "reads a Flow as a graph for the canvas",
   "flows.simulate": "replays recent events through a Flow without doing anything",
-  "flows.step.test": "tries one step of a Flow on a past run of that Flow or on sample values with every action stubbed: nothing is stored, sent or emitted, and a past run is shown only as far as the caller may see it",
+  "flows.step.test": "tries one step of a Flow on a past run of that Flow or on sample values: reads run for real, nothing is stored, sent or emitted, and a past run is shown only as far as the caller may see it",
   "flows.start": "starts a Flow now with an input, under the caller's chain, and an approved Flow only",
   "flows.runs": "lists the recent runs of a Flow",
   "flows.run": "reads one run: trigger, steps and what it did",
