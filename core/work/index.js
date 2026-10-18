@@ -175,10 +175,9 @@ export default {
       // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
       // (a team Space's own record store may still be starting: this is tried again until it is there, not given up on until the next restart)
       const makePersonal = () => hubOf().personalProject().then(() => hubOf().migrateGeneral()).then(() => { ctx.log("work: the Personal project is ready"); });
-      // a first start of Records takes minutes: look again every few seconds (not the minute the pause grows to), so the Personal project is there within seconds of Records being ready
-      void retryWhileAway(makePersonal, { firstMs: 2_000, maxMs: 5_000, said: (m, n) => ctx.log(`work: the Personal project is not made yet (try ${n}): ${m}`) }).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
+      void retryWhileAway(makePersonal, { said: (m, n) => ctx.log(`work: the Personal project is not made yet (try ${n}): ${m}`) }).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
       // the pause between looks grows to a minute: when the store joins, make it at once, so the Personal project is there as soon as Records is
-      try { whenStoreJoins(kernelOf().store, makePersonal); } catch { /* no kernel handle yet: the retry above covers it */ }
+      try { const ks = kernelOf().store; ctx.log(`work: the store ${ks && typeof ks.attached === "function" ? (ks.attached() ? "is attached" : "is still starting; the Personal project is made when it joins") : "has no attach hook; the retry makes the Personal project"}`); whenStoreJoins(ks, makePersonal); } catch { /* no kernel handle yet: the retry above covers it */ }
     }
     // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
     const templatesOf = createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
