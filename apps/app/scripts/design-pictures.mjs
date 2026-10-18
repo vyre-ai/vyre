@@ -28,6 +28,11 @@ const FIX = JSON.parse(fs.readFileSync(fixturesFile, "utf8")).fixtures;
 const ids = Object.keys(FIX).filter((id) => !only.length || only.includes(id));
 const SURFACES = [{ name: "app", w: 1280, form: "full" }, { name: "phone", w: 390, form: "compact" }, { name: "chat", w: 390, form: "glance" }].filter((s) => !surfaceOnly.length || surfaceOnly.includes(s.name));
 const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "light" }];
+// The references are kept under 12 MB (--budget-mb). The update of 17 Oct 2026 drew 14.6 MB, so the paper-theme picture of the heaviest families is not kept: their dark picture still covers every screen once, and
+// a change that only shows in paper is caught on the families that keep both. Dropped, biggest first (size of the paper pictures of the three surfaces together): setup-type-editing 0.46 MB, setup-field-seal 0.33,
+// design-changes 0.33, setup-field-link 0.32, setup-field-choice 0.31, setup-field-errors 0.30, setup-field-access 0.29, record-page 0.26, setup-field-new 0.25, markdown 0.21, assistant-access 0.20 (3.3 MB in all).
+// A family leaves this list only by making room elsewhere. An --update removes the paper references of these families.
+const PAPER_SKIP = new Set(["setup-type-editing", "setup-field-seal", "design-changes", "setup-field-link", "setup-field-choice", "setup-field-errors", "setup-field-access", "record-page", "setup-field-new", "markdown", "assistant-access"]);
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
@@ -82,7 +87,11 @@ const open = async (s, t) => {
   if (!browser.isConnected()) browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: s.w, height: 1400 }, colorScheme: t.scheme, reducedMotion: "reduce", deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("pageerror", (e) => {
+    // A web build is minified: say where the error was thrown, with the code around it, so a fixture that does not render can be read.
+    let where = ""; try { const m = /(\/_expo\/[^\s:()]+\.js):(\d+):(\d+)/.exec(String(e.stack || "")); if (m) { const line = fs.readFileSync(path.join(dist, m[1]), "utf8").split("\n")[Number(m[2]) - 1] || ""; where = ` @ ${m[1].split("/").pop()}:${m[2]}:${m[3]} «${line.slice(Math.max(0, Number(m[3]) - 140), Number(m[3]) + 60)}»`; } } catch { /* no source to read */ }
+    errors.push(String(e) + where);
+  });
   // The static server answers index.html for the service worker's script path: a harness artefact, not the screen's.
   page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text()); });
   return { ctx, page };
@@ -108,7 +117,7 @@ const shoot = async (cur, s, t, id) => {
       }
       await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
       const el = page.locator("#fixture");
-      if (!(await el.count())) return { missing: true };
+      if (!(await el.count())) { const seen = await page.evaluate(() => `${location.pathname}${location.search} | ${(document.body.innerText || "").replace(/\s+/g, " ").slice(0, 200)}`).catch(() => "page gone"); errors.push(`page showed: ${seen}`); return { missing: true }; }
       // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same.
       let after = await el.screenshot();
       for (let i = 0; i < 20; i++) { await page.waitForTimeout(250); const next = await el.screenshot(); const still = next.equals(after); after = next; if (still) break; }
@@ -131,10 +140,11 @@ try {
     const cur = await open(s, t);
     for (const id of ids) {
       if (!FIX[id]?.screens?.[s.form]) continue;
+      if (t.name === "paper" && PAPER_SKIP.has(id)) { const old = path.join(refs, id, `${s.name}-paper.png`); if (update && fs.existsSync(old)) fs.rmSync(old); continue; }
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
-      if (got.missing) { row.status = "missing"; row.rules.push("the fixture did not render"); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
+      if (got.missing) { row.status = "missing"; row.rules.push(`the fixture did not render${errors.length ? `: ${errors.slice(0, 2).join(" | ").slice(0, 700)}` : ""}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
       const { after } = got;
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
