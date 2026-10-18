@@ -233,12 +233,13 @@ test("a private note and an outside calendar's event are private on every kernel
   // BEN reads both, and the Space's own events are not touched
   assert.equal((await gw.records.query(gw.serviceChain("planner"), "note", { page: { limit: 50 } })).rows.length, 1, "the planner reads it (a member reads her notes through the planner)");
   assert.equal((await gw.records.query(w.chainOf(BEN), "event", { page: { limit: 50 } })).rows.length, 1);
-  // sharing a note: only its writer, through the planner
-  const item = (await call(BEN, "planner.add", { kind: "note", title: "Shared later", record: contact.urn })).data;
+  // sharing a note: only its writer, through the planner (a member reaches the planner through the owner's door; here the writer is an admin, and the owner and a member are refused)
+  const item = (await call(ZED, "planner.add", { kind: "note", title: "Shared later", record: contact.urn })).data;
   assert.ok(item && item.id, JSON.stringify(item));
-  { const r = await call(ANA, "planner.update", { item: item.id, visibility: "space" }); assert.ok(r.error, `another member cannot share it`); }
-  assert.ok((await call(ZED, "planner.update", { item: item.id, visibility: "space" })).error, "an admin cannot share it");
-  { const mine = await call(BEN, "planner.update", { item: item.id, visibility: "space" }); assert.ok(!mine.error, `its writer can: ${JSON.stringify(mine.error)}`); }
-  const ana = await call(ANA, "planner.update", { item: item.id, title: "hijack" }); assert.ok(ana.error, "another member cannot edit it either");
+  const owner = await call(w.OWNER, "planner.update", { item: item.id, visibility: "space" });
+  assert.ok(owner.error && /writes|wrote|not_found|no such/i.test(JSON.stringify(owner.error)), `the owner cannot share another person's note: ${JSON.stringify(owner)}`);
+  assert.ok((await call(ANA, "planner.update", { item: item.id, visibility: "space" })).error, "a member cannot share it");
+  assert.ok((await call(w.OWNER, "planner.update", { item: item.id, title: "hijack" })).error, "and the owner cannot edit another person's private note");
+  { const mine = await call(ZED, "planner.update", { item: item.id, visibility: "space" }); assert.ok(!mine.error, `its writer can: ${JSON.stringify(mine.error)}`); }
   assert.ok(note.urn);
 });
