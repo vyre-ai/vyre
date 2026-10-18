@@ -43,7 +43,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  * The outside things the space steps need (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
- * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, forget: (box: string) => Promise<void> }} SpacePorts
+ * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
@@ -543,6 +543,19 @@ export function createHost(o) {
     },
 
     // Join a space with the role on the link; the space is then added to this username's list in the directory (so GitHub sign-in finds it), as on create. The list line is best effort once the person is a member.
+    // Asking to join a Space by its address (no invite): the answer is the home's own, one of waiting, approved (with the link to join by), not accepted, or the closed words. Only what the home says comes back.
+    "onboard.space.ask": async ({ address, note }) => {
+      const { k, ports, key } = await spaceCtx();
+      if (!ports.ask) throw unsupported();
+      const r = await ports.ask(String(address || ""), String(note || "").slice(0, 200), { id: k.id, name: k.username, pin: k.pin, key });
+      return { state: String((r && r.state) || "closed"), ...(r && typeof r.words === "string" ? { words: r.words.slice(0, 120) } : {}), ...(r && typeof r.label === "string" ? { label: r.label.slice(0, 80) } : {}), eid: String(key && key.eid || "") };
+    },
+    "onboard.space.ask.status": async ({ address }) => {
+      const { k, ports, key } = await spaceCtx();
+      if (!ports.askStatus) throw unsupported();
+      const r = await ports.askStatus(String(address || ""), { id: k.id, name: k.username, pin: k.pin, key });
+      return { state: String((r && r.state) || "closed"), ...(r && typeof r.words === "string" ? { words: r.words.slice(0, 120) } : {}), ...(r && typeof r.link === "string" && /^https:\/\/[a-z0-9-]+\.vyre\.run\/join\/inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(r.link) ? { link: r.link } : {}), eid: String(key && key.eid || "") };
+    },
     "onboard.space.join": async ({ link }) => {
       const { k, ports, key } = await spaceCtx();
       if (!ports.join) throw unsupported();

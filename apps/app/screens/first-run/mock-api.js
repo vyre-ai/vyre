@@ -111,6 +111,16 @@ export async function currentAssistant() {
   return { ok: true, assistant: { name: "Juno", look: "s2~c3~e1~m0~t1~b0~h2" } };
 }
 
+/** @param {{ address: string }} input */
+export async function askJoin(input) {
+  return { ok: true, state: "waiting", label: input.address, eid: "e".repeat(26) };
+}
+
+/** @param {{ address: string }} input */
+export async function askJoinStatus(input) {
+  return { ok: true, state: "waiting", label: input.address, eid: "e".repeat(26) };
+}
+
 export async function listCopyable() {
   return { ok: true, from: "Juniper Studio", accounts: [{ id: "a1", label: "Claude Work", provider: "claude", copy: true }, { id: "a2", label: "Codex", provider: "codex", copy: false }] };
 }
