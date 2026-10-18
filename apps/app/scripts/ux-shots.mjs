@@ -70,7 +70,9 @@ try {
       errors = [];
       await page.goto(base + route, { waitUntil: "load" }).catch(() => {});
       await page.waitForLoadState("networkidle").catch(() => {});
-      await page.waitForTimeout(700);
+      // the first-run screens draw under the app's splash for a moment: wait for a heading (or the hero's sign-in field) before the picture
+      if (route.startsWith("onboard")) await page.locator('[role=heading], input[aria-label="Space name"]').first().waitFor({ timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(route.startsWith("onboard") ? 1800 : 700);
       const f = await page.evaluate(facts).catch(() => ({}));
       const file = `${s.n}-${theme}-${name(route)}${tag}.png`;
       await page.screenshot({ path: path.join(out, file), fullPage: true }).catch(() => {});
