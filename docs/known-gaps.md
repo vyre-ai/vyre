@@ -28,6 +28,10 @@ A list or a search of a type whose rows are private by project looks through up 
 
 When the lease of a computer lent to a Space ends, the workspace key is removed at once, but a process that still holds a file open can read that file until it exits, and whoever uses that computer can read through it. Normal sessions stop within a moment. A full fix that stops every holder before reporting the workspace locked comes in the next update.
 
+### Records takes a while to set up on a new Linux server
+
+On a new Linux server, Records takes about 10 to 13 minutes to set up the first time. Records and Projects say it is setting up and get ready by themselves. A faster start comes in the next update.
+
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.
