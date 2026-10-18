@@ -168,7 +168,7 @@ export function stepSummary(s, o, d) {
 }
 
 /** ", checked by X, followed by N" for a step that has them. @param {DraftStep} s @param {Options} o */
-const crew = (s, o) => `${s.checker ? `, checked by ${whoWords(s.checker, o)}${String(s.checker).startsWith("agent:") ? ", not a person" : ""}` : ""}${Array.isArray(s.followers) && s.followers.length ? `, followed by ${s.followers.length === 1 ? whoWords(s.followers[0], o) : `${s.followers.length} others`}` : ""}`;
+const crew = (s, o) => `${s.reviewer ? `, reviewed by ${whoWords(s.reviewer, o)}` : ""}${s.checker ? `, checked by ${whoWords(s.checker, o)}${String(s.checker).startsWith("agent:") ? ", not a person" : ""}` : ""}${Array.isArray(s.followers) && s.followers.length ? `, followed by ${s.followers.length === 1 ? whoWords(s.followers[0], o) : `${s.followers.length} others`}` : ""}`;
 
 /** @param {string | undefined} ref "trigger" or a step id @param {Draft} [d] @param {Options} [o] */
 export function linkWords(ref, d, o) {
@@ -645,7 +645,10 @@ export const FORMULA_HASH = "7qwxhVRKeL6pL4KISfzabcHuuGGlWbVtqWloRYyYn_c";
 /** The approver, the followers and what they are told, as the stored step has them. @param {DraftStep} s */
 export function peopleOf(s) {
   const notes = { ...(s.approverNote && s.approverNote.trim() ? { approver: s.approverNote } : {}), ...(s.followerNote && s.followerNote.trim() ? { followers: s.followerNote } : {}) };
-  return { ...(s.checker ? { checker: doer(s.checker) } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
+  const words = (/** @type {any} */ t) => String(t || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20);
+  const slot = (/** @type {string} */ who, /** @type {any} */ skills, /** @type {any} */ ins, /** @type {any} */ due, /** @type {any} */ extra) => ({ who: doer(who), ...(words(skills).length ? { skills: words(skills) } : {}), ...(String(ins || "").trim() ? { instructions: String(ins).trim() } : {}), ...(String(due || "").trim() ? { due: String(due).trim() } : {}), ...extra });
+  const rich = !!(s.approverSkills || s.approverInstructions || s.approverDue || s.quorum === "all");
+  return { ...(s.reviewer ? { reviewer: slot(s.reviewer, s.reviewerSkills, s.reviewerInstructions, s.reviewerDue, {}) } : {}), ...(s.checker && rich ? { approver: slot(s.checker, s.approverSkills, s.approverInstructions, s.approverDue, s.quorum === "all" ? { quorum: "all" } : {}) } : {}), ...(s.checker && !rich ? { checker: doer(s.checker) } : {}), ...((s.reviewer || s.checker) && s.escalateTo ? { escalate_to: s.escalateTo } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
 }
 
 /** A draft trigger as stored. @param {Trigger} t */
@@ -818,8 +821,19 @@ export const SPECIAL_ACTIONS = new Set(SPECIAL_BUILDER_ACTIONS);
 /** @param {any} o */
 const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
 
+/** The reviewer and approver slots of a stored step as draft fields; a legacy `checker` reads as the approver. @param {any} s */
+const slotsFrom = (s) => {
+  const back = (/** @type {string} */ v) => (v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
+  const r = s.reviewer, a = s.approver;
+  return {
+    ...(r && typeof r.who === "string" ? { reviewer: back(r.who), ...(r.skills ? { reviewerSkills: r.skills.join(", ") } : {}), ...(r.instructions ? { reviewerInstructions: r.instructions } : {}), ...(r.due ? { reviewerDue: r.due } : {}) } : {}),
+    ...(a && typeof a.who === "string" ? { checker: back(a.who), ...(a.skills ? { approverSkills: a.skills.join(", ") } : {}), ...(a.instructions ? { approverInstructions: a.instructions } : {}), ...(a.due ? { approverDue: a.due } : {}), ...(a.quorum === "all" ? { quorum: "all" } : {}) } : {}),
+    ...(typeof s.escalate_to === "string" ? { escalateTo: s.escalate_to } : {}),
+  };
+};
+
 /** @param {any} s */
-const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
+const peopleFrom = (s) => ({ ...slotsFrom(s), ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
@@ -936,10 +950,10 @@ function stepFromKind(s) {
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && outputFrom(s.output) !== null && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && outputFrom(s.output) !== null && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "reviewer", "approver", "escalate_to", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
         ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...outputFrom(s.output), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "reviewer", "approver", "escalate_to", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "form", "record"]) && (s.record === undefined || refOf(s.record)) && (s.form === undefined || formFrom(s.form) !== null) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.form ? { form: formFrom(s.form) } : {}) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});

@@ -100,3 +100,21 @@ test("a step turned off keeps enabled false and stays an editable step", () => {
   const on = { ...d, steps: [{ ...d.steps[0], enabled: undefined }] };
   assert.equal("enabled" in toDefinition(on, O).steps[0], false, "turned on again, the key goes");
 });
+
+test("an assign step keeps its reviewer and approver slots, and a plain checker stays a checker", () => {
+  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it" };
+  const rich = { ...base, reviewer: { who: "per_bo", skills: ["voice"], instructions: "Plain words", due: "2 days" }, approver: { who: "per_ana", quorum: "all" }, escalate_to: "role:admins" };
+  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [rich] });
+  assert.equal(d.steps[0].kind, "assign", "not an Advanced step");
+  assert.equal(d.steps[0].reviewer, "per_bo");
+  assert.equal(d.steps[0].reviewerSkills, "voice");
+  assert.equal(d.steps[0].checker, "per_ana");
+  assert.equal(d.steps[0].quorum, "all");
+  const back = toDefinition(d, O).steps[0];
+  assert.deepEqual(back.reviewer, rich.reviewer);
+  assert.deepEqual(back.approver, rich.approver);
+  assert.equal(back.escalate_to, "role:admins");
+  assert.equal(back.checker, undefined);
+  const plain = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, checker: "per_ana" }] });
+  assert.equal(toDefinition(plain, O).steps[0].checker, "per_ana");
+});

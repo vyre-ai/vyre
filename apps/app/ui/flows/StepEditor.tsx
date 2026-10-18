@@ -152,9 +152,26 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                 <View className="gap-s3 border-t border-edge pt-s3">
                   <Select label="What comes back" value={s.output ?? "note"} options={OUTPUTS} onChange={(output) => setStep(s.id, { output })} />
                   {TARGETED.has(s.output) ? <Field label={s.output === "fields" ? "Fields to fill in on the record" : s.output === "file" ? "Folder for the file (optional)" : "Name of the draft (optional)"} value={s.outputTarget ?? ""} onChangeText={(outputTarget) => setStep(s.id, { outputTarget })} placeholder={s.output === "fields" ? "For example status, owner" : s.output === "file" ? "For example contracts/signed" : "For example welcome"} help={s.output === "fields" ? "Separated by commas. The task is done when they are filled in." : undefined} /> : null}
-                  <Text strong>Who checks it and who follows it</Text>
+                  <Text strong>Who reviews it, who approves it and who follows it</Text>
+                  <Select label="Reviewer (optional): checks the work against the skills" value={s.reviewer ?? ""} options={[["", "No review"], ...whoChoices(options)]} onChange={(reviewer) => setStep(s.id, { reviewer: reviewer || undefined })} />
+                  {s.reviewer ? (
+                    <>
+                      <Field label="Skills the reviewer checks against (optional)" value={s.reviewerSkills ?? ""} onChangeText={(reviewerSkills) => setStep(s.id, { reviewerSkills })} placeholder="For example voice, accuracy" help="Space skills, separated by commas. Each skill's checklist is what they tick." />
+                      <ContextBox label="Instructions for the reviewer" value={s.reviewerInstructions ?? ""} onChange={(reviewerInstructions) => setStep(s.id, { reviewerInstructions })} options={options} placeholder="What to look for" />
+                      <Field label="Review due in (optional)" value={s.reviewerDue ?? ""} onChangeText={(reviewerDue) => setStep(s.id, { reviewerDue })} placeholder="For example 2 days" />
+                    </>
+                  ) : null}
                   <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
                   {s.checker ? <ContextBox label="Note for the approver" value={s.approverNote ?? ""} onChange={(approverNote) => setStep(s.id, { approverNote })} options={options} placeholder="What to check" /> : null}
+                  {s.checker ? (
+                    <>
+                      <Field label="Skills the approver checks against (optional)" value={s.approverSkills ?? ""} onChangeText={(approverSkills) => setStep(s.id, { approverSkills })} placeholder="For example contracts" help="Space skills, separated by commas." />
+                      <ContextBox label="Instructions for the approver" value={s.approverInstructions ?? ""} onChange={(approverInstructions) => setStep(s.id, { approverInstructions })} options={options} placeholder="What a yes means" />
+                      <Field label="Approval due in (optional)" value={s.approverDue ?? ""} onChangeText={(approverDue) => setStep(s.id, { approverDue })} placeholder="For example 2 days" />
+                      <Select label="If the approver is a team or role" value={s.quorum ?? "any"} options={[["any", "Any one of them"], ["all", "All of them"]]} onChange={(quorum) => setStep(s.id, { quorum: quorum === "all" ? "all" : undefined })} />
+                    </>
+                  ) : null}
+                  {s.reviewer || s.checker ? <Select label="If no one acts in time, pass it to (optional)" value={s.escalateTo ?? ""} options={[["", "No one"], ...whoChoices(options).filter(([v]) => !v.startsWith("agent:"))]} onChange={(escalateTo) => setStep(s.id, { escalateTo: escalateTo || undefined })} /> : null}
                   <Followers s={s} options={options} onChange={(patch) => setStep(s.id, patch)} />
                   <Text size="caption" tone="label">All of them see it in their Now: to do, to approve, following. An agent can check internal work; anything that goes out still waits for a person.</Text>
                 </View>
