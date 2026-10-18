@@ -10,6 +10,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - refactor(kernel): checkOutput moves from kernel/tasks/tasks.js to kernel/tasks/output-check.js, and store/query.js, tasks/output-check.js and modules/probe.js are named not-base in kernel/size.test.js (sec53 signed each, 19 Oct 2026). Behaviour is unchanged; the trusted base falls from 9972 to 9771 lines.
 - fix(reach): flows.step.test has its reason in test/reach-anyone.json.
+- fix(records): an edit made inside Twenty is reported once. When the webhook and a read noticed the same edit together, both tried to give it the next version; the one that lost the compare-and-set still wrote a second change-log entry. It now reads the row again and settles that, and only the winner reports.
 
 - refactor(modules): the registry's input check (checkInput) moves to core/modules/check-input.js and is re-exported from core/modules/index.js, so index.js is under its size cap again (2007 lines). No change in behaviour.
 
