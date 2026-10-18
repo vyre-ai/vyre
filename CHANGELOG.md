@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(tests): the node reds on the vault, kernel and documents files. vault.person.of is recorded as needing no presence (a name and a verified flag, no value, owner-only by reach); dev-sign-proof's sample covers vaultAddKey and vaultAddKeys; member-endpoints.js and host-core.js are registered in kernel/door/sinks.json as not inference (an address list and address checks, no provider request); documents.signing.status has a description under the 25-word cap.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
 - perf(records): the store asks Twenty for one throwaway list as soon as Records is ready, so the first list a person opens is not the cold one (about 316 ms against 41 ms warm in the perf run).
 - test(records): perf-twenty.yml (stores/twenty/live/perf-live.mjs) times a list of 50 rows, get, create, update, a view switch, search and defining one field through the kernel gateway on a real Twenty (p50 and p95 over 20 runs, a new Space's saved database) and prints the Twenty containers' memory after they settle.
