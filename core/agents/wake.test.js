@@ -214,6 +214,7 @@ test("agents.wake for a round: a title that tries to close the fence stays insid
     assert.ok(!/<b>|<\/b>/.test(p), `${slot}: no raw tag characters from the title`);
     assert.match(p, /Record: vyre:\/\/s\/project\/p1 \/information x/, `${slot}: the record address is cleaned`);
   }
+  await call("agents.wake-done", { task: "t9", slots: true }, "module:vyred");   // the earlier rounds are over, so the agent's cap on open jobs is not what this part tests
   // LIKE wildcards in a task id: a_b must not count axb's rounds
   for (const k of ["a_b#reviewer:1", "a_b#reviewer:2", "axb#reviewer:1", "a%#reviewer:1"]) await call("agents.wake", { task: k, task_id: k.split("#")[0], slot: "reviewer", agent: "rev", title: "t" }, "module:vyred");
   assert.equal((await call("agents.wake-rounds", { task: "a_b" }, "module:vyred")).data.rounds, 2);
