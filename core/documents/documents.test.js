@@ -32,7 +32,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
   /** @type {Map<string, any>} */ const tools = new Map();
   const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
   const ctx = { config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
-    kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
+    kernel: { space: SPACE, owner: "per_alex", membership: async (/** @type {string} */ p) => ({ role: p === "per_alex" ? "owner" : p === "per_admin" ? "admin" : "member" }), for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
   return { run, files, made, tools, emitted };
@@ -425,4 +425,15 @@ test("member access to a request: only the sender (and the owner) may open it; a
 
   const oldMember = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_old", space: SPACE } }] }, call, made });
   assert.equal((await code(oldMember.run("documents.signing.status", { submission: 7 }, { caller: "cli" })))?.code, "not_found", "a member with no record for an old request gets not_found");
+});
+
+test("an admin sees the requests the owner may see; a plain member with no record does not", async () => {
+  const made = /** @type {any[]} */ ([]);
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => tool === "appmods.signing.request" ? { submission: 52, url: "u" } : tool === "appmods.signing.status" ? { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } } : {};
+  const sender = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_mia", space: SPACE } }] }, call, made });
+  await sender.run("documents.send", { template_id: 3, email: "sam@example.com" }, { caller: "cli" });
+  const admin = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_admin", space: SPACE } }] }, call, made });
+  assert.equal((await admin.run("documents.signing.status", { submission: 52 }, { caller: "cli" })).status.submission, 52, "an admin opens any request");
+  const plain = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_pat", space: SPACE } }] }, call, made });
+  assert.equal((await code(plain.run("documents.signing.status", { submission: 52 }, { caller: "cli" })))?.code, "not_found", "a plain member does not");
 });
