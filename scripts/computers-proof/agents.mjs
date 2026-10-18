@@ -100,8 +100,10 @@ try {
     console.log("--- id and limits of the browser uid\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "id; ulimit -a | head -20; df -h /dev/shm | tail -1; ls -ld /var/lib/vyre/browsers/agb21000 /var/lib/vyre/browsers/agb21000/profile 2>&1"]));
   }
   check(a !== null, "agent A's Chrome answers over its debugging pipe");
-  await a.send("Network.setCookie", { name: "proof_login", value: "signed-in-1", url: "https://example.com/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true });
-  const before = (await a.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => c.name);
+  // the link is the browser target, which has no Network domain: cookies are read and written through Storage
+  const cookiesOf = async c => (await c.send("Storage.getCookies", {})).cookies.filter(x => x.domain.replace(/^\./, "") === "example.com");
+  await a.send("Storage.setCookies", { cookies: [{ name: "proof_login", value: "signed-in-1", domain: "example.com", path: "/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true }] });
+  const before = (await cookiesOf(a)).map(c => c.name);
   check(before.includes("proof_login"), "a persistent cookie is set in A's Chrome", before);
   await a.close(); adapter.drop("a");
 
@@ -111,11 +113,11 @@ try {
   let a2 = null;
   for (let i = 0; i < 30 && !a2; i++) { try { a2 = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
   check(a2 !== null, "A's Chrome answers again after waking");
-  const after = (await a2.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => `${c.name}=${c.value}`);
+  const after = (await cookiesOf(a2)).map(c => `${c.name}=${c.value}`);
   check(after.includes("proof_login=signed-in-1"), "the login survived the computer sleeping and waking", after);
 
   const b = await connect("b");
-  const bCookies = (await b.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => c.name);
+  const bCookies = (await cookiesOf(b)).map(c => c.name);
   check(!bCookies.includes("proof_login"), "agent B's Chrome does not have A's login", bCookies);
 
   // (3) strangers and the other agent
