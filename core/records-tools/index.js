@@ -11,6 +11,7 @@ import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
 import { registerPipeline } from "./pipeline.js";
 import { registerRelationships } from "./relationship.js";
+import { registerLayouts } from "./layout.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
@@ -180,6 +181,7 @@ export default {
     registerPipeline({ tool, obj, str, refuse, parseUrn });
     registerRelationships({ tool, obj, str, refuse, parseUrn });
     registerQuick({ tool, obj, str, refuse, parseUrn });
+    registerLayouts({ tool, obj, str, refuse });
     // ---- what links to a record, and the Kits this build ships ----
     tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {
       parseUrn(i.urn);
