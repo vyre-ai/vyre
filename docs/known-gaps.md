@@ -171,3 +171,11 @@ A skill a member uploads is text from outside, read strictly and kept as a draft
 What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
 
 Owner: comp6 with sec53.
+
+## A member of a joined team sees her home notes in Records, not the team's
+
+Notes are the planner's Note type. A person who joined a team Space reaches the planner through her own home, because the member door has no planner calls yet. So the Notes tab in the team's Records shows the notes in her home planner, and a note she writes or shares there lives in her home, not in the team. On a server where she calls the planner directly (the owner, an admin, or a member working on that server) notes are private to their writer, shared with a record, or shared with the Space, as designed.
+
+What to do: write a note that the team should read in the team's own Records on the server, or in a chat. The Notes tab says plainly that a joined member is looking at her home notes.
+
+Owner: flow6b with sec53. Planned for 0.6.3: planner.serve, the member door's notes calls.
