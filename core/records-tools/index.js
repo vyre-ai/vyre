@@ -16,6 +16,7 @@ import { registerLayouts } from "./layout.js";
 import { registerHistory } from "./history.js";
 import { registerVisibility } from "./visibility.js";
 import { registerTypeSettings } from "./type-settings.js";
+import { registerRoles } from "./roles.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
@@ -195,6 +196,7 @@ export default {
     registerHistory({ tool, obj, str, refuse, parseUrn });
     registerVisibility({ tool, obj, str, refuse, parseUrn });
     registerTypeSettings({ tool, obj, str, refuse });
+    registerRoles({ tool, obj, str, refuse, parseUrn });
     registerRollups({ tool, obj, str, refuse });
     // ---- what links to a record, and the Kits this build ships ----
     tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {

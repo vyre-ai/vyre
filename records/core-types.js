@@ -384,13 +384,40 @@ export const DEAL = {
 /** A note on a record (core/records-tools/history.js): private to its writer until shared. `visibility` is private, record (everyone who can read the record) or space. */
 export const NOTE_VISIBILITY = ["private", "record", "space"];
 export const NOTE = {
-  hidden_in_records: true, name: "record-note", label: "Note", icon: "IconNote",
+  hidden_in_records: true, name: "record-note", label: "Logged note", icon: "IconNote",
   fields: [
     f("rich_text", "body", "Note", { required: true }),
     f("link", "record", "About"),
     choice("visibility", "Who can read it", NOTE_VISIBILITY, { required: true }),
   ],
 };
+
+/**
+ * What a contact or an organization is to the Space, as role types (kernel: a type marked `role`; one row per role a holder has, each with its own stage). A person can be a Lead and a Client at once. The names carry
+ * a `role-` prefix so a Kit's own `lead` stays its own. The Space edits the list and the stages like any other type (records.pipeline.set, records.type.update); records.role.set puts a role on a record.
+ * @param {string} name @param {string} label @param {"contact" | "organization"} holder @param {string} color @param {{ name: string, probability?: number }[]} [stages] @param {string[]} [ended]
+ */
+const roleType = (name, label, holder, color, stages = [], ended = []) => ({
+  // the type's label is unique in a Space (a person's define refuses a second type with the same words, and a Kit may have its own Lead); `role_label` is what the screens call the role
+  name, label: `${label} role${holder === "organization" && /^(Vendor|Partner)$/.test(label) ? " (company)" : ""}`, role_label: label, icon: "IconTag", color, hidden_in_records: true, role: { link: "holder", ...(ended.length ? { ended } : {}) },
+  fields: [
+    f("link", "holder", holder === "contact" ? "Person" : "Company", { to: holder, required: true }),
+    ...(stages.length ? [f("stage", "stage", "Stage", { options: stages.map((s) => s.name) })] : []),
+    f("date", "since", "Since"),
+    text("note", "Note"),
+  ],
+  ...(stages.length ? { stages } : {}),
+});
+export const ROLE_TYPES = Object.freeze([
+  roleType("role-lead", "Lead", "contact", "orange", [{ name: "New" }, { name: "Talking" }, { name: "Won" }, { name: "Lost" }], ["Won", "Lost"]),
+  roleType("role-client", "Client", "contact", "green", [{ name: "Active" }, { name: "Past" }], ["Past"]),
+  roleType("role-partner", "Partner", "contact", "purple"),
+  roleType("role-vendor", "Vendor", "contact", "red"),
+  roleType("role-teammate", "Teammate", "contact", "blue"),
+  roleType("role-customer", "Customer", "organization", "green"),
+  roleType("role-org-vendor", "Vendor", "organization", "red"),
+  roleType("role-org-partner", "Partner", "organization", "purple"),
+]);
 
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
@@ -400,4 +427,4 @@ export const RECORD_LAYOUT = {
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
 const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, NOTE].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, NOTE, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));

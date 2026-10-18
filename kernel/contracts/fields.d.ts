@@ -155,6 +155,8 @@ export interface TypeDefinition {
   /** Presentation only (core/records-tools/type-settings.js): a colour name or hex, whether Records leaves the type out of its own list, and the colours of a choice or stage field's options. */
   readonly color?: string;
   readonly hidden_in_records?: boolean;
+  /** What the screens call a role type ("Lead" for the type labelled "Lead role"); roles only. */
+  readonly role_label?: string;
   readonly option_colors?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
