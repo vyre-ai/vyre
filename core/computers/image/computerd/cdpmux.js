@@ -313,7 +313,7 @@ export class CdpMux {
     // rename Downloads there for a symlink into browser's own profile home, which Chrome would
     // then follow. /var/lib/vyre/browser/downloads is browser-owned, mode 2750 (entrypoint.sh) --
     // Chrome writes into it as browser, the agent can list and read but never rename or replace it.
-    this.downloads = o.downloads || process.env.AGENT_DOWNLOADS || "/home/agent/Downloads";
+    this.downloads = o.downloads || process.env.AGENT_DOWNLOADS || "/var/lib/vyre/browser/downloads";
     /** @type {ContextStore} */
     this.contextStore = o.contextStore || new Map();
     /** @type {Map<string, Promise<string>>} an agent name's Target.createBrowserContext while it

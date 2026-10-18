@@ -95,9 +95,9 @@ RUN groupadd -g 1000 agent \
     && useradd -M -u 1001 -g 1001 -G agent,vyre-bus -s /usr/sbin/nologin -d /var/lib/vyre vyre \
     && groupadd -g 1002 browser \
     && useradd -M -u 1002 -g 1002 -G vyre-bus -s /usr/sbin/nologin -d /var/lib/vyre/browser browser \
-    && mkdir -p /home/agent/.fluxbox /home/agent/Downloads /var/lib/vyre /opt/computerd \
+    && mkdir -p /home/agent/.fluxbox /var/lib/vyre /opt/computerd \
     && chown -R agent:agent /home/agent \
-    && chmod 2775 /home/agent /home/agent/Downloads \
+    && chmod 2775 /home/agent \
     && chown vyre:vyre /var/lib/vyre && chmod 0711 /var/lib/vyre \
     && mkdir -p /var/lib/vyre/browser/chromium /var/lib/vyre/browser/downloads \
     && chown browser:agent /var/lib/vyre/browser && chmod 0750 /var/lib/vyre/browser \

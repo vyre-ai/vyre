@@ -65,12 +65,12 @@ export function asBrowser(u, lim = {}, env = {}) {
   return asUid(b.uid, b.user, b.home, lim, env);
 }
 
-/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number }} lim @param {Record<string, string>} env */
+/** @param {number} uid @param {string} user @param {string} home @param {{ memoryMb?: number, procs?: number, nofile?: number, fsizeMb?: number, cpuSeconds?: number, noAddressCap?: boolean, dataMb?: number }} lim @param {Record<string, string>} env */
 function asUid(uid, user, home, lim, env) {
   const vars = { HOME: home, USER: user, LOGNAME: user, PATH: PATH_SAFE, LANG: "C.UTF-8", ...env };
   const u = { uid };
   return ["/usr/bin/setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs",
-    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
+    "--", "/usr/bin/prlimit", ...(lim.noAddressCap === true ? [`--data=${(lim.dataMb ?? 3072) * 1024 * 1024}`] : [`--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`]), `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
     ...(lim.cpuSeconds ? [`--cpu=${lim.cpuSeconds}`] : []), "/usr/bin/nice", "-n", "5",
     "/usr/bin/env", "-i", ...Object.entries(vars).map(([k, v]) => `${k}=${v}`)];
 }
@@ -115,12 +115,15 @@ export function planStartScreen(u, lim = {}) {
     trusted,
     [...bs(), "/usr/bin/chmod", "0600", b.trusted],
     longRunning([...bs(), "/usr/bin/Xvnc", D, "-geometry", lim.size || "1440x900", "-depth", "24", "-rfbport", "-1", "-rfbunixpath", b.vncSock, "-rfbunixmode", "0600",
-      "-rfbauth", b.vncPass, "-auth", b.trusted, "-SecurityTypes", "VncAuth", "-AlwaysShared"]),
+      "-rfbauth", b.vncPass, "-auth", b.trusted, "-SecurityTypes", "VncAuth", "-AlwaysShared",
+      // the agent's untrusted cookie is an X SECURITY extension authority: without the extension there is no such cookie and the agent has no way onto its own screen (the computer's own Xvnc has it, entrypoint.sh)
+      "+extension", "SECURITY"]),
     untrusted,
     [...bs(), "/usr/bin/chmod", "0640", b.xauth],
     longRunning([...bs(onScreen), "/usr/bin/fluxbox"]),
     // Chrome is started by a holder that keeps Chrome's debugging pipe (no TCP debug port): agentd-chrome.py, with no argument. The profile, the pipe's socket and the memory are the browser uid's too. The profile survives sleep.
-    longRunning([...bs(), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
+    // No address-space cap on Chrome (an explicit noAddressCap only this call sets; RLIMIT_DATA, which counts committed private memory and not Chrome's reservations, bounds it instead): it reserves far more virtual memory than it uses, and under RLIMIT_AS it dies at start (security-live 18 Oct). Its memory is held by the computer's own limit and its process count by --nproc.
+    longRunning([...asBrowser(u, { ...lim, noAddressCap: true }), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
   ];
 }
 
@@ -132,7 +135,13 @@ export function planStopScreen(u) {
   check(u);
   const bs = asBrowser(u), b = browserOf(u);
   // all three are the browser uid's: Chrome first (it ends on SIGTERM and writes its profile; its holder ends with it), then the window manager, then the screen
-  return ["chromium", "fluxbox", "Xvnc"].map(name => [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-x", name]);
+  // First Chrome's holder: it asks Chrome to close itself over the debugging pipe, which writes the profile (a login made in the last 30 s is in it); the wait gives that its few seconds.
+  // Then the plain SIGTERM to whatever is left, the window manager and the screen.
+  return [
+    [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-f", "^/usr/bin/python3 -I /opt/agentd/agentd-chrome.py$"],
+    [...bs, "/usr/bin/sleep", "4"],
+    ...["chromium", "fluxbox", "Xvnc"].map(name => [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-x", name]),
+  ];
 }
 
 /** Empty the agent's home but keep the folder, its owner and its mode: Chrome profile, files and terminal state go. Run as the agent. @param {{ user: string, uid: number, display: number }} u */
