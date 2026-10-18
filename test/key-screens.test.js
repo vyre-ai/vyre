@@ -19,7 +19,6 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^_layout\.tsx$/, "the shell, not a screen"],
   [/^\+not-found\.tsx$/, "the page for an address that matches nothing: a message and a way back, no data"],
   [/^(agents\/index|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page: live status and a conversation entry of their own, owned by the agents team"],
-  [/^apps\.tsx$/, "the Apps place: tiles for the apps this Space has, from the sidebar store's module screens; each app draws its own screens (appmods)"],
   [/^skills\/index\.tsx$/, "the skills library (skills 0.6): drafts, versions and an approve or decline of their own, owned by the skills team; wave 0.6"],
   [/^vaults\.tsx$/, "the Vaults page over vault.named.*: named vaults, who holds each and at what level, with sharing controls of their own, owned by the vault team; wave 0.6"],
   [/^vault-design\.tsx$/, "the vault sharing design page (ShareDesign): the levels Fill in, Read and Edit and rotate shown as the owner shapes them, with its own part and open parameters, owned by the vault team; wave 0.6"],
