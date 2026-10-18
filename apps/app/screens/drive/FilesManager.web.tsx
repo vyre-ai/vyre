@@ -316,7 +316,7 @@ function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: Ret
     <View className="gap-s3">
       <Card>
         <View className="flex-row flex-wrap items-center gap-s2">
-          {!row.dir ? <Button kind="primary" size="sm" label="Ask about this" onPress={() => { void startThread(router, "assistant", `About #${row.name}: `, `About ${row.name}`); }} /> : null}
+          {!row.dir ? <Button kind="primary" size="sm" label="Ask about this" onPress={() => { void startThread(router, "assistant", `#${row.name} `, `About ${row.name}`, row.root === "space" ? [{ kind: "space", id: row.path, name: row.name }] : row.root === "linked" && row.link ? [{ kind: "linked", id: `${row.link}:${row.path}`, name: row.name }] : undefined); }} /> : null}
           {!row.dir && a.share && row.root === "space" ? <Button kind="ghost" size="sm" icon="share" label="Share" onPress={() => { linkCreate(undefined, row.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); }} /> : null}
           {!row.dir && a.download && (row.root === "space" || row.root === "linked") ? <Button kind="ghost" size="sm" icon="download" label="Download" onPress={() => { download(row).catch((e) => showToast(say(e))); }} /> : null}
         </View>

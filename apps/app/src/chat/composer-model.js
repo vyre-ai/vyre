@@ -50,7 +50,7 @@ export function sendIntent({ text, attachments = 0, state }) {
 }
 
 /** @param {"mac" | "server"} where */
-export const runsOnLabel = (where) => (where === "mac" ? "Runs on this Mac" : "Runs on the server");
+export const runsOnLabel = (where) => (where === "mac" ? "Runs on My Computer" : "Runs on Space's Cloud");
 
 export { rankCommands };
 
