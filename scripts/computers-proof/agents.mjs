@@ -258,10 +258,12 @@ try {
   const capsOf = txt => Object.fromEntries(["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"].map(k => [k, ((new RegExp(`^${k}:\\s*(\\S+)`, "m")).exec(txt) || [])[1]]));
   const agentProc = await run(`${AH}/work`, ["/usr/bin/grep", "-E", "^(Cap|NoNewPrivs)", "/proc/self/status"]);
   const agentCaps = capsOf(agentProc.stdout || "");
-  check(Object.values(agentCaps).every(v => v === zero) && /^NoNewPrivs:\s*1$/m.test(agentProc.stdout || ""), "a process agentd starts for the agent holds no capability (inheritable, permitted, effective, bounding, ambient) and has no-new-privileges", { ...agentCaps, out: (agentProc.stdout || "").replace(/\n/g, " | ").slice(-200) });
+  // The bounding set cannot be emptied here (dropping from it needs CAP_SETPCAP, which no computer has), so it stays at the computer's own two bits at most; with nothing permitted, inheritable or ambient and no-new-privileges it grants nothing.
+  const boundOk = v => /^0*[0-9a-f]{0,2}$/.test(String(v)) && (parseInt(v, 16) & ~0xc0) === 0;
+  check(["CapInh", "CapPrm", "CapEff", "CapAmb"].every(k => agentCaps[k] === zero) && boundOk(agentCaps.CapBnd) && /^NoNewPrivs:\s*1$/m.test(agentProc.stdout || ""), "a process agentd starts for the agent holds no capability (inheritable, permitted, effective, ambient; bounding at most the computer's own two) and has no-new-privileges", { ...agentCaps, out: (agentProc.stdout || "").replace(/\n/g, " | ").slice(-200) });
   const cpid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 21000 -x chromium | head -1"]);
   const chromeStatus = shOk(["exec", "-u", "0", CONTAINER, "grep", "-E", "^(Cap|NoNewPrivs)", `/proc/${cpid}/status`]);
-  check(Object.values(capsOf(chromeStatus)).every(v => v === zero) && /^NoNewPrivs:\s*1$/m.test(chromeStatus), "the agent's Chrome (the browser uid, started through agentd) holds no capability and has no-new-privileges", chromeStatus.replace(/\n/g, " | ").slice(-200));
+  check(["CapInh", "CapPrm", "CapEff", "CapAmb"].every(k => capsOf(chromeStatus)[k] === zero) && boundOk(capsOf(chromeStatus).CapBnd) && /^NoNewPrivs:\s*1$/m.test(chromeStatus), "the agent's Chrome (the browser uid, started through agentd) holds no capability and has no-new-privileges", chromeStatus.replace(/\n/g, " | ").slice(-200));
   // sec53: what uid 0 would own if agentd ever became it (no securebits). Root-owned files nobody else may read, on the state volume and the homes; none may hold a token, key or password.
   const rootOwned = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "find /var/lib/vyre /home -xdev -user 0 ! -perm -004 2>/dev/null | head -100"]);
   console.log("--- root-owned files with no world read (state volume and homes)\n" + (rootOwned || "(none)"));
