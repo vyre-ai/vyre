@@ -529,7 +529,8 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t, /**
   const watch = await b.watch("carol", chat.id);
   const say = async (/** @type {string} */ who, /** @type {string} */ text) => { const r = await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work }); assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); };
   const launches = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
-  const answers = () => [...textOf(watch.frames).matchAll(/echo: (.*?) \[pid (\d+)\]/g)].map(m => ({ text: m[1], pid: Number(m[2]) }));
+  // the fake program echoes the whole prompt: a second asker's turn is preceded by the continuation note, so the words asked are the last line
+  const answers = () => [...textOf(watch.frames).matchAll(/echo: ([\s\S]*?) \[pid (\d+)\]/g)].map(m => ({ text: m[1].trim().split("\n").pop() || "", pid: Number(m[2]) }));
   return { w, b, KC, KA, carolsAcct, adasAcct, chat, watch, say, launches, answers, lends, log };
 }
 
