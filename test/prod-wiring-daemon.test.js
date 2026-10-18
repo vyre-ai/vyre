@@ -53,6 +53,7 @@ test("3. the person responsible for an agent can unblock its stuck task without 
   const made = await d.registry.call("agents.create", { name: "juno", kind: "agent", projects: "*" }, "cli", { token });
   assert.equal(made.error, undefined, JSON.stringify(made.error));
   const juno = { kind: "agent", id: "juno", space };
+  await K.gateway.grants.addActor(ownerChain, juno, {});   // an agent is an actor of the Space once it is registered, as the daemon does for a made agent
   const agentChain = K.chains.fromFacts({ kind: "agent_session", agent: "juno", session: "s", thread: "t", vouched: true });
   const given = await ask.request(w.ownerChain, { title: "Look into it", doer: juno, output: { kind: "note" } });
   await ask.start(agentChain, given.id);
