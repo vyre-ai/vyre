@@ -13,6 +13,14 @@
 
 import { KernelError } from "../../kernel/core/errors.js";
 
+/** How a Flow starts, for the member rule: "manual" only when every trigger it has is manual; else the first that is not (a Flow with a list of triggers starts by itself if any of them does). @param {any} flow */
+export function startsBy(flow) {
+  // the union: a stored Flow is not guaranteed to have passed the schema, so a list and a single trigger together are both read
+  const list = [...(flow && Array.isArray(flow.triggers) ? flow.triggers : []), ...(flow && flow.trigger ? [flow.trigger] : [])];
+  const word = (/** @type {any} */ t) => (t && typeof t === "object" ? String(t.on || t.kind || "manual") : t ? String(t) : "manual");
+  return list.map(word).find((/** @type {string} */ w) => w !== "manual") || "manual";
+}
+
 /**
  * How far a member's own approval goes. The product decision is "own-any": her own version, any trigger, AI steps allowed, running with HER authority only (the runner gives a run the chain [automation, approver]);
  * outward steps keep the one-yes floor and the ask goes to her; a Connection step, or an action her role does not hold, is not hers to approve (it stays a draft for an owner or admin, said at approve time).
@@ -221,7 +229,7 @@ async function beyondBound(f, id, version, v, chain, kernel) {
   // A Connection step: the Space's credential is in the Vault, which is the owner's; the vault gate refuses a member's chain unless an item was granted to her. Said now, not at 3 a.m.
   if (Array.isArray(e.services) && e.services.length) return "it calls a Connection, and Connections are the Vault's and the owner's for now";
   if (MEMBER_APPROVAL === "own-manual") {
-    const trigger = flow.trigger && typeof flow.trigger === "object" ? String(flow.trigger.on || flow.trigger.kind || "manual") : flow.trigger ? String(flow.trigger) : "manual";
+    const trigger = startsBy(flow);
     if (trigger !== "manual") return `it starts by itself (${trigger}), and an unattended Flow is an owner's or admin's to approve`;
     if (Array.isArray(e.outward) && e.outward.length) return "it sends or changes something outside";
     if (Array.isArray(e.model_steps) && e.model_steps.length) return "it uses an AI step";
@@ -243,7 +251,7 @@ async function beyondBound(f, id, version, v, chain, kernel) {
 export function approvalNotice(card, flow) {
   const e = card && card.effects ? card.effects : {};
   const lines = ["It runs as you, with your role only: never with the owner's authority."];
-  const trigger = flow && flow.trigger && typeof flow.trigger === "object" ? String(flow.trigger.on || flow.trigger.kind || "manual") : "manual";
+  const trigger = startsBy(flow);
   if (trigger !== "manual") lines.push("It starts by itself. If you leave the team it pauses and the owner is told.");
   if ((Array.isArray(e.model_steps) && e.model_steps.length) || (Array.isArray(e.code) && e.code.length)) lines.push("Its AI steps use the Space's AI credentials and count against the Space's daily allowance (200,000 tokens a day for all Flows together; an owner or admin can change it).");
   if (Array.isArray(e.outward) && e.outward.length) lines.push("Anything it sends or changes outside asks you first, every time.");

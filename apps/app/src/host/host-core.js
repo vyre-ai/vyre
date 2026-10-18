@@ -9,6 +9,7 @@
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
+import { scrub } from "../../../../lib/scrub.js";
 import { lookOf } from "../../ui/chat/agent-look.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
@@ -112,6 +113,7 @@ export function createHost(o) {
     if (typeof a.base_url === "string" && a.base_url && a.base_url !== "https://api.x.ai/v1") return "Add this one by hand.";
     return "";
   };
+  /** @param {any} ports @param {any} box @param {any} space @param {any} i */
   const memberKey = async (ports, box, space, i) => {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
     const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
@@ -123,7 +125,7 @@ export function createHost(o) {
     const ask = (tool, input) => ports.call(tool, { ...(input || {}), ...(space ? { space } : {}) }, box);
     const redact = (/** @type {unknown} */ e) => {
       let said = String((e && /** @type {any} */ (e).message) || "That did not work. Try again.");
-      for (const secret of [i.key, i.password]) if (secret) said = said.split(secret).join("[hidden]");
+      said = scrub(said, [i.key, i.password], { marker: "[hidden]", min: 1 });
       return bad(said.slice(0, 200), e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
     };
     try {
@@ -618,7 +620,7 @@ export function createHost(o) {
       catch (e) {
         // whatever the server or the provider said, the key is never in what is thrown here
         const code = e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed";
-        const said = String((e && /** @type {any} */ (e).message) || "That key could not be added.").split(key).join("[key]").slice(0, 200);
+        const said = scrub(String((e && /** @type {any} */ (e).message) || "That key could not be added."), [key], { marker: "[key]", min: 1 }).slice(0, 200);
         throw bad(said, code);
       }
       return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked), ...(r && typeof r.item === "string" && r.item ? { item: r.item.slice(0, 128) } : {}) };
@@ -695,12 +697,12 @@ export function createHost(o) {
         } else {
           for (const k of keys) {
             try { await ports.call("sessions.accounts.key", { kind: k.kind, key: k.key, label: k.label, name: k.label, ...(k.base_url ? { base_url: k.base_url } : {}) }, dest.box); done.push({ id: k.id, label: k.label, ok: true }); }
-            catch (e) { done.push({ id: k.id, label: k.label, ok: false, why: String((e && /** @type {any} */ (e).message) || "Not added.").split(k.key).join("[key]").slice(0, 120) }); }
+            catch (e) { done.push({ id: k.id, label: k.label, ok: false, why: scrub(String((e && /** @type {any} */ (e).message) || "Not added."), [k.key], { marker: "[key]", min: 1 }).slice(0, 120) }); }
           }
         }
       } catch (e) {
         const said = String((e && /** @type {any} */ (e).message) || "Not added.");
-        const clean = keys.reduce((t, k) => t.split(k.key).join("[hidden]"), said).slice(0, 160);
+        const clean = scrub(said, keys.map((k) => k.key), { marker: "[hidden]", min: 1 }).slice(0, 160);
         if (e && /** @type {any} */ (e).code === "need_password") throw e;
         throw bad(clean, e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
       } finally { keys.length = 0; }

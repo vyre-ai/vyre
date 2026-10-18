@@ -26,6 +26,7 @@ const WHAT = {
   "flows.compile-text": "Check text as a Flow without storing it.",
   "flows.graph": "A Flow as a graph for the canvas.",
   "flows.simulate": "Replay recent events through a Flow without doing anything. With a Flow id and since, also compares with what it really did.",
+  "flows.step.test": "Try one step of a Flow on a past run (run) or sample (sample), changing nothing: answers its input, output and what it would send.",
   "flows.start": "Start a Flow now, with an input.",
   "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
@@ -52,11 +53,11 @@ const WHAT = {
   "flows.rollback": "Go back to an earlier version of a Flow (id, to) in one step: it is approved again by you, nothing is inherited from the old approval. Runs in flight keep their version; retry_failed: true moves failed runs that still match to it. A person's own.",
   "flows.describe": "A Flow (id) or run (run) in a few lines: trigger, one line per step, how it is doing; for a run, where it is.",
   "flows.control": "The Space's switch (running, paused or draining), how many runs are held and why, and how many events were dropped past the cap.",
-  "flows.runs": "Recent runs of a Flow, newest first.",
+  "flows.runs": "Recent runs, newest first. Filter by id (a Flow), state, q (a word), since, until and before; limit is at most 200.",
   "flows.run": "One run: its trigger, its steps, what it did.",
   "flows.budget": "The Space's daily AI allowance for Flow steps and today's use, and the context budget for record context. Reading is anyone's; setting it is flows.budget.set.",
   "flows.budget.set": "Set the Space's daily AI allowance: { tokens_per_day?, context_tokens? }. An owner or an admin, in their own name; an assistant is refused.",
-  "flows.retry": "Retry a failed or paused run from the stopped step. skip: true skips it (value: its replacement output); version: \"latest\" uses the active version.",
+  "flows.retry": "Retry a failed or paused run. from: step id to rerun from (refused if something was sent); skip: true skips it; version: latest.",
   "flows.cancel": "Stop a failed, paused or waiting run for good. Its record stays, marked cancelled. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
   "flows.kit.propose": "Propose a Kit (types, templates, roles, Flows) for approval. The person is asked; nothing installs until they say yes.",
@@ -145,6 +146,15 @@ export default {
             const role = me && f.roleOf ? f.roleOf(me) : "";
             // A chain whose first hop is not a person skips this: that is the host's own service and agent chains only. A member's MCP key chain always starts with the person.
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
+          }
+          if (name === "flows.step.test") {
+            // the hiding is the same flows.run applies for this viewer, worked out here and never taken from the caller
+            const { hide_for: _ignored, ...own } = rest;
+            const first = chain.hops && chain.hops[0] ? chain.hops[0].actor : null, me = first && first.kind === "person" ? String(first.id) : "";
+            const role = me && f.roleOf ? f.roleOf(me) : "";
+            const run = own.run && f.flows.store.getRun ? await f.flows.store.getRun(String(own.run)).catch(() => null) : null;
+            const hf = run ? hideFor(run, me, role === "owner" || role === "admin") : null;
+            return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
           }
           const out = await f.flows.tools[INNER(name)](chain, rest);
           // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow

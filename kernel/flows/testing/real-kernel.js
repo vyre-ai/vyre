@@ -255,6 +255,16 @@ export class RealKernel {
     return t;
   }
 
+  /** The task's doer says no, with a reason (tasks v2 Declined), as the doer's own chain. @param {string} id @param {string} reason */
+  async declineTask(id, reason) {
+    const t = await this.tasksApi.get(this.sysChain(), id);
+    if (!t) throw new Error("no task");
+    const doer = t.doer.kind === "agent" ? this.#sealed([{ actor: t.assigned_by, entered_by: "assignment" }, { actor: this.addActor(t.doer), entered_by: "assignment" }], { trust: "member", red: "internal", source_spaces: [this.space] }, `agent_${t.doer.id}`) : this.as(t.doer);
+    const n = await this.tasksApi.decline(doer, id, reason);
+    await this.pump();
+    return n;
+  }
+
   #evidence(/** @type {any} */ t, /** @type {any} */ r) {
     const u = `vyre://${this.space}/file/${mintUuid()}`;
     switch (t.output.kind) {

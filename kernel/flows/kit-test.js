@@ -6,6 +6,7 @@
 import { checkKit } from "./kits.js";
 import { renderBrief } from "./checklist.js";
 import { holds } from "../../lib/expr/conditions.js";
+import { triggersOf } from "./triggers.js";
 
 const cut = (/** @type {string} */ s, n = 110) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
 
@@ -46,7 +47,7 @@ export async function testKit(o) {
       const merged2 = { ...data, ...(stageField ? { [stageField.name]: next.name } : {}) };
       lines.push(`  ${next.name} needs ${next.enter_if}: ${holds(next.enter_if, merged2) ? "this record meets it" : "this record does not meet it, so the gate would hold here"}.`);
     }
-    for (const f of flows.filter(x => x.trigger && x.trigger.on === "stage" && x.trigger.type === type.name && x.trigger.stage === st.name)) {
+    for (const f of flows.filter(x => triggersOf(x).some(t => t.on === "stage" && t.type === type.name && t.stage === st.name))) {
       counts.flows++;
       const env = { id: `kit-test:${st.name}`, type: "record.stage-entered", subject: `vyre://${merged.space}/${type.name}/sample`, data: { type: type.name, id: "sample", stage: st.name, ...data }, trust: "internal", received_at: o.runner.now(), time: o.runner.now() };
       const sim = await o.runner.simulate({ ...f, authorship: "kit" }, { approver: o.approver, events: [env], limit: 1, cat: merged, softReads: true }).catch((/** @type {any} */ e) => ({ ok: false, errors: [{ message: e instanceof Error ? e.message : String(e) }] }));
@@ -57,8 +58,8 @@ export async function testKit(o) {
       lines.push(`  Flow ${f.name} starts here: ${sim.matched ? `${(t.completed ? "it completes" : t.paused ? "it pauses" : "it fails")}; ` : "its trigger did not match; "}${t.asks || 0} approval${t.asks === 1 ? "" : "s"}, ${Object.entries(t.writes || {}).map(([k, n]) => `${n} ${k} written`).join(", ") || "no writes"}, ${sends} outward act${sends === 1 ? "" : "s"} (stubbed).`);
     }
   }
-  const others = flows.filter(x => !(x.trigger && x.trigger.on === "stage" && x.trigger.type === type.name));
-  if (others.length) lines.push(`Other Flows (not tried here, they start on ${[...new Set(others.map(x => x.trigger && (x.trigger.event || x.trigger.on)))].join(", ")}): ${others.map(x => x.name).join(", ")}.`);
+  const others = flows.filter(x => !triggersOf(x).some(t => t.on === "stage" && t.type === type.name));
+  if (others.length) lines.push(`Other Flows (not tried here, they start on ${[...new Set(others.flatMap(x => triggersOf(x).map(t => t.event || t.on)))].join(", ")}): ${others.map(x => x.name).join(", ")}.`);
   const totals = `${counts.stages} stages, ${counts.tasks} tasks, ${counts.flows} Flow${counts.flows === 1 ? "" : "s"} tried, ${counts.approvals} approval${counts.approvals === 1 ? "" : "s"}, ${counts.sends} sent.`;
   lines.push(totals);
   return { ok: true, type: type.name, lines, totals, counts };

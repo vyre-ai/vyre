@@ -17,10 +17,12 @@ const FIELD = /^(created_by|createdBy|owner|person|as|actor|author|by|user|decid
 
 /** tool-name pattern, field, class, reason. A rule covers every tool its pattern matches that has the field. */
 const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narrowing"|"shim"|"caller", string][]} */ ([
+  [/^tasks\.list$/, "approver", "narrowing", "a filter on the list of tasks the caller may read: it only narrows the caller's own readable tasks to those a named approver holds; reading is judged against the caller's own chain either way"],
   [/^spaces\./, "person", "target", "an admin names the member the act is about; the role engine and the kernel authorize it against the caller's own chain"],
   [/^spaces\./, "member", "target", "the person whose computer is lent or stopped; authorized against the caller's own chain"],
   [/^work\.person\.shared$/, "person", "lookup", "the other person you look up: only the chats and projects you share with them are read, through your own chain; the caller is always the one asking"],
   [/^bridges\./, "person", "target", "the person whose view or reference is read or shared; the bridge checks the caller's own chain can act for them"],
+  [/^vault\.person\.of$/, "member", "target", "the Space member whose linked Vault person is read; the answer is one name and whether it is verified, and the door refuses a member (door-lists OWNER_ONLY)"],
   [/^vault\.(emergency\.|members\.|offboard$)/, "person", "target", "the person added, removed or asked of; the Vault checks the caller's own chain"],
   [/^vault\.space\.(grant|rotate)$/, "person", "target", "the member the space vault key is wrapped to or dropped for; membership is checked against the caller's own chain"],
   [/^vault\.emergency\./, "owner", "target", "whose vault an emergency request is for; checked against the caller's chain"],

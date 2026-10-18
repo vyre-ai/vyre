@@ -72,6 +72,8 @@
  "lib/agent-sandbox.js": 4,
  "lib/credential-env.js": 2,
  "lib/door-bridge.js": 2,
+ "lib/plugin-layout.js": 2,
+ "lib/skill-homes.js": 3,
  "local/hands-chrome-mac/standalone/harness/real.mjs": 1,
  "local/hands-chrome-mac/standalone/trace.js": 3
 }
