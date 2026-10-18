@@ -17,6 +17,7 @@ import { ON_PHONE } from "../../src/real/on-phone.js";
 import { putRefusal } from "./real-model";
 
 import { SECTIONS, sectionOf } from "./vault-groups.js";
+import { AccountNames, EarlierVersions, LinkedTo, MoveToVault, TaggedIn } from "./VaultRows";
 const ICON: Record<string, IconName> = { "Apps you connected": "link", "AI models": "spark", "Email and sending": "mail", "Phone and texts": "phone", "Google and Microsoft": "globe", "Code and hosting": "term", Messaging: "chat", Logins: "key", "SSH keys": "term", "Secure notes": "file", "Any API key": "key" };
 const who = (w: string) => markRef(w === "chris" || w === "alex" ? "person" : w === "iris" ? "assistant" : "teammate", w);
 const TONE = { ok: "ok", expiring: "warn", expired: "err", unused: "plain" } as const;
@@ -128,6 +129,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
     <View className="gap-s3">
       {scope === "space" && noSpaceVault ? <Text tone="muted">Your vault opens the first time something is saved to it with Touch ID or a passkey.</Text> : null}
       {nav.kind !== "all" ? <View className="flex-row items-center justify-between gap-s2"><Text tone="label">{nav.kind === "group" ? nav.group : nav.kind === "expiring" ? "Expiring" : "Shared with me"}</Text><Button kind="ghost" size="sm" label="Show everything" onPress={() => setNav({ kind: "all" })} /></View> : null}
+      <AccountNames />
       <Field name="Search the vault" value={q} onChangeText={setQ} placeholder="Search by name, group or account" />
       {shown.length ? (
         <GroupedList groups={SECTIONS.filter((s) => shown.some((v) => sectionOf(v.group, v.kind) === s)).map((name) => ({ name }))}
@@ -167,6 +169,14 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
           <SecretField key={cur.id} label={cur.name} read={() => data.read(scope, cur)} onAudit={audit(cur)} />
         </View>
         )}
+        {cur.kind !== "provisioned" && cur.kind !== "connection" ? (
+          <View className="gap-s4">
+            <TaggedIn item={cur.name} />
+            <LinkedTo item={cur.name} />
+            {scope === "mine" ? <MoveToVault item={cur.name} onMoved={load} /> : null}
+            <EarlierVersions name={cur.name} onChanged={load} />
+          </View>
+        ) : null}
         {scope === "mine" && cur.sites && data.addSite ? (
           <Sec title="Sites">
             {cur.sites.length ? <Card flush>{cur.sites.map((u) => <Row key={u} dense title={u} />)}</Card> : <Text tone="muted">No site saved. An agent cannot be lent this login until it has one.</Text>}
