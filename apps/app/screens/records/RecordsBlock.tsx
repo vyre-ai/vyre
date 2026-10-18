@@ -14,6 +14,8 @@ import { taskDrop } from "./task-drop.js";
 import { MyTasks } from "./MyTasks";
 import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
+import { recordsApi } from "./records-api";
+import { closingFilter } from "../../ui/views/board-stats.js";
 import { filterByScope, scopesFor } from "./scope-views.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
@@ -57,6 +59,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [scopePicked, setScopePicked] = useState("");
+  const [boardStats, setBoardStats] = useState<{ all?: { groups: any[] }; closing?: { groups: any[] } } | undefined>(undefined);
   const [making, setMaking] = useState(false);
   const [addingType, setAddingType] = useState(false);
   const [pane, setPane] = useState("records");
@@ -112,6 +115,15 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
+  // The board's totals come from the box across every record, so a column is right once the loaded cards are only some of them; a box without the tool leaves the loaded rows to answer.
+  const onBoard = shown === "board";
+  const rowsKey = (world.byType[def.name] || []).length;
+  useEffect(() => {
+    if (!onBoard) return;
+    let live = true;
+    void Promise.all([recordsApi.stats(def.name), recordsApi.stats(def.name, { filter: closingFilter(Date.now()) })]).then(([a, c]) => { if (live) setBoardStats(a.error ? undefined : { all: a.data, closing: c.error ? undefined : c.data }); });
+    return () => { live = false; };
+  }, [onBoard, def.name, rowsKey, world]);
   const scopes = scopesFor(def.name);
   const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : scopes[0]?.[0] ?? "";
   const everyone = world.byType[def.name] || [];
@@ -216,7 +228,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
-      {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
+      {shown === "board" ? <BoardView stats={boardStats} def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       </>}

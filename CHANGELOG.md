@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records. A board's column counts and totals, and the forecast line ("$X weighted, $Y closing this month"), come from records.stats across every record, not only the cards loaded; a box without the tool keeps the loaded rows' answer (ui/views/board-stats.js).
 - feat(app): Records. Notes show Mine, Shared with me and Space; Communications show Mine and On records I can see; Events show Mine, Team and Everyone, by each row's owner (screens/records/scope-views.js). The box already cuts every list to what the person may read.
 - feat(app): Records. Role chips take each role's name, stage and colour from records.roles.summary, and fall back to records.roles on a box without it.
 - feat(ui): the Table takes a headerEnd control, shown at the end of its header row on a wide screen (rows keep a matching blank); Records puts a "+" there that opens Add a column, next to the toolbar button.

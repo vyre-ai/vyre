@@ -14,7 +14,11 @@ export type MineSlot = "assigned" | "reviewing" | "approving";
 
 export type BusyBlock = { starts_at: string | number; ends_at: string | number | null; all_day: boolean; busy: true };
 
+export type StatsGroup = { key: unknown; count: number } & Record<string, any>;
+
 export const recordsApi = {
+  /** Totals by stage (or another choice field) across every record the caller may read. */
+  stats: (type: string, o: { group_by?: string; filter?: object } = {}) => callT<{ groups: StatsGroup[]; total: StatsGroup }>("records.stats", { type, ...o }),
   /** Who can read a note or a synced event; only its writer changes it, and the box says so in plain words when it is someone else. */
   share: (urn: string, visibility: "private" | "record" | "space") => callT<unknown>("records.share", { urn, visibility }),
   /** The blocks of time other people's private events take up: Busy, nothing else. */
