@@ -148,7 +148,8 @@ export function runThread(r) {
  * @param {any} ctx @param {string | null} flow
  */
 async function runsOf(ctx, flow) {
-  const r = await ctx.call("flows.runs", { ...(flow ? { id: flow } : {}), limit: 200 }, { relay: true }).catch(() => null);
+  const r = await ctx.call("flows.runs", { ...(flow ? { id: flow } : {}), limit: 200 }, { relay: true });
+  if (r && r.error) { if (r.error.code === "not_found") return []; throw fail(r.error.code || "failed", r.error.message); }
   const rows = r && Array.isArray(r.data) ? r.data : [];
   return rows.map(runThread).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
 }
@@ -156,7 +157,7 @@ async function runsOf(ctx, flow) {
 /** The Flow rows of the chat list: one per Flow that has runs, with its run count and latest or live run. @param {any} ctx */
 export async function flowRows(ctx) {
   const byFlow = new Map();
-  for (const t of await runsOf(ctx, null)) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
+  for (const t of await runsOf(ctx, null).catch(() => /** @type {any[]} */ ([]))) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
   return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
     .sort((a, b) => String(b.latest.started || "").localeCompare(String(a.latest.started || "")));
 }
