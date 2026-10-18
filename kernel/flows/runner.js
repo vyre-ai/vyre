@@ -66,7 +66,7 @@ const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
 import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
 import { showable } from "./runner-faults.js";
 import { STEP_INPUT_CAP, inputOf, testStepOf, retryFrom } from "./step-test.js";
-import { schedKey, deviceOffline, SERVICE_BODY_CAP, NAME_FALLBACK, TASK_ENDS, needOf, nameOf, flowUsesComputedOutward } from "./runner-helpers.js";
+import { schedKey, deviceOffline, SERVICE_BODY_CAP, NAME_FALLBACK, TASK_ENDS, needOf, nameOf, labelOf, flowUsesComputedOutward } from "./runner-helpers.js";
 export { showable };
 
 /**
