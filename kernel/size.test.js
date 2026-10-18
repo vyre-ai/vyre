@@ -52,6 +52,7 @@ const BASE_FILES = [
 ];
 /** Not base, single files. */
 const NOT_BASE_FILES = {
+  "tasks/card.js": "formats what the approver is shown, built from the task and its canonical body: it decides no grant and approves nothing; the fields that are signed come from decideFields in tasks.js and the check is in decide against the kernel's stored body, so a wrong card can mislead a person but cannot make the kernel accept an act; its tests, which show the doer's words are stripped and labelled, are in test/must-run.json (sec53, 19 Oct 2026)",
   "modules/child.js": "runs INSIDE the module's sandbox, as the module's own host: the supervisor does not trust it (it is the confined side of the bridge, and everything it does is a message the host-side door checks)",
   "audit/verify.js": "checks over public data that no kernel path calls yet (a device verifying a Space-key endorsement or revocation, two devices comparing checkpoints): it decides no grant and reads no secret, so it needs no kernel authority; kept for the device side that may still come",
   "gateway/definition-checks.js": "validates a type definition (kinds, roles, computed fields, names, shape) and refuses in words: it decides no grant and reads no record; records.js calls it and the gateway gates the define itself",
