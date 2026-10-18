@@ -693,11 +693,6 @@
               "name": "tags",
               "kind": "text",
               "label": "Tags"
-            },
-            {
-              "name": "forked_from",
-              "kind": "text",
-              "label": "Forked from (the thread and the reply it was forked at)"
             }
           ]
         },
@@ -782,6 +777,11 @@
               "name": "location",
               "kind": "text",
               "label": "This chat's Drive folder"
+            },
+            {
+              "name": "forked_from",
+              "kind": "text",
+              "label": "Forked from (the thread and the reply it was forked at)"
             },
             {
               "name": "tags",
