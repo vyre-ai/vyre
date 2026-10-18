@@ -12,6 +12,7 @@ import { isDayOne, sampleCount } from "./first-visit.js";
 import { isStageGroup } from "./move-rule.js";
 import { taskDrop } from "./task-drop.js";
 import { MyTasks } from "./MyTasks";
+import { BusyBlocks } from "./BusyBlocks";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -202,6 +203,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </View>
         </Card>
       ) : null}
+      {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: () => switcher }} /> : switcher}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}

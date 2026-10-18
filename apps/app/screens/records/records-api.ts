@@ -12,7 +12,13 @@ export const isMissing = (e?: { code?: string; message?: string }) => !!e && (e.
 export type TaskRow = { id: string; title: string; state: string; due?: number | string | null; due_shown?: string; record?: string; slots?: { doer?: { holder: string }; reviewer?: { holder: string }; approver?: { holder: string } } };
 export type MineSlot = "assigned" | "reviewing" | "approving";
 
+export type BusyBlock = { starts_at: string | number; ends_at: string | number | null; all_day: boolean; busy: true };
+
 export const recordsApi = {
+  /** Who can read a note or a synced event; only its writer changes it, and the box says so in plain words when it is someone else. */
+  share: (urn: string, visibility: "private" | "record" | "space") => callT<unknown>("records.share", { urn, visibility }),
+  /** The blocks of time other people's private events take up: Busy, nothing else. */
+  busy: (from?: string, to?: string) => callT<{ busy: BusyBlock[] }>("records.busy", { ...(from ? { from } : {}), ...(to ? { to } : {}) }),
   /** My tasks in one slot: the box reads who "mine" is from the caller (their person, the assistant acting, every role held). */
   tasksMine: (mine: MineSlot, state?: string[]) => callT<{ tasks: TaskRow[] }>("tasks.list", { mine, ...(state ? { state } : {}) }),
   history: (urn: string) => callT<{ items: HistoryItem[] }>("records.history", { urn }),

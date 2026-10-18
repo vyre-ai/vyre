@@ -13,6 +13,8 @@ import { pinnedFacts } from "../../ui/records/logic.js";
 import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
 import { Roles } from "./Roles";
+import { ShareControl } from "./ShareControl";
+import { isShareable } from "./share-model.js";
 import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
 import { emailOf } from "../shell/module-view.js";
@@ -61,6 +63,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
         {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
       </View>
       {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} onOpen={open} /></View> : null}
+      {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
       <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} type={rec.type} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
