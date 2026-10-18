@@ -178,6 +178,7 @@ export const PERSON_ONLY = new Map([
   ["records.define", "changes the Space's types: the person's own act (an assistant proposes through a Kit or a task)"],
   ["records.history.undo", "puts back what a change replaced: the person's own act, as records.update is, and refused when a later change touched the same fields"],
   ["records.share", "changes who can read a note or a synced event: the writer's own act, an assistant does not widen what a person kept private"],
+  ["records.type.update", "changes how a type is presented (colour, hidden from Records, option colours): the person's own act, like records.define"],
   ["records.pipeline.set", "changes the stages of a Space's type: the person's own act, like records.define"],
   ["records.relationship.kinds.set", "changes the Space's list of relationship kinds: the person's own act, like records.define"],
   ["records.field.add", "adds a field to a Space's type: the person's own act, like records.define"],

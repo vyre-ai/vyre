@@ -21,7 +21,7 @@ export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 
 /** A template: email, letter or document text with slots. Sealed values are filled by the kernel at send time, never by a model. */
 export const TEMPLATE = {
-  name: "template", label: "Template", icon: "IconTemplate",
+  hidden_in_records: true, name: "template", label: "Template", icon: "IconTemplate",
   fields: [
     text("name", "Name", { required: true }),
     choice("kind", "Kind", TEMPLATE_KINDS, { required: true }),
@@ -34,7 +34,7 @@ export const TEMPLATE = {
 
 /** A playbook: how this firm does something, loaded into an assistant's situation only where it applies. */
 export const PLAYBOOK = {
-  name: "playbook", label: "Playbook", icon: "IconBook",
+  hidden_in_records: true, name: "playbook", label: "Playbook", icon: "IconBook",
   fields: [
     text("name", "Name", { required: true }),
     text("applies_to", "Applies to (a type, a stage or a role)"),
@@ -46,7 +46,7 @@ export const PLAYBOOK = {
 
 /** A team member on a project: a person or an assistant teammate, with the role it plays there. */
 export const TEAM_MEMBER = {
-  name: "team-member", label: "Team member", icon: "IconUsers",
+  hidden_in_records: true, name: "team-member", label: "Team member", icon: "IconUsers",
   fields: [
     text("name", "Name", { required: true }),
     f("actor", "actor", "Person or assistant", { required: true }),
@@ -152,7 +152,7 @@ export const POINT_KINDS = ["email", "phone"];
  * on the contact; `addContactPoint` in records/comms/log.js refuses an address that is another contact's main one. Merging relinks the points like any link.
  */
 export const CONTACT_POINT = {
-  name: "contact_point", label: "Contact point", icon: "IconAt",
+  hidden_in_records: true, name: "contact_point", label: "Contact point", icon: "IconAt",
   fields: [
     f("link", "contact", "Contact", { to: "contact", required: true, inverse: { name: "contact_points", label: "Contact points" } }),
     choice("kind", "Kind", POINT_KINDS, { required: true }),
@@ -280,7 +280,7 @@ export const PROJECT = {
  * puts a version live (an admin may too); `kit` names where a template that shipped with a Kit came from.
  */
 export const PROJECT_TEMPLATE = {
-  name: "project-template", label: "Project template", icon: "IconTemplate",
+  hidden_in_records: true, name: "project-template", label: "Project template", icon: "IconTemplate",
   fields: [
     text("name", "Name", { required: true }),
     text("template", "Template id (shared by every version)", { required: true }),
@@ -299,7 +299,7 @@ export const PROJECT_TEMPLATE = {
  * version is in use (one approved at most; a draft waits for the level's owner), `kind` skill (a SKILL.md in `body`) or plugin (JSON in `body`). core/skills keeps these; lib/skill-library.js says what a body holds.
  */
 export const SKILL = {
-  name: "skill", label: "Skill", icon: "IconBulb",
+  hidden_in_records: true, name: "skill", label: "Skill", icon: "IconBulb",
   fields: [
     text("name", "Name", { required: true }),
     choice("level", "Level", ["space", "personal", "agent", "project"], { required: true }),
@@ -322,7 +322,7 @@ export const SKILL = {
  * `chat` is the kernel's chat id (unique, never changes); `people` and `agents` mirror the kernel's list and are put back if edited (kernel membership never changes because of a put-back).
  */
 export const CHAT = {
-  name: "chat-record", label: "Chat", icon: "IconMessage",
+  hidden_in_records: true, name: "chat-record", label: "Chat", icon: "IconMessage",
   fields: [
     text("title", "Title"),
     f("link", "project", "Project", { to: "project", inverse: { name: "chats", label: "Chats" } }),
@@ -346,13 +346,13 @@ export const CHAT = {
 
 /** A participant's share of ONE file of a chat's folders with the project (the work module's type, not a core one): a member may read that file and never the folder or another file. The kernel counts it only when its author is in the chat. */
 export const FILE_SHARE = {
-  name: "file-share", label: "Shared file", icon: "IconShare",
+  hidden_in_records: true, name: "file-share", label: "Shared file", icon: "IconShare",
   fields: [text("path", "File path", { required: true })],
 };
 
 /** The fast fields of a Space (core/records-tools/quick.js): one row per added field, kept until it is promoted to a real field of the store. */
 export const QUICK_FIELD = {
-  name: "quick-field", label: "Fast field", icon: "IconBolt",
+  hidden_in_records: true, name: "quick-field", label: "Fast field", icon: "IconBolt",
   fields: [
     text("type", "Type", { required: true }), text("name", "Name", { required: true }), text("label", "Label", { required: true }),
     choice("kind", "Kind", ["text", "rich_text", "number", "boolean", "date", "datetime", "choice"], { required: true }),
@@ -362,7 +362,7 @@ export const QUICK_FIELD = {
 /** A deal: something being sold, on the Sales pipeline (day-one snapshot). A stage can ask for fields before a deal enters it (core/records-tools/pipeline.js moves it and says what is missing); Lost asks for the reason. `weighted_value` is amount x probability / 100, kept by the tools. */
 export const DEAL_STAGES = ["Lead", "Qualified", "Proposal", "Won", "Lost"];
 export const DEAL = {
-  name: "deal", label: "Deal", icon: "IconCurrencyDollar",
+  name: "deal", label: "Deal", icon: "IconCurrencyDollar", color: "green",
   fields: [
     text("name", "Name", { required: true }),
     text("ref", "ID", { unique: true, read_only: true }),   // DEA-0001
@@ -376,14 +376,15 @@ export const DEAL = {
     text("lost_reason", "Lost reason"),
     TAGS,
   ],
-  stages: [{ name: "Lead" }, { name: "Qualified" }, { name: "Proposal", enter_if: "not empty(amount)" }, { name: "Won", enter_if: "not empty(amount) and not empty(close_date)" }, { name: "Lost", enter_if: "not empty(lost_reason)" }],
+  stages: [{ name: "Lead", probability: 10 }, { name: "Qualified", probability: 30 }, { name: "Proposal", probability: 60, enter_if: "not empty(amount)" }, { name: "Won", probability: 100, enter_if: "not empty(amount) and not empty(close_date)" }, { name: "Lost", probability: 0, enter_if: "not empty(lost_reason)" }],
+  option_colors: { stage: { Lead: "gray", Qualified: "blue", Proposal: "purple", Won: "green", Lost: "red" } },
   views: [{ name: "deals_board", type: "board", label: "Sales pipeline", groupBy: "stage", columns: ["name", "amount", "close_date"] }, { name: "deals_list", type: "list", label: "All deals", columns: ["name", "ref", "stage", "amount", "close_date"], sort: { field: "name", dir: "asc" } }],
 };
 
 /** A note on a record (core/records-tools/history.js): private to its writer until shared. `visibility` is private, record (everyone who can read the record) or space. */
 export const NOTE_VISIBILITY = ["private", "record", "space"];
 export const NOTE = {
-  name: "record-note", label: "Note", icon: "IconNote",
+  hidden_in_records: true, name: "record-note", label: "Note", icon: "IconNote",
   fields: [
     f("rich_text", "body", "Note", { required: true }),
     f("link", "record", "About"),
@@ -393,7 +394,7 @@ export const NOTE = {
 
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
-  name: "record-layout", label: "Layout", icon: "IconLayout",
+  hidden_in_records: true, name: "record-layout", label: "Layout", icon: "IconLayout",
   fields: [text("type", "Type", { required: true }), choice("scope", "Scope", ["space", "person"], { required: true }), text("owner", "Person"), text("layout", "Layout (JSON)", { required: true })],
 };
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
