@@ -11,6 +11,7 @@ import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
+import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
@@ -147,6 +148,7 @@ export function RealFlow({ id }: { id: string }) {
       {def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}
       <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
       <FlowTests id={id} runId={picked_run?.id} />
+      <View className="flex-row pb-s2"><Button kind="secondary" size="sm" icon="chat" label="Change it in chat" onPress={() => openEngineer(router, { source: "flow", ref: id, words: "" })} /></View>
       <Sec title="Run history">
         {runs.length ? (
           <Card flush>

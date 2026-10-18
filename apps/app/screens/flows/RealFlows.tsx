@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { openEngineer } from "../engineer/openEngineer";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Menu, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Button, Menu, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
@@ -15,13 +15,25 @@ export function RealFlows() {
   const phone = usePhone();
   const [flows, setFlows] = useState<RealFlow[] | null>(null);
   const [err, setErr] = useState("");
+  const [wish, setWish] = useState("");
   const load = () => { setErr(""); listReal().then(setFlows).catch((e) => setErr(e instanceof Error ? e.message : "Flows did not answer.")); };
   useEffect(load, []);
+  const needsYou = (flows ?? []).filter((f) => listWaits(f) || healthRow(f).chip);
   const toggle = (f: RealFlow, on: boolean) =>
     setPausedReal(f.id, !on).then(() => setFlows((xs) => xs && xs.map((x) => (x.id === f.id ? { ...x, paused: on ? null : "paused" } : x)))).catch((e) => showToast(e instanceof Error ? e.message : "That did not work."));
   return (
     <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps.">
       <PlaceTag of="showing" />
+      <View className="gap-s2 pb-s4">
+        <Field label="What should happen on its own?" value={wish} onChangeText={setWish} placeholder="For example, when a form comes in, tell me and add it to Records" onSubmit={() => wish.trim() && openEngineer(router, { source: "flow", words: wish.trim() })} />
+        <View className="flex-row"><Button kind="primary" size="sm" label="Let Engineer draft it" disabled={!wish.trim()} onPress={() => openEngineer(router, { source: "flow", words: wish.trim() })} /></View>
+      </View>
+      {needsYou.length ? (
+        <View className="gap-s2 pb-s4">
+          <Text size="caption" strong tone="label">Needs you</Text>
+          <Card flush>{needsYou.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}<Row dense title={f.sentence || f.name} sub={listWaits(f) ? "Waiting for you" : healthRow(f).chip || ""} chevron onPress={() => router.push(`/u/flows/${f.id}` as never)} /></View>)}</Card>
+        </View>
+      ) : null}
       <Card flush>
         {err ? <ErrorState title="Flows did not load" reason={err} retry={load} /> : null}
         {!err && flows === null ? <LoadingState rows={3} /> : null}

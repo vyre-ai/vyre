@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Polish
 
+- feat(app): the Flows list opens with one box, "What should happen on its own?", that hands the words to Engineer, and a Needs you section above the rest; a Flow's page has "Change it in chat"; the Flow's run threads have a source over work.flow.threads (empty until the box has the tool).
 - feat(app): Home opens with the date, a greeting by the person's local time and a one-line summary (home-model.js, HomeHeader).
 
 ## 0.6.0
