@@ -46,7 +46,6 @@ export function ChatsPlusButton() {
 
 /** The filter control inside the search's right end: All, each project, No project and tags. The type row (All, People, Groups, Agents, Flows) is above the list. */
 export function ChatsFilterButton() {
-  const router = useRouter();
   const f = useChatsFilter();
   const items = [
     ...convoChips(f.all).map((k) => ({ label: k.label, selected: f.project === k.id, onPress: () => f.set({ project: k.id }) })),
