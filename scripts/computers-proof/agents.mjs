@@ -171,7 +171,30 @@ try {
   // defaults of the X SECURITY extension have changed between server versions and a test that cannot fail proves nothing.
   const asOwner = ["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth"];
   const asUntrusted = ["exec", "-u", "20000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
-  const recordPy = "import ctypes\nx=ctypes.CDLL('libX11.so.6');t=ctypes.CDLL('libXtst.so.6')\nx.XOpenDisplay.restype=ctypes.c_void_p\nd=x.XOpenDisplay(None)\nerrs=[]\nH=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p)\ncb=H(lambda a,b:(errs.append(1),0)[1])\nx.XSetErrorHandler(cb)\nt.XRecordAllocRange.restype=ctypes.c_void_p\nr=t.XRecordAllocRange()\nc=ctypes.c_ulong(3)\nrs=(ctypes.c_void_p*1)(r)\nt.XRecordCreateContext.restype=ctypes.c_ulong\nt.XRecordCreateContext(ctypes.c_void_p(d),0,ctypes.byref(c),1,rs,1)\nx.XSync(ctypes.c_void_p(d),0)\nprint('refused' if errs else 'allowed')";
+  // RECORD is the X extension that reports every key typed on the screen. libXtst's calls return 0 without a word when the server does not offer the extension to this client (an untrusted client is not shown it),
+  // so the probe asks for the version first and creates a context only when it is there. "allowed" means the client could record; "refused" means the extension is absent or the request errored.
+  const recordPy = [
+    "import ctypes",
+    "x=ctypes.CDLL('libX11.so.6');t=ctypes.CDLL('libXtst.so.6')",
+    "x.XOpenDisplay.restype=ctypes.c_void_p",
+    "d=x.XOpenDisplay(None)",
+    "errs=[]",
+    "H=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p)",
+    "cb=H(lambda a,b:(errs.append(1),0)[1])",
+    "x.XSetErrorHandler(cb)",
+    "t.XRecordQueryVersion.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_int)]",
+    "ma=ctypes.c_int();mi=ctypes.c_int()",
+    "ok=t.XRecordQueryVersion(ctypes.c_void_p(d),ctypes.byref(ma),ctypes.byref(mi))",
+    "if ok:",
+    "    t.XRecordAllocRange.restype=ctypes.c_void_p",
+    "    r=t.XRecordAllocRange()",
+    "    c=ctypes.c_ulong(3)",
+    "    rs=(ctypes.c_void_p*1)(r)",
+    "    t.XRecordCreateContext.restype=ctypes.c_ulong",
+    "    t.XRecordCreateContext(ctypes.c_void_p(d),0,ctypes.byref(c),1,rs,1)",
+    "    x.XSync(ctypes.c_void_p(d),0)",
+    "print('refused' if (not ok or errs) else 'allowed')",
+  ].join("\n");
   const ownerRecord = shOk([...asOwner, CONTAINER, "python3", "-c", recordPy]);
   check(ownerRecord === "allowed", "XRecord works for the screen's owner (the control)", ownerRecord);
   const agentRecord = shOk([...asUntrusted, CONTAINER, "python3", "-c", recordPy]);
@@ -203,8 +226,8 @@ try {
   check(Number(ownerHeard) >= 1, "the owner's own listener does hear it (the control)", ownerHeard);
   const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);
   check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
-  const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
-  check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", "ok");
+  const prefs = shOk(["exec", "-u", "21000", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
+  check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", prefs.slice(0, 120));
   // (4) a streaming run: it runs as the agent's uid in a good folder, and a link in the home that leads out of it (to /etc, to another agent's home) is refused by the helper's realpath check
   const run = (cwd, argv = ["/usr/bin/id", "-u"]) => new Promise(async (resolve, reject) => {
     const ticket = crypto.randomBytes(24).toString("base64url");
