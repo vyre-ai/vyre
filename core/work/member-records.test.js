@@ -337,6 +337,8 @@ test("through the member door a joined member reads a record's history, board to
   const { DEAL, RELATIONSHIP, ROLE_TYPES, EVENT } = await import("../../records/core-types.js");
   const strip = (/** @type {any} */ x) => ({ ...JSON.parse(JSON.stringify(x)), fields: x.fields.filter((/** @type {any} */ f) => !(x.name === "deal" && f.name === "organization")) });
   await gw.records.define(w.ownerChain, { add_types: [strip(DEAL), RELATIONSHIP, ...ROLE_TYPES.filter((x) => x.name === "role-lead").map(strip), strip(EVENT)] }).catch(() => {});
+  const { PLANNER_TYPES } = await import("../planner/types.js");
+  await gw.records.define(w.ownerChain, { add_types: PLANNER_TYPES.filter((x) => x.name === "note").map((x) => JSON.parse(JSON.stringify(x))) }).catch(() => {});
   for (const [k, tool, call] of [["records.history", "records.serve", "history"], ["records.stats", "records.serve", "stats"], ["records.busy", "records.serve", "busy"], ["records.roles.summary", "records.serve", "roles.summary"], ["records.log", "records.serve-update", "log"]]) {
     assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].tool, tool, k);
     assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].call, call, k);
