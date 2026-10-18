@@ -378,6 +378,8 @@ export default {
       // a member moves records through stages, relates records and saves her OWN layout; the kernel's write rules decide which records, and a Space-wide layout is refused to her by the tool and the kernel
       "layout.get": ["type"], "relationship.list": ["urn"], "relationship.kinds": [], move: ["urn", "stage", "lost_reason", "patch"],
       "relationship.add": ["from", "to", "kind", "since", "until", "note"], "relationship.remove": ["id"], "layout.set": ["type", "scope", "layout"],
+      // a member reads a record's history, a board's totals, the Busy blocks and her roles, and logs a call or a meeting (or a note) on a record she can read: each is the same tool body the owner runs, under her chain
+      history: ["urn", "limit"], stats: ["type", "group_by", "sum", "filter"], busy: ["from", "to"], "roles.summary": ["urn"], log: ["urn", "kind", "text"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
@@ -397,15 +399,15 @@ export default {
       for (const ty of [clean.type, urnType]) {
         if (typeof ty !== "string" || trusted) continue;
         if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
-        if (i.call !== "audit" && !["me", "actors", "types", "list", "get", "events", "layout.get", "relationship.list", "relationship.kinds"].includes(i.call) && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
+        if (i.call !== "audit" && !["me", "actors", "types", "list", "get", "events", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"].includes(i.call) && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
       }
       const out = await op.fn(clean, d);
       return !trusted && i.call === "types" && out && Array.isArray(out.types) ? { ...out, types: out.types.filter((/** @type {any} */ x) => !MEMBER_BLOCKED_TYPES.has(String(x && x.name))) } : out;
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
-    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds"]), run: serve(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds"]) });
+    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, history, stats, busy, roles.summary, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"]), run: serve(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"]) });
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
-    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set"]) });
+    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },

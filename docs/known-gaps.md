@@ -172,13 +172,13 @@ What to do: nothing for a normal team. An owner who sees a member upload in burs
 
 Owner: comp6 with sec53.
 
-## A member of a joined team sees her home notes in Records, not the team's
+## Some Records features do not reach a person who joined a team
 
-Notes are the planner's Note type. A person who joined a team Space reaches the planner through her own home, because the member door has no planner calls yet. So the Notes tab in the team's Records shows the notes in her home planner, and a note she writes or shares there lives in her home, not in the team. On a server where she calls the planner directly (the owner, an admin, or a member working on that server) notes are private to their writer, shared with a record, or shared with the Space, as designed.
+A person who joined a team Space reaches it through the team's member door, which carries a fixed list of calls. In Records that list covers lists, records, moves, connections, layouts, history, board totals, Busy blocks, roles on a record, logging a call, a meeting or a note, and Notes (the team's planner, notes only). It does not yet carry: undo in a record's history; putting a role on a record or moving its stage (records.role.set); sharing a synced event (records.share); and the Space-setup edits an owner or an admin makes (a type's colour or hidden flag, a new field, a new link, sample data). For a joined member those calls are sent to her own home, not the team, so they fail or act on her home.
 
-What to do: write a note that the team should read in the team's own Records on the server, or in a chat. The Notes tab says plainly that a joined member is looking at her home notes.
+What to do: do the setup edits and role changes on the team's server itself (or as the owner there). Undo a change by setting the old value by hand.
 
-Owner: flow6b with sec53. Planned for 0.6.3: planner.serve, the member door's notes calls.
+Owner: flow6b with sec53. Planned for 0.6.3: serve calls for each.
 
 ## An agent's Chrome runs without Chrome's own renderer sandbox
 

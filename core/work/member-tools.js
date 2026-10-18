@@ -47,6 +47,12 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.relationship.add": { tool: "records.serve-update", call: "relationship.add", keys: ["from", "to", "kind", "since", "until", "note"], types: [] },
   "records.relationship.remove": { tool: "records.serve-update", call: "relationship.remove", keys: ["id"], types: [] },
   "records.layout.set": { tool: "records.serve-update", call: "layout.set", keys: ["type", "scope", "layout"], types: [] },
+  // a joined member reads a record's history, board totals, Busy blocks and roles, and logs a call, a meeting or a note (0.6.2); undo, role.set, share and the type, field and link edits wait for 0.6.3
+  "records.history": { tool: "records.serve", call: "history", keys: ["urn", "limit"], types: [] },
+  "records.stats": { tool: "records.serve", call: "stats", keys: ["type", "group_by", "sum", "filter"], types: [] },
+  "records.busy": { tool: "records.serve", call: "busy", keys: ["from", "to"], types: [] },
+  "records.roles.summary": { tool: "records.serve", call: "roles.summary", keys: ["urn"], types: [] },
+  "records.log": { tool: "records.serve-update", call: "log", keys: ["urn", "kind", "text"], types: [] },
   "records.layout.get": { tool: "records.serve", call: "layout.get", keys: ["type"], types: [] },
   "records.relationship.list": { tool: "records.serve", call: "relationship.list", keys: ["urn"], types: [] },
   "records.relationship.kinds": { tool: "records.serve", call: "relationship.kinds", keys: [], types: [] },

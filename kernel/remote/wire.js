@@ -17,7 +17,7 @@ export const CALLS = Object.freeze({
   // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
   moves: ["out", "outMany"],
   // the Store calls of a team member's app (list, me, actors, types, events) are the member door's rows (core/work/member-tools.js); get, create and update answer in the gateway's shape and, with the Store's keys, in the Store's
-  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events", "audit", "move", "relationship.add", "relationship.remove", "relationship.list", "relationship.kinds", "layout.get", "layout.set"],
+  records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore", "list", "me", "actors", "types", "events", "audit", "move", "relationship.add", "relationship.remove", "relationship.list", "relationship.kinds", "layout.get", "layout.set", "history", "stats", "busy", "roles.summary", "log"],
   memory: ["file", "recall", "retire"],
   planner: ["list", "get", "add", "update"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou", "list", "move", "submit"],
