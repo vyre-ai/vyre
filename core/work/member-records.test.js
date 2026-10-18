@@ -301,10 +301,23 @@ test("a joined member's notes go through the team's planner as herself: her own 
   }
   await asP(BEN, "planner.update", { item: idOf(benPrivate), title: "BEN private 2", visibility: "space" });
   assert.deepEqual(ids(await asP(ANA, "planner.list", { scope: "shared", state: "all" })), ["BEN private 2", "BEN space"], "once she shares it, the other sees it");
-  // a record-level share is judged on the reader's own chain in this Space
+  // a record-level share is judged on the reader's own chain in this Space: a contact everyone reads, then a project only its team reads
   const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
   await asP(ANA, "planner.add", { title: "about Ava", visibility: "record", record: contact.urn });
-  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava"), "a note shared with a record is read by whoever can read that record");
+  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava"), "BEN can read the contact, so he sees the note shared with it");
+  const { PROJECT, TEAM_MEMBER } = await import("../../records/core-types.js");
+  await gw.records.define(w.ownerChain, { add_types: [PROJECT, TEAM_MEMBER] }).catch(() => {});
+  const person = (/** @type {string} */ id) => ({ actor: { kind: "person", id, space: w.space } });
+  const project = await gw.records.create(w.ownerChain, "project", { name: "Hers", slug: "hers", owner: person(ANA) });
+  await asP(ANA, "planner.add", { title: "about the project", visibility: "record", record: project.urn });
+  const sees = async (/** @type {string} */ who) => ids(await asP(who, "planner.list", { record: project.urn, state: "all" })).includes("about the project");
+  assert.equal(await sees(ANA), true, "its owner");
+  assert.equal(await sees(BEN), false, "BEN cannot read the project, so he does not see the note shared with it");
+  const seat = await gw.records.create(w.ownerChain, "team-member", { name: "ben", actor: person(BEN), kind: "person", project: { urn: project.urn } });
+  assert.equal(await sees(BEN), true, "once he is on the project he can read it, and the note");
+  await gw.records.remove(w.ownerChain, "team-member", seat.id, seat.version);
+  assert.equal(await sees(BEN), false, "taking him off the project takes the note out of his list again");
+  assert.equal(await sees(ZED), true, "an admin reads every project, so a note shared with one is read by her too");
   assert.ok(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "a note is about a record, not a note");
   // the planner's own check of the chain, and a module calling the tools straight
   const chain = w.chainOf(ANA), hop = { actor: { kind: "agent", id: "kit", space: w.space } };

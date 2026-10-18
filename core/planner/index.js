@@ -17,7 +17,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
-import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY } from "../../lib/note-share.js";
+import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY, atNoteCap } from "../../lib/note-share.js";
 import { isPerson } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
@@ -1203,7 +1203,10 @@ export default {
         }
         out = { items: kept.map(shape) };
       } else if (i.call === "get") out = { item: shape(await noteOf(src.item)) };
-      else if (i.call === "add") out = await add({ ...src, kind: "note" }, w);
+      else if (i.call === "add") {
+        if (atNoteCap(st.all(), person)) throw fail("too many notes: delete some first", "busy");   // a member writes on the team's server, so her notes are capped
+        out = await add({ ...src, kind: "note" }, w);
+      }
       else {
         const n = await noteOf(src.item);
         if (n.by !== person) throw fail(NO_NOTE, "not_found");   // the writer's alone, an owner or an admin too

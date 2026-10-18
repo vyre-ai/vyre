@@ -27,6 +27,7 @@ const NOT_OUTWARD = {
   "publish.domain.verify": "checks the DNS record of a connected domain; a read, and a verified domain still serves nothing until a person approves the publish",
   "publish.domain.status": "reads the domains of one site and the DNS record each still needs; a read, never a secret",
   "publish.holds": "reads the publishing acts waiting for a person's yes; a read, and a model cannot decide them",
+  "records.share": "only changes who in the Space can read a note or a synced event: nothing leaves the Space",
   "previews.share": "chooses which people inside the Space (me, the project, everyone) may open a preview; nothing leaves the Space",
   "previews.reply": "the person types the answer a stuck run asked for, on its card; it goes to the person's own agent and nowhere else",
   "work.file.share": "a share record by someone in the chat: it opens one file to the chat's project members inside the Space; nothing leaves the Space",
