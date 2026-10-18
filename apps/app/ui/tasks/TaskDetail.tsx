@@ -5,8 +5,10 @@ import { Chip } from "../components/Chip";
 import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { Section } from "./Section";
+import { TaskSlots } from "./TaskSlots";
+import { stateWord } from "./slots-model.js";
 import { DraftBlock, TaskFacts } from "./TaskFacts";
-import { briefOf, cardFor, draftOf, HOW_LABEL, recordTitle, stateTone, STATE_LABEL, taskFacts, type World } from "./model";
+import { briefOf, cardFor, draftOf, HOW_LABEL, nameOf, recordTitle, stateTone, taskFacts, type World } from "./model";
 
 /**
  * One task, as a page (DESIGN-tasks.md): who does it (one doer, accountable), who checks it, what done looks like, how it is made and what it starts from.
@@ -28,9 +30,10 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
       <View className="items-start gap-s2">
         <Text size="title" strong>{task.title}</Text>
         <View className="flex-row flex-wrap gap-s2">
-          <Chip tone={stateTone(task.state) as never}>{STATE_LABEL[task.state]}</Chip>
+          <Chip tone={stateTone(task.state) as never}>{stateWord(task.state)}</Chip>
         </View>
       </View>
+      {task.reviewer || task.review || task.review_skipped || task.state === "in_review" || task.state === "changes_requested" || task.state === "declined" ? <TaskSlots task={task} nameOf={(kind, id) => nameOf(world, id)} /> : null}
       {task.state === "stuck" && task.stuck ? (
         <Banner tone="warn">
           <View className="gap-s2">
