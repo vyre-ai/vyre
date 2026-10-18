@@ -186,7 +186,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   if (filtered) out = out.map((s) => ({ ...s, rows: filterRows(s.rows, { type, from, within }) })).filter((s) => s.rows.length > 0);
   if (opts.best === false) return out;
-  const { best, rest } = bestMatch(out, q);
+  const { best, rest } = bestMatch(out, q) as unknown as { best: Row | null; rest: Section[] };
   return best ? [{ key: "best", label: "Best match", rows: [best] }, ...rest] : rest;
 }
 

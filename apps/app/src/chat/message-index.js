@@ -6,7 +6,8 @@
 /** @typedef {{ chat: string, id: string, who: string, snippet: string, score: number }} Hit */
 
 const WORD = /[\p{L}\p{N}]+/gu;
-const words = (/** @type {string} */ s) => (String(s || "").toLowerCase().match(WORD) || []);
+/** @param {string} s @returns {string[]} */
+const words = (s) => Array.from(String(s || "").toLowerCase().matchAll(WORD), (m) => m[0]);
 
 /** A short piece of the text around the first match, with the matched words wrapped in « ». @param {string} text @param {string[]} ws */
 export function snippetOf(text, ws) {

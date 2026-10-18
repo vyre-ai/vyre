@@ -10,7 +10,7 @@ export function KeysScreen() {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [values, setValues] = useState<Map<string, KeyValue> | null>(null);
   const [err, setErr] = useState("");
-  const find = "";   // the one search bar finds a setting; this page lists them
+  const find: string = "";   // the one search bar finds a setting; this page lists them
   const [advanced, setAdvanced] = useState(false);
   const load = useCallback(() => { setErr(""); Promise.all([keys.schema(), keys.values()]).then(([s, v]) => { setSchema(s); setValues(v); }).catch((e) => setErr(refusal(e))); }, []);
   useEffect(load, [load]);
