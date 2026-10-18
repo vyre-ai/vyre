@@ -179,7 +179,6 @@ export function linkWords(ref, d, o) {
   return type ? `the new ${type} record` : "the record made before";
 }
 
-/** The whole Flow as one sentence: "When a record is created in RefundRequests, create a RefundRequests record, then hand it to the Refunds agent." @param {Draft} d @param {Options} o */
 /** A step in the headline sentence: an If reads as its branches ("if the amount is over 500, ask the Admins first, otherwise email them"), any other step as its summary. @param {DraftStep} s @param {Options} o @param {Draft} d @returns {string} */
 function branchWords(s, o, d) {
   if (s.kind !== "decide") return stepSummary(s, o, d);
@@ -188,6 +187,7 @@ function branchWords(s, o, d) {
   return `if ${lc(c)}, ${side(s.then)}${(s.else || []).length ? `, otherwise ${side(s.else)}` : ""}`;
 }
 
+/** The whole Flow as one sentence: "When a record is created in RefundRequests, create a RefundRequests record, then hand it to the Refunds agent." @param {Draft} d @param {Options} o */
 export function flowSentence(d, o) {
   const parts = d.steps.map((s) => lc(branchWords(s, o, d)));
   const shown = parts.slice(0, 3);
@@ -361,7 +361,7 @@ let DATE_TOKENS = new Map();
 const fbText = (f) => { const s = String(f).trim(); return s.length > 1 && s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s; };
 /** A fallback as the author sees it: quoted when a bare one would lose a space at an end or hold a bar. @param {string} f */
 const fbShow = (f) => (/^\s|\s$|\|/.test(f) ? `"${f}"` : f);
-const partExpr = (t, sign, n, unit, fmt, fb) => {
+const partExpr = (/** @type {string} */ t, /** @type {string | undefined} */ sign, /** @type {any} */ n, /** @type {any} */ unit, /** @type {any} */ fmt, /** @type {string | undefined} */ fb) => {
   if (fb !== undefined && !sign && !fmt && t !== "now" && t !== "today" && !HELPERS[t]) return `text(coalesce(${tokenExpr(t)}, ${lit(fbText(fb))}))`;
   const base = t === "now" || t === "today" ? "now" : tokenExpr(t);
   const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
@@ -1050,6 +1050,7 @@ export function setFlowSetting(d, key, value) {
 /** The steps whose values may be empty for this step, because they sit in a sibling lane of an If the step is inside of (or after): step id -> the label of the lane. Parallel lanes count only when the step is inside one (outside, the join has waited for all). @param {Draft} d @param {string} stepId @returns {Map<string, string>} */
 export function otherLaneSteps(d, stepId) {
   /** @type {Map<string, string>} */ const other = new Map();
+  /** @type {(list: DraftStep[]) => boolean} */
   const has = (/** @type {DraftStep[]} */ list) => list.some((s) => s.id === stepId || lanesOf(s).some((l) => has(laneSteps(s, l.key))));
   const walk = (/** @type {DraftStep[]} */ list) => {
     for (const s of list) {

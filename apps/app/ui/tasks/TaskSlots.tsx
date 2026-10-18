@@ -28,7 +28,7 @@ export function TaskSlots({ task, nameOf }: { task: any; nameOf: (kind: string, 
       {review.line ? (
         <View className="gap-s1 rounded-card border border-edge p-s3">
           <Text strong>{review.line}</Text>
-          {review.items.map((x) => <Text key={`${x.skill}:${x.item}`} size="secondary" tone={x.ok ? "default" : "err"}>{`${x.ok ? "✓" : "✗"} ${x.item}`}</Text>)}
+          {review.items.map((x: { skill: string; item: string; ok: boolean }) => <Text key={`${x.skill}:${x.item}`} size="secondary" tone={x.ok ? "default" : "err"}>{`${x.ok ? "✓" : "✗"} ${x.item}`}</Text>)}
           {review.note ? <Text size="secondary" tone="muted">{review.note}</Text> : null}
         </View>
       ) : null}

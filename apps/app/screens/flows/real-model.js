@@ -64,7 +64,7 @@ export function groupFlows(flows) {
   return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
 }
 
-/** The runs list narrowed by what the person picked: All, Failed (failed or stopped), Waiting (waiting, paused or held), and a search over the run's words (its label, its error and its date text). @param {{ state: string, label?: string, error?: { message?: string } | null, when?: string }[]} runs @param {"all" | "failed" | "waiting"} filter @param {string} query */
+/** The runs list narrowed by what the person picked: All, Failed (failed or stopped), Waiting (waiting, paused or held), and a search over the run's words (its label, its error and its date text). @template {{ state: string, label?: string, error?: { message?: string } | null, when?: string }} R @param {R[]} runs @param {"all" | "failed" | "waiting"} filter @param {string} query @returns {R[]} */
 export function filterRuns(runs, filter, query) {
   const want = filter === "failed" ? ["failed", "cancelled"] : filter === "waiting" ? ["waiting", "paused", "queued"] : null;
   const q = String(query || "").trim().toLowerCase();
