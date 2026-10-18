@@ -10,7 +10,6 @@ const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", ADMIN = "per_admin", BOB 
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const used = new Set();
 const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
-  { name: "matter", kind: "link", to: "matter", label: "Matter" }, { name: "project", kind: "link", to: "project", label: "Project" }] };
 
 import { QUICK_FIELD, RECORD_LAYOUT } from "../../records/core-types.js";
 
