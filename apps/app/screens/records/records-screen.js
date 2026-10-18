@@ -14,3 +14,14 @@ export const recordsScreen = (type, view) => ({
  * @param {{ def: any, rows: any[], canDefine: boolean }} o
  */
 export const needsIdFill = ({ def, rows, canDefine }) => Boolean(canDefine && def && Array.isArray(def.fields) && def.fields.some((/** @type {any} */ f) => f && f.name === "ref") && Array.isArray(rows) && rows.some((r) => r && r.data && !r.data.ref));
+
+/** What a type listing (records.types) says about a type that records.define does not take back: the keys the listing adds, or the box keeps. */
+const LISTING_ONLY = ["system", "version", "space", "id", "created_at", "updated_at", "count"];
+
+/**
+ * A type as records.types lists it, as the one thing records.define accepts for that type, unchanged: the same name, label, icon, kind, fields, stages and views, without what only a listing carries. Not changed
+ * in any other way, so defining it again changes nothing. @param {any} def
+ */
+export function defineInputOf(def) {
+  return Object.fromEntries(Object.entries(def || {}).filter(([k, v]) => !LISTING_ONLY.includes(k) && v !== undefined));
+}

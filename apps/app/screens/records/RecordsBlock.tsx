@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
 import { callT } from "../../src/real/call-tool";
-import { needsIdFill } from "./records-screen.js";
+import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { useEffectiveList } from "./views-actions";
@@ -59,7 +59,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     const def = world.types.find((t) => t.name === type);
     if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
     idAsked.current.add(type);
-    void callT("records.define", { diff: { change_types: [def] } }).then(() => reload()).catch(() => {});
+    void callT("records.define", { diff: { change_types: [defineInputOf(def)] } })
+      .then((r) => { if (r.error) console.warn(`records: the IDs of ${type} were not filled in (${r.error.code}: ${r.error.message})`); else reload(); })   // nothing is shown to the person: the next visit asks again
+      .catch((e) => console.warn(`records: the IDs of ${type} were not filled in (${e instanceof Error ? e.message : String(e)})`));
   }, [world, type, canShare, reload]);
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   const page = Boolean(b.props?.page);
