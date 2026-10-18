@@ -25,6 +25,8 @@ export const SKIPPED = Object.freeze({
   "a file in Drive": "there is no Drive gateway in a bare daemon, so the file and the draft are handed in as relative Drive paths, whose form is all the kernel checks (kernel/tasks/facts.js); a hand-in that names a record is read on the doer's own chain and is covered by test/prod-wiring-daemon.test.js",
   "a running agent session": "the agent's hand-in is made on the agent's own chain; no model runs",
   "an outward send held at the Gate": "no sender is configured in a bare daemon",
+  "a model in a woken session": "the wake tests use the stand-in provider the session tests use: a job thread starts, nothing is thought, and the round's grant is minted by the test the way the Flows host mints it once the wake has ended",
+  "a joined member's notes on a record": "records.log refuses a note (it belongs to the planner) and the member's notes on a record stay her home's until 0.6.3",
 });
 
 const used = new Set();
@@ -218,7 +220,7 @@ test("5. changes requested on an agent doer's task wake the doer again, with the
   assert.equal((await ask.review(miaChain, task.id, { result: "pass" })).state, "done");
 });
 
-test("6. a joined member works in the team's planner and records through the member door: her private note stays hers, and her changes and logged notes are in the record's history as her", { timeout: 180_000 }, async t => {
+test("6. a joined member works in the team's planner and records through the member door: her private note stays hers, and her changes and logged call are in the record's history as her", { timeout: 180_000 }, async t => {
   const w = await boot(t);
   const { d, K, space, owner, ownerChain, R, call } = w;
   const svc = createMemberTools({ space, kernel: K, registry: d.registry });
@@ -237,8 +239,10 @@ test("6. a joined member works in the team's planner and records through the mem
   await R.define(ownerChain, { add_types: [INTAKE] });
   const rec = (await as(MIA, "records.create", { type: "intake", data: { name: "Okafor", stage: "New" } })).record;
   await as(MIA, "records.move", { urn: rec.urn, stage: "Retained" });
-  await as(MIA, "records.log", { urn: rec.urn, kind: "note", text: "Wants a warmer blue" });
+  await as(MIA, "records.log", { urn: rec.urn, kind: "call", text: "Spoke to Okafor" });
+  // a note is not logged here: the door sends it to the planner (a joined member's notes on a record stay her home's until 0.6.3, see docs)
+  assert.ok(await code(as(MIA, "records.log", { urn: rec.urn, kind: "note", text: "Wants a warmer blue" })), "a note is refused by records.log and goes through the planner");
   const items = (await as(MIA, "records.history", { urn: rec.urn })).items;
   assert.ok(items.some((/** @type {any} */ x) => /stage/i.test(x.text) && x.actor.id === MIA), `her stage change is in the history as her: ${JSON.stringify(items.map((/** @type {any} */ x) => [x.kind, x.text])).slice(0, 300)}`);
-  assert.ok(items.some((/** @type {any} */ x) => x.kind === "note" && /warmer blue/.test(x.text)), "and the note she logged");
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "and the call she logged");
 });
