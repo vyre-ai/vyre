@@ -3,11 +3,12 @@ import { useRouter } from "expo-router";
 import { Button, Text } from "@vyre/ui";
 import { tool } from "../../src/real/box";
 import { FileViewerSheet } from "../drive/FileViewerSheet";
+import { timeOf } from "../../src/time/show.js";
 
 type Signer = { name: string; email: string; sent: number | null; opened: number | null; signed: number | null; declined: number | null };
 type Status = { submission: number; status: string; signers: Signer[]; audit_url: string | null } | null;
 
-const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const clock = (t: number) => timeOf(t);
 
 /** The plain lines for one signer: "Sent to Ava, 9:40 · Opened 9:52 · Signed 10:03". Only what the server reports is shown. */
 export function timelineLine(s: Signer): string {
