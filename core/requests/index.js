@@ -168,10 +168,16 @@ export default {
         switch (String(i.call)) {
           case "ask": return doAsk(space, person, role, input);
           case "status": return doStatus(space, person, role);
+          case "setting": {
+            if (role !== "owner") throw refuse("not found", "not_found");
+            db.prepare("INSERT INTO join_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, input.accepting === true ? 1 : 0, now());
+            ctx.events.emit("requests.setting", { space, accepting: input.accepting === true });
+            return doList(space);
+          }
           case "list": case "decide": case "clear":
             if (role !== "owner" && role !== "admin") throw refuse("not found", "not_found");
             return i.call === "list" ? doList(space) : i.call === "clear" ? doClear(space, person) : doDecide(space, person, input);
-          default: throw refuse("call is ask, status, list, decide or clear", "bad_input");
+          default: throw refuse("call is ask, status, setting, list, decide or clear", "bad_input");
         }
       },
     });

@@ -38,7 +38,7 @@ export const CALLS = Object.freeze({
   // open it if locked, pick a free item name in it, put the key) covered by ONE presence proof over the label and the value's hash. Each runs the vault's internal tool vault.me.serve as the door's own member chain: no owner chain, no model, no logging or echo of the password, the Secret Key or the value.
   myvault: ["status", "addkey", "addkeys"],
   // Asking to join (core/requests): ask and status are the asker's own (ASK_CALLS, the ask door); list, decide and clear are an owner's or admin's, answered only for a member of that role.
-  requests: ["ask", "status", "list", "decide", "clear"],
+  requests: ["ask", "status", "list", "decide", "clear", "setting"],
   // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
   skills: ["browse", "list", "get", "draft", "approve", "decline", "rollback", "versions"],
   // A member's own new-device sign-ins on the team's server (core/identity/signins.js): the card on Now and its two answers; the person is the door's authenticated chain.

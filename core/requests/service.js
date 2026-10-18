@@ -7,6 +7,7 @@
 
 import { KernelError } from "../../kernel/core/errors.js";
 import { MAY_SET } from "../../kernel/grants/roles.js";
+import { proofRequest } from "../../kernel/remote/proof.js";
 
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", limit: "limit" });
 
@@ -54,6 +55,18 @@ export function createRequestsService(o) {
       const allowed = /** @type {any} */ (MAY_SET)[/** @type {string} */ (role)] || [];
       if (!inv || inv.issued_by !== person || inv.status !== "pending" || !allowed.includes(inv.role) || typeof inv.invitee !== "string") throw plain;
       return serve("decide", person, role, { id: i.id, approve: true, invite: token, invite_id: invId, invitee: inv.invitee });
+    },
+    /** Turn asking on or off: the Space's OWNER, with their presence over the new value (a proof for any other value, a used or an expired one, asks again and changes nothing). */
+    async setting(/** @type {any} */ chain, /** @type {any} */ input, /** @type {any} */ opts) {
+      const person = who(chain), role = roleOf(person);
+      if (role !== "owner") throw new KernelError("not_found", "not found");
+      const accepting = obj(input).accepting === true;
+      const want = proofRequest(o.space, "requestsSetting", { accepting });
+      const proof = opts && typeof opts === "object" ? opts.presence : undefined;
+      if (!proof) throw new KernelError("needs_presence", "turning requests on or off needs you at your device");
+      const why = await o.kernel.presence.check({ chain, op: want.op, fields: want.fields, proof });
+      if (why !== null) throw new KernelError("needs_presence", "turning requests on or off needs you at your device", String(why));
+      return serve("setting", person, role, { accepting });
     },
     async clear(/** @type {any} */ chain) { const person = who(chain), role = roleOf(person); if (role !== "owner" && role !== "admin") throw new KernelError("not_found", "not found"); return serve("clear", person, role, {}); },
   };

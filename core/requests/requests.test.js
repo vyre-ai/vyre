@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import mod from "./index.js";
 import { CLOSED_WORDS, LIMITS, NOT_ACCEPTED_WORDS, cleanNote, statusFor } from "./model.js";
 import { createRequestsService } from "./service.js";
+import { proofRequest } from "../../kernel/remote/proof.js";
 
 const SPACE = "spc_harlowharlow", OTHER = "spc_" + "z".repeat(12);
 const ASKER = "per_" + "a".repeat(26), ASKER2 = "per_" + "b".repeat(26), OWNER = "per_" + "o".repeat(26);
@@ -202,4 +203,28 @@ test("requests.status is limited per identity (thirty a minute), requests.attent
   assert.deepEqual([out[0], out[29], out[30]], ["waiting", "waiting", "closed"], "the 31st read in a minute gets the closed words");
   assert.equal((await w.tools.get("requests.attention").run({}, { caller: "module:mail" }).catch((e) => e)).code, "denied", "another module is refused");
   assert.ok((await w.tools.get("requests.attention").run({}, { caller: "module:approvals" })).requests);
+});
+
+test("the owner turns asking on or off through the Space's door with one presence proof over the new value: none, a proof for the other value, a reused or an expired one change nothing; an admin is not found", async () => {
+  const w = await world();
+  const used = new Set();
+  const svc = createRequestsService({ space: SPACE, registry: { call: async (tool, input) => ({ data: await w.tools.get("requests.serve").run(input, { caller: "module:vyred" }) }) },
+    kernel: { gateway: { members: { roleOf: ({ id }) => (id === OWNER ? "owner" : id === ASKER2 ? "admin" : null) } }, presence: { check: async (i) => {
+      const p = i.proof || {};
+      if (p.expires_at <= 1000) return "expired";
+      if (used.has(p.nonce)) return "replayed";
+      const want = proofRequest(SPACE, "requestsSetting", { accepting: true });
+      if (i.op !== want.op || JSON.stringify(i.fields) !== JSON.stringify(want.fields)) return "wrong_payload";
+      used.add(p.nonce); return null;
+    } } } });
+  const chain = (id) => ({ space: SPACE, hops: [{ actor: { kind: "person", id } }] });
+  const go = (c, input, proof) => svc.setting(c, input, proof ? { presence: proof } : undefined).then(() => "ok", (e) => e.code);
+  assert.equal(await go(chain(OWNER), { accepting: true }), "needs_presence", "no proof");
+  assert.equal(await go(chain(OWNER), { accepting: false }, { nonce: "a", expires_at: 5000 }), "needs_presence", "a proof for the other value");
+  assert.equal(await go(chain(OWNER), { accepting: true }, { nonce: "b", expires_at: 500 }), "needs_presence", "expired");
+  assert.equal((await w.tool("requests.accepting", { space: SPACE })).data.accepting, false, "nothing changed");
+  assert.equal(await go(chain(ASKER2), { accepting: true }, { nonce: "c", expires_at: 5000 }), "not_found", "an admin does not switch it");
+  assert.equal(await go(chain(OWNER), { accepting: true }, { nonce: "c", expires_at: 5000 }), "ok");
+  assert.equal((await w.tool("requests.accepting", { space: SPACE })).data.accepting, true);
+  assert.equal(await go(chain(OWNER), { accepting: true }, { nonce: "c", expires_at: 5000 }), "needs_presence", "a proof is used once");
 });

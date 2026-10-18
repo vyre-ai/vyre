@@ -142,6 +142,24 @@ async function inviteDeps(space: string) {
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
 
+/** The asks waiting and whether this Space takes them, through the Space's own door (an owner or an admin). */
+export async function teamRequests(space: string) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.list", []);
+}
+
+/** Turn "let people ask to join" on or off: the owner's own presence over the new value, signed by this device. */
+export async function teamSetting(space: string, accepting: boolean) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.setting", [{ accepting }]);
+}
+
+/** Clear every waiting ask (the full-list notice's button). */
+export async function teamClear(space: string) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.clear", []);
+}
+
 /** Answer a request to join through the Space's own door, as the approver (the invite is checked there, under their own chain). */
 export async function teamDecide(space: string, input: { id: string; approve: boolean; invite?: string }) {
   const d = await inviteDeps(space);

@@ -20,7 +20,7 @@ export function JoinRequests({ space, label }: { space: string; label: string })
   const [busy, setBusy] = useState("");
   const load = useCallback(async () => {
     if (MOCK || !/^spc_[a-z2-7]{12,26}$/.test(space)) return;
-    try { setSt(await tool<State>("requests.accepting", { space })); setProblem(""); } catch (e) { setProblem(said(e)); }
+    try { const { teamRequests } = await import("../../src/real/team-join"); setSt((await teamRequests(space)) as State); setProblem(""); } catch (e) { setProblem(said(e)); }
   }, [space]);
   useEffect(() => { void load(); const t = setInterval(() => void load(), 15000); return () => clearInterval(t); }, [load]);
   useEffect(() => { void import("@vyre/relay-client/words.js").then((m) => setWords(m.WORDS as unknown as string[])).catch(() => {}); }, []);
@@ -35,9 +35,9 @@ export function JoinRequests({ space, label }: { space: string; label: string })
   });
   return (
     <Card>
-      <Row title={ASK_COPY.settingTitle} sub={ASK_COPY.settingHelp} end={<Switch label={ASK_COPY.settingTitle} on={st.accepting} onChange={(v) => void act("setting", () => tool("requests.accept", { space, accepting: v }))} />} />
+      <Row title={ASK_COPY.settingTitle} sub={ASK_COPY.settingHelp} end={<Switch label={ASK_COPY.settingTitle} on={st.accepting} onChange={(v) => void act("setting", async () => (await import("../../src/real/team-join")).teamSetting(space, v))} />} />
       {problem ? <Banner icon="refresh"><Text tone="warn">{problem}</Text></Banner> : null}
-      {st.refused > 0 ? <Banner icon="refresh"><View className="gap-s2"><Text>{`Requests are being refused: ${st.open} waiting.`}</Text><View className="self-start"><Button size="sm" label="Clear all" loading={busy === "clear"} onPress={() => void act("clear", () => tool("requests.decide", { space, id: "*", clear: true }))} /></View></View></Banner> : null}
+      {st.refused > 0 ? <Banner icon="refresh"><View className="gap-s2"><Text>{`Requests are being refused: ${st.open} waiting.`}</Text><View className="self-start"><Button size="sm" label="Clear all" loading={busy === "clear"} onPress={() => void act("clear", async () => (await import("../../src/real/team-join")).teamClear(space))} /></View></View></Banner> : null}
       {st.requests.map((r) => (
         <View key={r.id} className="gap-s2 p-s3">
           <Row dense title={ASK_COPY.reviewTitle(r.name || "Someone")} sub="Check their four words with them before you approve." chevron onPress={() => setOpen(open === r.id ? "" : r.id)} />
@@ -48,7 +48,7 @@ export function JoinRequests({ space, label }: { space: string; label: string })
               {r.note ? <View className="gap-s1"><Text size="caption" tone="label">{ASK_COPY.noteLabel}</Text><Text>{r.note}</Text></View> : null}
               <View className="flex-row gap-s2">
                 <Button kind="primary" size="sm" label={ASK_COPY.approve} loading={busy === r.id} onPress={() => void approve(r)} />
-                <Button kind="ghost" size="sm" label={ASK_COPY.decline} onPress={() => void act(r.id, () => tool("requests.decide", { space, id: r.id, approve: false }))} />
+                <Button kind="ghost" size="sm" label={ASK_COPY.decline} onPress={() => void act(r.id, async () => (await import("../../src/real/team-join")).teamDecide(space, { id: r.id, approve: false }))} />
               </View>
             </View>
           ) : null}
