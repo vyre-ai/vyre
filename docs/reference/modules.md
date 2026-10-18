@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`documents`](#documents) | `core/documents` | `box` | 13 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 73 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 51 | 0 | none |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 52 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`skills`](#skills) | `core/skills` | `box`, `local` | 18 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 19 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 127 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -100,7 +100,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 5 | 2 | cli |
-| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
+| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 11 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 81 | 42 | cli |
@@ -442,7 +442,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [51](tools.md#flows), 1 of them only for other modules
+- Tools: [52](tools.md#flows), 1 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
@@ -994,7 +994,7 @@ The skills a session may use, found by what it is about to do, and the library t
 - Folder: `core/skills`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#skills), 8 of them only for other modules
+- Tools: [19](tools.md#skills), 9 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update"]}`
@@ -1087,7 +1087,7 @@ The app's way into a Space's tasks: one tool per Store call over the kernel's ta
 - Folder: `core/tasks-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#tasks), 3 of them only for other modules
+- Tools: [11](tools.md#tasks), 3 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`

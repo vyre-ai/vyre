@@ -26,12 +26,12 @@ import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
-import { recordTrigger, typeMatches, triggerScope, onRecordChange } from "./triggers.js";
+import { recordTrigger, typeMatches, triggerScope, onRecordChange, triggersOf, expandTriggers } from "./triggers.js";
 import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
-import { chooseDoer } from "./assign.js";
+import { chooseDoer, slotsOf } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
@@ -65,6 +65,8 @@ const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
 
 import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
 import { showable } from "./runner-faults.js";
+import { STEP_INPUT_CAP, inputOf, testStepOf, retryFrom } from "./step-test.js";
+import { schedKey, deviceOffline, SERVICE_BODY_CAP, NAME_FALLBACK, TASK_ENDS, needOf, nameOf, labelOf, flowUsesComputedOutward } from "./runner-helpers.js";
 export { showable };
 
 /**
@@ -202,7 +204,7 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
       state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
-      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks } };
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks, unmade: g.unmade || [] } };
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
     for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
     await this.store.putRun(run);
@@ -294,7 +296,7 @@ export class FlowRunner {
 
   async #activeFlows() {
     if (this.cache && this.now() - this.cache.at < 30_000) return this.cache.flows;
-    const flows = await this.store.activeFlows();
+    const flows = expandTriggers(await this.store.activeFlows());   // a Flow with several triggers is armed once per trigger
     this.cache = { at: this.now(), flows };
     return flows;
   }
@@ -303,7 +305,7 @@ export class FlowRunner {
   async #triggerFlows() {
     const active = await this.#activeFlows();
     if (!this.store.pausedFlows) return active;
-    const paused = await this.store.pausedFlows().catch(() => []);
+    const paused = expandTriggers(await this.store.pausedFlows().catch(() => []));
     return paused.length ? [...active, ...paused] : active;
   }
 
@@ -335,11 +337,12 @@ export class FlowRunner {
       const flow = ver ? ver.flow : null;
       const runs = await this.store.listRuns({ flow: r.id, limit: 200 });
       /** @type {number | null} */ let nextAt = null;
-      const t = flow && flow.trigger;
-      if (t && t.on === "time" && r.status === "active") {
-        const last = await this.#lastFire(r.id, now);
+      for (const [ti, t] of triggersOf(flow).entries()) {
+        if (!(t && t.on === "time" && r.status === "active")) continue;
+        const last = await this.#lastFire(flow.triggers ? `${r.id}#${ti}` : r.id, now);
         const nf = t.cron !== undefined || t.every_ms !== undefined ? nextFire(t, t.cron !== undefined ? Math.max(last, now) : last, this.#zone(t, cat), this.holidays) : null;
-        nextAt = nf !== null ? (t.every_ms !== undefined ? Math.max(nf, now) : nf) : t.at !== undefined && t.at > now ? t.at : null;
+        const at = nf !== null ? (t.every_ms !== undefined ? Math.max(nf, now) : nf) : t.at !== undefined && t.at > now ? t.at : null;
+        if (at !== null && (nextAt === null || at < nextAt)) nextAt = at;
       }
       out.push(healthOf({ id: r.id, label: (flow && (flow.label || flow.name)) || r.name || r.id, status: r.status, paused: r.paused || null, runs, now, nextAt, tz: cat.tz || "UTC",
         lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, testFailing: ver && r.status === "active" ? await this.#testFailing(r.id, ver) : undefined, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
@@ -643,8 +646,8 @@ export class FlowRunner {
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      const tz = this.#zone(t, cat);
-      const last = await this.#lastFire(f.id, now);
+      const tz = this.#zone(t, cat), sk = schedKey(f);
+      const last = await this.#lastFire(sk, now);
       if (t.at !== undefined) {
         if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) work.push(this.#start(f, { kind: "time", key: `${f.id}@${t.at}`, at: t.at }, null));
         continue;
@@ -656,7 +659,7 @@ export class FlowRunner {
       const fire = rule === "all" ? times : rule === "skip" ? times.filter(x => now - x < 120_000) : [times[0]];
       const missed = rule === "once" ? times.length - 1 + more : 0;
       const kept = rule === "all" && more > 0 ? times[times.length - 1] : now;   // past the cap, the rest are looked at on the next tick
-      this.lastFire.set(f.id, kept); if (this.store.putSchedule) await this.store.putSchedule(f.id, kept);
+      this.lastFire.set(sk, kept); if (this.store.putSchedule) await this.store.putSchedule(sk, kept);
       for (const due of fire) {
         const late = now - due >= 120_000 || missed > 0;
         work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due, ...(t.cron !== undefined || t.hours !== undefined ? { tz } : {}), ...(late ? { caught_up: true, missed } : {}) }, null));
@@ -683,7 +686,7 @@ export class FlowRunner {
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
-      const last = await this.#lastFire(f.id, now);
+      const last = await this.#lastFire(schedKey(f), now);
       if (t.cron !== undefined || t.every_ms !== undefined) take(nextFire(t, last, this.#zone(t, cat), this.holidays));
       else if (t.at !== undefined && t.at > now) take(t.at);
     }
@@ -813,7 +816,7 @@ export class FlowRunner {
     const sourceSpaces = (src && src.source_spaces) || [f.space];
     const tainted = trust === "external" || trust === "untrusted" || sourceSpaces.length > 1;
     /** @type {Run} */
-    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
+    const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: { ...recordTrigger(f.flow.trigger, trig, slim), ...(f.tIndex !== undefined ? { index: f.tIndex } : {}) },
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver, label: String(f.flow.label || f.flow.name || "").slice(0, 120) };
     // The words a Flow can print about itself, fixed once when the run starts (so a replay prints the same): this run's number among the Flow's, who approved it, who started it, and the Space's name.
     run.number = await this.#nextNumber(f.id);
@@ -893,7 +896,9 @@ export class FlowRunner {
    *   skip     do not run the failed step: it is recorded as skipped. If a later step reads its output (`steps.<id>`), a `value` to use instead is required: typed by the person or accepted from an
    *            agent's proposal, and recorded on the step with who supplied it (`by`). With no value the skip is refused, naming the step.
    *   version  "latest" re-pins the run to the Flow's active version, only if every step already done is still there with the same id and kind; otherwise it is refused, naming the first that is not.
-   * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
+   *   from     a step id: that step and every step after it run again, and the steps before it keep their recorded outputs. A failed, paused or finished run can be taken back to a step this way, unless a step
+   *            that would run again sent, posted, paid or published (done, or begun and not known to have failed): then it is refused ("that run already sent something; start a new run to send again").
+   * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest', from?: string }} [opts]
    */
   async retry(runId, opts = {}) {
     { const up = await this.joins.retryTarget(runId); if (up) return this.retry(up, opts); }
@@ -902,8 +907,10 @@ export class FlowRunner {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
       if (run && run.gate) throw Object.assign(new Error("a stage gate is not retried; it moves on by itself when its tasks are done"), { code: "bad_state" });
-      if (!run || (run.state !== "paused" && run.state !== "failed")) return;
+      if (!run || (run.state !== "paused" && run.state !== "failed" && !(opts.from && run.state === "done"))) return;
       const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+      // From a chosen step: that step and every step after it (in the Flow's order) are cleared from the ledger, so they run again; what came before keeps its recorded output.
+      if (opts.from !== undefined) await retryFrom({ store: this.store, catalogFn: () => this.catalogFn() }, run, String(opts.from));
       if (opts.version === "latest") {
         const now = await this.store.active(run.flow);
         if (!now) throw fail("not_active", "that Flow has no active version to move to");
@@ -1136,6 +1143,8 @@ export class FlowRunner {
     const led = this.#led(ctx, key);
     if (led && (led.status === "done" || led.status === "skipped") && !INLINE_KINDS.has(s.kind)) return;
     if (led && led.status === "failed_handled" && INLINE_KINDS.has(s.kind)) return;
+    // A step turned off is not run (nor what is inside it): the ledger says so, and what reads it gets nothing.
+    if (s.enabled === false) { if (!led || led.status !== "skipped") await this.#mark(ctx, key, { status: "skipped", off: true, output: null, started_at: this.now(), finished_at: this.now() }); return; }
     run.error = { step: s.id, code: "", message: "" }; // names the step in flight; cleared by a clean finish
     // A path that goes through a link field (contact.spouse.name) reads the linked record under the Flow's own chain; `load` lays what it read over this step's scope (kernel/flows/links.js).
     /** @type {{ at: string[], over: any }[]} */ let linked = [];
@@ -1147,9 +1156,10 @@ export class FlowRunner {
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
     const val = (/** @type {any} */ v) => resolveValue(v, scope());
 
+    const capture = () => { if (ctx.dry) return; const seen = inputOf(s, ev, val); if (seen !== undefined && !(run.steps[key] && run.steps[key].input !== undefined)) run.steps[key] = { ...(run.steps[key] || {}), input: showable(seen, STEP_INPUT_CAP) }; };
     if (s.kind === "decide") {
       await this.#block(ctx, s, key, suffix, locals, scope, async () => {
-        await load();
+        await load(); capture();
         let branch = led && led.output && led.output.branch;
         if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
         await this.#walk(ctx, s[branch] || [], suffix, locals);
@@ -1159,7 +1169,7 @@ export class FlowRunner {
     }
     if (s.kind === "repeat") {
       await this.#block(ctx, s, key, suffix, locals, scope, async () => {
-        await load();
+        await load(); capture();
         let items = led && led.output && led.output.items;
         if (!items) {
           const list = ev(s.over);
@@ -1178,6 +1188,8 @@ export class FlowRunner {
     const dispatch = async () => {
       /** @type {any} */ let out;
       await load();
+      // What this step was given, for the run page: kept in the ledger (hidden where secret, never a sealed value) whether the step fails or not.
+      capture();
       switch (s.kind) {
         case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
         case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
@@ -1464,7 +1476,7 @@ export class FlowRunner {
         throw new Suspend();
       }
     }
-    if (!ctx.dry) await this.#mark(ctx, key, { status: "started", ...(info.input !== undefined ? { input: showable(info.input) } : {}) });
+    if (!ctx.dry) await this.#mark(ctx, key, { status: "started", ...(info.input !== undefined ? { input: showable(info.input, STEP_INPUT_CAP) } : {}) });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
     ctx.actAs = doerChain;
@@ -1761,7 +1773,7 @@ export class FlowRunner {
         this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
         throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
       }
-      const t = res.task || {};
+      const t = res.task || {}; if (t.state === "declined") throw new StepFail("refused", `step ${s.id} was declined by the person it was given to`);   // the task was declined: the step fails at once and its on_fail path runs
       // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
       let values;
       if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
@@ -1800,7 +1812,7 @@ export class FlowRunner {
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...(await slotsOf(s, (/** @type {string} */ r) => this.#checker(ctx, r))), flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
@@ -1858,7 +1870,7 @@ export class FlowRunner {
     const space = ctx.run.space;
     const [kind, ...rest] = String(ref).split(":");
     const name = rest.join(":");
-    if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] };
+    if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] }; if (kind === "group") return { doer: { kind: "service", id: "pool", space }, helpers: [] };
     if (kind === "teammate") return { doer: { kind: "agent", id: name, space }, helpers: [] };
     /** @type {{ actor: ActorRef, name?: string, skills?: string[] }[]} */ let candidates;
     if (kind === "pool") {
@@ -1988,6 +2000,11 @@ export class FlowRunner {
     return simulateFlow({ catalogFn: () => this.catalogFn(), chains: this.chains, k: this.k, get holidays() { return self.holidays; }, now: () => this.now(), zone: (t, cat) => this.#zone(t, cat), walk: (ctx, steps, prefix, locals) => this.#walk(ctx, steps, prefix, locals) }, flow, o);
   }
 
+  /** Try ONE step of a Flow against a past run or sample values, nothing created, changed or sent (kernel/flows/step-test.js). @param {any} flow @param {string} stepId @param {{ approver: any, run?: string, flowId?: string, sample?: any, hideFor?: string }} o */
+  async testStep(flow, stepId, o) {
+    return testStepOf({ catalogFn: () => this.catalogFn(), store: this.store, now: () => this.now(), scope: (/** @type {any} */ ctx) => this.#scope(ctx, {}), step: (/** @type {any} */ ctx, /** @type {any} */ s) => this.#step(ctx, s, s.id, "", {}) }, flow, stepId, o);
+  }
+
   // ------------------------------------------------------------------ reading runs
 
   /** @param {string} id */
@@ -1999,31 +2016,3 @@ export class FlowRunner {
 }
 
 // ---------------------------------------------------------------------- helpers
-
-/** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
-/** Does a service answer say the Chrome it needs is on a Mac that is off? Returns the plain reason, or null. @param {any} r */
-function deviceOffline(r) {
-  if (!r || r.status !== 503 || typeof r.body !== "string") return null;
-  try { const j = JSON.parse(Buffer.from(r.body, "base64").toString("utf8")); return j && j.error && j.error.class === "no_browser" && j.error.mac === true ? String(j.error.reason || "the Mac is offline").slice(0, 160) : null; } catch { return null; }
-}
-
-const SERVICE_BODY_CAP = 64 * 1024;
-/** @param {any} step @param {import('./compile.js').Catalog} cat */
-/** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
-/** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
-const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
-const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
-
-function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }
-
-/** @param {ActorRef} a */
-const nameOf = a => (a && a.id ? `${a.id}` : "the approver");
-/** @param {import('./compile.js').Catalog} cat @param {string} action */
-const labelOf = (cat, action) => (cat.actions[action] && cat.actions[action].label ? cat.actions[action].label.toLowerCase() : action.replace(".", " ").replace(/-/g, " "));
-
-/** @param {any} ctx */
-function flowUsesComputedOutward(ctx) {
-  const c = compileFlow(ctx.view.flow, ctx.cat);
-  return c.effects.needs_run_ask;
-}
-

@@ -20,10 +20,12 @@ const used = new Set();
 const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
 function fakeSealer() {
   const st = { live: new Map(), revoked: new Set() }; let n = 0;
+  // each rig has its own keys: test files run side by side on one fscrypt volume, and a key shared between them is removed from the volume by whichever closes its workspace first
+  const salt = crypto.randomBytes(8).toString("hex");
   const one = c => { if (!c || c.hops.length !== 1 || c.hops[0].actor.kind !== "person") throw Object.assign(new Error("human_only"), { code: "human_only" }); };
   return { st, lease: {
     // like the real process, issue gives the same member and computer the same key while access holds
-    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.createHash("sha256").update(`${m}|${i.device}`).digest("base64"), ttlMs: 3600000 }; },
+    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.createHash("sha256").update(`${salt}|${m}|${i.device}`).digest("base64"), ttlMs: 3600000 }; },
     renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
     revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
     reinstate: async () => ({ reinstated: true }),

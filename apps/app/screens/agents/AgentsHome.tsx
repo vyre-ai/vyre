@@ -62,7 +62,7 @@ export function AgentsHome() {
   const def = useMemo(() => agentsDef(rows), [rows]);
   const recs = useMemo(() => asRecords(rows), [rows]);
   const keep = new Set(listRows(def, recs, chips, query, {}).map((r: any) => r.id));
-  const shown = byRecent(items.filter((i) => keep.has(i.name)));
+  const shown = byRecent(items.filter((i) => keep.has(i.name))) as typeof items;
 
   const flip = (r: Row) => {
     const stopped = r.status === "Paused";

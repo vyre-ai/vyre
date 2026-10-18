@@ -94,6 +94,8 @@ test("the first chat on a Mac that never ran a session for the Space runs there,
   // an enrolled lender has said it is well to this Space's home without ever having run a session there
   const placed = await waitFor(() => { const p = w.r.home.placeNew({ session: "s_first", person: BOB }); return p.where === "mac" ? p : null; }, 20_000);
   assert.equal(placed.device, "dev_laptop");
+  // the nudge must be held at the home before the chat starts, or only the next heartbeat can carry it: on a loaded shard the lender's first wait can come late, and that is not what is measured here
+  await waitFor(() => w.r.home.waiting("dev_laptop"), 15_000);
   const t0 = Date.now();
   const proc = w.r.home.spawn({ session: "s_first", person: BOB, title: "First chat", args: ["--output-format", "stream-json"] });
   const out = lines(proc.stdout);
