@@ -299,6 +299,18 @@ export function createFlowsHost(o) {
       mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
       apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("agents.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
     };
+    /** A NEW agent the Engineer proposes (flows.propose { what: "agent.new", input }): the agents module keeps the whole agents.create input as a draft, the card goes to the owner or an admin, and their yes makes the agent. */
+    const agentNewKind = {
+      draft: async (/** @type {any} */ chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        if (!(proposer.id === ownerOf() || (await isAdminOf(proposer)))) throw Object.assign(new Error("only an owner or an admin proposes a new agent"), { code: "not_found" });
+        const by = assistantOf(chain);
+        const r = await callModule("agents.new.draft", { input: spec.input, proposer: proposer.id, ...(by ? { by } : {}) });
+        return { form: { draft: r.id, hash: r.hash, name: r.name, owner: r.owner || null, personal: r.personal === true }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("agents.new.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("agents.new.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
+    };
     /** A template version put live, on its owner's yes (R031-11): the same card, with the work module keeping the versions. */
     const templateKind = {
       draft: async (/** @type {any} */ _chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
@@ -325,7 +337,7 @@ export function createFlowsHost(o) {
       isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
       // the agents are this home's own: only the home's Space takes a change to one
-      kinds: { template: templateKind, skill: skillKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
+      kinds: { template: templateKind, skill: skillKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind, "agent.new": agentNewKind } : {}) },
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
