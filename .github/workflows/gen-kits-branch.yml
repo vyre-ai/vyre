@@ -7,7 +7,7 @@ name: gen-kits-branch
 on:
   push:
     branches: ["work/polish/**"]
-    paths: ["records/kits/**/kit.ts", "records/language/**", ".github/workflows/gen-kits-branch.yml"]
+    paths: ["records/kits/**/kit.ts", "core/appmods/catalog/*.kit.ts", "records/core-types.js", "records/language/**", ".github/workflows/gen-kits-branch.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,6 +43,14 @@ jobs:
             mv "$RUNNER_TEMP/kit.json.new" "$out"
             n=$((n + 1))
           done
+          # an app's own Kit (core/appmods/catalog/<app>.kit.ts) restates core types, so it follows them too
+          for src in core/appmods/catalog/*.kit.ts; do
+            [ -f "$src" ] || continue
+            out="${src%.ts}.json"
+            node records/language/cli.js compile "$src" > "$RUNNER_TEMP/kit.json.new"
+            mv "$RUNNER_TEMP/kit.json.new" "$out"
+            n=$((n + 1))
+          done
           [ "$n" -gt 0 ] || { echo "::error::no kit source found"; exit 1; }
           echo "compiled $n kits"
       - name: Keep only the kit.json files, as a patch
@@ -50,7 +58,7 @@ jobs:
         run: |
           set -eu
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          git add -A -- 'records/kits/*/kit.json'
+          git add -A -- 'records/kits/*/kit.json' 'core/appmods/catalog/*.kit.json'
           if git diff --cached --quiet; then echo "the checked-in kits are what their sources compile to"; echo "stale=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           other="$(git status --porcelain | grep -v '^[AM]  ' || true)"
           if [ -n "$other" ]; then echo "::error::the compiler changed files outside the kit.json files:"; echo "$other"; exit 1; fi
@@ -87,7 +95,7 @@ jobs:
           case "$BRANCH" in work/polish/*) ;; *) echo "::error::only work/polish/** branches"; exit 1;; esac
           [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] || { echo "the branch moved on since this run started; run it again"; exit 0; }
           p="$RUNNER_TEMP/patch/kits.patch"
-          if git apply --numstat "$p" | cut -f3 | grep -v -E '^records/kits/[A-Za-z0-9_-]+/kit\.json$'; then echo "::error::the patch names a path that is not a kit.json file"; exit 1; fi
+          if git apply --numstat "$p" | cut -f3 | grep -v -E '^(records/kits/[A-Za-z0-9_-]+/kit\.json|core/appmods/catalog/[A-Za-z0-9_-]+\.kit\.json)$'; then echo "::error::the patch names a path that is not a kit.json file"; exit 1; fi
           if grep -E '^(old mode|new mode|rename |copy |new file mode 120000|deleted file mode 120000)' "$p"; then echo "::error::the patch changes modes, renames or links"; exit 1; fi
           git apply --index "$p"
           git config user.name "github-actions[bot]"

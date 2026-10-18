@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci(gen-kits-branch): also recompiles an app's own Kit (core/appmods/catalog/*.kit.ts to .kit.json), and starts when records/core-types.js changes, since Kits restate core types.
+- feat(records): fast fields. records.field.add makes a field work at once (the value is kept in the record's extra bag, shown as ordinary data); records.field.promote makes it a real field of the store and moves the values (safe to repeat); records.field.status lists where each is. Filters and sorts wait for the real field. Core types People, Companies, Tasks, Relationships and Projects carry the bag; the fields are rows of the hidden quick-field type.
 - feat(records): relationships. A core `relationship` type (from_record, to_record, kind, since, until, note) relates any record to any other; records.relationship.add and .list (both directions in one list), .kinds and .kinds.set (the kinds are the options of the type's kind choice, so a Space edits the list).
 - feat(records): pipelines for any type. records.pipeline.set takes a plain stage list (a stage can require fields, a lost stage requires a reason) and writes the type's stages and entry conditions; records.move moves a record and answers `needs: [fields]`, writing nothing, when the stage's required fields are empty.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.

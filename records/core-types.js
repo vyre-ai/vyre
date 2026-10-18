@@ -348,4 +348,16 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP].map((t) => Object.freeze(t)));
+/** The fast fields of a Space (core/records-tools/quick.js): one row per added field, kept until it is promoted to a real field of the store. */
+export const QUICK_FIELD = {
+  name: "quick-field", label: "Fast field", icon: "IconBolt",
+  fields: [
+    text("type", "Type", { required: true }), text("name", "Name", { required: true }), text("label", "Label", { required: true }),
+    choice("kind", "Kind", ["text", "rich_text", "number", "boolean", "date", "datetime", "choice"], { required: true }),
+    text("options", "Options (JSON)"), choice("state", "State", ["bag", "promoting", "real"], { required: true }),
+  ],
+};
+/** The bag every record type that people add fields to carries: the values of fast fields, as JSON text. */
+const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project"]);
+const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, QUICK_FIELD].map(withBag).map((t) => Object.freeze(t)));

@@ -11,6 +11,7 @@ import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
 import { registerPipeline } from "./pipeline.js";
 import { registerRelationships } from "./relationship.js";
+import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -103,12 +104,16 @@ export default {
     });
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
+      const qf = (await quickFieldsOf(d, String(i.type))).filter((f) => f.state !== "real");
+      const hit = bagInQuery({ filter: i.filter, sort: i.sort }, qf);
+      if (hit) throw refuse(`${hit} is still being set up, so it cannot be filtered or sorted yet. Try again in a minute.`, "bad_input");
       const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
-      return { rows: r.rows, next_cursor: r.next_cursor || null };
+      return { rows: qf.length ? r.rows.map((/** @type {any} */ x) => mergeOut(x, qf)) : r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
-      return { record: await d.gateway.records.get(d.chain, u.type, u.id) };
+      const rec = await d.gateway.records.get(d.chain, u.type, u.id);
+      return { record: rec ? mergeOut(rec, (await quickFieldsOf(d, u.type)).filter((f) => f.state !== "real")) : rec };
     }, byUrn);
     tool("records.reference", "A record put in front of the AI (the # in the composer): the record as data, with every sealed part (and any part this room may not read) a {{field:urn#name}} placeholder, never a value. Null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
@@ -120,6 +125,7 @@ export default {
     const hasRef = async (/** @type {any} */ d, /** @type {string} */ type) => { try { return ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === type && (t.fields || []).some((/** @type {any} */ f) => f.name === "ref")); } catch { return false; } };
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
+      try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();
@@ -161,11 +167,19 @@ export default {
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
       if (i.patch && Object.prototype.hasOwnProperty.call(i.patch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
-      return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
+      const qf = await quickFieldsOf(d, u.type);
+      let patch = i.patch;
+      if (qf.some((f) => f.state === "bag" && patch && f.name in patch)) {
+        const cur = await d.gateway.records.get(d.chain, u.type, u.id);
+        try { patch = splitIn(patch, qf, cur && cur.data && cur.data.extra); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+      }
+      const out = await d.gateway.records.update(d.chain, u.type, u.id, patch, i.base_version);
+      return { record: mergeOut(out, qf.filter((f) => f.state !== "real")) };
     }, byUrn);
 
     registerPipeline({ tool, obj, str, refuse, parseUrn });
     registerRelationships({ tool, obj, str, refuse, parseUrn });
+    registerQuick({ tool, obj, str, refuse, parseUrn });
     // ---- what links to a record, and the Kits this build ships ----
     tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {
       parseUrn(i.urn);
