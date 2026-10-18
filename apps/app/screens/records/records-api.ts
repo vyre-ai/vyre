@@ -12,6 +12,7 @@ export const isMissing = (e?: { code?: string; message?: string }) => !!e && (e.
 export type TaskRow = { id: string; title: string; state: string; due?: number | string | null; due_shown?: string; record?: string; slots?: { doer?: { holder: string }; reviewer?: { holder: string }; approver?: { holder: string } } };
 export type MineSlot = "assigned" | "reviewing" | "approving";
 
+export type NoteRow = { id: string; title?: string; body?: string; visibility?: string; record?: string; owner?: string };
 export type BusyBlock = { starts_at: string | number; ends_at: string | number | null; all_day: boolean; busy: true };
 
 export type StatsGroup = { key: unknown; count: number } & Record<string, any>;
@@ -20,7 +21,13 @@ export const recordsApi = {
   /** Totals by stage (or another choice field) across every record the caller may read. */
   stats: (type: string, o: { group_by?: string; filter?: object } = {}) => callT<{ groups: StatsGroup[]; total: StatsGroup }>("records.stats", { type, ...o }),
   /** Who can read a note or a synced event; only its writer changes it, and the box says so in plain words when it is someone else. */
-  share: (urn: string, visibility: "private" | "record" | "space") => callT<unknown>("records.share", { urn, visibility }),
+  share: (urn: string, visibility: "private" | "record" | "space", o: { type?: string; record?: string } = {}) =>
+    // A note is the planner's, so it is shared through the planner; an outside-calendar event through records.share.
+    o.type === "note" || o.type === "record-note"
+      ? callT<unknown>("planner.update", { item: urn.split("/").pop(), visibility, ...(o.record ? { record: o.record } : {}) })
+      : callT<unknown>("records.share", { urn, visibility }),
+  /** Notes by who they are about: mine, shared with me, or the whole Space (planner.list, which cuts them to what the caller may read). */
+  notes: (scope: "mine" | "shared" | "space") => callT<{ items: NoteRow[] }>("planner.list", { kind: "note", scope, state: "all", limit: 200 }),
   /** The blocks of time other people's private events take up: Busy, nothing else. */
   busy: (from?: string, to?: string) => callT<{ busy: BusyBlock[] }>("records.busy", { ...(from ? { from } : {}), ...(to ? { to } : {}) }),
   /** My tasks in one slot: the box reads who "mine" is from the caller (their person, the assistant acting, every role held). */

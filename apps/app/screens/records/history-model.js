@@ -20,3 +20,9 @@ export const QUICK = /** @type {{ key: "call" | "meeting" | "note", label: strin
   { key: "meeting", label: "Log a meeting", ask: "What came out of it?" },
   { key: "note", label: "Add a note", ask: "Write the note" },
 ]);
+
+/** The filters worth showing for these items: All, and each kind that has something. Agent actions and Notes and calls show only when there is one. Tasks, Flow runs and Files are not in records.history, so they show only if a box ever sends them. @param {Item[]} items */
+export function filtersFor(items) {
+  const list = Array.isArray(items) ? items : [];
+  return HISTORY_FILTERS.filter(([k]) => k === "all" || list.some((i) => (k === "agent" ? i.actor?.kind === "agent" : k === "notes" ? ["note", "call", "meeting"].includes(i.kind) : i.kind === k)));
+}

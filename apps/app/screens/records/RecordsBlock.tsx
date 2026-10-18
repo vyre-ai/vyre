@@ -15,6 +15,7 @@ import { isDayOne, sampleCount } from "./first-visit.js";
 import { isStageGroup } from "./move-rule.js";
 import { taskDrop } from "./task-drop.js";
 import { MyTasks } from "./MyTasks";
+import { NotesList } from "./NotesList";
 import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
 import { BoardWithStats } from "./BoardWithStats";
@@ -58,7 +59,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const scopes = scopesFor(type);
   const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : defaultScope(type);
   const sf = scopeFilter(scope);
-  const { data: world, loading, error, reload } = useRecordsWorld(sf ? { [type]: sf } : undefined);
+  const { data: world, loading, error, reload } = useRecordsWorld(sf && type !== "note" ? { [type]: sf } : undefined);
   const { phone } = useUiTheme();
   const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length));
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
@@ -125,7 +126,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
   const everyone = world.byType[def.name] || [];
-  const all = scopes.length ? filterByScope(everyone, scope, (world as any).me) : everyone;
+  // Notes are the planner's and are listed by it (NotesList); every other scoped type is cut here as well as on the box.
+  const all = scopes.length && def.name !== "note" ? filterByScope(everyone, scope, (world as any).me) : everyone;
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
   const rows = listRows(def, all, chips, query, lctx);
   const filter = (vd as any)[shown]?.filter as string | undefined;
@@ -240,13 +242,14 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       ) : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
-      {shown === "list" && !phone ? (
+      {def.name === "note" ? <NotesList scope={scope as "mine" | "shared" | "space"} /> : null}
+      {shown === "list" && !phone && def.name !== "note" ? (
         <TableControls columns={tableColumns.length + 1} onColumns={() => setColsOpen(true)}
           fields={def.fields.filter((f: any) => ["choice", "stage", "link", "actor", "boolean"].includes(f.kind) && tableColumns.includes(f.name)).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))}
           groupBy={lay.layout?.group_by} onGroup={(n) => void lay.save("group_by", n)}
           density={prefs.density} onDensity={prefs.setDensity} freeze={prefs.freezeFirst} onFreeze={prefs.setFreezeFirst} scope={lay.scope} mine={lay.mine} />
       ) : null}
-      {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
+      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardWithStats def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}

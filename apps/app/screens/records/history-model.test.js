@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterHistory, actorWords, QUICK, HISTORY_FILTERS } from "./history-model.js";
+import { filterHistory, actorWords, QUICK, HISTORY_FILTERS, filtersFor } from "./history-model.js";
 
 const person = { kind: "person", id: "p1", name: "Dana Marsh" };
 const agent = { kind: "agent", id: "a1", name: "Assistant" };
@@ -33,4 +33,9 @@ test("who did it: You for the person looking, the name for anyone else", () => {
 test("the filter row and the quick actions", () => {
   assert.equal(HISTORY_FILTERS[0][0], "all");
   assert.deepEqual(QUICK.map((q) => q.key), ["call", "meeting", "note"]);
+});
+
+test("only the filters that have something are offered", () => {
+  assert.deepEqual(filtersFor(items).map(([k]) => k), ["all", "email", "task", "notes", "agent"]);
+  assert.deepEqual(filtersFor([]).map(([k]) => k), ["all"]);
 });

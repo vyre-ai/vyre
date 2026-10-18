@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { Button, Card, Chip, Icon, Row, Text, showToast } from "@vyre/ui";
 import { RecordTimeline } from "./RecordTimeline";
 import { isMissing, recordsApi, type HistoryItem } from "./records-api";
-import { HISTORY_FILTERS, actorWords, filterHistory } from "./history-model.js";
+import { actorWords, filterHistory, filtersFor } from "./history-model.js";
 import { ago } from "../../ui/views/logic.js";
 
 const ICON: Record<string, any> = { chat: "chat", email: "mail", task: "task", flow: "flows", file: "file", note: "edit", call: "phone", meeting: "cal", agent: "spark", edit: "edit" };
@@ -28,7 +28,7 @@ export function RecordHistory({ urn, me, refresh = 0 }: { urn: string; me?: stri
   return (
     <View className="gap-s3">
       <Card title="History" className="gap-s3">
-        <View className="flex-row flex-wrap gap-s2">{HISTORY_FILTERS.map(([k, l]) => <Chip key={k} selected={filter === k} onPress={() => setFilter(k)}>{l}</Chip>)}</View>
+        <View className="flex-row flex-wrap gap-s2">{filtersFor(items === null ? [] : items).map(([k, l]) => <Chip key={k} selected={filter === k} onPress={() => setFilter(k)}>{l}</Chip>)}</View>
         {items === null ? <Text tone="label">Loading</Text> : shown.length ? shown.map((i) => (
           <Row key={i.id} dense lead={<View className="pr-s3"><Icon name={ICON[i.kind] ?? "records"} /></View>}
             title={<Text medium size="body">{i.text}</Text>}

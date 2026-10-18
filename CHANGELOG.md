@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): Records. Notes are the planner's, so the Notes tab lists them with planner.list (Mine, Shared with me, Space) and a writer changes who can read a note with planner.update; Events keep records.share. A record's History offers only the filters that have something in them (records.history has no tasks, flow runs or files).
 - feat(app): Records. Under the ask bar a "Try" chip offers a sentence the type can answer ("lead this month"). Under a person's role pills a stage strip shows every stage of their first role with the current one lit, a press moves it. A record with an address gets Send email, which opens the compose page with it filled in; the email is held for the person's yes, nothing leaves from the record page.
 - feat(app): Records. The record page opens like the approved design: the name, its role pills, Log a call, Log a meeting, Add a note and New task under it (screens/records/QuickActions.tsx; History keeps only the list), then the pinned header fields as labelled columns with the edit icon at the right, instead of chips.
 - feat(app): Records. On a person or company, each role is a pill ("Client · Active") whose menu moves it to another stage of that role (records.move), and "+ Role" gives it one it does not have (records.role.set). Notes and Communications show Mine / Shared with me / Space and Mine / On records I can see as the Views chips; Events keep Mine / Team / Everyone with a line saying what each shows.
