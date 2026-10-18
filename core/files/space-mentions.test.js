@@ -50,7 +50,10 @@ test("resolve is the chat's alone, takes a plain Drive path, and says how to rea
   const ok = await r.resolve({ id: "Projects/p1/files/brief.pdf", thread: "t1" }, { caller: "module:sessions" });
   assert.equal(ok.name, "brief.pdf");
   assert.match(ok.note, /files\.drive\.space\.read \{path: "Projects\/p1\/files\/brief\.pdf"\}/);
-  assert.deepEqual(ok.grant, { read: "Projects/p1/files/brief.pdf" });
+  assert.equal("grant" in ok, false, "no grant is returned: the tag adds no authority, the kernel decides the read");
+  assert.deepEqual(Object.keys(ok).sort(), ["hint", "name", "note"]);
+  const odd = await r.resolve({ id: 'a/b"c.txt', thread: "t1" }, { caller: "module:sessions" }).then((x) => x, (e) => e.code);
+  assert.ok(typeof odd === "object" ? odd.note.includes('"a/b\\"c.txt"') : odd === "not_found", "a quote in the path is escaped in the note or the path is refused, never left to end the sentence");
   for (const caller of ["module:files", "cli", "mcp", "module:mail"]) assert.equal(await r.resolve({ id: "a/b", thread: "t1" }, { caller }).then(() => null, (e) => e.code), "denied", caller);
   for (const id of ["../x", "/abs", "a//b", "a/./b", "", "a/"]) assert.equal(await r.resolve({ id, thread: "t1" }, { caller: "module:sessions" }).then(() => null, (e) => e.code), "not_found", JSON.stringify(id));
   assert.equal(await r.resolve({ id: "a/b", thread: "bad thread!" }, { caller: "module:assistant" }).then(() => null, (e) => e.code), "not_found");

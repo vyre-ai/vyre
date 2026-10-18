@@ -1,7 +1,7 @@
 // @ts-check
 // core/files/space-mentions.js: the Space's Drive as a # tag. Typing #brief in a chat searches the files the PERSON may read in the Space's Drive; picking one tags that single file. Search runs under the
 // caller's own chain (lib/gateway-door.js, the kernel's own listing), so a chip never names a file the person cannot open. Resolve is the chat's alone (sessions or the assistant): it checks the tag is a
-// plain Drive path and tells the model how to read it; it stores no grant, because a model in a team chat's turn reads the Drive as the member who spoke (files.drive.space.read), and the kernel decides
+// plain Drive path and tells the model how to read it; it stores no grant and returns none, because a model in a team chat's turn reads the Drive as the member who spoke (files.drive.space.read), and the kernel decides
 // that read when it happens, so a tag for a file the member cannot open still opens nothing.
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
@@ -62,8 +62,8 @@ export function registerSpaceMentions(ctx) {
       if (!p || p.endsWith("/")) throw refuse("that is a folder, not a file (tag a file inside it)", "not_found");
       const name = p.slice(p.lastIndexOf("/") + 1);
       return { name, hint: p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "",
-        note: `The person tagged the file "${p}" in the Space's Drive. Read it with files.drive.space.read {path: "${p}"}; it opens only if you may read it.`,
-        grant: { read: p } };
+        // the path goes into the model's context as one JSON string, so a quote or any odd character in it cannot end the sentence; nothing is stored and no grant is returned (the read is the kernel's)
+        note: `The person tagged the file ${JSON.stringify(p)} in the Space's Drive. Read it with files.drive.space.read {path: ${JSON.stringify(p)}}; it opens only if you may read it.` };
     },
   });
 }
