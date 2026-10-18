@@ -115,7 +115,9 @@ export function planStartScreen(u, lim = {}) {
     trusted,
     [...bs(), "/usr/bin/chmod", "0600", b.trusted],
     longRunning([...bs(), "/usr/bin/Xvnc", D, "-geometry", lim.size || "1440x900", "-depth", "24", "-rfbport", "-1", "-rfbunixpath", b.vncSock, "-rfbunixmode", "0600",
-      "-rfbauth", b.vncPass, "-auth", b.trusted, "-SecurityTypes", "VncAuth", "-AlwaysShared"]),
+      "-rfbauth", b.vncPass, "-auth", b.trusted, "-SecurityTypes", "VncAuth", "-AlwaysShared",
+      // the agent's untrusted cookie is an X SECURITY extension authority: without the extension there is no such cookie and the agent has no way onto its own screen (the computer's own Xvnc has it, entrypoint.sh)
+      "+extension", "SECURITY"]),
     untrusted,
     [...bs(), "/usr/bin/chmod", "0640", b.xauth],
     longRunning([...bs(onScreen), "/usr/bin/fluxbox"]),

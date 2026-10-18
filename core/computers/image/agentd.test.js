@@ -33,6 +33,7 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
 test("the screen is the browser uid's: its own display on a unix socket (no TCP port), its password a file in the browser's folder, never on the command line; the agent gets only an untrusted cookie", () => {
   const [rm, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   const s = xvnc.join(" ");
+  assert.match(s, / \+extension SECURITY/, "the untrusted cookie the agent gets is a SECURITY extension authority: without the extension there is none");
   assert.match(s, /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 /, "Xvnc runs as the browser uid, not the agent's");
   assert.match(s, / \/usr\/bin\/Xvnc :20 /);
   assert.match(s, /-rfbport -1 -rfbunixpath \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.sock -rfbunixmode 0600/);
