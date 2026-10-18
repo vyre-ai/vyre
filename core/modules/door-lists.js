@@ -84,7 +84,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
   // Download audit writes a signed request's audit file into the person's own Files: a person's own act, kept to the owner
-  "documents.signing.audit",
   "agents.draft.get", "agents.new.apply", "agents.new.draft", "agents.new.title",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -124,7 +123,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.status", "documents.signing.waiting", "documents.template.add",
+  "documents.signing.audit", "documents.signing.remind", "documents.signing.status", "documents.signing.waiting", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
