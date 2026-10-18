@@ -1,5 +1,5 @@
 // The list of a person's servers and teams (space-list-flow.js) joined to this app: the vault's tools, this device's pairings and teams, the two counters it keeps, and the chain pairing the server lane provides.
-// Four doors: `onVaultOpened` (the sign-in flows call it right after the master password opens the personal vault), `listFound` (Settings, Servers opens), `recordPaired` / `recordJoined` / `recordLeft`
+// Four doors: `onVaultOpened` (the sign-in flows call it right after the password opens the personal vault), `listFound` (Settings, Servers opens), `recordPaired` / `recordJoined` / `recordLeft`
 // (the act the person already said yes to). Nothing reads in the background and nothing is cached past the screen: the counters are a number and a few ids, never the list.
 import type { Pairing } from "../api/pairing";
 import { makeListFlow, memberTool } from "./space-list-flow.js";
@@ -92,7 +92,7 @@ async function flowFor(given?: Tool, member = false) {
   });
 }
 
-/** The master password just opened the personal vault: read the list once and connect every pinned server this device lacks. `vault` is the tool the sign-in already holds for the open vault, when it has one. */
+/** The password just opened the personal vault: read the list once and connect every pinned server this device lacks. `vault` is the tool the sign-in already holds for the open vault, when it has one. */
 export async function onVaultOpened(vault?: Tool, o: { member?: boolean } = {}) { return (await flowFor(vault, o.member)).opened(); }
 
 /** Settings, Servers opens: read the list again. */

@@ -53,7 +53,7 @@ async function walk(name, fn) {
     sees: async (text) => { await p.getByText(text, { exact: false }).first().waitFor({ timeout: 6000 }); },
     absent: async (text) => { if (await p.getByText(text, { exact: false }).count()) throw new Error(`this screen still says "${text}"`); },
     body: async () => p.locator("body").innerText(),
-    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.at("Get started"); await t.pick("Create an identity"); await t.at("Create your identity"); },
+    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.at("Get started"); await t.pick("New here? Get started"); await t.at("Create your identity"); },
   };
   try {
     await fn(t);
@@ -75,9 +75,9 @@ async function identity(t) {
   await t.start();
   await t.type("Username", "ab"); await t.sees("3 to 20");
   await t.type("Username", "alex"); await t.sees("vyre.run/u/alex");
-  if (await t.enabled("Create")) throw new Error("Create should wait for a master password");
-  await t.type("Master password", PASS);
-  await t.type("Confirm master password", PASS);
+  if (await t.enabled("Create")) throw new Error("Create should wait for a password");
+  await t.type("Password", PASS);
+  await t.type("Confirm password", PASS);
   await t.press("Create");
   await t.at("Save your recovery key");
   await t.sees("R1-SAMPLE-KEY-SHOWN-ONCE");
@@ -175,11 +175,11 @@ await walk("the first screen offers both, and Back from create returns to it", a
   await t.start();
   await t.press("Back");
   await t.at("Get started");
-  await t.sees("Create an identity");
+  await t.sees("New here? Get started");
   await t.sees("Sign in");
 });
 
-await walk("sign in from any device with a space address, a username and the master password", async (t) => {
+await walk("sign in from any device with a space address, a username and the password", async (t) => {
   await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
   await t.at("Get started");
   await t.pick("Sign in");
@@ -189,13 +189,13 @@ await walk("sign in from any device with a space address, a username and the mas
   await t.sees("address of a space");
   await t.type("Space address", "juniper.vyre.run");
   await t.type("Username", "alex");
-  await t.type("Master password", PASS);
+  await t.type("Password", PASS);
   await t.press("Sign in");
   await t.at("You're in");
   await t.sees("juniper");
 });
 
-await walk("sign in with GitHub shows the spaces it found, then asks the master password once", async (t) => {
+await walk("sign in with GitHub shows the spaces it found, then asks the password once", async (t) => {
   await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
   await t.at("Get started");
   await t.pick("Sign in");
@@ -204,8 +204,8 @@ await walk("sign in with GitHub shows the spaces it found, then asks the master 
   await t.at("Your spaces");
   await t.sees("juniper, owner");
   await t.sees("studio, admin");
-  if (await t.enabled("Unlock")) throw new Error("Unlock should wait for the master password");
-  await t.type("Master password", PASS);
+  if (await t.enabled("Unlock")) throw new Error("Unlock should wait for the password");
+  await t.type("Password", PASS);
   await t.press("Unlock");
   await t.at("You're in");
   await t.sees("juniper");

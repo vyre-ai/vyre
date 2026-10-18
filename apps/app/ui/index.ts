@@ -125,7 +125,7 @@ export { VyreMark } from "./components/VyreMark";
 export type { MarkState, MarkSize } from "./components/VyreMark";
 export { Stack } from "./components/Stack";
 export type { StackGap } from "./components/Stack";
-export { FlowStep } from "./components/FlowStep";
+export { FlowStep, FlowOver } from "./components/FlowStep";
 export { CodeField } from "./components/CodeField";
 export { CodeDisplay } from "./components/CodeDisplay";
 export { PasswordField } from "./components/PasswordField";

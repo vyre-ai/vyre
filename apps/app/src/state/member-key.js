@@ -1,4 +1,4 @@
-// The Secret Key of a member's own vault lives on this device and nowhere on the server: it is saved when the vault is made and sent with the master password at each unlock. `store` is { get(acct), put(acct, key), remove(acct) }.
+// The Secret Key of a member's own vault lives on this device and nowhere on the server: it is saved when the vault is made and sent with the password at each unlock. `store` is { get(acct), put(acct, key), remove(acct) }.
 // A device that does not hold the key cannot unlock: it says so, and the key arrives from a device that has it (the approved sign-in), never by typing.
 
 /** A store over a plain key-value (the app's secure store on a phone, the browser's storage on the web). @param {{ get: (k: string) => Promise<string | null>, set: (k: string, v: string | null) => Promise<void> }} kv */

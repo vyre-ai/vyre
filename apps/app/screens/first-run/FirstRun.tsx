@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
+import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, passwordStrength,
+  FlowOver, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, passwordStrength, useUiTheme,
 } from "@vyre/ui";
 import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
+import { HalftoneField, measureCalm } from "./HalftoneField";
+import { ripple, setWelcome } from "./field-state.js";
+import { Welcome } from "./Welcome";
+import { rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
@@ -21,9 +26,31 @@ type Membership = { id: string; name: string; role: string; server: string | nul
 
 const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, { screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string }>)[key] : undefined);
 
-/** First run: Identity, then a space, then Ready. Every button calls a registry tool. */
+/**
+ * First run: Identity, then a space, then Ready. Every button calls a registry tool. One halftone field sits behind the whole flow, mounted here once so it lives through every
+ * step: full strength on the welcome screen, calmer on the forms, a faint ripple at each step change.
+ */
 export function FirstRun() {
+  const [screen, setScreen] = useState("");
+  const { phone } = useUiTheme();
+  useEffect(() => {
+    if (!screen) return;
+    setWelcome(screen === "id.choice");
+    const t = setTimeout(measureCalm, 60);
+    if (typeof document !== "undefined") { const c = document.getElementById("onboard-field"); if (c) ripple(c.clientWidth / 2, c.clientHeight * 0.48, 0.28); }
+    return () => clearTimeout(t);
+  }, [screen]);
+  return (
+    <View style={{ flex: 1 }}>
+      <HalftoneField phone={phone} />
+      <FlowOver.Provider value><FirstRunScreens onScreen={setScreen} /></FlowOver.Provider>
+    </View>
+  );
+}
+
+function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const router = useRouter();
+  const { phone } = useUiTheme();
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
   const path = one(params.path);
   const shot = shotOf(one(params.shot) || "");
@@ -64,6 +91,7 @@ export function FirstRun() {
   const [agentUrl, setAgentUrl] = useState("");
   const [signedAgents, setSignedAgents] = useState<string[]>([]);
   const screen = stack[stack.length - 1];
+  useEffect(() => { onScreen(screen); }, [screen, onScreen]);
   const go = (next: Screen) => {
     setFailure("");
     setStack((s) => {
@@ -190,12 +218,18 @@ export function FirstRun() {
 
   if (screen === "id.choice") {
     return (
-      <FlowStep steps={steps} hero title={SIGNIN_COPY.choiceTitle} lead={SIGNIN_COPY.choiceLead}>
-        <ChoiceHero title="How do you want to start?" options={[
-          { value: "create", title: "Create an identity", sub: "A username and a master password. About a minute.", icon: "plus" },
-          { value: "signin", title: "Sign in", sub: "You already have one. Use a space address, or GitHub.", icon: "link" },
-        ]} onChange={(v) => go(v === "signin" ? "id.signin" : "id.create")} />
-      </FlowStep>
+      <Welcome phone={phone} failure={failure}
+        onSignIn={(sp) => { setSignSpace(`${sp}.vyre.run`); setFailure(""); go("id.signin"); }}
+        onStart={() => { setFailure(""); go("id.create"); }}
+        onGithub={() => void run(async () => {
+          const r = await signInGithub(undefined);
+          if (!r.ok) { setFailure(r.message); return; }
+          const list = Array.isArray(r.spaces) ? r.spaces : [];
+          if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
+          setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
+          setPassword("");
+          go("id.signin.spaces");
+        })} />
     );
   }
 
@@ -208,11 +242,12 @@ export function FirstRun() {
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
           setUsername(r.username || usernameOf(username));
+          if (addr) try { rememberSpace(typeof localStorage === "undefined" ? null : localStorage, addr.space); } catch { /* nothing remembered */ }
           go("ready");
         }) }}>
         <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="juniper.vyre.run" error={signSpace && !addr ? "Use the address of a space, like juniper.vyre.run." : undefined} />
         <Field label="Username" value={username} onChangeText={setUsername} />
-        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+        <PasswordField label="Password" value={password} onChangeText={setPassword} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
           const r = await signInGithub(addr ? addr.space : undefined);
           if (!r.ok) { setFailure(r.message); return; }
@@ -236,14 +271,14 @@ export function FirstRun() {
           go("ready");
         }) }}>
         {found.map((x) => <Text key={x.id || x.name}>{`${x.name}, ${x.role}`}</Text>)}
-        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+        <PasswordField label="Password" value={password} onChangeText={setPassword} />
       </FlowStep>
     );
   }
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a password, and an optional GitHub sign-in. The password unlocks your vault."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
@@ -253,8 +288,8 @@ export function FirstRun() {
           go("id.recovery");
         }) }}>
         <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
-        <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
-        <PasswordField label="Confirm master password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same master password again." : undefined} />
+        <PasswordField label="Password" meter value={password} onChangeText={setPassword} />
+        <PasswordField label="Confirm password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same password again." : undefined} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />
       </FlowStep>
     );
@@ -447,7 +482,7 @@ export function FirstRun() {
         })} />
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
-      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your master password.`}</Text>
+      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your password.`}</Text>
       <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
         { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
         { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },

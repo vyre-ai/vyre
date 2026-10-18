@@ -358,7 +358,7 @@ test("a space made here and the same space signed in to from another device are 
   const created = (await one.call("onboard.space.list")).spaces;
   assert.deepEqual(await svc.register(await one.registerLogin("alex-space", PASSWORD)), { ok: true, username: "alex" });
 
-  // Device two has nothing and signs in with the address, the username and the master password.
+  // Device two has nothing and signs in with the address, the username and the password.
   const two = createHost({ store: memoryStore(), directory: d.base, fetch: fetchAll, now: d.now });
   await two.call("onboard.signin", { space: "alex-space.vyre.run", username: "alex", password: PASSWORD });
   const signed = (await two.call("onboard.space.list")).spaces;
@@ -431,7 +431,7 @@ test("a Mac window says on its online answer that fingerprint approvals are not 
   }
 });
 
-test("a relaunched host is locked: a tool that needs the key answers locked until the master password opens it", async (t) => {
+test("a relaunched host is locked: a tool that needs the key answers locked until the password opens it", async (t) => {
   const { d, store, pp, host } = await ready(t);
   // the same kept identity in a new page (a relaunch): nothing of the key survives in memory
   const again = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5 });

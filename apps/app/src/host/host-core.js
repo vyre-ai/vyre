@@ -2,7 +2,7 @@
 // The in-page tool host, stage 1: the identity half of first run, for a page with no daemon (web.vyre.run, the Windows window, a Mac window with no vyred). It answers the SAME tool names and shapes as
 // core/onboard (onboard.person.*, onboard.first.*) and core/identity (identity.status, unlock, lock), so the screens call one door whether a daemon or this answers. Nothing here is a second design: the
 // identity chain and the directory claim are apps/app/src/identity/claim.js (kernel/identity/chain.js itself), the master record is master-web.js (byte-identical to kernel/identity/master.js), and the
-// shapes come from lib/first-run-shape.js. What is kept at rest is JSON bytes only: the chain (public) and the master record (every key wrapped by the master password or the recovery key). The unlocked
+// shapes come from lib/first-run-shape.js. What is kept at rest is JSON bytes only: the chain (public) and the master record (every key wrapped by the password or the recovery key). The unlocked
 // key lives in this object's memory until lock. Stage 2 (create a space) answers onboard.space.*: the install line is made here with the identity key (relay/client/pair-install.js, the one mint the
 // app already uses, whose bytes lib/pair-code.js verifies), the server is found and paired through src/real/add-server.js over the relay, and what is kept is the space row and the paired server's
 // name, never a key. Steps not in a stage answer `host_unsupported`.
@@ -110,7 +110,7 @@ export function createHost(o) {
     if (!o.space) throw unsupported();
     const k = await o.store.load();
     if (!k) throw bad("Make your username first.", "no_identity");
-    if (!held) throw bad("Unlock with your master password first.", "locked");
+    if (!held) throw bad("Unlock with your password first.", "locked");
     return { k, ports: await o.space.load(), key: await fromSeed(held) };
   }
   /** @param {KeptSpace[]} rows */
@@ -250,8 +250,8 @@ export function createHost(o) {
     "onboard.person.create": async ({ username, password, confirm }) => {
       const name = usernameOf(username);
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
-      if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
-      if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
+      if (!passwordOk(password)) throw bad("Use a password of at least 12 characters, and not a common one.");
+      if (confirm !== undefined && confirm !== password) throw bad("Type the password the same way twice.");
       const existing = await o.store.load();
       if (existing) return { username: existing.username, id: existing.id, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
       // The identity chain verifies Ed25519 signatures with WebCrypto (or the fallback webcrypto.ts installs): a browser with neither is told so, not given the chain's own words.
@@ -273,9 +273,9 @@ export function createHost(o) {
     },
 
     "identity.unlock": async ({ password, recovery }) => {
-      if ((password == null || password === "") && (recovery == null || recovery === "")) throw bad("Enter your master password on this device.", "person_enters");
+      if ((password == null || password === "") && (recovery == null || recovery === "")) throw bad("Enter your password on this device.", "person_enters");
       const k = await o.store.load();
-      if (!k) throw bad("There is no master password on this device yet. Create your username first.", "no_identity");
+      if (!k) throw bad("There is no password on this device yet. Create your username first.", "no_identity");
       const keys = await openMasterRecord(k.master, recovery ? { recovery } : { password });
       held = unb64(keys.privateKey);
       // A record made before the device key existed gets one now, wrapped under the identity just opened.
@@ -288,7 +288,7 @@ export function createHost(o) {
 
     "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
-    // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
+    // Sign in from any device: the space's address, the username, the password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
     // opens the returned record with the same key. Every refusal for a wrong name or password is the door's one bad_login answer.
     "onboard.signin": async ({ space, username, password }) => {
       const addr = spaceAddressOf(String(space || "").includes(".") ? space : `${String(space || "").trim()}.vyre.run`);
@@ -296,7 +296,7 @@ export function createHost(o) {
       const BAD = "That username and password do not match.";
       if (!addr) throw bad("Use the address of a space, like juniper.vyre.run.");
       if (!name || !password) throw Object.assign(new Error(BAD), { code: "bad_login" });
-      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its password, or forget it first.", "exists");
       { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const begun = await door(addr.space, { op: "begin", username: name });
       const kdf = acceptKdf(begun.kdf);
@@ -318,10 +318,10 @@ export function createHost(o) {
     },
 
     // Sign in with GitHub: the relay vouches for the GitHub account with a short assertion; the names directory answers with the spaces that account's linked username belongs to (only to a valid assertion);
-    // the master password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
+    // the password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
     "onboard.signin.github": async ({ space } = {}) => {
       if (!o.github) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
-      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its password, or forget it first.", "exists");
       const started = await o.github.start();
       if (!started.ok || !started.session) throw Object.assign(new Error(githubSay(started.code)), { code: started.code || "denied" });
       /** @type {{ space: string, address: string }[]} */ let spaces = [];
@@ -347,12 +347,12 @@ export function createHost(o) {
       return { login: pendingGithub.username, spaces: spaces.map((x) => ({ id: x.space, name: x.space, role: "member", server: x.address })) };
     },
 
-    // The master password, once, after GitHub: log in to each space the directory listed (each asks for its own assertion), stretch the password with the first space's salt, and open its bundle.
+    // The password, once, after GitHub: log in to each space the directory listed (each asks for its own assertion), stretch the password with the first space's salt, and open its bundle.
     "onboard.signin.unlock": async ({ password }) => {
       const BAD = "That password does not unlock this identity. Try again.";
       const pend = pendingGithub;
       if (!pend || Date.now() - pend.at > 10 * 60_000 || !o.github) throw bad("Start with GitHub again.", "expired");
-      if (!password) throw bad("Enter your master password on this device.", "person_enters");
+      if (!password) throw bad("Enter your password on this device.", "person_enters");
       /** @type {{ space: string, address: string, row: { id: string, name: string, role: string, server: string } }[]} */ const opened = [];
       /** @type {any} */ let first = null, keys = null;
       for (const sp of pend.spaces) {
@@ -573,7 +573,7 @@ export function createHost(o) {
     async registerLogin(space, password) {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
-      if (!held) throw bad("Unlock with your master password first.", "locked");
+      if (!held) throw bad("Unlock with your password first.", "locked");
       const kdf = acceptKdf(k.master.kdf);
       const d = await deriveLogin(String(password).normalize("NFKC"), String(k.master.kdf.salt), kdf);
       try {
@@ -590,7 +590,7 @@ export function createHost(o) {
     async publishSpace(space, what = "add") {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
-      if (!held) throw bad("Unlock with your master password first.", "locked");
+      if (!held) throw bad("Unlock with your password first.", "locked");
       const addr = spaceAddressOf(`${String(space).replace(/\.vyre\.run$/, "")}.vyre.run`);
       if (!addr) throw bad("That is not a space address.");
       const key = await fromSeed(held);

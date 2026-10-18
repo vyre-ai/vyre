@@ -145,14 +145,14 @@ export async function saveProgress(input) {
   catch (e) { return fail(e); }
 }
 
-/** Sign in from any device: a space's address, the username and the master password. The space gives the person's wrapped identity, the device opens it with the password, and the person is in every space they belong to. @param {{ space: string, username: string, password: string }} input */
+/** Sign in from any device: a space's address, the username and the password. The space gives the person's wrapped identity, the device opens it with the password, and the person is in every space they belong to. @param {{ space: string, username: string, password: string }} input */
 export async function signInPassword(input) {
   if (MOCK) return mock.signInPassword(input);
   try { return done(await tool("onboard.signin", input)); }
   catch (e) { return fail(e); }
 }
 
-/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The master password is asked once, next (unlockGithub). @param {string} [space] */
+/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The password is asked once, next (unlockGithub). @param {string} [space] */
 export async function signInGithub(space) {
   if (MOCK) return mock.signInGithub();
   try { return done(await tool("onboard.signin.github", space ? { space } : {})); }

@@ -82,9 +82,9 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
         <Card>
           <View className="gap-s3 py-s4">
             <View className="items-center gap-s2"><IconTile name="vault" /><Text size="title" strong>Make your own vault</Text>
-              <Text tone="label" className="text-center">It holds your AI sign-ins and your own connections. Only you can open it, with a master password you choose. This device keeps the key that goes with it.</Text></View>
-            <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Choose a master password (12 or more characters)" />
-            <Button kind="primary" label="Make my vault" disabled={busy} onPress={() => { if (pw.length < 12) { showToast("A master password is at least 12 characters."); return; } setBusy(true); data.create(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not work.")).finally(() => setBusy(false)); }} />
+              <Text tone="label" className="text-center">It holds your AI sign-ins and your own connections. Only you can open it, with a password you choose. This device keeps the key that goes with it.</Text></View>
+            <Field name="Password" kind="password" value={pw} onChangeText={setPw} placeholder="Choose a password (12 or more characters)" />
+            <Button kind="primary" label="Make my vault" disabled={busy} onPress={() => { if (pw.length < 12) { showToast("A password is at least 12 characters."); return; } setBusy(true); data.create(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not work.")).finally(() => setBusy(false)); }} />
           </View>
         </Card>
       </Frame>
@@ -98,9 +98,9 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
         <Card>
           <View className="gap-s3 py-s4">
             <View className="items-center gap-s2"><IconTile name="lock" /><Text size="title" strong>Your vault is locked</Text>
-              <Text tone="label" className="text-center">Unlock it with your master password. Nothing in it is shown until you do.</Text></View>
-            <Field name="Master password" kind="password" value={pw} onChangeText={setPw} placeholder="Master password" />
-            <Button kind="primary" label="Unlock" disabled={busy} onPress={() => { if (!pw) { showToast("Type your master password."); return; } setBusy(true); data.unlock(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not unlock it.")).finally(() => setBusy(false)); }} />
+              <Text tone="label" className="text-center">Unlock it with your password. Nothing in it is shown until you do.</Text></View>
+            <Field name="Password" kind="password" value={pw} onChangeText={setPw} placeholder="Password" />
+            <Button kind="primary" label="Unlock" disabled={busy} onPress={() => { if (!pw) { showToast("Type your password."); return; } setBusy(true); data.unlock(pw).then(() => { setPw(""); load(); }).catch((e) => fail(e, "That did not unlock it.")).finally(() => setBusy(false)); }} />
           </View>
         </Card>
       </Frame>

@@ -44,7 +44,7 @@ test("the empty-state actions open the routes that exist", () => {
   assert.equal(startStep("connect"), "name", "nor a scan step");
   assert.equal(GAP.mac.action, undefined, "the Mac's line says how a phone signs in; there is nothing to press");
   assert.equal(GAP.mac.route, undefined);
-  assert.match(GAP.mac.line, /sign in with this Vyre's address, your username and your master password/);
+  assert.match(GAP.mac.line, /sign in with this Vyre's address, your username and your password/);
   assert.equal(GAP.phone.route, "/onboard");
   assert.equal(GAP.web.route, "/onboard");
   for (const g of Object.values(GAP)) assert.doesNotMatch(JSON.stringify(g), /Scan|Add your phone|path=phone|path=computer/);
