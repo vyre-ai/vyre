@@ -11,7 +11,7 @@
  */
 export function messageMenu(m) {
   const can = m.can;
-  const copyKids = m.done === false || m.copy === false ? [] : [{ id: "copy-md", label: "Copy as Markdown" }, ...Array.from({ length: Math.min(m.codeBlocks ?? 0, 9) }, (_, i) => ({ id: `copy-code-${i}`, label: (m.codeBlocks ?? 0) > 1 ? `Copy code ${i + 1}` : "Copy code" }))];
+  const copyKids = m.done !== true || m.copy === false ? [] : [{ id: "copy-md", label: "Copy as Markdown" }, ...Array.from({ length: Math.min(m.codeBlocks ?? 0, 9) }, (_, i) => ({ id: `copy-code-${i}`, label: (m.codeBlocks ?? 0) > 1 ? `Copy code ${i + 1}` : "Copy code" }))];
   /** @type {(MenuItem | null)[]} */ const g1 = [
     can.reply ? { id: "reply", label: "Reply", hint: "R" } : null,
     can.forward ? { id: "forward", label: "Forward…" } : null,

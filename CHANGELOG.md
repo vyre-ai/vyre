@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(app): the message menu offers Copy only for a message that is finished (done is true), and the wiring test reads the Rewind and Second opinion labels from the menu model.
 - fix(app): the sample world's message menu offers Fork from here (and Fork before this message on your own), as a real chat does; the chat shots right-click an agent reply and your own message.
 - fix(app): the sample fork origin (a fixed demo key) runs only when the demo route asks for it and the app is in the mock world (sampleAllowed, tested).
 - fix(app): the message menu is drawn on the page itself (a portal to document.body on the web), so it is not clipped by the transcript scroller or placed against a transformed row; the shots print how many menus are open after the right-click.
