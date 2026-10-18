@@ -79,7 +79,7 @@ export function initialsOf(label: string): string {
 export type TemplateCard = { name: string; projects: string; start: string; stages: string[]; counts: string; usedBy: string; status: string; group: "Live" | "Drafts" };
 const n = (k: number, one: string, many = `${one}s`): string => `${k} ${k === 1 ? one : many}`;
 
-/** The button's words: "Start a matter"; a name that begins with an acronym keeps its capitals and takes no article ("Start ATP client"). */
+/** The button's words: "Start a campaign"; a name that begins with an acronym keeps its capitals and takes no article ("Start ATP client"). */
 export function startLabel(one: string): string {
   const first = one.split(/\s+/)[0] || "";
   return first.length > 1 && first === first.toUpperCase() ? `Start ${one}` : `Start a ${one.toLowerCase()}`;

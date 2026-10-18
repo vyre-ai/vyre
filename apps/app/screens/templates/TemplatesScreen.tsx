@@ -28,7 +28,7 @@ function StageBar({ names }: { names: string[] }) {
 }
 
 /**
- * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a matter". Live and drafts sit in
+ * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a campaign". Live and drafts sit in
  * two groups; a quiet "..." has Duplicate. "+ New" offers a blank one, one from a Kit, or "Describe it" to the Engineer.
  */
 export default function TemplatesScreen() {

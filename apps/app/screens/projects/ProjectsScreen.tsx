@@ -40,7 +40,7 @@ export default function ProjectsScreen() {
     const t = setInterval(() => { if (++tries > 60) { clearInterval(t); return; } q.reload(); }, 5000);
     return () => clearInterval(t);
   }, [empty]);   // eslint-disable-line react-hooks/exhaustive-deps
-  // the live templates of this Space, by what each calls its projects: "New matter", "New campaign", then "New blank project"
+  // the live templates of this Space, by what each calls its projects: "New client project", "New campaign", then "New blank project"
   const [rows, setRows] = useState<TemplateRow[]>([]);
   useEffect(() => { templates.list().then(setRows).catch(() => setRows([])); }, []);
   // New project opens one sheet: the four kinds, and the team's live playbooks for a Stages project

@@ -9,7 +9,7 @@ export const DEFAULT_NAME = "Untitled playbook";
 export const starterBody = (): Body => ({ name: DEFAULT_NAME, stages: [{ name: "Stage 1" }, { name: "Done" }] });
 
 /** What a firm calls one project of a playbook, to pick from. */
-export const NOUN_SUGGESTIONS = ["Matter", "Client", "Case", "Engagement", "Project"];
+export const NOUN_SUGGESTIONS = ["Client", "Case", "Engagement", "Campaign", "Project"];
 
 /** Common stage sets, one click each. */
 const DEFAULT_DOER = "role:owner";
