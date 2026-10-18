@@ -79,7 +79,7 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
-    description: "Your threads with one agent, newest first: { thread, title, last_active, state: live, needs_you or idle, last_line, unread, forked_from }. A thread is a chat of you and that agent.",
+    description: "Your threads with one agent, newest first, each with its state (live, needs_you or idle), last line and unread count. A thread is a chat of you and that agent.",
     input: obj({ agent: { type: "string", description: "the agent's name or id" }, limit: { type: "integer" }, before: { type: "string", description: "a last_active value: only older threads" } }, ["agent"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => threadsOf(d, String(input.agent), extra, { limit: input.limit, before: input.before ? String(input.before) : null }),
   });
