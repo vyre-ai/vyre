@@ -50,6 +50,7 @@ export { markRef, spaceRef } from "./marks/useMark";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
+export { SidePanel } from "./components/SidePanel";
 export { ConnectApps, ShareSheet, SetupSheet } from "./connect/ConnectApps";
 export type { App as ConnectApp, Share as ConnectShare } from "./connect/ConnectApps";
 export { sampleApps as sampleConnectApps, SAMPLE_GRANTEES as SAMPLE_CONNECT_GRANTEES } from "./connect/connect-model.js";

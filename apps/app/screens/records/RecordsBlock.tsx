@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
 import { callT } from "../../src/real/call-tool";
+import { RecordScreen } from "./RecordScreen";
 import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
@@ -10,7 +11,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, GalleryView, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -35,6 +36,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
   const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);
+  const [panelId, setPanelId] = useState<string | null>(null);
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
@@ -90,7 +92,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   };
   // One scope-style control, with icons only on a phone.
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
-  const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
+  // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
+  const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
   const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
@@ -106,7 +109,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   };
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
-    frame(vd.plural, <>
+    <View className="min-h-0 flex-1">
+    {frame(vd.plural, <>
       <ListHeader noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
@@ -157,6 +161,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       <ImportSheet open={importing} onClose={() => setImporting(false)} def={def} noun={vd.plural.toLowerCase()} onDone={reload} />
       <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
-    </>, { own: true, onRefresh: reload })
+    </>, { own: true, onRefresh: reload })}
+    {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
+      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn.split("/").pop() || null)} /> : null}
+    </SidePanel> : null}
+    </View>
   );
 }
