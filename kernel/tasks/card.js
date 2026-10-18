@@ -8,7 +8,7 @@ const strip = (/** @type {string} */ s) => String(s ?? "").replace(/[\u0000-\u00
 /**
  * @param {any} task @param {any} body the canonical body the approval is bound to: `{ action, resource, payload, facts }` for a send (facts are the
  *   kernel's, resolved against the record and the vault, never the doer's), `{ op: "skip", ... }` for the kernel's own skip proposal
- * @param {{ doer_label?: string, action_label?: string }} [opts]
+ * @param {{ doer_label?: string, action_label?: string, sign_fields?: Record<string, any> }} [opts]
  */
 export function buildCard(task, body, opts = {}) {
   if (task.kernel) {
@@ -37,6 +37,8 @@ export function buildCard(task, body, opts = {}) {
     sink: payload.delivery && typeof payload.delivery.sink === "string" ? strip(payload.delivery.sink) : null,
     sealed,
     payload_hash: task.payload ? task.payload.payload_hash : null,
+    // What the approver's key signs, from the kernel itself, so no client rebuilds the hashing: the op and the fields the proof is checked against.
+    ...(opts.sign_fields ? { sign: Object.freeze({ op: "task.decide", fields: Object.freeze({ ...opts.sign_fields }) }) } : {}),
     trust: task.labels ? task.labels.trust : "member",
     buttons: Object.freeze(["approve", "reject"]),
     from_doer: Object.freeze({ label: opts.doer_label || `${task.doer.kind}:${task.doer.id}`, title: strip(task.title), note: strip(task.note), buttons: Object.freeze([]) }),

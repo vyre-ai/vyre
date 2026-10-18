@@ -166,17 +166,25 @@ test("MEMBER_MAY read tools: live calls as member leak no owner or other-member 
     cwd: work, prompt: MARK_O, surface: "cli", ...threadStartProviderFields("claude"),
   }, "cli", ownerMeta);
   assert.ok(ownerTh.data?.id, JSON.stringify(ownerTh.error));
-  // The started thread is a live fake session that keeps writing to the store. Stop it and wait until it is stopped BEFORE the daemon closes (hooks run last-in first-out, so this runs ahead of the daemon's stop):
-  // otherwise it can still be writing when the database is shut, which fails the file as "database is not open" after the test ended.
+  // Close in order. Every thread in the store (the owner's, and any a seed or a read started) is a live fake session that keeps writing; stop each and wait until it is stopped BEFORE the daemon closes
+  // (hooks run last-in first-out, so this runs ahead of the daemon's stop), then let the loop settle so a write already queued lands while the database is still open. Otherwise something can still be
+  // writing when the database is shut, which fails the file as "database is not open" after the test ended (seen under load, when the live loop ran 85 s instead of 28 s).
   t.after(async () => {
-    await d.registry.call("threads.stop", { thread: ownerTh.data.id }, "cli", ownerMeta).catch(() => {});
-    const end = Date.now() + 20_000;
-    for (;;) {
-      const r = await d.registry.call("threads.get", { thread: ownerTh.data.id }, "cli", ownerMeta).catch(() => null);
-      const st = r && r.data && r.data.thread && r.data.thread.status;
-      if (!st || st === "stopped" || Date.now() > end) break;
-      await new Promise(res => setTimeout(res, 200));
-    }
+    const calls = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", ownerMeta).catch(() => null);
+    const listed = await calls("threads.list", { all: true });
+    const ids = new Set([String(ownerTh.data.id), ...((listed && Array.isArray(listed.data) ? listed.data : []).map((/** @type {any} */ x) => String(x.id)))]);
+    await Promise.all([...ids].map(async id => {
+      await calls("threads.stop", { thread: id });
+      const end = Date.now() + 20_000;
+      for (;;) {
+        const r = await calls("threads.get", { thread: id });
+        const st = r && r.data && r.data.thread && r.data.thread.status;
+        if (!st || st === "stopped" || st === "finished" || Date.now() > end) break;
+        await new Promise(res => setTimeout(res, 200));
+      }
+    }));
+    for (let i = 0; i < 5; i++) await new Promise(res => setImmediate(res));
+    await new Promise(res => setTimeout(res, 500));
   });
 
   const plannerAdd = (meta, title) => d.registry.call("planner.add", {
