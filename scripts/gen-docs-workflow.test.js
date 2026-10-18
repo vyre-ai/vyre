@@ -12,8 +12,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const yml = fs.readFileSync(path.join(ROOT, ".github/workflows/gen-docs-branch.yml"), "utf8");
 const job = (/** @type {string} */ name) => { const a = yml.indexOf(`\n  ${name}:\n`); assert.ok(a >= 0, name); const m = /\n  [a-z][a-z0-9-]*:\n/.exec(yml.slice(a + 1)); return yml.slice(a, m ? a + 1 + m.index : undefined); };
 
-test("only polish branches, on a push or a dispatch", () => {
-  assert.match(yml, /\n  push:\n    branches: \["work\/polish\/\*\*"\]\n  workflow_dispatch:\n/);
+test("only polish branches, on a push that touches what docs:ref reads, or a dispatch", () => {
+  assert.match(yml, /\n  push:\n    branches: \["work\/polish\/\*\*"\]\n(?:    #[^\n]*\n)*    paths: \["bin\/\*\*", "core\/\*\*", "harness\/\*\*", "local\/\*\*", "modules\/\*\*", "lib\/\*\*", "docs\/\*\*", "scripts\/gen-docs-reference", "scripts\/lib\/docs\/\*\*", "package\.json", "\.github\/workflows\/gen-docs-branch\.yml"\]\n  workflow_dispatch:\n/);
+  assert.ok(!/"(apps|web|relay|names|site|test)\/\*\*"/.test(yml.slice(yml.indexOf("paths:"), yml.indexOf("workflow_dispatch:"))), "app, web, relay and test changes cannot make the reference stale");
   assert.match(job("regenerate"), /if: startsWith\(github\.ref_name, 'work\/polish\/'\)/);
   assert.match(job("commit"), /case "\$BRANCH" in work\/polish\/\*\) ;; \*\) echo "::error::only work\/polish\/\*\* branches"; exit 1;; esac/);
 });

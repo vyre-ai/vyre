@@ -1,12 +1,15 @@
 # Regenerates the generated docs reference (docs/index.json and docs/reference/*, with `npm run docs:ref`) on a polish branch and commits them back, because a person may not run the generator on a Mac and the
 # docs-check test ("the real docs tree is clean") is red whenever a team adds or changes a tool, a module or a setting without regenerating. Built the way gen-kits-branch.yml, gen-tokens-branch.yml and regen.yml are: two
 # jobs, so the write token never meets the branch's code. `regenerate` runs the branch's generator with a read-only token and no stored credentials and hands over a patch; `commit` runs none of the branch's code and
-# applies the patch only when it touches exactly docs/index.json and files under docs/reference/, pinned to the head the first job saw. Only branches named work/polish/** are accepted. It runs on every push to such
-# a branch (a newer push cancels the older run; the bot's own token push starts nothing), and can be dispatched once the file is on the default branch.
+# applies the patch only when it touches exactly docs/index.json and files under docs/reference/, pinned to the head the first job saw. Only branches named work/polish/** are accepted. It runs on a push to such
+# a branch that touches what docs:ref reads (a newer push cancels the older run; the bot's own token push starts nothing), and can be dispatched once the file is on the default branch.
 name: gen-docs-branch
 on:
   push:
     branches: ["work/polish/**"]
+    # only what docs:ref reads: the shipped code roots it scans (bin, core, harness, local, modules), lib (shared descriptions), the docs pages it counts mentions in, its own generator and this file. A change to the app screens,
+    # the web pages, the relay, the names Worker or the tests cannot make the reference stale, so it starts nothing.
+    paths: ["bin/**", "core/**", "harness/**", "local/**", "modules/**", "lib/**", "docs/**", "scripts/gen-docs-reference", "scripts/lib/docs/**", "package.json", ".github/workflows/gen-docs-branch.yml"]
   workflow_dispatch:
 permissions:
   contents: read
