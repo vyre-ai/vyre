@@ -514,14 +514,16 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
   const first = pp.call;
   const calls = [];
-  let vault = { account: false, unlocked: false }, fail = "";
+  let vault = { account: false, unlocked: false }, fail = "", listFails = false;
+  const mine = new Set(["Gmail"]);
   pp.call = async (name, input, box) => {
     if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
     calls.push({ name, input: JSON.parse(JSON.stringify(input || {})), box });
     if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
     if (name === "vault.me.account.create") { vault = { account: true, unlocked: false }; return { secretKey: "SECRET-KEY-OF-VAULT", acct: "a1" }; }
     if (name === "vault.me.account.unlock") { vault = { account: true, unlocked: true }; return { unlocked: true }; }
-    if (name === "vault.me.put") { if (fail) throw new Error(`${fail}: ${input.fields.value} / ${PW}`); return { stored: true }; }
+    if (name === "vault.me.list") { if (listFails) throw new Error("locked"); return { items: [...mine].map((n) => ({ name: n, kind: "login" })) }; }
+    if (name === "vault.me.put") { if (fail) throw new Error(`${fail}: ${input.fields.value} / ${PW}`); mine.add(input.name); return { stored: true }; }
     if (name === "sessions.accounts.add") return { id: "ac_m1", provider: input.provider, label: input.label };
     throw new Error("unexpected " + name);
   };
@@ -533,7 +535,7 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   calls.length = 0;
   const r = await ask({ password: PW });
   assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: false });
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.put", "sessions.accounts.add"]);
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
   assert.ok(calls.every((c) => c.box === "boxA"));
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.account.create,vault.me.account.unlock", "the password goes to the two vault calls only");
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "vault.me.put", "the key goes to the vault put only");
@@ -544,12 +546,24 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   calls.length = 0;
   const r2 = await ask({ label: "Second" });
   assert.equal(r2.account, "ac_m1");
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.list", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
   // locked: it asks, then opens with the key the device holds
   vault = { account: true, unlocked: false }; calls.length = 0;
   await assert.rejects(() => ask({ label: "Third" }), (e) => e.code === "need_password");
   await ask({ label: "Third", password: PW });
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.put", "sessions.accounts.add"]);
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
+  // an item of the same name in THEIR vault is never replaced: the account's item takes a number, and the account names that item
+  calls.length = 0;
+  const g = await ask({ label: "Gmail" });
+  assert.equal(g.label, "Gmail");
+  assert.ok(mine.has("Gmail") && mine.has("Gmail 2"), "the seeded Gmail stays, the key went to Gmail 2");
+  assert.deepEqual(calls.filter((c) => c.name === "vault.me.put").map((c) => c.input.name), ["Gmail 2"]);
+  assert.equal(calls.find((c) => c.name === "sessions.accounts.add").input.vault_item, "Gmail 2");
+  // when their vault cannot be listed, nothing is put and no account is made
+  listFails = true; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Fifth" }), (e) => e.code === "failed" || e.code === "vault_unreadable" || /locked|checked/.test(e.message));
+  assert.ok(!calls.some((c) => c.name === "vault.me.put" || c.name === "sessions.accounts.add"), "nothing put, no account");
+  listFails = false;
   // an error that echoes the key and the password is thrown without either
   fail = "the vault refused"; vault = { account: true, unlocked: true };
   await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });

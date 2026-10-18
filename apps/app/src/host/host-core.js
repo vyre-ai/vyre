@@ -115,8 +115,16 @@ export function createHost(o) {
         if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
         await unlockMine(ask, o.memberKeys, i.password);
       }
-      await ask("vault.me.put", { name: i.label, kind: "api-key", fields: { value: i.key } });
-      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: i.label });
+      // The item's name is the account's name when it is free in THEIR vault, else with a number after it: a put on an existing name replaces that item, so their own list is read first and, if it cannot be read, nothing is put.
+      const have = await ask("vault.me.list", {});
+      const rows = have && Array.isArray(have.items) ? have.items : Array.isArray(have) ? have : null;
+      if (!rows) throw bad("Your Vault could not be checked for that name.", "vault_unreadable");
+      const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+      let item = i.label, n = 2;
+      while (used.has(item.toLowerCase()) && n < 100) item = `${i.label} ${n++}`;
+      if (used.has(item.toLowerCase())) throw bad("That name is taken in your Vault.", "name_taken");
+      await ask("vault.me.put", { name: item, kind: "api-key", fields: { value: i.key } });
+      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item });
       return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: false };
     } catch (e) {
       throw /** @type {any} */ (e).code === "need_password" ? e : redact(e);
