@@ -41,8 +41,8 @@ const baseOf = (key: string) => key.replace(/\?ask$/, "").replace(/[@!].*$/, "")
 
 const DOT: Record<string, string> = { ok: "bg-ok", warn: "bg-warn", err: "bg-err", accent: "bg-accent", plain: "bg-selected" };
 
-export function RunSteps({ painted, steps, max, fmt, name = (id) => id, rail, threads, openThread, onFrom }: { /** Retry from a step: the sentence that refuses it (null when it can be done) and the call. */ onFrom?: { refusal: (stepId: string) => string | null; go: (stepId: string) => void }; threads?: Record<string, string>; openThread?: (thread: string) => void; painted: PaintedNode[]; steps: Record<string, Ledger> | undefined; max?: Record<string, number>; fmt: (ms: number) => string; name?: (id: string) => string; rail?: boolean }) {
-  const [open, setOpen] = useState<string | null>(null);
+export function RunSteps({ painted, steps, max, fmt, name = (id) => id, rail, threads, openThread, onFrom, initialOpen }: { /** A row open when the page first draws (the sample-world shots). */ initialOpen?: string; /** Retry from a step: the sentence that refuses it (null when it can be done) and the call. */ onFrom?: { refusal: (stepId: string) => string | null; go: (stepId: string) => void }; threads?: Record<string, string>; openThread?: (thread: string) => void; painted: PaintedNode[]; steps: Record<string, Ledger> | undefined; max?: Record<string, number>; fmt: (ms: number) => string; name?: (id: string) => string; rail?: boolean }) {
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null);
   const rows = stepRows(painted, steps, fmt, max);
   return (
     <>

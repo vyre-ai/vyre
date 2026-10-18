@@ -27,8 +27,8 @@ export type { Draft, DraftStep, Options };
  * Refunds agent."), under it the trigger ("When") and the steps in order ("Then"), each a closed card that says what it does and opens to its settings, and "Add a step" with the palette of
  * what a Flow can do. It edits a draft; `toDefinition` writes the stored Flow. A step the engine cannot do yet is shown and marked Coming. See docs/design/system/components/flow-builder.md.
  */
-export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep }: { /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
-  const [open, setOpen] = useState<string | null>(null);
+export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep, initialOpen }: { /** A step (or "trigger") open when the page first draws; the sample-world shots use it. */ initialOpen?: string; /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null);
   const [adding, setAdding] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   const setStep = (id: string, patch: Partial<DraftStep>) => {
