@@ -86,3 +86,11 @@ test("a real fscrypt workspace: a plain lock answers locked, and a process holdi
   await gone;
   assert.equal(drv.isMounted(dir), false);
 });
+
+test("the lock says in one line how many processes it stopped, and on the hard rounds skips a pid that is no longer the same process", async () => {
+  const f = fake(["incomplete", "incomplete", "incomplete", "removed"]);
+  const said = /** @type {string[]} */ ([]);
+  await lockUntilComplete({ ...f.d, log: m => said.push(m), same: pid => pid === 7 });
+  assert.deepEqual(f.killed.filter(k => k[1] === "SIGKILL").map(k => k[0]), [7], "pid 9 was reused, so it is not killed");
+  assert.ok(said.some(m => /stopped 6 processes/.test(m)), said.join("|"));
+});

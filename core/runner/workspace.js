@@ -270,20 +270,25 @@ export function holdersOf(base, o = {}) {
 
 /**
  * Lock the workspace for real. Remove the key; while the helper says "incomplete", stop the processes that still hold files (SIGTERM, then SIGKILL on the later rounds) and remove again, at most `tries` times.
- * @param {{ remove: () => Promise<{ out?: string, code?: number }>, holders: () => number[], log?: (m: string) => void, kill?: (pid: number, sig: NodeJS.Signals) => void, sleep?: (ms: number) => Promise<void>, tries?: number, waitMs?: number }} d
+ * @param {{ remove: () => Promise<{ out?: string, code?: number }>, holders: () => number[], log?: (m: string) => void, kill?: (pid: number, sig: NodeJS.Signals) => void, same?: (pid: number) => boolean, sleep?: (ms: number) => Promise<void>, tries?: number, waitMs?: number }} d
  * @returns {Promise<{ locked: boolean, rounds: number }>} locked is true only when the helper answered a finished removal
  */
 export async function lockUntilComplete(d) {
   const tries = d.tries ?? 6, waitMs = d.waitMs ?? 300;
   const kill = d.kill || ((pid, sig) => { try { process.kill(pid, sig); } catch { /* already gone */ } });
   const sleep = d.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  let stopped = 0;
+  const said = () => { if (stopped && d.log) d.log(`the workspace lock stopped ${stopped} process${stopped === 1 ? "" : "es"} that held its files`); };
   for (let round = 1; round <= tries; round++) {
     const r = await d.remove();
-    if (!/incomplete/.test(String(r && r.out || ""))) return { locked: true, rounds: round };
+    if (!/incomplete/.test(String(r && r.out || ""))) { said(); return { locked: true, rounds: round }; }
     if (d.log) sayIfIncomplete(r, d.log);
-    for (const pid of d.holders()) kill(pid, round < 3 ? "SIGTERM" : "SIGKILL");
+    const held = d.holders(); stopped += held.length;
+    // a pid can be reused between the read and the kill: on the hard rounds, only a process that is still the same one (same start time) is killed
+    for (const pid of held) { if (round >= 3 && d.same && !d.same(pid)) continue; kill(pid, round < 3 ? "SIGTERM" : "SIGKILL"); }
     await sleep(waitMs);
   }
+  said();
   return { locked: false, rounds: tries };
 }
 
@@ -318,7 +323,10 @@ function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr
       // still holds a file open and can read it: stop those processes and remove again, a few times; if one will not go, FAIL (never report locked).
       if (!fs.existsSync(enc(dir))) return;
       const base = fs.realpathSync(enc(dir));
-      const r = await lockUntilComplete({ remove: () => helper("remove", enc(dir)), holders: () => holdersOf(base), log });
+      const r = await lockUntilComplete({ remove: () => helper("remove", enc(dir)), log, ...(() => {
+        const born = new Map(); const start = pid => { try { return fs.readFileSync(`/proc/${pid}/stat`, "utf8").replace(/^.*\) /, "").split(" ")[19]; } catch { return ""; } };
+        return { holders: () => { const h = holdersOf(base); for (const pid of h) if (!born.has(pid)) born.set(pid, start(pid)); return h; }, same: pid => born.get(pid) === start(pid) };
+      })() });
       if (!r.locked) throw new Error("could not close the workspace: a process still holds a file open and would not stop");
     },
     async destroy(dir) { fs.rmSync(dir, { recursive: true, force: true }); },
