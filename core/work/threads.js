@@ -221,7 +221,14 @@ export async function personShared(d, extra, person) {
   }
   const together = [...team].filter(([urn, set]) => set.has(me) && set.has(person) && !(projects.get(urn) || { personal: true }).personal).map(([urn]) => ({ urn, name: /** @type {any} */ (projects.get(urn)).name })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const dm = direct.length ? chatOf(faces, me, direct) : null;
-  return { person: faces.people([person])[0], chat: dm ? { chat: dm.chat, threads: dm.threads, latest: dm.latest, last_active: dm.last_active } : null, threads: newest(both).slice(0, 20), shared_threads: both.length, projects: together };
+  // the files in the chats you both are in, newest first: read through your own chain, so only what you may open
+  /** @type {any[]} */ const files = [];
+  for (const it of both.slice(0, 20)) {
+    const got = await d.filesOf(chain, String(it.thread.thread)).catch(() => ({ files: [] }));
+    for (const f of got.files || []) files.push({ ...f, thread: it.thread.thread, thread_title: it.thread.title });
+  }
+  files.sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+  return { files: files.slice(0, 50), file_count: files.length, person: faces.people([person])[0], chat: dm ? { chat: dm.chat, threads: dm.threads, latest: dm.latest, last_active: dm.last_active } : null, threads: newest(both).slice(0, 20), shared_threads: both.length, projects: together };
 }
 
 /**
@@ -386,7 +393,7 @@ export function registerThreads(d) {
     },
   });
   d.chatTool("work.person.shared", {
-    description: "What you and one person share: your chat with them, the threads you are both in, and the projects you are both on.",
+    description: "What you and one person share: your chat with them, the threads you are both in, their files, and the projects you are both on.",
     input: obj({ person: { type: "string", description: "the person's id" } }, ["person"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => personShared(d, extra, String(input.person)),
   });

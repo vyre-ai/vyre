@@ -228,10 +228,9 @@ export default {
       input: obj({ text: { type: "string", maxLength: 4000 } }, ["text"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().suggest(await chainOf(extra), i) });
     ctx.tool("work.chat.link", { description: "Say that a chat is about a record (give its urn; null takes the link off). The chat stays private to its people; `shared: true` shows it, by title, on that record's timeline to everyone who can see the record.",
       input: obj({ chat: { type: "string" }, record: { type: ["string", "null"] }, shared: { type: "boolean" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().link(await chainOf(extra), i) });
-    ctx.tool("work.file.list", { description: "The files this chat has, received (chat/) and made (made/): name, size, time, shared with the project or not. Only for someone in the chat.",
-      input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-        const k = kernelOf(), chain = await chainOf(extra), chat = String(i.chat);
-        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat: name a chat you are in"), { code: "not_found" });   // the same answer every route gives a person outside the chat
+    // The files one chat has, received and made, under the caller's own chain (the drive refuses what the caller may not open).
+    const filesOfChat = async (/** @type {any} */ chain, /** @type {string} */ chat) => {
+        const k = kernelOf();
         const rec = (await chatRows(chain, { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } }))[0];
         const root = rec && rec.data && rec.data.drive ? String(rec.data.drive) : "";
         if (!root) return { files: [], root: "" };
@@ -244,6 +243,12 @@ export default {
           }
         }
         return { root, files };
+    };
+    ctx.tool("work.file.list", { description: "The files this chat has, received (chat/) and made (made/): name, size, time, shared with the project or not. Only for someone in the chat.",
+      input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const k = kernelOf(), chain = await chainOf(extra), chat = String(i.chat);
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat: name a chat you are in"), { code: "not_found" });   // the same answer every route gives a person outside the chat
+        return filesOfChat(chain, chat);
       } });
     ctx.tool("work.file.share", { description: "Share one file of a chat you are in with that chat's project: its members open that one file and nothing else. Give the file's path (Projects/<project>/chat/<chat>/<name>).",
       input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => shareFile(kernelOf(), hubOf(), await chainOf(extra), i) });
@@ -786,7 +791,7 @@ export default {
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
     });
-    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, hubOf, changeChat: (/** @type {any} */ i, /** @type {any} */ e) => changeChat(i, e), pinnedOf: (/** @type {string} */ person) => persistentOf().pinnedOf(person), createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
+    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, hubOf, changeChat: (/** @type {any} */ i, /** @type {any} */ e) => changeChat(i, e), filesOf: (/** @type {any} */ c, /** @type {string} */ id) => filesOfChat(c, id), pinnedOf: (/** @type {string} */ person) => persistentOf().pinnedOf(person), createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
     // Add or remove people and agents in a chat: the kernel's own change, by the person acting directly. Named so the thread tools run the very same code.
     const changeChat = async (/** @type {any} */ input, /** @type {any} */ extra) => {
         const chain = await chainOf(extra);
