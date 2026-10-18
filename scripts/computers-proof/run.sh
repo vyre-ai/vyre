@@ -28,9 +28,8 @@ sleep 3
 PROOF_HOLD="${PROOF_HOLD:-0}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/proof.mjs
 RC=$?
 echo "proof exit code $RC"
-# the agent computer proof (0.6): two agents on one computer, logins that survive sleep. Its own container, on the same image, proxy and network.
-PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
-RC2=$?
-echo "agent proof exit code $RC2"
+# The agent computer proof (agents.mjs: two agents on one computer, a Linux user for each) is SKIPPED in 0.6.1: that path is off by default (computers.agentUsers), and returns in 0.6.2.
+echo "agent proof skipped in 0.6.1: per-agent users are off until 0.6.2"
+RC2=0
 [ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && exit 0
 exit 1

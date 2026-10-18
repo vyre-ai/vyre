@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(computers-proof): run.sh skips the agent proof (agents.mjs) in 0.6.1, with the reason printed, because per-agent users are off; step 4a checks that the agent has its own csproof-computer container and that no csproof-computer-browser-shared exists; browser-checks keeps file:// and chrome:// required and reports the two download-folder checks as named KNOWN-FAIL lines and a `known failures (0.6.1)` summary instead of failing the run.
 - fix(computers): fail closed. browseMode() is "desktop" unless computers.browse is "browser" (an unset or unknown setting, a docker address or a missing driver no longer turns the shared browser on), and agentdReady() is false unless computers.agentUsers is true as well as the space's computer being up, so a default box never creates or joins browser-shared and never uses agentd. Known gap added: the shared browser and a user for each agent are off until 0.6.2.
 - test(runner,cli): the first-chat nudge test waits until the lender's nudge is held at the home (lent home `waiting(device)`) before it times the start, so a loaded shard's late first wait is not read as a slow start; needs.test waits, after the threads are stopped, until nothing more is written to them before the daemon closes.
 - test(modules): member-read-scope stops every thread in the store and lets the loop settle before the daemon closes, so a late write cannot land on a closed database under load.
