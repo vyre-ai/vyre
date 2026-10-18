@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { Button, Chip, Menu, Text } from "@vyre/ui";
+import { Button, Menu, Text } from "@vyre/ui";
 import type { LayoutScope } from "./layout-state";
 
 /**
@@ -19,8 +19,8 @@ export function TableControls({ columns, onColumns, fields, groupBy, onGroup, de
       <Button kind="secondary" size="sm" icon="list" label={`Columns ${columns}`} onPress={onColumns} />
       <Menu trigger={<Button kind="secondary" size="sm" icon="grid" label={grouped ? `Group: ${grouped.label}` : "Group"} />}
         items={[{ label: "No grouping", selected: !grouped, onPress: () => onGroup(null) }, ...fields.map((f) => ({ label: f.label, selected: f.name === groupBy, onPress: () => onGroup(f.name) }))]} />
-      <Chip onPress={() => onDensity(density === "comfortable" ? "compact" : "comfortable")}>{density === "comfortable" ? "Comfortable" : "Compact"}</Chip>
-      <Chip selected={freeze} onPress={() => onFreeze(!freeze)}>Freeze first column</Chip>
+      <Button kind="secondary" size="sm" label={density === "comfortable" ? "Comfortable" : "Compact"} onPress={() => onDensity(density === "comfortable" ? "compact" : "comfortable")} />
+      <Button kind={freeze ? "primary" : "secondary"} size="sm" icon="pin" label="Freeze first column" onPress={() => onFreeze(!freeze)} />
       <View className="flex-1" />
       <Text size="caption" tone="label">{scope === "space" ? "Space default" : mine ? "Your layout" : "Space layout"}</Text>
     </View>
