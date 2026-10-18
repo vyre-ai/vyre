@@ -20,8 +20,8 @@ export function nextRef(type, values) {
   return formatRef(prefix, values.reduce((/** @type {number} */ m, v) => Math.max(m, refNumber(prefix, v)), 0) + 1);
 }
 
-/** Whether a failed create is the ID already being taken (the ID is unique), judged by its words; its text is never shown to anyone. @param {unknown} e */
-export const isClash = (e) => /unique|duplicate|already|taken|exists/i.test(String(e && /** @type {any} */ (e).message || e || ""));
+/** Whether a failed write is the ID already being taken: the store's own unique-violation code, on the ID field (or on none named). Never judged by its words, and its text is never shown to anyone. @param {unknown} e */
+export const isClash = (e) => Boolean(e) && /** @type {any} */ (e).code === "unique_violation" && (/** @type {any} */ (e).field === undefined || /** @type {any} */ (e).field === "ref");
 
 /**
  * How far to move on after a clash, so a caller who cannot see the records that hold the higher IDs still finds a free one: one at a time at first, then ten, then a hundred, then a thousand. IDs need to be unique, not dense.

@@ -9,7 +9,7 @@ import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
-import { nextRef, refNumber, refPrefix, mintRef } from "./ref.js";
+import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -95,7 +95,7 @@ export default {
       const out = await d.gateway.records.define(d.chain, i.diff);
       // the person who defined it may update these records, so the IDs are given under their own chain, once; records that have one are left alone
       for (const t of [...((i.diff && i.diff.add_types) || []), ...((i.diff && i.diff.change_types) || [])]) {
-        if (t && typeof t.name === "string" && (t.fields || []).some((/** @type {any} */ f) => f && f.name === "ref")) { try { await fillIds(d, t.name); ctx.log(`records: gave ${t.name}'s records their IDs`); } catch (e) { ctx.log(`records: ${t.name}'s records were not all given their IDs (${/** @type {Error} */ (e).message})`); } }
+        if (t && typeof t.name === "string" && (t.fields || []).some((/** @type {any} */ f) => f && f.name === "ref")) { try { const { skipped } = await fillIds(d, t.name); ctx.log(`records: gave ${t.name}'s records their IDs${skipped ? `; ${skipped} could not be given one` : ""}`); } catch (e) { ctx.log(`records: ${t.name}'s records were not all given their IDs (${/** @type {Error} */ (e).message})`); } }
       }
       return out;
     });
@@ -142,7 +142,16 @@ export default {
         const all = await d.gateway.records.query(d.chain, type, { sort: [{ field: "created_at", dir: "asc" }], page: { limit: 1000 } });
         const rows = (all && all.rows) || [];
         let have = rows.map((/** @type {any} */ r) => r && r.data && r.data.ref).filter(Boolean);
-        for (const r of rows) { if (r && r.data && !r.data.ref) { const ref = nextRef(type, have); await d.gateway.records.update(d.chain, type, r.id, { ref }, r.version); have = [...have, ref]; } }
+        let skipped = 0;
+        // a record that cannot be given one (an ID a hidden record holds, a record the definer may not change) is skipped and counted: the rest still get theirs
+        for (const r of rows) {
+          if (!(r && r.data && !r.data.ref)) continue;
+          try {
+            const out = await mintRef({ type, start: refNumber(refPrefix(type), nextRef(type, have)), create: (ref) => d.gateway.records.update(d.chain, type, r.id, { ref }, r.version) });
+            have = [...have, formatRef(refPrefix(type), out.n)];
+          } catch { skipped++; }
+        }
+        return { skipped };
       });
       minting.set(key, run);
       return run;

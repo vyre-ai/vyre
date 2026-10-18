@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(records): People, Companies, Tasks and Notes (the Note type is `memo`, Twenty reserves "note"), the Gallery view (Companies open in it), and every starting type has an ID (`PER-0001`, `ORG-0001`, `TSK-0001`, `NOT-0001`): a read-only unique `ref` field, made with the record and never changed. A new type starts with its first field and an ID; Blank is a Name and an ID. Older records get their ID, oldest first, when `records.define` adds the field; a record the person who defined it cannot see (a private row) gets its ID later, when someone who can see it defines the type again. `records.list` never writes.
+
 ## 0.6.0
 
 - ci: golden-refresh.yml uses the same lane rule as the other workflows (sec53's note on ci-lanes): a [golden-update] push or a dispatch from a polish branch runs on a hosted runner, not on the self-hosted fleet.
