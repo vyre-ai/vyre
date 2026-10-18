@@ -23,7 +23,6 @@ const TEAM = MOCK ? loadTeammates() : [];
 
 import type { VaultPlan } from "./remove-model.js";
 import { doneLine, linkedOf, offboardNames, removeWords, tickRows, vaultPlan } from "./remove-model.js";
-import { tool } from "../../src/real/box";
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "remove"; id: string; plan: VaultPlan | null; ticked: string[] } | { kind: "temp"; name: string; scope: string; days: string };
 

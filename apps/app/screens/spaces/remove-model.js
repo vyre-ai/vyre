@@ -25,8 +25,8 @@ export function vaultPlan({ memberName, linked, people }) {
   if (people === null || people === undefined) return { mode: "unchecked", linked: null, verified: true, candidates: [] };
   const list = Array.isArray(people) ? people : Array.isArray(/** @type {any} */ (people)?.people) ? /** @type {any} */ (people).people : [];
   const want = str(memberName).toLowerCase();
-  const names = list.map((p) => str(/** @type {any} */ (p)?.name)).filter(Boolean);
-  const candidates = want ? [...new Set(names.filter((n) => n.toLowerCase() === want))] : [];
+  const names = list.map((/** @type {any} */ p) => str(p?.name)).filter(Boolean);
+  const candidates = want ? [...new Set(names.filter((/** @type {string} */ n) => n.toLowerCase() === want))] : [];
   return { mode: candidates.length ? "choose" : "none", linked: null, verified: true, candidates };
 }
 
