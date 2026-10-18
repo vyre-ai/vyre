@@ -90,7 +90,7 @@ function Sample({ name }: { name: string }) {
     const answers = fx as Record<string, { data?: unknown; error?: { code: string; message: string } }>;
     // The app is a native window: stand in for the Mac shell so the screen is the one a person has (Add, Share and Reveal are there, not "on your phone").
     (window as unknown as { __vyreShell?: unknown }).__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} };
-    setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) { console.error(`vault-real: no recorded answer for ${tool}`); return {}; } if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
+    setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) { console.error(`vault-real: no recorded answer for ${tool}`); return {}; } if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); if (tool === "vault.list") console.error(`vault-real: vault.list rows ${JSON.stringify(((a.data as { items?: Record<string, unknown>[] })?.items ?? []).map((i) => Object.keys(i).join(",")))}`); return a.data; });
     return <RealVault />;
   }
   if (name.startsWith("skills-real")) {
