@@ -132,7 +132,7 @@ export async function signInAgent(input) {
   catch (e) { return fail(e); }
 }
 
-/** Name the Assistant and keep its look: made on the server this space is on. @param {{ name: string, look: string }} input */
+/** Name the Assistant and keep its look: made on the server this space is on. `person` is the name the person gave in the name step (the server shows it beside theirs). @param {{ name: string, look: string, person?: string }} input */
 export async function setAssistant(input) {
   if (MOCK) return mock.setAssistant(input);
   try { return done(await tool("onboard.assistant.set", input)); }

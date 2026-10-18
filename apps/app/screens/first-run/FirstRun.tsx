@@ -5,7 +5,7 @@ import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
   Avatar, FlowOver, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
+import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
@@ -14,14 +14,14 @@ import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
-import { ASSISTANT_COPY, rememberSpace } from "./welcome-model.js";
+import { ASSISTANT_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, setAssistant, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -87,6 +87,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
   const [asName, setAsName] = useState("");
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
   const [expiresAt, setExpiresAt] = useState("");
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
@@ -224,7 +226,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     return (
       <Welcome phone={phone} failure={failure}
         onSignIn={(sp) => { setSignSpace(`${sp}.vyre.run`); setFailure(""); go("id.signin"); }}
-        onStart={() => { setFailure(""); go("id.create"); }}
+        onStart={() => { setFailure(""); go("id.name"); }}
         onGithub={() => void run(async () => {
           const r = await signInGithub(undefined);
           if (!r.ok) { setFailure(r.message); return; }
@@ -234,6 +236,17 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setPassword("");
           go("id.signin.spaces");
         })} />
+    );
+  }
+
+  if (screen === "id.name") {
+    const person = displayNameOf(first, last);
+    return (
+      <FlowStep steps={steps} onBack={back} title={NAME_COPY.title} lead={NAME_COPY.lead}
+        primary={{ label: "Continue", disabled: !person, onPress: () => go("id.create") }}>
+        <Field label={NAME_COPY.first} value={first} onChangeText={setFirst} />
+        <Field label={NAME_COPY.last} value={last} onChangeText={setLast} error={(first || last) && !person ? NAME_COPY.bad : undefined} />
+      </FlowStep>
     );
   }
 
@@ -476,7 +489,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     return (
       <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
         primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
-          const r = await setAssistant({ name, look: full });
+          const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
           go("ready");
         }) }}>

@@ -97,7 +97,7 @@ export async function signInAgent(input) {
   return { ok: true, provider: input.provider, step: "done", signedIn: true };
 }
 
-/** @param {{ name: string, look: string }} input */
+/** @param {{ name: string, look: string, person?: string }} input */
 export async function setAssistant(input) {
   return { ok: true, name: String(input.name || "").toLowerCase(), display: input.name, look: input.look };
 }

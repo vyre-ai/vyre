@@ -27,6 +27,15 @@ export const ASSISTANT_COPY = Object.freeze({
   tooLong: "Use up to 40 characters.",
 });
 
+/** The name step's words. */
+export const NAME_COPY = Object.freeze({
+  title: "What should we call you?",
+  lead: "Your name shows on everything you do, so teammates always know who's who.",
+  first: "First name",
+  last: "Last name",
+  bad: "Use letters, up to 60 characters in all.",
+});
+
 /** The three theme choices, in order: the person's setting and its label. "system" follows the device or browser and switches live when it changes. */
 export const THEME_CHOICES = Object.freeze([["paper", "Light"], ["system", "Match this device"], ["dark", "Dark"]]);
 

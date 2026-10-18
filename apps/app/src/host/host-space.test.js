@@ -439,12 +439,13 @@ test("the Assistant step names the Assistant and keeps its look on the server th
   await assert.rejects(() => host.call("onboard.assistant.set", { name: "x".repeat(41), look: "s1~c2" }), (e) => e.code === "bad_name");
   await assert.rejects(() => host.call("onboard.assistant.set", { name: "Juno", look: "<script>" }), (e) => e.code === "bad_look");
   const look = "s3~c5~e1~m2~t4~b1~h0";
-  const r = await host.call("onboard.assistant.set", { name: "Juno", look });
+  const r = await host.call("onboard.assistant.set", { name: "Juno", look, person: "Proof Walker" });
   assert.deepEqual(r, { name: "juno", display: "Juno", look }, "only the name, the display name and the look come back");
   const sent = pp.seen.calls.filter((c) => ["onboard.you", "onboard.assistant", "agents.update"].includes(c.name));
   assert.deepEqual(sent.map((c) => c.name), ["onboard.you", "onboard.assistant", "agents.update"], "named, made, then its look kept");
   assert.ok(sent.every((c) => c.box === "boxA"), "all three go to the server this onboarding made");
   assert.equal(sent[0].input.assistant, "Juno");
+  assert.equal(sent[0].input.name, "Proof Walker", "the name the person gave is the one the server shows");
   assert.deepEqual(sent[2].input, { name: "juno", look });
 });
 

@@ -529,7 +529,10 @@ export function createHost(o) {
       const look = input && input.look ? String(input.look) : "";
       if (look && !lookOf(look)) throw bad("That look is not one the Assistant can have.", "bad_look");
       const ports = await o.space.load();
-      await ports.call("onboard.you", { name: k.username, assistant: display }, box);
+      // the name the person gave (letters, up to 60), else the username
+      const given = String((input && input.person) || "").trim();
+      const person = given && given.length <= 60 && /\p{L}/u.test(given) && !/[\u0000-\u001f]/.test(given) ? given : k.username;
+      await ports.call("onboard.you", { name: person, assistant: display }, box);
       const a = /** @type {any} */ (await ports.call("onboard.assistant", {}, box));
       if (!a || !a.made || !a.name) throw bad(a && a.why ? String(a.why) : "Your Assistant could not be made yet. Try again in a moment.", "assistant_not_made");
       if (look) await ports.call("agents.update", { name: String(a.name), look }, box);

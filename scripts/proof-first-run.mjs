@@ -253,6 +253,12 @@ try {
 
   await run.step(S("create an identity: username, password, recovery key"), async () => {
     await drv.click("New here? Get started");
+    // The name step: what should we call you, first and last (Continue waits for a name).
+    await drv.waitFor("What should we call you?");
+    await drv.fill("First name", "Proof");
+    await drv.fill("Last name", "Walker");
+    await drv.shot("01b-name");
+    await drv.click("Continue");
     await drv.waitFor("Create your identity");
     await drv.fill("Username", USERNAME);
     await drv.fill("Password", PASSWORD);
