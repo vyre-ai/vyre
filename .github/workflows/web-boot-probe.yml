@@ -1,0 +1,64 @@
+# Loads the web export (not minified) in headless Chromium and prints every page error with its stack: a module-order crash ("Cannot access 'X' before initialization") then names X and the file.
+# Runs on a push to a probe branch, never on a feature branch.
+name: web-boot-probe
+on:
+  push:
+    branches: ["work/polish/fix53/tdz", "work/polish/fix53/tdz-*"]
+    paths: [".github/workflows/web-boot-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: .
+      - run: npm ci --no-audit --no-fund
+      - name: Export, not minified (the in-page host build the first run uses)
+        env:
+          EXPO_PUBLIC_VYRE_HOST: "1"
+        run: npx expo export -p web --no-minify --output-dir "$RUNNER_TEMP/dist" --clear
+      - name: Chromium, outside the repo
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true,"type":"module"}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: Load the page and print the errors
+        run: |
+          cd "$RUNNER_TEMP/pw"
+          cat > probe.mjs <<'JS'
+          import { chromium } from "playwright";
+          import http from "node:http";
+          import fs from "node:fs";
+          import path from "node:path";
+          const root = process.argv[2];
+          const types = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ttf": "font/ttf", ".wasm": "application/wasm" };
+          const server = http.createServer((q, r) => {
+            let p = decodeURIComponent(new URL(q.url, "http://x").pathname); let f = path.join(root, p);
+            if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(root, "index.html");
+            r.writeHead(200, { "content-type": types[path.extname(f)] || "application/octet-stream" }); fs.createReadStream(f).pipe(r);
+          }).listen(0);
+          const port = server.address().port;
+          const b = await chromium.launch(); const pg = await b.newPage();
+          const errs = [];
+          pg.on("pageerror", (e) => errs.push(String(e.stack || e.message || e)));
+          pg.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text()); });
+          await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });
+          await pg.waitForTimeout(8000);
+          console.log("page errors:", errs.length);
+          for (const e of errs.slice(0, 8)) console.log("----\n" + e.slice(0, 1800));
+          console.log("body text:", (await pg.innerText("body")).slice(0, 200).replace(/\s+/g, " "));
+          await b.close(); server.close();
+          JS
+          node probe.mjs "$RUNNER_TEMP/dist"
