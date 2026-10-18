@@ -101,7 +101,16 @@ export function createHost(o) {
     if (!k) throw bad("Make your username first.", "no_identity");
     const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box && s.paired.box !== madeHere));
     const there = paired.find((s) => s.id === k.current) || paired[0];
-    return there ? { box: String(there.paired.box), name: String(there.name || "your other Space").slice(0, 60) } : null;
+    return there ? { box: String(there.paired.box), name: String(there.name || "your other Space").slice(0, 60), role: String(there.role || ""), person: String(k.id || "") } : null;
+  };
+  /** Whether an account of the other server is the caller's own to copy: the home's own account (no person) when the caller owns that server, or an account whose person is the caller. A team's shared account, or a member's, is not. @param {any} a @param {{ role: string, person: string }} other */
+  const isOwnAccount = (a, other) => (a.person ? String(a.person) === other.person : other.role === "owner");
+  /** Why an account is not copied, or "": a custom address is added by hand (the key is for that provider, not the kind's default), a sign-in account signs in again, someone else's is not the caller's. @param {any} a @param {{ role: string, person: string }} other */
+  const noCopy = (a, other) => {
+    if (!isOwnAccount(a, other)) return "Not yours to copy.";
+    if (a.kind !== "api-key" || typeof a.vault_item !== "string" || COPY_KINDS[String(a.provider)] === undefined) return "Sign in again on the new Space.";
+    if (typeof a.base_url === "string" && a.base_url && a.base_url !== "https://api.x.ai/v1") return "Add this one by hand.";
+    return "";
   };
   const memberKey = async (ports, box, space, i) => {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
@@ -642,7 +651,7 @@ export function createHost(o) {
       /** @type {any} */ let l;
       try { l = await ports.call("sessions.accounts.list", {}, other.box); } catch { return { from: other.name, accounts: [] }; }
       const rows = (Array.isArray(l) ? l : l && Array.isArray(l.accounts) ? l.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
-      return { from: other.name, accounts: rows.slice(0, 12).map((/** @type {any} */ a) => ({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), copy: a.kind === "api-key" && typeof a.vault_item === "string" && COPY_KINDS[String(a.provider)] !== undefined })) };
+      return { from: other.name, accounts: rows.slice(0, 12).map((/** @type {any} */ a) => ({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), copy: noCopy(a, other) === "", ...(noCopy(a, other) && a.kind === "api-key" ? { why: noCopy(a, other) } : {}) })) };
     },
     // Copy chosen key accounts into the NEW Space: each key is read from the other server's Vault (a gated read, one per key, with its own presence), kept in memory only, and added to the new Space through the same
     // path a typed key takes (the owner's key tool, or a member's own Vault in one set act). Returns, per account, whether it was added; never a key or an item name.
@@ -660,12 +669,14 @@ export function createHost(o) {
       /** @type {{ id: string, label: string, kind: string, key: string, base_url?: string }[]} */ const keys = [];
       for (const a of rows) {
         const label = String(a.label || a.provider || "AI account").slice(0, 80), kind = COPY_KINDS[String(a.provider)];
-        if (a.kind !== "api-key" || typeof a.vault_item !== "string" || !kind) { done.push({ id: String(a.id), label, ok: false, why: "Sign in again on the new Space." }); continue; }
+        // decided before any key is read: not the caller's, a custom address, or a sign-in account is skipped with its reason and vault.reveal is never called for it
+        const skip = noCopy(a, other);
+        if (skip || !kind) { done.push({ id: String(a.id), label, ok: false, why: skip || "Sign in again on the new Space." }); continue; }
         try {
           const got = /** @type {any} */ (await ports.call("vault.reveal", { name: a.vault_item, field: "value" }, other.box));
           const key = String(got && (got.value ?? got.fields?.value) || "");
           if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) { done.push({ id: String(a.id), label, ok: false, why: "That key could not be read." }); continue; }
-          const base = typeof a.base_url === "string" && a.base_url === "https://api.x.ai/v1" ? a.base_url : "";
+          const base = a.base_url === "https://api.x.ai/v1" ? a.base_url : "";
           keys.push({ id: String(a.id), label, kind, key, ...(base ? { base_url: base } : {}) });
         } catch (e) {
           // the read is the person's own act (vault.reveal): the app's one call path (src/real/box.ts tool, the same the Vault screen uses) asks for the yes on this exact call; what it answers is said, never swallowed

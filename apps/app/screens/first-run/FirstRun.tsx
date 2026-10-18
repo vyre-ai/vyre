@@ -92,7 +92,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
   const [asDone, setAsDone] = useState(false);
-  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean }[] } | null>(null);
+  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean; why?: string }[] } | null>(null);
   const [copyPick, setCopyPick] = useState<string[]>([]);
   const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(null);
   const [carried, setCarried] = useState<{ name: string; look: string } | null>(null);
@@ -449,7 +449,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
                     onPress={() => setCopyPick((p) => (p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]))} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6, opacity: a.copy ? 1 : 0.6 }}>
                     <ProviderBadge provider={a.provider} size={20} />
                     <Text>{a.label}</Text>
-                    <Text tone="muted" size="caption">{done1 ? (done1.ok ? "Copied" : done1.why || "Not copied") : !a.copy ? w.again : on ? "Selected" : ""}</Text>
+                    <Text tone="muted" size="caption">{done1 ? (done1.ok ? "Copied" : done1.why || "Not copied") : !a.copy ? (a.why || w.again) : on ? "Selected" : ""}</Text>
                   </Pressable>
                 );
               })}

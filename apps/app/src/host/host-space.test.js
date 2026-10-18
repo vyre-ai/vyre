@@ -627,6 +627,23 @@ test("copying AI accounts to a new Space: only key accounts are copyable, each k
   assert.ok(!JSON.stringify(r).includes("OLDKEY"), "no key in the answer or the failure words");
   assert.deepEqual(sent.filter((x) => x.name === "vault.reveal").map((x) => x.box), ["boxFIRST", "boxFIRST"], "each key is read from the OTHER server, one call each");
   assert.deepEqual(sent.filter((x) => x.name === "sessions.accounts.key").map((x) => [x.box, x.kind]), [["boxA", "anthropic-compatible"], ["boxA", "openrouter"]], "and added to the new Space's server");
+  // sec53: a custom address is added by hand, and an account that is not the caller's is not copied: neither is READ
+  const reveals = [];
+  pp.call = async (name, input, box) => {
+    if (box === "boxFIRST" && name === "sessions.accounts.list") return [
+      { id: "c1", provider: "openai-compatible", label: "My lab", kind: "api-key", vault_item: "lab", base_url: "http://127.0.0.1:8080/v1" },
+      { id: "c2", provider: "openai-compatible", label: "Grok", kind: "api-key", vault_item: "grok", base_url: "https://api.x.ai/v1" },
+      { id: "c3", provider: "claude", label: "Team shared", kind: "api-key", vault_item: "team", person: "per_" + "z".repeat(26) },
+      { id: "c4", provider: "claude", label: "Mine", kind: "api-key", vault_item: "mine" }];
+    if (name === "vault.reveal") { reveals.push(input.name); return { value: "xai-0123456789abcdef" }; }
+    if (name === "sessions.accounts.key") return { account: "ac_x", checked: true };
+    return first(name, input, box);
+  };
+  const lst = await host.call("onboard.accounts.copyable", {});
+  assert.deepEqual(lst.accounts.map((x) => [x.label, x.copy, x.why || ""]), [["My lab", false, "Add this one by hand."], ["Grok", true, ""], ["Team shared", false, "Not yours to copy."], ["Mine", true, ""]]);
+  const cp = await host.call("onboard.accounts.copy", { ids: ["c1", "c2", "c3", "c4"] });
+  assert.deepEqual(reveals.sort(), ["grok", "mine"], "only the caller's own accounts at an allowed address are read");
+  assert.deepEqual(cp.copied.filter((x) => !x.ok).map((x) => [x.label, x.why]).sort(), [["My lab", "Add this one by hand."], ["Team shared", "Not yours to copy."]]);
   // a read the person does not approve is said, per account, with the way on: never silent
   pp.call = async (name, input, box) => { if (name === "vault.reveal") throw Object.assign(new Error("Nothing was approved."), { code: "cancelled" }); if (name === "sessions.accounts.list" && box === "boxFIRST") return [{ id: "a1", provider: "claude", label: "Work", kind: "api-key", vault_item: "ai-key-claude-1" }]; return first(name, input, box); };
   const no = await host.call("onboard.accounts.copy", { ids: ["a1"] });
