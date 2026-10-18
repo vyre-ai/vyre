@@ -157,12 +157,13 @@ export function createStages(o) {
     /** @type {Map<string, string>} */ const made = new Map();
     /** @type {{ task: string, why: string }[]} */ const skipped = [];
     for (const t of templates) {
-      const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
+      const group = /^group:/.test(String(t.doer)) ? String(t.doer).slice(6) : null;   // a group task: the first of the role to start it takes it
+      const doer = group ? { kind: "service", id: "pool", space } : await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
       if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); held(t, `nobody can do ${t.doer}`); continue; }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
-        title: t.title, record: e.urn, stage: e.stage, doer,
+        title: t.title, record: e.urn, stage: e.stage, doer, ...(group ? { doer: undefined, pool: { role: group } } : {}),
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),

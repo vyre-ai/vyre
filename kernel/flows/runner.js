@@ -1858,7 +1858,7 @@ export class FlowRunner {
     const space = ctx.run.space;
     const [kind, ...rest] = String(ref).split(":");
     const name = rest.join(":");
-    if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] };
+    if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] }; if (kind === "group") return { doer: { kind: "service", id: "pool", space }, helpers: [] };
     if (kind === "teammate") return { doer: { kind: "agent", id: name, space }, helpers: [] };
     /** @type {{ actor: ActorRef, name?: string, skills?: string[] }[]} */ let candidates;
     if (kind === "pool") {
