@@ -9897,7 +9897,7 @@ Who changed what on a record, with the values before and after, from the signed 
 
 ### `records.create`
 
-Make a record of a type.
+Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).
 
 - Input:
   - `data` object, required
@@ -9907,7 +9907,7 @@ Make a record of a type.
 
 ### `records.define`
 
-Add or change record types and their fields (a DefineDiff). The kernel decides who may.
+Add or change record types and their fields (a DefineDiff). The kernel decides who may. A type that gains an ID field gives its older records their IDs, oldest first.
 
 - Input:
   - `diff` object, required
@@ -10108,7 +10108,7 @@ The record types of a Space, as defined (a type may carry kind: project). The ke
 
 ### `records.update`
 
-Change a record's fields; a stale base_version is refused (version_conflict).
+Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.
 
 - Input:
   - `base_version` integer, required
