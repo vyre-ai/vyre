@@ -58,6 +58,9 @@ async function boot(t) {
   await K.gateway.grants.addActor(ownerChain, agent, { presence: grantProof("grants.role", { actor: agent }, `vyre://${space}/member/research`) });
   const g = { subject: { kind: "actor", actor: agent }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
   await K.gateway.grants.create(ownerChain, g, { presence: grantProof("grants.create", g, `vyre://${space}/grant/new`) });
+  // what the owner lets the assistant read: the projects it works on (the hand-in check reads the draft on the assistant's own chain)
+  const gr = { subject: { kind: "actor", actor: agent }, actions: ["records.read"], resource: { prefix: `vyre://${space}/project/*` }, conditions: {}, source: "test" };
+  await K.gateway.grants.create(ownerChain, gr, { presence: grantProof("grants.create", gr, `vyre://${space}/grant/new`) });
   // a member who is a manager
   const role = { person: MIA, role: "manager" };
   await K.gateway.grants.setRole(ownerChain, role, { presence: grantProof("grants.role", role, `vyre://${space}/member/${MIA}`) });
