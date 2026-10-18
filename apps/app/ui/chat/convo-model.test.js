@@ -85,7 +85,7 @@ test("sections: Pinned, People, Groups, Agents, Flows, an empty one left out; th
   const items = convosFrom({
     chats: [chat({ id: "p", title: "Assistant", agents: ["Assistant"], pinned: "assistant" }), chat({ id: "d", title: "Dana", people: ["Dana"] }), chat({ id: "g", title: "Spring", people: ["Sam", "Dana"], agents: ["Assistant"] }), chat({ id: "e", title: "Engineer", agents: ["Engineer"] })],
     agents: [agent({ name: "Assistant" }), agent({ name: "Engineer", threads: [{ title: "Pricing page", live: true }, { title: "Signup form" }, { title: "Old" }] }), agent({ name: "Scout" })], people: [],
-    flows: [{ id: "f1", title: "New lead follow-up", runs: [{ title: "Run: Ava", live: true, needs: true }, { title: "Run: Hana" }] }],
+    flows: [{ id: "f1", title: "New lead follow-up", line: "2 runs", runs: 2, needs: 1 }],
   });
   assert.deepEqual(convoSections(items).map((s) => [s.id, s.rows.map((r) => r.title)]), [["pinned", ["Assistant"]], ["people", ["Dana"]], ["groups", ["Spring"]], ["agents", ["Engineer", "Scout"]], ["flows", ["New lead follow-up"]]]);
   assert.deepEqual(CONVO_TYPES.map((t) => t.id), ["all", "people", "groups", "agents", "flows"]);

@@ -21,7 +21,7 @@ export function agentLine(ts, fallback) {
 }
 
 /**
- * @param {{ chats: readonly ChatRow[], agents: readonly { name: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[] }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: readonly ThreadInfo[] }[] }} i
+ * @param {{ chats: readonly ChatRow[], agents: readonly { name: string, role?: string, projects?: string[], status?: string, look?: string, threads?: readonly ThreadInfo[] }[], people: readonly { id: string, name: string, role?: string }[], flows?: readonly { id: string, title: string, line?: string, last?: number, runs?: number, needs?: number }[] }} i
  * @returns {Convo[]}
  */
 export function convosFrom(i) {
@@ -52,8 +52,7 @@ export function convosFrom(i) {
     out.push({ id: `person:${p.id}`, kind: "person", title: p.name, sub: p.role ?? "", last: 0, project: "", projects: [], chat: "", agent: "", person: p.id, open: true, asks: 0, unread: 0, pinned: false, status: "", dot: "", names: [p.name], look: "", section: "people", threads: 1 });
   }
   for (const f of i.flows ?? []) {
-    const runs = f.runs ?? [];
-    out.push({ id: `flow:${f.id}`, kind: "flow", title: f.title, sub: agentLine(runs, f.line ?? ""), last: f.last ?? 0, project: "", projects: [], chat: f.id, agent: "", person: "", open: true, asks: 0, unread: 0, pinned: false, status: "", dot: runs.some((r) => r.needs) ? "ask" : "", names: [], look: "", section: "flows", threads: Math.max(1, runs.length) });
+    out.push({ id: `flow:${f.id}`, kind: "flow", title: f.title, sub: f.line ?? "", last: f.last ?? 0, project: "", projects: [], chat: f.id, agent: "", person: "", open: true, asks: f.needs ?? 0, unread: 0, pinned: false, status: "", dot: (f.needs ?? 0) > 0 ? "ask" : "", names: [], look: "", section: "flows", threads: Math.max(1, f.runs ?? 1) });
   }
   return out.sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.last - a.last);
 }

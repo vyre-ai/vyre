@@ -5,6 +5,8 @@ import { agentsList } from "../settings/real";
 import { agentRow, visibleAgents } from "../agents/home-model.js";
 import { teammates } from "../teammates/teammates";
 import type { ChatRow } from "./chats-model.js";
+import { useFlowChats } from "./FlowChatsList";
+import { flowChatSub } from "./flow-chat-model.ts";
 
 type AgentItem = { name: string; role: string; projects: string[]; status: string; look: string };
 type Person = { id: string; name: string; role?: string };
@@ -14,6 +16,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
   const st = useStore();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const { chats: flowChats } = useFlowChats();
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -32,5 +35,6 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
     })();
     return () => { live = false; };
   }, [st]);
-  return useMemo(() => convosFrom({ chats, agents, people }), [chats, agents, people]);
+  const flows = useMemo(() => (flowChats ?? []).map((c) => ({ id: c.id, title: c.title, line: flowChatSub(c, Date.now()), last: c.last, runs: c.runs, needs: c.needsYou })), [flowChats]);
+  return useMemo(() => convosFrom({ chats, agents, people, flows }), [chats, agents, people, flows]);
 }

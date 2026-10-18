@@ -44,14 +44,13 @@ export function ChatsPlusButton() {
   return <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />;
 }
 
-/** The filter control inside the search's right end: All, each project, No project, tags and Flows. */
+/** The filter control inside the search's right end: All, each project, No project and tags. The type row (All, People, Groups, Agents, Flows) is above the list. */
 export function ChatsFilterButton() {
   const router = useRouter();
   const f = useChatsFilter();
   const items = [
     ...convoChips(f.all).map((k) => ({ label: k.label, selected: f.project === k.id, onPress: () => f.set({ project: k.id }) })),
     ...f.tags.map((t) => ({ label: `#${t}`, selected: f.tag === t, onPress: () => f.set({ tag: f.tag === t ? "" : t }) })),
-    { label: "Flows", onPress: () => router.push("/u/flows" as never) },
   ];
   const narrowed = f.project !== "all" || Boolean(f.tag);
   return <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={items} />;
@@ -104,6 +103,7 @@ export function ChatsSidebar() {
   const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
   const found = [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
+    if (c.kind === "flow") { router.push(`/u/chats/flow/${encodeURIComponent(c.chat)}` as never); return; }
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
   };
@@ -114,7 +114,7 @@ export function ChatsSidebar() {
       <ConversationTypes type={f.type} onType={(type) => f.set({ type })} />
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
       {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
-      <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
+      <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat && c.kind !== "flow" ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </View>
   );
 }
