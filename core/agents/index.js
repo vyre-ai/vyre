@@ -18,6 +18,7 @@
 //
 // The switchboard is used through ctx.call and its events, never by importing it.
 
+import { fullLook } from "../../lib/agent-look-parts.js";
 import { isStaffRole } from "../../lib/roles/staff.js";
 import { grantReach, revokeReach } from "../../lib/project-reach.js";
 import { mintUuid } from "../../kernel/core/ids.js";
@@ -54,6 +55,8 @@ const MIGRATIONS = [
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
   // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
   `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
+  // The model to run on when a launch falls back to the API-key account; empty uses `model`.
+  `ALTER TABLE agents_agents ADD COLUMN fallback_model TEXT`,
   // Built in by Vyre (the Engineer): listed like any agent, but it cannot be deleted, renamed, given projects, credentials or a computer.
   `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
   // The person granted this agent their PERSONAL memory and every project's sessions to read ("Claude Code on <this computer>"): reads only, never writes, never the person. Appended last, like every step.
@@ -84,6 +87,8 @@ const MIGRATIONS = [
   `ALTER TABLE agents_wakes ADD COLUMN done_at INTEGER`,
   // How the agent is drawn: a shape and a colour ("s3~c5"), chosen when it is made and changed from its Details. Empty: drawn from its name.
   `ALTER TABLE agents_agents ADD COLUMN look TEXT`,
+  // A new agent the Engineer proposes (flows.propose { what: "agent.new", input }): the whole agents.create input waits here until an owner or an admin says yes; the card carries only its id and hash.
+  `CREATE TABLE agents_newdrafts (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, hash TEXT NOT NULL, proposer TEXT NOT NULL, by TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL)`,
 ];
 /** The most jobs one agent runs at once and starts in an hour (agents.wake_max_concurrent and agents.wake_max_hourly settle it per Space): a runaway Flow cannot start an agent without end. */
 export const WAKE_CAPS = Object.freeze({ concurrent: 5, hourly: 40 });
@@ -116,13 +121,14 @@ const ENGINEER_BEFORE_HANDOFF = [
   ].join("\n");
 
 /** The handoff a Space page sends when a person asks the Engineer from a Playbook, an Object, a Flow or an Agent (the app appends a fenced engineer-context block). */
-const ENGINEER_HANDOFF = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update or agents.create. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
+const ENGINEER_HANDOFF_BEFORE_NEW_AGENT = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update or agents.create. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
+const ENGINEER_HANDOFF = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update, and for a NEW agent flows.propose { what: \"agent.new\", input } with the same input agents.create takes (name, instructions, projects, skills, auth, model, effort, look, and for the owner computer and personal): the person sees one card and says yes once. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
 
 export const ENGINEER = Object.freeze({
   name: "engineer",
   instructions: ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF,
   /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
-  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4, ENGINEER_BEFORE_HANDOFF]),
+  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4, ENGINEER_BEFORE_HANDOFF, ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF_BEFORE_NEW_AGENT]),
   /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
   tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
@@ -161,7 +167,7 @@ export function preamble(a, { withWords = true } = {}) {
 }
 
 /** agents.update fields that change only what an agent says or which model says it. */
-const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description"]);
+const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description", "fallback_model"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 
@@ -172,6 +178,8 @@ export default {
     const ctx = Object.create(ctx0, { tool: { value: (name, def) => ctx0.tool(name, def && typeof def.run === "function" ? { ...def, run: (i, m, ...r) => calls.run(m, () => def.run(i, m, ...r)) } : def) } });
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    // Every agent has its whole look stored, once: an agent made before looks had parts (or with none) gets the shape, colour and parts its name draws, and keeps them if it is renamed.
+    for (const r of db.prepare("SELECT name, look FROM agents_agents WHERE look IS NULL OR look NOT LIKE '%~h%'").all()) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(r.look == null ? null : String(r.look), String(r.name)), r.name);
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     /** Where agents' folders live: beside the projects (never inside VYRE_HOME: the session sandbox refuses a working folder there), so an agent session runs IN its own folder and reads its instructions natively. */
@@ -181,7 +189,7 @@ export default {
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), look: r.look == null ? null : String(r.look), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
+      model: r.model == null ? null : String(r.model), fallback_model: r.fallback_model == null ? null : String(r.fallback_model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), look: r.look == null ? null : String(r.look), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -309,14 +317,14 @@ export default {
         // The API key only backs the subscription up. The onboarding names it before the person
         // has one, so a missing or ungranted key means no fallback, not no start.
         if (a.auth.fallback && (left == null || left > 0)) {
-          try { out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) }; }
+          try { out.fallback = { env: envFor(await release(a, a.auth.fallback), "api-key"), ...(a.fallback_model ? { model: a.fallback_model } : {}), ...(left != null ? { budget_usd: left } : {}) }; }
           catch (e) { ctx.log(`agents: ${a.name} starts without its API key fallback: ${/** @type {Error} */ (e).message}`); }
         }
         return out;
       }
       if (a.auth.fallback) {
         if (left === 0) throw new Error(`${a.name} has spent its $${budget} budget on the API key`);
-        return { auth: "api-key", env: envFor(await release(a, a.auth.fallback), "api-key"), ...(left != null ? { budget_usd: left } : {}) };
+        return { auth: "api-key", env: envFor(await release(a, a.auth.fallback), "api-key"), ...(a.fallback_model ? { model: a.fallback_model } : {}), ...(left != null ? { budget_usd: left } : {}) };
       }
       return { auth: "ambient" };
     };
@@ -372,7 +380,7 @@ export default {
       const oriented = orientation({ ...(mine ? { agent: { name: a.name, dir: mine.dir, instructions: mine.instructions, context: mine.context } } : {}), ...(place ? { project: place } : {}) });
       const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a, { withWords: !mine }) + (oriented ? "\n\n" + oriented : "") + (config ? config.brief(a) : "") + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
-        ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
+        ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...((creds.model || a.model) ? { model: creds.model || a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
@@ -401,11 +409,14 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, fallback_model: { type: "string", description: "the model to use when it carries on under its API-key fallback; empty uses model" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
-    const LOOK = /^s[0-7]~c[0-7]$/;
-    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7)"); };
+    /** A model name: an alias or a model id, short and plain. @param {unknown} m */
+    const modelName = m => { if (typeof m !== "string" || !/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(m)) throw Object.assign(new Error("a model is an alias like opus or sonnet, or a model id"), { code: "bad_input" }); return m; };
+    // A look is a shape and a colour, and may add a character: eyes e0 to e5, mouth m0 to m4, a top t0 to t6, a blush b0 or b1 and a charm h0 to h5, in that order ("s3~c5~e2~m1~t4~b1~h0"). A part left out is drawn from a hash of the agent's uid by the app.
+    const LOOK = /^s[0-7]~c[0-7](~e[0-5])?(~m[0-4])?(~t[0-6])?(~b[01])?(~h[0-5])?$/;
+    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7), and may add eyes ~e0 to ~e5, mouth ~m0 to ~m4, top ~t0 to ~t6, blush ~b0 or ~b1 and charm ~h0 to ~h5, in that order"); };
 
     const checkProjects = p => {
       if (p === undefined) return;
@@ -575,6 +586,103 @@ export default {
       },
     });
 
+    // ---- A new agent by proposal -------------------------------------------------------------------------------------------------------------------------------------------------------
+    // The Engineer cannot make an agent itself (agents.create is the person's own act): it PROPOSES flows.propose { what: "agent.new", input }. The whole agents.create input waits here as a draft, an
+    // owner or an admin says yes on one card, and that yes makes the agent through the same path as agents.create, as the person who said yes. The card carries only the draft's id and hash.
+    const NEW_KEYS = ["name", "kind", "projects", "auth", "instructions", "skills", "computer", "personal", "model", "fallback_model", "effort", "look"];
+    const badInput = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "bad_input" });
+    const cleanNew = (/** @type {any} */ input) => {
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw badInput("a new agent is { name, instructions?, projects?, skills?, auth?, model?, effort?, look?, computer?, personal? }");
+      const extra = Object.keys(input).filter(k => !NEW_KEYS.includes(k));
+      if (extra.length) throw badInput(`${extra.join(", ")} is not part of a new agent; it takes ${NEW_KEYS.filter(k => k !== "kind").join(", ")}`);
+      if (input.kind !== undefined && input.kind !== "agent") throw badInput("the Engineer proposes ordinary agents; the assistant is made at setup");
+      const name = String(input.name ?? "");
+      if (!NAME.test(name)) throw badInput("an agent's name is lowercase letters, digits and dashes");
+      if (name.toLowerCase() === "assistant") throw badInput("assistant is the name of your assistant: pick another name for this agent");
+      if (get(name)) throw badInput(`there is already an agent ${name}`);
+      checkProjects(input.projects); checkLook(input.look);
+      /** @type {any} */ const out = { name };
+      if (input.projects !== undefined) out.projects = input.projects;
+      if (input.instructions !== undefined) { if (typeof input.instructions !== "string" || input.instructions.length > 20000) throw badInput("instructions are text of up to 20,000 characters"); out.instructions = input.instructions; }
+      if (input.skills !== undefined) { if (!Array.isArray(input.skills) || input.skills.length > 100 || input.skills.some((/** @type {any} */ x) => typeof x !== "string" || x.length > 120)) throw badInput("skills are a list of skill names"); out.skills = input.skills; }
+      if (input.model !== undefined) { if (typeof input.model !== "string" || input.model.length > 120) throw badInput("model is a name"); out.model = input.model; }
+      if (input.fallback_model !== undefined) out.fallback_model = modelName(input.fallback_model);
+      if (input.effort !== undefined) { if (!EFFORTS.includes(input.effort)) throw badInput(`effort is one of ${EFFORTS.join(", ")}`); out.effort = input.effort; }
+      if (input.look !== undefined && input.look !== "") out.look = input.look;
+      if (input.computer !== undefined) { if (typeof input.computer !== "boolean") throw badInput("computer is true or false"); out.computer = input.computer; }
+      if (input.personal !== undefined) { if (typeof input.personal !== "boolean") throw badInput("personal is true or false"); out.personal = input.personal; }
+      if (input.auth !== undefined) {
+        const a = input.auth;
+        if (!a || typeof a !== "object" || Array.isArray(a) || Object.keys(a).some(k => !["vault", "fallback", "budget_usd"].includes(k))) throw badInput("auth is { vault?, fallback?, budget_usd? }");
+        if ((a.vault !== undefined && typeof a.vault !== "string") || (a.fallback !== undefined && typeof a.fallback !== "string") || (a.budget_usd !== undefined && !(typeof a.budget_usd === "number" && a.budget_usd >= 0))) throw badInput("auth names Vault items and a budget in dollars");
+        out.auth = a;
+      }
+      return out;
+    };
+    // Only the Flows host stores, reads the title of and applies a new-agent draft, and it calls as vyred itself: any other module that could call these would make an agent with no card and no yes.
+    const FLOWS_HOST = "module:vyred";
+    const onlyHost = (/** @type {any} */ meta) => { if (String((meta && meta.caller) || "") !== FLOWS_HOST) throw Object.assign(new Error("a new agent is stored and made only through a proposal the owner or an admin says yes to"), { code: "denied" }); };
+    /** Whether this person is the Space's owner or an admin (the same test as who may check the card). With no kernel there are no members to tell apart. @param {string} person */
+    const isStaff = async person => {
+      if (!K) return true;
+      const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+      if (K.owner && canon(person) === canon(String(K.owner))) return true;
+      const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
+    };
+    const titleOfNew = (/** @type {any} */ name) => `Make the agent ${name}?`.slice(0, 200);
+    ctx.tool("agents.new.draft", {
+      description: "Store a proposed new agent (the agents.create input) and say whose yes it needs (the owner, else an admin). For the Flows proposals path (kind agent.new).", internal: true, callers: ["module"],
+      input: { type: "object", required: ["input", "proposer"], properties: { input: { type: "object" }, proposer: { type: "string" }, by: { type: "string" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
+        if (!(await isStaff(String(i.proposer)))) throw Object.assign(new Error("only an owner or an admin proposes a new agent"), { code: "denied" });
+        const input = cleanNew(i.input);
+        const hash = hashOf({ new: input });
+        let d = db.prepare("SELECT * FROM agents_newdrafts WHERE hash = ? AND state = 'open'").get(hash);
+        if (!d) { const id = `new_${mintUuid()}`; db.prepare("INSERT INTO agents_newdrafts (id, name, input, hash, proposer, by, at) VALUES (?,?,?,?,?,?,?)").run(id, input.name, JSON.stringify(input), hash, String(i.proposer), i.by || null, Date.now()); d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(id); }
+        return { id: String(d.id), hash, name: input.name, owner: K ? String(K.owner || "") : "", personal: input.personal === true, title: titleOfNew(input.name) };
+      },
+    });
+    ctx.tool("agents.new.title", {
+      description: "The title a stored new-agent draft really has, or null when it is gone, settled, or its name is taken since. For the proposals path.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["id", "hash"], properties: { id: { type: "string" }, hash: { type: "string" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
+        const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
+        if (!d || d.state !== "open" || d.hash !== i.hash || get(String(d.name)) || d.hash !== hashOf({ new: JSON.parse(String(d.input)) })) return null;
+        return titleOfNew(String(d.name));
+      },
+    });
+    ctx.tool("agents.new.apply", {
+      description: "Make the agent a stored draft describes, on an owner's or an admin's yes, through the same path as agents.create. For the proposals path.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["id", "hash", "approver"], properties: { id: { type: "string" }, hash: { type: "string" }, approver: { type: "string" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
+        // the one who says yes must be the owner or an admin: the new agent's owner is then a verified person, never a string from the input
+        if (!(await isStaff(String(i.approver)))) throw Object.assign(new Error("only an owner or an admin says yes to a new agent"), { code: "denied" });
+        const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
+        if (!d || d.state !== "open" || d.hash !== i.hash) throw Object.assign(new Error("that agent is no longer waiting; ask for it again"), { code: "not_found" });
+        const input = JSON.parse(String(d.input));
+        if (d.hash !== hashOf({ new: input })) throw Object.assign(new Error("that draft changed since it was stored: ask again"), { code: "conflict" });
+        cleanNew(input);   // the name may have been taken since
+        db.prepare("UPDATE agents_newdrafts SET state = 'applied' WHERE id = ?").run(d.id);
+        const made = await createAgent(input, meta, String(i.approver));
+        return { agent: made.name, uid: made.uid };
+      },
+    });
+    ctx.tool("agents.draft.get", {
+      description: "Read a stored new-agent draft: the agents.create input the Engineer proposed, for the card that asks for the yes. Only someone who may say yes to it, or who proposed it.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        guard(meta.caller, "read a proposed agent");
+        const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
+        const mine = d && (await chainPerson(meta)) === String(d.proposer);
+        if (!d || !((await seesFull(meta)) || mine)) throw Object.assign(new Error("no such proposed agent"), { code: "not_found" });
+        return { id: String(d.id), name: String(d.name), state: String(d.state), input: JSON.parse(String(d.input)), proposer: String(d.proposer) };
+      },
+    });
+
     ctx.tool("agents.mirror", {
       description: "Make the agent records equal the roster now, and say what changed (a level mirror changes nothing). For tests and repair.", internal: true, callers: ["module"],
       input: { type: "object", properties: {} },
@@ -616,7 +724,7 @@ export default {
         guard(caller, "list agents");
         const full = await seesFull(meta);
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => (full ? ({ uid: a.uid, name: a.name, kind: a.kind, projects: a.projects, model: a.model, ...(a.fallback_model ? { fallback_model: a.fallback_model } : {}), effort: a.effort, computer: a.computer, id: a.id, ...(a.look ? { look: a.look } : {}), ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -625,14 +733,8 @@ export default {
       },
     });
 
-    ctx.tool("agents.create", {
-      description: "Make an agent: a name, its projects (\"*\" for all), its credentials (Vault items for the setup token and an API key fallback, with a budget), instructions and model. kind \"assistant\" makes the one assistant, which sees every project.",
-      input: { type: "object", required: ["name"], properties: { name: { type: "string" }, ...fields } },
-      // A person's surfaces and vyred's modules (onboarding makes the assistant), with no passkey:
-      // making an agent is the person's own business. No model, the assistant included, and no guest.
-      callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (i, meta) => {
-        const { caller } = meta;
+    /** Make an agent. `who` is the person it belongs to when somebody else's yes makes it (the approver of a proposal); else the caller's. */
+    const createAgent = async (i, meta, who = null) => {
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -650,13 +752,23 @@ export default {
         const now = Date.now();
         db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid, owner)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
-        if (i.look) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look, i.name);
+        // The look is stored whole (its parts filled in from the name when it left them out) so a rename never changes how the agent looks.
+        db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(i.look, i.name), i.name);
+        if (i.fallback_model) db.prepare("UPDATE agents_agents SET fallback_model = ? WHERE name = ?").run(modelName(i.fallback_model), i.name);
         await mirror.soon();
         const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
         return note ? { ...get(i.name), note } : get(i.name);
-      },
+    };
+
+    ctx.tool("agents.create", {
+      description: "Make an agent: a name, its projects (\"*\" for all), its credentials (Vault items for the setup token and an API key fallback, with a budget), instructions and model. kind \"assistant\" makes the one assistant, which sees every project.",
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" }, ...fields } },
+      // A person's surfaces and vyred's modules (onboarding makes the assistant), with no passkey:
+      // making an agent is the person's own business. No model, the assistant included, and no guest.
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: async (i, meta) => createAgent(i, meta),
     });
 
     ctx.tool("agents.update", {
@@ -691,7 +803,8 @@ export default {
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
-        if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look || null, a.name);
+        if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look ? fullLook(i.look, a.name) : null, a.name);
+        if (i.fallback_model !== undefined) db.prepare("UPDATE agents_agents SET fallback_model = ? WHERE name = ?").run(i.fallback_model ? modelName(i.fallback_model) : null, a.name);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)

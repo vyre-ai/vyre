@@ -830,7 +830,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
       const [chosenProvider, ...chosenAccount] = row.account ? String(row.account).split(":") : [];
-      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...(m.who.startsWith("model:") ? { slot: m.who } : {}), ...(chosenProvider ? { provider: chosenProvider, ...(chosenAccount.length ? { account: chosenAccount.join(":") } : {}) } : {}), ...turn }));
+      // A thread forked from another's reply has no run yet: its first one starts from that point (the Switchboard takes the folder from the original), then it is an ordinary thread.
+      const forked = viaKs() ? await ctx.call("work.chat.fork-source", { chat: String(row.grp) }).then((/** @type {any} */ x) => (x && x.data) || null).catch(() => null) : null;
+      const r = await run(() => ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...(forked ? { fork: forked.run, resumeAt: forked.resume_at } : {}), ...(m.who.startsWith("model:") ? { slot: m.who } : {}), ...(chosenProvider ? { provider: chosenProvider, ...(chosenAccount.length ? { account: chosenAccount.join(":") } : {}) } : {}), ...turn }));
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);

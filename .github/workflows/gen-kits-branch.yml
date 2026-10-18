@@ -2,7 +2,7 @@
 # test "the checked-in kit is what its source compiles to" is red whenever the language or a kit's source changes. Built the way gen-tokens-branch.yml and regen.yml are: two jobs, so the write token never meets
 # the branch's code. `regenerate` runs the branch's compiler with a read-only token and no stored credentials and hands over a patch; `commit` runs none of the branch's code and applies the patch only when it
 # touches exactly records/kits/<name>/kit.json files. Only branches named work/polish/** are accepted. It runs on a push that changes a kit's source, the language or this workflow (the bot's own commit touches
-# only kit.json files, so it starts nothing more), and can be dispatched once the file is on the default branch. (A push to a branch the bot cannot fast-forward is left alone; push anything under a trigger path to run it again.)
+# only kit.json files, so it starts nothing more), and can be dispatched once the file is on the default branch.
 name: gen-kits-branch
 on:
   push:

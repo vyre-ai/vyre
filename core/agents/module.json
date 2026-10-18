@@ -139,6 +139,25 @@
         "effect": "write"
       },
       {
+        "name": "agents.new.draft",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.new.title",
+        "reach": "modules"
+      },
+      {
+        "name": "agents.new.apply",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.draft.get",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
         "name": "agents.versions",
         "reach": "anyone"
       },
