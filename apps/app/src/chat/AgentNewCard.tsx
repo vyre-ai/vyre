@@ -2,9 +2,9 @@
 // changes the proposal: a change is asked of the Engineer in words, in this same thread, and a revised proposal comes back as a new card. The draft is read with agents.draft.get.
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, AgentLookPicker, Banner, Button, Field, Row, Sheet, Text, lookOf, markRef, partsOf, withParts, PARTS, lookSeed } from "@vyre/ui";
+import { Avatar, AgentLookPicker, Banner, Button, Field, Row, Segmented, Sheet, Switch, Text, lookOf, markRef, partsOf, withParts, PARTS, lookSeed } from "@vyre/ui";
 import { callT } from "../real/call-tool";
-import { cardOf, changeWords, draftIdOf } from "./agent-new-model.js";
+import { cardOf, changeWords, draftIdOf, modelRows, skillGroups, toggled } from "./agent-new-model.js";
 
 /** The draft behind a new-agent task, or null while it loads or when it cannot be read. */
 export function useNewAgentDraft(taskId: string, wanted: boolean): { input: any; problem: string } | null {
@@ -29,6 +29,8 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
   const [looking, setLooking] = useState(false);
   const [asking, setAsking] = useState(false);
   const [words, setWords] = useState("");
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const start = lookOf(card.look) ?? { shape: 0, color: 0 };
   const [v, setV] = useState({ ...start, parts: partsOf(withParts(card.look || card.name, card.name)) as Record<string, number> });
   const look = lookSeed(v.shape, v.color) + PARTS.map((p) => `~${p.key}${v.parts[p.key] ?? 0}`).join("");
@@ -51,9 +53,11 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
                 <Button kind="ghost" size="sm" label="Cancel" onPress={() => setAsking(false)} />
               </View>
             </>
-          ) : <View style={{ flexDirection: "row" }}><Button kind="ghost" size="sm" label="Change something" onPress={() => setAsking(true)} /></View>}
+          ) : <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}><Button kind="ghost" size="sm" label="Skills" onPress={() => setSkillsOpen(true)} /><Button kind="ghost" size="sm" label="Model" onPress={() => setModelOpen(true)} /><Button kind="ghost" size="sm" label="Change something" onPress={() => setAsking(true)} /></View>}
         </View>
       ) : null}
+      {onSay && skillsOpen ? <SkillsSheet chosen={Array.isArray(input?.skills) ? input.skills : []} onClose={() => setSkillsOpen(false)} onUse={(names) => { setSkillsOpen(false); onSay(changeWords("skills", names.length ? names.join(", ") : "none")); }} /> : null}
+      {onSay && modelOpen ? <ModelSheet onClose={() => setModelOpen(false)} onUse={(which, id) => { setModelOpen(false); onSay(changeWords(which === "primary" ? "model" : "fallback model", id)); }} /> : null}
       {onSay ? (
         <Sheet open={looking} onClose={() => setLooking(false)} title={`How ${card.name} looks`}>
           <View style={{ gap: 16 }}>
@@ -68,5 +72,58 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
         </Sheet>
       ) : null}
     </View>
+  );
+}
+
+/** The skills the person may attach (skills.list: the agent's own, theirs, the Space's), to choose and send to the Engineer as a change. */
+function SkillsSheet({ chosen, onClose, onUse }: { chosen: string[]; onClose: () => void; onUse: (names: string[]) => void }) {
+  const [data, setData] = useState<unknown>(null);
+  const [on, setOn] = useState<string[]>(chosen);
+  useEffect(() => { let live = true; void callT<any>("skills.list", { limit: 100 }).then((r) => { if (live) setData(r.error ? { skills: [] } : r.data); }); return () => { live = false; }; }, []);
+  const groups = skillGroups(data, on);
+  return (
+    <Sheet open onClose={onClose} title="Skills">
+      <View style={{ gap: 12 }}>
+        {data === null ? <Text tone="muted">Looking.</Text> : !groups.length ? <Text tone="muted">No skills to attach yet.</Text> : groups.map((g) => (
+          <View key={g.level} style={{ gap: 4 }}>
+            <Text size="caption" tone="label">{g.title}</Text>
+            {g.skills.map((s) => <Row key={s.name} dense title={s.name} sub={s.description || undefined} end={<Switch label={s.name} on={s.on} onChange={() => setOn((c) => toggled(c, s.name))} />} />)}
+          </View>
+        ))}
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+          <Button kind="ghost" label="Cancel" onPress={onClose} />
+          <Button kind="primary" label="Use these skills" onPress={() => onUse(on)} />
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+/** The models each AI account offers (sessions.accounts.list, then sessions.accounts.models), for the primary model and the fallback. */
+function ModelSheet({ onClose, onUse }: { onClose: () => void; onUse: (which: "primary" | "fallback", id: string) => void }) {
+  const [which, setWhich] = useState<"primary" | "fallback">("primary");
+  const [groups, setGroups] = useState<{ account: string; label: string; models: { id: string; label: string }[] }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const list = await callT<any>("sessions.accounts.list", {});
+      const accts: any[] = list.error ? [] : Array.isArray(list.data) ? list.data : Array.isArray(list.data?.accounts) ? list.data.accounts : [];
+      const out = await Promise.all(accts.slice(0, 8).map(async (a) => { const m = await callT<any>("sessions.accounts.models", { account: String(a.id) }); return { account: String(a.id), label: String(a.label || a.provider || a.id), models: m.error ? [] : modelRows(m.data) }; }));
+      if (live) setGroups(out.filter((g) => g.models.length));
+    })();
+    return () => { live = false; };
+  }, []);
+  return (
+    <Sheet open onClose={onClose} title="Model">
+      <View style={{ gap: 12 }}>
+        <Segmented label="Which" value={which} onChange={(v) => setWhich(v as "primary" | "fallback")} options={[["primary", "Primary model"], ["fallback", "Fallback model"]]} />
+        {groups === null ? <Text tone="muted">Looking.</Text> : !groups.length ? <Text tone="muted">No AI account is connected yet, so there are no models to list.</Text> : groups.map((g) => (
+          <View key={g.account} style={{ gap: 4 }}>
+            <Text size="caption" tone="label">{g.label}</Text>
+            {g.models.map((m) => <Row key={m.id} dense title={m.label} chevron onPress={() => onUse(which, m.id)} />)}
+          </View>
+        ))}
+      </View>
+    </Sheet>
   );
 }

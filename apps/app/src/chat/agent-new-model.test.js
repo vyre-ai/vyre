@@ -32,3 +32,18 @@ test("nothing risky set, nothing risky said; a short instruction shows whole wit
   assert.deepEqual(c.rows, [["Instructions", "Be brief. (9 characters)"], ["Projects", "None yet"]]);
   assert.equal(changeWords("name", " rex "), "Change the new agent: name: rex");
 });
+
+import { skillGroups, toggled, modelRows } from "./agent-new-model.js";
+
+test("skills in groups: the agent's own first, then yours and the Space's; each once; the chosen ones marked", () => {
+  const g = skillGroups({ skills: [{ name: "research", level: "space", description: "Find things" }, { name: "mail", level: "agent" }, { name: "research", level: "vyre" }, { name: "pdf", level: "personal" }, { name: "odd", level: "weird" }, null] }, ["mail"]);
+  assert.deepEqual(g.map((x) => [x.title, x.skills.map((s) => [s.name, s.on])]), [["For this agent", [["mail", true]]], ["Yours", [["pdf", false]]], ["The Space's", [["research", false]]], ["Vyre's own", [["odd", false]]]]);
+  assert.deepEqual(skillGroups(null, []), []);
+  assert.deepEqual(toggled(["a"], "b"), ["a", "b"]);
+  assert.deepEqual(toggled(["a", "b"], "a"), ["b"]);
+});
+
+test("an account's models: id and label, anything else dropped", () => {
+  assert.deepEqual(modelRows({ account: "a1", models: [{ id: "sonnet", label: "Sonnet" }, { id: "opus" }, { label: "no id" }] }), [{ id: "sonnet", label: "Sonnet" }, { id: "opus", label: "opus" }]);
+  assert.deepEqual(modelRows(null), []);
+});
