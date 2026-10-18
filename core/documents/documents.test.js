@@ -13,9 +13,8 @@ import { allowLoopbackForTests } from "../../lib/http.js";
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
 
-function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})), denied = /** @type {any[]} */ ([]) } = {}) {
+function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})), denied = /** @type {any[]} */ ([]), made = /** @type {any[]} */ ([]) } = {}) {
   /** @type {Map<string, Buffer[]>} */ const files = new Map();
-  const made = /** @type {any[]} */ ([]);
   const gateway = {
     drive: {
       async put(_c, p, bytes) { const v = files.get(p) || []; v.push(Buffer.from(bytes)); files.set(p, v); return { version: v.length, conflict: false }; },
@@ -25,7 +24,10 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
       async listPage(_c, prefix) { return { entries: [...files.keys()].filter(k => k.startsWith(prefix)).map(k => ({ path: k, size: files.get(k)?.at(-1)?.length })), next: null }; },
     },
     async definitions() { return types.map(n => ({ name: n, fields: [{ name: "name" }, { name: "status" }, { name: "template" }, { name: "template_version" }, { name: "file" }, { name: "contact" }, { name: "project" }, { name: "sha256" }, { name: "source" }] })); },
-    records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; }, async create(_c, type, data) { made.push({ type, data }); return { urn: `vyre://${SPACE}/${type}/rec${made.length}` }; } },
+    records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; },
+      // A record is readable by the chain that wrote it, and by the owner (the same answer a kernel read gives for this fixture).
+      async create(c, type, data) { made.push({ type, data, by: c }); return { urn: `vyre://${SPACE}/${type}/rec${made.length}` }; },
+      async query(c, type, spec) { const f = spec.filter; const who = c && c.hops && c.hops[0] && c.hops[0].actor.id; return { rows: made.filter(m => m.type === type && f && m.data[f.field] === f.value && (m.by === c || who === "per_alex")).map(m => ({ data: m.data })) }; } },
   };
   /** @type {Map<string, any>} */ const tools = new Map();
   const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
@@ -381,4 +383,46 @@ test("Download audit end to end: the first call saves Signed/audit-<n>.pdf once,
   const model = rig({ call });
   assert.equal((await code(model.run("documents.signing.audit", { submission: 41 }, { caller: "mcp" }))).code, "denied", "a model is refused before the app is asked");
   assert.equal(asked.filter(a => a.tool === "appmods.signing.audit").length, 1, "and the app was not asked for it");
+});
+
+// Member access to a signature request (the ownership check, 18 Oct): the sender sees her request; another member gets the same not_found as an id that does
+// not exist, and nothing is fetched or written for her; the owner sees a request and an old one with no record; a member with no record for an old request gets not_found.
+test("member access to a request: only the sender (and the owner) may open it; any other member gets the same not_found and nothing is fetched or written", async () => {
+  const MIA = { hops: [{ actor: { kind: "person", id: "per_mia", space: SPACE } }] };
+  const BOB = { hops: [{ actor: { kind: "person", id: "per_bob", space: SPACE } }] };
+  const PDF = Buffer.from("%PDF-1.7\n%fixture\n");
+  const made = /** @type {any[]} */ ([]);
+  const calls = /** @type {string[]} */ ([]);
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    calls.push(tool);
+    if (tool === "appmods.signing.request") return { submission: 41, url: "https://app.example.com/sign/41" };
+    if (tool === "appmods.signing.status") return { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } };
+    if (tool === "appmods.signing.audit") return { data: { bytes: PDF.toString("base64") } };
+    if (tool === "appmods.signing.waiting") return { data: { requests: [{ submission: 41, slug: "s", url: "u", email: "sam@example.com", signer: "Sam", template: "T", at: 1 }] } };
+    return {};
+  };
+  const mia = rig({ chain: MIA, call, made });
+  const sent = await mia.run("documents.send", { template_id: 3, email: "sam@example.com" }, { caller: "cli" });
+  assert.equal(sent.submission, 41);
+  assert.equal(made.filter(m => m.type === "document" && m.data.submission === 41).length, 1, "the send filed a request record under the sender's chain");
+
+  const bob = rig({ chain: BOB, call, made });
+  const bobStatus = await code(bob.run("documents.signing.status", { submission: 41 }, { caller: "cli" }));
+  assert.equal(bobStatus?.code, "not_found", "B asking for A's request is refused");
+  const bobAudit = await code(bob.run("documents.signing.audit", { submission: 41 }, { caller: "cli" }));
+  assert.equal(bobAudit?.code, "not_found");
+  assert.equal(bobAudit?.message, bobStatus?.message, "the same answer whether the request is someone else's or does not exist");
+  assert.equal(bob.files.has("Signed/audit-41.pdf"), false, "nothing is written for B");
+  assert.equal(calls.filter(t => t === "appmods.signing.status" || t === "appmods.signing.audit").length, 0, "the app is never asked for B");
+  assert.deepEqual((await bob.run("documents.signing.waiting", {}, { caller: "cli" })).requests, [], "B's waiting list does not carry A's request");
+
+  assert.equal((await mia.run("documents.signing.status", { submission: 41 }, { caller: "cli" })).status.submission, 41, "A opens her own request");
+  assert.equal((await mia.run("documents.signing.waiting", {}, { caller: "cli" })).requests.length, 1, "A's waiting list has her request");
+
+  const owner = rig({ call, made });
+  assert.equal((await owner.run("documents.signing.status", { submission: 41 }, { caller: "cli" })).status.submission, 41, "the owner sees the request");
+  assert.equal((await code(owner.run("documents.signing.status", { submission: 99 }, { caller: "cli" })))?.message, bobStatus?.message, "an id that does not exist gets the same answer");
+
+  const oldMember = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_old", space: SPACE } }] }, call, made });
+  assert.equal((await code(oldMember.run("documents.signing.status", { submission: 7 }, { caller: "cli" })))?.code, "not_found", "a member with no record for an old request gets not_found");
 });
