@@ -551,6 +551,15 @@ export default {
       for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { if (t === "member.expired") connShare.onMemberGone(personOf(e)).catch((err) => ctx.log(`vault: a leaving member's shared connections were not all ended (${err.message})`)); vault.access.members.gone(personOf(e)).catch(err => ctx.log(`vault: what a leaving member shared was not ended (${err.message})`)); });
       for (const t of ["member.role-changed", "member.expired"]) ctx.events.on(t, (/** @type {any} */ e) => { try { people.lock(personOf(e)); } catch { /* not a person id */ } });
     } catch { /* no event bus in a bare test */ }
+    // A plugin's MCP server holds a key only while the key stays granted to it: when a grant is taken back, an item is deleted, or a member leaves, the hub is told to look again at once (it also looks every 30 s
+    // while a server runs, and before every call). The hub answers "waiting" and stops the server; nothing here carries a value.
+    try {
+      const sweepKeys = async (/** @type {any} */ input) => { try { const r = await ctx.call("mcp.sweep", input); if (r && r.error && r.error.code !== "no_such_tool") ctx.log(`vault: mcp.sweep failed: ${r.error.message}`); } catch (e) { ctx.log(`vault: mcp.sweep failed: ${/** @type {Error} */ (e).message}`); } };
+      const nameOf = (/** @type {any} */ e) => String((e && e.payload && e.payload.name) || (e && e.name) || "");
+      ctx.events.on("vault.revoked", (/** @type {any} */ e) => { const item = nameOf(e); if (item) sweepKeys({ item }); });
+      ctx.events.on("vault.item-deleted", (/** @type {any} */ e) => { const item = nameOf(e); if (item) sweepKeys({ item }); });
+      for (const t of ["member.removed", "member.expired"]) ctx.events.on(t, () => { sweepKeys({}); });
+    } catch { /* no event bus in a bare test */ }
     // The store member-mcp and the space list code against: called by modules with a person id the kernel verified, never one a tool input names.
     if (typeof ctx.provide === "function") ctx.provide("personalStore", (/** @type {string} */ person, /** @type {string} */ space) => people.personalStore(person, space));
     historyTools.register({ ctx, vault, tool });
