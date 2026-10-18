@@ -1,47 +1,17 @@
 {
   "_comment": "Tests that may not skip in the hosted Linux node job (VYRE_MUST_RUN=1, set after the job installs what they need: bubblewrap, gocryptfs, fuse3 and a loop-mounted ext4 with fscrypt for VYRE_FSCRYPT_DIR). A name prefix per file, or \"*\" for every test of the file. scripts/test-counts.mjs fails the run when one of them reports skip. The tests that need a running computer container (core/computers/image/isolation.test.js), a real Twenty (core/planner/live-twenty.test.js) or a hosted macOS runner (core/runner/mac-hosted.test.js and the profile tests) run in .github/workflows/security-live.yml, where a skip fails the job.",
   "tests": {
-    "core/runner/hardening.test.js": [
-      "*"
-    ],
-    "core/runner/lease-race.test.js": [
-      "*"
-    ],
-    "core/runner/env-hidden.test.js": [
-      "*"
-    ],
-    "core/runner/lent-wire.test.js": [
-      "*"
-    ],
-    "core/runner/lent-pipe-runner.test.js": [
-      "*"
-    ],
-    "core/runner/runner.foundation.test.js": [
-      "*"
-    ],
-    "core/runner/runner.session.test.js": [
-      "*"
-    ],
-    "core/runner/runner.handover.test.js": [
-      "*"
-    ],
-    "core/runner/runner.handover-slow.test.js": [
-      "*"
-    ],
-    "core/runner/beat-loop.test.js": [
-      "*"
-    ],
-    "kernel/tasks/tasks.test.js": [
-      "card: built from the payload",
-      "K4-2:",
-      "K4-3:",
-      "K4-4 and 5:",
-      "K4-10, 12",
-      "N1 and N2:",
-      "the card tells the approver's client"
-    ],
-    "test/owner-walk-daemon.test.js": [
-      "*"
-    ]
+    "core/runner/hardening.test.js": ["*"],
+    "core/runner/lease-race.test.js": ["*"],
+    "core/runner/env-hidden.test.js": ["*"],
+    "core/runner/lent-wire.test.js": ["*"],
+    "core/runner/lent-pipe-runner.test.js": ["*"],
+    "core/runner/runner.foundation.test.js": ["*"],
+    "core/runner/runner.session.test.js": ["*"],
+    "core/runner/runner.handover.test.js": ["*"],
+    "core/runner/runner.handover-slow.test.js": ["*"],
+    "core/runner/beat-loop.test.js": ["*"],
+    "test/owner-walk-daemon.test.js": ["*"],
+    "kernel/tasks/tasks.test.js": ["card: built from the payload", "K4-2:", "K4-3:", "K4-4 and 5:", "K4-10, 12", "N1 and N2:", "the card tells the approver's client"]
   }
 }
