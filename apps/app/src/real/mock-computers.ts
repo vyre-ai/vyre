@@ -22,8 +22,8 @@ const updateStatus = () => ({ present: true, current: upToDate, image: upToDate,
 
 export const mockComputerTools: Record<string, (i: any) => unknown> = {
   "system.info": () => ({ host: "juniper-box", role: "box", version: "0.6.0", platform: "linux", node: "v22.11.0" }),
-  "agents.threads": (i) => ({ threads: T[String(i.agent)] ?? [] }),
-  "agents.thread.new": (i) => { const a = String(i.agent); const id = `${a}-${(T[a] ?? []).length + 1}`; (T[a] ??= []).forEach((t) => { t.live = false; }); T[a].unshift({ id, title: "New thread", at: now(), live: true }); return { thread: id }; },
+  "work.agent.threads": (i) => ({ agent: String(i.agent), count: (T[String(i.agent)] ?? []).length, threads: (T[String(i.agent)] ?? []).map((t) => ({ thread: t.id, agent: String(i.agent), title: t.title, started: t.at, last_active: t.at, state: t.needs ? "needs_you" : t.live ? "live" : "idle", last_line: "", unread: 0, project: "", forked_from: null })) }),
+  "work.agent.thread.new": (i) => { const a = String(i.agent); const id = `${a}-${(T[a] ?? []).length + 1}`; (T[a] ??= []).forEach((t) => { t.live = false; }); T[a].unshift({ id, title: "New thread", at: now(), live: true }); return { thread: id }; },
   "computers.update.status": () => updateStatus(),
   "computers.update": () => { if (upToDate) return { updated: false, state: "current", message: "The agent computer already matches this version of Vyre." }; upToDate = true; return { updated: true, state: "updated", message: "The agent computer was updated. 2 agents had their screens closed." }; },
   "computers.agent.status": (i) => shape(settle(String(i.agent))),

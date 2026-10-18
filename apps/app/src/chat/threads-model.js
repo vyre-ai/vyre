@@ -42,14 +42,14 @@ export function tabOf(tabs, want) { return tabs.some(([id]) => id === want) ? wa
 
 /**
  * An agent's threads as the panel lists them: newest first with the live one on top. The row says whether it is live and whether it needs the person.
- * @param {unknown} raw agents.threads' answer: { threads: [{ id, title, at, live?, needs? }] }
+ * @param {unknown} raw work.agent.threads' answer: { threads: [{ thread, title, last_active, state: "live" | "needs_you" | "idle" }] } (an older { id, at, live, needs } row reads too)
  * @returns {{ id: string, title: string, at: number, live: boolean, needs: boolean }[]}
  */
 export function threadRows(raw) {
   /** @type {any[]} */ const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray(/** @type {any} */ (raw).threads) ? /** @type {any} */ (raw).threads : [];
   return list
-    .filter((t) => t && typeof t === "object" && typeof t.id === "string" && t.id)
-    .map((t) => ({ id: String(t.id), title: String(t.title || "New thread"), at: Number(t.at) || 0, live: t.live === true, needs: t.needs === true }))
+    .filter((t) => t && typeof t === "object" && typeof (t.thread ?? t.id) === "string" && (t.thread ?? t.id))
+    .map((t) => ({ id: String(t.thread ?? t.id), title: String(t.title || "New thread"), at: Number(t.last_active ?? t.at) || 0, live: t.live === true || t.state === "live" || t.state === "needs_you", needs: t.needs === true || t.state === "needs_you" }))
     .sort((a, b) => Number(b.live) - Number(a.live) || b.at - a.at);
 }
 

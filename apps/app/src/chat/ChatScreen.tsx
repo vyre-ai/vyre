@@ -371,7 +371,9 @@ export function ChatScreen(p: ChatScreenProps) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   // /new starts a thread with this agent; /threads opens the tab that lists them; switching keeps the old ones saved.
-  const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; showToast("New thread started."); return null; };
+  // A thread is a chat of the person and the agent, so opening one is opening that chat.
+  const openThread = (thread: string) => { if (phone) setPanel(null); if (allowsMock()) { showToast("A thread opens as its own chat in a real Space."); return; } router.push({ pathname: "/u/chats/[id]", params: { id: thread } } as never); };
+  const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; openThread(r.thread); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
@@ -398,7 +400,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={() => { if (phone) setPanel(null); }} title={head.title}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={openThread} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onFind={() => setFindOpen(true)} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}

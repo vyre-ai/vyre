@@ -40,6 +40,8 @@ test("a tab this chat does not have falls back to its first", () => {
 test("thread rows: live first, then newest; rows without an id are dropped; an untitled one is New thread", () => {
   const rows = threadRows({ threads: [{ id: "a", title: "Old", at: 1 }, { id: "b", title: "Now", at: 5, live: true, needs: true }, { id: "c", at: 9 }, { title: "no id" }, null] });
   assert.deepEqual(rows.map((r) => [r.id, r.title, r.live, r.needs]), [["b", "Now", true, true], ["c", "New thread", false, false], ["a", "Old", false, false]]);
+  const real = threadRows({ agent: "kit", count: 3, threads: [{ thread: "c1", title: "Idle one", last_active: 5, state: "idle" }, { thread: "c2", title: "Needs me", last_active: 2, state: "needs_you" }, { thread: "c3", title: "Going", last_active: 1, state: "live" }] });
+  assert.deepEqual(real.map((r) => [r.id, r.live, r.needs]), [["c2", true, true], ["c3", true, false], ["c1", false, false]], "acct6's rows: state says live or needs you");
   assert.deepEqual(threadRows(null), []);
   assert.deepEqual(threadRows([{ id: "x", title: "T", at: 2 }]).map((r) => r.id), ["x"]);
 });
