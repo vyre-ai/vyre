@@ -90,7 +90,7 @@ test("a fork keeps the conversation up to and including the chosen reply, starts
   assert.equal((await call("work.chat.fork-source", { chat: forked.thread }, "module:stream", {})).data, null, "once it has a run it is an ordinary thread");
   await until(() => lines().some(x => x.f !== original.f && assistantLines(x.text).length >= 2), "the fork's transcript has its own reply", 30000);
   // the provider was told to fork the original and to resume at the first reply's own line: that is the cut (the provider drops what comes after it)
-  const launch = launches().find(l => l.argv && l.argv.includes("--fork-session") && l.argv.includes("--resume-session-at"));
+  const launch = await until(() => launches().find(l => l.argv && l.argv.includes("--fork-session") && l.argv.includes("--resume-session-at")), "the fork's run was started as a fork with a cut", 20000).then(() => launches().find(l => l.argv && l.argv.includes("--fork-session") && l.argv.includes("--resume-session-at")));
   assert.ok(launch, "the fork's run was started as a fork with a cut");
   assert.equal(launch.argv[launch.argv.indexOf("--resume-session-at") + 1], String(firstReply.uuid), "the cut is the chosen reply, included");
   const forkText = lines().find(x => x.f !== original.f && assistantLines(x.text).length >= 2)?.text || "";

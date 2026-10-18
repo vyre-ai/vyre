@@ -5,12 +5,12 @@
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
-/** The agent ids a name or an id stands for: what the chat's assistants list may hold. @param {(tool: string, input: any) => Promise<any>} call @param {string} agent */
-async function agentKeys(call, agent) {
+/** The agent ids a name or an id stands for: what the chat's assistants list may hold. @param {any} ctx @param {string} agent */
+async function agentKeys(ctx, agent) {
   const keys = new Set([agent]);
-  const byName = await call("agents.uid", { name: agent.toLowerCase() }).catch(() => null);
+  const byName = await ctx.call("agents.uid", { name: agent.toLowerCase() }).catch(() => null);
   if (byName && byName.data && byName.data.uid) keys.add(String(byName.data.uid));
-  const byUid = await call("agents.uid", { uid: agent }).catch(() => null);
+  const byUid = await ctx.call("agents.uid", { uid: agent }).catch(() => null);
   if (byUid && byUid.data && byUid.data.name) keys.add(String(byUid.data.name));
   return keys;
 }
@@ -73,7 +73,7 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   const hop = chain && chain.hops && chain.hops[0];
   if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "threads are a person's own: ask from your own session");
   const me = String(hop.actor.id);
-  const keys = await agentKeys((tool, input) => d.ctx.call(tool, input), agent);
+  const keys = await agentKeys(d.ctx, agent);
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
   /** @type {any[]} */ const out = [];

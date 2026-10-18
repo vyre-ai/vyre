@@ -682,7 +682,7 @@ export class Switchboard {
    */
   forkPoint(chat, message) {
     const runs = this.ofChat(String(chat)).reverse();
-    if (!runs.length) throw Object.assign(new Error("this thread has no conversation yet, so there is nothing to fork from"), { code: "not_found" });
+    if (!runs.length) throw Object.assign(new Error("this thread has no conversation yet, so there is nothing to fork from: send a message in it first, then fork one of the replies"), { code: "not_found" });
     const want = String(message);
     for (const r of runs) {
       const t = findSession(this.deps.transcripts || [], this.nativeOf(r.thread));
@@ -694,7 +694,7 @@ export class Switchboard {
       }
       if (hit) { this.needCap(r.thread, "fork", "fork a thread"); return { run: r.thread, uuid: String(hit.uuid) }; }
     }
-    throw Object.assign(new Error("that is not one of the agent's replies in this thread: fork from a reply"), { code: "not_found" });
+    throw Object.assign(new Error("that is not one of the agent's replies in this thread: pick a reply from this thread and fork from that"), { code: "not_found" });
   }
 
   /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
