@@ -23,7 +23,7 @@ export function summary(n) {
   if (w) bits.push(`${w} ${w === 1 ? "thing needs" : "things need"} you`);
   if (k) bits.push(`${k} ${k === 1 ? "agent is" : "agents are"} working`);
   if (t) bits.push(`${t} on today`);
-  return bits.length ? `${bits.join(", ")}.` : "Nothing needs you right now.";
+  return bits.length ? `${bits.join(", ")}.` : "All quiet for now.";
 }
 
 /** The agent row on Home from agents.list: the assistant first, each with whether it is live (working or waiting on the person). @param {any[]} rows */

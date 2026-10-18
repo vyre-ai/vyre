@@ -11,7 +11,7 @@ test("the greeting follows the local hour and uses the first name", () => {
 });
 
 test("the summary names only what is there", () => {
-  assert.equal(summary({}), "Nothing needs you right now.");
+  assert.equal(summary({}), "All quiet for now.");
   assert.equal(summary({ waiting: 1, working: 2, today: 3 }), "1 thing needs you, 2 agents are working, 3 on today.");
   assert.equal(summary({ working: 1 }), "1 agent is working.");
 });
