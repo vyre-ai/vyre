@@ -217,6 +217,17 @@ test("records.create gives a record of a type with an ID field the next ID (PER-
   assert.equal(refused.error && refused.error.code, "field_not_allowed", JSON.stringify(refused));
   assert.match(String(refused.error.message), /never changes/);
   assert.ok(!(await call("records.update", { urn: first.urn, patch: { name: "Jane Doe" }, base_version: first.version }, { root, caller: "cli" })).error, "other fields still change");
+  // a record made before the type had an ID gets one when a page that shows it is listed, in the order records were made, and once
+  await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  const o1 = await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "first" }), o2 = await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "second" });
+  await d.kernel.gateway.records.define(ownerChain, { change_types: [{ name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ref", kind: "text", label: "ID", unique: true, read_only: true }] }] });
+  await ok("records.list", { type: "oldtype", limit: 10 });
+  await new Promise(r => setTimeout(r, 500));
+  const filled = (await ok("records.list", { type: "oldtype", limit: 10 })).rows;
+  assert.deepEqual(filled.map(r => [r.data.name, r.data.ref]).sort(), [["first", "OLD-0001"], ["second", "OLD-0002"]], "oldest first");
+  await ok("records.list", { type: "oldtype", limit: 10 }); await new Promise(r => setTimeout(r, 300));
+  assert.deepEqual((await ok("records.list", { type: "oldtype", limit: 10 })).rows.map(r => r.data.ref).sort(), ["OLD-0001", "OLD-0002"], "run again: nothing changes");
+  void o1; void o2;
   const plain = (await ok("records.create", { type: "plain", data: { name: "x" } })).record;
   assert.equal(plain.data.ref, undefined, "a type without an ID field is made as before");
 });

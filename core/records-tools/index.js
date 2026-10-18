@@ -95,6 +95,8 @@ export default {
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
       const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      // a record made before its type had an ID gets one now, in the background (idempotent: see fillIds)
+      if (r.rows.some((/** @type {any} */ row) => row && row.data && !row.data.ref) && await hasRef(d, String(i.type))) void fillIds(d, String(i.type)).catch(() => {});
       return { rows: r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
@@ -113,13 +115,29 @@ export default {
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const before = minting.get(type) || Promise.resolve();
       const mine = before.catch(() => {}).then(async () => {
-        const last = await d.gateway.records.query(d.chain, type, { sort: [{ field: "ref", dir: "desc" }], page: { limit: 5 } }).catch(() => ({ rows: [] }));
-        const ref = nextRef(type, ((last && last.rows) || []).map((/** @type {any} */ r) => r && r.data && r.data.ref));
-        return d.gateway.records.create(d.chain, type, { ...(i.data || {}), ref });
+        // the highest ID in use plus one; if another writer took it between the look and the write (the ID is unique), look again: up to three times
+        for (let tries = 1; ; tries++) {
+          const last = await d.gateway.records.query(d.chain, type, { sort: [{ field: "ref", dir: "desc" }], page: { limit: 5 } }).catch(() => ({ rows: [] }));
+          const ref = nextRef(type, ((last && last.rows) || []).map((/** @type {any} */ r) => r && r.data && r.data.ref));
+          try { return await d.gateway.records.create(d.chain, type, { ...(i.data || {}), ref }); }
+          catch (e) { if (tries >= 3 || !/unique|duplicate|already|conflict/i.test(String(/** @type {any} */ (e) && /** @type {any} */ (e).message))) throw e; }
+        }
       });
       minting.set(type, mine);
       return { record: await mine };
     });
+    // Records made before their type had an ID get one, once, in the order they were made; a record that has one is left alone, so it can run again. records.list starts it when a page shows a record without one.
+    const fillIds = async (/** @type {any} */ d, /** @type {string} */ type) => {
+      const before = minting.get(type) || Promise.resolve();
+      const run = before.catch(() => {}).then(async () => {
+        const all = await d.gateway.records.query(d.chain, type, { sort: [{ field: "created_at", dir: "asc" }], page: { limit: 1000 } });
+        const rows = (all && all.rows) || [];
+        let have = rows.map((/** @type {any} */ r) => r && r.data && r.data.ref).filter(Boolean);
+        for (const r of rows) { if (r && r.data && !r.data.ref) { const ref = nextRef(type, have); await d.gateway.records.update(d.chain, type, r.id, { ref }, r.version); have = [...have, ref]; } }
+      });
+      minting.set(type, run);
+      return run;
+    };
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
       if (i.patch && Object.prototype.hasOwnProperty.call(i.patch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
