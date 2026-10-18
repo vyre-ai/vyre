@@ -330,3 +330,46 @@ test("a joined member's notes go through the team's planner as herself: her own 
   const directWrite = await w.d.registry.call("planner.serve-write", { call: "add", input: { title: "x" } }, "module", {});
   assert.ok(directWrite.error, "and so is the write tool");
 });
+
+test("through the member door a joined member reads a record's history, board totals, Busy blocks and roles, and logs a call, a meeting or a note, as herself", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  const { DEAL, RELATIONSHIP, ROLE_TYPES, EVENT } = await import("../../records/core-types.js");
+  const strip = (/** @type {any} */ x) => ({ ...JSON.parse(JSON.stringify(x)), fields: x.fields.filter((/** @type {any} */ f) => !(x.name === "deal" && f.name === "organization")) });
+  await gw.records.define(w.ownerChain, { add_types: [strip(DEAL), RELATIONSHIP, ...ROLE_TYPES.filter((x) => x.name === "role-lead").map(strip), strip(EVENT)] }).catch(() => {});
+  for (const [k, tool, call] of [["records.history", "records.serve", "history"], ["records.stats", "records.serve", "stats"], ["records.busy", "records.serve", "busy"], ["records.roles.summary", "records.serve", "roles.summary"], ["records.log", "records.serve-update", "log"]]) {
+    assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].tool, tool, k);
+    assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].call, call, k);
+    assert.ok(/** @type {any} */ (CALLS).records.includes(call), `${call} is a call of the group`);
+  }
+  const deal = (await w.as(ANA, "records.create", { type: "deal", data: { name: "Okafor", amount: 1000 } })).record;
+  await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" });
+  // history: her change, with her as the actor; a logged call and a note
+  await w.as(ANA, "records.log", { urn: deal.urn, kind: "call", text: "Spoke to Okafor" });
+  await w.as(ANA, "records.log", { urn: deal.urn, kind: "note", text: "Wants a warmer blue" });
+  const items = (await w.as(ANA, "records.history", { urn: deal.urn })).items;
+  assert.ok(items.some((/** @type {any} */ x) => /stage/.test(x.text) && x.actor.id === ANA), JSON.stringify(items.map((/** @type {any} */ x) => x.text)));
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "the call");
+  // another member does not get a record she cannot read, and a kind that is not a call, meeting or note is refused
+  assert.ok(await code(w.as(BEN, "records.log", { urn: `vyre://${w.space}/deal/0192f5a0-0000-7000-8000-000000000001`, kind: "call", text: "x" })), "a record that is not there");
+  assert.ok(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "email", text: "x" })), "an email is not logged this way");
+  // totals, roles
+  const stats = await w.as(BEN, "records.stats", { type: "deal" });
+  assert.equal(stats.total.count, 1);
+  assert.equal(stats.groups.find((/** @type {any} */ g) => g.key === "Qualified").count, 1);
+  const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  assert.deepEqual((await w.as(ANA, "records.roles.summary", { urn: contact.urn })).roles, []);
+  assert.ok((await w.as(ANA, "records.roles.summary", {})).roles.some((/** @type {any} */ r) => r.role === "role-lead"));
+  // Busy: another person's private outside-calendar event is a block of time and nothing else
+  const ev = await gw.records.create(w.chainOf(BEN), "event", { title: "Dentist", starts_at: new Date(Date.now() + 86_400_000).toISOString(), source: "google", owner: `person:${BEN}` });
+  assert.ok(ev.urn);
+  const busy = (await w.as(ANA, "records.busy", {})).busy;
+  assert.equal(busy.length, 1);
+  assert.ok(!JSON.stringify(busy).includes("Dentist"), "no title reaches her");
+  assert.equal(await code(w.as(ANA, "records.history", { urn: ev.urn })), "not_found", "and the event's history is not hers");
+  // unknown keys are dropped by the door: a limit or a window she names is not obeyed
+  assert.ok((await w.as(ANA, "records.history", { urn: deal.urn, limit: 1, extra: "x" })).items.length >= 1);
+  // an agent behind the chain gets nothing
+  const agentChain = { ...w.chainOf(ANA), hops: [...w.chainOf(ANA).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
+  assert.equal(await code(/** @type {any} */ (w.svc).records.history(agentChain, { urn: deal.urn })), "not_found");
+});
