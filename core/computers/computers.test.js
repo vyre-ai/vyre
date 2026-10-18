@@ -543,6 +543,6 @@ test("computers: with the default config an agent's endpoint, checkout and helpe
   assert.equal((await s.module("computers.helper", { agent: "kit" })).data.url, "http://fake-kit:7000");
   const list = (await s.cli("computers.list", {})).data;
   assert.ok(!JSON.stringify(list).includes("browser-shared"), "no shared browser exists: " + JSON.stringify(list).slice(0, 200));
-  assert.equal(s.h.pool.row("browser-shared"), undefined);
+  assert.ok(!s.h.pool.row("browser-shared"), "no browser-shared row");
   assert.deepEqual(execs, [], "agentd was never reached");
 });
