@@ -212,7 +212,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         checkSlots(s, p, out);
         break;
       case "assign":
-        need("to", v => typeof v === "string" && /^(?:person|teammate|role|pool):/.test(v), "assign to person:<id>, teammate:<name>, role:<name> or pool:<name>");
+        need("to", v => typeof v === "string" && /^(?:person|teammate|role|pool|group):/.test(v), "assign to person:<id>, teammate:<name>, role:<name>, pool:<name> or group:<role> (the first of the group to start it takes it)");
         if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
         checkSlots(s, p, out);
         need("title", () => true, "give the title"); value("title");
