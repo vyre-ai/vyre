@@ -5,14 +5,14 @@ import type { LayoutScope } from "./layout-state";
 import { moveName, toggleName } from "../../ui/views/layout.js";
 
 /**
- * The layout of a type, kept out of the way: one icon that opens "My layout" or "Space default" (admins), "Columns..." and "Reset to Space layout". Your own layout lies over the Space's; only an owner or admin changes
+ * The layout of a type, kept out of the way: one icon that opens "My layout" or "Space default", "Columns..." and "Reset to Space layout". Your own layout lies over the Space's; only an owner or admin changes
  * the Space's. The columns sheet turns fields on and off and moves them up and down; it saves to the scope chosen.
  */
-export function LayoutControls({ fields, columns, scope, onScope, canSpace, mine, onColumns, onReset }: { fields: { name: string; label: string }[]; columns: string[]; scope: LayoutScope; onScope: (s: LayoutScope) => void; canSpace: boolean; mine: boolean; onColumns: (c: string[]) => void; onReset: () => void }) {
+export function LayoutControls({ fields, columns, scope, onScope, mine, onColumns, onReset }: { fields: { name: string; label: string }[]; columns: string[]; scope: LayoutScope; onScope: (s: LayoutScope) => void; mine: boolean; onColumns: (c: string[]) => void; onReset: () => void }) {
   const [open, setOpen] = useState(false);
   const items = [
     { label: "My layout", selected: scope === "mine", onPress: () => onScope("mine") },
-    ...(canSpace ? [{ label: "Space default", selected: scope === "space", onPress: () => onScope("space") }] : []),
+    { label: "Space default", selected: scope === "space", onPress: () => onScope("space") }, // always offered: the kernel decides who may, and a refusal shows in its own words
     { label: "Columns...", onPress: () => setOpen(true) },
     ...(mine ? [{ label: "Reset to Space layout", onPress: onReset }] : []),
   ];
