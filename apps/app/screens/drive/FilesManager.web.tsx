@@ -49,6 +49,7 @@ export default function FilesManager() {
 }
 
 function Manager({ wide }: { wide: boolean }) {
+  const router = useRouter();
   const { place, folders, status, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
   const [rows, setRows] = useState<FileRow[] | null>(null);
   const [err, setErr] = useState("");
@@ -429,8 +430,8 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
       <View className="gap-s3">
         {dialog.kind === "rename" ? <Field label="New name" value={to} onChangeText={setTo} />
           : dialog.kind === "move"
-          ? <Field label="Move into this folder" value={to} onChangeText={setTo} placeholder="Folder path inside the linked folder, empty for its top" />
-          : <Text>It is deleted at the source, which keeps it in its own trash where it has one. Nothing else changes.</Text>}
+          ? <Field label="Move into this folder" value={to} onChangeText={setTo} placeholder="Folder path, empty for the top" />
+          : <Text>{dialog.rows.some((r) => r.root === "space") ? "Deleted files stay in the Drive as a version: Version history brings one back. Folders delete the files inside them." : "It is deleted at the source, which keeps it in its own trash where it has one. Nothing else changes."}</Text>}
         {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
         <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : dialog.kind === "rename" ? "Rename" : dialog.kind === "move" ? "Move" : "Delete"} onPress={busy ? () => {} : run} /><Button kind="ghost" size="sm" label="Cancel" onPress={onClose} /></View>
       </View>
