@@ -23,7 +23,8 @@ export type ListCtx = { /** Every tag the records carry: the tag filter offers t
  * a press removes, and "Save as view". A filter is built from the type's own fields (grouped as the type groups them): the field, how (that kind's own operators), and a value
  * picked, not typed, where the field has choices, people or links. Nothing here knows a record type.
  */
-export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions, askBar }: {
+export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions, askBar, compact }: {
+  /** With the ask bar: no title, count, search or import row (the page header has those); the bar, a Condition button, the Try chip and the filter chips only. */ compact?: boolean;
   /** Given, a "Say what you want to see" bar sits under the toolbar: the sentence becomes filters and a search (ask-filter.js). */ askBar?: boolean;
   title: React.ReactNode; noun: string; shown: number; total: number; query: string; onQuery: (q: string) => void; chips: FilterChip[]; onChips: (c: FilterChip[]) => void; def: any; ctx: ListCtx;
   /** Given, the page has no search box of its own: a search icon opens the main search on this page's scope. */ onSearch?: () => void; /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Given, an Export CSV button sits beside Import (web only: the caller leaves it out elsewhere). */ onExport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
@@ -56,10 +57,10 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch
   const narrowed = chips.length > 0 || query.trim() !== "";
   return (
     <View className="gap-s3">
-      <View className="flex-row items-end gap-s3">
+      {compact ? null : <View className="flex-row items-end gap-s3">
         <View className="min-w-0 flex-1">{title}<Text size="caption" tone="label">{narrowed ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</Text></View>
-      </View>
-      <View className="flex-row flex-wrap items-center gap-s2">
+      </View>}
+      {compact ? null : <View className="flex-row flex-wrap items-center gap-s2">
         {onSearch ? <IconButton kind="ghost" icon="search" label={`Search ${noun}`} onPress={onSearch} /> : (
         <View className={phone ? "w-full" : "min-w-menu flex-1"}><Field name="Search" value={query} onChangeText={onQuery} placeholder={`Search ${noun}   /`} inputRef={ref} onKey={(k) => { if (k === "Escape") { onQuery(""); ref.current?.blur(); } }} /></View>
         )}
@@ -68,12 +69,16 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch
         {onExport ? (phone ? <IconButton icon="download" label="Export CSV" onPress={onExport} /> : <Button kind="ghost" size="sm" icon="download" label="Export CSV" onPress={onExport} />) : null}
         {actions}
         {chips.length && onSave ? <Button kind="ghost" size="sm" icon="pin" label="Save as view" onPress={onSave} /> : null}
-      </View>
+      </View>}
       {askBar ? (
         <View className="gap-s1">
           <Field name="Say what you want to see" value={sentence} onChangeText={setSentence} placeholder={phone ? "Say what you want to see" : "Say what you want to see, like 'clients with no meeting this month'"} onSubmit={() => ask()} />
           {heard ? <Text size="caption" tone="label">{heard}</Text> : null}
-          {askExample(def) && !sentence && !chips.length ? <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" tone="label">Try</Text><Chip onPress={() => ask(askExample(def))}>{askExample(def)}</Chip></View> : null}
+          <View className="flex-row flex-wrap items-center gap-s2">
+            {compact ? <Button kind="secondary" size="sm" icon="plus" label="Condition" onPress={() => setAdding(true)} /> : null}
+            {askExample(def) && !sentence && !chips.length ? <><Text size="caption" tone="label">Try</Text><Chip onPress={() => ask(askExample(def))}>{askExample(def)}</Chip></> : null}
+            {compact && chips.length && onSave ? <Button kind="ghost" size="sm" icon="pin" label="Save as view" onPress={onSave} /> : null}
+          </View>
         </View>
       ) : null}
       {chips.length || query ? (

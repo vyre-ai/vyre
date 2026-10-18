@@ -151,7 +151,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
   const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
-  const table = tableFromRecords(drawn, rows, { roles: roleChips, view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
+  const table = tableFromRecords(drawn, rows, { controls: phone, roles: roleChips, view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
   const tagged = { ...table, content: { ...table.content, rows: table.content.rows.map((r: any) => ({ ...r, tag: tagFor(cards, spaceOfUrn(r.urn) || showing, showing) })) } };
   // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
@@ -166,10 +166,55 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.id !== "_roles" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
   const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
+  // Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one.
+  const typeTabs = (
+    <View className="flex-row items-center gap-s2">
+      <View className="min-w-0 flex-1">
+        <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
+      </View>
+      <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
+    </View>
+  );
   return (
     <View className="min-h-0 flex-1">
-    {frame(vd.plural, <>
-      <ListHeader askBar onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
+    {frame(phone ? vd.plural : "Records", <>
+      {!phone ? (
+        <>
+          {/* One header row: Import and Settings as quiet buttons, an overflow for the rest, and one primary New (the approved design). */}
+          <View className="flex-row items-center gap-s2">
+            <View className="flex-1" />
+            <Button kind="ghost" size="sm" label="Import" onPress={() => setImporting(true)} />
+            <Button kind="ghost" size="sm" label="Settings" onPress={() => setPane(pane === "records" ? "fields" : "records")} />
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" />
+            <Menu trigger={<IconButton icon="more" label="More" />} items={[
+              ...(Platform.OS === "web" ? [{ label: "Export CSV", onPress: exportCsv }] : []),
+              { label: "New view", onPress: () => setMaking(true) },
+              { label: "New type", onPress: () => setAddingType(true) },
+              { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
+              { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
+            ]} />
+            <Button kind="primary" size="sm" icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
+          </View>
+          <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
+          {typeTabs}
+          {pane !== "records" ? (
+            <View className="flex-row items-center gap-s3">
+              <Button kind="ghost" size="sm" icon="chevron-left" label={`Back to ${vd.plural.toLowerCase()}`} onPress={() => setPane("records")} />
+              <View className="min-w-0 flex-1"><Tabs value={pane} onChange={setPane} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} /></View>
+            </View>
+          ) : (
+          <View className="flex-row flex-wrap items-center gap-s2">
+          <Text size="caption" tone="label">Views</Text>
+          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+          <View className="flex-1" />
+          {switcher}
+        </View>
+          )}
+        </>
+      ) : null}
+      {phone || pane === "records" ? (
+      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
@@ -178,15 +223,16 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>}
         onSave={() => { const r = chipsToFilters(chips, def); setPreset({ filters: r.filters }); setMaking(true); }}
         saveNote={chipsToFilters(chips, def).skipped ? `${chipsToFilters(chips, def).skipped} of these filters cannot be kept by a saved view yet and are left out.` : undefined} />
-      {/* The views of the type as a row of chips, a person's own marked with a lock (the approved design); the title menu above is the same list. */}
-      {named.length ? (
+      ) : null}
+      {/* The views of the type as a row of chips, a person's own marked with a lock, and the layout (Table, Board, Calendar) at the right of the same row (the approved design). */}
+      {phone ? (named.length ? (
         <View className="flex-row flex-wrap items-center gap-s2">
           <Text size="caption" tone="label">Views</Text>
           <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
           {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
         </View>
-      ) : null}
-      {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
+      ) : null) : null}
+      {phone ? (
       <View className="flex-row gap-s2">
         <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
         {phone ? (
@@ -210,16 +256,11 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </>
         )}
       </View>
-      <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
-      {/* Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one. */}
-      <View className="flex-row items-center gap-s2">
-        <View className="min-w-0 flex-1">
-          <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
-        </View>
-        <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
-      </View>
+      ) : null}
+      {phone ? <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}
+      {phone ? typeTabs : null}
       {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
-      <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
+      {phone ? <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} /> : null}
       {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
       {filter && !cleared ? (
         <Card>
@@ -249,7 +290,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           groupBy={lay.layout?.group_by} onGroup={(n) => void lay.save("group_by", n)}
           density={prefs.density} onDensity={prefs.setDensity} freeze={prefs.freezeFirst} onFreeze={prefs.setFreezeFirst} scope={lay.scope} mine={lay.mine} />
       ) : null}
-      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
+      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" && phone ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : phone ? switcher : null}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardWithStats def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}

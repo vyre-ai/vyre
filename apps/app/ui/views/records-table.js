@@ -42,7 +42,7 @@ const defOf = f => ({ name: f.name, label: f.label, kind: normalizeKind(f.kind),
 
 /**
  * @param {any} def the type definition @param {any[]} rows its records
- * @param {{ roles?: Record<string, { label: string, tone: string, ended: boolean }[]> | null, view?: string, noFilter?: boolean, layout?: any, env?: { actors?: any[], links?: Record<string, any> } }} [o] `layout` is the person's own layout of the type (records.layout.get): its columns, sort and filters lie over the view's
+ * @param {{ controls?: boolean, roles?: Record<string, { label: string, tone: string, ended: boolean }[]> | null, view?: string, noFilter?: boolean, layout?: any, env?: { actors?: any[], links?: Record<string, any> } }} [o] `layout` is the person's own layout of the type (records.layout.get): its columns, sort and filters lie over the view's
  * @returns {{ props: Record<string, any>, content: Record<string, any> }}
  */
 export function tableFromRecords(def, rows, o = {}) {
@@ -78,7 +78,7 @@ export function tableFromRecords(def, rows, o = {}) {
     return { id: String(r.id ?? r.urn), urn: String(r.urn ?? ""), cells };
   });
   return {
-    props: { controls: true, ...(o.layout && typeof o.layout.group_by === "string" ? { group: o.layout.group_by } : {}), sort: sortF && sortF === titleField ? "_title" : sortName, desc: vd.list?.sortDir === "desc" },
+    props: { controls: o.controls !== false, ...(o.layout && typeof o.layout.group_by === "string" ? { group: o.layout.group_by } : {}), sort: sortF && sortF === titleField ? "_title" : sortName, desc: vd.list?.sortDir === "desc" },
     content: { columns, rows: outRows, total: rows.length, empty: `No ${vd.plural.toLowerCase()} here yet.` },
   };
 }

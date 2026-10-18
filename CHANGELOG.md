@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records, the approved layout on a wide screen. One header row (Records, Import and Settings as quiet buttons, a pin and an overflow menu for Export CSV, New view, New type, Reminders and Notes, and one primary New). Type tabs with counts come next, then a Views row (chips, a lock on your own, and Table / Board / Calendar at its right), then the ask bar with a Condition button and the Try chip. Fields, Access and History are behind Settings, not on the list. The table's own filter and sort row is gone on a wide screen (columns sort from their headers, and Condition filters). A phone keeps its layout. The sample world calls its Matters type Jobs.
 - feat(app): Records. The Notes tab has New note (planner.add, private, with the notes marker), so a joined member's note lands in the team's planner.
 - fix(app): Records. "Add a note" on a record writes the note with planner.add (private, about the record, with the notes marker), so a joined team's note lands in the team's planner; a call or a meeting is still a records.log.
 - fix(app): Records. Every Notes call (planner.list, planner.get, planner.update) carries the notes marker, so a joined team's notes go through the team's door and a home Space's stay at home; no other planner call carries it.
