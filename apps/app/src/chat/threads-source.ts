@@ -18,6 +18,14 @@ export const agentThreads = {
     const r = await callT("work.chat.threads", { chat });
     return r.error ? { problem: said(r.error) } : { rows: threadRows(r.data) };
   },
+  /** Fork from an agent's reply: a new thread (a new chat) that has everything up to and including that message; the original is unchanged. Like a new thread it takes the chat id and key ring from the device. */
+  async fork(thread: string, message: string): Promise<{ thread: string } | { problem: string }> {
+    const made: { say?: string; id?: string; ring?: unknown } = allowsMock() ? {} : await ringForNewChat();
+    if (made.say) return { problem: made.say };
+    const r = await callT("work.thread.fork", { thread, message, ...made });
+    const id = (r.data as { thread?: unknown } | null)?.thread;
+    return r.error ? { problem: said(r.error) } : typeof id === "string" && id ? { thread: id } : { problem: "No thread came back." };
+  },
   /** A new thread with this agent; the old ones stay saved. */
   async start(agent: string): Promise<{ thread: string } | { problem: string }> {
     // the device chooses the chat's id and makes its key ring, as work.chat.create does; the sample world has no ring to make

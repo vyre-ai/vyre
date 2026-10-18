@@ -70,6 +70,12 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
       {icon("spark", "Ask about this", "A", actions.ask)}
       {icon("agents", "Second opinion", undefined, second)}
       {icon("undo", "Rewind to here", undefined, rewind)}
+      {!mine && branch ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Fork from here" onPress={branch}
+          style={({ hovered }: any) => ({ height: h, paddingHorizontal: 8, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
+          <Text size="caption" tone="label">Fork from here</Text>
+        </Pressable>
+      ) : null}
       {items.length ? (
         <Menu items={items} trigger={
           <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>

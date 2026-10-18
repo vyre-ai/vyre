@@ -160,6 +160,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
+  const forkAsThread = useRef(false);
+  const threadRef = useRef("");
+  const openThreadRef = useRef<(t: string) => void>(() => {});
   const [panelTab, setPanelTab] = useState<string>(p.initialTab ?? "");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
@@ -283,6 +286,8 @@ export function ChatScreen(p: ChatScreenProps) {
             onRetryMessage: async (uuid: string) => { setNote(null); const r = await actions.retry!(uuid); if (!r.ok) setNote(r.reason); },
             onBranchFrom: async (uuid: string) => {
               setNote(null);
+              // an agent chat forks as a new thread of the same agent (work.thread.fork); the new chat opens
+              if (forkAsThread.current) { const f = await agentThreads.fork(threadRef.current, uuid); if ("problem" in f) setNote(f.problem); else openThreadRef.current(f.thread); return; }
               const r = await actions.branch!(uuid);
               if (!r.ok) setNote(r.reason);
               else if (r.thread) onBranched?.(r.thread);
@@ -364,6 +369,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const others = faces.filter((f) => f.id !== viewerId);
   const agentNames = others.filter((f) => f.family === "assistant").map((f) => f.name);
   const kind = chatKind({ others, flow: p.flow });
+  forkAsThread.current = kind === "agent"; threadRef.current = here.thread ?? p.sessionId;
   const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };
   const panelNow = useRef({ panel, toggle: togglePanel });
   panelNow.current = { panel, toggle: togglePanel };
@@ -377,6 +383,7 @@ export function ChatScreen(p: ChatScreenProps) {
   // /new starts a thread with this agent; /threads opens the tab that lists them; switching keeps the old ones saved.
   // A thread is a chat of the person and the agent, so opening one is opening that chat.
   const openThread = (thread: string) => { if (phone) setPanel(null); if (allowsMock()) { showToast("A thread opens as its own chat in a real Space."); return; } router.push({ pathname: "/u/chats/[id]", params: { id: thread } } as never); };
+  openThreadRef.current = openThread;
   const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; openThread(r.thread); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
