@@ -8,7 +8,7 @@ import { spaceSkills, toggledSkill } from "./skills-picker-model.js";
 /** Choose the Space skills a reviewer or approver checks against (skills.list, the Space's own). Shows each by name; the ids are what the slot stores, and the engine pins each skill's content when the task is made. */
 export function SkillsPicker({ label, value, onChange }: { label: string; value: string[]; onChange: (ids: string[]) => void }) {
   const [data, setData] = useState<unknown>(null);
-  useEffect(() => { let live = true; void callT<any>("skills.list", { level: "space", limit: 200 }).then((r) => { if (live) setData(r.error ? { skills: [] } : r.data); }); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; void callT<any>("skills.list", { limit: 200 }).then((r) => { if (live) setData(r.error ? { skills: [] } : r.data); }); return () => { live = false; }; }, []);
   const list = spaceSkills(data, value);
   return (
     <View className="gap-s1">

@@ -102,7 +102,7 @@ test("a step turned off keeps enabled false and stays an editable step", () => {
 });
 
 test("an assign step keeps its reviewer and approver slots in the engine's shape, and a plain checker stays a checker", () => {
-  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it", skills: ["intake"] };
+  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it", output: { kind: "note" }, skills: ["intake"] };
   const rich = { ...base, reviewer: { who: "person:per_bo", skills: ["voice"], instructions: "Plain words" }, approver: { who: "role:admins", skills: ["contracts"], quorum: "any" } };
   const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [rich] });
   assert.equal(d.steps[0].kind, "assign", "not an Advanced step");
@@ -125,7 +125,7 @@ test("an assign step keeps its reviewer and approver slots in the engine's shape
 });
 
 test("an Assign step can go to whoever on a team takes it first", () => {
-  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ id: "a1", kind: "assign", to: "group:attorney", title: "Pick it up" }] });
+  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ id: "a1", kind: "assign", to: "group:attorney", title: "Pick it up", output: { kind: "note" } }] });
   assert.equal(d.steps[0].kind, "assign");
   assert.equal(toDefinition(d, O).steps[0].to, "group:attorney");
   assert.ok(assignChoices(O).some(([v]) => v === "group:owner"));
@@ -133,7 +133,7 @@ test("an Assign step can go to whoever on a team takes it first", () => {
 });
 
 test("a slot's time limit and fallback role are kept together, and one without the other is a problem", () => {
-  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it" };
+  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it", output: { kind: "note" } };
   const slot = { who: "person:per_bo", due: 172800000, escalate_to: "role:admins" };
   const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, reviewer: slot, approver: { who: "role:admins", quorum: "all", due: 86400000 } }] });
   assert.equal(d.steps[0].kind, "assign");

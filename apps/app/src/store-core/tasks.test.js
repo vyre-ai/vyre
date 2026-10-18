@@ -25,8 +25,8 @@ const rec = (/** @type {any} */ data) => /** @type {any} */ ({ type: "matter", i
 const proof = (/** @type {string} */ decision) => simulatedProof({ decision, now: 5 });
 const withResult = (/** @type {any} */ t, /** @type {any} */ result) => ({ ...t, ext: { ...(t.ext || {}), result } });
 
-test("tasks: the seven states, and the moves are the kernel's table", () => {
-  assert.deepEqual(STATES, ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"]);
+test("tasks: the ten states, and the moves are the kernel's table", () => {
+  assert.deepEqual(STATES, ["waiting", "ready", "working", "in_review", "changes_requested", "needs_check", "declined", "stuck", "done", "skipped"]);
   for (const s of STATES) assert.ok(TASK_TRANSITIONS.some(r => r.from === s || r.to === s), `${s} is in the table`);
   for (const r of TASK_TRANSITIONS) assert.equal(canMove(r.from, r.to), true, `${r.from} to ${r.to}`);
   assert.equal(canMove("waiting", "ready"), true);

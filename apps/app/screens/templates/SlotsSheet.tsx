@@ -20,6 +20,7 @@ function SlotFields({ label, slot, onChange, body, people, agents, approver }: {
           <Field label="Instructions (optional)" value={slot.instructions ?? ""} onChangeText={(t) => set({ instructions: t.slice(0, 2000) })} multiline placeholder="What to look for" />
           <Select label="Time limit" value={String(slot.due ?? "")} options={DUE} onChange={(v) => set({ due: v ? Number(v) : undefined })} />
           <Select label="If it runs late, pass it to" value={slot.escalate_to ?? ""} options={[["", "No one"], ...roles]} onChange={(v) => set({ escalate_to: v || undefined })} />
+          {slot.escalate_to ? <Text size="caption" tone="label">That team needs at least one member, or the stage holds when a project reaches it.</Text> : null}
           {approver ? <Switch label="Everyone on the team must approve" on={slot.quorum === "all"} onChange={(on) => set({ quorum: on ? "all" : "any" })} /> : null}
         </>
       ) : null}
@@ -32,7 +33,7 @@ export function SlotsSheet({ open, task, body, people, agents, busy, onClose, on
   const [reviewer, setReviewer] = useState<Slot | null>(null);
   const [approver, setApprover] = useState<Slot | null>(null);
   useEffect(() => { if (open && task) { setReviewer(task.reviewer ?? null); setApprover(approverOf(task)); } }, [open, task]);
-  const problems = [...slotProblems(reviewer, "reviewer"), ...slotProblems(approver, "approver")];
+  const problems = [...slotProblems(reviewer, "reviewer", task?.doer), ...slotProblems(approver, "approver", task?.doer)];
   return (
     <Sheet open={open} onClose={onClose} title={task ? `Review and approval: ${task.title || "this to-do"}` : "Review and approval"}>
       <View className="gap-s4">

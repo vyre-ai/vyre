@@ -150,11 +150,13 @@ export const setSlot = (b: Body, si: number, ti: number, key: "reviewer" | "appr
   return dropEmpty({ ...rest, ...keep, ...(clean ? { [key]: clean } : {}) }) as Task;
 });
 /** The slot a to-do has for the approver: the `approver` slot, else the older `checker` as a plain one. */
-export const approverOf = (t: Task): Slot | null => t.approver ?? (t.checker ? { who: t.checker } : null);
+export const approverOf = (t: Task): Slot | null => t.approver ?? (t.checker ? { who: t.checker === "owner" ? "role:owner" : t.checker } : null);
 /** A slot's problems in words: a time limit and a fallback role come together, and a to-do that needs everyone cannot pass on. */
-export function slotProblems(slot: Slot | null, label: string): string[] {
+export function slotProblems(slot: Slot | null, label: string, doer?: string): string[] {
   if (!slot) return [];
   const out: string[] = [];
+  if (slot.quorum === "all" && !slot.who.startsWith("role:")) out.push("Everyone must approve only works when the approver is a team.");
+  if (doer && slot.who === doer) out.push(`The ${label} is also the one assigned. Choose someone else.`);
   if ((slot.due === undefined) !== (slot.escalate_to === undefined)) out.push(`Set both the time limit and who it passes to for the ${label}, or neither.`);
   if (slot.quorum === "all" && slot.escalate_to !== undefined) out.push(`The ${label} needs everyone, so it cannot also pass to a role when it runs late.`);
   return out;

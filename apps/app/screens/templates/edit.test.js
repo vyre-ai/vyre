@@ -260,3 +260,11 @@ test("a to-do's reviewer and approver slots are set, replace the older checker, 
   assert.equal(b.stages[0].tasks[0].reviewer, undefined);
   assert.deepEqual(b.stages[0].tasks[0].approver, { who: "role:attorney" }, "taking one slot away leaves the other");
 });
+
+test("slot problems: everyone-must-approve needs a team, and the doer cannot review or approve their own to-do", async () => {
+  const { slotProblems, approverOf } = await import("./edit.ts");
+  assert.deepEqual(slotProblems({ who: "person:p1", quorum: "all" }, "approver"), ["Everyone must approve only works when the approver is a team."]);
+  assert.deepEqual(slotProblems({ who: "role:admins", quorum: "all" }, "approver"), []);
+  assert.deepEqual(slotProblems({ who: "role:attorney" }, "reviewer", "role:attorney"), ["The reviewer is also the one assigned. Choose someone else."]);
+  assert.deepEqual(approverOf({ title: "t", doer: "role:a", checker: "owner", output: { kind: "note" } }), { who: "role:owner" });
+});
