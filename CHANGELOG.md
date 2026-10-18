@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(computers): agentd now starts in a real computer. The entrypoint asked setpriv for --securebits, which needs CAP_SETPCAP; the container has only SETUID and SETGID, so setpriv failed in the background and no agent ever had its own Linux user, screen or Chrome (every agent fell back to the shared browser's contexts). agentd keeps --no-new-privs and a bounding set of setuid and setgid. A static test now fails when any setpriv flag in the entrypoint needs a capability the container lacks, and the computers proof checks the running agentd process.
+- test(computers-proof): proof.mjs names its mode (browse: desktop, one container per agent); agents.mjs proves the default mode (the space's one computer, a Linux user per agent) and prints why agentd did not answer when it does not.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
 - perf(records): the store asks Twenty for one throwaway list as soon as Records is ready, so the first list a person opens is not the cold one (about 316 ms against 41 ms warm in the perf run).
 - test(records): perf-twenty.yml (stores/twenty/live/perf-live.mjs) times a list of 50 rows, get, create, update, a view switch, search and defining one field through the kernel gateway on a real Twenty (p50 and p95 over 20 runs, a new Space's saved database) and prints the Twenty containers' memory after they settle.

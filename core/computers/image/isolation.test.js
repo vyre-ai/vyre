@@ -19,6 +19,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { REQUIRED_CAPS } from "../driver/policy.js";
 
 const C = process.env.VYRE_COMPUTER_CONTAINER || "";
 const skip = C ? false : "set VYRE_COMPUTER_CONTAINER to a running computer to check its isolation";
@@ -429,17 +430,30 @@ test("isolation (static): no environment variable can redirect agentd or its cli
   assert.match(DOCKERFILE, /groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s \/usr\/sbin\/nologin/);
 });
 
-test("isolation (static): agentd starts with no new privileges and the root locked out, and its code is root's and not writable", () => {
+test("isolation (static): agentd starts with no new privileges and a bounding set of setuid and setgid, and its code is root's and not writable", () => {
   const entry = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
   const line = entry.split("\n").find(l => l.includes("--reuid=1004"));
   assert.ok(line, "the agentd start line");
-  assert.match(line, /--securebits=\+noroot,\+noroot_locked/);
+  assert.doesNotMatch(line, /--securebits/, "securebits need CAP_SETPCAP, which no computer has: setpriv failed and agentd never started");
   assert.match(line, /--no-new-privs/);
   assert.match(line, /--bounding-set=-all,\+setuid,\+setgid/);
   const tail = DOCKERFILE.split("COPY agentd-vncpass.sh")[1];
   assert.match(tail, /chown -R root:root \/opt\/agentd/);
   assert.match(tail, /chmod 0644 \/opt\/agentd\/\*\.js/);
   assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
+});
+
+test("isolation (static): no setpriv flag in the entrypoint needs a capability the container lacks", () => {
+  // The container has exactly REQUIRED_CAPS. --securebits (CAP_SETPCAP) and a raised bounding set or inheritable set beyond them fail at start, and a background start fails silently.
+  const lines = ENTRYPOINT.split("\n").filter(l => /^\s*setpriv /.test(l));
+  assert.ok(lines.length >= 5, "the entrypoint's setpriv lines were found");
+  const have = new Set(REQUIRED_CAPS.map(c => c.toLowerCase()));
+  for (const l of lines) {
+    if (/--securebits/.test(l)) assert.ok(have.has("setpcap"), `needs CAP_SETPCAP: ${l.trim().slice(0, 120)}`);
+    for (const m of l.matchAll(/--(?:inh|ambient)-caps=([^\s]+)|--bounding-set=([^\s]+)/g)) {
+      for (const c of String(m[1] || m[2]).split(",").filter(x => x.startsWith("+")).map(x => x.slice(1))) assert.ok(have.has(c), `raises ${c}, which the container lacks: ${l.trim().slice(0, 120)}`);
+    }
+  }
 });
 
 test("isolation (static): each agent's browser is its own uid, whose profile, debugging socket and memory the agent's shell cannot reach; only the agent's untrusted X cookie and the downloads cross, by group", () => {

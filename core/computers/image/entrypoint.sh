@@ -356,10 +356,12 @@ exec 9> >(freezer)
 # A dedicated uid (1004) that keeps exactly CAP_SETUID and CAP_SETGID, ambient, so it can start an agent's processes as that agent's uid and do nothing else: no chown, no signals to
 # another uid, no files of another uid. Its socket and its token file are its own, 0600 and 0400 (the driver seeds the token like .boot); an agent uid has no access to either. Started only
 # when the token is there, so a computer made before agents lived on it starts as it always did.
+# No --securebits here: setting them needs CAP_SETPCAP, which the container does not have (the driver adds SETUID and SETGID only), so setpriv failed and agentd never started (security-live 18 Oct).
+# --no-new-privs and the bounding set carry the limit instead: an exec by agentd gains nothing, and it holds no capability beyond SETUID and SETGID.
 AGENTD_DIR="${VYRE_HOME}/agentd"
 if [ -f "${AGENTD_DIR}/token" ]; then
   log "starting agentd"
-  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --securebits=+noroot,+noroot_locked --no-new-privs -- \
+  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --no-new-privs -- \
     env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
     node /opt/agentd/agentd-main.js &
 fi

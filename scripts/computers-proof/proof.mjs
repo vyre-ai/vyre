@@ -50,7 +50,8 @@ fs.writeFileSync(path.join(VHOME, "config.json"), JSON.stringify({
   network: { tailscale: false },
   // Off on purpose: nothing here dials out. The computers, agents, chrome and desktop hands are what is under test.
   modules: { disable: ["names", "network", "hooks", "apps", "relay", "releases", "link", "sync", "push", "github", "google", "mail", "import", "sessions", "chat", "sight"] },
-  computers: { docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
+  // browse: "desktop" is the per-agent desktop mode (one container per agent, a screen to watch and take over): this proof checks that mode. The default mode, the space's one computer with a Linux user per agent, is agents.mjs.
+  computers: { browse: "desktop", docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
     cpus: 2, memoryMb: 2048, screens: 2, sweepMs: 0, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, handbackIdleMin: 15 },
 }, null, 2));
 
