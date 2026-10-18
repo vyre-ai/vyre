@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1932,"event":543,"config":311,"env":298,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1932,"event":543,"config":314,"env":298,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -362,6 +362,7 @@
     {"kind":"tool","name":"computers.agent.terminals","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentterminals","module":"computers","mentions":[{"page":"using/agent-computer.md","line":107,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.wake","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentwake","module":"computers","mentions":[{"page":"using/agent-computer.md","line":105,"anchor":"for-agents"}]},
     {"kind":"tool","name":"computers.agent.watch","definedIn":"core/computers/agent-tools.js","page":"reference/tools.md#computersagentwatch","module":"computers","mentions":[{"page":"using/agent-computer.md","line":106,"anchor":"for-agents"}]},
+    {"kind":"config","name":"computers.agentdWaitMs","definedIn":"core/computers/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"computers.autoUpdate","definedIn":"core/computers/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"computers.capAdd","definedIn":"core/computers/index.js","page":null,"mentions":[{"page":"adr/0009-container-hardening.md","line":49,"anchor":"decision"},{"page":"adr/0009-container-hardening.md","line":82,"anchor":"consequences"}]},
     {"kind":"tool","name":"computers.checkout","definedIn":"core/computers/index.js","page":"reference/tools.md#computerscheckout","module":"computers","mentions":[{"page":"adr/0009-container-hardening.md","line":25,"anchor":"the-problem"},{"page":"design/glass-plan.md","line":213,"anchor":"8-browser-harness----built-28-sep"},{"page":"design/agent-browsers.md","line":17,"anchor":"why-this-replaces-one-computer-per-agent"},{"page":"design/agent-browsers.md","line":80,"anchor":"3-computer-pool"},{"page":"design/agent-browsers.md","line":84,"anchor":"3-computer-pool"},{"page":"design/agent-browsers.md","line":85,"anchor":"3-computer-pool"},{"page":"design/agent-browsers.md","line":152,"anchor":"the-reach-ladder"}]},
@@ -383,6 +384,7 @@
     {"kind":"tool","name":"computers.limits","definedIn":"core/computers/index.js","page":"reference/tools.md#computerslimits","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.list","definedIn":"core/computers/index.js","page":"reference/tools.md#computerslist","module":"computers","mentions":[{"page":"using/agents.md","line":162,"anchor":"give-an-agent-a-computer"},{"page":"adr/0036-one-system.md","line":37,"anchor":"1-sight-one-screen-service-on-both-sides"}]},
     {"kind":"config","name":"computers.local","definedIn":"core/computers/index.js","page":null,"mentions":[]},
+    {"kind":"config","name":"computers.log","definedIn":"core/computers/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"computers.may-act","definedIn":"core/computers/index.js","page":"reference/tools.md#computersmay-act","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.member.add","definedIn":"core/computers/index.js","page":"reference/tools.md#computersmemberadd","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.member.dispose","definedIn":"core/computers/index.js","page":"reference/tools.md#computersmemberdispose","module":"computers","mentions":[]},
@@ -396,6 +398,7 @@
     {"kind":"tool","name":"computers.resume","definedIn":"core/computers/index.js","page":"reference/tools.md#computersresume","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.run.open","definedIn":"core/computers/index.js","page":"reference/tools.md#computersrunopen","module":"computers","mentions":[]},
     {"kind":"tool","name":"computers.shield","definedIn":"core/computers/index.js","page":"reference/tools.md#computersshield","module":"computers","mentions":[{"page":"adr/0005-glass.md","line":133,"anchor":"3-signing-in-a-private-take-over-shields-the-agents-eyes-as-well-as-its-hands"},{"page":"design/glass-plan.md","line":62,"anchor":"3-true-module"}]},
+    {"kind":"config","name":"computers.space","definedIn":"core/computers/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"computers.stats","definedIn":"core/computers/index.js","page":"reference/tools.md#computersstats","module":"computers","mentions":[{"page":"design/vitals.md","line":28,"anchor":"shape"},{"page":"design/vitals.md","line":48,"anchor":"what-it-collects-and-how-without-root"},{"page":"design/vitals.md","line":174,"anchor":"what-ships-in-011"}]},
     {"kind":"tool","name":"computers.stop","definedIn":"core/computers/index.js","page":"reference/tools.md#computersstop","module":"computers","mentions":[]},
     {"kind":"config","name":"computers.sweepMs","definedIn":"core/computers/index.js","page":null,"mentions":[]},
