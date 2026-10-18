@@ -9,7 +9,7 @@ import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
 import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
-import { AGENT_GROUPS, agentRow, agentsDef, asRecords, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
+import { AGENT_GROUPS, agentRow, agentsDef, asRecords, byRecent, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
 import { useChats } from "../../src/state/chats";
 import { useMembers } from "../spaces/state";
 import { teammates } from "../teammates/teammates";
@@ -60,7 +60,7 @@ export function AgentsHome() {
   const def = useMemo(() => agentsDef(rows), [rows]);
   const recs = useMemo(() => asRecords(rows), [rows]);
   const keep = new Set(listRows(def, recs, chips, query, {}).map((r: any) => r.id));
-  const shown = items.filter((i) => keep.has(i.name));
+  const shown = byRecent(items.filter((i) => keep.has(i.name)));
 
   const flip = (r: Row) => {
     const stopped = r.status === "Paused";

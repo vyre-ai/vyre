@@ -113,3 +113,9 @@ export function rowActions(r, o = {}) {
 
 /** Whether a chat row has this agent in it. @param {{ agents?: string[], pinned?: string }} c @param {string} name */
 export const chatHas = (c, name) => c.pinned !== "assistant" && (c.agents ?? []).some((a) => a === name);
+
+/** Agents newest first by their last activity (last_active, milliseconds); no activity goes last, and ties sort by name. @param {any[]} rows */
+export function byRecent(rows) {
+  const at = (r) => (typeof r.last_active === "number" && Number.isFinite(r.last_active) ? r.last_active : -Infinity);
+  return [...rows].sort((a, b) => (at(b) - at(a)) || String(a.name).localeCompare(String(b.name)));
+}
