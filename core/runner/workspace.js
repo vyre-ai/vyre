@@ -88,6 +88,7 @@ export function fscryptSetupPlan(base, runCmd = (c, a) => spawnSync(c, a, { enco
 }
 
 /** @param {"darwin"|"linux"|"win32"|string} platform @param {{ sizeGb?: number, base?: string, prefer?: "fscrypt"|"gocryptfs" }} [opts] */
+export { fscryptDriver as fscryptDriverForTest };
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
   if (platform === "linux") return opts.prefer === "fscrypt" || (opts.prefer !== "gocryptfs" && opts.base && fscryptSupported(opts.base)) ? fscryptDriver(opts.log) : linuxDriver();
@@ -247,15 +248,61 @@ export function sayIfIncomplete(r, log) {
   return true;
 }
 
-function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }) {
+/**
+ * Pids (other than this process) that hold a file, their working directory or a mapping under `base`. Reads /proc; a process of another user cannot be read and is skipped (it could not be stopped either).
+ * @param {string} base @param {{ procRoot?: string, self?: number }} [o] @returns {number[]}
+ */
+export function holdersOf(base, o = {}) {
+  const root = o.procRoot || "/proc", self = o.self ?? process.pid, under = (/** @type {string} */ p) => p === base || p.startsWith(base + path.sep);
+  /** @type {number[]} */ const out = [];
+  let pids = [];
+  try { pids = fs.readdirSync(root).filter(n => /^\d+$/.test(n)); } catch { return out; }
+  for (const n of pids) {
+    const pid = Number(n); if (pid === self) continue;
+    const dir = path.join(root, n);
+    const links = [];
+    try { links.push(fs.readlinkSync(path.join(dir, "cwd"))); } catch { /* gone or not ours */ }
+    try { for (const f of fs.readdirSync(path.join(dir, "fd"))) { try { links.push(fs.readlinkSync(path.join(dir, "fd", f))); } catch { /* closed meanwhile */ } } } catch { /* not ours */ }
+    try { for (const l of fs.readFileSync(path.join(dir, "maps"), "utf8").split("\n")) { const i = l.indexOf("/"); if (i > 0) links.push(l.slice(i).replace(/ \(deleted\)$/, "")); } } catch { /* not ours */ }
+    if (links.some(under)) out.push(pid);
+  }
+  return out;
+}
+
+/**
+ * Lock the workspace for real. Remove the key; while the helper says "incomplete", stop the processes that still hold files (SIGTERM, then SIGKILL on the later rounds) and remove again, at most `tries` times.
+ * @param {{ remove: () => Promise<{ out?: string, code?: number }>, holders: () => number[], log?: (m: string) => void, kill?: (pid: number, sig: NodeJS.Signals) => void, same?: (pid: number) => boolean, sleep?: (ms: number) => Promise<void>, tries?: number, waitMs?: number }} d
+ * @returns {Promise<{ locked: boolean, rounds: number }>} locked is true only when the helper answered a finished removal
+ */
+export async function lockUntilComplete(d) {
+  const tries = d.tries ?? 6, waitMs = d.waitMs ?? 300;
+  const kill = d.kill || ((pid, sig) => { try { process.kill(pid, sig); } catch { /* already gone */ } });
+  const sleep = d.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  let stopped = 0;
+  const said = () => { if (stopped && d.log) d.log(`the workspace lock stopped ${stopped} process${stopped === 1 ? "" : "es"} that held its files`); };
+  for (let round = 1; round <= tries; round++) {
+    const r = await d.remove();
+    if (!/incomplete/.test(String(r && r.out || ""))) { said(); return { locked: true, rounds: round }; }
+    if (d.log) sayIfIncomplete(r, d.log);
+    const held = d.holders(); stopped += held.length;
+    // a pid can be reused between the read and the kill: on the hard rounds, only a process that is still the same one (same start time) is killed
+    for (const pid of held) { if (round >= 3 && d.same && !d.same(pid)) continue; kill(pid, round < 3 ? "SIGTERM" : "SIGKILL"); }
+    await sleep(waitMs);
+  }
+  said();
+  return { locked: false, rounds: tries };
+}
+
+function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }, statusOf = (/** @type {string} */ f) => { const r = spawnSync("python3", [FSCRYPTCTL, "status", f], { encoding: "utf8", timeout: 10_000 }); return r.status === 0 ? r.stdout.trim() : "absent"; }) {
   const enc = dir => path.join(dir, "enc");
   const key64 = key => { const k = Buffer.from(crypto.hkdfSync("sha512", key, Buffer.alloc(0), "vyre fscrypt workspace v1", 64)); const hex = Buffer.from(k.toString("hex")); k.fill(0); return hex; };
   const helper = (verb, dir, key) => runWithPass("python3", [FSCRYPTCTL, verb, dir], key ? key64(key) : Buffer.alloc(0));
-  const status = dir => { const r = spawnSync("python3", [FSCRYPTCTL, "status", enc(dir)], { encoding: "utf8", timeout: 10_000 }); return r.status === 0 ? r.stdout.trim() : "absent"; };
+  const status = dir => statusOf(enc(dir));
   return {
     name: "fscrypt",
     exists: dir => fs.existsSync(enc(dir)),
-    isMounted: dir => fs.existsSync(enc(dir)) && status(dir) === "present",
+    // "incomplete" is a key that is only partly gone: a process still holds a file open and can read it, so the workspace is NOT closed until the removal has finished.
+    isMounted: dir => fs.existsSync(enc(dir)) && ["present", "incomplete"].includes(status(dir)),
     async create(dir, key) {
       // Owner-only: only POSIX permissions protect an UNLOCKED workspace. Only the folders THIS call creates are chmodded; a folder that was
       // already there (a home, a shared mount) is never touched.
@@ -274,12 +321,15 @@ function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr
       return enc(dir);
     },
     async unmount(dir) {
-      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" only means a process
-      // still holds a file open; the sessions are stopped first, and isMounted reads "present" only while the key is there.
+      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" means a process
+      // still holds a file open and can read it: stop those processes and remove again, a few times; if one will not go, FAIL (never report locked).
       if (!fs.existsSync(enc(dir))) return;
-      const r = await helper("remove", enc(dir));
-      // 0.6.0 limit: say it plainly when the removal is not finished. The key is gone from the filesystem, but what a process still holds open can be read until that process exits.
-      sayIfIncomplete(r, log);
+      const base = fs.realpathSync(enc(dir));
+      const r = await lockUntilComplete({ remove: () => helper("remove", enc(dir)), log, ...(() => {
+        const born = new Map(); const start = pid => { try { return fs.readFileSync(`/proc/${pid}/stat`, "utf8").replace(/^.*\) /, "").split(" ")[19]; } catch { return ""; } };
+        return { holders: () => { const h = holdersOf(base); for (const pid of h) if (!born.has(pid)) born.set(pid, start(pid)); return h; }, same: pid => born.get(pid) === start(pid) };
+      })() });
+      if (!r.locked) throw new Error("could not close the workspace: a process still holds a file open and would not stop");
     },
     async destroy(dir) { fs.rmSync(dir, { recursive: true, force: true }); },
   };

@@ -157,14 +157,18 @@ export function rig(t) {
     PATH: `${BIN}:${process.env.PATH}`, HOME: root, TMPDIR: SCRATCH, VYRE_WRAPPER: WRAPPER, VYRE_SPACES_ROOT: SP, VYRE_ROOT_UID: uid, VYRE_DAEMON_UID: uid,
     VYRE_CHAIN_TOP: root, VYRE_SYSTEMD_DIR: UNITS, VYRE_UPDATE_ROOT: path.join(root, "upd"), VYRE_DIR: path.join(root, "srv"), ...extra,
   });
+  // Every child the rig starts is killed when the test ends: a helper that hangs (or a test that gave up on it) must not keep the file's process alive, which hid the real failure as "did not finish".
+  /** @type {Set<import("node:child_process").ChildProcess>} */ const live = new Set();
+  t.after(() => { for (const c of live) { try { c.kill("SIGKILL"); } catch { /* gone */ } } live.clear(); });
   const run = (/** @type {string[]} */ args, /** @type {Record<string,string>} */ extra = {}, /** @type {string} */ input = "") => new Promise(resolve => {
     const c = spawn("sh", [WRAPPER, ...args], { env: env(extra), stdio: ["pipe", "pipe", "pipe"] });
+    live.add(c);
     let out = "";
     c.stdout.on("data", d => { out += d; });
     c.stderr.on("data", d => { out += d; });
     c.stdin.on("error", () => {});
     c.stdin.end(input);
-    c.on("close", code => resolve({ code, out }));
+    c.on("close", code => { live.delete(c); resolve({ code, out }); });
   });
   // The dirs as `space-helper install` makes them (without the unit), plus the recorded image.
   const prime = async (keep = false) => {

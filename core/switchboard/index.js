@@ -65,7 +65,7 @@ import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, rec
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
-import { closeToAddedModules } from "../../lib/first-party-door.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js"; import { forkCut } from "./fork-point.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -674,28 +674,8 @@ export class Switchboard {
     });
   }
 
-  /**
-   * Where a thread forks: the run of this chat that holds the agent's message `message` (the id the chat's frames carry, which is the provider's message id, or a transcript line's own uuid), and the uuid
-   * of that message's LAST transcript line, which is the cut: the fork keeps everything up to and including it. Newest run first (a rolled-over chat has several). Throws, in plain words, when no run
-   * holds it or the provider cannot fork.
-   * @param {string} chat @param {string} message @returns {{ run: string, uuid: string }}
-   */
-  forkPoint(chat, message) {
-    const runs = this.ofChat(String(chat)).reverse();
-    if (!runs.length) throw Object.assign(new Error("this thread has no conversation yet, so there is nothing to fork from: send a message in it first, then fork one of the replies"), { code: "not_found" });
-    const want = String(message);
-    for (const r of runs) {
-      const t = findSession(this.deps.transcripts || [], this.nativeOf(r.thread));
-      if (!t) continue;
-      let hit = null;
-      for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
-        if (!l.includes(want)) continue;
-        try { const j = JSON.parse(l); if (j.type === "assistant" && j.uuid && (j.uuid === want || (j.message && j.message.id === want))) hit = j; } catch { /* a line that is not json */ }
-      }
-      if (hit) { this.needCap(r.thread, "fork", "fork a thread"); return { run: r.thread, uuid: String(hit.uuid) }; }
-    }
-    throw Object.assign(new Error("that is not one of the agent's replies in this thread: pick a reply from this thread and fork from that"), { code: "not_found" });
-  }
+  /** Where a thread forks: the run of this chat that holds the agent's message, and the transcript line that ends it (core/sessions/drivers/fork-point.js reads the provider's file). @param {string} chat @param {string} message @returns {{ run: string, uuid: string }} */
+  forkPoint(chat, message) { const hit = forkCut(this.ofChat(String(chat)).reverse(), r => findSession(this.deps.transcripts || [], this.nativeOf(r.thread)), String(message)); this.needCap(hit.run, "fork", "fork a thread"); return hit; }
 
   /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
   terminalsOf(chat) {
@@ -2286,8 +2266,7 @@ export class Switchboard {
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "switched to the API key");
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
-    this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    if (typeof fb.model === "string" && fb.model) this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(fb.model, id);
+    this.db.prepare("UPDATE threads_runs SET auth = 'api-key', model = COALESCE(?, model) WHERE id = ?").run(typeof fb.model === "string" && fb.model ? fb.model : null, id);
     this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, ...(typeof fb.model === "string" && fb.model ? { model: fb.model } : {}), budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
