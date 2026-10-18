@@ -399,6 +399,12 @@ export const PERSON_ONLY = new Map([
   ["sessions.accounts.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.limits.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.mode.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
+  // asking to join a Space (core/requests): who may let a stranger in is the owner's own call, never an assistant's
+  ["requests.accept", "the owner's own switch for who may ask to join: an assistant cannot open the Space to requests"],
+  ["requests.accepting", "who is asking to join: names and device keys of strangers, for the owner's own eyes"],
+  ["requests.list", "who is asking to join: names, device keys and the notes strangers wrote, for the owner's own eyes"],
+  ["requests.decide", "answers an ask to join (a decline or Clear all): letting someone in, or turning them away, is the owner's own call"],
+  ["requests.attention", "the Needs-you feed for asks to join: names and device keys of strangers, read only by the approvals list and the owner"],
   ["sessions.models.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.prompt.revert", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.prompt.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
