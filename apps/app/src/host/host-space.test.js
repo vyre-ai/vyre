@@ -517,7 +517,8 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   let vault = { account: false, unlocked: false }, fail = "", badKey = false;
   pp.call = async (name, input, box) => {
     if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
-    calls.push({ name, input: JSON.parse(JSON.stringify(input || {})), box });
+    const copy = JSON.parse(JSON.stringify(input || {})); const space = copy.space; delete copy.space;
+    calls.push({ name, input: copy, box, space });
     if (name === "sessions.accounts.key") { if (badKey) throw new Error(`the service refused that key ${input.key}`); return { checked: true, host: "api.anthropic.com" }; }
     if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
     if (name === "vault.me.add-key") {
@@ -539,6 +540,7 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true });
   assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
   assert.ok(calls.every((c) => c.box === "boxA"));
+  assert.ok(calls.every((c) => /^spc_[a-z2-7]{12}$/.test(String(c.space))), "every call names the team's Space, which is how the app sends it through the team's door");
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.add-key", "the password goes to the one act only");
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "sessions.accounts.key,vault.me.add-key", "the key goes to its check and to the one act");
   assert.deepEqual(calls[3].input, { provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude" });

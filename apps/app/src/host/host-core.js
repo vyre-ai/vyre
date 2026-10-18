@@ -91,9 +91,9 @@ export function createHost(o) {
   /**
    * A joining member's own key: it goes to THEIR OWN Vault (never the space owner's), then the account names it. Their vault is made, or opened, with their password only when it must be (none yet, or locked):
    * the password is used for those two calls and nowhere else, kept by no one here, and never in anything this throws. The key is sent once over the same peer wire as every other vault.me call.
-   * @param {any} ports @param {string} box @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
+   * @param {any} ports @param {string} box @param {string} space the team's Space id: the app routes a joined team's calls through its door by it @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
    */
-  const memberKey = async (ports, box, i) => {
+  const memberKey = async (ports, box, space, i) => {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
     const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
     if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
@@ -101,7 +101,7 @@ export function createHost(o) {
     if (!o.memberKeyPath) throw bad("Ask the owner to add this account.", "ask_owner");
     if (!o.memberKeys) throw unsupported();
     /** @type {(tool: string, input?: any) => Promise<any>} */
-    const ask = (tool, input) => ports.call(tool, input || {}, box);
+    const ask = (tool, input) => ports.call(tool, { ...(input || {}), ...(space ? { space } : {}) }, box);
     const redact = (/** @type {unknown} */ e) => {
       let said = String((e && /** @type {any} */ (e).message) || "That did not work. Try again.");
       for (const secret of [i.key, i.password]) if (secret) said = said.split(secret).join("[hidden]");
@@ -135,7 +135,7 @@ export function createHost(o) {
     const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
     const here = paired.find((s) => s.paired.box === madeHere) || (strict ? null : paired.find((s) => s.id === k.current)) || (paired.length === 1 ? paired[0] : null);
     if (!here) throw bad(`Your server is not set up yet. ${none}`, "no_server");
-    return { box: String(here.paired.box), k, role: String(here.role || "") };
+    return { box: String(here.paired.box), k, role: String(here.role || ""), space: String(here.id || "") };
   };
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
@@ -582,7 +582,7 @@ export function createHost(o) {
     // An API key as an AI account (the owner's own): sent once to the server's own key tool, which checks it with the provider and keeps it in the Vault. The key is never logged, kept or returned: only the account's id, provider and name come back.
     "onboard.agent.key": async (input) => {
       if (!o.space) throw unsupported();
-      const { box, role } = await serverOfThisRun("Add an AI account once your space is online.", true);
+      const { box, role, space } = await serverOfThisRun("Add an AI account once your space is online.", true);
       const kind = String((input && input.kind) || "");
       if (!["anthropic-compatible", "openai-compatible", "openrouter"].includes(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
       const key = String((input && input.key) || "").trim();
@@ -593,7 +593,7 @@ export function createHost(o) {
       if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
       const ports = await o.space.load();
       /** @type {any} */ let r;
-      if (role && role !== "owner") return memberKey(ports, box, { kind, key, label, password: input && input.password ? String(input.password) : "", ...(base ? { base_url: base } : {}) });
+      if (role && role !== "owner") return memberKey(ports, box, space, { kind, key, label, password: input && input.password ? String(input.password) : "", ...(base ? { base_url: base } : {}) });
       try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
       catch (e) {
         // whatever the server or the provider said, the key is never in what is thrown here
