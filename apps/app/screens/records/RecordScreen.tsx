@@ -13,6 +13,7 @@ import { useTypeLayout } from "./layout-state";
 import { pinnedFacts } from "../../ui/records/logic.js";
 import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
+import { Roles } from "./Roles";
 import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
 import { emailOf } from "../shell/module-view.js";
@@ -61,6 +62,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
         <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
         {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
       </View>
+      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} onOpen={open} /></View> : null}
       <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} type={rec.type} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
