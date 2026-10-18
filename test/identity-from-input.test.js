@@ -17,6 +17,7 @@ const FIELD = /^(created_by|createdBy|owner|person|as|actor|author|by|user|decid
 
 /** tool-name pattern, field, class, reason. A rule covers every tool its pattern matches that has the field. */
 const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narrowing"|"shim"|"caller", string][]} */ ([
+  [/^tasks\.list$/, "approver", "narrowing", "a filter on the list of tasks the caller may read: it only narrows the caller's own readable tasks to those a named approver holds; reading is judged against the caller's chain, and mine does not read it"],
   [/^spaces\./, "person", "target", "an admin names the member the act is about; the role engine and the kernel authorize it against the caller's own chain"],
   [/^spaces\./, "member", "target", "the person whose computer is lent or stopped; authorized against the caller's own chain"],
   [/^work\.person\.shared$/, "person", "lookup", "the other person you look up: only the chats and projects you share with them are read, through your own chain; the caller is always the one asking"],
