@@ -366,6 +366,7 @@ export function createMockStore(opts = {}) {
       settle(recordUrn, by); notify();
       return clone(tasks.get(id));
     },
+    async review() { throw refuse("invalid", "Reviews are not part of the sample world."); },
     async move(id, to, by = meId, o = {}) {
       const cur = taskOf(id), recordUrn = cur.record || "";
       if (!mayChange(cur, by) && to !== "skipped") throw refuse("invalid", "Only the doer, the checker or the doer's owner can change this task.");

@@ -51,3 +51,35 @@ export function nowLine(task, nameOf, me) {
   const done = `${doer} ${task.output && task.output.kind === "draft" ? "drafted" : "did"} it`;
   return { title: `${task.title} is ${who}`, sub: [done + (reviewed ? `, ${reviewed}` : ""), me ? "" : ""].filter(Boolean).join("") + "." };
 }
+
+/** The checklist the reviewer ticks: the items of the reviewer slot's skills, pinned on the task, as [{ skill, item }]. Empty when the slot has no skills (then a pass needs no ticks). @param {any} task */
+export function checklistOf(task) {
+  const raw = (task.slots && task.slots.reviewer && task.slots.reviewer.checklist) || task.reviewer_checklist || [];
+  return (Array.isArray(raw) ? raw : []).filter((x) => x && typeof x.item === "string").map((x) => ({ skill: String(x.skill ?? ""), item: String(x.item) }));
+}
+
+const keyOf = (/** @type {{ skill: string, item: string }} */ x) => `${x.skill}:${x.item}`;
+
+/**
+ * What Pass and Request changes may do right now, from the ticks the reviewer made. A pass needs every item answered, and every item ticked unless the note says why a missed one is acceptable;
+ * a request for changes needs a note (DESIGN-tasks-v2.md, tasks.review).
+ * @param {{ skill: string, item: string }[]} list @param {Record<string, boolean | undefined>} ticks @param {string} note
+ * @returns {{ pass: boolean, changes: boolean, why: string }}
+ */
+export function reviewGate(list, ticks, note) {
+  const text = String(note || "").trim();
+  const open = list.filter((x) => ticks[keyOf(x)] === undefined).length;
+  const missed = list.filter((x) => ticks[keyOf(x)] === false).length;
+  const changes = text.length > 0;
+  if (open) return { pass: false, changes, why: `${open} item${open === 1 ? "" : "s"} still to answer.` };
+  if (missed && !text) return { pass: false, changes, why: "Say why a missed item is acceptable, or ask for changes." };
+  return { pass: true, changes, why: changes ? "" : "" };
+}
+
+/** The input of tasks.review for a result. @param {"pass" | "changes"} result @param {{ skill: string, item: string }[]} list @param {Record<string, boolean | undefined>} ticks @param {string} note */
+export function reviewInput(result, list, ticks, note) {
+  const text = String(note || "").trim();
+  return { result, ...(list.length ? { checklist: list.map((x) => ({ skill: x.skill, item: x.item, ok: ticks[keyOf(x)] === true })) } : {}), ...(text ? { note: text } : {}) };
+}
+
+export { keyOf as checkKey };

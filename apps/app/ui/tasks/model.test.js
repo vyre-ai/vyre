@@ -152,3 +152,15 @@ test("a to-do a Flow gave you says a Flow is waiting; one with no maker and no s
   assert.equal(card({ ...base, source: "manual" }).why, "It is waiting for you.");
   assert.equal(card({ ...base, source: "flow_step", stage: "Intake" }).why, "Due with Intake.");
 });
+
+test("a task In review is a card for its reviewer only, with a Review button and the Now line", () => {
+  const actors = [{ id: "ana", name: "Ana", family: "person" }, { id: "assistant", name: "Assistant", family: "assistant" }];
+  const task = { id: "t1", title: "Launch email", state: "in_review", doer: { kind: "agent", id: "assistant" }, reviewer: { kind: "person", id: "ana" }, output: { kind: "draft" } };
+  const mine = cardModel({ task, actors, me: "ana" });
+  assert.equal(mine.reason, "review");
+  assert.equal(mine.title, "Launch email is waiting for your review");
+  assert.deepEqual(mine.actions.map((a) => a.id), ["open"]);
+  assert.equal(cardModel({ task, actors, me: "bo" }).reason, null);
+  const passed = cardModel({ task: { ...task, state: "needs_check", checker: { kind: "person", id: "ana" }, output: { kind: "draft" }, review: { by: { kind: "person", id: "bo" }, type: "person", result: "pass", checklist: [] } }, actors, me: "ana" });
+  assert.match(passed.why, /reviewed it/);
+});

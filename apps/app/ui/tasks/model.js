@@ -2,6 +2,7 @@
 // doer, checker and assigned_by are Actors, a record is a urn, the Deck's extras (now, say, note, result) sit under task.ext. The React components in this folder
 // only draw what these functions return, so the words and the buttons are tested in node (model.test.js).
 import { hourOf, longDateOf, sameDay, timeOf, weekdayDayOf } from "../../src/time/show.js";
+import { nowLine } from "./slots-model.js";
 import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/store-core/tasks.js";
 import { aid, eventLine } from "../../src/store-core/kernel-view.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
@@ -38,13 +39,15 @@ export const spaceTag = (w, spaceId) => { const s = w.spaces.find((x) => x.id ==
 /**
  * What a task is, to a person, as a card: the line it says, the sentence under it, the tags and the buttons.
  * @param {{ task: any, record?: any, recordTitle?: string, actors: any[], me: string, spaceName?: string, showSpace?: boolean, templateName?: string, fieldLabel?: (name: string) => string|undefined }} i
- * @returns {{ reason: "check"|"do"|"stuck"|null, title: string, why: string, lead: string, tags: { text: string, tone?: string, kind?: "record"|"space" }[],
+ * @returns {{ reason: "check"|"review"|"do"|"stuck"|null, title: string, why: string, lead: string, tags: { text: string, tone?: string, kind?: "record"|"space" }[],
  *   actions: { id: string, label: string, kind: "primary"|"secondary", icon?: string }[], inline?: { name: string, label: string, kind: "text"|"date" } }}
  */
 export function cardModel(i) {
   const { task, actors } = i;
   const reason = needsReason(task, i.me, actors);
-  const title = cardTitle(task, reason, actors);
+  const nameOfActor = (/** @type {string} */ _k, /** @type {string} */ id) => actorOf(id, actors)?.name || id;
+  const line = reason === "review" || (reason === "check" && task.review) ? nowLine(task, nameOfActor, i.me) : null;
+  const title = reason === "review" && line ? line.title : cardTitle(task, reason, actors);
   const rec = i.recordTitle || "";
   const note = typeof task.ext?.note === "string" ? task.ext.note : "";
   const madeBy = actorOf(aid(task.assigned_by), actors);
@@ -62,11 +65,15 @@ export function cardModel(i) {
   if (reason === "check") {
     if (task.output.kind === "sent") {
       why = draft ? howSentence(task, { actors, templateName: i.templateName, usedNotesOf: task.how === "tailor" && i.record?.data?.research ? "Research" : undefined }) : "Needs your approval to send.";
+      if (line) why = `${line.sub} ${why}`;
       actions = [{ id: "send", label: pay ? "Pay with Face ID" : "Send with Face ID", kind: "primary", icon: "faceid" }, draft ? { id: "edit", label: "Edit", kind: "secondary" } : { id: "open", label: "Open", kind: "secondary" }];
     } else {
-      why = "Needs your check.";
+      why = line ? `${line.sub} Needs your check.` : "Needs your check.";
       actions = [{ id: "approve", label: "Approve with Face ID", kind: "primary", icon: "faceid" }, { id: "open", label: "Open", kind: "secondary" }];
     }
+  } else if (reason === "review") {
+    why = line ? line.sub : "Waiting for your review.";
+    actions = [{ id: "open", label: "Review", kind: "primary" }];
   } else if (reason === "stuck") {
     const s = task.stuck;
     why = [s?.reason, s?.suggested_fix?.text].filter(Boolean).join(" ");

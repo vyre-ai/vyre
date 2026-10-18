@@ -31,3 +31,22 @@ test("the Now line says what is ready and who did what", () => {
   const t = { title: "Launch email draft", state: "needs_check", doer: { kind: "agent", id: "assistant" }, output: { kind: "draft" }, review: { by: { kind: "agent", id: "engineer" }, type: "agent", result: "pass", checklist: [] } };
   assert.deepEqual(nowLine(t, names, "me"), { title: "Launch email draft is ready for your approval", sub: "Assistant drafted it, Engineer checked it against the checklist." });
 });
+
+test("the reviewer's checklist is read from the task and a pass needs every item answered", async () => {
+  const { checklistOf, reviewGate, reviewInput } = await import("./slots-model.js");
+  const task = { slots: { reviewer: { holder: { kind: "person", id: "ana" }, checklist: [{ skill: "voice", item: "Plain words" }, { skill: "voice", item: "No jargon" }] } } };
+  const list = checklistOf(task);
+  assert.equal(list.length, 2);
+  assert.deepEqual(checklistOf({}), []);
+  assert.equal(reviewGate(list, {}, "").pass, false);
+  assert.match(reviewGate(list, { "voice:Plain words": true }, "").why, /1 item still/);
+  const all = { "voice:Plain words": true, "voice:No jargon": true };
+  assert.equal(reviewGate(list, all, "").pass, true);
+  const miss = { "voice:Plain words": true, "voice:No jargon": false };
+  assert.equal(reviewGate(list, miss, "").pass, false, "a missed item blocks a pass without a note");
+  assert.equal(reviewGate(list, miss, "Fine for an internal note").pass, true);
+  assert.equal(reviewGate([], {}, "").pass, true, "no skills, nothing to tick");
+  assert.equal(reviewGate([], {}, "").changes, false, "changes need a note");
+  assert.deepEqual(reviewInput("pass", list, all, " ok "), { result: "pass", checklist: [{ skill: "voice", item: "Plain words", ok: true }, { skill: "voice", item: "No jargon", ok: true }], note: "ok" });
+  assert.deepEqual(reviewInput("changes", [], {}, "Shorter"), { result: "changes", note: "Shorter" });
+});

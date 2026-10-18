@@ -27,6 +27,7 @@ export const STATES = TASK_STATES;
 /** The words the Deck shows for a state. */
 export const STATE_LABEL = /** @type {Record<TaskState, string>} */ ({
   waiting: "Waiting", ready: "Ready", working: "Working", needs_check: "Needs a check", stuck: "Stuck", done: "Done", skipped: "Skipped",
+  in_review: "In review", changes_requested: "Changes requested", declined: "Declined",
 });
 
 /** What each output kind is, and what done means for it (DESIGN-tasks.md, idea 3). The keys are the kernel's TASK_OUTPUT_KINDS. */
@@ -218,10 +219,11 @@ export function ownerOf(id, actors) {
  * Why a task needs `me`, or null (DESIGN-tasks.md, Now): I am the checker and it waits for my check; I am the doer and it is ready; it is stuck and I
  * am responsible (I am the doer, or the doer is my assistant).
  * @param {Task} task @param {string} me an actor id @param {Who[]|Record<string, Who>} [actors]
- * @returns {"check"|"do"|"stuck"|null}
+ * @returns {"check"|"review"|"do"|"stuck"|null}
  */
 export function needsReason(task, me, actors = {}) {
   if (aid(task.checker) === me && task.state === "needs_check") return "check";
+  if (task.reviewer && aid(task.reviewer) === me && task.state === "in_review") return "review";
   if (aid(task.doer) === me && task.state === "ready") return "do";
   if (task.state === "stuck" && (aid(task.doer) === me || ownerOf(aid(task.doer), actors) === me)) return "stuck";
   return null;

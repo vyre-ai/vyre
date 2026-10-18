@@ -5,6 +5,7 @@ import { Chip } from "../components/Chip";
 import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { Section } from "./Section";
+import { ReviewPanel } from "./ReviewPanel";
 import { TaskSlots } from "./TaskSlots";
 import { stateWord } from "./slots-model.js";
 import { DraftBlock, TaskFacts } from "./TaskFacts";
@@ -34,6 +35,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
         </View>
       </View>
       {task.reviewer || task.review || task.review_skipped || task.state === "in_review" || task.state === "changes_requested" || task.state === "declined" ? <TaskSlots task={task} nameOf={(kind, id) => nameOf(world, id)} /> : null}
+      {task.state === "in_review" && task.doer?.id !== world.me ? <ReviewPanel task={task} me={world.me} /> : null}
       {task.state === "stuck" && task.stuck ? (
         <Banner tone="warn">
           <View className="gap-s2">
