@@ -9,6 +9,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Switch, Tabs, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
+import { sentenceParts } from "./sentence.js";
+import { usePhone } from "../places/Page";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
 import { openEngineer } from "../engineer/openEngineer";
@@ -52,6 +54,9 @@ export function RealFlow({ id }: { id: string }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [n, setN] = useState(0);
+  const [mapOn, setMapOn] = useState(false);
+  const [tryOpen, setTryOpen] = useState(false);
+  const phone = usePhone();
   const [tab, setTab] = useState<"steps" | "runs" | "settings">("steps");
   const [row, setRow] = useState<RealFlowRow | null>(null);
 
@@ -119,14 +124,16 @@ export function RealFlow({ id }: { id: string }) {
   return (
     <Frame back="/u/apps" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
       <View className="gap-s2 pb-s3">
-        <Text size="page" strong>{row?.sentence || meta.title}</Text>
+        <Text size="page" strong>{sentenceParts(g.trigger, (g.nodes || []).filter((x: any) => x.kind !== "trigger").map((x: any) => String(x.label))).map((p, i) => <Text key={i} size="page" strong tone={p.token ? "accent" : "default"}>{p.text}</Text>)}</Text>
         <Text size="caption" tone="label">{[meta.title, row?.project ? `in ${row.project}` : "Personal", `version ${meta.version}`].join(" · ")}</Text>
         <View className="flex-row flex-wrap items-center gap-s3">
           <Switch label={row?.paused ? "Off" : "On"} on={!row?.paused} onChange={async (on) => { try { await setPausedReal(id, !on); setN((x) => x + 1); } catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); } }} />
           <Button kind="secondary" size="sm" icon="chat" label="Change it in chat" onPress={() => openEngineer(router, { source: "flow", ref: id, words: "" })} />
+          {def ? <Button kind={tryOpen ? "secondary" : "ghost"} size="sm" icon="play" label="Try it" onPress={() => setTryOpen(!tryOpen)} /> : null}
           {!waiting ? <Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /> : null}
         </View>
       </View>
+      {tryOpen ? <View className="pb-s3">{def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}</View> : null}
       {hb && hb.tone !== "quiet" ? <Banner tone={hb.tone}><Text>{hb.text}</Text></Banner> : null}
       {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}
       {waiting && card ? (
@@ -140,11 +147,21 @@ export function RealFlow({ id }: { id: string }) {
       {hb && hb.tone === "quiet" ? <Text tone="muted">{hb.text}</Text> : null}
       <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ["settings", "Settings"]]} value={tab} onChange={setTab} />
       {tab === "steps" ? (
-        <View className="gap-s4 pt-s3">
+        <View className={phone ? "gap-s4 pt-s3" : "flex-row items-start gap-s5 pt-s3"}>
+          <View className="min-w-0 flex-1 gap-s4">
       {def ? <Sec title="Steps"><StoredFlowEditor id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></Sec> : null}
-      <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
-      {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
-      {def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}
+          </View>
+          <View className={phone ? "" : "w-72"}>
+      <View style={{ gap: 12 }}>
+        <Text strong>Runs</Text>
+        {runs.slice(0, 5).map((r) => (
+          <Row key={r.id} dense title={`Run of ${when(r.started_at)}`} sub={r.error?.message || (STATE[r.state]?.note ?? r.state)} onPress={() => { setRunId(r.id); setTab("runs"); }}
+            end={canRetry(r.state) ? <Button kind="ghost" size="sm" label="Retry" disabled={busy} onPress={() => retry(r.id)} /> : undefined} />
+        ))}
+        {!runs.length ? <Text tone="muted">Not run yet.</Text> : null}
+        <View className="self-start"><Button kind="ghost" size="sm" label="All runs" onPress={() => setTab("runs")} /></View>
+      </View>
+          </View>
         </View>
       ) : null}
       {tab === "runs" ? (
@@ -180,6 +197,11 @@ export function RealFlow({ id }: { id: string }) {
       ) : null}
       {tab === "settings" ? (
         <View className="gap-s4 pt-s3">
+        <Switch label="Show the map of this Flow" on={mapOn} onChange={setMapOn} />
+        {mapOn ? <View className="gap-s3">
+      <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
+      {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
+        </View> : null}
       <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
       <FlowTests id={id} runId={picked_run?.id} />
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
