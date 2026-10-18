@@ -2033,7 +2033,7 @@
  },
  {
   "tool": "work.chat.add-people",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
  },
  {
   "tool": "work.chat.change",
@@ -2181,7 +2181,7 @@
  },
  {
   "tool": "work.thread.add-people",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.thread.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.thread.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
  },
  {
   "tool": "work.thread.fork",
