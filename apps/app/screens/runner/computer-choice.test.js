@@ -21,7 +21,7 @@ test("the choice is Never when the switch is off, and the mode when it is on; a 
 });
 
 test("the status line says what the computer does and what runs on it, with no numbers to manage", () => {
-  assert.equal(statusLine("never", { running: 3, spaces: ["Acme"] }), "Sessions run on the server.");
+  assert.equal(statusLine("never", { running: 3, spaces: ["Acme"] }), "Sessions run on Space's Cloud.");
   assert.match(statusLine("always", { running: 0 }), /^New chats start on this computer\. A session that left comes back at your next message once this computer has been ready for a minute\. Nothing is running here now\.$/);
   assert.match(statusLine("ask", { running: 1, spaces: ["Acme", "Studio"] }), /^A session runs on this computer when you put it here from its chat\. Shared with Acme and Studio\. 1 session is running here now\.$/);
   assert.match(statusLine("always", { running: 2 }), /2 sessions are running here now\.$/);
