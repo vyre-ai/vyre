@@ -32,6 +32,7 @@
       { "name": "records.link.set", "effect": "write", "reach": "person" },
       { "name": "records.sample.add", "effect": "write", "reach": "person" },
       { "name": "records.sample.remove", "effect": "write", "reach": "person" },
+      { "name": "records.stats", "effect": "read", "reach": "person" },
       { "name": "records.rollup.add", "effect": "write", "reach": "person" },
       { "name": "records.layout.get", "effect": "read", "reach": "person" },
       { "name": "records.layout.set", "effect": "write", "reach": "person" },

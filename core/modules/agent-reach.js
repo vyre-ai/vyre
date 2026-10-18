@@ -569,6 +569,7 @@ export const OPEN = new Set([
   "records.layout.get",
   "records.field.status",
   "records.history",
+  "records.stats",
   "records.link.set",
   "records.role.set",
   "records.roles.summary",
