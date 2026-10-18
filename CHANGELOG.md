@@ -9,6 +9,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - refactor(daemon): the flows host's callAs and its comment share a line, so core/daemon/index.js is back at its listed 2009 lines. No change in behaviour.
+- refactor(daemon): the three request-body readers (rawBody, rawBinary, body) move from core/daemon/index.js to core/daemon/request-body.js, so index.js is under its size cap again. No change in behaviour; test/file-size.json is lowered to the new size.
 
 - fix(mcp): mcp.keys.waiting is internal and for the approvals queue alone (reach modules, module:approvals only). It was reach "anyone" with a person-only body, which let an agent's chain in by the golden's measure and stopped the golden refresh; no agent, session, surface or other module reads the Needs-you list of waiting keys directly. The tool also leaves the door lists and the reach-anyone allow file.
 - feat(planner): planner.list takes scope space (notes shared with the whole Space), and an event the planner makes for a person carries that person as its `owner`, so Mine, Team and Everyone find it.
