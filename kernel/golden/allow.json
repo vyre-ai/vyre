@@ -1624,8 +1624,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks for a task under the caller's own chain; the kernel decides who may"
  },
  {
+  "tool": "tasks.review",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the reviewer slot's holder passes the work or asks for changes; never the doer, a helper or anyone under the doer; a pass never frees an outward output"
+ },
+ {
   "tool": "tasks.submit",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): hands in a doer's work for a check; the kernel decides"
+ },
+ {
+  "tool": "tasks.update",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the doer or a helper adds details, a progress note or outputs while the task is theirs to work; the kernel rechecks the hold on every write"
  },
  {
   "tool": "team.charter.draft",
