@@ -20,6 +20,7 @@ import { registerRoles } from "./roles.js";
 import { registerLinkFields } from "./link-fields.js";
 import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
+import { withMe, withOwner } from "./me.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
@@ -116,7 +117,7 @@ export default {
       const qf = (await quickFieldsOf(d, String(i.type))).filter((f) => f.state !== "real");
       const hit = bagInQuery({ filter: i.filter, sort: i.sort }, qf);
       if (hit) throw refuse(`${hit} is still being set up, so it cannot be filtered or sorted yet. Try again in a minute.`, "bad_input");
-      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
       return { rows: qf.length ? r.rows.map((/** @type {any} */ x) => mergeOut(x, qf)) : r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
@@ -135,6 +136,7 @@ export default {
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
       try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["record-note", "communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();
@@ -173,28 +175,30 @@ export default {
       minting.set(key, run);
       return run;
     };
-    tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
-      const u = parseUrn(i.urn);
-      if (i.patch && Object.prototype.hasOwnProperty.call(i.patch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
+    // The one way a record is changed by a tool: the ID never changes, fast-field values go to the bag, the weighted value follows. records.update and records.move both come through here.
+    const applyUpdate = async (/** @type {any} */ d, /** @type {{ type: string, id: string }} */ u, /** @type {any} */ inPatch, /** @type {number} */ baseVersion) => {
+      if (inPatch && Object.prototype.hasOwnProperty.call(inPatch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
       const qf = await quickFieldsOf(d, u.type);
-      let patch = i.patch;
+      let patch = inPatch;
       if (qf.some((f) => f.state === "bag" && patch && f.name in patch)) {
         const cur = await d.gateway.records.get(d.chain, u.type, u.id);
         try { patch = splitIn(patch, qf, cur && cur.data && cur.data.extra); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       }
       if (patch && ("amount" in patch || "probability" in patch)) {
-        // a type with amount, probability and weighted_value keeps the weighted value current (core/records-tools/rollup.js)
         const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
         const cur = t && (await d.gateway.records.get(d.chain, u.type, u.id));
         if (t && cur) patch = withWeighted(t.fields || [], cur.data || {}, patch);
       }
-      const out = await d.gateway.records.update(d.chain, u.type, u.id, patch, i.base_version);
+      const out = await d.gateway.records.update(d.chain, u.type, u.id, patch, baseVersion);
       return { record: mergeOut(out, qf.filter((f) => f.state !== "real")) };
+    };
+    tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
+      return applyUpdate(d, parseUrn(i.urn), i.patch, i.base_version);
     }, byUrn);
 
-    registerPipeline({ tool, obj, str, refuse, parseUrn });
+    registerPipeline({ tool, obj, str, refuse, parseUrn, update: applyUpdate });
     registerRelationships({ tool, obj, str, refuse, parseUrn });
-    registerQuick({ tool, obj, str, refuse, parseUrn });
+    registerQuick({ tool, obj, str, refuse, parseUrn, addLink: (/** @type {any} */ i, /** @type {any} */ d) => /** @type {any} */ (ops.get("records.link.add")).fn({ type: i.type, label: i.label, to: i.to, many: i.many, ...(i.inverse !== undefined ? { inverse_label: i.inverse } : {}) }, d) });
     registerLayouts({ tool, obj, str, refuse });
     registerHistory({ tool, obj, str, refuse, parseUrn });
     registerVisibility({ tool, obj, str, refuse, parseUrn });
@@ -361,6 +365,9 @@ export default {
     const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
       me: [], actors: [], types: [], list: ["type", "filter", "sort", "cursor", "limit", "include_deleted"], get: ["urn"], events: ["record", "task", "since", "limit"], audit: ["record", "changed_by", "in_project", "type", "since", "limit"],
       create: ["type", "data"], update: ["urn", "patch", "base_version"],
+      // a member moves records through stages, relates records and saves her OWN layout; the kernel's write rules decide which records, and a Space-wide layout is refused to her by the tool and the kernel
+      "layout.get": ["type"], "relationship.list": ["urn"], "relationship.kinds": [], move: ["urn", "stage", "lost_reason", "patch"],
+      "relationship.add": ["from", "to", "kind", "since", "until", "note"], "relationship.remove": ["id"], "layout.set": ["type", "scope", "layout"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
@@ -380,15 +387,15 @@ export default {
       for (const ty of [clean.type, urnType]) {
         if (typeof ty !== "string" || trusted) continue;
         if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
-        if ((i.call === "create" || i.call === "update") && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
+        if (i.call !== "audit" && !["me", "actors", "types", "list", "get", "events", "layout.get", "relationship.list", "relationship.kinds"].includes(i.call) && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
       }
       const out = await op.fn(clean, d);
       return !trusted && i.call === "types" && out && Array.isArray(out.types) ? { ...out, types: out.types.filter((/** @type {any} */ x) => !MEMBER_BLOCKED_TYPES.has(String(x && x.name))) } : out;
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
-    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events", "audit"]), run: serve(["me", "actors", "types", "list", "get", "events", "audit"]) });
+    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds"]), run: serve(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds"]) });
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
-    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update"]), run: serve(["update"]) });
+    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },

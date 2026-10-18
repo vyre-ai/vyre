@@ -158,8 +158,9 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       if (text.length > 5000) throw refuse("Keep it under 5,000 characters. Put the rest in a document and link it.", "bad_input");
       if (!(await d.gateway.records.get(d.chain, u.type, u.id))) throw refuse(`${i.urn} is not here, or you may not read it. Pick a record you can see in Records.`, "not_found");
       const link = { urn: String(i.urn) };
-      if (i.kind === "note") return { record: await d.gateway.records.create(d.chain, NOTE, { body: text, record: link, visibility: "private" }) };
+      const owner = `person:${d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person").actor.id}`;
+      if (i.kind === "note") return { record: await d.gateway.records.create(d.chain, NOTE, { body: text, record: link, visibility: "private", owner }) };
       const line = text.split("\n")[0];
-      return { record: await d.gateway.records.create(d.chain, "communication", { kind: i.kind, direction: "internal", at: new Date().toISOString(), subject: line.slice(0, 120), excerpt: text.slice(0, 500), record: link }) };
+      return { record: await d.gateway.records.create(d.chain, "communication", { kind: i.kind, direction: "internal", at: new Date().toISOString(), subject: line.slice(0, 120), excerpt: text.slice(0, 500), record: link, owner }) };
     }, byUrn);
 }

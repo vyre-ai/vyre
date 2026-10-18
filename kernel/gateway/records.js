@@ -38,7 +38,7 @@ export const KEEPERS = Object.freeze(/** @type {Record<string, readonly string[]
 }));
 
 /** The Space's set-up: a member reads these and never writes them. */
-const SETUP_TYPES = new Set(["agent", "template", "playbook", "def-role"]);
+const SETUP_TYPES = new Set(["agent", "template", "playbook", "def-role", "quick-field"]);
 
 export const RECORD_ACTIONS = Object.freeze([
   { action: "records.read", resource_type: "record", risk: "read", label: "read records", gloss: "Open and search records." },
@@ -518,6 +518,16 @@ export function createRecords(cfg) {
     const d = await gate(chain, `records.${op}`, u);
     // The Space's set-up (an agent, a template, a playbook): a member reads, only an owner or an admin writes, on every route. A service's own chain has no person and passes.
     if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `Only an owner or an admin can change this ${type}. Ask one of them.`); }
+    // A layout row is the Space's (owner or admin) or one person's own: a member writes only a row with scope "person" whose owner is herself, and cannot hand it to anyone else or make it the Space's.
+    if (type === "record-layout") {
+      const r = roleOfChain(chain);
+      if (r !== undefined && r !== "owner" && r !== "admin") {
+        const me = `person:${chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person").actor.id}`;
+        const before = op === "create" || !getBefore ? null : await getBefore();
+        const scope = (input && input.scope !== undefined) ? input.scope : before && before.data.scope, owner = (input && input.owner !== undefined) ? input.owner : before && before.data.owner;
+        if (scope !== "person" || owner !== me || (before && (before.data.scope !== "person" || before.data.owner !== me))) throw new KernelError("not_allowed", "Only an owner or an admin changes the layout for everyone. Save it as your own.");
+      }
+    }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).
     if (op === "create" && await isProtectedType(type) && !mayKeep(chain, type)) throw typesAway ? new KernelError("unavailable", "the record store is still starting: try again in a moment") : new KernelError("not_allowed", `only an owner or admin, or a service acting for them, creates a ${type}`);

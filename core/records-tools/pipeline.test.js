@@ -29,3 +29,13 @@ test("a move lists the fields still empty after the patch", () => {
   assert.deepEqual(missingFor(stage, {}, {}), ["amount", "close_date"]);
   assert.deepEqual(missingFor({ name: "Lead" }, {}, {}), []);
 });
+
+test("a move writes through the same update as records.update, so the ID cannot change by the back door", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./pipeline.js", import.meta.url), "utf8");
+  assert.match(src, /return update\(d, u, patch, rec\.version\)/);
+  assert.doesNotMatch(src, /records\.update\(/, "the move has no write of its own");
+  const idx = readFileSync(new URL("./index.js", import.meta.url), "utf8");
+  assert.match(idx, /registerPipeline\(\{[^}]*update: applyUpdate/);
+  assert.match(idx, /A record's ID is made when the record is made and never changes/);
+});

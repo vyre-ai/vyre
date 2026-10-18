@@ -83,6 +83,7 @@ export const EVENT = {
     text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
     // an event from an outside calendar is read by its owner alone until shared with the Space; the others see Busy (core/records-tools/visibility.js)
     choice("visibility", "Who can read it", ["private", "space"]),
+    text("owner", "Owner (person:id)"),
     TAGS,
   ],  // A new Space opens Events as a calendar, Contacts and Organizations as lists; a person adds their own views next to these (the app's New view).
   views: [{ name: "events_calendar", type: "calendar", label: "Calendar", dateField: "starts_at", columns: ["title", "place"] }],
@@ -188,6 +189,7 @@ export const COMMUNICATION = {
     text("from", "From"), text("to", "To"), text("cc", "Cc"), text("bcc", "Bcc"), text("organizer", "Organizer"), text("attendees", "Attendees"),
     // the Contacts those addresses belong to, many to many: a Contact's page shows its Communications (the reverse)
     f("link", "contacts", "Contacts", { to: "contact", many: true, inverse: { name: "communications", label: "Communications" } }),
+    text("owner", "Owner (person:id)"),
     TAGS,
   ],
 };
@@ -389,6 +391,7 @@ export const NOTE = {
     f("rich_text", "body", "Note", { required: true }),
     f("link", "record", "About"),
     choice("visibility", "Who can read it", NOTE_VISIBILITY, { required: true }),
+    text("owner", "Owner (person:id)"),
   ],
 };
 
