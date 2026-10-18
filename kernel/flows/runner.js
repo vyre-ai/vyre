@@ -2034,6 +2034,47 @@ export class FlowRunner {
     return simulateFlow({ catalogFn: () => this.catalogFn(), chains: this.chains, k: this.k, get holidays() { return self.holidays; }, now: () => this.now(), zone: (t, cat) => this.#zone(t, cat), walk: (ctx, steps, prefix, locals) => this.#walk(ctx, steps, prefix, locals) }, flow, o);
   }
 
+  /**
+   * Try ONE step of a Flow against the recorded inputs of a past run (its trigger and the output of every step but this one) or against sample values, in the dry mode simulation uses: reads happen, nothing is
+   * created, changed or sent. Answers the step's input (redacted as the ledger shows it), what it would give back, and what it would send or do.
+   * @param {any} flow @param {string} stepId @param {{ approver: any, run?: string, flowId?: string, sample?: any }} o
+   */
+  async testStep(flow, stepId, o) {
+    const cat = /** @type {any} */ (await this.catalogFn());
+    const compiled = compileFlow(flow, cat);
+    if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings };
+    /** @type {any} */ let step = null;
+    walkSteps(flow.steps || [], s => { if (s.id === stepId) step = s; }); walkSteps(flow.on_failure || [], s => { if (s.id === stepId) step = s; });
+    if (!step) throw Object.assign(new Error(`this Flow has no step ${stepId}`), { code: "no_such_step" });
+    if (step.kind === "parallel" || step.kind === "branch") throw Object.assign(new Error("a parallel step is tried one lane step at a time: pick a step inside it"), { code: "bad_input" });
+    if ((o.run === undefined) === (o.sample === undefined)) throw Object.assign(new Error("give either run (a past run to take the inputs from) or sample (values to stand in for the trigger)"), { code: "bad_input" });
+    /** @type {any} */ let trigger = { kind: "manual", key: "step-test", input: o.sample ?? {} };
+    /** @type {Record<string, any>} */ const steps = {};
+    if (o.run !== undefined) {
+      const rec = await this.store.getRun(String(o.run));
+      if (!rec || (o.flowId && rec.flow !== o.flowId)) throw Object.assign(new Error("that is not a run of this Flow (flows.runs)"), { code: "not_found" });
+      trigger = rec.trigger;
+      for (const [k, l] of Object.entries(rec.steps || {})) if (l && ["done", "skipped", "failed_handled"].includes(l.status) && k.replace(/[@!?].*$/, "") !== stepId && !k.includes("?")) steps[k] = { status: l.status, output: l.output };
+    }
+    const now = this.now();
+    /** @type {any} */ const run = { id: `test_${stepId}`, flow: "simulation", version: 0, hash: "", space: cat.space, trigger, tainted: false, source_spaces: [cat.space], depth: 0, state: "running", started_at: now, updated_at: now, steps, approver: o.approver, dry: true };
+    const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
+    /** @type {any} */ const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: [], dryAsks: 0, dryTasks: [], softReads: false };
+    const scope = this.#scope(ctx, {});
+    const input = showable(this.#inputOf(step, (/** @type {string} */ src) => evaluate(parse(src), scope), (/** @type {any} */ v) => resolveValue(v, scope)), STEP_INPUT_CAP);
+    /** @type {{ code: string, message: string } | null} */ let error = null;
+    let asks = false;
+    try { await this.#step(ctx, step, step.id, "", {}); }
+    catch (e) {
+      if (e instanceof Suspend) asks = true;
+      else if (e instanceof PauseFlow) error = { code: "paused", message: e.reason };
+      else error = failOf(e);
+    }
+    const led = run.steps[step.id];
+    const effects = (ctx.dryEffects || []).map((/** @type {any} */ e) => ({ action: e.action, resource: e.resource, outward: OUTWARD.has(e.risk), would: `${OUTWARD.has(e.risk) ? "would send" : "would do"}: ${labelOf(cat, e.action)}${input === undefined ? "" : ` with ${JSON.stringify(input).slice(0, 300)}`}` }));
+    return { ok: !error, step: stepId, kind: step.kind, ...(input !== undefined ? { input } : {}), output: led && led.status !== "started" ? showable(led.output, STEP_INPUT_CAP) : undefined, effects, asks: asks || ctx.dryAsks > 0, tasks: (ctx.dryTasks || []).length, ...(error ? { error } : {}), warnings: compiled.warnings };
+  }
+
   // ------------------------------------------------------------------ reading runs
 
   /** @param {string} id */

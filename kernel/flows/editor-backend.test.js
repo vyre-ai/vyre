@@ -197,3 +197,31 @@ test("(c) a retry from a step runs the version the run started on, not a newer o
   assert.equal(idems.length, 2);
   assert.equal(idems[0], idems[1], "the same key, so the receiving side can see it is the same act");
 });
+
+test("flows.step.test tries one step on a past run's recorded inputs, says what it would send, and sends nothing", async () => {
+  const sb = sandbox();
+  const sent = /** @type {string[]} */ ([]);
+  const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ a) => { sent.push(a); return { ok: true }; } } });
+  const { SPACE } = await import("./testing/fixtures.js");
+  const f = await install(w, flowOf([fn("a"), { id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: { expr: "steps.a.n" }, api_key: "secret-token-value-123456" } }]));
+  const run = await fire(w);
+  const t = toolsOf(w).tools["flows.step.test"];
+  const out = await t(chainOf(), { id: f.id, step: "mail", run: run.id });
+  assert.equal(out.step, "mail");
+  assert.equal(out.input.to, "a", "the earlier step's recorded output is what it reads");
+  assert.equal(out.input.api_key, "[hidden]", "redacted as the ledger shows it");
+  assert.equal(out.effects.length, 1);
+  assert.equal(out.effects[0].outward, true);
+  assert.match(out.effects[0].would, /^would send: /);
+  assert.deepEqual(sent, [], "nothing was sent");
+  assert.deepEqual(sb.calls, ["a"], "and the earlier step was not run again");
+  // sample values stand in for the trigger; an unsaved Flow can be tried
+  const draft = await t(chainOf(), { flow: flowOf([{ id: "d", kind: "decide", if: "trigger.n > 1", then: [fn("x")], else: [] }]), step: "d", sample: { n: 5 } });
+  assert.deepEqual(draft.input, { if: "trigger.n > 1", value: true });
+  assert.equal(draft.ok, true);
+  // the questions it refuses
+  await assert.rejects(() => t(chainOf(), { id: f.id, step: "mail" }), /either run .* or sample/);
+  await assert.rejects(() => t(chainOf(), { id: f.id, step: "mail", run: run.id, sample: {} }), /either run .* or sample/);
+  await assert.rejects(() => t(chainOf(), { id: f.id, step: "nope", sample: {} }), (/** @type {any} */ e) => e.code === "no_such_step");
+  await assert.rejects(() => t(chainOf(), { id: f.id, step: "mail", run: "run_missing" }), (/** @type {any} */ e) => e.code === "not_found");
+});

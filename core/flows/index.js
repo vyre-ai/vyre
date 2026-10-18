@@ -26,6 +26,7 @@ const WHAT = {
   "flows.compile-text": "Check text as a Flow without storing it.",
   "flows.graph": "A Flow as a graph for the canvas.",
   "flows.simulate": "Replay recent events through a Flow without doing anything. With a Flow id and since, also compares with what it really did.",
+  "flows.step.test": "Try one step of a Flow (id, or an unsaved flow) against the recorded inputs of a past run (run) or sample values (sample), changing and sending nothing: answers the step's input, what it would give back, and what it would send or do.",
   "flows.start": "Start a Flow now, with an input.",
   "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",

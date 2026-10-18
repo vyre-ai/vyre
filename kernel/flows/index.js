@@ -309,6 +309,12 @@ export function createFlows(o) {
     "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),
     "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat(), i.format),
     "flows.graph": async (chain, i) => graph((await view(i.id, [i.version])).flow, await cat()),
+    // Try one step of a Flow (stored, or an unsaved draft) on a past run's recorded inputs or sample values; nothing is changed or sent (runner.testStep).
+    "flows.step.test": async (chain, i) => {
+      const flow = i.flow || (await view(need(i, "id", "the Flow's id (flows.list), or flow: an unsaved Flow"), [i.version])).flow;
+      const approver = personOf({ hops: [chain.hops[0]] });
+      return runner.testStep(flow, String(need(i, "step", "the step's id")), { approver, ...(i.run !== undefined ? { run: i.run } : {}), ...(i.sample !== undefined ? { sample: i.sample } : {}), ...(typeof i.id === "string" && i.id ? { flowId: i.id } : {}) });
+    },
     "flows.simulate": async (chain, i) => {
       const c = await cat();
       const flow = i.flow || (await view(i.id, [i.version])).flow;
