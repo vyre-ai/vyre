@@ -112,9 +112,9 @@ What to do today: open an interactive artifact from a session like that only whe
 
 ### Vyre Computer: one Chrome, reads in parallel
 
-Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent is not built, and a write goes through the page, asked first.
+This is about your own Chrome on your own computer, which Vyre Computer drives for you; it is not about the agents' browsers on the Space computer, where each agent has its own Linux user and its own Chrome. Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent in your Chrome is not built, and a write goes through the page, asked first.
 
-What to do today: ask for one job at a time when several agents need Chrome.
+What to do today: ask for one job at a time when several agents need your Chrome.
 
 ### Models side by side
 
@@ -163,6 +163,14 @@ What to do today: the person who checks the task opens the file before saying ye
 What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.
+
+## The first-run proof's web export holds a software yes
+
+A browser has no hardware key and no phone, so the first-run proof's group walk (an owner approving an ask to join, a second person joining) gives its browsers a software yes: the page's own person key signing the proof body a phone would sign (`apps/app/src/real/proof-yes.ts`). It exists only in the export made with `EXPO_PUBLIC_VYRE_PROOF_YES=1` (the proof export in `first-run-e2e.yml`). That export must never be published, served to anyone or kept past its run: its artifact is for the run only. Every other build compiles the signer out, and `app.yml` fails the release web export, the release APK and the iOS release build if they hold its marker. A release-kind server refuses a software key and a software proof (`kernel/seal/seal.test.js` SW-2), so the signer could not say yes to one even if it got out.
+
+What to do: nothing, unless the proof export is ever linked from somewhere public; then take it down.
+
+Owner: app53, until browser-only people get a passkey yes (`team/BACKLOG.md`, "A real browser yes").
 
 ## A team member's uploaded skill is untrusted text
 

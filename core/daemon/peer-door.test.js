@@ -66,9 +66,9 @@ const PERSON = "per_" + "q".repeat(26);
 const BOX = "Qm94S2V5MTIzNDU2Nzg5MA";
 const INVITEE = "zyxwvutsrqponmlk";
 
-function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askPresence = false, memberWatchMs = 0, age = { founder: true, since: 0 } } = {}) {
+function inviteeWorld({ status = "pending", entry = true, addressedTo = null, limits, askLimits, askPresence = false, memberWatchMs = 0, age = { founder: true, since: 0 } } = {}) {
   /** what the identity's list and the space's membership say now; a test flips these mid-stream */
-  const live = { entry, member: true };
+  const live = { entry, member: true, lookups: 0 };
   const key = crypto.generateKeyPairSync("ed25519");
   const raw = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
   const served = [];
@@ -77,6 +77,7 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
     if (request.call === "grants.members.get") return live.member ? { v: 1, id: request.id, ok: true, result: { person: request.args[0], role: "member" } } : { v: 1, id: request.id, ok: false, error: { code: "not_a_member", message: "no chain for this connection" } };
     if (request.call === "records.query") return { v: 1, id: request.id, ok: true, result: { rows: [] } };
     if (request.call === "grants.invites.get") return addressedTo && addressedTo !== peer.person ? { v: 1, id: request.id, ok: false, error: { code: "not_found", message: "no such invite" } } : { v: 1, id: request.id, ok: true, result: { id: request.args[0], status, space: { id: SPACE } } };
+    if (request.call === "requests.ask" || request.call === "requests.status") return { v: 1, id: request.id, ok: true, result: { state: "pending", who: peer.person } };
     if (askPresence && request.call === "grants.invites.accept" && !(request.proof)) return { v: 1, id: request.id, ok: false, error: { code: "needs_presence", message: "needs presence", challenge: { nonce: "n" } } };
     return { v: 1, id: request.id, ok: true, result: { accepted: true } };
   } };
@@ -84,7 +85,14 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
   const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
   let clock = 1_000_000;
   const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: space => (space === SPACE ? server : null), boxId: async () => BOX,
-    identityEntry: async (identity, eid) => (live.entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url"), ...age } : null), ...(limits ? { inviteeLimits: limits } : {}), ...(memberWatchMs ? { memberWatchMs } : {}) });
+    identityEntry: async (identity, eid) => (live.lookups++, live.entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url"), ...age } : null), ...(limits ? { inviteeLimits: limits } : {}), ...(askLimits ? { askLimits } : {}), ...(memberWatchMs ? { memberWatchMs } : {}) });
+  const askHello = (over = {}) => {
+    const h = { v: 3, purpose: "ask", space: SPACE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, ...over };
+    const msg = Buffer.from(`vyre-invitee-hello-v3\nask\n${over.box || BOX}\n${h.space}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`);
+    if (!h.sig) h.sig = crypto.sign(null, msg, key.privateKey).toString("base64url");
+    delete h.box;
+    return h;
+  };
   const hello = (over = {}) => {
     const h = { space: SPACE, invite: INVITE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, ...over };
     const msg = Buffer.from(`vyre-invitee-hello-v2\n${over.box || BOX}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`);
@@ -92,14 +100,14 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
     delete h.box;
     return h;
   };
-  const open = async (head) => {
+  const open = async (head, chan = INVITEE) => {
     const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
     const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
-    d.acceptInvitee(s, { inviteeId: INVITEE }, head);
+    d.acceptInvitee(s, { inviteeId: chan }, head);
     return peerSession(c, { first: 1 });
   };
   const kcall = (client, call, args, space = SPACE) => client.call("kernel.call", { v: 1, space, id: "c" + Math.random().toString(36).slice(2), ts: clock, call, args }, { timeoutMs: 3000 });
-  return { d, hello, open, kcall, served, live, tick: ms => { clock += ms; } };
+  return { d, hello, askHello, open, kcall, served, live, tick: ms => { clock += ms; } };
 }
 
 test("invitee door: a fresh hello with the identity's signature and a live invite reads the preview and accepts, and accepting ends the stream", async () => {
@@ -483,4 +491,77 @@ test("a call relayed from a device meets the server's Gate as that device: the c
 test("the default admit limits carry a team member's app: 120 a minute per Space, 240 per identity, 480 directory lookups box-wide (one stream per team call, 8 to 15 calls a screen)", async () => {
   const src = (await import("node:fs")).readFileSync(new URL("./peer-door.js", import.meta.url), "utf8");
   assert.match(src, /const lim = \{ perInvite: 120, perIdentity: 240, perMinute: 60_000, perBox: 480,/);
+});
+
+test("ask door: a v3 ask hello signed by the identity's key reaches requests.ask and requests.status as that identity and nothing else; no invite is needed or named", async () => {
+  const w = inviteeWorld();
+  const c = await w.open(w.askHello());
+  const a = await w.kcall(c, "requests.ask", [{ note: "hello" }]);
+  assert.equal(a.ok, true);
+  assert.equal(a.result.who, PERSON, "the proven identity, not anything in the arguments");
+  assert.equal((await w.kcall(c, "requests.status", [])).ok, true);
+  assert.deepEqual(w.served.map(x => x.peer.person), [PERSON, PERSON]);
+  for (const [call, args] of [["grants.invites.get", [INVITE]], ["grants.invites.accept", [INVITE, {}]], ["grants.members.list", []], ["records.query", [{}]]]) await assert.rejects(() => w.kcall(c, call, args), e => e.code === "denied", `${call} is not an ask call`);
+  await assert.rejects(() => w.kcall(c, "requests.ask", [{}], "spc_" + "z".repeat(12)), e => e.code === "denied", "another space");
+  await assert.rejects(() => c.call("vault.reveal", { name: "x" }, { timeoutMs: 3000 }), e => e.code === "denied");
+});
+
+test("ask door: an invite hello (v2) cannot call ask or status, and an ask hello (v3) cannot be taken as an invite hello, in both directions", async () => {
+  const w = inviteeWorld();
+  const inv = await w.open(w.hello());
+  await w.kcall(inv, "grants.invites.get", [INVITE]);
+  const n = w.served.length;
+  await assert.rejects(() => w.kcall(inv, "requests.ask", [INVITE]), e => e.code === "denied");
+  await assert.rejects(() => w.kcall(inv, "requests.status", [INVITE]), e => e.code === "denied");
+  assert.equal(w.served.length, n);
+  // the ask's signature over the v3 text is not valid as a v2 hello: the same fields with a v2 shape and the ask's signature are refused
+  const ask = w.askHello();
+  const asV2 = { space: ask.space, invite: INVITE, identity: ask.identity, entry: ask.entry, ts: ask.ts, nonce: ask.nonce, channel: ask.channel, sig: ask.sig };
+  const c2 = await w.open(asV2);
+  await assert.rejects(() => w.kcall(c2, "grants.invites.get", [INVITE]), e => e.code === "denied");
+  // and a v2 signature put into a v3 shape is refused
+  const v2 = w.hello();
+  const asV3 = { v: 3, purpose: "ask", space: v2.space, identity: v2.identity, entry: v2.entry, ts: v2.ts, nonce: v2.nonce, channel: v2.channel, sig: v2.sig };
+  const c3 = await w.open(asV3);
+  await assert.rejects(() => w.kcall(c3, "requests.ask", [{}]), e => e.code === "denied");
+});
+
+test("ask door: a wrong purpose, an extra field, a bad proof, a stale or replayed hello and an unknown identity are refused; a device under 24 hours old asks for nothing", async () => {
+  const w = inviteeWorld();
+  for (const bad of [{ purpose: "invite" }, { invite: INVITE }, { extra: 1 }, { sig: "A".repeat(86) }, { ts: 1 }, { identity: "per_" + "z".repeat(26) }, { box: "OtherBoxIdOtherBox" }]) {
+    const c = await w.open(w.askHello(bad));
+    await assert.rejects(() => w.kcall(c, "requests.ask", [{}]), e => e.code === "denied", JSON.stringify(bad));
+  }
+  const same = w.askHello();
+  const c1 = await w.open(same);
+  assert.equal((await w.kcall(c1, "requests.ask", [{}])).ok, true);
+  const c2 = await w.open(same);
+  await assert.rejects(() => w.kcall(c2, "requests.ask", [{}]), e => e.code === "denied", "a replayed nonce");
+  const young = inviteeWorld({ age: { founder: false, since: 1_000_000 - 3600_000 } });
+  const cy = await young.open(young.askHello());
+  await assert.rejects(() => young.kcall(cy, "requests.ask", [{}]), e => e.code === "denied", "a device an hour old");
+});
+
+test("ask door: the per-channel and Space-wide hourly caps are checked BEFORE the directory is asked, so a flood cannot spend lookups, and the cap is by hour", async () => {
+  const w = inviteeWorld({ askLimits: { perChannelHour: 3, perSpaceHour: 100 } });
+  const ok = [];
+  for (let i = 0; i < 5; i++) { const c = await w.open(w.askHello()); ok.push(await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)); }
+  assert.deepEqual(ok, [true, true, true, false, false], "the channel's fourth ask in the hour is refused");
+  assert.equal(w.live.lookups, 3, "the two refused asks never reached the directory");
+  w.tick(3_600_001);
+  const c = await w.open(w.askHello());
+  assert.equal((await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)), true, "an hour later it is open again");
+});
+
+test("ask door: forged asks from fresh channels do not spend the Space's allowance or reach the directory past its cap, and a valid ask still goes through", async () => {
+  const w = inviteeWorld({ askLimits: { perChannelHour: 5, perSpaceHour: 3 }, limits: { perBox: 50 } });
+  const alpha = "abcdefghijklmnopqrstuvwxyz234567";
+  for (let i = 0; i < 200; i++) {
+    const chan = "zz" + alpha[i % 32] + alpha[Math.floor(i / 32) % 32] + "aaaaaaaaaaaa";
+    const c = await w.open({ ...w.askHello({ channel: chan }), sig: "A".repeat(86) }, chan);
+    await w.kcall(c, "requests.ask", [{}]).then(() => assert.fail("a forged ask was served"), () => {});
+  }
+  assert.ok(w.live.lookups <= 50, `the directory was asked ${w.live.lookups} times, past its cap of 50`);
+  const c = await w.open(w.askHello());
+  assert.equal((await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)), true, "a valid ask still goes through: the forged ones did not use up the Space's three an hour");
 });

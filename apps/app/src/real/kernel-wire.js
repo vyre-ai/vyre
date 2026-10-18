@@ -25,6 +25,7 @@ export function expectedRequest(space, call, args) {
   if (call === "grants.invites.revoke") return request(space, "grants.invite", urn(space, "invite", String(args[0])), { revoke: args[0] });
   // a member adds an AI key to their own vault (kernel/remote/proof.js vaultAddKey): the label and the HASH of the value, never the value or the password
   if (call === "myvault.addkey" && args[0] && typeof args[0] === "object") return request(space, "vault.add_key", urn(space, "vault-me", "self"), { label: String(args[0].label), kind: "api-key", value_sha256: sha256(String(args[0].value)) });
+  if (call === "requests.setting" && args[0] && typeof args[0] === "object") return request(space, "requests.setting", urn(space, "requests", "self"), { accepting: args[0].accepting === true });
   if (call === "myvault.addkeys" && args[0] && Array.isArray(args[0].items)) {
     const items = args[0].items.map((/** @type {any} */ x) => ({ label: String(x && x.label), kind: "api-key", value_sha256: sha256(String(x && x.value)) })).sort((/** @type {any} */ a, /** @type {any} */ b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.value_sha256 < b.value_sha256 ? -1 : a.value_sha256 > b.value_sha256 ? 1 : 0));
     return request(space, "vault.add_keys", urn(space, "vault-me", "self"), { items });
@@ -80,6 +81,7 @@ export function kernelWire(peer, space, o = {}) {
 export function promptFor(call, args) {
   if (call === "myvault.addkey" && args && args[0] && typeof args[0].label === "string") return `Add ${args[0].label.slice(0, 60)} to your own Vault`;
   if (call === "myvault.addkeys" && args && args[0] && Array.isArray(args[0].items)) { const n = args[0].items.length; return `Add ${n} ${n === 1 ? "key" : "keys"} to your own Vault: ${args[0].items.map((/** @type {any} */ x) => String(x.label).slice(0, 40)).join(", ").slice(0, 160)}`; }
+  if (call === "requests.setting") return args && args[0] && args[0].accepting === true ? "Let people ask to join this Space" : "Stop taking requests to join this Space";
   return PROMPT[call] || "Approve this change";
 }
 const PROMPT = /** @type {Record<string, string>} */ ({ "grants.invites.create": "Invite someone to your team", "grants.invites.confirm": "Confirm the person you are inviting", "grants.invites.revoke": "Cancel an invite" });

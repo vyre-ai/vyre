@@ -1,0 +1,22 @@
+{
+  "name": "requests",
+  "version": "0.1.0",
+  "description": "Asking to join a Space by its address. A person with no invite may ask a Space that takes requests; an owner or admin sees the ask and answers it through the existing invite path. Off by default for every Space.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["requests.accepting"],
+    "tools": [
+      { "name": "requests.accepting", "reach": "person", "effect": "read" },
+      { "name": "requests.attention", "reach": "person", "effect": "read" },
+      { "name": "requests.accept", "reach": "person", "effect": "write" },
+      { "name": "requests.list", "reach": "person", "effect": "read" },
+      { "name": "requests.decide", "reach": "person", "effect": "write" },
+      { "name": "requests.serve", "reach": "modules", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["requests.asked", "requests.decided", "requests.setting"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

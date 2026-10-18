@@ -38,6 +38,8 @@ export const CALLS = Object.freeze({
   // A member's own Vault, for the one thing the first run needs from it: an AI key of theirs (core/vault/member-service.js). status says whether their vault exists and is open; addkey is ONE act (make the vault if there is none,
   // open it if locked, pick a free item name in it, put the key) covered by ONE presence proof over the label and the value's hash. Each runs the vault's internal tool vault.me.serve as the door's own member chain: no owner chain, no model, no logging or echo of the password, the Secret Key or the value.
   myvault: ["status", "addkey", "addkeys"],
+  // Asking to join (core/requests): ask and status are the asker's own (ASK_CALLS, the ask door); list, decide and clear are an owner's or admin's, answered only for a member of that role.
+  requests: ["ask", "status", "list", "decide", "clear", "setting"],
   // A member's own skills on the team's server (0.3.3 G03; core/skills/member-service.js): her personal skill is drafted and approved by her alone, a draft at a higher level waits for its owner, and only skills (no plugins).
   skills: ["browse", "list", "get", "draft", "import", "approve", "decline", "rollback", "versions"],
   // A member's own new-device sign-ins on the team's server (core/identity/signins.js): the card on Now and its two answers; the person is the door's authenticated chain.
@@ -54,6 +56,9 @@ export const CALLS = Object.freeze({
 export const CACHEABLE = Object.freeze(new Set(["grants.list", "grants.members.list", "grants.members.get", "grants.invites.get", "records.definitions", "records.get", "records.query", "records.aggregate", "events.read", "tasks.get", "tasks.needsYou", "tasks.card"]));
 
 /** Calls a person who is not a member yet may make: reading the join card and accepting the invite. */
+// A person who is not a member and holds no invite may ask to join a Space that takes requests (0.6.2, sec53's conditions): exactly these two calls, on a hello signed as `vyre-invitee-hello-v3` with the purpose "ask" in its text
+// (core/daemon/peer-door.js). They are never reachable on an invite's stream, and an ask stream never reaches the invite calls.
+export const ASK_CALLS = Object.freeze(new Set(["requests.ask", "requests.status"]));
 export const INVITEE_CALLS = Object.freeze(new Set(["grants.invites.get", "grants.invites.accept"]));
 
 export const pathOf = (/** @type {string} */ group, /** @type {string} */ name) => `${group}.${name}`;
