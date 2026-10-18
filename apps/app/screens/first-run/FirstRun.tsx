@@ -99,7 +99,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
-  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ provider: string; label: string; item?: string }[]>([]);
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -427,7 +427,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
                 if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
                 setApiKey("");
                 if (!r.ok) { setFailure(r.message); return; }
-                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim() }]);
+                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim(), ...(typeof r.item === "string" && r.item ? { item: r.item } : {}) }]);
                 setPick(""); setAcctLabel(""); setNeedPw(false);
               })} />
             </View>
@@ -458,7 +458,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             {accounts.map((x) => (
               <View key={x.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <ProviderBadge provider={x.provider} size={20} />
-                <Text>{`${x.label} is signed in`}</Text>
+                <Text>{x.item ? `${x.label} is added. Saved in your Vault as ${x.item}.` : `${x.label} is signed in`}</Text>
               </View>
             ))}
           </View>

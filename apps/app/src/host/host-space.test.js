@@ -539,7 +539,7 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   // with the password: one act makes and opens the vault and puts the key; the vault's Secret Key stays on this device
   calls.length = 0;
   const r = await ask({ password: PW });
-  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true });
+  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true, item: "My Claude" }, "the name it is saved under in their Vault comes back, so the sheet can say it");
   assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
   assert.ok(calls.every((c) => c.box === "boxA"));
   assert.ok(calls.every((c) => /^spc_[a-z2-7]{12}$/.test(String(c.space))), "every call names the team's Space, which is how the app sends it through the team's door");
