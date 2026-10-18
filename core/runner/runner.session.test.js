@@ -95,25 +95,30 @@ test("runner: a machine that was offline at revoke deletes its workspace on next
   assert.equal(fs.existsSync(dir), false);
 });
 
-test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 90_000 }, async t => {
+test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 180_000 }, async t => {
   const r = await rig(t, { ttlMs: 12000 });
   const h = await r.launch(r.runner, "s1");
   h.send("turn before expiry");
-  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  // the waits are for the events themselves, with room for a loaded runner: the lease is 12 s and is renewed while the space answers, so a slow first turn does not end it
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1, 60_000);
   r.sp.state.offline = true;
-  await h.done;
+  await Promise.race([h.done, new Promise((_, no) => { const tm = setTimeout(() => no(new Error("the session did not stop after the lease ended")), 60_000); tm.unref?.(); })]);
+  await waitFor(() => r.runner.status().state === "locked", 60_000);
   await r.runner.whenSecured();
   assert.equal(r.runner.lease.key(), null);
   assert.equal(r.runner.status().state, "locked");
   // The key is off the filesystem the moment the workspace locks, but a file the stopped session held open stays readable until its last holder is gone ("incomplete" removal): the end state is what is asserted,
   // within a few seconds, not the instant between the stop and the kernel dropping that file.
+  // The promise is that the data is unreadable soon after the lease ends: the bound stays 20 s (it is not raised for a loaded runner), and the time it really took is printed so a slow lock is a finding for the lock code.
+  const lockedAt = Date.now();
   await waitFor(() => findOnDisk(r.runner.dir, ["before expiry"]).length === 0, 20_000);
+  console.log(`lease-ends: plaintext unreadable ${Date.now() - lockedAt} ms after the workspace reported locked`);
   assert.deepEqual(findOnDisk(r.runner.dir, ["before expiry"]), []);
   // Back online and still a member: it opens again with the same data.
   r.sp.state.offline = false;
   const c = await r.runner.contact();
   assert.equal(c.ok, true);
-  await waitFor(() => r.runner.status().mounted);
+  await waitFor(() => r.runner.status().mounted, 60_000);
   const nf = path.join(r.runner.mnt, "work", "files", "notes.txt");
   assert.equal(fs.readFileSync(nf, "utf8"), "before expiry\n");
 });

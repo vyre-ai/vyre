@@ -12,7 +12,7 @@ import http from "node:http";
 import path from "node:path";
 import { seams } from "./index.js";
 import { paths } from "../config/index.js";
-import { pair, until, wait } from "../../test/link-harness.js";
+import { pair, until } from "../../test/link-harness.js";
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 8, 28, 9, 0); // a whole minute, so a floating alarm's wall time is exact
@@ -52,10 +52,10 @@ function fakeClocks(t) {
   return { clock, timers, macArms, advanceTo };
 }
 
-/** The Mac's proxied box stream, collected as parsed events. */
-function stream(t, root) {
+/** The Mac's proxied box stream, collected as parsed events. `since` 0 replays what the box already logged, so an event that rings before the stream is connected is still seen: no fixed wait for the connection. */
+function stream(t, root, since = "latest") {
   const seen = [];
-  const req = http.get({ socketPath: paths(root).socket, path: "/v1/link/events?type=planner.*&since=latest" }, res => {
+  const req = http.get({ socketPath: paths(root).socket, path: `/v1/link/events?type=planner.*&since=${since}` }, res => {
     res.setEncoding("utf8");
     let buf = "";
     res.on("data", c => {
@@ -103,8 +103,7 @@ test("planner over the link: the Mac adds on the box, hears the box ring, and it
   assert.deepEqual([...c.timers.values()].map(x => x.at), [at]);
 
   // (2) The box rings; the Mac's stream carries it, tagged with its source.
-  const seen = stream(t, s.macRoot);
-  await wait(200);
+  const seen = stream(t, s.macRoot, "0");
   c.advanceTo(at);
   const fired = await until(() => seen.find(e => e.type === "planner.fired" && e.payload.item === id), 5000);
   assert.equal(fired.source, "box");
