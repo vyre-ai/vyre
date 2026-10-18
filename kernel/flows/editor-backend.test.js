@@ -242,3 +242,39 @@ test("the engine half of 'if empty, use': coalesce inside text gives the fallbac
   assert.equal(run.state, "done");
   assert.equal(run.steps.after.input.who, "someone");
 });
+
+test("(c) a send in the Flow's own failure path, or in a lane of a parallel step, counts: a retry that would clear it is refused, and one after the parallel step is not", async () => {
+  const sb = sandbox();
+  const sent = /** @type {string[]} */ ([]);
+  const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ a) => { sent.push(a); return { ok: true }; } } });
+  const { SPACE } = await import("./testing/fixtures.js");
+  const mail = (/** @type {string} */ id) => ({ id, kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com" } });
+  // 1. the failure path
+  await install(w, { ...flowOf([fn("a"), fn("c")]), on_failure: [mail("apology")] });
+  const first = await fire(w);
+  const r1 = await w.store.getRun(first.id);
+  r1.state = "failed"; r1.waiting = undefined; r1.error = { step: "c", code: "boom", message: "boom" };
+  r1.steps = { a: { status: "done", output: { n: "a" } }, c: { status: "failed", error: { code: "boom" } }, "apology!onfail": { status: "done", output: { ok: true }, sent_at: w.clock.t } };
+  await w.store.putRun(r1);
+  await assert.rejects(() => w.runner.retry(first.id, { from: "c" }), (/** @type {any} */ e) => e.code === "already_sent", "the apology already went out and the retry would clear it");
+  assert.deepEqual(sent, []);
+  // 2. a lane of a parallel step: the lane is a run of its own
+  w.clock.t += 1000;
+  const f2 = await install(w, { ...flowOf([fn("a"), { id: "p", kind: "parallel", steps: [{ id: "l1", kind: "branch", steps: [mail("laneMail")] }] }, fn("c")]), name: "lanes", trigger: { on: "event", event: "lane.go" } });
+  w.kernel.inbound("lane.go", { n: 1 }); await settle(w);
+  const parent = (await w.runner.listRuns({ flow: f2.id }))[0];
+  const p = await w.store.getRun(parent.id);
+  const child = (p.steps.p && p.steps.p.children || [])[0] || (p.waiting && p.waiting.children || [])[0];
+  assert.ok(child, "the lane has a run of its own: " + JSON.stringify(p.steps).slice(0, 200));
+  const c = await w.store.getRun(child);
+  c.steps = { laneMail: { status: "done", output: { ok: true }, sent_at: w.clock.t } }; c.state = "done"; await w.store.putRun(c);
+  p.state = "failed"; p.waiting = undefined; p.error = { step: "c", code: "boom", message: "boom" };
+  p.steps = { a: { status: "done", output: { n: "a" } }, p: { status: "done", output: {}, children: [child] }, c: { status: "failed", error: { code: "boom" } } };
+  await w.store.putRun(p);
+  await assert.rejects(() => w.runner.retry(p.id, { from: "p" }), (/** @type {any} */ e) => e.code === "already_sent", "from the parallel step, its lane's send would be run again");
+  await assert.rejects(() => w.runner.retry(p.id, { from: "a" }), (/** @type {any} */ e) => e.code === "already_sent");
+  assert.deepEqual(sent, [], "nothing was sent");
+  sb.calls.length = 0;
+  await w.runner.retry(p.id, { from: "c" }); await settle(w);
+  assert.deepEqual(sb.calls, ["c"], "from after the parallel step it works");
+});

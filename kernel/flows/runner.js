@@ -921,11 +921,25 @@ export class FlowRunner {
         const again = new Set(order.slice(at));
         // Fail closed: a step that sends, posts, pays or publishes is not run again from here if the run shows it was done or begun and not known to have failed. Whether the other side would drop a repeat is not
         // something this runner can know, so it does not ask it to.
-        const outward = new Set(compileFlow(def.flow, /** @type {any} */ (await this.catalogFn())).effects.outward.map((/** @type {any} */ o) => o.step));
-        for (const [k, l] of Object.entries(run.steps)) {
+        const cat = /** @type {any} */ (await this.catalogFn());
+        const outwardOf = (/** @type {any} */ flow) => new Set(compileFlow(flow, cat).effects.outward.map((/** @type {any} */ o) => o.step));
+        const sentIn = (/** @type {Record<string, any>} */ steps, /** @type {Set<string>} */ outward, /** @type {(id: string, k: string) => boolean} */ counts) => Object.entries(steps || {}).some(([k, l]) => {
+          // a `?ask` entry is the question put to a person before a send (its yes, not the send), so it is not the act; the send is the step's own entry
           const id = k.replace(/[@!?].*$/, "");
-          if (!again.has(id) || !outward.has(id) || k.includes("?") || !l) continue;
-          if (l.status === "done" || l.status === "started" || l.status === "waiting" || l.sent_at) throw fail("already_sent", "that run already sent something; start a new run to send again");
+          return Boolean(l) && !k.includes("?") && outward.has(id) && counts(id, k) && (l.status === "done" || l.status === "started" || l.status === "waiting" || Boolean(l.sent_at));
+        });
+        const refuse = () => fail("already_sent", "that run already sent something; start a new run to send again");
+        const outward = outwardOf(def.flow);
+        // the steps that would run again, and every entry of the Flow's own failure path (all of them are cleared below)
+        if (sentIn(run.steps, outward, (id, k) => again.has(id) || k.includes("!"))) throw refuse();
+        // a parallel or sub-flow step that would run again has runs of its own (lanes, a called Flow): what they sent counts, judged against the version each started on
+        for (const [k, l] of Object.entries(run.steps)) {
+          if (!l || !Array.isArray(l.children) || !again.has(k.replace(/[@!?].*$/, ""))) continue;
+          for (const cid of l.children) {
+            const child = await this.store.getRun(String(cid));
+            const cdef = child ? await this.store.getVersion(child.flow, child.version) : null;
+            if (child && cdef && sentIn(child.steps, outwardOf(cdef.flow), () => true)) throw refuse();
+          }
         }
         for (const k of Object.keys(run.steps)) if (k.includes("!") || again.has(k.replace(/[@!?].*$/, ""))) delete run.steps[k];
         run.result = undefined; run.waiting = undefined; run.queued = undefined; run.cancelled = undefined; run.finished_at = undefined;
