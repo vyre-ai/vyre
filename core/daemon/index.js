@@ -327,10 +327,8 @@ async function startLocked(opts, root, p, release) {
       // The Space's settings for Flows (concurrency, stuck and stale limits, the backlog cap): read through the settings tool, as the daemon itself.
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
       // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
-      agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
-      callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
-      // A tool run as a person, with their session (their own surface): what installing a Kit's assistants needs, so the grants are the ones the person would need doing it themselves.
-      callAs: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ token) => registry.call(tool, input, "deck", { token }),
+      agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null), callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      callAs: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ token) => registry.call(tool, input, "deck", { token }), /* a tool run as a person with their session: what installing a Kit's assistants needs, so the grants are the person's own */
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
