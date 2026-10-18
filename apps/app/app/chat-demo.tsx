@@ -17,7 +17,7 @@ type Meter = { delta: number[]; first: number[]; keys: number[]; paints: number[
 
 /** `sample` is one of the sample world's chats (demo-three, demo-people), opened from the Chats list; with none it is the default demo. */
 export default function ChatDemo({ sample }: { sample?: string } = {}) {
-  const q = useLocalSearchParams<{ n?: string; at?: string; composer?: string; tps?: string; hold?: string; scenario?: string; about?: string; note?: string; tab?: string }>();
+  const q = useLocalSearchParams<{ n?: string; at?: string; composer?: string; tps?: string; hold?: string; scenario?: string; about?: string; note?: string; tab?: string; fork?: string }>();
   const group = q.scenario === "group";
   const activity = q.scenario === "activity";
   const previews = q.scenario === "previews";
@@ -38,6 +38,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
     <ThemeProvider>
       <ChatScreen
         sampleGroup={group}
+        sampleFork={q.fork === "1"}
         sessionId={sample ?? "demo"}
         onBack={() => router.back()}
         title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : sample === "demo-ads" ? "ads" : sample === "demo-group" ? "Spring campaign" : group ? "Northwind supply contract, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}

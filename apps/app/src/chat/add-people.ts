@@ -4,6 +4,7 @@ import { getAgreeKey } from "../crypto/agree-key";
 import { holdersFor, newChatRing, ringWithPeople } from "../crypto/chat-ring.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { tool } from "../real/box";
+import { addToGroup } from "./group-add-model.js";
 
 const say = (e: unknown) => (e instanceof Error && e.message ? e.message : "That did not go through.");
 const idOf = (p: string) => String(p).replace(/^person:/, "");
@@ -36,4 +37,14 @@ export async function newThreadWith(people: string[]): Promise<{ thread: string 
     const out = await tool<{ thread?: string }>("work.chat.thread.new", { people: others, id: made.id, ring: made.ring });
     return out?.thread ? { thread: String(out.thread) } : { say: "Vyre did not say which thread it started." };
   } catch (e) { return { say: say(e) }; }
+}
+
+/** Add people to a group chat: work.chat.add-people takes a ring for every thread in it, each made on this device. Null when it is done, else the line to show. */
+export async function addToGroupChat(chat: string, people: string[]): Promise<string | null> {
+  try {
+    const me = await getAgreeKey();
+    if (!me) return "This device can't add people to a private chat yet.";
+    const call = (t: string, i?: Record<string, unknown>) => tool(t, i ?? {});
+    return await addToGroup((t, i) => call(t, i), chat, people.map(idOf), (thread) => ringWithPeople(call, thread, people.map(idOf), me));
+  } catch (e) { return say(e); }
 }

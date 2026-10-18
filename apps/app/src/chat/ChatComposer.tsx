@@ -17,7 +17,7 @@ import { agentHint } from "./threads-model.js";
 import { popoverLeft } from "./caret-x.js";
 import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
-import { readDraft, writeDraft } from "./drafts";
+import { readDraft, readDraftMentions, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
@@ -134,7 +134,7 @@ export function ChatComposer(p: ComposerProps) {
   const [mode, setMode] = useState<"steer" | "queue">("steer");
   const lastTyping = useRef(0);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
-  const picked = useRef(new Map<string, PickedMention>());
+  const picked = useRef(new Map<string, PickedMention>((p.draftKey ? readDraftMentions(p.draftKey) : []).map((m) => [m.name, m])));
   const slots = p.slots ?? [];
   const input = useRef<TextInput>(null);
   const trigRaw = useMemo(() => triggerAt(text, caret), [text, caret]);

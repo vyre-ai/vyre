@@ -31,7 +31,10 @@ import { ChatHeader } from "./ChatHeader";
 import { chatKind, threadsTab } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
-import { addToAgentThread, newThreadWith } from "./add-people";
+import { OriginBlock } from "./OriginBlock";
+import { loadOrigin, sampleOrigin } from "./origin-history-source";
+import type { OriginRow } from "./origin-history.js";
+import { addToAgentThread, addToGroupChat, newThreadWith } from "./add-people";
 import { callsFromItems, flowNameOf, afterMake } from "./make-flow-model.js";
 import { callT } from "../real/call-tool";
 import { chatTools } from "../../screens/chat-tools/instance";
@@ -101,6 +104,8 @@ export type ChatScreenProps = {
   flow?: boolean;
   /** The sample world only: show a group (two people and two agents) for the design preview. */
   sampleGroup?: boolean;
+  /** The sample world's fork: shows the forked-thread banner and reads its origin from sample frames (the demo route and the shots). */
+  sampleFork?: boolean;
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
   /** The project this chat is in, for the header (a name, never an id). */
@@ -166,7 +171,9 @@ export function ChatScreen(p: ChatScreenProps) {
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
   const [forward, setForward] = useState<{ text: string } | null>(null);
   // A thread forked from another says so, and where the earlier part lives.
-  const [forkedFrom, setForkedFrom] = useState<{ thread: string; title: string } | null>(null);
+  const [forkedFrom, setForkedFrom] = useState<{ thread: string; title: string; message: string } | null>(null);
+  const [originRows, setOriginRows] = useState<OriginRow[] | null>(null);
+  const [originShown, setOriginShown] = useState(true);
   const forkAsThread = useRef(false);
   const threadRef = useRef("");
   const openThreadRef = useRef<(t: string) => void>(() => {});
@@ -382,17 +389,24 @@ export function ChatScreen(p: ChatScreenProps) {
   const agentForNote = kind === "agent" ? agentNames[0] : "";
   const thisThread = here.thread ?? p.sessionId;
   useEffect(() => {
-    setForkedFrom(null);
+    setForkedFrom(p.sampleFork ? { thread: "demo", message: "a1", title: "Fix the intake date check" } : null); setOriginRows(null);
     if (!agentForNote || allowsMock()) return;
     let live = true;
     void agentThreads.list(agentForNote).then((r) => {
       if (!live || !("rows" in r)) return;
       const me = r.rows.find((t) => t.id === thisThread);
       const from = me?.forkedFrom;
-      if (from) setForkedFrom({ thread: from.thread, title: r.rows.find((t) => t.id === from.thread)?.title ?? "the original thread" });
+      if (from) setForkedFrom({ thread: from.thread, message: from.message, title: r.rows.find((t) => t.id === from.thread)?.title ?? "the original thread" });
     });
     return () => { live = false; };
   }, [agentForNote, thisThread]);
+  // the fork's origin, read once: what it said up to the fork, or nothing when this device cannot open it
+  useEffect(() => {
+    if (!forkedFrom || (allowsMock() && !p.sampleFork)) return;
+    let live = true;
+    void (p.sampleFork ? sampleOrigin() : loadOrigin(forkedFrom.thread, forkedFrom.message)).then((r) => { if (live) setOriginRows(r); });
+    return () => { live = false; };
+  }, [forkedFrom]);
   const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };
   const panelNow = useRef({ panel, toggle: togglePanel });
   panelNow.current = { panel, toggle: togglePanel };
@@ -442,6 +456,7 @@ export function ChatScreen(p: ChatScreenProps) {
           // a thread with an agent moves into the chat of exactly those people; a one-to-one chat gets a new thread in the chat of exactly that set; a group just gains them
           if (kind === "agent" && who.family !== "assistant") return addToAgentThread(here.thread ?? p.sessionId, [String(who.id ?? who.name)]);
           if (kind === "person" && who.family !== "assistant") { const r = await newThreadWith([...others.filter((f) => f.family !== "assistant").map((f) => f.id), String(who.id ?? who.name)]); if ("say" in r) return r.say; openThreadRef.current(r.thread); return null; }
+          if (kind === "group" && who.family !== "assistant") return addToGroupChat(here.thread ?? p.sessionId, [String(who.id ?? who.name)]);
           try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; }
         } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
@@ -472,6 +487,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
       {forkedFrom ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Banner><View style={{ gap: 4, alignItems: "flex-start" }}><Text>{`Forked from ${forkedFrom.title}. Everything up to that point is in the original.`}</Text><Button kind="ghost" size="sm" label="Open the original" onPress={() => openThread(forkedFrom.thread)} /></View></Banner></View> : null}
+      {forkedFrom && originRows && originShown ? <OriginBlock rows={originRows} title={forkedFrom.title} phone={phone} onHide={() => setOriginShown(false)} /> : null}
 
       <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
       <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -656,7 +672,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const makeFlow = async () => {
     const calls = callsFromItems(layoutRows.filter((r) => r.kind === "tool").map((r) => store.item(r.key)));
     if (!calls.length) { showToast("There is nothing here yet that a Flow could repeat."); return; }
-    const r = await callT<any>("flows.from-chat", { name: flowNameOf(head.title), calls });
+    const r = await callT<any>("flows.from-chat", { name: flowNameOf(head.title), calls, chat: here.thread ?? p.sessionId });
     const out = afterMake(r.error ? { ok: false, errors: [{ message: r.error.message }] } : r.data);
     if ("open" in out) router.push(out.open as never); else showToast(out.say);
   };
