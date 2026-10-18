@@ -1,7 +1,17 @@
-# Idle CPU of vyred on a quiet hosted runner, three runs per Node major, for setting scripts/perf-check's budgets (#71). Dispatch only.
+# Idle CPU of vyred on a quiet hosted runner, three runs, for setting scripts/perf-check's budgets (#71) and for finding what makes vyred busier between two refs. Dispatch only.
+# `ref` is the tag, branch or commit to measure (default: the dispatched ref); the whole perf-check report is printed: the recurring timers under 60 s with their call sites, the settled heap, the CPU samples.
 name: perf-idle
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "The tag, branch or commit to measure (empty: the dispatched ref)"
+        required: false
+        default: ""
+      runner:
+        description: "hosted (a quiet GitHub runner, the default) or self (the shared self-hosted runners, as the node job uses)"
+        required: false
+        default: "hosted"
   push:
     branches: ["work/launch-perf-idle"]
 permissions:
@@ -12,16 +22,51 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner == 'self' && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
+      - name: Check the ref
+        env:
+          REF: ${{ inputs.ref }}
+        run: '[ -z "$REF" ] || printf "%s" "$REF" | grep -Eq "^[A-Za-z0-9._/-]{1,200}$" || { echo "::error::not a ref"; exit 1; }'
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}" }
       - run: npm ci --no-audit --no-fund
-      - name: three idle runs
+      - name: per-module heap cost (each module entry imported alone, after a GC)
         run: |
+          cat > /tmp/heap-probe.mjs <<'PROBE'
+          // Per-module heap cost: import one file in a fresh process, force a GC, print the heap used above an empty process. Run for every module entry and a few data loaders.
+          import { spawnSync } from "node:child_process";
+          import fs from "node:fs";
+          import path from "node:path";
+          const one = process.argv[2];
+          if (one) {
+            const base = (() => { global.gc(); return process.memoryUsage().heapUsed; })();
+            await import(path.resolve(one)).catch(() => {});
+            global.gc(); global.gc();
+            console.log(((process.memoryUsage().heapUsed - base) / 1048576).toFixed(2));
+            process.exit(0);
+          }
+          const files = [];
+          for (const d of fs.readdirSync("core", { withFileTypes: true })) if (d.isDirectory() && fs.existsSync(`core/${d.name}/index.js`)) files.push(`core/${d.name}/index.js`);
+          for (const f of ["lib/mcp-catalog.js", "lib/connector-presets/index.js", "lib/connectors/index.js", "kernel/flows/index.js", "kernel/flows/schema.js"]) if (fs.existsSync(f)) files.push(f);
+          const rows = [];
+          for (const f of files) {
+            const r = spawnSync(process.execPath, ["--expose-gc", "--no-warnings", import.meta.filename, f], { encoding: "utf8", timeout: 60_000, env: { ...process.env, VYRE_HOME: fs.mkdtempSync("/tmp/hp-") } });
+            const n = Number((r.stdout || "").trim().split("\n").pop());
+            if (Number.isFinite(n)) rows.push([n, f]);
+          }
+          rows.sort((a, b) => b[0] - a[0]);
+          for (const [n, f] of rows) console.log(`${n.toFixed(2).padStart(7)} MB  ${f}`);
+          PROBE
+          node /tmp/heap-probe.mjs 2>&1 | head -25
+      - name: three idle runs, whole report
+        run: |
+          git log -1 --format='measuring %h %s'
           for i in 1 2 3; do
-            echo "== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
-            node scripts/perf-check 2>&1 | grep -E "CPU \(|FAIL|host load" || true
+            echo "=================== run $i (node ${{ matrix.node }}, runner $RUNNER_NAME, load $(cut -d' ' -f1-3 /proc/loadavg))"
+            node scripts/perf-check 2>&1 || true
           done
