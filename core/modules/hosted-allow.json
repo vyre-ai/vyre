@@ -130,6 +130,8 @@
   "threads.list": "reads the person's chats and their history",
   "threads.recall-sessions": "lists thread ids for a person when relaying member-scoped recall; read-only",
   "threads.send": "sends a message into one of the person's own chats; the chat gate judges it",
+  "work.agent.thread.new": "reads or starts a chat the person is in, or names and pins it",
+  "work.agent.threads": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.create": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.get": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.link": "reads or starts a chat the person is in, or names and pins it",
@@ -139,7 +141,14 @@
   "work.chat.pinned": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.rename": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.span": "reads or starts a chat the person is in, or names and pins it",
-  "work.chat.title": "reads or starts a chat the person is in, or names and pins it"
+  "work.chat.title": "reads or starts a chat the person is in, or names and pins it",
+  "work.chat.summary": "reads or starts a chat the person is in, or names and pins it",
+  "work.chat.thread.new": "reads or starts a chat the person is in, or names and pins it",
+  "work.chat.threads": "reads or starts a chat the person is in, or names and pins it",
+  "work.project.chat": "reads or starts a chat the person is in, or names and pins it",
+  "work.flow.threads": "reads or starts a chat the person is in, or names and pins it",
+  "work.person.shared": "reads or starts a chat the person is in, or names and pins it",
+  "work.thread.fork": "reads or starts a chat the person is in, or names and pins it"
  },
  "gate": {
   "identity.create": "an agent proposes the username; the card is held and the person enters the master password on their device",
