@@ -81,13 +81,17 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
     return { key: key ? toB64u(key) : undefined } as T;
   }
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
-  const wire = memberChatWire(name);
+  // A joined member's Records notes are the team's planner's (planner.serve, notes only): only a planner call the Notes tab marks { notes: true } goes to the team's door. The rest of the planner is hers, at home.
+  const noteCall = name.startsWith("planner.") && given.notes === true;
+  if (name.startsWith("planner.") && "notes" in given) { const { notes: _marker, ...unmarked } = given; given = unmarked; }
+  const wire = name.startsWith("planner.") && !noteCall ? null : memberChatWire(name);
   if (wire) {
     const space = chatSpace(given, useSpaces.getState().space);
     const team = space ? await import("./team-join") : null;
     if (space && team && (await team.joinedHere(space))) {
-      const { space: _named, ...rest } = given;
-      try { return (await team.teamCall(space, wire, [rest])) as T; }
+      const { space: _named, ...withKind } = given;
+      const { kind: _kind, ...rest } = withKind;   // the team door fixes the kind to note
+      try { return (await team.teamCall(space, wire, [name.startsWith("planner.") ? rest : withKind])) as T; }
       catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
     }
   }

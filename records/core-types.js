@@ -230,6 +230,8 @@ export const TASK = {
     text("wall", "Wall time"),
     f("date", "date", "Date"),
     choice("source", "Source", TASK_SOURCES),
+    // the values of fast fields (core/records-tools/quick.js). It is part of the type itself, not added on the way out: the kernel and the tasks service define TASK as it is here, and a define that leaves out a field the store holds is refused (removing a field is a migration).
+    text("extra", "Extra fields"),
   ],
   views: [
     { name: "tasks_board", type: "board", label: "Tasks by status", groupBy: "status", columns: ["title", "due", "priority"] },
