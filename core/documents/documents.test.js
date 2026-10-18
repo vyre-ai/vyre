@@ -370,7 +370,7 @@ test("Download audit end to end: the first call saves Signed/audit-<n>.pdf once,
   assert.equal((await code(notPdf.run("documents.signing.audit", { submission: 9 }, { caller: "cli" }))).code, "app_refused");
   assert.equal(notPdf.files.has("Signed/audit-9.pdf"), false, "an error page is never saved as an audit file");
 
-  // A second person who cannot read the first person's file gets a refusal, never the first person's path, and nothing is written for her (sec53).
+  // A second person who cannot read the first person's file gets a refusal, never the first person's path, and nothing is written for her.
   const bob = { hops: [{ actor: { kind: "person", id: "per_bob", space: SPACE } }] };
   const other = rig({ chain: bob, call, denied: [bob] });
   other.files.set("Signed/audit-41.pdf", [pdf]);
