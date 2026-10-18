@@ -247,6 +247,46 @@ export function sayIfIncomplete(r, log) {
   return true;
 }
 
+/**
+ * Pids (other than this process) that hold a file, their working directory or a mapping under `base`. Reads /proc; a process of another user cannot be read and is skipped (it could not be stopped either).
+ * @param {string} base @param {{ procRoot?: string, self?: number }} [o] @returns {number[]}
+ */
+export function holdersOf(base, o = {}) {
+  const root = o.procRoot || "/proc", self = o.self ?? process.pid, under = (/** @type {string} */ p) => p === base || p.startsWith(base + path.sep);
+  /** @type {number[]} */ const out = [];
+  let pids = [];
+  try { pids = fs.readdirSync(root).filter(n => /^\d+$/.test(n)); } catch { return out; }
+  for (const n of pids) {
+    const pid = Number(n); if (pid === self) continue;
+    const dir = path.join(root, n);
+    const links = [];
+    try { links.push(fs.readlinkSync(path.join(dir, "cwd"))); } catch { /* gone or not ours */ }
+    try { for (const f of fs.readdirSync(path.join(dir, "fd"))) { try { links.push(fs.readlinkSync(path.join(dir, "fd", f))); } catch { /* closed meanwhile */ } } } catch { /* not ours */ }
+    try { for (const l of fs.readFileSync(path.join(dir, "maps"), "utf8").split("\n")) { const i = l.indexOf("/"); if (i > 0) links.push(l.slice(i).replace(/ \(deleted\)$/, "")); } } catch { /* not ours */ }
+    if (links.some(under)) out.push(pid);
+  }
+  return out;
+}
+
+/**
+ * Lock the workspace for real. Remove the key; while the helper says "incomplete", stop the processes that still hold files (SIGTERM, then SIGKILL on the later rounds) and remove again, at most `tries` times.
+ * @param {{ remove: () => Promise<{ out?: string, code?: number }>, holders: () => number[], log?: (m: string) => void, kill?: (pid: number, sig: NodeJS.Signals) => void, sleep?: (ms: number) => Promise<void>, tries?: number, waitMs?: number }} d
+ * @returns {Promise<{ locked: boolean, rounds: number }>} locked is true only when the helper answered a finished removal
+ */
+export async function lockUntilComplete(d) {
+  const tries = d.tries ?? 6, waitMs = d.waitMs ?? 300;
+  const kill = d.kill || ((pid, sig) => { try { process.kill(pid, sig); } catch { /* already gone */ } });
+  const sleep = d.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  for (let round = 1; round <= tries; round++) {
+    const r = await d.remove();
+    if (!/incomplete/.test(String(r && r.out || ""))) return { locked: true, rounds: round };
+    if (d.log) sayIfIncomplete(r, d.log);
+    for (const pid of d.holders()) kill(pid, round < 3 ? "SIGTERM" : "SIGKILL");
+    await sleep(waitMs);
+  }
+  return { locked: false, rounds: tries };
+}
+
 function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }) {
   const enc = dir => path.join(dir, "enc");
   const key64 = key => { const k = Buffer.from(crypto.hkdfSync("sha512", key, Buffer.alloc(0), "vyre fscrypt workspace v1", 64)); const hex = Buffer.from(k.toString("hex")); k.fill(0); return hex; };
@@ -274,12 +314,12 @@ function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr
       return enc(dir);
     },
     async unmount(dir) {
-      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" only means a process
-      // still holds a file open; the sessions are stopped first, and isMounted reads "present" only while the key is there.
+      // The key is removed from the filesystem, so the directory is unreadable at once for anything new. "incomplete" means a process
+      // still holds a file open and can read it: stop those processes and remove again, a few times; if one will not go, FAIL (never report locked).
       if (!fs.existsSync(enc(dir))) return;
-      const r = await helper("remove", enc(dir));
-      // 0.6.0 limit: say it plainly when the removal is not finished. The key is gone from the filesystem, but what a process still holds open can be read until that process exits.
-      sayIfIncomplete(r, log);
+      const base = fs.realpathSync(enc(dir));
+      const r = await lockUntilComplete({ remove: () => helper("remove", enc(dir)), holders: () => holdersOf(base), log });
+      if (!r.locked) throw new Error("could not close the workspace: a process still holds a file open and would not stop");
     },
     async destroy(dir) { fs.rmSync(dir, { recursive: true, force: true }); },
   };
