@@ -40,7 +40,10 @@ export const recordsApi = {
   tasksMine: (mine: MineSlot, state?: string[]) => callT<{ tasks: TaskRow[] }>("tasks.list", { mine, ...(state ? { state } : {}) }),
   history: (urn: string) => callT<{ items: HistoryItem[] }>("records.history", { urn }),
   undo: (id: string) => callT<unknown>("records.history.undo", { id }),
-  log: (urn: string, kind: "call" | "meeting" | "note", text: string) => callT<unknown>("records.log", { urn, kind, text }),
+  // A note is the planner's, so it is written there (the same note at home, and the joined team's note in a team); a call or a meeting is a record log.
+  log: (urn: string, kind: "call" | "meeting" | "note", text: string) => kind === "note"
+    ? callT<unknown>("planner.add", note({ kind: "note", title: text.split("\n")[0].slice(0, 120), ...(text.includes("\n") ? { body: text } : {}), visibility: "private", record: urn }))
+    : callT<unknown>("records.log", { urn, kind, text }),
   sampleAdd: () => callT<unknown>("records.sample.add", {}),
   sampleRemove: () => callT<unknown>("records.sample.remove", {}),
   typeUpdate: (name: string, patch: { hidden_in_records?: boolean }) => callT<unknown>("records.type.update", { name, ...patch }),
