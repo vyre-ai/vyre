@@ -535,7 +535,7 @@ export default {
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
         // A member (a check only: they cannot store through this tool) may not name an address of their own: the kind's own, or xAI's, and nothing else, so the check cannot probe this machine or another host.
-        if (i.check_only && (await ownerOfAccount(meta)) && !memberBaseOk(i.base_url, memberBases(String(i.kind)))) throw Object.assign(new Error("that address is not one a key can be checked at"), { code: "denied" });
+        if (i.check_only && (await ownerOfAccount(meta)) && !memberBaseOk(i.base_url, memberBases(String(i.kind)))) throw Object.assign(new Error("that address is not one a key can be checked at: use the kind's own address"), { code: "denied" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
