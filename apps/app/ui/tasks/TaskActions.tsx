@@ -18,6 +18,9 @@ import { TaskFacts, DraftBlock } from "./TaskFacts";
 import { FilePick, type AskFile } from "./AskControls";
 import { askKind, fileNameOf, landing, openTarget, vaultAddRoute } from "./ask-model.js";
 import { allowsMock } from "../store";
+import { yesSigner } from "../../src/personal/signer";
+import { loadIdentity } from "../../src/identity/store";
+import { signTaskApproval } from "./approve-proof.js";
 import { spaceUpload } from "../../screens/drive/real";
 import { cardFor, nameOf, recordTitle, STATE_LABEL, taskFacts, draftOf, stateTone, type World } from "./model";
 
@@ -98,7 +101,9 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
         haptic.approve();
         showToast(`Approved: ${task.title}.`);
       } else {
-        await store.decide(task.id, { outcome: "approved", proof });
+        // The preview signs nothing; a real box checks the proof against the task, its payload and its review result, so the yes is signed over what the kernel hands over with the task.
+        const signed = allowsMock() ? proof : await signTaskApproval({ task, readTask: (tid) => store.task(tid), signer: await yesSigner(), person: (await loadIdentity())?.id ?? "" });
+        await store.decide(task.id, { outcome: "approved", proof: signed });
         const after = await store.get(task.record);
         const to = after?.data?.stage;
         haptic.approve();

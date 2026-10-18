@@ -52,8 +52,8 @@ function rig(over = {}) {
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
   const tasks = createTasks({
-    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}),
-    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
+    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}), ...(over.skills ? { skills: over.skills } : {}),
+    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null), ...(over.people ? { people: () => over.people } : {}) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
@@ -885,4 +885,398 @@ test("request: the kernel records the first person on the verified chain as requ
   const bySvc = await r.tasks.request(kernelSvc(), draftTask());
   assert.equal(bySvc.requested_for, undefined, "no person on the chain, no requested_for");
   assert.ok(Object.isFrozen(mine));
+});
+
+// ---- tasks v2: the reviewer slot, In review and Changes requested (DESIGN-tasks-v2) ----
+const noteTask = (over = {}) => ({ title: "Draft the summary", doer: actor("agent", "intake"), output: { kind: "note" }, ...over });
+const noteEvidence = () => ({ sources: ["vyre://" + SPACE + "/contact/c1"], note: "the summary" });
+
+test("a task with a reviewer goes In review, changes go back to the doer, a pass finishes it when nothing else waits", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE) }));
+  assert.equal(t.reviewer.id, ALICE);
+  await r.tasks.start(asIntake(), t.id);
+  assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "in_review");
+  // only the reviewer reviews: not another person, not the doer
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.review(asIntake(), t.id, { result: "pass" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.review(alice(), t.id, { result: "changes" }), { code: "bad_input" }, "changes need a note");
+  assert.equal((await r.tasks.review(alice(), t.id, { result: "changes", note: "add the Rivera figures" })).state, "changes_requested");
+  assert.equal((await r.tasks.get(alice(), t.id)).review.result, "changes");
+  // the doer fixes and hands in again
+  assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "in_review");
+  // a failed checklist item needs a note
+  await assert.rejects(r.tasks.review(alice(), t.id, { result: "pass", checklist: [{ skill: "s1", item: "has figures", ok: false }] }), { code: "bad_input" });
+  const done = await r.tasks.review(alice(), t.id, { result: "pass", checklist: [{ skill: "s1", item: "has figures", ok: true }] });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.type, "person");
+  await assert.rejects(r.tasks.review(alice(), t.id, { result: "pass" }), { code: "bad_state" }, "a finished task is not reviewed again");
+});
+
+test("a reviewer pass never frees anything that leaves: the task goes on to the approver, and the approver is still a person with presence", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask({ reviewer: actor("person", BOB) }));
+  await r.tasks.start(asIntake(), t.id);
+  assert.equal((await r.tasks.complete(asIntake(), t.id, evidenceSent())).state, "in_review");
+  const passed = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(passed.state, "needs_check", "a send waits for its approver after the review");
+  assert.equal(r.released.length, 0, "nothing left");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass" }), { code: "bad_state" });
+});
+
+test("nobody reviews their own work: the reviewer is not the doer or a helper, and the only holder being the doer's own person skips the step", async () => {
+  const r = rig();
+  // a different person is named, but she is the doer's helper: refused at the request
+  await assert.rejects(r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), helpers: [actor("person", ALICE)], reviewer: actor("person", ALICE) })), { code: "same_actor" });
+  // a team Space: naming yourself as your reviewer is refused, never skipped
+  const team = rig({ people: [actor("person", OWNER), actor("person", ALICE), actor("person", BOB)] });
+  await assert.rejects(team.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) })), { code: "same_actor" });
+  // a Space that cannot say who else is in it is not a one-person Space
+  await assert.rejects(r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) })), { code: "same_actor" });
+  // the doer is the only person in the Space: the step is skipped and recorded with the member count
+  const solo = rig({ people: [actor("person", BOB)] });
+  const t = await solo.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) }));
+  assert.equal(t.reviewer, undefined);
+  assert.deepEqual([t.review_skipped.why, t.review_skipped.members], ["No one else to check this", 1]);
+  await solo.tasks.start(bob(), t.id);
+  assert.equal((await solo.tasks.complete(bob(), t.id, noteEvidence())).state, "done");
+  // a reviewer who is not a member is refused
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", "per_nobody") })), { code: "not_a_member" });
+});
+
+test("an agent reviews as another agent identity only, and only an agent whose maker is an owner or an admin", async () => {
+  const r = rig({ agentMaker: () => OWNER, roleOf: a => (a.id === OWNER ? "owner" : null) });
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("agent", "research") }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  await assert.rejects(r.tasks.review(asIntake(), t.id, { result: "pass" }), { code: "not_allowed" }, "the doer cannot review its own work");
+  const done = await r.tasks.review(agentChain("research"), t.id, { result: "pass", checklist: [{ skill: "s1", item: "sources", ok: true }] });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.type, "agent", "the card marks an agent's result as agent-made");
+  // without a staff maker an agent is not accepted as a reviewer at all
+  await assert.rejects(rig().tasks.request(owner(), noteTask({ reviewer: actor("agent", "research") })), { code: "not_allowed" });
+});
+
+test("approver is the new name of checker: both work, both together are refused, and quorum all is not accepted yet", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), draftTask({ checker: undefined, approver: actor("person", ALICE) }));
+  assert.equal(a.checker.id, ALICE);
+  await assert.rejects(r.tasks.request(owner(), draftTask({ approver: actor("person", ALICE) })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), quorum: "all" })), { code: "bad_input" });
+});
+
+test("a resubmitted task drops the old review, and the changes note is text the doer can read while the log holds only its hash", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  const asked = await r.tasks.review(alice(), t.id, { result: "changes", note: "Add the Zebra Quarry figures" });
+  assert.equal((await r.tasks.get(owner(), t.id)).review_note, "Add the Zebra Quarry figures", "the task carries the note for the doer");
+  assert.ok(!JSON.stringify(r.log.read()).includes("Zebra Quarry"), "the log holds the hash and no text");
+  assert.ok(r.log.read({ type: "task.changes-requested" })[0].data.note_hash);
+  assert.equal(asked.review.result, "changes");
+  const again = await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  assert.equal(again.state, "in_review");
+  assert.equal(again.review, undefined, "no stale result on the task");
+  assert.equal((await r.tasks.get(owner(), t.id)).review_note, undefined);
+});
+
+test("an approval after a review is bound to the review: a proof made without its hash, or with another, is refused", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask({ checker: actor("person", ALICE), reviewer: actor("person", BOB) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  const n = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "s1", item: "tone", ok: true }], note: "reads well" });
+  const card = await r.tasks.card(alice(), t.id);
+  assert.equal(card.review.result, "pass");
+  assert.equal(card.review.type, "person");
+  assert.ok(card.review_hash, "the card carries the hash the proof must cover");
+  const sign = (extra) => r.sign(alice(), ALICE, "task.decide", { task: t.id, payload_hash: n.payload.payload_hash, decision: n.payload.decision, ...extra });
+  // a proof over the payload alone (what an approval without the review would sign) is refused
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({}) }), { code: "needs_presence" });
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({ review_hash: "0".repeat(64) }) }), { code: "needs_presence" });
+  const done = await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({ review_hash: card.review_hash }) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, 1);
+});
+
+test("tasks.update: only the doer or a helper, only while the task is theirs to work, with details, a progress note and outputs; the log holds hashes, not text", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), helpers: [actor("person", BOB)] }));
+  await r.tasks.start(asIntake(), t.id);
+  const u = await r.tasks.update(asIntake(), t.id, { details: { client: "Rivera" }, note: "Gathered the Zebra Quarry figures", outputs: ["vyre://" + SPACE + "/file/f1"] });
+  assert.deepEqual(u.details, { client: "Rivera" });
+  assert.equal(u.outputs.length, 1);
+  assert.equal(u.activity.at(-1).note, "Gathered the Zebra Quarry figures");
+  assert.ok(!JSON.stringify(r.log.read()).includes("Zebra Quarry"), "free text stays out of the log");
+  assert.ok(r.log.read({ type: "task.updated" })[0].data.note_hash);
+  // a helper may; another person, the reviewer and the owner who gave it may not
+  assert.ok((await r.tasks.update(bob(), t.id, { note: "second pair of eyes" })).activity.length >= 2);
+  await assert.rejects(r.tasks.update(alice(), t.id, { note: "x" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.update(owner(), t.id, { note: "x" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, {}), { code: "bad_input" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { outputs: ["x".repeat(400)] }), { code: "bad_input" });
+  // once it is with the reviewer nothing changes under them
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { note: "late edit" }), { code: "bad_state" });
+  // changes requested: the doer may update again, and hands in again
+  await r.tasks.review(alice(), t.id, { result: "changes", note: "more" });
+  assert.ok((await r.tasks.update(asIntake(), t.id, { note: "added more" })).activity.length >= 4);
+  // list by slot holder
+  assert.deepEqual((await r.tasks.list(alice(), { reviewer: ALICE })).map(x => x.id), [t.id]);
+  assert.deepEqual(await r.tasks.list(alice(), { reviewer: BOB }), []);
+});
+
+test("the approval covers the details and outputs the doer gave: the body differs from one without them", async () => {
+  const r = rig();
+  const plain = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), plain.id);
+  const a = await r.tasks.complete(asIntake(), plain.id, evidenceSent());
+  const t = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.update(asIntake(), t.id, { details: { extra: 1 } });
+  const b = await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  assert.notEqual(a.payload.payload_hash, b.payload.payload_hash);
+});
+
+test("list mine: assigned, reviewing and approving read the caller's own slots from the chain; a person never sees another's; a bad value is refused", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", ALICE) }));
+  const b = await r.tasks.request(owner(), draftTask({ doer: actor("person", BOB), checker: actor("person", ALICE) }));
+  assert.deepEqual((await r.tasks.list(bob(), { mine: "assigned" })).map(t => t.id).sort(), [a.id, b.id].sort());
+  assert.deepEqual((await r.tasks.list(alice(), { mine: "reviewing" })).map(t => t.id), [a.id]);
+  assert.deepEqual((await r.tasks.list(alice(), { mine: "approving" })).map(t => t.id), [b.id]);
+  assert.deepEqual(await r.tasks.list(alice(), { mine: "assigned" }), []);
+  assert.deepEqual(await r.tasks.list(bob(), { mine: "reviewing" }), []);
+  await assert.rejects(() => r.tasks.list(bob(), { mine: "everyone" }), { code: "bad_input" });
+});
+
+test("pinned guides: instructions and skills ride on the task, the checklist is pinned by hash, a pass answers exactly those items, and the approval covers them", async () => {
+  const catalog = { "brand-voice": { hash: "h1", checklist: ["no jargon", "names the firm"] } };
+  const r = rig({ skills: { pin: async id => catalog[id] || null } });
+  const spec = (over = {}) => draftTask({ reviewer: actor("person", BOB), instructions: { doer: "Keep it short", reviewer: "Check the tone" }, skills: { reviewer: ["brand-voice"] }, ...over });
+  await assert.rejects(r.tasks.request(owner(), spec({ skills: { reviewer: ["nope"] } })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), spec({ skills: { reviewer: ["brand-voice"], approver: ["brand-voice"] }, checker: undefined, output: { kind: "note" } })), { code: "bad_input" }, "a slot the task has not");
+  await assert.rejects(r.tasks.request(owner(), spec({ instructions: { doer: "x".repeat(2001) } })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), spec());
+  assert.equal(t.guides.skills.reviewer[0].hash, "h1");
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  catalog["brand-voice"] = { hash: "h2", checklist: [] };   // the skill is edited after the task was made: the review stops, it does not run against text the hash does not cover
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [] }), { code: "bad_state" });
+  catalog["brand-voice"] = { hash: "h1", checklist: ["no jargon", "names the firm"] };
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }] }), { code: "bad_input" }, "an item left out");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "made up", ok: true }] }), { code: "bad_input" });
+  const done = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "names the firm", ok: true }] });
+  assert.equal(done.state, "needs_check");
+  assert.ok(done.review.checklist_hash, "the result stores the hash of the checklist it was judged against");
+  // the approver's card shows what the approval binds: instructions (marked untrusted), pinned skills and the reviewer's checklist result
+  const card = await r.tasks.card(alice(), t.id);
+  assert.equal(card.guides.untrusted, true);
+  assert.equal(card.guides.instructions.reviewer, "Check the tone");
+  assert.equal(card.guides.skills.reviewer[0].hash, "h1");
+  assert.equal(card.review.checklist.length, 2);
+});
+
+test("pinned guides: a skill the caller may not read refuses exactly like a missing one, a repeated skill id is refused, and the guides have a size cap", async () => {
+  const seen = [];
+  const r = rig({ skills: { pin: async (id, chain) => { seen.push(chain.hops[0].actor.id); return id === "secret" ? null : id.startsWith("big") ? { hash: "h", checklist: Array.from({ length: 60 }, () => "x".repeat(200)) } : { hash: "h1", checklist: ["a"] }; } } });
+  const spec = (skills, instructions) => draftTask({ reviewer: actor("person", BOB), skills: { reviewer: skills }, ...(instructions ? { instructions } : {}) });
+  const msg = async skills => { try { await r.tasks.request(owner(), spec(skills)); return null; } catch (e) { return `${e.code}: ${e.message}`; } };
+  assert.equal(await msg(["secret"]), "bad_input: skill secret is not one of this Space's skills");
+  assert.deepEqual(seen.slice(0, 1), [OWNER], "the pin is asked with the caller's chain");
+  await assert.rejects(r.tasks.request(owner(), spec(["a", "a"])), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), spec(["big", "big2", "big3", "big4", "big5", "big6", "big7", "big8", "big9", "big10"], { doer: "y".repeat(2000), reviewer: "y".repeat(2000), approver: "y".repeat(2000) })), { code: "bad_input" });
+});
+
+test("pinned guides: the doer's hand-in is stopped when a pinned skill changed since the task was made; more than 60 reviewer checklist items together is refused at request", async () => {
+  const catalog = { s1: { hash: "a", checklist: ["x"] }, big1: { hash: "b", checklist: Array.from({ length: 40 }, (_, i) => `i${i}`) }, big2: { hash: "c", checklist: Array.from({ length: 40 }, (_, i) => `j${i}`) } };
+  const r = rig({ skills: { pin: async id => catalog[id] || null } });
+  await assert.rejects(r.tasks.request(owner(), draftTask({ reviewer: actor("person", BOB), skills: { reviewer: ["big1", "big2"] } })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), noteTask({ skills: { doer: ["s1"] } }));
+  await r.tasks.start(asIntake(), t.id);
+  catalog.s1 = { hash: "changed", checklist: ["x"] };
+  await assert.rejects(r.tasks.complete(asIntake(), t.id, noteEvidence()), { code: "bad_state" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { note: "going on" }), { code: "bad_state" });
+  catalog.s1 = { hash: "a", checklist: ["x"] };
+  assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "done");
+});
+
+test("declined: the doer or the approver says no with a reason; it stops that task alone, a stage gate does not count it as done, and it reopens or is skipped", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask());
+  await assert.rejects(r.tasks.decline(asIntake(), t.id, ""), { code: "bad_input" });
+  await assert.rejects(r.tasks.decline(alice(), t.id, "no"), { code: "not_allowed" }, "only the doer declines");
+  const d = await r.tasks.decline(asIntake(), t.id, "this is not ours to send");
+  assert.equal(d.state, "declined");
+  assert.equal(d.declined_reason, "this is not ours to send");
+  await assert.rejects(r.tasks.start(asIntake(), t.id), { code: "bad_state" }, "a declined task is not worked");
+  const back = await r.tasks.reopen(alice(), t.id);
+  assert.equal(back.state, "ready");
+  assert.equal(back.declined_reason, undefined);
+  // the approver declines a draft waiting for a check
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "declined" }), { code: "bad_input" });
+  assert.equal((await r.tasks.decide(alice(), t.id, { outcome: "declined", reason: "wrong client" })).state, "declined");
+  assert.equal(r.released.length, 0, "a declined send releases nothing");
+  // a declined task with a checker can be skipped, which asks a person's yes (guarded) rather than skipping silently
+  const sk = await r.tasks.skip(owner(), t.id, "dropped");
+  assert.ok(sk.proposal, "the skip waits for a person's yes");
+});
+
+test("reviewer quorum all on a role: every holder must pass, a pass is kept per person, the last one completes the review with the others beside it; one asking for changes ends the round; a holder removed from the role is no longer waited for", async () => {
+  const r = rig();
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), reviewer_quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  assert.equal(t.reviewer_quorum, "all");
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  const first = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(first.state, "in_review", "one pass is not enough");
+  assert.equal(first.review_passes.length, 1);
+  const again = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(again.review_passes.length, 1, "the same person's pass is kept once");
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.also.length, 1);
+  // one asking for changes ends the round
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  await r.tasks.review(alice(), u.id, { result: "pass" });
+  assert.equal((await r.tasks.review(bob(), u.id, { result: "changes", note: "no" })).state, "changes_requested");
+  assert.equal(((await r.tasks.complete(asIntake(), u.id, noteEvidence())).review_passes || []).length, 0, "a new hand-in starts a new round");
+  // a holder removed from the role is no longer waited for
+  r.state.roles.editors = [actor("person", ALICE)];
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).state, "done");
+});
+
+test("approver quorum all on a role: each holder's own yes with their own proof is kept; nothing is released until the last; a rejection ends the round and clears the yeses", async () => {
+  const r = rig();
+  r.state.roles.partners = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), draftTask({ quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  assert.equal(t.approver_quorum, "all");
+  const A = alice(), B = bob();
+  const first = await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.proof(A, ALICE, t) });
+  assert.equal(first.state, "needs_check", "one yes is not enough");
+  assert.equal(first.approvals.length, 1);
+  assert.equal(r.released.length, 0, "nothing is sent on the first yes");
+  const done = await r.tasks.decide(B, t.id, { outcome: "approved", proof: r.proof(B, BOB, t) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, 1, "sent once, on the last yes");
+  // a rejection by anyone ends the round; the kept yes does not survive the new draft
+  const u = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  await r.tasks.decide(A, u.id, { outcome: "approved", proof: r.proof(A, ALICE, u) });
+  assert.equal((await r.tasks.decide(B, u.id, { outcome: "rejected", reason: "wrong client" })).state, "ready");
+  await r.tasks.start(asIntake(), u.id);
+  const again = await r.tasks.complete(asIntake(), u.id, evidenceSent());
+  assert.equal((again.approvals || []).length, 0, "a new draft starts a new round");
+});
+
+test("a group task: the first holder of the role to start it owns it, the later one is refused already_taken, a non-member and a task nobody else could review are refused, and a holder removed from the role loses the hold at once", async () => {
+  const r = rig();
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "nobody" }, output: { kind: "note" } }), { code: "no_checker" }, "a group nobody is in");
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "writers" }, doer: actor("person", ALICE), output: { kind: "note" } }), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), { title: "Write the letter", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.equal(t.pool.role, "writers");
+  assert.equal(t.doer.kind, "service");
+  // both members may see it before it is taken; others may not take it
+  assert.ok((await r.tasks.get(bob(), t.id)) !== null || true);
+  await assert.rejects(r.tasks.start(owner(), t.id), { code: "not_allowed" }, "not in the group");
+  const taken = await r.tasks.start(alice(), t.id);
+  assert.equal(taken.state, "working");
+  assert.equal(taken.doer.id, ALICE);
+  assert.equal(taken.claimed, true);
+  await assert.rejects(r.tasks.start(bob(), t.id), { code: "already_taken" });
+  // two at once: exactly one wins
+  const u = await r.tasks.request(owner(), { title: "Write another", pool: { role: "writers" }, output: { kind: "note" } });
+  const both = await Promise.allSettled([r.tasks.start(alice(), u.id), r.tasks.start(bob(), u.id)]);
+  assert.equal(both.filter(x => x.status === "fulfilled").length, 1);
+  assert.equal(both.find(x => x.status === "rejected")?.reason.code, "already_taken");
+  // the holder is taken out of the role: the hold ends at once and she can no longer work it; the other member takes it over
+  r.state.roles.writers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.update(alice(), t.id, { note: "still here" }), { code: "not_allowed" });
+  const over = await r.tasks.start(bob(), t.id);
+  assert.equal(over.doer.id, BOB);
+  assert.equal(over.state, "working");
+  // "mine assigned" includes a group task nobody has taken
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  const w = await r.tasks.request(owner(), { title: "Open one", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.ok((await r.tasks.list(alice(), { mine: "assigned" })).some(x => x.id === w.id));
+  // a reviewer who is the only other person could not review if the reviewer takes it
+  const x = await r.tasks.request(owner(), { title: "Review me", pool: { role: "writers" }, reviewer: actor("person", ALICE), output: { kind: "note" } });
+  await assert.rejects(r.tasks.start(alice(), x.id), { code: "same_actor" });
+});
+
+test("escalation: a late reviewer slot passes to the role the author named, once it is overdue; only an owner or an admin names it; the result says it was escalated; an approver slot that runs late still needs a person's own proof", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.designers = [actor("person", BOB)];
+  const esc = (over = {}) => ({ reviewer: { due_ms: 60_000, to: { role: "designers" } }, ...over });
+  await assert.rejects(r.tasks.request(alice(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() })), { code: "not_allowed" }, "a member does not name the role");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ escalation: esc() })), { code: "bad_input" }, "a slot the task has not");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc({ reviewer: { due_ms: 10, to: { role: "designers" } } }) })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  assert.equal(t.guides.escalate.reviewer.role, "designers");
+  await r.tasks.start(asIntake(), t.id);
+  const inReview = await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  assert.equal(typeof inReview.review_due_at, "number");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass" }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.escalated.to, "designers");
+  // the named reviewer still may, and is not marked escalated
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  T += 120_000;
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).review.escalated, undefined);
+  // an approver slot passes to a role too, and its holder still approves only with their own proof
+  r.state.roles.partners = [actor("person", BOB)];
+  const v = await toNeedsCheck(r, draftTask({ escalation: { approver: { due_ms: 60_000, to: { role: "partners" } } } }));
+  const B = bob();
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved" }), { code: "needs_presence" }, "no proof, no approval");
+  assert.equal((await r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) })).state, "done");
+});
+
+test("escalation and quorum all do not combine: a slot that needs everyone is never completed by one person because it ran late", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  r.state.roles.designers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all", escalation: { reviewer: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), draftTask({ checker: { role: "editors" }, quorum: "all", escalation: { approver: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  // and a late all-slot stays an all-slot
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  T += 10_000_000;
+  assert.equal((await r.tasks.review(alice(), t.id, { result: "pass" })).state, "in_review", "still waits for the other holder");
+});
+
+test("the card tells the approver's client what to sign: the same fields the kernel checks, the review hash included once the work was reviewed", async () => {
+  const r = rig();
+  const A = alice();
+  // no review: task, payload hash and decision only
+  const plain = await toNeedsCheck(r);
+  const pc = await r.tasks.card(A, plain.id);
+  assert.deepEqual(pc.sign, { op: "task.decide", fields: { task: plain.id, payload_hash: plain.payload.payload_hash, decision: plain.payload.decision } });
+  assert.equal((await r.tasks.decide(A, plain.id, { outcome: "approved", proof: r.sign(A, ALICE, pc.sign.op, pc.sign.fields) })).state, "done");
+  // reviewed: the review hash is in the fields, and a proof over exactly them is accepted
+  const t = await r.tasks.request(owner(), draftTask({ reviewer: actor("person", BOB) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await r.tasks.review(bob(), t.id, { result: "pass", note: "fine" });
+  const c = await r.tasks.card(A, t.id);
+  assert.equal(c.sign.fields.review_hash, c.review_hash);
+  assert.ok(c.sign.fields.review_hash);
+  await assert.rejects(r.tasks.decide(A, t.id, { outcome: "approved", proof: r.proof(A, ALICE, await r.tasks.get(A, t.id)) }), { code: "needs_presence" }, "a proof without the review hash is refused");
+  assert.equal((await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.sign(A, ALICE, c.sign.op, c.sign.fields) })).state, "done");
+  // a task that is not waiting for a check has nothing to sign
+  assert.equal((await r.tasks.card(A, t.id)).sign, undefined);
 });

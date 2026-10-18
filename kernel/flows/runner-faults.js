@@ -25,13 +25,14 @@ function failOf(e) {
   return { code, message: e instanceof Error ? e.message : String(e) };
 }
 /**
- * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, and the whole is cut to 2 KB. A sealed placeholder stays a placeholder.
- * @param {any} v @returns {any}
+ * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, a sealed value shows only that it is sealed, and the whole is cut to `cap` bytes (2 KB by default).
+ * @param {any} v @param {number} [cap] @returns {any}
  */
-export function showable(v) {
+export function showable(v, cap = 2048) {
   if (v === undefined) return undefined;
   const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
     if (depth > 6) return "\u2026";
+    if (x !== null && typeof x === "object" && !Array.isArray(x) && Object.hasOwn(x, "sealed")) return { sealed: true };   // a sealed value is never kept, only that there was one
     if (typeof x === "string") return redactText(x);
     if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
     if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, hiddenField(k, y) ? "[hidden]" : walk(y, depth + 1)]));
@@ -39,7 +40,7 @@ export function showable(v) {
   };
   const out = walk(v, 0);
   const text = JSON.stringify(out) ?? "null";
-  return text.length > 2048 ? { cut: true, head: text.slice(0, 2000) } : out;
+  return text.length > cap ? { cut: true, head: text.slice(0, cap - 48) } : out;
 }
 
 /** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
