@@ -81,8 +81,8 @@ test("tokens v2: both schemes name the same roles, every one a colour, and v1 is
 });
 
 test("tokens v2: the colour rules hold (the one known miss is filed, and the list may only shrink)", () => {
-  // Paper's ok word on its own wash over a card is 4.46:1, 0.04 under AA. app-design owns the value (issue #68).
-  assert.deepEqual(checkV2(shippedTokens()), ["v2 paper: ok on okWash over surface2 is 4.46:1, needs 4.5:1"]);
+  // Paper's ok and warn words were just under AA on their own wash over a card (4.45 and 4.28); both are darkened to pass, so the list is empty.
+  assert.deepEqual(checkV2(shippedTokens()), []);
 });
 
 test("tokens v2: the CSS has the Deck's names, both schemes, and the phone sizes", () => {

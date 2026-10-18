@@ -273,7 +273,7 @@ export const SELF_GATED = Object.freeze(new Set([
   "vault.inject", "vault.item", "vault.items.names", "vault.kit", "vault.link", "vault.links", "vault.list", "vault.lock", "vault.match", "vault.mcp.items",
   "vault.mcp.pass.create", "vault.mcp.pass.list", "vault.mcp.pass.revoke", "vault.mcp.reveal.allow", "vault.mcp.reveal.clear", "vault.members.accept",
   "vault.members.invite", "vault.members.remove", "vault.members.role", "vault.mention.search", "vault.migrate-key", "vault.move", "vault.need", "vault.offboard",
-  "vault.pass.accept", "vault.pass.create", "vault.pass.list", "vault.pass.revoke", "vault.pending", "vault.people", "vault.people.verify", "vault.person.add",
+  "vault.pass.accept", "vault.pass.create", "vault.pass.list", "vault.pass.revoke", "vault.pending", "vault.people", "vault.people.verify", "vault.person.add", "vault.person.of",
   "vault.provider.remove", "vault.provider.set", "vault.provider.status", "vault.put", "vault.relay", "vault.remind.run", "vault.render", "vault.request", "vault.resolve",
   "vault.restore", "vault.reveal", "vault.revert", "vault.revoke", "vault.rotate", "vault.rotation", "vault.search", "vault.session.close", "vault.session.open",
   "vault.session.status", "vault.space.attention", "vault.space.create", "vault.space.grant", "vault.space.list", "vault.space.put", "vault.space.rotate", "vault.space.status", "vault.space.use",
