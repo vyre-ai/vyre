@@ -21,8 +21,8 @@ const MEMBER_CHAT = Object.freeze({ "work.chat.persistent": "chat.persistent", "
   "stream.send": "chat.send", "stream.catchup": "chat.catchup", "stream.typing": "chat.typing", "stream.react": "chat.react", "stream.pin": "chat.pin-message", "stream.reply-mode": "chat.reply-mode", "stream.mark-read": "chat.mark-read",
   // A member's own AI sign-in (kernel/remote CALLS.accounts): the Settings screen's calls reach the team's server the same way.
   "sessions.accounts.list": "accounts.list", "sessions.accounts.signin": "accounts.signin", "sessions.accounts.remove": "accounts.remove", "sessions.accounts.bind": "accounts.default", "sessions.accounts.add": "accounts.add",
-  // A member's key: checked with its provider (only the check form crosses), and put in THEIR own Vault (core/vault/member-service.js).
-  "sessions.accounts.key": "accounts.check", "vault.me.account.status": "myvault.status", "vault.me.account.create": "myvault.create", "vault.me.account.unlock": "myvault.unlock", "vault.me.list": "myvault.list", "vault.me.put": "myvault.put" });
+  // A member's key: checked with its provider (only the check form crosses), and put in THEIR own Vault in one act with one presence proof (core/vault/member-service.js; `vault.me.add-key` is the app's name for it, not a registry tool).
+  "sessions.accounts.key": "accounts.check", "vault.me.account.status": "myvault.status", "vault.me.add-key": "myvault.addkey" });
 
 /** The rows of the member door's one table (core/work/member-tools.js MEMBER_TOOLS), generated from it (scripts/gen-surface-lists.mjs): a row is reached under the SAME name as the registry tool the app calls, with the Store's own input keys, except the few names below. Not a row, so refused in words (flows) or left on her own home (records.define, tasks.decide and the planner need her presence or an admin): everything else. */
 import { MEMBER_ROWS } from "./member-routes.generated.js";

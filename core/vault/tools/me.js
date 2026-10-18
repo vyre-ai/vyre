@@ -107,30 +107,47 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   // functions as the vault.me.* tools, for the five calls the first run needs, with the input cut to exactly what each takes. The password, the Secret Key and the value are used for that one call and are never logged or returned.
   ctx.tool("vault.me.serve", {
     internal: true,
-    description: "A team member's own Vault, as the member's own chain from the team's door: status, create, unlock, list, put (an AI key). Only the daemon's own door runs it.",
+    description: "A team member's own Vault, as the member's own chain from the team's door: status, and addkey (make the vault if none, open it if locked, put one AI key under a free name). Only the daemon's own door runs it, after the member's presence proof was checked there.",
     input: obj({ call: str, person: str, space: str, input: { type: "object" } }, ["call", "person", "space"]),
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       if (String((meta && meta.caller) || "") !== "module:vyred") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const id = String(i.person);
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id) || id === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
-      const text = (/** @type {unknown} */ v, /** @type {number} */ max) => { const t = typeof v === "string" ? v : ""; if (!t || t.length > max) throw Object.assign(new Error("that input is not valid"), { code: "bad_input" }); return t; };
+      const bad = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "bad_input" });
+      const text = (/** @type {unknown} */ v, /** @type {number} */ max) => { const t = typeof v === "string" ? v : ""; if (!t || t.length > max) throw bad("that input is not valid"); return t; };
       switch (String(i.call)) {
         case "status": return people.status(id);
-        case "create": return people.create(id, { password: text(input.password, 1024) });
-        case "unlock": return people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secretKey, 256) });
-        case "list": { const l = await people.list(id, {}); const rows = Array.isArray(l) ? l : (l && l.items) || []; return { items: rows.map((/** @type {any} */ x) => ({ name: String(x.name), kind: String(x.kind) })) }; }
-        case "put": {
-          const name = text(input.name, 60);
-          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(name)) throw Object.assign(new Error("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -"), { code: "bad_input" });
-          if (input.kind !== "api-key") throw Object.assign(new Error("only an AI key is put here"), { code: "bad_input" });
-          const f = input.fields && typeof input.fields === "object" ? input.fields : {};
-          const value = text(f.value, 400);
-          if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value) || Object.keys(f).length !== 1) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
-          await people.put(id, { name, kind: "api-key", description: "", fields: { value } });
-          return { stored: true, name };
+        case "addkey": {
+          const label = text(input.label, 60);
+          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(label)) throw bad("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -");
+          const value = text(input.value, 400);
+          if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value)) throw bad("that does not look like an API key");
+          const st = await people.status(id);
+          /** @type {string | undefined} */ let secretKey;
+          if (!st.account) {
+            // no vault yet: made with their password, opened at once with the Secret Key it returns (which goes back to their device, once, below)
+            const pw = typeof input.password === "string" && input.password ? text(input.password, 1024) : "";
+            if (!pw) throw bad("your password is needed to make your own vault");
+            const made = await people.create(id, { password: pw });
+            secretKey = made && typeof made.secretKey === "string" ? made.secretKey : undefined;
+            if (!secretKey) throw bad("your vault could not be made");
+            await people.unlock(id, { password: pw, secretKey });
+          } else if (!st.unlocked) {
+            await people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secret_key, 256) });
+          }
+          // the item's name: the label when free in THEIR vault, else with a number; a put on a name that exists replaces that item, so a list that cannot be read puts nothing
+          let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
+          if (!rows) throw bad("your vault could not be checked for that name");
+          const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+          let item = label, n = 2;
+          while (used.has(item.toLowerCase()) && n < 100) item = `${label} ${n++}`;
+          if (used.has(item.toLowerCase())) throw bad("that name is taken in your vault");
+          await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
+          const after = await people.status(id);
+          return { item, ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
         }
-        default: throw Object.assign(new Error("call is status, create, unlock, list or put"), { code: "bad_input" });
+        default: throw bad("call is status or addkey");
       }
     },
   });

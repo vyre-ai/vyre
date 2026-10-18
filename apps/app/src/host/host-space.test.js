@@ -504,7 +504,7 @@ test("the API key tool sends the key once to the server's key tool and never let
   assert.deepEqual(sent, [], "nothing was sent for a member");
 });
 
-test("a joining member's key goes to their own Vault: the password is asked for only when their vault is missing or locked, is used for those calls only, and neither it nor the key is in anything returned or thrown", async (t) => {
+test("a joining member's key goes to their own Vault in one act: checked with its provider first, the password asked for only when their vault is missing or locked, and neither the key nor the password is in anything returned or thrown", async (t) => {
   const keys = new Map();
   const { pp, host, store } = await ready(t, { memberKeyPath: true, memberKeys: { get: async (a) => keys.get(a) ?? null, put: async (a, k) => void keys.set(a, k), remove: async (a) => void keys.delete(a) } });
   const KEY = "sk-ant-MEMBER-KEY-0123456789", PW = "member pass phrase 77";
@@ -514,61 +514,56 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
   const first = pp.call;
   const calls = [];
-  let vault = { account: false, unlocked: false }, fail = "", listFails = false, badKey = false;
-  const mine = new Set(["Gmail"]);
+  let vault = { account: false, unlocked: false }, fail = "", badKey = false;
   pp.call = async (name, input, box) => {
     if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
     calls.push({ name, input: JSON.parse(JSON.stringify(input || {})), box });
     if (name === "sessions.accounts.key") { if (badKey) throw new Error(`the service refused that key ${input.key}`); return { checked: true, host: "api.anthropic.com" }; }
     if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
-    if (name === "vault.me.account.create") { vault = { account: true, unlocked: false }; return { secretKey: "SECRET-KEY-OF-VAULT", acct: "a1" }; }
-    if (name === "vault.me.account.unlock") { vault = { account: true, unlocked: true }; return { unlocked: true }; }
-    if (name === "vault.me.list") { if (listFails) throw new Error("locked"); return { items: [...mine].map((n) => ({ name: n, kind: "login" })) }; }
-    if (name === "vault.me.put") { if (fail) throw new Error(`${fail}: ${input.fields.value} / ${PW}`); mine.add(input.name); return { stored: true }; }
+    if (name === "vault.me.add-key") {
+      if (fail) throw new Error(`${fail}: ${input.value} / ${input.password}`);
+      const made = !vault.account; vault = { account: true, unlocked: true };
+      return { item: input.label, acct: "a1", ...(made ? { secret_key: "SECRET-KEY-OF-VAULT" } : {}) };
+    }
     if (name === "sessions.accounts.add") return { id: "ac_m1", provider: input.provider, label: input.label };
     throw new Error("unexpected " + name);
   };
   const ask = (extra = {}) => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "My Claude", ...extra });
-  // no vault yet and no password: it asks for the password and sends nothing but the status question
+  // no vault yet and no password: the key is checked, then it asks for the password, and nothing is written
   await assert.rejects(() => ask(), (e) => e.code === "need_password" && !String(e.message).includes(KEY));
-  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status"], "the key is checked with its provider first, then the vault is asked about");
-  assert.equal(calls[0].input.check_only, true);
-  // with the password: made, opened, the key into THEIR vault, then the account names the item; the owner's key tool is never used
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status"]);
+  assert.equal(calls[0].input.check_only, true, "the check keeps nothing");
+  // with the password: one act makes and opens the vault and puts the key; the vault's Secret Key stays on this device
   calls.length = 0;
   const r = await ask({ password: PW });
   assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true });
-  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
   assert.ok(calls.every((c) => c.box === "boxA"));
-  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.account.create,vault.me.account.unlock", "the password goes to the two vault calls only");
-  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "vault.me.put", "the key goes to the vault put only");
-  assert.deepEqual(calls[4].input, { provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude" });
-  assert.equal(keys.get("a1"), "SECRET-KEY-OF-VAULT", "the vault's Secret Key stays on this device");
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.add-key", "the password goes to the one act only");
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "sessions.accounts.key,vault.me.add-key", "the key goes to its check and to the one act");
+  assert.deepEqual(calls[3].input, { provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude" });
+  assert.equal(keys.get("a1"), "SECRET-KEY-OF-VAULT");
   assert.ok(!JSON.stringify(r).includes(PW) && !JSON.stringify(r).includes(KEY));
-  // unlocked already: no password is asked for and none is used
+  // open already: no password is asked for, and none is sent
   calls.length = 0;
-  const r2 = await ask({ label: "Second" });
-  assert.equal(r2.account, "ac_m1");
-  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.list", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
-  // locked: it asks, then opens with the key the device holds
+  await ask({ label: "Second" });
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
+  assert.ok(!("password" in calls[2].input) && !("secret_key" in calls[2].input), "no prompt, nothing extra sent");
+  // locked: it asks for the password, and sends it with the Secret Key this device holds
   vault = { account: true, unlocked: false }; calls.length = 0;
   await assert.rejects(() => ask({ label: "Third" }), (e) => e.code === "need_password");
   await ask({ label: "Third", password: PW });
-  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
-  // an item of the same name in THEIR vault is never replaced: the account's item takes a number, and the account names that item
-  calls.length = 0;
-  const g = await ask({ label: "Gmail" });
-  assert.equal(g.label, "Gmail");
-  assert.ok(mine.has("Gmail") && mine.has("Gmail 2"), "the seeded Gmail stays, the key went to Gmail 2");
-  assert.deepEqual(calls.filter((c) => c.name === "vault.me.put").map((c) => c.input.name), ["Gmail 2"]);
-  assert.equal(calls.find((c) => c.name === "sessions.accounts.add").input.vault_item, "Gmail 2");
-  // when their vault cannot be listed, nothing is put and no account is made
-  listFails = true; calls.length = 0;
-  await assert.rejects(() => ask({ label: "Fifth" }), (e) => e.code === "failed" || e.code === "vault_unreadable" || /locked|checked/.test(e.message));
-  assert.ok(!calls.some((c) => c.name === "vault.me.put" || c.name === "sessions.accounts.add"), "nothing put, no account");
-  listFails = false;
+  const act = calls.find((c) => c.name === "vault.me.add-key");
+  assert.deepEqual([act.input.password, act.input.secret_key], [PW, "SECRET-KEY-OF-VAULT"]);
+  // a device without the Secret Key says so and writes nothing
+  keys.clear(); vault = { account: true, unlocked: false }; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => e.code === "no_device_key");
+  assert.ok(!calls.some((c) => c.name === "vault.me.add-key" || c.name === "sessions.accounts.add"));
+  keys.set("a1", "SECRET-KEY-OF-VAULT");
   // an error that echoes the key and the password is thrown without either
   fail = "the vault refused"; vault = { account: true, unlocked: true };
-  await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });
+  await assert.rejects(() => ask({ label: "Fifth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });
+  fail = "";
   // a key the provider refuses is caught at once, before a password or the vault, and the message does not carry the key
   badKey = true; calls.length = 0;
   await assert.rejects(() => ask({ label: "Sixth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY)); assert.match(e.message, /refused that key/); return true; });

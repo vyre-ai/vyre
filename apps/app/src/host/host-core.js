@@ -10,7 +10,6 @@ import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
 import { lookOf } from "../../ui/chat/agent-look.js";
-import { createMine, unlockMine } from "../state/member-key.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -111,24 +110,17 @@ export function createHost(o) {
     try {
       // the key is checked with its provider first (the server's own check, nothing kept), so a bad key is caught before a password is asked for or anything is put anywhere
       await ask("sessions.accounts.key", { kind: i.kind, key: i.key, check_only: true, ...(i.base_url ? { base_url: i.base_url } : {}) });
+      // their vault: whether it exists and is open decides whether a password is asked for (no prompt when it is open)
       const st = await ask("vault.me.account.status");
-      if (!st || !st.account) {
-        if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
-        await createMine(ask, o.memberKeys, i.password);
-        await unlockMine(ask, o.memberKeys, i.password);
-      } else if (!st.unlocked) {
-        if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
-        await unlockMine(ask, o.memberKeys, i.password);
-      }
-      // The item's name is the account's name when it is free in THEIR vault, else with a number after it: a put on an existing name replaces that item, so their own list is read first and, if it cannot be read, nothing is put.
-      const have = await ask("vault.me.list", {});
-      const rows = have && Array.isArray(have.items) ? have.items : Array.isArray(have) ? have : null;
-      if (!rows) throw bad("Your Vault could not be checked for that name.", "vault_unreadable");
-      const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
-      let item = i.label, n = 2;
-      while (used.has(item.toLowerCase()) && n < 100) item = `${i.label} ${n++}`;
-      if (used.has(item.toLowerCase())) throw bad("That name is taken in your Vault.", "name_taken");
-      await ask("vault.me.put", { name: item, kind: "api-key", fields: { value: i.key } });
+      const open = Boolean(st && st.account && st.unlocked);
+      const deviceKey = st && st.account && !st.unlocked && st.acct ? await o.memberKeys.get(String(st.acct)) : null;
+      if (!open && !i.password) throw bad("Your password, to open your own Vault.", "need_password");
+      if (st && st.account && !st.unlocked && !deviceKey) throw bad("This device does not hold your Vault's Secret Key. Open Vyre on a device that does and approve this one.", "no_device_key");
+      // ONE act, covered by ONE presence proof over the label and the key's hash: the vault is made or opened, the item gets a free name in THEIR vault, the key is put there. The Secret Key of a vault just made comes back once.
+      const added = await ask("vault.me.add-key", { label: i.label, value: i.key, ...(!open && i.password ? { password: i.password } : {}), ...(deviceKey ? { secret_key: deviceKey } : {}) });
+      if (added && typeof added.secret_key === "string" && added.acct) await o.memberKeys.put(String(added.acct), added.secret_key);
+      const item = String(added && added.item || "");
+      if (!item) throw bad("Your key could not be put in your Vault.", "failed");
       const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item, ...(i.base_url ? { base_url: i.base_url } : {}) });
       return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true };
     } catch (e) {

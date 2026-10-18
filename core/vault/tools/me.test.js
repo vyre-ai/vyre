@@ -430,26 +430,35 @@ test("a reset rotates the lend key: the old sealed key opens nothing and the new
   assert.equal(rd(openConnectionKey(sealRoot, BOB, "lend")).fields.password, "PW-BANK-0001-abcdefghij");
 });
 
-test("vault.me.serve: only the daemon's door runs it, never as the owner, and it puts one AI key in the member's own vault and nothing else", async t => {
-  const { reg, people } = rig(t);
+test("vault.me.serve: only the daemon's door runs it, never as the owner; addkey makes or opens the member's own vault, picks a free name, puts one AI key, and returns no value or password", async t => {
+  const { reg, call: asBob } = rig(t);
   const run = (/** @type {any} */ i, caller = "module:vyred") => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", ...i }, { caller }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
   const KEY = "sk-ant-0123456789abcdef";
+  const add = (/** @type {any} */ person, /** @type {any} */ input) => run({ call: "addkey", person, input });
   assert.equal((await run({ call: "status", person: BOB }, "device:abcdefghijklmnop")).error.code, "denied", "a person's surface does not run it");
   assert.equal((await run({ call: "status", person: OWNER })).error.code, "denied", "never as the owner");
   assert.equal((await run({ call: "status", person: "../x" })).error.code, "denied");
-  assert.deepEqual(Object.keys((await run({ call: "status", person: BOB })).data).sort().slice(0, 2), ["account", "unlocked"]);
-  const made = (await run({ call: "create", person: BOB, input: { password: PW } })).data;
-  assert.ok(made.secretKey, "the Secret Key comes back once, to their device");
-  assert.equal((await run({ call: "put", person: BOB, input: { name: "My Claude", kind: "api-key", fields: { value: KEY } } })).data?.stored, undefined, "a locked vault takes nothing");
-  assert.ok((await run({ call: "unlock", person: BOB, input: { password: PW, secretKey: made.secretKey } })).data);
-  assert.deepEqual((await run({ call: "put", person: BOB, input: { name: "My Claude", kind: "api-key", fields: { value: KEY } } })).data, { stored: true, name: "My Claude" });
-  const listed = (await run({ call: "list", person: BOB })).data;
-  assert.deepEqual(listed.items, [{ name: "My Claude", kind: "api-key" }], "names and kinds only");
-  assert.ok(!JSON.stringify(listed).includes(KEY));
-  for (const bad of [{ name: "x", kind: "login", fields: { value: KEY } }, { name: "../x", kind: "api-key", fields: { value: KEY } }, { name: "ok", kind: "api-key", fields: { value: "short" } }, { name: "ok", kind: "api-key", fields: { value: KEY, other: "x" } }, { name: "ok", kind: "api-key", fields: { value: "has space inside key" } }]) {
-    assert.equal((await run({ call: "put", person: BOB, input: bad })).error?.code, "bad_input", JSON.stringify(bad).slice(0, 60));
-  }
-  assert.equal((await run({ call: "list", person: EVE })).data?.items?.length ?? 0, 0, "another member's vault is theirs");
+  assert.equal((await run({ call: "create", person: BOB, input: { password: PW } })).error.code, "bad_input", "create, unlock, list and put are not calls here");
+  assert.equal((await run({ call: "status", person: BOB })).data.account, false);
+  // no vault yet: it needs the password, and with it makes the vault, opens it, puts the key; the Secret Key comes back once
+  assert.equal((await add(BOB, { label: "My Claude", value: KEY })).error.code, "bad_input", "no password, no vault");
+  const first = await add(BOB, { label: "My Claude", value: KEY, password: PW });
+  assert.equal(first.error, undefined, JSON.stringify(first.error?.message));
+  assert.equal(first.data.item, "My Claude");
+  assert.ok(first.data.secret_key && first.data.acct, "the Secret Key and the vault's id come back, once, to the device");
+  assert.ok(!JSON.stringify(first.data).includes(KEY) && !JSON.stringify(first.data).includes(PW));
+  // open already: no password is needed; a name in use is not replaced
+  const second = await add(BOB, { label: "My Claude", value: KEY });
+  assert.deepEqual([second.data?.item, second.data?.secret_key], ["My Claude 2", undefined], "the first stays, the second takes a number, no Secret Key again");
+  // locked: it needs the password and the device's Secret Key
+  assert.ok((await asBob("vault.me.account.lock", {}, BOB)).data !== undefined);
+  assert.equal((await add(BOB, { label: "My Claude", value: KEY })).error.code, "bad_input", "locked: the password is needed");
+  assert.equal((await add(BOB, { label: "My Claude", value: KEY, password: PW })).error.code, "bad_input", "and the Secret Key the device holds");
+  const third = await add(BOB, { label: "My Claude", value: KEY, password: PW, secret_key: first.data.secret_key });
+  assert.equal(third.data?.item, "My Claude 3", JSON.stringify(third.error?.message));
+  // bad inputs write nothing
+  for (const bad of [{ label: "../x", value: KEY }, { label: "ok", value: "short" }, { label: "ok", value: "has space inside key" }, { label: "", value: KEY }]) assert.equal((await add(BOB, bad)).error?.code, "bad_input", JSON.stringify(bad));
   assert.equal((await run({ call: "mystery", person: BOB })).error.code, "bad_input");
-  assert.ok(people);
+  // another member's vault is theirs
+  assert.equal((await run({ call: "status", person: EVE })).data.account, false);
 });
