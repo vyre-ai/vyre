@@ -27,9 +27,9 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
   const env = useFieldEnv(world, open, openTag);
   const mv = useMoveStage(env, reload);
-  const lay = useTypeLayout(rec?.type);
   const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
+  const lay = useTypeLayout(rec?.type);
   const events = useRecordEvents(rec?.urn);
   // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
   const [canSend, setCanSend] = useState(false);
