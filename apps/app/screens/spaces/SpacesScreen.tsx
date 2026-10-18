@@ -22,7 +22,7 @@ import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canMana
 const TEAM = MOCK ? loadTeammates() : [];
 
 import type { VaultPlan } from "./remove-model.js";
-import { doneLine, linkedOf, offboardNames, removeWords, vaultPlan } from "./remove-model.js";
+import { doneLine, linkedOf, offboardNames, removeWords, tickRows, vaultPlan } from "./remove-model.js";
 import { tool } from "../../src/real/box";
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "remove"; id: string; plan: VaultPlan | null; ticked: string[] } | { kind: "temp"; name: string; scope: string; days: string };
@@ -137,7 +137,7 @@ export function SpacesScreen() {
               <View className="flex-1" />
               <Button kind="hold" label={`Remove ${member(sheet.id)?.name} from ${spaceName}`} onPress={() => { const m = member(sheet.id)!; setSheet({ kind: "remove", id: m.id, plan: null, ticked: [] }); if (MOCK) { setSheet({ kind: "remove", id: m.id, plan: vaultPlan({ memberName: m.name, linked: null, people: [] }), ticked: [] }); return; }
                 void Promise.all([tool<unknown>("vault.person.of", { member: m.id }).then(linkedOf).catch(() => null), tool<unknown>("vault.people", {}).catch(() => null)])
-                  .then(([linked, people]) => setSheet((cur) => (cur && cur.kind === "remove" && cur.id === m.id ? { ...cur, plan: vaultPlan({ memberName: m.name, linked, people }) } : cur))); }} />
+                  .then(([linked, people]) => setSheet((cur) => { if (!(cur && cur.kind === "remove" && cur.id === m.id)) return cur; const plan = vaultPlan({ memberName: m.name, linked, people }); return { ...cur, plan, ticked: tickRows(plan).filter((r) => r.ticked).map((r) => r.name) }; })); }} />
             </View>
           </>
         ) : null}
@@ -155,8 +155,8 @@ export function SpacesScreen() {
               {w.choose ? (
                 <View className="gap-s2">
                   <Text size="caption" strong tone="label">{w.choose}</Text>
-                  {sheet.plan.candidates.map((n) => (
-                    <Row key={n} title={n} end={<Switch label={n} on={sheet.ticked.includes(n)} onChange={(on: boolean) => setSheet({ ...sheet, ticked: on ? [...sheet.ticked, n] : sheet.ticked.filter((x) => x !== n) })} />} />
+                  {tickRows(sheet.plan).map((r) => (
+                    <Row key={r.name} title={r.label} end={<Switch label={r.label} on={sheet.ticked.includes(r.name)} onChange={(on: boolean) => setSheet({ ...sheet, ticked: on ? [...sheet.ticked, r.name] : sheet.ticked.filter((x) => x !== r.name) })} />} />
                   ))}
                 </View>
               ) : null}
