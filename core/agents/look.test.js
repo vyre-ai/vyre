@@ -50,15 +50,15 @@ test("a look given at creation is kept and listed", async (t) => {
   const call = await world(t);
   await call("agents.create", { name: "rex", look: "s3~c5" });
   const rows = await call("agents.list");
-  assert.equal(rows.find((r) => r.name === "rex").look, "s3~c5");
+  assert.match(rows.find((r) => r.name === "rex").look, /^s3~c5~e[0-5]~m[0-4]~t[0-6]~b[01]~h[0-5]$/, "stored whole: the parts it left out are filled in");
 });
 
-test("an agent made without a look has none, and agents.update sets and clears it", async (t) => {
+test("an agent made without a look is given a whole one, and agents.update sets and clears it", async (t) => {
   const call = await world(t);
   await call("agents.create", { name: "rex" });
-  assert.equal((await call("agents.list")).find((r) => r.name === "rex").look ?? null, null);
+  assert.match((await call("agents.list")).find((r) => r.name === "rex").look, /^s[0-7]~c[0-7]~e[0-5]~m[0-4]~t[0-6]~b[01]~h[0-5]$/, "an agent made without a look is given a whole one from its name");
   await call("agents.update", { name: "rex", look: "s0~c7" });
-  assert.equal((await call("agents.list")).find((r) => r.name === "rex").look, "s0~c7");
+  assert.match((await call("agents.list")).find((r) => r.name === "rex").look, /^s0~c7~e[0-5]~m[0-4]~t[0-6]~b[01]~h[0-5]$/);
   await call("agents.update", { name: "rex", look: "" });
   assert.equal((await call("agents.list")).find((r) => r.name === "rex").look ?? null, null);
 });
@@ -82,4 +82,15 @@ test("a model cannot change an agent's look: it proposes, as for any change", as
   const call = await world(t);
   await call("agents.create", { name: "rex" });
   await assert.rejects(() => call("agents.update", { name: "rex", look: "s1~c1" }, "mcp"), /propose|person/);
+});
+
+test("a look is stored whole; reading it again gives the same one, and two agents of one shape and colour have characters of their own", async (t) => {
+  const call = await world(t);
+  await call("agents.create", { name: "rex", look: "s1~c2" });
+  await call("agents.create", { name: "max", look: "s1~c2" });
+  const row = async (n) => (await call("agents.list")).find((r) => r.name === n).look;
+  const [a, b] = [await row("rex"), await row("max")];
+  assert.match(a, /^s1~c2~e[0-5]~m[0-4]~t[0-6]~b[01]~h[0-5]$/);
+  assert.equal(a, await row("rex"));
+  assert.notEqual(a, b);
 });

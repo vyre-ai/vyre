@@ -18,6 +18,7 @@
 //
 // The switchboard is used through ctx.call and its events, never by importing it.
 
+import { fullLook } from "../../lib/agent-look-parts.js";
 import { isStaffRole } from "../../lib/roles/staff.js";
 import { grantReach, revokeReach } from "../../lib/project-reach.js";
 import { mintUuid } from "../../kernel/core/ids.js";
@@ -175,6 +176,8 @@ export default {
     const ctx = Object.create(ctx0, { tool: { value: (name, def) => ctx0.tool(name, def && typeof def.run === "function" ? { ...def, run: (i, m, ...r) => calls.run(m, () => def.run(i, m, ...r)) } : def) } });
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
+    // Every agent has its whole look stored, once: an agent made before looks had parts (or with none) gets the shape, colour and parts its name draws, and keeps them if it is renamed.
+    for (const r of db.prepare("SELECT name, look FROM agents_agents WHERE look IS NULL OR look NOT LIKE '%~h%'").all()) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(r.look == null ? null : String(r.look), String(r.name)), r.name);
     for (const r of db.prepare("SELECT name FROM agents_agents WHERE uid IS NULL").all()) db.prepare("UPDATE agents_agents SET uid = ? WHERE name = ?").run(`agt_${mintUuid()}`, String(/** @type {any} */ (r).name));
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     /** Where agents' folders live: beside the projects (never inside VYRE_HOME: the session sandbox refuses a working folder there), so an agent session runs IN its own folder and reads its instructions natively. */
@@ -746,7 +749,8 @@ export default {
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, who ?? await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
-        if (i.look) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look, i.name);
+        // The look is stored whole (its parts filled in from the name when it left them out) so a rename never changes how the agent looks.
+        db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(fullLook(i.look, i.name), i.name);
         await mirror.soon();
         const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
         return note ? { ...get(i.name), note } : get(i.name);
@@ -793,7 +797,7 @@ export default {
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
-        if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look || null, a.name);
+        if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look ? fullLook(i.look, a.name) : null, a.name);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)
