@@ -136,6 +136,7 @@ async function main() {
     const idleEnd = Date.now();
     const startupPeakMB = await startup;
     const afterGc = await gcSnapshot(child, gcFile);
+    if (process.env.VYRE_PERF_HEAP_DETAIL) await heapDetail(home);
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
     // (see that file), so reading it any earlier always finds nothing.
     await stopChild(child);
@@ -172,6 +173,8 @@ async function seed(home, transcriptsDir) {
   // (core/memory/personal/reader.js): real work, with network and money behind it, worth its own budget,
   // and on a runner with no model it only fails and backs off. Like the embedder, it is not "idle".
   const config = { transcripts: [transcriptsDir], recall: { vectors: false }, memory: { model: { on: false } } };
+  // A measuring run only (docs/PERF.md, heap detail): VYRE_PERF_DISABLE=computers,... starts vyred with those modules off, to read what they hold.
+  if (process.env.VYRE_PERF_DISABLE) /** @type {any} */ (config).modules = { disable: process.env.VYRE_PERF_DISABLE.split(",").map(x => x.trim()).filter(Boolean) };
   fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(config));
 
   return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
@@ -183,7 +186,9 @@ function spawnDaemon(home, timersFile, gcFile) {
   const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
   const child = spawn(process.execPath, ["--expose-gc", "--max-semi-space-size=5", "--trace-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
-    env: { MALLOC_ARENA_MAX: "2", ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
+    env: { MALLOC_ARENA_MAX: "2", ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile,
+      // A measuring run only (VYRE_PERF_HEAP_DETAIL=1): the heap each module keeps once started, and a snapshot of the settled heap for the summary below. Off, and not set, in the gate.
+      ...(process.env.VYRE_PERF_HEAP_DETAIL ? { VYRE_PERF_MODULE_HEAP: path.join(home, "module-heap.jsonl"), VYRE_PERF_HEAP_SNAPSHOT: path.join(home, "settled.heapsnapshot") } : {}) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";
@@ -218,6 +223,41 @@ async function gcSnapshot(child, file) {
     try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* not written yet */ }
   }
   return null;
+}
+
+/**
+ * The heap detail of a measuring run (VYRE_PERF_HEAP_DETAIL=1), printed to stderr and never gating: what each module kept after its own start (core/modules/perf-heap.js, in start order),
+ * and the settled heap by constructor and by kind (the snapshot gc-hook.mjs wrote). Run once as is and once with VYRE_PERF_DISABLE=computers to see what one module weighs.
+ */
+async function heapDetail(home) {
+  const mb = n => (n / 1024 / 1024).toFixed(2);
+  try {
+    const rows = fs.readFileSync(path.join(home, "module-heap.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+    log("heap kept after each module's start (MB, forced GC before and after; later lazy work lands on the module that is current then):");
+    for (const r of [...rows].sort((a, b) => (b.after - b.before) - (a.after - a.before))) log(`  ${r.module.padEnd(16)} +${(r.after - r.before).toFixed(2)}  (total ${r.after})`);
+  } catch { log("no per-module heap lines were written"); }
+  const file = path.join(home, "settled.heapsnapshot");
+  for (let i = 0; i < 300 && !(fs.existsSync(file) && fs.statSync(file).size > 0 && await snapshotWritten(file)); i++) await sleep(200);
+  try {
+    const snap = JSON.parse(fs.readFileSync(file, "utf8"));
+    const f = snap.snapshot.meta.node_fields, types = snap.snapshot.meta.node_types[0], n = f.length, nodes = snap.nodes, strings = snap.strings;
+    const iType = f.indexOf("type"), iName = f.indexOf("name"), iSize = f.indexOf("self_size");
+    const byKind = new Map(), byName = new Map();
+    for (let i = 0; i < nodes.length; i += n) {
+      const kind = types[nodes[i + iType]], size = nodes[i + iSize];
+      byKind.set(kind, (byKind.get(kind) || 0) + size);
+      // objects are named by their constructor, closures and code by their function; strings and numbers are grouped by kind alone
+      if (kind === "object" || kind === "closure" || kind === "code" || kind === "native") { const k = `${kind}:${strings[nodes[i + iName]]}`.slice(0, 80); byName.set(k, (byName.get(k) || 0) + size); }
+    }
+    log("settled heap by kind (MB self size):");
+    for (const [k, v] of [...byKind].sort((a, b) => b[1] - a[1])) log(`  ${k.padEnd(16)} ${mb(v)}`);
+    log("settled heap, top 25 constructors / functions (MB self size):");
+    for (const [k, v] of [...byName].sort((a, b) => b[1] - a[1]).slice(0, 25)) log(`  ${mb(v).padStart(7)}  ${k}`);
+  } catch (e) { log(`no heap snapshot summary: ${e.message}`); }
+}
+/** A heap snapshot is JSON that ends with a closing brace once the write is done. */
+async function snapshotWritten(file) {
+  try { const fd = fs.openSync(file, "r"); const size = fs.fstatSync(fd).size; const b = Buffer.alloc(8); fs.readSync(fd, b, 0, 8, Math.max(0, size - 8)); fs.closeSync(fd); return b.toString().trim().endsWith("}"); } catch { return false; }
 }
 
 /** daemon/client.js, imported with the temp home baked in via its own `root` option. */

@@ -17,9 +17,12 @@ if (out && gc) {
     setImmediate(() => {
       gc();
       const m = process.memoryUsage();
+      // A measuring run (VYRE_PERF_HEAP_SNAPSHOT names a file): the heap as V8 holds it right now, for perf-check to summarise after vyred has stopped. Written AFTER the numbers below are taken.
+      const snap = process.env.VYRE_PERF_HEAP_SNAPSHOT;
       try {
         fs.writeFileSync(out, JSON.stringify({ rss: mb(m.rss), heapTotal: mb(m.heapTotal), heapUsed: mb(m.heapUsed), external: mb(m.external), arrayBuffers: mb(m.arrayBuffers) }));
       } catch { /* best effort: perf-check reports a missing snapshot */ }
+      if (snap) { import("node:v8").then(v8 => { try { v8.writeHeapSnapshot(snap); } catch { /* best effort */ } }).catch(() => {}); }
     });
   });
 }

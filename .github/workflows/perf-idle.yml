@@ -2,6 +2,15 @@
 name: perf-idle
 on:
   workflow_dispatch:
+    inputs:
+      detail:
+        description: "Heap detail run (VYRE_PERF_HEAP_DETAIL): one run per Node major, the whole log, no CPU loop. Empty keeps the three idle runs"
+        required: false
+        default: ""
+      disable:
+        description: "With detail: modules to start OFF (VYRE_PERF_DISABLE), comma separated, e.g. computers"
+        required: false
+        default: ""
   push:
     branches: ["work/launch-perf-idle"]
 permissions:
@@ -19,7 +28,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}" }
       - run: npm ci --no-audit --no-fund
+      - name: heap detail (one run, the whole log)
+        if: ${{ inputs.detail != '' }}
+        env:
+          VYRE_PERF_HEAP_DETAIL: "1"
+          VYRE_PERF_DISABLE: ${{ inputs.disable }}
+        run: |
+          echo "== heap detail, node ${{ matrix.node }}, disabled: '$VYRE_PERF_DISABLE'"
+          node scripts/perf-check 2>&1 | grep -vE "^perf-check: (sampled|sample )" || true
       - name: three idle runs
+        if: ${{ inputs.detail == '' }}
         run: |
           for i in 1 2 3; do
             echo "== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
