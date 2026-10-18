@@ -48,10 +48,10 @@ test("1b. the hand-in lookup runs on the doer's own chain: a record the doer may
   const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
   await K.gateway.grants.setRole(ownerChain, { person: CAT, role: "member" }, { presence: proof() });
   const cat = K.chains.fromFacts({ kind: "device", device_key_id: "d-cat", person: CAT, path: "relay" });
-  // a project of the owner's, which a member who is not on it cannot read
-  const rec = await K.gateway.records.create(ownerChain, "project", { name: "Private matter", slug: "private-matter", status: "active" });
-  const secret = `vyre://${space}/project/${rec.id}`, missing = `vyre://${space}/project/no-such-record-at-all`;
-  await assert.rejects(K.gateway.records.get(cat, "project", rec.id), "the member really cannot read it");
+  // a task of the owner's own, which a member who has nothing to do with it cannot read
+  const own = await ask.request(ownerChain, { title: "The owner's private errand", doer: w.me, output: { kind: "note" } });
+  const secret = `vyre://${space}/task/${own.id}`, missing = `vyre://${space}/task/00000000-0000-4000-8000-000000000000`;
+  await assert.rejects(K.gateway.records.get(cat, "task", own.id), "the member really cannot read it");
   const refusal = async (/** @type {string} */ urn) => {
     const task = await ask.request(ownerChain, { title: "Hand it in", doer: { kind: "person", id: CAT, space }, output: { kind: "file" } });
     await ask.start(cat, task.id);
