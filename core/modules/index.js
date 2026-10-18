@@ -10,6 +10,8 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { checkInput } from "./check-input.js";
+export { checkInput };
 import { RELAY_ALLOWED } from "./relay-allowed.js";
 import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
@@ -370,27 +372,6 @@ export function order(mods) {
   };
   for (const m of mods) visit(m, []);
   return { ordered: out, problems };
-}
-
-/**
- * A tiny JSON-schema check for tool input: types, required keys, enums. Enough to reject a bad
- * call with a readable error; a tool's own run() still validates anything subtle.
- */
-export function checkInput(schema, value, where = "input") {
-  if (!schema) return [];
-  const out = [];
-  const type = schema.type;
-  const is = { object: v => v && typeof v === "object" && !Array.isArray(v), array: Array.isArray,
-    string: v => typeof v === "string", number: v => typeof v === "number", integer: Number.isInteger,
-    boolean: v => typeof v === "boolean" };
-  if (type && is[type] && !is[type](value)) return [`${where} must be ${type}`];
-  if (schema.enum && !schema.enum.includes(value)) out.push(`${where} must be one of ${schema.enum.join(", ")}`);
-  if (type === "object") {
-    for (const k of schema.required || []) if (value[k] === undefined) out.push(`${where}.${k} is required`);
-    for (const [k, s] of Object.entries(schema.properties || {})) if (value[k] !== undefined) out.push(...checkInput(s, value[k], `${where}.${k}`));
-  }
-  if (type === "array" && schema.items) value.forEach((v, i) => out.push(...checkInput(schema.items, v, `${where}[${i}]`)));
-  return out;
 }
 
 /**
