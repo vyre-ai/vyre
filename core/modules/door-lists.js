@@ -328,7 +328,7 @@ export const TOOL_GROUPS = Object.freeze({
   mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send", "microsoft.mail.send"]),
   calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "microsoft.calendar.create", "connectors.calendar.today"]),
   documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
-    "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.add"]),
+    "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
     "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
   publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),

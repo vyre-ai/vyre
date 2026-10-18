@@ -42,9 +42,19 @@ async function grantDrive(/** @type {any} */ d, /** @type {string} */ owner) {
   }
 }
 
-test("the three tools are on a member's list and nothing that sends is: send, the signing tools and adding a template stay the owner's", () => {
-  for (const tool of ["documents.template.list", "documents.template.get", "documents.generate"]) { assert.ok(MEMBER_MAY.has(tool), tool); assert.ok(!OWNER_ONLY.has(tool), tool); }
-  for (const tool of ["documents.send", "documents.send-signed", "documents.signing.waiting", "documents.signing.remind", "documents.signed-link", "documents.template.add"]) { assert.ok(OWNER_ONLY.has(tool), tool); assert.ok(!MEMBER_MAY.has(tool), tool); }
+test("the template tools and the three signing views are on a member's list and nothing that sends is: send, the reminder, the links and adding a template stay the owner's", () => {
+  // the views check each request against the module's own table (the sender, or staff); the module is where a member is kept to her own requests
+  for (const tool of ["documents.template.list", "documents.template.get", "documents.generate", "documents.signing.status", "documents.signing.waiting", "documents.signing.audit"]) { assert.ok(MEMBER_MAY.has(tool), tool); assert.ok(!OWNER_ONLY.has(tool), tool); }
+  for (const tool of ["documents.send", "documents.send-signed", "documents.signing.flow", "documents.signing.remind", "documents.signed-link", "documents.signed-link.revoke", "documents.template.add"]) { assert.ok(OWNER_ONLY.has(tool), tool); assert.ok(!MEMBER_MAY.has(tool), tool); }
+});
+
+test("a member is met by the module, not the door, for the three signing views, and gets the one not_found for a request that is not hers", { timeout: 300_000 }, async t => {
+  const { as } = await rig(t);
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["documents.signing.status", { submission: 1 }], ["documents.signing.audit", { submission: 1 }], ["documents.signing.waiting", {}]])) {
+    const m = await as("member", tool, input);
+    assert.ok(!gated(m, tool), `${tool}: not the door's refusal: ${JSON.stringify(m).slice(0, 160)}`);
+    if (tool !== "documents.signing.waiting") assert.ok(m.error && m.error.code === "not_found" && /no such request/.test(m.error.message), `${tool}: the module's one answer, ${JSON.stringify(m).slice(0, 160)}`);
+  }
 });
 
 test("a member is never met by the door for the three tools, and what she gets is what the kernel lets her: without a Drive grant the templates are not there", { timeout: 300_000 }, async t => {
