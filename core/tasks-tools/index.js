@@ -36,8 +36,8 @@ export default {
     /** A task's actor from an id: a person by their per_ id, else an assistant or teammate by name. @param {string} id @param {string} space */
     const actor = (id, space) => ({ kind: /^per_/.test(id) ? "person" : "agent", id, space });
 
-    tool("tasks.list", "Tasks, oldest first: by record, doer, checker or state. Only what the caller may read.", obj({ space: str, record: str, doer: str, checker: str, approver: str, reviewer: str, state: { type: "array", items: { type: "string", enum: STATES } } }), async (i, d) => ({
-      tasks: (await asks(d).list(d.chain, { ...(i.record ? { record: String(i.record) } : {}), ...(i.doer ? { doer: String(i.doer) } : {}), ...(i.checker ? { checker: String(i.checker) } : {}), ...(i.approver ? { approver: String(i.approver) } : {}), ...(i.reviewer ? { reviewer: String(i.reviewer) } : {}), ...(Array.isArray(i.state) ? { state: i.state.map(String) } : {}) })).map(withSlots),
+    tool("tasks.list", "Tasks, oldest first: by record, doer, checker or state. Only what the caller may read.", obj({ space: str, record: str, doer: str, checker: str, approver: str, reviewer: str, mine: { type: "string", enum: ["assigned", "reviewing", "approving"] }, state: { type: "array", items: { type: "string", enum: STATES } } }), async (i, d) => ({
+      tasks: (await asks(d).list(d.chain, { ...(i.record ? { record: String(i.record) } : {}), ...(i.doer ? { doer: String(i.doer) } : {}), ...(i.checker ? { checker: String(i.checker) } : {}), ...(i.approver ? { approver: String(i.approver) } : {}), ...(i.reviewer ? { reviewer: String(i.reviewer) } : {}), ...(i.mine ? { mine: String(i.mine) } : {}), ...(Array.isArray(i.state) ? { state: i.state.map(String) } : {}) })).map(withSlots),
     }));
     tool("tasks.update", "The doer adds details, a progress note or the outputs it made, while the task is ready, working or has changes requested.", obj({ space: str, id: str, details: { type: "object" }, note: str, outputs: { type: "array", items: str } }, ["id"]), async (i, d) => ({
       task: withSlots(await asks(d).update(d.chain, String(i.id), { ...(i.details !== undefined ? { details: i.details } : {}), ...(i.note !== undefined ? { note: String(i.note) } : {}), ...(i.outputs !== undefined ? { outputs: i.outputs } : {}) })),
@@ -76,7 +76,7 @@ export default {
     // ---- the member door: a team member's daily work on tasks, run as her, in the team's Space ----
     // `decide` is not here: approving is the person's own act with their presence, which the door does not carry.
     const MEMBER_KEYS = /** @type {Record<string, string[]>} */ ({
-      list: ["record", "doer", "checker", "approver", "reviewer", "state", "limit"], get: ["id"], request: ["task"], move: ["id", "to", "reason", "suggested_fix"], submit: ["id", "evidence"],
+      list: ["record", "doer", "checker", "approver", "reviewer", "mine", "state", "limit"], get: ["id"], request: ["task"], move: ["id", "to", "reason", "suggested_fix"], submit: ["id", "evidence"],
       update: ["id", "details", "note", "outputs"], review: ["id", "result", "checklist", "note"],
     });
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {

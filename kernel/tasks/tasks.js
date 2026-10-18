@@ -464,13 +464,21 @@ export function createTasks(cfg) {
     /**
      * The tasks this chain may read, filtered: by record, doer id, checker id (a named checker or one of the persons a role resolves to) and state. Each task goes through the same `tasks.read`
      * gate `get` uses, so a task the chain may not read is absent, never marked. Oldest first.
-     * @param {any} chain @param {{ record?: string, doer?: string, checker?: string, state?: string[] }} [q]
+     * @param {any} chain @param {{ record?: string, doer?: string, checker?: string, approver?: string, reviewer?: string, mine?: string, state?: string[] }} [q]
      */
     async list(chain, q = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       const out = [];
+      if (q.mine !== undefined && !["assigned", "reviewing", "approving"].includes(q.mine)) throw new KernelError("bad_input", "mine is assigned, reviewing or approving");
+      // "mine" is the caller's own slots, read from the chain and never from input: the person, the assistant acting now, and every role either holds (read live).
+      const me = q.mine ? [chain.hops[0].actor, acting(chain)].filter((/** @type {any} */ a, /** @type {number} */ i, /** @type {any[]} */ l) => a && l.findIndex((/** @type {any} */ b) => same(a, b)) === i) : [];
+      const isMe = (/** @type {any} */ a) => me.some((/** @type {any} */ m) => same(m, a));
+      const holds = (/** @type {any} */ slot) => Boolean(slot) && (slot.role ? roleHolders(slot.role).some(isMe) : isMe(slot));
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
+        if (q.mine === "assigned" && !holds(t.doer)) continue;
+        if (q.mine === "reviewing" && !reviewersOf(t).some(isMe)) continue;
+        if (q.mine === "approving" && !checkersOf(t).some(isMe)) continue;
         if (q.project !== undefined || q.parent !== undefined) {
           const v = await overlay(t);
           if (q.project !== undefined && (v.project || null) !== q.project) continue;

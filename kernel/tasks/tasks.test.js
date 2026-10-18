@@ -1038,3 +1038,15 @@ test("the approval covers the details and outputs the doer gave: the body differ
   const b = await r.tasks.complete(asIntake(), t.id, evidenceSent());
   assert.notEqual(a.payload.payload_hash, b.payload.payload_hash);
 });
+
+test("list mine: assigned, reviewing and approving read the caller's own slots from the chain; a person never sees another's; a bad value is refused", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", ALICE) }));
+  const b = await r.tasks.request(owner(), draftTask({ doer: actor("person", BOB), checker: actor("person", ALICE) }));
+  assert.deepEqual((await r.tasks.list(bob(), { mine: "assigned" })).map(t => t.id).sort(), [a.id, b.id].sort());
+  assert.deepEqual((await r.tasks.list(alice(), { mine: "reviewing" })).map(t => t.id), [a.id]);
+  assert.deepEqual((await r.tasks.list(alice(), { mine: "approving" })).map(t => t.id), [b.id]);
+  assert.deepEqual(await r.tasks.list(alice(), { mine: "assigned" }), []);
+  assert.deepEqual(await r.tasks.list(bob(), { mine: "reviewing" }), []);
+  await assert.rejects(() => r.tasks.list(bob(), { mine: "everyone" }), { code: "bad_input" });
+});
