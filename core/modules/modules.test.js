@@ -1084,7 +1084,7 @@ test("modules v1: default-deny, an added caller reaches only a declared reach, a
 });
 
 test("modules v1: an added module may not declare needs.daemon (agentActor, chatFor, kernelSession ...); a first-party one may", () => {
-  for (const name of ["agentActor", "chatFor", "kernelSession", "flowsHost", "turnRecordTags"]) {
+  for (const name of ["agentActor", "chatFor", "kernelSession", "flowsHost", "turnRecordTags", "lendKey"]) {
     assert.match(validate({ ...good, needs: { daemon: [name] } }).join(), /needs\.daemon is built in only/, name);
     assert.deepEqual(validate({ ...good, needs: { daemon: [name] } }, { firstParty: true }).filter(p => /needs\.daemon/.test(p)), [], name);
   }

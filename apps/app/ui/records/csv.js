@@ -23,7 +23,7 @@ export function parseCsv(text) {
 
 const KINDS = new Set(["text", "url", "number", "money", "boolean", "date", "datetime", "choice", "rating", "rich_text"]);
 /** The fields an import can fill: the plain kinds, never a stage, a link, a file, a sealed value, a computed or hidden field. @param {any[]} fields */
-export const importableFields = (fields) => fields.filter((f) => KINDS.has(f.kind) && !f.hidden && !f.computed && !f.owned_by && !f.seal);
+export const importableFields = (fields) => fields.filter((f) => KINDS.has(f.kind) && !f.hidden && !f.computed && !f.owned_by && !f.read_only && !f.seal);
 
 /** One row as the values of the fields it is matched to. Empty cells leave a field out; what does not fit is named and left out. @param {any[]} fields @param {Record<string, string>} mapping @param {Record<string, string>} row */
 export function coerceRow(fields, mapping, row) {

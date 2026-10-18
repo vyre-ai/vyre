@@ -18,6 +18,9 @@ import { callT } from "../../src/real/call-tool";
 import { loadSnoozed } from "../../src/state/snooze";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { RecordsSetup } from "./RecordsSetup";
+import { HomeHeader } from "./HomeHeader";
+import { HomeAgents } from "./HomeAgents";
+import { AskDock } from "./AskDock";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
@@ -44,10 +47,14 @@ export default function NowScreen() {
   const gap = useGap() ?? setup;
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   useEffect(() => { if (!real) return; let live = true; void createCardSource(callT).agents().then((a) => { if (live) setAgents(a); }); return () => { live = false; }; }, [real]);
+  const [working, setWorking] = useState(0);
+  const [ask, setAsk] = useState<{ names: string[]; assistant: string }>({ names: [], assistant: "" });
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(world, go);
   return (
-    <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+    <LargeTitleScreen title="Now" own wide onRefresh={q.reload} dock={real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : undefined} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+      <HomeHeader now={q.data?.now ?? Date.now()} today={calendar?.length} working={working} />
+      {real ? <HomeAgents onCount={setWorking} onNames={(names, assistant) => setAsk({ names, assistant })} /> : null}
       {real ? <RecordsSetup /> : null}
       {real ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}

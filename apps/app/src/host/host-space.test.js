@@ -358,7 +358,7 @@ test("a space made here and the same space signed in to from another device are 
   const created = (await one.call("onboard.space.list")).spaces;
   assert.deepEqual(await svc.register(await one.registerLogin("alex-space", PASSWORD)), { ok: true, username: "alex" });
 
-  // Device two has nothing and signs in with the address, the username and the master password.
+  // Device two has nothing and signs in with the address, the username and the password.
   const two = createHost({ store: memoryStore(), directory: d.base, fetch: fetchAll, now: d.now });
   await two.call("onboard.signin", { space: "alex-space.vyre.run", username: "alex", password: PASSWORD });
   const signed = (await two.call("onboard.space.list")).spaces;
@@ -421,6 +421,203 @@ test("a page with no daemon offers the AI sign-in once its space is online, and 
   assert.deepEqual([sent.box, sent.input.provider, sent.input.label], ["boxA", "claude", "Claude"], "it goes to the server this onboarding made, not the older one listed first");
 });
 
+test("the Assistant step names the Assistant and keeps its look on the server this onboarding made, and refuses a name or a look it should not take", async (t) => {
+  const { pp, host } = await ready(t);
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "Juno", look: "s1~c2" }), (e) => e.code === "no_server", "no server yet, no Assistant");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  pp.call = async (name, input, box) => {
+    if (name === "onboard.you" || name === "onboard.assistant" || name === "agents.update") {
+      pp.seen.calls.push({ name, input, box });
+      return name === "onboard.assistant" ? { name: "juno", display: "Juno", made: true, why: null, token: "SECRET" } : { ok: true };
+    }
+    return first(name, input, box);
+  };
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "", look: "s1~c2" }), (e) => e.code === "bad_name");
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "x".repeat(41), look: "s1~c2" }), (e) => e.code === "bad_name");
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "Juno", look: "<script>" }), (e) => e.code === "bad_look");
+  const look = "s3~c5~e1~m2~t4~b1~h0";
+  const r = await host.call("onboard.assistant.set", { name: "Juno", look, person: "Proof Walker" });
+  assert.deepEqual(r, { name: "juno", display: "Juno", look }, "only the name, the display name and the look come back");
+  const sent = pp.seen.calls.filter((c) => ["onboard.you", "onboard.assistant", "agents.update"].includes(c.name));
+  assert.deepEqual(sent.map((c) => c.name), ["onboard.you", "onboard.assistant", "agents.update"], "named, made, then its look kept");
+  assert.ok(sent.every((c) => c.box === "boxA"), "all three go to the server this onboarding made");
+  assert.equal(sent[0].input.assistant, "Juno");
+  assert.equal(sent[0].input.name, "Proof Walker", "the name the person gave is the one the server shows");
+  assert.deepEqual(sent[2].input, { name: "juno", look });
+});
+
+test("a tool that writes the Assistant never lands on the current space's server when none was made in this run and several are paired", async (t) => {
+  const { pp, host, store } = await ready(t);
+  { const k = await store.load(); await store.save({ ...k, current: "spc_aaaaaaaaaaaa", spaces: [
+    { id: "spc_aaaaaaaaaaaa", name: "team", role: "member", server: null, paired: { box: "boxTEAM", route: "r", relay: "x" } },
+    { id: "spc_bbbbbbbbbbbb", name: "older", role: "owner", server: null, paired: { box: "boxOLD", route: "r", relay: "x" } }] }); }
+  const sent = [];
+  const first = pp.call;
+  pp.call = async (name, input, box) => { sent.push({ name, box }); return first(name, input, box); };
+  for (const [tool, input] of [["onboard.assistant.set", { name: "Juno", look: "s1~c2" }], ["onboard.assistant.models", {}], ["onboard.assistant.model", { model: "opus" }]]) {
+    await assert.rejects(() => host.call(tool, input), (e) => e.code === "no_server", tool);
+  }
+  assert.deepEqual(sent, [], "nothing was sent to either server");
+});
+
+test("the API key tool sends the key once to the server's key tool and never lets it out: not in what it returns, not in what it throws, only the owner adds one, and only the one allowed address is accepted", async (t) => {
+  const { pp, host, store } = await ready(t);
+  const KEY = "sk-ant-RECOGNISABLE-KEY-0123456789";
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "no_server");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  const sent = [];
+  let mode = "ok";
+  pp.call = async (name, input, box) => {
+    if (name === "sessions.accounts.key") {
+      sent.push({ name, input, box });
+      if (mode === "echo") throw Object.assign(new Error(`the service refused the key ${input.key} at https://api.anthropic.com`), { code: "bad_input" });
+      return { account: "ac_9", provider: "claude", label: input.label, checked: true, host: "api.anthropic.com", secret: input.key };
+    }
+    return first(name, input, box);
+  };
+  // the key never comes back, and the server gets the name for its Vault item
+  const r = await host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" });
+  assert.deepEqual(r, { account: "ac_9", provider: "claude", label: "Work Claude", checked: true });
+  assert.ok(!JSON.stringify(r).includes(KEY));
+  assert.deepEqual([sent[0].box, sent[0].input.name, sent[0].input.label, sent[0].input.kind], ["boxA", "Work Claude", "Work Claude", "anthropic-compatible"]);
+  // an error that echoes the key is thrown without it
+  mode = "echo";
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" }), (e) => { assert.ok(!String(e.message).includes(KEY), "the thrown words carry no key"); assert.equal(e.code, "bad_input"); return true; });
+  mode = "ok";
+  // other addresses, kinds, keys and names are refused with nothing sent
+  sent.length = 0;
+  for (const bad of [{ kind: "anthropic-compatible", base_url: "https://evil.example/v1" }, { kind: "openai-compatible", base_url: "https://evil.example/v1" }, { kind: "openrouter", base_url: "https://api.x.ai/v1" }, { kind: "mystery" }, { kind: "openrouter", key: "short" }, { kind: "openrouter", label: "" }]) {
+    await assert.rejects(() => host.call("onboard.agent.key", { kind: "openrouter", key: KEY, label: "Work", ...bad }), (e) => e.code === "bad_address" || e.code === "bad_kind" || e.code === "bad_key" || e.code === "bad_name");
+  }
+  const ok = await host.call("onboard.agent.key", { kind: "openai-compatible", key: "xai-0123456789abcdef", label: "Grok", base_url: "https://api.x.ai/v1" });
+  assert.equal(ok.account, "ac_9");
+  assert.equal(sent.length, 1, "only the allowed address went to the server");
+  // a member of the space does not put the key in the owner's Vault: without a member-key store the tool says it is not available, and nothing is sent
+  sent.length = 0;
+  { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "ask_owner");
+  assert.deepEqual(sent, [], "nothing was sent for a member");
+});
+
+test("a joining member's key goes to their own Vault in one act: checked with its provider first, the password asked for only when their vault is missing or locked, and neither the key nor the password is in anything returned or thrown", async (t) => {
+  const keys = new Map();
+  const { pp, host, store } = await ready(t, { memberKeyPath: true, memberKeys: { get: async (a) => keys.get(a) ?? null, put: async (a, k) => void keys.set(a, k), remove: async (a) => void keys.delete(a) } });
+  const KEY = "sk-ant-MEMBER-KEY-0123456789", PW = "member pass phrase 77";
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
+  const first = pp.call;
+  const calls = [];
+  let vault = { account: false, unlocked: false }, fail = "", badKey = false, halfDone = false;
+  pp.call = async (name, input, box) => {
+    if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
+    const copy = JSON.parse(JSON.stringify(input || {})); const space = copy.space; delete copy.space;
+    calls.push({ name, input: copy, box, space });
+    if (name === "sessions.accounts.key") { if (badKey) throw new Error(`the service refused that key ${input.key}`); return { checked: true, host: "api.anthropic.com" }; }
+    if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
+    if (name === "vault.me.add-key") {
+      if (halfDone) { vault = { account: true, unlocked: true }; return { item: "", failed: "your vault could not be checked for that name", acct: "a2", secret_key: "SECRET-KEY-HALF" }; }
+      if (fail) throw new Error(`${fail}: ${input.value} / ${input.password}`);
+      const made = !vault.account; vault = { account: true, unlocked: true };
+      return { item: input.label, acct: "a1", ...(made ? { secret_key: "SECRET-KEY-OF-VAULT" } : {}) };
+    }
+    if (name === "sessions.accounts.add") return { id: "ac_m1", provider: input.provider, label: input.label };
+    throw new Error("unexpected " + name);
+  };
+  const ask = (extra = {}) => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "My Claude", ...extra });
+  // no vault yet and no password: the key is checked, then it asks for the password, and nothing is written
+  await assert.rejects(() => ask(), (e) => e.code === "need_password" && !String(e.message).includes(KEY));
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status"]);
+  assert.equal(calls[0].input.check_only, true, "the check keeps nothing");
+  // with the password: one act makes and opens the vault and puts the key; the vault's Secret Key stays on this device
+  calls.length = 0;
+  const r = await ask({ password: PW });
+  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true, item: "My Claude" }, "the name it is saved under in their Vault comes back, so the sheet can say it");
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
+  assert.ok(calls.every((c) => c.box === "boxA"));
+  assert.ok(calls.every((c) => /^spc_[a-z2-7]{12}$/.test(String(c.space))), "every call names the team's Space, which is how the app sends it through the team's door");
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.add-key", "the password goes to the one act only");
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "sessions.accounts.key,vault.me.add-key", "the key goes to its check and to the one act");
+  assert.deepEqual(calls[3].input, { provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude" });
+  assert.equal(keys.get("a1"), "SECRET-KEY-OF-VAULT");
+  assert.ok(!JSON.stringify(r).includes(PW) && !JSON.stringify(r).includes(KEY));
+  // open already: no password is asked for, and none is sent
+  calls.length = 0;
+  await ask({ label: "Second" });
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.add-key", "sessions.accounts.add"]);
+  assert.ok(!("password" in calls[2].input) && !("secret_key" in calls[2].input), "no prompt, nothing extra sent");
+  // locked: it asks for the password, and sends it with the Secret Key this device holds
+  vault = { account: true, unlocked: false }; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Third" }), (e) => e.code === "need_password");
+  await ask({ label: "Third", password: PW });
+  const act = calls.find((c) => c.name === "vault.me.add-key");
+  assert.deepEqual([act.input.password, act.input.secret_key], [PW, "SECRET-KEY-OF-VAULT"]);
+  // a device without the Secret Key says so and writes nothing
+  keys.clear(); vault = { account: true, unlocked: false }; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => e.code === "no_device_key");
+  assert.ok(!calls.some((c) => c.name === "vault.me.add-key" || c.name === "sessions.accounts.add"));
+  keys.set("a1", "SECRET-KEY-OF-VAULT");
+  // an error that echoes the key and the password is thrown without either
+  fail = "the vault refused"; vault = { account: true, unlocked: true };
+  await assert.rejects(() => ask({ label: "Fifth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });
+  fail = "";
+  // a key the provider refuses is caught at once, before a password or the vault, and the message does not carry the key
+  badKey = true; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Sixth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY)); assert.match(e.message, /refused that key/); return true; });
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key"], "nothing else was asked or put");
+  badKey = false;
+  // every kind the owner can add: an OpenAI-style key at xAI's one address makes an openai-compatible account at that address, in their own vault
+  vault = { account: true, unlocked: true }; calls.length = 0;
+  const xai = await host.call("onboard.agent.key", { kind: "openai-compatible", key: "xai-0123456789abcdef", label: "Grok", base_url: "https://api.x.ai/v1" });
+  assert.equal(xai.provider, "openai-compatible");
+  assert.equal(calls[0].input.base_url, "https://api.x.ai/v1");
+  assert.equal(calls.find((c) => c.name === "sessions.accounts.add").input.base_url, "https://api.x.ai/v1");
+  const orr = await host.call("onboard.agent.key", { kind: "openrouter", key: "sk-or-0123456789abc", label: "Router" });
+  assert.equal(orr.provider, "openrouter");
+  // a vault just made whose later step failed still hands over its Secret Key, and the device keeps it before the failure is said
+  halfDone = true; vault = { account: false, unlocked: false };
+  await assert.rejects(() => ask({ label: "Seventh", password: PW }), (e) => /could not be checked/.test(e.message));
+  assert.equal(keys.get("a2"), "SECRET-KEY-HALF", "the Secret Key was kept even though the key was not put");
+  halfDone = false;
+  // a kind this tool does not know is said plainly, with nothing sent
+  calls.length = 0;
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "mystery", key: KEY, label: "x" }), (e) => e.code === "bad_kind");
+  assert.deepEqual(calls, []);
+});
+
+test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {
+  const { pp, host } = await ready(t);
+  await assert.rejects(() => host.call("onboard.assistant.models", {}), (e) => e.code === "no_server");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  const say = { "sessions.accounts.list": [{ id: "ac_1", provider: "claude", label: "Work", kind: "login", token: "SECRET" }, { id: "ac_2", provider: "codex", label: "Key", kind: "api-key", vault_item: "k" }, { id: "ac_3", provider: "claude", label: "Nope", pending: true }, { id: "default", provider: "claude", label: "Default", synthetic: true }],
+    "agents.list": [{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }] };
+  pp.call = async (name, input, box) => {
+    if (name === "sessions.accounts.list" || name === "agents.list") return say[name];
+    if (name === "sessions.accounts.models") { if (input.account === "ac_1") return { models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }], secret: "S" }; throw new Error("not offered"); }
+    if (name === "sessions.models") { pp.seen.calls.push({ name, input, box }); return [{ id: "gpt-5", label: "GPT 5" }]; }
+    if (name === "agents.update") { pp.seen.calls.push({ name, input, box }); return { ok: true }; }
+    return first(name, input, box);
+  };
+  const r = await host.call("onboard.assistant.models", {});
+  assert.deepEqual(r.accounts.map((a) => [a.id, a.label, a.provider, a.models.map((m) => m.id)]), [["ac_1", "Work", "claude", ["opus", "sonnet"]], ["ac_2", "Key", "codex", ["gpt-5"]]], "pending and synthetic accounts are left out; an account with no list of its own shows its provider's");
+  assert.ok(!JSON.stringify(r).includes("SECRET") && !JSON.stringify(r).includes("vault_item"), "no credential or vault item comes back");
+  await assert.rejects(() => host.call("onboard.assistant.model", { model: "a b; rm" }), (e) => e.code === "bad_model");
+  const m = await host.call("onboard.assistant.model", { model: "opus" });
+  assert.deepEqual(m, { name: "juno", model: "opus" });
+  const sent = pp.seen.calls.filter((c) => c.name === "agents.update").pop();
+  assert.deepEqual([sent.box, sent.input], ["boxA", { name: "juno", model: "opus" }]);
+});
+
 test("a Mac window says on its online answer that fingerprint approvals are not there yet; a browser says nothing", async (t) => {
   for (const mac of [true, false]) {
     const { pp, host } = await ready(t, { softwareKeyHere: mac });
@@ -431,7 +628,7 @@ test("a Mac window says on its online answer that fingerprint approvals are not 
   }
 });
 
-test("a relaunched host is locked: a tool that needs the key answers locked until the master password opens it", async (t) => {
+test("a relaunched host is locked: a tool that needs the key answers locked until the password opens it", async (t) => {
   const { d, store, pp, host } = await ready(t);
   // the same kept identity in a new page (a relaunch): nothing of the key survives in memory
   const again = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => pp }, sleep: nap, pollMs: 5 });

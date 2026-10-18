@@ -17,7 +17,8 @@ import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
 import { publishedManifest, checkPublished } from "./published.js";
-import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting } from "./signing.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting, readStatus } from "./signing.js";
+import { auditAllowed, auditBodyWithin } from "../../lib/audit-rules.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
@@ -633,6 +634,48 @@ export default {
         if (!res || !res.ok) throw refuse(`${name} would not say what is waiting (${res ? res.status : "no answer"})`, "app_refused");
         const origin = await signerOrigin(name);
         return { requests: readWaiting(await res.json().catch(() => null)).map(q => ({ ...q, url: `${origin}/sign/${q.submission}/${q.slug}` })) };
+      },
+    });
+    // One submission's status, read from the app (GET /api/submissions/<id>): the signers' times and the audit link. Only the app's own module asks (documents).
+    ctx.tool("appmods.signing.status", {
+      internal: true, callers: ["module"],
+      description: "One signature request's status: { name, submission } -> { status: { submission, status, signers, audit_url } | null }. Only the app's own module asks.",
+      input: obj({ name: str, submission: { type: "integer" } }, ["name", "submission"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks for a request's status", "denied");
+        const n = Number(i.submission);
+        if (!Number.isInteger(n) || n < 1) throw refuse("a request is a whole number", "bad_input");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin || !(known(name).app || {}).signing) return { status: null };
+        const res = await fetch(`${r.origin}/api/submissions/${n}`, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+        if (!res || !res.ok) throw refuse(`${name} would not say how request ${n} is doing (${res ? res.status : "no answer"})`, "app_refused");
+        return { status: readStatus(await res.json().catch(() => null)) };
+      },
+    });
+    // The audit file of one request, fetched by the server from the app's own https origin only, with no redirects and a size cap (18 Oct ruling).
+    ctx.tool("appmods.signing.audit", {
+      internal: true, callers: ["module"],
+      description: "One request's audit file: { name, submission } -> { bytes: base64 } on the app's own https origin, no redirects, size-capped. Only the app's own module asks.",
+      input: obj({ name: str, submission: { type: "integer" } }, ["name", "submission"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks for an audit file", "denied");
+        const n = Number(i.submission);
+        if (!Number.isInteger(n) || n < 1) throw refuse("a request is a whole number", "bad_input");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin || !(known(name).app || {}).signing) throw refuse(`${name} is not running`, "app_refused");
+        const sres = await fetch(`${r.origin}/api/submissions/${n}`, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(15_000), redirect: "manual" }).catch(() => null);
+        if (!sres || !sres.ok) throw refuse(`${name} would not say how request ${n} is doing`, "app_refused");
+        const status = readStatus(await sres.json().catch(() => null));
+        const url = status && auditAllowed(r.origin, status.audit_url);
+        if (!url) throw refuse("there is no audit file for this request on the app's own origin", "not_found");
+        const ares = await fetch(url, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(20_000), redirect: "manual" }).catch(() => null);
+        if (!ares || !ares.ok || ares.status >= 300) throw refuse("the audit file could not be fetched", "app_refused");
+        const len = Number(ares.headers.get("content-length"));
+        const cap = 8 * 1024 * 1024;
+        if (!auditBodyWithin(len, cap)) throw refuse("the audit file is larger than 8 MB, or its size is unknown", "too_large");
+        const bytes = Buffer.from(await ares.arrayBuffer());
+        if (!auditBodyWithin(bytes.length, cap)) throw refuse("the audit file is larger than 8 MB", "too_large");
+        return { bytes: bytes.toString("base64") };
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({

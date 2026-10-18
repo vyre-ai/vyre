@@ -48,3 +48,19 @@ export async function addToGroupChat(chat: string, people: string[]): Promise<st
     return await addToGroup((t, i) => call(t, i), chat, people.map(idOf), (thread) => ringWithPeople(call, thread, people.map(idOf), me));
   } catch (e) { return say(e); }
 }
+
+/** Start a new Engineer thread in the Engineer's Space chat (work.chat.thread.new { people, agent: "engineer" }): the ring is made on this device for everyone who may use the Engineer. The new thread's id, or the line to show. */
+export async function newEngineerThread(people: string[]): Promise<{ thread: string } | { say: string }> {
+  try {
+    const me = await getAgreeKey();
+    if (!me) return { say: "This device can't start private chats yet." };
+    const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
+    if (!who?.person) return { say: "Vyre could not tell who you are, so nothing was started." };
+    const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person, ...people], me);
+    if (!r.listed) return { say: "This device isn't ready for private chats yet." };
+    if (r.without.length) return { say: "Some devices can't open private chats yet." };
+    const made = await newChatRing(`chat_${newUuid()}`, r.holders);
+    const out = await tool<{ thread?: string }>("work.chat.thread.new", { people, agent: "engineer", id: made.id, ring: made.ring });
+    return out?.thread ? { thread: String(out.thread) } : { say: "Vyre did not say which thread it started." };
+  } catch (e) { return { say: say(e) }; }
+}

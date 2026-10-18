@@ -4,7 +4,7 @@ import { Text } from "./Text";
 
 const SECRET = /password|secret|recovery|passphrase/i;
 
-/** Facts safe to put on the card. A master password is never one of them. */
+/** Facts safe to put on the card. A password is never one of them. */
 export function publicFacts(lines: string[]) {
   return lines.filter((l) => l && !SECRET.test(l) && !/input sha256/i.test(l));
 }

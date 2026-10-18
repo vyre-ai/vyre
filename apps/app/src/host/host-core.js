@@ -2,13 +2,14 @@
 // The in-page tool host, stage 1: the identity half of first run, for a page with no daemon (web.vyre.run, the Windows window, a Mac window with no vyred). It answers the SAME tool names and shapes as
 // core/onboard (onboard.person.*, onboard.first.*) and core/identity (identity.status, unlock, lock), so the screens call one door whether a daemon or this answers. Nothing here is a second design: the
 // identity chain and the directory claim are apps/app/src/identity/claim.js (kernel/identity/chain.js itself), the master record is master-web.js (byte-identical to kernel/identity/master.js), and the
-// shapes come from lib/first-run-shape.js. What is kept at rest is JSON bytes only: the chain (public) and the master record (every key wrapped by the master password or the recovery key). The unlocked
+// shapes come from lib/first-run-shape.js. What is kept at rest is JSON bytes only: the chain (public) and the master record (every key wrapped by the password or the recovery key). The unlocked
 // key lives in this object's memory until lock. Stage 2 (create a space) answers onboard.space.*: the install line is made here with the identity key (relay/client/pair-install.js, the one mint the
 // app already uses, whose bytes lib/pair-code.js verifies), the server is found and paired through src/real/add-server.js over the relay, and what is kept is the space row and the paired server's
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
+import { lookOf } from "../../ui/chat/agent-look.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -64,7 +65,7 @@ function pickSignin(r) {
 
 /**
  * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
- *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean }} o
+ *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeyPath?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -88,6 +89,56 @@ export function createHost(o) {
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
   /**
+   * A joining member's own key: it goes to THEIR OWN Vault (never the space owner's), then the account names it. Their vault is made, or opened, with their password only when it must be (none yet, or locked):
+   * the password is used for those two calls and nowhere else, kept by no one here, and never in anything this throws. The key is sent once over the same peer wire as every other vault.me call.
+   * @param {any} ports @param {string} box @param {string} space the team's Space id: the app routes a joined team's calls through its door by it @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
+   */
+  const memberKey = async (ports, box, space, i) => {
+    // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
+    const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
+    if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
+    // A member's key goes through the team server's member door, which carries these calls only once sec53 has signed them and they are green; until then a member is told to ask the owner.
+    if (!o.memberKeyPath) throw bad("Ask the owner to add this account.", "ask_owner");
+    if (!o.memberKeys) throw unsupported();
+    /** @type {(tool: string, input?: any) => Promise<any>} */
+    const ask = (tool, input) => ports.call(tool, { ...(input || {}), ...(space ? { space } : {}) }, box);
+    const redact = (/** @type {unknown} */ e) => {
+      let said = String((e && /** @type {any} */ (e).message) || "That did not work. Try again.");
+      for (const secret of [i.key, i.password]) if (secret) said = said.split(secret).join("[hidden]");
+      return bad(said.slice(0, 200), e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
+    };
+    try {
+      // the key is checked with its provider first (the server's own check, nothing kept), so a bad key is caught before a password is asked for or anything is put anywhere
+      await ask("sessions.accounts.key", { kind: i.kind, key: i.key, check_only: true, ...(i.base_url ? { base_url: i.base_url } : {}) });
+      // their vault: whether it exists and is open decides whether a password is asked for (no prompt when it is open)
+      const st = await ask("vault.me.account.status");
+      const open = Boolean(st && st.account && st.unlocked);
+      const deviceKey = st && st.account && !st.unlocked && st.acct ? await o.memberKeys.get(String(st.acct)) : null;
+      if (!open && !i.password) throw bad("Your password, to open your own Vault.", "need_password");
+      if (st && st.account && !st.unlocked && !deviceKey) throw bad("This device does not hold your Vault's Secret Key. Open Vyre on a device that does and approve this one.", "no_device_key");
+      // ONE act, covered by ONE presence proof over the label and the key's hash: the vault is made or opened, the item gets a free name in THEIR vault, the key is put there. The Secret Key of a vault just made comes back once.
+      const added = await ask("vault.me.add-key", { label: i.label, value: i.key, ...(!open && i.password ? { password: i.password } : {}), ...(deviceKey ? { secret_key: deviceKey } : {}) });
+      // a vault just made hands over its Secret Key even when a later step failed: keep it first, so the next try can open the vault
+      if (added && typeof added.secret_key === "string" && added.acct) await o.memberKeys.put(String(added.acct), added.secret_key);
+      const item = String(added && added.item || "");
+      if (!item) throw bad(added && added.failed ? String(added.failed) : "Your key could not be put in your Vault.", "failed");
+      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item, ...(i.base_url ? { base_url: i.base_url } : {}) });
+      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true, item };
+    } catch (e) {
+      throw /** @type {any} */ (e).code === "need_password" ? e : redact(e);
+    }
+  };
+
+  /** The server this onboarding just made (or joined) is where the Space's own steps go: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one. @param {string} none what to say when there is none yet @param {boolean} [strict] a tool that WRITES (the Assistant, its model) never falls back to the current space's server, which may be a team's: it takes the one made in this run, else the only paired server, else refuses */
+  const serverOfThisRun = async (none, strict = false) => {
+    const k = await o.store.load();
+    if (!k) throw bad("Make your username first.", "no_identity");
+    const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
+    const here = paired.find((s) => s.paired.box === madeHere) || (strict ? null : paired.find((s) => s.id === k.current)) || (paired.length === 1 ? paired[0] : null);
+    if (!here) throw bad(`Your server is not set up yet. ${none}`, "no_server");
+    return { box: String(here.paired.box), k, role: String(here.role || ""), space: String(here.id || "") };
+  };
+  /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
    * @param {string} text
    */
@@ -110,7 +161,7 @@ export function createHost(o) {
     if (!o.space) throw unsupported();
     const k = await o.store.load();
     if (!k) throw bad("Make your username first.", "no_identity");
-    if (!held) throw bad("Unlock with your master password first.", "locked");
+    if (!held) throw bad("Unlock with your password first.", "locked");
     return { k, ports: await o.space.load(), key: await fromSeed(held) };
   }
   /** @param {KeptSpace[]} rows */
@@ -250,8 +301,8 @@ export function createHost(o) {
     "onboard.person.create": async ({ username, password, confirm }) => {
       const name = usernameOf(username);
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
-      if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
-      if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
+      if (!passwordOk(password)) throw bad("Use a password of at least 12 characters, and not a common one.");
+      if (confirm !== undefined && confirm !== password) throw bad("Type the password the same way twice.");
       const existing = await o.store.load();
       if (existing) return { username: existing.username, id: existing.id, ...personRoutes(existing.username), recoveryKey: null, once: false, already: true };
       // The identity chain verifies Ed25519 signatures with WebCrypto (or the fallback webcrypto.ts installs): a browser with neither is told so, not given the chain's own words.
@@ -273,9 +324,9 @@ export function createHost(o) {
     },
 
     "identity.unlock": async ({ password, recovery }) => {
-      if ((password == null || password === "") && (recovery == null || recovery === "")) throw bad("Enter your master password on this device.", "person_enters");
+      if ((password == null || password === "") && (recovery == null || recovery === "")) throw bad("Enter your password on this device.", "person_enters");
       const k = await o.store.load();
-      if (!k) throw bad("There is no master password on this device yet. Create your username first.", "no_identity");
+      if (!k) throw bad("There is no password on this device yet. Create your username first.", "no_identity");
       const keys = await openMasterRecord(k.master, recovery ? { recovery } : { password });
       held = unb64(keys.privateKey);
       // A record made before the device key existed gets one now, wrapped under the identity just opened.
@@ -288,7 +339,7 @@ export function createHost(o) {
 
     "identity.lock": async () => { stopRuns(); for (const i of invites.values()) { try { i.close(); } catch { /* gone */ } } invites.clear(); if (held) held.fill(0); held = null; pendingGithub = null; return { locked: true }; },
 
-    // Sign in from any device: the space's address, the username, the master password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
+    // Sign in from any device: the space's address, the username, the password. The space gives the username's salt, the device stretches the password itself, signs a single-use challenge, and
     // opens the returned record with the same key. Every refusal for a wrong name or password is the door's one bad_login answer.
     "onboard.signin": async ({ space, username, password }) => {
       const addr = spaceAddressOf(String(space || "").includes(".") ? space : `${String(space || "").trim()}.vyre.run`);
@@ -296,7 +347,7 @@ export function createHost(o) {
       const BAD = "That username and password do not match.";
       if (!addr) throw bad("Use the address of a space, like juniper.vyre.run.");
       if (!name || !password) throw Object.assign(new Error(BAD), { code: "bad_login" });
-      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its password, or forget it first.", "exists");
       { const works = await ed25519Works(); trail(`ed25519 ${ed25519Mode()}`); if (!works) throw bad(BROWSER_TOO_OLD, "browser_too_old"); }
       const begun = await door(addr.space, { op: "begin", username: name });
       const kdf = acceptKdf(begun.kdf);
@@ -318,10 +369,10 @@ export function createHost(o) {
     },
 
     // Sign in with GitHub: the relay vouches for the GitHub account with a short assertion; the names directory answers with the spaces that account's linked username belongs to (only to a valid assertion);
-    // the master password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
+    // the password is asked ONCE, next, and opens the bundle each space returns. Nothing about the password reaches any server.
     "onboard.signin.github": async ({ space } = {}) => {
       if (!o.github) throw Object.assign(new Error("This step is not ready in the app yet."), { code: "host_unsupported" });
-      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its master password, or forget it first.", "exists");
+      if (await o.store.load()) throw bad("This device already has an identity. Lock it and use its password, or forget it first.", "exists");
       const started = await o.github.start();
       if (!started.ok || !started.session) throw Object.assign(new Error(githubSay(started.code)), { code: started.code || "denied" });
       /** @type {{ space: string, address: string }[]} */ let spaces = [];
@@ -347,12 +398,12 @@ export function createHost(o) {
       return { login: pendingGithub.username, spaces: spaces.map((x) => ({ id: x.space, name: x.space, role: "member", server: x.address })) };
     },
 
-    // The master password, once, after GitHub: log in to each space the directory listed (each asks for its own assertion), stretch the password with the first space's salt, and open its bundle.
+    // The password, once, after GitHub: log in to each space the directory listed (each asks for its own assertion), stretch the password with the first space's salt, and open its bundle.
     "onboard.signin.unlock": async ({ password }) => {
       const BAD = "That password does not unlock this identity. Try again.";
       const pend = pendingGithub;
       if (!pend || Date.now() - pend.at > 10 * 60_000 || !o.github) throw bad("Start with GitHub again.", "expired");
-      if (!password) throw bad("Enter your master password on this device.", "person_enters");
+      if (!password) throw bad("Enter your password on this device.", "person_enters");
       /** @type {{ space: string, address: string, row: { id: string, name: string, role: string, server: string } }[]} */ const opened = [];
       /** @type {any} */ let first = null, keys = null;
       for (const sp of pend.spaces) {
@@ -501,17 +552,89 @@ export function createHost(o) {
     },
     "onboard.agent.signin": async (input) => {
       if (!o.space) throw unsupported();
-      const k = await o.store.load();
-      if (!k) throw bad("Make your username first.", "no_identity");
-      // The server this onboarding just made (or joined) is where the sign-in goes: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one.
-      const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
-      const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
-      if (!here) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
+      const { box } = await serverOfThisRun("Sign in to an AI once your space is online.");
       const provider = String((input && input.provider) || "");
       if (!AIS.includes(provider)) throw bad("That provider does not support sign-in here.");
       const ports = await o.space.load();
       const body = { provider, ...(input.label ? { label: String(input.label).slice(0, 80) } : {}), ...(input.flow ? { flow: String(input.flow).slice(0, 200) } : {}), ...(input.code ? { code: String(input.code).slice(0, 200) } : {}) };
-      return pickSignin(await ports.call("sessions.accounts.signin", body, here.paired.box));
+      return pickSignin(await ports.call("sessions.accounts.signin", body, box));
+    },
+
+    // The Assistant step: name it and pick its look. The same server tools the daemon's first run uses (onboard.you names the assistant, onboard.assistant makes it, agents.update keeps the look),
+    // sent to the server this onboarding made, with nothing but the name and a look seed that names a real shape and colour.
+    "onboard.assistant.set": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box, k } = await serverOfThisRun("Name your Assistant once your space is online.", true);
+      const display = String((input && input.name) || "").trim();
+      if (!display || display.length > 40 || /[\u0000-\u001f]/.test(display)) throw bad("An Assistant's name is one line of up to 40 characters.", "bad_name");
+      const look = input && input.look ? String(input.look) : "";
+      if (look && !lookOf(look)) throw bad("That look is not one the Assistant can have.", "bad_look");
+      const ports = await o.space.load();
+      // the name the person gave (letters, up to 60), else the username
+      const given = String((input && input.person) || "").trim();
+      const person = given && given.length <= 60 && /\p{L}/u.test(given) && !/[\u0000-\u001f]/.test(given) ? given : k.username;
+      await ports.call("onboard.you", { name: person, assistant: display }, box);
+      const a = /** @type {any} */ (await ports.call("onboard.assistant", {}, box));
+      if (!a || !a.made || !a.name) throw bad(a && a.why ? String(a.why) : "Your Assistant could not be made yet. Try again in a moment.", "assistant_not_made");
+      if (look) await ports.call("agents.update", { name: String(a.name), look }, box);
+      return { name: String(a.name), display: String(a.display || display), look: look || null };
+    },
+
+    // An API key as an AI account (the owner's own): sent once to the server's own key tool, which checks it with the provider and keeps it in the Vault. The key is never logged, kept or returned: only the account's id, provider and name come back.
+    "onboard.agent.key": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box, role, space } = await serverOfThisRun("Add an AI account once your space is online.", true);
+      const kind = String((input && input.kind) || "");
+      if (!["anthropic-compatible", "openai-compatible", "openrouter"].includes(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
+      const key = String((input && input.key) || "").trim();
+      if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw bad("That does not look like an API key.", "bad_key");
+      const label = String((input && input.label) || "").trim();
+      if (!label || label.length > 80 || /[\u0000-\u001f]/.test(label)) throw bad("An account's name is one line of up to 80 characters.", "bad_name");
+      const base = input && input.base_url ? String(input.base_url) : "";
+      if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
+      const ports = await o.space.load();
+      /** @type {any} */ let r;
+      if (role && role !== "owner") return memberKey(ports, box, space, { kind, key, label, password: input && input.password ? String(input.password) : "", ...(base ? { base_url: base } : {}) });
+      try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
+      catch (e) {
+        // whatever the server or the provider said, the key is never in what is thrown here
+        const code = e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed";
+        const said = String((e && /** @type {any} */ (e).message) || "That key could not be added.").split(key).join("[key]").slice(0, 200);
+        throw bad(said, code);
+      }
+      return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked), ...(r && typeof r.item === "string" && r.item ? { item: r.item.slice(0, 128) } : {}) };
+    },
+
+    // The model step: what each connected AI account offers, and the Assistant's default among them. Reads the accounts the person just signed in (sessions.accounts.list) and what each offers
+    // (sessions.accounts.models, else the provider's own list), and keeps the pick with agents.update. Only ids, labels and names come back: never a credential.
+    "onboard.assistant.models": async () => {
+      if (!o.space) throw unsupported();
+      const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
+      const ports = await o.space.load();
+      const list = /** @type {any} */ (await ports.call("sessions.accounts.list", {}, box));
+      const rows = (Array.isArray(list) ? list : list && Array.isArray(list.accounts) ? list.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
+      const modelsOf = async (/** @type {any} */ a) => {
+        /** @type {any} */ let r;
+        try { r = await ports.call("sessions.accounts.models", { account: a.id }, box); } catch { r = null; }
+        let models = r && Array.isArray(r.models) ? r.models : null;
+        if (!models || !models.length) { try { const p = /** @type {any} */ (await ports.call("sessions.models", { provider: String(a.provider || "claude") }, box)); models = Array.isArray(p) ? p : p && Array.isArray(p.models) ? p.models : []; } catch { models = []; } }
+        return models.filter((/** @type {any} */ m) => m && typeof m.id === "string").slice(0, 60).map((/** @type {any} */ m) => ({ id: String(m.id).slice(0, 120), label: String(m.label || m.id).slice(0, 120) }));
+      };
+      const accounts = [];
+      for (const a of rows.slice(0, 12)) accounts.push({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), models: await modelsOf(a) });
+      return { accounts };
+    },
+    "onboard.assistant.model": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
+      const model = String((input && input.model) || "").trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw bad("That is not a model name.", "bad_model");
+      const ports = await o.space.load();
+      const l = /** @type {any} */ (await ports.call("agents.list", {}, box));
+      const a = (Array.isArray(l) ? l : l && Array.isArray(l.agents) ? l.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant");
+      if (!a || !a.name) throw bad("Your Assistant is not made yet.", "assistant_not_made");
+      await ports.call("agents.update", { name: String(a.name), model }, box);
+      return { name: String(a.name), model };
     },
 
     "onboard.space.list": async () => {
@@ -573,7 +696,7 @@ export function createHost(o) {
     async registerLogin(space, password) {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
-      if (!held) throw bad("Unlock with your master password first.", "locked");
+      if (!held) throw bad("Unlock with your password first.", "locked");
       const kdf = acceptKdf(k.master.kdf);
       const d = await deriveLogin(String(password).normalize("NFKC"), String(k.master.kdf.salt), kdf);
       try {
@@ -590,7 +713,7 @@ export function createHost(o) {
     async publishSpace(space, what = "add") {
       const k = await o.store.load();
       if (!k) throw bad("Make your username first.", "no_identity");
-      if (!held) throw bad("Unlock with your master password first.", "locked");
+      if (!held) throw bad("Unlock with your password first.", "locked");
       const addr = spaceAddressOf(`${String(space).replace(/\.vyre\.run$/, "")}.vyre.run`);
       if (!addr) throw bad("That is not a space address.");
       const key = await fromSeed(held);

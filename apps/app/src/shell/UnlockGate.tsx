@@ -11,7 +11,7 @@ import { applyCover, coverExempt, createIdleLock, lockView, lockWanted } from ".
 import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
 
 /**
- * Coming back to the app: an identity that is made but locked on this device is asked for its master password before anything else draws, and a legacy identity with no master password is
+ * Coming back to the app: an identity that is made but locked on this device is asked for its password before anything else draws, and a legacy identity with no password is
  * asked for one (the cover is the whole window, over every route, and the app stays mounted under it). While the identity is unlocked, a quiet spell locks it again (the person picks how long in
  * Settings, Account; the default is 15 minutes). The state is read at start, when the app comes back to the front, and after every unlock or lock. A build with no identity answers nothing and is never gated.
  */

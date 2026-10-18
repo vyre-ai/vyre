@@ -1,6 +1,6 @@
 // @ts-check
 // This browser's own device key (the key a new-device sign-in enrols, and the one the relay knows this page by). Ed25519 seed bytes, kept ONLY wrapped (AES-GCM) under a key derived from the
-// unlocked identity seed, so it opens when the master password does and never sits in storage as anything usable. Never a stored CryptoKey (a Mac window does not give one back). One module for every
+// unlocked identity seed, so it opens when the password does and never sits in storage as anything usable. Never a stored CryptoKey (a Mac window does not give one back). One module for every
 // platform; the Mac shell's Keychain bridge (relayKey) replaces the wrap where it is present, in the next stage.
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { hkdf } from "@noble/hashes/hkdf.js";

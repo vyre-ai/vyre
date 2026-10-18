@@ -47,5 +47,7 @@ export function kitsSource(call: Call) {
     /** Ask to install it: nothing changes until a person approves the card, which lands in Now. */
     propose: (kit: unknown) => ask<{ ok?: boolean; errors?: { path: string; message: string }[] }>("flows.kit.propose", { kit }),
     remove: (id: string) => ask<unknown>("flows.kit.remove", { id }),
+    /** "Check this kit": a read-only dry run of what it would do with a sample record (flows.kit.test). Nothing is written. */
+    check: (kit: unknown) => ask<{ ok: boolean; type?: string; lines?: unknown[]; errors?: { path?: string; message: string }[] }>("flows.kit.test", { kit }),
   };
 }

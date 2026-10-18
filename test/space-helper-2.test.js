@@ -265,6 +265,7 @@ test("space helper #90: a Space with its mark is never touched, a Space with dat
   const a = r.ask("up harlow\n"); await r.helper();
   assert.equal(r.status(a).state, "ok");
   assert.ok(fs.existsSync(path.join(d, "ready")));
+  assert.ok(!/repair:/.test(fs.existsSync(path.join(r.SP, "private", "log")) ? fs.readFileSync(path.join(r.SP, "private", "log"), "utf8") : ""), "a Space made by this call is not looked at for a cut-off start");
   // marked: even a database that looks empty (it is not asked about) keeps its volumes
   r.flag("core-empty-harlow");
   const b = r.ask("up harlow\n"); await r.helper();
@@ -334,9 +335,12 @@ test("space helper golden: an image with no saved database, or a copy that fails
   assert.ok(!/restore|golden/i.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8")) && !/ADMIN_PASSWORD/.test(fs.readFileSync(path.join(d, "secrets.env"), "utf8")));
   assert.ok(!fs.existsSync(path.join(r.SP, "status", "admin-harlow")) && !fs.existsSync(path.join(d, "golden")));
   assert.ok(!/DISABLE_DB_MIGRATIONS/.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8").split("\n  worker:")[0]), "the server migrates as before");
+  assert.match(r.status(a).message, /Records starting without the saved database: this image carries no saved database/, "the slow path is said in the Space's status, with its reason");
+  assert.match(fs.readFileSync(path.join(r.SP, "private", "log"), "utf8"), /Records starting without the saved database: this image carries no saved database/, "and in the helper log");
   goldenIn(r); r.flag("cp-fails");
   const b = r.ask("up northwind\n"); await r.helper();
   assert.equal(r.status(b).state, "ok", "a failed copy does not stop the Space coming up: " + JSON.stringify(r.status(b)));
+  assert.match(r.status(b).message, /Records starting without the saved database: the saved database could not be copied out of the image/, "a failed copy says why");
   assert.ok(!fs.existsSync(path.join(r.SP, "status", "admin-northwind")) && !fs.existsSync(path.join(r.SP, "private", "spaces", "northwind", "golden")));
 });
 

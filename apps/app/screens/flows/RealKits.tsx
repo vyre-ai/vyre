@@ -6,8 +6,8 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, show
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { useRouter } from "expo-router";
-import { addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
-import { kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
+import { checkLines, addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
+import { checkKit, kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
 
 const say = (e: unknown) => kitRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
@@ -20,9 +20,11 @@ export function RealKits() {
   const [loadingCard, setLoadingCard] = useState("");
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState<string[] | null>(null);
+  const check = () => { if (!open) return; setBusy(true); checkKit(open.kit).then((r) => setChecked(checkLines(r))).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const load = useCallback(() => { setErr(""); listKits().then(setRows).catch((e) => setErr(say(e))); listLibrary().then(setLib).catch(() => setLib(null)); }, []);
   const read = (k: LibraryKit) => {
-    setLoadingCard(k.id); setNote(null);
+    setLoadingCard(k.id); setNote(null); setChecked(null);
     kitCard(k.id).then((r) => setOpen({ id: k.id, name: k.name ?? kitName(k.id), kit: r.kit, card: cardLines(r.card as never) })).catch((e) => showToast(say(e))).finally(() => setLoadingCard(""));
   };
   const ask = () => {
@@ -72,6 +74,8 @@ export function RealKits() {
             {open.card.notes.map((n) => <Banner key={n}><Text>{n}</Text></Banner>)}
             {open.card.blocked ? <Banner tone="warn"><Text>{open.card.blocked}</Text></Banner> : null}
             {note && !note.ok ? <Banner tone="warn"><Text>{note.text}</Text></Banner> : null}
+            <Button kind="secondary" label={busy ? "Checking" : "Check this kit"} disabled={busy} onPress={check} />
+            {checked ? <Card flush>{checked.map((l, i) => <View key={i}>{i ? <Divider /> : null}<Row title={l} /></View>)}</Card> : null}
             <Button kind="primary" label={busy ? "Asking" : "Ask to install"} disabled={!!open.card.blocked} onPress={busy ? () => {} : ask} />
             <Text size="caption" tone="label">This changes nothing yet. It puts a card in Now for you to approve.</Text>
           </View>

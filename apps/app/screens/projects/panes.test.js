@@ -74,3 +74,12 @@ test("the redone project page: the rail's sections, the phone's tabs, and a proj
   assert.equal(refOf("", "rec-1"), "rec-1", "no short name: the record id is the reference");
   assert.equal(refOf("", ""), "");
 });
+
+test("the page tabs add what the kind brings after Chats: Client and Emails, or Board and Runs on its own", async () => {
+  const { pageTabs } = await import("./panes.ts");
+  assert.deepEqual(pageTabs().map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
+  assert.deepEqual(pageTabs({ kind: "client" }).map(([p]) => p), ["chats", "client", "emails", "about", "files", "memory", "timeline", "team"]);
+  assert.deepEqual(pageTabs({ kind: "ongoing" }).map(([p]) => p), ["chats", "board", "flows", "about", "files", "memory", "timeline", "team"]);
+  assert.deepEqual(pageTabs({ kind: "stages" }).map(([p]) => p), ["chats", "about", "files", "memory", "timeline", "team"]);
+  assert.equal(pageTabs({ kind: "ongoing" })[2][1], "Runs on its own");
+});

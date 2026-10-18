@@ -12,6 +12,7 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["documents.signing.audit", "saves a signed request's audit file into the person's own Files: the person's own act, never a model's"],
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
   ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],
   ["identity.lock", "locks the unlocked session: the person's own act"],
@@ -529,6 +530,8 @@ export const OPEN = new Set([
   "connectors.logging",
   "files.drive.space.list",
   "files.drive.space.read",
+  "files.places",
+  "files.space.mentions.search",
   "records.linked",
   "records.roles",
   "records.holders",

@@ -1,4 +1,4 @@
-// Where the in-page host keeps what first run makes (host-core.js): JSON only. The chain is public; the master record holds every key wrapped by the master password or the recovery key. Never a
+// Where the in-page host keeps what first run makes (host-core.js): JSON only. The chain is public; the master record holds every key wrapped by the password or the recovery key. Never a
 // CryptoKey (a Mac window does not give a stored CryptoKey back) and never anything unwrapped. IndexedDB, with a memory fallback for a page that has none (a private window): then the identity lasts
 // until the page closes, and the recovery key is the way back.
 import type { Kept, KeptStore } from "./host-core.js";

@@ -12,6 +12,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { canonical, payloadHash, b64url } from "../../modules/vyre-signer/presence-proof.js";
 import { spaceName } from "../state/space-name.js";
 import { openRecord } from "../identity/seal.js";
+import { kernelWire } from "./kernel-wire.js";
 
 const enc = new TextEncoder();
 const refuse = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -152,6 +153,8 @@ export async function homeSession(d, channel, space, invite) {
       if (!sid || typeof peer.attachStream !== "function") throw refuse("unavailable", "The home did not open a live chat stream.");
       return peer.attachStream(sid, handlers, result);
     },
+    /** The raw peer session, for a call that needs the person's yes (kernelWire carries it). */
+    peer,
     close() { try { peer.close(); } catch { /* closed */ } try { conn.close(); } catch { /* closed */ } },
   };
 }
@@ -227,5 +230,12 @@ export async function callTeam(d, spaceId, call, args = [], opt = undefined) {
   const row = d.store ? await d.store.get(`member-of/${spaceId}`) : null;
   if (!row || !row.channel) throw refuse("not_a_member", "This device has not joined that space.");
   const home = await homeSession(d, row.channel, spaceId, "member");
-  try { return await home.call(call, args, opt); } finally { home.close(); }
+  try {
+    // a call the person signs (their own vault gets a key) is sent through the kernel wire, which answers the home's one-use challenge with this device's presence key; every other call goes as it always did
+    if (SIGNED_CALLS.has(call) && typeof d.signPresence === "function") return await kernelWire(home.peer, spaceId, { person: d.who.id, signPresence: d.signPresence, ...(d.now ? { now: d.now } : {}) }).call(call, args);
+    return await home.call(call, args, opt);
+  } finally { home.close(); }
 }
+
+/** The member-door calls that need the person's own yes (kernel/remote/proof.js). */
+const SIGNED_CALLS = new Set(["myvault.addkey"]);

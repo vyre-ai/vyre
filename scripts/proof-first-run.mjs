@@ -6,7 +6,7 @@
 //
 // The client is the app's own first-run screens running the in-page tool host (apps/app/src/host): no daemon answers them. Walked as a person walks them: Get started, Create an identity (username, master
 // password, recovery key), Create a space with the one install command, the real installer running that command on a server, the server pairing to the creator, Ready, then coming back (a new page, or the
-// app started again) to the unlock screen with the master password and with the recovery key. What is a stand-in: the names directory (the Worker's own code) and the relay (relay/node/server.js), on the
+// app started again) to the unlock screen with the password and with the recovery key. What is a stand-in: the names directory (the Worker's own code) and the relay (relay/node/server.js), on the
 // runner at the two ports the proof build of the app was made with (EXPO_PUBLIC_VYRE_NAMES_DIRECTORY and EXPO_PUBLIC_VYRE_RELAY: build-time seams, so a shipped app cannot be pointed anywhere); nothing
 // reaches vyre.run. The mouse in the Mac app is a real mouse event into its window and the keys are typed into the focused field (local/capsule/native/Sources/Agent/AgentDrive.swift, a driven mode that
 // starts only in a test home). CI only.
@@ -236,27 +236,35 @@ try {
   /** @type {string} */ let recoveryKey = "", installCode = "", personId = "";
   /** @type {any} */ let srv = null;
   const S = (/** @type {string} */ n) => n;
+  const ASSISTANT = "Juno";
 
-  await run.step(S("the first screen offers Create an identity and Sign in"), async () => {
+  await run.step(S("the first screen offers Sign in to a space, Get started, and GitHub"), async () => {
     await drv.open();
     const t = await drv.waitFor("Get started", 60_000);
-    if (!t.includes("Create an identity") || !t.includes("Sign in")) throw new Error(`the first screen does not offer both: ${t.slice(0, 200)}`);
+    if (!t.includes("Sign in to") || !t.includes("New here? Get started") || !t.includes("Sign in with GitHub")) throw new Error(`the first screen does not offer sign-in, get started and GitHub: ${t.slice(0, 300)}`);
+    if (!/A product of Clearfield Labs/.test(t) || !/Privacy/.test(t) || !/Match this device/.test(t)) throw new Error(`the first screen lacks its corners (theme switch, Privacy and Terms): ${t.slice(0, 300)}`);
     const native = await drv.ed25519();
     if (NO_ED25519 && native) throw new Error("the old-browser case did not remove Ed25519 from WebCrypto, so it proves nothing");
     if (!NO_ED25519 && !native) throw new Error("this browser has no Ed25519 WebCrypto (Chromium before 137): use a newer pinned Playwright, or run the old-browser case with --no-ed25519");
     await drv.shot("01-get-started");
   });
 
-  await run.step(S("the client machine runs no vyred: the first run is the app's in-page host"), async () => drv.noVyred(), { needs: [S("the first screen offers Create an identity and Sign in")] });
+  await run.step(S("the client machine runs no vyred: the first run is the app's in-page host"), async () => drv.noVyred(), { needs: [S("the first screen offers Sign in to a space, Get started, and GitHub")] });
 
-  await run.step(S("create an identity: username, master password, recovery key"), async () => {
-    await drv.click("Create an identity");
+  await run.step(S("create an identity: username, password, recovery key"), async () => {
+    await drv.click("New here? Get started");
+    // The name step: what should we call you, first and last (Continue waits for a name).
+    await drv.waitFor("What should we call you?");
+    await drv.fill("First name", "Proof");
+    await drv.fill("Last name", "Walker");
+    await drv.shot("01b-name");
+    await drv.click("Continue");
     await drv.waitFor("Create your identity");
     await drv.fill("Username", USERNAME);
-    await drv.fill("Master password", PASSWORD);
-    await drv.fill("Confirm master password", PASSWORD);
+    await drv.fill("Password", PASSWORD);
+    await drv.fill("Confirm password", PASSWORD);
     await drv.click("Create");
-    // Creating the identity stretches the master password with Argon2id (64 MiB, 3 passes) in the page: seconds on a fast machine, longer on a hosted runner. The step says how long it took.
+    // Creating the identity stretches the password with Argon2id (64 MiB, 3 passes) in the page: seconds on a fast machine, longer on a hosted runner. The step says how long it took.
     const started = Date.now();
     const t = await drv.waitFor("Save your recovery key", 400_000);
     console.log(`  identity created in ${Math.round((Date.now() - started) / 1000)} s`);
@@ -274,7 +282,7 @@ try {
     if (r.status !== 200 || !j.data || !/^per_[a-z2-7]{26}$/.test(String(j.data.id))) throw new Error(`the directory has no identity for ${USERNAME}: ${r.status}`);
     personId = String(j.data.id);
     return `${USERNAME} ${personId}`;
-  }, { needs: [S("the first screen offers Create an identity and Sign in")] });
+  }, { needs: [S("the first screen offers Sign in to a space, Get started, and GitHub")] });
 
   if (NO_ED25519) {
     // The old-browser case ends here: the identity was made and checked with the page's own Ed25519, which is what it proves.
@@ -286,10 +294,14 @@ try {
 
   await run.step(S("create a space: the screen shows one install command with a one-time code"), async () => {
     await drv.click("Create a space");
-    await drv.waitFor("Where should it run?");
-    await drv.click(server === "mac" ? "Always-on Mac" : "Linux server");
+    await drv.waitFor("Connect your server.");
+    await drv.click(server === "mac" ? "macOS" : "Linux");
     await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
-    await drv.click("Show the command");
+    // The command appears by itself under the name and the switch (no button to show it); Continue then waits for the server.
+    const shown = await drv.waitFor("VYRE_CODE=", 90_000);
+    await drv.shot("03a-command");
+    if (!/VYRE_CODE=[A-Za-z0-9_-]+/.test(shown)) throw new Error(`the command shown on the name screen carries no one-time code: ${shown.slice(0, 200)}`);
+    await drv.click("Continue");
     const t = await drv.waitFor("Waiting for it to come online", 90_000);
     const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(t);
     if (!m) throw new Error(`no install command on the screen: ${t.slice(0, 300)}`);
@@ -298,7 +310,7 @@ try {
     installCode = m[1];
     await drv.shot("03-install-command");
     return `code ${installCode.slice(0, 4)}...`;
-  }, { needs: [S("create an identity: username, master password, recovery key")] });
+  }, { needs: [S("create an identity: username, password, recovery key")] });
 
   await run.step(S("the real installer runs the command on a server"), async () => {
     const a = { dir: path.join(out, "server"), repo, code: installCode, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {"records" | "plain"} */ (server === "mac" ? "plain" : "records") };
@@ -320,21 +332,32 @@ try {
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
     await drv.click("Continue");
     // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
-    const ai = await drv.waitFor("Sign in to an AI", 30_000);
-    if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
+    const ai = await drv.waitFor("Connect your AI.", 30_000);
+    if (/You're all set/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
     await drv.shot("04b-ai-signin");
     // Continue with nothing signed in does not leave the step (it starts the sign-in on the paired server and shows what came back, or says why not); only Skip for now goes on.
     await drv.click("Continue");
     await new Promise((r) => setTimeout(r, 5000));
     const still = await drv.text();
-    if (/You're in/.test(still) || !/Sign in to an AI/.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
+    if (/You're all set/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
     await drv.click("Skip for now");
-    const ready = await drv.waitFor("You're in", 60_000);
+    // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
+    const as = await drv.waitFor("Name your Assistant.", 60_000);
+    if (/You're all set/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
+    await drv.fill("Name", ASSISTANT);
+    await drv.shot("04c-assistant");
+    await drv.click("Continue");
+    // The model step lists each connected account's own models (none here: nothing was signed in), and Continue goes on to Ready.
+    const md = await drv.waitFor(`How should ${ASSISTANT} think?`, 60_000);
+    if (/You're all set/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
+    await drv.shot("04d-model");
+    await drv.click("Continue");
+    const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
     await until(async () => /owner/i.test(await drv.text()), 30_000, "Ready listing the space with the owner role").catch(() => { throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`); });
-    await drv.click("Open Vyre");
-    await until(async () => !(await drv.text()).includes("You're in"), 30_000, "Open Vyre leaving the first run");
+    // Nothing is pressed: with one space the first run ends by itself and opens it.
+    await until(async () => !(await drv.text()).includes("You're all set"), 30_000, "the space opening by itself after \"You're all set.\"");
   }, { needs: [S("the real installer runs the command on a server")] });
 
   await run.step(S("the server names this identity its owner"), async () => {
@@ -368,7 +391,7 @@ try {
   // First 90 s: a screen that needs Records either shows its content or says, calmly, that Records is setting up (the honest first-start state). An error sentence is never accepted.
   const SETTING = /Records is setting up/i;
   const NOW_OK = /Good (morning|afternoon|evening)/i;
-  const RECORDS_OK = /Contacts|All objects|No records/i;
+  const RECORDS_OK = /Contacts|People|All objects|No records|No people/i;
   await run.step(S("owner walk: Now loads, or says Records is setting up, with no skeleton after 90 s"), async () => {
     await look("Now", "07-now", new RegExp(`${NOW_OK.source}|${SETTING.source}`, "i"), 90_000, async () => { await open("Now", "/u/now", true); });
   }, { needs: READY });
@@ -409,44 +432,46 @@ try {
     await drv.click("Create");
     await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
     await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await open("Agents", "/u/agents", false); });
+    // the Assistant named in the first run is on the server, with the name it was given
+    if (!/juno/i.test(await drv.text())) throw new Error(`the Agents list does not show the Assistant named in the first run: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`);
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
     await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
   }, { needs: READY });
 
-  await run.step(S("coming back: the unlock screen takes the master password, refuses a wrong one"), async () => {
+  await run.step(S("coming back: the unlock screen takes the password, refuses a wrong one"), async () => {
     await drv.reopen();
     await drv.waitFor("Welcome back", 60_000);
     // The screen's words are in the page while the app's splash is still drawn over it: type only once the password field is the topmost thing at its centre (the 06 picture is taken then).
-    await until(() => drv.fieldReady("Master password"), 60_000, "the master password field showing above the splash");
+    await until(() => drv.fieldReady("Password"), 60_000, "the password field showing above the splash");
     await drv.shot("06-unlock");
     // A backstop for anything else that could swallow a keystroke: each attempt is tried again a few times (typing the same thing twice into a refused or empty field changes nothing), and only the last failure is reported.
     let refused = false;
     for (let attempt = 0; attempt < 4 && !refused; attempt++) {
-      await drv.fill("Master password", "zebra quartz mango pillow");
+      await drv.fill("Password", "zebra quartz mango pillow");
       await drv.click("Unlock");
-      refused = await drv.waitFor("not your master password", 30_000).then(() => true, () => false);
+      refused = await drv.waitFor("not your password", 30_000).then(() => true, () => false);
     }
-    if (!refused) await drv.waitFor("not your master password", 30_000);
+    if (!refused) await drv.waitFor("not your password", 30_000);
     let opened = false;
     for (let attempt = 0; attempt < 3 && !opened; attempt++) {
-      await drv.fill("Master password", PASSWORD);
+      await drv.fill("Password", PASSWORD);
       await drv.click("Unlock");
-      opened = await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the master password opening the identity").then(() => true, () => false);
+      opened = await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the password opening the identity").then(() => true, () => false);
     }
-    if (!opened) await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the master password opening the identity");
+    if (!opened) await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the password opening the identity");
   }, { needs: [S("the server names this identity its owner")] });
 
   await run.step(S("coming back again: the recovery key opens the identity too"), async () => {
     await drv.reopen();
     await drv.waitFor("Welcome back", 60_000);
     // as in the password step: only once the unlock screen is above the splash
-    await until(() => drv.fieldReady("Master password"), 60_000, "the unlock screen showing above the splash");
+    await until(() => drv.fieldReady("Password"), 60_000, "the unlock screen showing above the splash");
     await drv.click("Use my recovery key");
     await drv.fill("Recovery key", recoveryKey);
     await drv.click("Unlock");
     await until(async () => !(await drv.text()).includes("Welcome back"), 60_000, "the recovery key opening the identity");
-  }, { needs: [S("coming back: the unlock screen takes the master password, refuses a wrong one")] });
+  }, { needs: [S("coming back: the unlock screen takes the password, refuses a wrong one")] });
 
   await run.step(S("no page error during the run"), async () => {
     const e = drv.errors();

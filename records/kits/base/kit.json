@@ -18,6 +18,12 @@
           "required": true
         },
         {
+          "name": "ref",
+          "kind": "text",
+          "label": "ID",
+          "unique": true
+        },
+        {
           "name": "email",
           "kind": "text",
           "label": "Email",
@@ -386,6 +392,17 @@
             "active",
             "archived",
             "moved"
+          ]
+        },
+        {
+          "name": "kind",
+          "kind": "choice",
+          "label": "How it runs",
+          "options": [
+            "stages",
+            "client",
+            "ongoing",
+            "simple"
           ]
         },
         {

@@ -21,10 +21,10 @@ const LEVELS = [
 const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
 const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
 
-export function RealSkills() {
-  // Settings opens this at a level: Skills and plugins under You is personal, under the Space it is the Space's.
+export function RealSkills({ initialLevel = "space", scope }: { initialLevel?: string; scope?: string } = {}) {
+  // Settings opens this at a level (?level=): Skills and plugins under You is personal, under the Space it is the Space's. A caller that passes initialLevel (an agent's Skills tab) wins.
   const { level: asked } = useLocalSearchParams<{ level?: string }>();
-  const [level, setLevel] = useState<string>(LEVELS.some((l) => l.id === asked) ? String(asked) : "space");
+  const [level, setLevel] = useState<string>(LEVELS.some((l) => l.id === asked) && initialLevel === "space" ? String(asked) : initialLevel);
   const [segment, setSegment] = useState<"skills" | "plugins">("skills");
   const [draftPick, setDraftPick] = useState<SkillVersion | null>(null);
   const [pack, setPack] = useState<BrowsePack | null>(null);
@@ -49,8 +49,8 @@ export function RealSkills() {
   useEffect(() => { if (installOpen && installKind === "plugin") loadConnections(); }, [installOpen, installKind, loadConnections]);
   const load = useCallback(() => {
     setErr("");
-    browse(level).then(setPack).catch((e) => setErr(errWords(e)));
-  }, [level]);
+    browse(level, level === "agent" ? scope : undefined).then(setPack).catch((e) => setErr(errWords(e)));
+  }, [level, scope]);
   useEffect(load, [load]);
   const act = (run: () => Promise<unknown>, done: string) => {
     setBusy(true);

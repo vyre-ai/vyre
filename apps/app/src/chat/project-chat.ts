@@ -11,9 +11,12 @@ export type ProjectChat = { chat: string | null; state: "ready" | "waiting" | "n
 const call = (t: string, i?: Record<string, unknown>) => tool<any>(t, i ?? {});
 
 /** The project's group chat, made or mended on this device when it needs it. `chat` is its id (null while a teammate's device has yet to make it); `say` is the line to show when the keys stopped it. */
-export async function ensureProjectChat(project: string): Promise<ProjectChat> {
+export const ensureProjectChat = (project: string) => ensureGroupChat("work.project.chat", { project }, "The project's chat did not open.");
+
+/** The same ring logic for any chat whose people the box decides (a project's team, the people who may use the Engineer): `tool` answers with the project chat's shape. `a` is the last answer, for the caller that needs its people. */
+export async function ensureGroupChat(toolName: string, input: Record<string, unknown>, failed: string): Promise<ProjectChat & { answer?: any }> {
   try {
-    let a = await call("work.project.chat", { project });
+    let a = await call(toolName, input);
     let plan = projectChatPlan(a);
     if (plan.do === "make") {
       const me = await getAgreeKey();
@@ -22,7 +25,7 @@ export async function ensureProjectChat(project: string): Promise<ProjectChat> {
       if (!r.listed) return { chat: null, state: "none", say: "This device isn't ready for private chats yet." };
       if (r.without.length) return { chat: null, state: "none", say: "Some devices can't open private chats yet." };
       const made = await newChatRing(plan.id, r.holders);
-      a = await call("work.project.chat", { project, ring: made.ring });
+      a = await call(toolName, { ...input, ring: made.ring });
       plan = projectChatPlan(a);
     }
     if (plan.do === "wait") return { chat: null, state: "waiting" };
@@ -33,8 +36,9 @@ export async function ensureProjectChat(project: string): Promise<ProjectChat> {
       if ("say" in r) return { chat: String(a.chat), state: "ready", say: r.say };
       await call("work.chat.change", { chat: plan.chat, ...(plan.do === "add" ? { add_people: plan.people } : { remove_people: plan.people }), ring: r.ring });
     }
-    return a && a.chat ? { chat: String(a.chat), state: "ready" } : { chat: null, state: "none" };
+    return a && a.chat ? { chat: String(a.chat), state: "ready", answer: a } : { chat: null, state: "none" };
   } catch (e) {
-    return { chat: null, state: "none", say: e instanceof Error && e.message ? e.message : "The project's chat did not open." };
+    if ((e as { code?: string })?.code === "not_found") return { chat: null, state: "none" }; // a person who may not see this chat sees nothing
+    return { chat: null, state: "none", say: e instanceof Error && e.message ? e.message : failed };
   }
 }
