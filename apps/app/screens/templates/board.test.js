@@ -77,14 +77,17 @@ test("initials for an avatar", () => {
   assert.equal(initialsOf(""), "?");
 });
 
-test("a template's card: its name, what its projects are called, its stage strip, its counts and the verb on its button", async () => {
+test("a template's card: its name, what its projects are called, its stage strip, its counts, where it is used and the verb on its button", async () => {
   const { cardOf } = await import("./board.ts");
-  const row = { template: "tpl_e", name: "Estate plan", live: 2, latest: 3, versions: 3, owner: null, tags: [], noun: { one: "Matter", many: "Matters" } };
-  const c = cardOf(row, body(), 4);
-  assert.deepEqual([c.name, c.projects, c.start, c.stages, c.counts, c.status, c.group], ["Estate plan", "Matters", "Start a matter", ["Opening", "Review", "Done"], "3 stages · 3 tasks · 4 running", "v2", "Live"]);
-  const d = cardOf({ ...row, live: null, noun: undefined, name: "Onboarding" }, { ...body(), noun: undefined, stage_mode: "none" }, 0);
-  assert.deepEqual([d.projects, d.start, d.stages, d.counts, d.status, d.group], ["Projects", "Start a project", [], "3 tasks", "Draft v3", "Drafts"]);
-  assert.equal(cardOf(row, null, 1).counts, "1 running", "before the body is read there is only what the list knows");
+  const row = { template: "tpl_e", name: "Estate plan", live: 2, latest: 3, versions: 3, owner: null, tags: [], noun: { one: "Client project", many: "Client projects" } };
+  const c = cardOf(row, { ...body(), automations: [{ when: "Review", flow: "a" }, { when: "start", flow: "b" }, { when: "Done", flow: "a" }] }, ["Rivera", "Does"]);
+  assert.deepEqual([c.name, c.projects, c.start, c.stages, c.counts, c.status, c.group], ["Estate plan", "Client projects", "Start a client project", ["Opening", "Review", "Done"], "3 stages · 3 to-dos · 2 Flows", "v2", "Live"]);
+  assert.equal(c.usedBy, "Used by Rivera, Does");
+  const d = cardOf({ ...row, live: null, noun: undefined, name: "Onboarding" }, { ...body(), noun: undefined, stage_mode: "none" }, []);
+  assert.deepEqual([d.projects, d.start, d.stages, d.counts, d.status, d.group, d.usedBy], ["Projects", "Start a project", [], "3 to-dos", "Draft v3", "Drafts", "Not used yet"]);
+  assert.equal(cardOf(row, null, ["A"]).counts, "", "before the body is read the list knows only where it is used");
+  assert.equal(cardOf(row, null, ["A", "B", "C", "D", "E"]).usedBy, "Used by A, B, C and 2 more", "a long list is cut");
+  assert.equal(cardOf({ ...row, noun: { one: "Matter", many: "Matters" } }, body(), []).start, "Start a matter", "a Space's own word for its projects is kept");
 });
 
 test("the list's search and filter: by name or what its projects are called, and Live or Draft", async () => {
