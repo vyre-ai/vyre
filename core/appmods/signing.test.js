@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
-import { readStatus, auditShown } from "./signing.js";
+import { readStatus, auditShown, auditAllowed, auditBodyWithin } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -297,4 +297,18 @@ test("auditShown: the audit link is returned only to a person's own surface; a m
   for (const caller of ["cli", "local", "deck", "capsule", "device"]) assert.equal(auditShown(caller, url), url, caller);
   for (const caller of ["mcp", "harness", "module:documents", "agent", "mcp:agent:juno"]) assert.equal(auditShown(caller, url), null, caller);
   assert.equal(auditShown("cli", "http://docuseal.example/x"), null, "only https");
+});
+
+test("auditAllowed: the audit file is fetched only from the app's own https origin; anything else, or a non-https link, is refused", () => {
+  assert.equal(auditAllowed("https://docs.example.com", "https://docs.example.com/audit/41.pdf"), "https://docs.example.com/audit/41.pdf");
+  assert.equal(auditAllowed("https://docs.example.com", "https://other.example.net/audit/41.pdf"), null, "another host");
+  assert.equal(auditAllowed("https://docs.example.com", "http://docs.example.com/audit/41.pdf"), null, "not https");
+  assert.equal(auditAllowed("https://docs.example.com", "https://docs.example.com.evil.example/x.pdf"), null, "a lookalike host");
+  assert.equal(auditAllowed("https://docs.example.com", null), null);
+});
+
+test("auditBodyWithin: the audit file is read only up to the size cap; a larger one is refused", () => {
+  assert.equal(auditBodyWithin(10, 100), true);
+  assert.equal(auditBodyWithin(101, 100), false);
+  assert.equal(auditBodyWithin(Number.NaN, 100), false, "an unknown size is refused");
 });

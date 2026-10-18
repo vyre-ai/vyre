@@ -148,6 +148,20 @@ export function auditShown(caller, url) {
   return person && typeof url === "string" && /^https:\/\//.test(url) ? url : null;
 }
 
+/** The audit file's address when it is https on the app's own origin, else null: the server fetches only from the app itself (documents.signing.audit). @param {string} appOrigin @param {unknown} url */
+export function auditAllowed(appOrigin, url) {
+  if (typeof url !== "string") return null;
+  try {
+    const u = new URL(url), own = new URL(String(appOrigin));
+    return u.protocol === "https:" && u.origin === own.origin && !u.username && !u.password ? url : null;
+  } catch { return null; }
+}
+
+/** Whether a body of `bytes` fits the cap; an unknown size never does. @param {number} bytes @param {number} cap */
+export function auditBodyWithin(bytes, cap) {
+  return Number.isFinite(bytes) && bytes >= 0 && bytes <= cap;
+}
+
 /**
  * One submission's status from DocuSeal's JSON (documents.signing.status, 18 Oct ruling): each signer with the times they were sent to, opened, completed
  * and declined, the submission's status, and its audit log link (fetched and saved by the server, never shown as a raw provider URL). A signer's page code
