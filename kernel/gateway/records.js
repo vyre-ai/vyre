@@ -225,7 +225,6 @@ export function createRecords(cfg) {
   // Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
   // people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
   const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; },
-    // may this chain read the record a note is about: the grant for it, then that record's own per-row rule
     mayReadRef: async (/** @type {any} */ chain, /** @type {string} */ ref) => { const m = /^vyre:\/\/[^/]+\/([a-z][a-z0-9-]*)\/([0-9a-f-]{36})$/.exec(ref); if (!m || !(await allowed(chain, "records.read", ref))) return false; const row = await store.get(m[1], m[2]).catch(() => null); return row ? mayView(chain, m[1], { ...row, urn: ref }) : false; } });
   /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
   /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
@@ -518,15 +517,9 @@ export function createRecords(cfg) {
     const d = await gate(chain, `records.${op}`, u);
     // The Space's set-up (an agent, a template, a playbook): a member reads, only an owner or an admin writes, on every route. A service's own chain has no person and passes.
     if (SETUP_TYPES.has(type)) { const r = roleOfChain(chain); if (r !== undefined && r !== "owner" && r !== "admin") throw new KernelError("not_allowed", `Only an owner or an admin can change this ${type}. Ask one of them.`); }
-    // A layout row is the Space's (owner or admin) or one person's own: a member writes only a row with scope "person" whose owner is herself, and cannot hand it to anyone else or make it the Space's.
-    if (type === "record-layout") {
-      const r = roleOfChain(chain);
-      if (r !== undefined && r !== "owner" && r !== "admin") {
-        const me = `person:${chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person").actor.id}`;
-        const before = op === "create" || !getBefore ? null : await getBefore();
-        const scope = (input && input.scope !== undefined) ? input.scope : before && before.data.scope, owner = (input && input.owner !== undefined) ? input.owner : before && before.data.owner;
-        if (scope !== "person" || owner !== me || (before && (before.data.scope !== "person" || before.data.owner !== me))) throw new KernelError("not_allowed", "Only an owner or an admin changes the layout for everyone. Save it as your own.");
-      }
+    if (type === "record-layout" && roleOfChain(chain) !== undefined && !["owner", "admin"].includes(roleOfChain(chain))) {   // a member writes only her own person layout
+      const me = `person:${chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person").actor.id}`, before = op === "create" || !getBefore ? null : await getBefore(), has = (/** @type {string} */ k) => (input && input[k] !== undefined) ? input[k] : before && before.data[k];
+      if (has("scope") !== "person" || has("owner") !== me || (before && before.data.owner !== me)) throw new KernelError("not_allowed", "Only an owner or an admin changes the layout for everyone. Save it as your own.");
     }
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
     // may write the type can still read and create, never rewrite another's row (a member cannot change a stored Kit proposal).

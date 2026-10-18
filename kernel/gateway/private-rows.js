@@ -118,9 +118,7 @@ export async function visiblePage(spec, getPage, ok) {
  * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (lib/note-share.js).
  * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any, mayReadRef?: (chain: any, ref: string) => Promise<boolean> }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
  */
-/** Types whose read rule binds an owner and an admin as well: private means private. */
-export const OWN_ONLY = Object.freeze(new Set(["event", "note"]));
-
+export const OWN_ONLY = Object.freeze(new Set(["event", "note"]));   // read rules that bind an owner and an admin too
 export function createReadRules(d) {
   const { store, urn, attrsOf } = d;
   const seatOf = projectTeamOf(store, urn, attrsOf);
@@ -128,17 +126,11 @@ export function createReadRules(d) {
   const taskFacts = async (/** @type {string} */ tid) => { if (d.tasks && typeof d.tasks.facts === "function") return d.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; };
   const writer = (/** @type {string} */ me, /** @type {any} */ rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}`; };
   return {
-    // The planner's Note (a note about a record): its writer reads it; shared with the Space, everyone; shared with the record, whoever may read that record; otherwise it is private, to an owner and an admin as well.
-    // A type of another module that happens to be called `note` has no `visibility` or `person` and reads as ever.
+    // the planner's Note: its writer, or the Space or the record's readers once shared; a note with no writer (carried over) or another module's `note` reads as ever. The stored row is read: a reader's copy has `person` cut.
     note: async (me, rec, chain) => {
-      const n = rec.data || {};
-      if (!("visibility" in n) && !("person" in n)) return true;
-      // a note carried over from the old planner has no writer on it: it reads as it always did (the planner shows it to the owner)
-      if (!n.person) return true;
-      if (writer(me, rec) || String(n.person || "") === me) return true;
-      if (n.visibility === "space") return true;
-      const ref = n.visibility === "record" && typeof n.record === "string" ? n.record : null;
-      return Boolean(ref && d.mayReadRef && await d.mayReadRef(chain, ref));
+      const n = (await store.get("note", rec.id).catch(() => null))?.data || rec.data || {};
+      if (!n.person || n.person === me || writer(me, rec) || n.visibility === "space") return true;
+      return n.visibility === "record" && typeof n.record === "string" && Boolean(d.mayReadRef && await d.mayReadRef(chain, n.record));
     },
     event: async (me, rec) => !(rec.data && rec.data.source === "google") || (rec.data && rec.data.visibility === "space") || writer(me, rec),
     communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
