@@ -14,6 +14,7 @@ export type Trigger =
 
 /** How a step runs and how it is checked. A step may omit all of it. */
 export interface Policy {
+  /** false turns the step off: it is skipped and the run says so (absent means on) */ enabled?: boolean;
   /** milliseconds one attempt may take */ timeout_ms?: number;
   /** false, or how many attempts (the first counts), the waits between them, and which faults are worth another try */
   retry?: false | { attempts?: number; backoff_ms?: number | readonly number[]; on?: readonly ('timeout' | 'unavailable' | 'rate_limited' | 'upstream_5xx' | 'connection_reset' | 'busy')[] };
@@ -51,7 +52,8 @@ export interface FlowDefinition {
   name: string; label?: string; description?: string; /** the group it is listed under, 1 to 60 characters */ group?: string; /** the short name of the project it runs in (flows.list can filter by it) */ project?: string;
   authorship: 'builder' | 'human' | 'model' | 'kit';
   caps?: readonly { action: string; resource: string }[];
-  trigger: Trigger;
+  /** what starts it: one trigger, or `triggers` for several (give one of the two) */ trigger?: Trigger;
+  /** 1 to 8 triggers, each with its own condition: any of them starts a run */ triggers?: readonly Trigger[];
   steps: readonly Step[];
   /** steps to run once when the run is about to fail; they read `error` */ on_failure?: readonly Step[];
   /** at most this many runs of the Flow at once (1 to 32) */ concurrency?: number;

@@ -2,7 +2,7 @@
 // kernel/flows/describe: a Flow or a run in a few lines, for an agent that should not read the whole document (flows.describe). Pure. One line a step with the policy it carries (time limit, tries, failure path,
 // check), the trigger in words, and, for a run, where it is and what happens next.
 import { timelineOf, stepIndex } from "./timeline.js";
-import { whyRan, eventPatterns } from "./triggers.js";
+import { whyRan, eventPatterns, triggersOf } from "./triggers.js";
 
 /** @param {any} t */
 function triggerWords(t) {
@@ -24,7 +24,7 @@ const sec = ms => (ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.rou
  */
 export function describeFlow(flow, o = {}) {
   /** @type {string[]} */ const lines = [];
-  lines.push(`${flow.label || flow.name}${o.id ? ` (${o.id}${o.version ? ` v${o.version}` : ""})` : ""}${o.status ? `, ${o.status}` : ""}. Runs ${triggerWords(flow.trigger)}.`);
+  lines.push(`${flow.label || flow.name}${o.id ? ` (${o.id}${o.version ? ` v${o.version}` : ""})` : ""}${o.status ? `, ${o.status}` : ""}. Runs ${triggersOf(flow).map(triggerWords).join(", or ") || "when it is run by hand"}.`);
   if (o.health) lines.push(o.health);
   const flowBits = [flow.concurrency ? `at most ${flow.concurrency} at once` : "", flow.lock ? `one at a time per ${flow.lock}` : "", flow.stuck_after_ms ? `stuck after ${sec(flow.stuck_after_ms)}` : "", Array.isArray(flow.on_failure) ? `on failure: ${flow.on_failure.length} step${flow.on_failure.length === 1 ? "" : "s"}` : ""].filter(Boolean);
   if (flowBits.length) lines.push(flowBits.join("; ") + ".");
