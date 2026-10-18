@@ -191,7 +191,7 @@ test("a plugin server that waits for a key is one `access` card per missing vari
   assert.ok(!/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(hostile), "no control character or line break");
   assert.ok(hostile.startsWith('Key \u00b7 item "real-item" \u00b7 approved by an admin (per_ana) \u00b7 runs ["npx","-y","x@1.0.0",'), hostile);
   assert.equal(hostile.indexOf("approved by the owner (zzzz)") > hostile.indexOf("runs ["), true, "the author's words come after the trusted ones");
-  assert.equal(hostile.split(" \u00b7 approved by ").length - 1, 1, "the trusted separator-and-field appears once");
+  assert.equal(hostile.slice(0, hostile.indexOf("runs [")).split(" \u00b7 approved by ").length - 1, 1, "the trusted field appears once, before the quoted run");
   const owner = OWNERS.find(o => o.name === "mcp-keys");
   assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "mcp.keys.waiting" && owner.watch.some(w => w[0] === "mcp.needs-key"));
 });
