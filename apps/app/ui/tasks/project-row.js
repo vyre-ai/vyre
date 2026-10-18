@@ -31,6 +31,7 @@ export function movedWords(at, now) {
  */
 export function rowFacts(world, item) {
   const { row, def } = item;
+  if (row.data && row.data.personal_of) return { next: "Notes, drafts and chats that are just yours", needsYou: false, done: 0, total: 0, team: [], moved: "Pinned" };
   const tasks = world.tasks.filter((t) => t.record === row.urn);
   const name = (/** @type {string} */ id) => actorOf(id, world.actors)?.name || id;
   const mine = tasks.find((t) => needsReason(t, world.me, world.actors) !== null);
@@ -45,4 +46,15 @@ export function rowFacts(world, item) {
   const team = teamOf({ tasks, actors: world.actors, owner }).map((m) => m.id).slice(0, 4);
   const at = Math.max(Number(row.updated_at) || 0, ...tasks.map((t) => Number(t.updated_at) || 0));
   return { next, needsYou, done: tasks.filter(isDone).length, total: tasks.length, team, moved: movedWords(at, world.now) };
+}
+
+/**
+ * The order of the Projects list: the Personal project first (it is pinned), then the rest by the newest change to the project or its to-dos, a tie by name. The list given is not changed.
+ * @template {{ def: any, row: any }} T @param {import("./model.js").World} world @param {T[]} items @returns {T[]}
+ */
+export function orderProjects(world, items) {
+  const at = (/** @type {T} */ i) => Math.max(Number(i.row.updated_at) || 0, ...world.tasks.filter((t) => t.record === i.row.urn).map((t) => Number(t.updated_at) || 0));
+  const name = (/** @type {T} */ i) => String(i.row.data?.name ?? i.row.id).toLowerCase();
+  const key = items.map((i) => ({ i, p: i.row.data?.personal_of ? 1 : 0, at: at(i), n: name(i) }));
+  return key.sort((a, b) => b.p - a.p || b.at - a.at || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0)).map((k) => k.i);
 }

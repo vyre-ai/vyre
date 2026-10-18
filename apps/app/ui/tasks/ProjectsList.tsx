@@ -15,7 +15,7 @@ import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
 import { recordTitle, spaceName, who, type World } from "./model";
-import { rowFacts, kindWord } from "./project-row.js";
+import { rowFacts, kindWord, orderProjects } from "./project-row.js";
 import { useUiTheme } from "../theme";
 import { SpaceTag } from "../components/SpaceTag";
 
@@ -92,7 +92,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const search = useRef<TextInput>(null);
   const work = workTypes(items);
   const word = q.trim().toLowerCase();
-  const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!tag || tagsOf(i.row.data?.tags).includes(tag)) && (!word || recordTitle(world, i.row).toLowerCase().includes(word)));
+  const shown = orderProjects(world, items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type) && (!tag || tagsOf(i.row.data?.tags).includes(tag)) && (!word || recordTitle(world, i.row).toLowerCase().includes(word))));
   const factsOf = (i: Item) => rowFacts(world, i);
   const spaceId = (i: Item): string | undefined => i.row.labels?.source_spaces?.[0];
   const manySpaces = new Set(shown.map(spaceId).filter(Boolean)).size > 1;
@@ -189,8 +189,8 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
         {tag ? <Chip icon="x" onPress={() => setTag("")}>{`Tagged #${tag}`}</Chip> : null}
         {playbook ? <Chip icon="x" onPress={() => onClearPlaybook?.()}>{`Playbook: ${playbookName}`}</Chip> : null}
       </View>
-      {shown.length ? <Card flush>{shown.map((i, k) => (phone ? phoneRow(i, k) : wideRow(i, k)))}</Card> : <Card><EmptyState title="Nothing here yet" body="A record of a type that holds work shows up here with its tasks and its team." /></Card>}
-      {phone && !items.length ? <EmptyState title="Nothing here yet" /> : null}
+      {shown.length ? <Card flush>{shown.map((i, k) => (phone ? phoneRow(i, k) : wideRow(i, k)))}</Card> : <Card><EmptyState title="No projects here" body="Start one with New, and it gets its own group chat for its people." /></Card>}
+      
     </View>
   );
 }
