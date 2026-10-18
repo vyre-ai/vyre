@@ -1115,7 +1115,7 @@ export default {
       async (i, w) => await add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared"], description: "mine: written by you; shared: notes others shared with you" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared", "space"], description: "mine: written by you; shared: notes others shared with you; space: notes shared with the whole Space" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
       async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
         const me = await viewerOf(w), want = Math.min(500, Math.max(1, i.limit || 100));
@@ -1125,6 +1125,7 @@ export default {
           if (i.record && r.record !== i.record) continue;
           if (i.scope === "mine" && r.by !== person) continue;
           if (i.scope === "shared" && (r.kind !== "note" || r.by === person)) continue;
+          if (i.scope === "space" && (r.kind !== "note" || r.visibility !== "space")) continue;
           if (await seen(r, w, me)) kept.push(r);
           if (kept.length >= want) break;
         }
