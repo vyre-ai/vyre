@@ -3,19 +3,22 @@
 // details are only what is known (who put it there, where it is, how many versions, where it is used, who can see it): a line with nothing behind it is not drawn. The Quick Look is a small state
 // that Space or a double click opens, the arrows move through the shown files, and Esc closes.
 
-/** @typedef {{ id: string, label: string, kind: "all" | "recent" | "shared" | "project" | "site" | "newsite", live?: boolean, draft?: boolean }} Place */
+/** @typedef {{ id: string, label: string, kind: "all" | "recent" | "shared" | "project" | "agent" | "site" | "newsite", live?: boolean, draft?: boolean, path?: string }} Place */
 
 /**
- * The left column, in groups. A group with nothing in it is left out (no Projects heading over an empty list), except Sites, whose "New site" is always there.
- * @param {{ projects?: readonly { id: string, name: string }[], sites?: readonly { id: string, name: string, live?: boolean }[] }} [o]
+ * The left column, in groups. A group with nothing in it is left out (no Projects heading over an empty list), except Sites, whose "New site" is always there. Projects and Agents are the ones `files.places`
+ * returned for this person, each with the Drive folder it opens.
+ * @param {{ projects?: readonly { name: string, path: string }[], agents?: readonly { name: string, path: string }[], sites?: readonly { id: string, name: string, live?: boolean }[] }} [o]
  * @returns {{ id: string, heading: string | null, places: Place[] }[]}
  */
 export function placeGroups(o = {}) {
-  const projects = (o.projects || []).filter((p) => p && p.id && p.name);
+  const folders = (/** @type {readonly any[] | undefined} */ xs, /** @type {"project" | "agent"} */ kind) => (xs || []).filter((x) => x && x.name && typeof x.path === "string" && x.path).map((x) => /** @type {Place} */ ({ id: `${kind}:${x.path}`, label: x.name, kind, path: x.path }));
+  const projects = folders(o.projects, "project"), agents = folders(o.agents, "agent");
   const sites = (o.sites || []).filter((s) => s && s.id && s.name);
   return [
     { id: "top", heading: null, places: [{ id: "all", label: "All files", kind: "all" }, { id: "recent", label: "Recent", kind: "recent" }, { id: "shared-with-me", label: "Shared with me", kind: "shared" }] },
-    ...(projects.length ? [{ id: "projects", heading: "Projects", places: /** @type {Place[]} */ (projects.map((p) => ({ id: `project:${p.id}`, label: p.name, kind: "project" }))) }] : []),
+    ...(projects.length ? [{ id: "projects", heading: "Projects", places: projects }] : []),
+    ...(agents.length ? [{ id: "agents", heading: "Agents", places: agents }] : []),
     { id: "sites", heading: "Sites", places: [...sites.map((s) => /** @type {Place} */ ({ id: `site:${s.id}`, label: s.name, kind: "site", ...(s.live ? { live: true } : { draft: true }) })), { id: "new-site", label: "New site", kind: "newsite" }] },
   ];
 }

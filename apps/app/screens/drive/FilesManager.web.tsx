@@ -16,6 +16,7 @@ import { rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, pare
 import { linkedNames, loader } from "./files-real";
 import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
+import { startThread } from "./new-thread";
 import { useFilesNav } from "./files-nav";
 import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
 import { bytesOf, sizeWord, textOf } from "./real-model";
@@ -283,7 +284,7 @@ function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: Ret
     <View className="gap-s3">
       <Card>
         <View className="flex-row flex-wrap items-center gap-s2">
-          {!row.dir ? <Button kind="primary" size="sm" label="Ask about this" onPress={() => router.push(`/u/chats/new?file=${encodeURIComponent(row.name)}` as never)} /> : null}
+          {!row.dir ? <Button kind="primary" size="sm" label="Ask about this" onPress={() => { void startThread(router, "assistant", `About #${row.name}: `, `About ${row.name}`); }} /> : null}
           {!row.dir && a.share && row.root === "space" ? <Button kind="ghost" size="sm" icon="share" label="Share" onPress={() => { linkCreate(undefined, row.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); }} /> : null}
           {!row.dir && a.download && (row.root === "space" || row.root === "linked") ? <Button kind="ghost" size="sm" icon="download" label="Download" onPress={() => { download(row).catch((e) => showToast(say(e))); }} /> : null}
         </View>

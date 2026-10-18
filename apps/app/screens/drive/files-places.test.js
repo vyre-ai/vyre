@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import { detailLines, placeGroups, quickLook, recentOf } from "./files-places.js";
 
 test("the left column: three places, the projects the person can see, then Sites with New site always last", () => {
-  const g = placeGroups({ projects: [{ id: "p1", name: "Spring launch" }], sites: [{ id: "s1", name: "juniper.studio", live: true }, { id: "s2", name: "Spring landing" }] });
-  assert.deepEqual(g.map((x) => x.heading), [null, "Projects", "Sites"]);
+  const g = placeGroups({ projects: [{ name: "Spring launch", path: "Projects/p1/files" }], agents: [{ name: "ads", path: "agents/agt_a" }, { name: "x", path: "" }], sites: [{ id: "s1", name: "juniper.studio", live: true }, { id: "s2", name: "Spring landing" }] });
+  assert.deepEqual(g.map((x) => x.heading), [null, "Projects", "Agents", "Sites"]);
+  assert.deepEqual([g[1].places[0], g[2].places.map((p) => p.label)], [{ id: "project:Projects/p1/files", label: "Spring launch", kind: "project", path: "Projects/p1/files" }, ["ads"]], "an agent with no folder is not a place");
   assert.deepEqual(g[0].places.map((p) => p.label), ["All files", "Recent", "Shared with me"]);
-  assert.deepEqual(g[2].places.map((p) => [p.label, p.live ?? false, p.draft ?? false]), [["juniper.studio", true, false], ["Spring landing", false, true], ["New site", false, false]]);
+  assert.deepEqual(g[3].places.map((p) => [p.label, p.live ?? false, p.draft ?? false]), [["juniper.studio", true, false], ["Spring landing", false, true], ["New site", false, false]]);
   const none = placeGroups();
   assert.deepEqual(none.map((x) => x.heading), [null, "Sites"], "no Projects heading over nothing");
   assert.deepEqual(none[1].places.map((p) => p.kind), ["newsite"]);

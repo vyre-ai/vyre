@@ -9,6 +9,7 @@ import { presenceText } from "../shell/FaceIdSheet";
 import { act, decide, list, preview, status as statusOf } from "../sites/real";
 import { sites, nextStep, domainLine, heldOf, planLines, decision, publishRefusal, type Held, type Site, type Status } from "../sites/real-model";
 import { siteAddress, unpublished } from "./site-page-model.js";
+import { startThread } from "./new-thread";
 
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
@@ -51,7 +52,7 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
         <Text strong>{site.name}</Text>
         <Chip tone={site.status.tone}>{site.status.label}</Chip>
         <View className="flex-1" />
-        <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => router.push(`/u/chats/new?begin=${encodeURIComponent(`Change my site ${site.name}: `)}` as never)} />
+        <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => { void startThread(router, "engineer", `Change my site ${site.name}: `, `Change ${site.name}`); }} />
         {address.url ? <Button kind="ghost" size="sm" label="Visit" onPress={() => { window.open(address.url!, "_blank", "noopener"); }} /> : null}
         {next && !held ? <Button kind="primary" size="sm" label={busy ? "Working" : waiting ? "Publish changes" : next.label} disabled={busy} onPress={publish} /> : null}
       </View>

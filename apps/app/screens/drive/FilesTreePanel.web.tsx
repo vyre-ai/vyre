@@ -7,11 +7,13 @@ import { Tree, type NodeRendererProps } from "react-arborist";
 import { Chip, Icon, Text, showToast } from "@vyre/ui";
 import { rootsOf, parsePlace, type TreeNode } from "./files-model.ts";
 import { linked } from "./real";
+import { tool } from "../../src/real/box";
 import { useFilesNav } from "./files-nav";
 import { linkedRefusal } from "./linked-model";
 import { spaceDriveRefusal } from "./space-model";
 import { driveRefusal } from "./real-model";
 import { placeGroups } from "./files-places.js";
+import { startThread } from "./new-thread";
 import { list as listDeployments } from "../sites/real";
 import { sites as siteList } from "../sites/real-model";
 
@@ -23,9 +25,12 @@ function Places() {
   const router = useRouter();
   const { place, go } = useFilesNav();
   const [sites, setSites] = useState<{ id: string; name: string; live?: boolean }[]>([]);
+  const [folders, setFolders] = useState<{ projects: { name: string; path: string }[]; agents: { name: string; path: string }[] }>({ projects: [], agents: [] });
+  // the projects and agents this person can see, each with the Drive folder it opens (files.places, under their own chain)
+  useEffect(() => { tool<{ projects?: { name: string; path: string }[]; agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => setFolders({ projects: r?.projects ?? [], agents: r?.agents ?? [] })).catch(() => setFolders({ projects: [], agents: [] })); }, []);
   useEffect(() => { listDeployments().then((d) => setSites(siteList(d).map((s) => ({ id: s.name, name: s.name, live: Boolean(s.live) })))).catch(() => setSites([])); }, []);
-  const groups = placeGroups({ sites });
-  const target = (id: string) => (id === "all" ? "space" : id === "shared-with-me" ? "shared" : id);
+  const groups = placeGroups({ sites, projects: folders.projects, agents: folders.agents });
+  const target = (id: string) => (id === "all" ? "space" : id === "shared-with-me" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 8 }}>
       {groups.map((g) => (
@@ -34,9 +39,9 @@ function Places() {
           {g.places.map((p) => {
             const on = p.kind !== "newsite" && place === target(p.id);
             return (
-              <div key={p.id} role="button" onClick={() => { if (p.kind === "newsite") router.push(`/u/chats/new?begin=${encodeURIComponent("Build me a new site: ")}` as never); else go(target(p.id)); }}
+              <div key={p.id} role="button" onClick={() => { if (p.kind === "newsite") void startThread(router, "engineer", "Build me a new site: ", "New site"); else go(target(p.id)); }}
                 style={{ display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 8px", borderRadius: 10, cursor: "pointer", background: on ? "var(--surface-3)" : "transparent" }}>
-                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
+                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : p.kind === "project" ? "projects" : p.kind === "agent" ? "agents" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
                 <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={on}>{p.label}</Text></div>
                 {p.live ? <Chip tone="ok">Live</Chip> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
               </div>

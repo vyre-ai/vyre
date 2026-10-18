@@ -21,7 +21,7 @@ export default function NewChatScreen() {
   const router = useRouter();
   const st = useStore();
   // "Chat about this": a record or project opens a new chat with its urn and name; the chat is linked to it, and the first words name it so the assistant can read it
-  const { about, name, project: projectParam, group, file, begin } = useLocalSearchParams<{ about?: string; name?: string; project?: string; group?: string; file?: string; begin?: string }>();
+  const { about, name, project: projectParam, group } = useLocalSearchParams<{ about?: string; name?: string; project?: string; group?: string }>();
   // "New group chat" is this page asking for two or more
   const wantGroup = group === "1";
   // New chat from a project: the chat is made in it, and its own team is listed first (removable)
@@ -35,8 +35,7 @@ export default function NewChatScreen() {
   const [me, setMe] = useState("");
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
-  // A file asked about from Files: the thread starts with its name (the # chip for a file arrives with work.agent.thread.new)
-  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): ` : typeof file === "string" && file ? `About ${file.slice(0, 200)}: ` : typeof begin === "string" ? begin.slice(0, 400) : "");
+  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): `  : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [loadErr, setLoadErr] = useState("");
