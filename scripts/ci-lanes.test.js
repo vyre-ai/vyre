@@ -12,7 +12,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LANE = "(vars.CI_SELF_HOSTED == '1' && (github.ref_type == 'tag' || github.ref_name == 'main' || startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'integrate/') || endsWith(github.ref_name, '/train') || startsWith(github.ref_name, 'work/lead-')))";
 const OLD = "github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON(";
 
-for (const file of ["node.yml", "app.yml", "box-image.yml", "design-pictures.yml"]) {
+for (const file of ["node.yml", "app.yml", "box-image.yml", "design-pictures.yml", "golden-refresh.yml"]) {
   test(`${file}: the self-hosted fleet is only for release-lane refs`, () => {
     const yml = fs.readFileSync(path.join(ROOT, ".github/workflows", file), "utf8");
     assert.ok(yml.includes(LANE), "the lane expression is used");
