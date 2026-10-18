@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(app): the message menu is drawn on the page itself (a portal to document.body on the web), so it is not clipped by the transcript scroller or placed against a transformed row; the shots print how many menus are open after the right-click.
 - feat(app): a forked thread shows "Earlier in the original": one read of the origin's frames (stream.read) up to the reply it was forked at, folded outside the thread's store, private messages opened with the ring this device holds, dimmed, ending in a "Forked here" divider. A device that cannot open the origin shows the banner alone. The chat shots open a sample fork that goes through the same fold and decrypt.
 - feat(app): adding people to a group chat uses work.chat.add-people: it asks, makes the ring each missing thread needs on this device, and asks again, so a person added to a group gets every thread.
 - fix(app): "Make a Flow from this chat" passes the chat's id to flows.from-chat, so the Flow remembers where it was made.

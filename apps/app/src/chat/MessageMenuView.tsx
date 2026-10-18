@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Platform, Pressable, View, useWindowDimensions } from "react-native";
 import { Divider, Row, Sheet, Text, useUiTheme } from "@vyre/ui";
 import { elevation } from "../../ui/lib/elevation";
+import { PortalHere } from "./PortalHere";
 import type { MenuItem, MessageMenu } from "./message-menu-model.js";
 
 const W = 248;
@@ -55,9 +56,9 @@ export function MessageMenuView({ menu, at, onPick, onReact, onClose }: { menu: 
   }
   const left = Math.max(8, Math.min(at.x, width - W - 8)), top = Math.max(8, Math.min(at.y, height - 360));
   return (
-    <>
+    <PortalHere>
       <Pressable accessibilityLabel="Close the menu" onPress={onClose} {...({ onContextMenu: (e: any) => { e.preventDefault(); onClose(); } } as object)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 } as any} />
       <View accessibilityRole="menu" style={{ position: "fixed", left, top, width: W, zIndex: 91, padding: 6, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], ...elevation(resolved.scheme, 2) } as any}>{body}</View>
-    </>
+    </PortalHere>
   );
 }
