@@ -34,6 +34,7 @@ import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
+import { registerThreads } from "./threads.js";
 import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -776,6 +777,7 @@ export default {
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
     });
+    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
     ctx.tool("work.chat.change", {
       description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
       input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },

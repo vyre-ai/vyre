@@ -190,6 +190,18 @@
         "effect": "write"
       },
       {
+        "name": "work.agent.threads",
+        "summary": "your threads with one agent, newest first: state, last line, unread",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.agent.thread.new",
+        "summary": "start a new thread with an agent; the old ones stay",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",

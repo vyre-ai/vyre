@@ -670,7 +670,7 @@ export class Switchboard {
     return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
       const t = /** @type {any} */ (this.record(String(r.id)));
       const said = /** @type {any[]} */ (this.deps.ofThread(t.id, { types: ["thread.text"], limit: 8, tail: true })).reverse().map(e => { try { return typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload; } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
-      return { thread: t.id, name: t.name, agent: t.agent, slot: t.agent ? `agent:${t.agent}` : (t.slot || null), provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
+      return { thread: t.id, name: t.name, agent: t.agent, slot: t.agent ? `agent:${t.agent}` : (t.slot || null), provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, needs: this.asks.open(t.id).length, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
     });
   }
 
