@@ -174,7 +174,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
             <TaggedIn item={cur.name} />
             <LinkedTo item={cur.name} />
             {scope === "mine" ? <MoveToVault item={cur.name} onMoved={load} /> : null}
-            <EarlierVersions name={cur.name} onChanged={load} />
+            <EarlierVersions name={cur.name} onChanged={load} canPutBack={scope === "mine"} />
           </View>
         ) : null}
         {scope === "mine" && cur.sites && data.addSite ? (

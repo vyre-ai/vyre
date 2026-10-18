@@ -9,7 +9,8 @@ const fail = (e: unknown, fallback: string) => showToast(String((e as { message?
 const when = (at: unknown) => { const d = new Date(Number(at) || String(at)); return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(); };
 
 /** Earlier versions of one item: when it changed, by whom, and which fields changed. Putting one back makes it the newest version. */
-export function EarlierVersions({ name, onChanged }: { name: string; onChanged?: () => void }) {
+/** canPutBack: only the person's own items get Put back here; a shared item is changed by its owner (sec53: the server refuses the rest). */
+export function EarlierVersions({ name, onChanged, canPutBack = false }: { name: string; onChanged?: () => void; canPutBack?: boolean }) {
   const [rows, setRows] = useState<{ ver: number; at: unknown; by: string; fields: string[] }[] | null>(null);
   const load = () => callT<{ versions?: { ver: number; at: unknown; by: string; fields: string[] }[] }>("vault.history", { name })
     .then((r) => setRows(r.data?.versions ?? [])).catch(() => setRows([]));
@@ -24,7 +25,7 @@ export function EarlierVersions({ name, onChanged }: { name: string; onChanged?:
         <Card flush>
           {rows.slice(1).map((r) => (
             <Row key={r.ver} dense title={`Version ${r.ver}`} sub={`${when(r.at)} · ${r.by || "someone"}${r.fields?.length ? ` · changed ${r.fields.join(", ")}` : ""}`}
-              end={<Button kind="ghost" size="sm" label="Put back" onPress={() => revert(r.ver)} />} />
+              end={canPutBack ? <Button kind="ghost" size="sm" label="Put back" onPress={() => revert(r.ver)} /> : undefined} />
           ))}
         </Card>
       )}
