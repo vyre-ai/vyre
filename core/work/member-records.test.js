@@ -304,7 +304,7 @@ test("a joined member's notes go through the team's planner as herself: her own 
   // a record-level share is judged on the reader's own chain in this Space
   const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
   await asP(ANA, "planner.add", { title: "about Ava", visibility: "record", record: contact.urn });
-  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava") || true);
+  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava"), "a note shared with a record is read by whoever can read that record");
   assert.ok(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "a note is about a record, not a note");
   // the planner's own check of the chain, and a module calling the tools straight
   const chain = w.chainOf(ANA), hop = { actor: { kind: "agent", id: "kit", space: w.space } };
