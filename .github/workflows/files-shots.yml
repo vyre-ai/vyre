@@ -1,8 +1,11 @@
-# The Files screen's screenshot pass (apps/app/scripts/files-shots.mjs) on the SAMPLE web export: the folder picker, drag to move, and the phone's picker. Run by hand on a branch.
+# The Files screen's screenshot pass (apps/app/scripts/files-shots.mjs) on the SAMPLE web export: the folder picker, drag to move, and the phone's picker. Runs on a push to the files-move branch that touches it (a new workflow cannot be dispatched before it is on the default branch), or by dispatch once it is.
 # Shots go up as an artifact for review. Sample world only: no real data. (app-shots.yml is the whole-app pass.)
 name: files-shots
 on:
   workflow_dispatch:
+  push:
+    branches: ["work/0.6.2/fix53/files-move"]
+    paths: [".github/workflows/files-shots.yml", "apps/app/scripts/files-shots.mjs"]
 permissions:
   contents: read
 concurrency:
