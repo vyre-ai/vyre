@@ -5,7 +5,7 @@ import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
   Avatar, FlowOver, Icon, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
+import { ANOTHER_COPY, AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, isAnother, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
@@ -91,6 +91,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
@@ -135,7 +136,9 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     void personStatus().then((r) => {
       if (!live || !r.ok || !r.exists) return;
       setUsername(r.username || "");
-      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path, skipAi: noDaemon })] : s));
+      setSignedIn(true);
+      // already signed in and adding a Space: no identity, no recovery key and no AI step before the Space (a server is what the AI signs in on, and this one is new): straight to the make or join screen
+      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path, skipAi: noDaemon || isAnother(path, true) })] : s));
     });
     return () => { live = false; };
   }, [shot, screen, path]);
@@ -480,7 +483,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "join.link") {
     return (
-      <FlowStep steps={steps} onBack={back} title={JOIN_COPY.title} lead={JOIN_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.joinTitle : JOIN_COPY.title} lead={isAnother(path, signedIn) ? ANOTHER_COPY.joinLead : JOIN_COPY.lead} failure={failure}
         primary={{ label: "Continue", disabled: paste.trim().length < 8, loading: busy, onPress: () => void run(async () => {
           const r = await readInvite(paste.trim());
           if (!r.ok) { setFailure(r.message); return; }
@@ -518,7 +521,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "create.kind") {
     const wanted = usernameOf(space);
     return (
-      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste the line into it. This screen waits until it is online." failure={failure}
+      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.makeTitle : "Connect your server."} lead={isAnother(path, signedIn) ? ANOTHER_COPY.makeLead : "Name your space, say what the server runs, then paste the line into it. This screen waits until it is online."} failure={failure}
         primary={{ label: "Continue", disabled: !command || !waitId || busy, loading: busy, onPress: () => go("create.wait") }}>
         <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={wanted ? `Its address will be ${wanted}.vyre.run` : SPACE_NAME_SAY.required} />
         <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />

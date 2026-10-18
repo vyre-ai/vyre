@@ -3,7 +3,7 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SIGNIN_COPY, displayNameOf, entryScreen, phaseOf, spaceAddressOf, spaceNameSuggestions, SPACE_NAME_SAY, usernameOf } from "../lib/first-run-shape.js";
+import { ANOTHER_COPY, SIGNIN_COPY, displayNameOf, isAnother, entryScreen, phaseOf, spaceAddressOf, spaceNameSuggestions, SPACE_NAME_SAY, usernameOf } from "../lib/first-run-shape.js";
 
 test("a space address is a name under vyre.run, typed with or without https, and nothing else", () => {
   for (const ok of ["juniper.vyre.run", "https://juniper.vyre.run", "https://Juniper.vyre.run/", "  juniper.vyre.run  "]) assert.deepEqual(spaceAddressOf(ok), { space: "juniper", address: "https://juniper.vyre.run" }, ok);
@@ -45,4 +45,14 @@ test("the name step: first and last make one display name of letters, one line o
   assert.equal(displayNameOf("12", "34"), "", "no letters is no name");
   assert.equal(displayNameOf("a".repeat(40), "b".repeat(30)), "", "over 60");
   assert.equal(displayNameOf("Zo\u00eb", "\u0645\u0631\u064a\u0645"), "Zo\u00eb \u0645\u0631\u064a\u0645", "any letters, any script");
+});
+
+test("adding another Space: only when already signed in, and only make or join; the words say the account and devices come along", () => {
+  assert.equal(isAnother("create", true), true);
+  assert.equal(isAnother("join", true), true);
+  assert.equal(isAnother("create", false), false, "no identity yet is the first run");
+  assert.equal(isAnother("signin", true), false);
+  assert.equal(isAnother(undefined, true), false);
+  assert.match(ANOTHER_COPY.makeLead, /account and your devices come with you/);
+  assert.equal(ANOTHER_COPY.menuMake, "Make a new Space");
 });
