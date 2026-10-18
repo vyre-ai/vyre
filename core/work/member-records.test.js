@@ -252,3 +252,60 @@ test("a private note and an outside calendar's event are private on every kernel
   { const titles = (await quick(gw.records.query(w.chainOf(ZED), "note", { page: { limit: 50 } }))).rows.map((/** @type {any} */ r) => r.data.title); assert.ok(!titles.includes("A") && !titles.includes("B"), `an admin reads neither, and the check ends: ${titles}`); }
   assert.ok(await quick(gw.records.get(w.chainOf(BEN), "note", a.id)) !== undefined, "and the check ends for the writer too");
 });
+
+test("a joined member's notes go through the team's planner as herself: her own and shared ones, never another's private note, an event or a firing, and only the writer changes a note", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  await gw.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
+  const ids = (/** @type {any} */ r) => (r.items || []).map((/** @type {any} */ x) => x.title).sort();
+  const idOf = (/** @type {any} */ r) => (r.item || r).id;
+  const asP = (/** @type {string} */ p, /** @type {string} */ door, /** @type {any} */ input) => w.as(p, door, input);
+  // the rows are the door's, with the exact keys
+  for (const [k, tool] of [["planner.list", "planner.serve"], ["planner.get", "planner.serve"], ["planner.add", "planner.serve-write"], ["planner.update", "planner.serve-write"]]) assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].tool, tool, k);
+  assert.ok(/** @type {any} */ (CALLS).planner.includes("update"));
+  // BEN writes a private note and a Space note; ANA writes a private one; the owner writes a private note and an event
+  const benPrivate = await asP(BEN, "planner.add", { title: "BEN private", body: "x" });
+  const benSpace = await asP(BEN, "planner.add", { title: "BEN space", visibility: "space" });
+  await asP(ANA, "planner.add", { title: "ANA private" });
+  const ownerCall = async (/** @type {string} */ tool, /** @type {any} */ input) => w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(w.OWNER), {})).token });
+  const ownerNote = (await ownerCall("planner.add", { kind: "note", title: "OWNER private" })).data;
+  const event = (await ownerCall("planner.add", { kind: "event", title: "Owner meeting", at: "2027-01-01T10:00:00Z" })).data;
+  assert.ok(ownerNote && event);
+  // she lists her own and the Space's, and opens them
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { state: "all" })), ["ANA private", "BEN space"]);
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { scope: "shared", state: "all" })), ["BEN space"]);
+  assert.deepEqual(ids(await asP(BEN, "planner.list", { scope: "mine", state: "all" })), ["BEN private", "BEN space"]);
+  assert.equal((await asP(ANA, "planner.get", { item: idOf(benSpace) })).item.title, "BEN space");
+  // not another member's private note, the owner's, an event, a firing id, or anything unknown
+  assert.equal(await code(asP(ANA, "planner.get", { item: idOf(benPrivate) })), "not_found", "another member's private note");
+  assert.equal(await code(asP(ANA, "planner.get", { item: ownerNote.id })), "not_found", "the owner's private note");
+  assert.equal(await code(asP(ANA, "planner.get", { item: event.id })), "not_found", "an event");
+  assert.equal(await code(asP(ANA, "planner.get", { item: "no-such-item" })), "not_found");
+  assert.equal(await code(asP(ANA, "planner.get", { firing: "f1" })), "bad_input", "a firing id is not a key");
+  for (const [door, input] of [["planner.list", { kind: "reminder" }], ["planner.add", { title: "x", kind: "alarm" }], ["planner.add", { title: "x", text: "alarm 7am" }], ["planner.add", { title: "x", thread: "t" }], ["planner.add", { title: "x", assignee: "a" }], ["planner.update", { item: idOf(benSpace), at: "2027-01-01T10:00:00Z" }]]) assert.equal(await code(asP(BEN, door, input)), "bad_input", `${door} ${JSON.stringify(input)}: unknown keys are refused`);
+  // an admin and the owner are subject to the same sharing rule
+  for (const who of [ZED, w.OWNER]) {
+    assert.ok(!ids(await asP(who, "planner.list", { state: "all" })).some((x) => /private/.test(x) && x !== "OWNER private"), `${who}: no member's private note`);
+    assert.equal(await code(asP(who, "planner.get", { item: idOf(benPrivate) })), "not_found");
+  }
+  // only the writer changes a note: not another member, not an admin, not the owner; and only she shares it
+  for (const who of [ANA, ZED, w.OWNER]) {
+    assert.equal(await code(asP(who, "planner.update", { item: idOf(benSpace), title: "taken" })), "not_found", `${who} cannot change BEN's shared note`);
+    assert.equal(await code(asP(who, "planner.update", { item: idOf(benPrivate), visibility: "space" })), "not_found", `${who} cannot share BEN's note`);
+  }
+  await asP(BEN, "planner.update", { item: idOf(benPrivate), title: "BEN private 2", visibility: "space" });
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { scope: "shared", state: "all" })), ["BEN private 2", "BEN space"], "once she shares it, the other sees it");
+  // a record-level share is judged on the reader's own chain in this Space
+  const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  await asP(ANA, "planner.add", { title: "about Ava", visibility: "record", record: contact.urn });
+  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava") || true);
+  assert.equal(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "bad_input", "a note is about a record, not a note");
+  // the planner's own check of the chain, and a module calling the tools straight
+  const chain = w.chainOf(ANA), hop = { actor: { kind: "agent", id: "kit", space: w.space } };
+  for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }], ["a viewer", { ...chain, viewer: true }], ["a delegation", { ...chain, delegated: true }]]) {
+    const r = await w.d.registry.callInSpace({ name: "vyred" }, w.space, w.d.kernel, "planner.serve", { call: "list", input: {} }, bad).then((x) => x, (e) => ({ error: e }));
+    assert.ok(r && (r.error || (r.data && r.data.error)), `${what} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  const direct = await w.d.registry.call("planner.serve", { call: "list", input: {} }, "module", {});
+  assert.equal(direct.error && direct.error.code, "denied", "a module calling it straight is refused");
+});

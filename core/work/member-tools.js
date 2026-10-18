@@ -50,6 +50,11 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.layout.get": { tool: "records.serve", call: "layout.get", keys: ["type"], types: [] },
   "records.relationship.list": { tool: "records.serve", call: "relationship.list", keys: ["urn"], types: [] },
   "records.relationship.kinds": { tool: "records.serve", call: "relationship.kinds", keys: [], types: [] },
+  // a joined member's NOTES in the team's planner (core/planner/index.js, planner.serve): the exact keys each call takes, and nothing else of the planner
+  "planner.list": { tool: "planner.serve", call: "list", keys: ["scope", "record", "state", "limit"], types: [] },
+  "planner.get": { tool: "planner.serve", call: "get", keys: ["item"], types: [] },
+  "planner.add": { tool: "planner.serve-write", call: "add", keys: ["title", "body", "visibility", "record"], types: [] },
+  "planner.update": { tool: "planner.serve-write", call: "update", keys: ["item", "title", "body", "visibility", "record"], types: [] },
   "tasks.list": { tool: "tasks.serve", call: "list", keys: ["record", "doer", "checker", "approver", "reviewer", "state", "limit"], types: [] },
   "tasks.get": { tool: "tasks.serve", call: "get", keys: ["id"], types: [] },
   "tasks.request": { tool: "tasks.serve-request", call: "request", keys: ["task"], types: [] },
