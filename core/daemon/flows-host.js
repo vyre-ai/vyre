@@ -237,9 +237,9 @@ export function createFlowsHost(o) {
       // The record types a Kit's non-type parts are stored in (templates, role and view definitions) are defined here by the owner with the Flow types, so installing a Kit later never needs a
       // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
       const { CORE_TYPES } = await import("../../records/core-types.js");
-      const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
       // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
-      const kitStorage = [...CORE_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
+      const { KIT_STORAGE_TYPES } = await import("../../lib/kit-storage-types.js");
+      const kitStorage = [...CORE_TYPES, ...KIT_STORAGE_TYPES.map(t => JSON.parse(JSON.stringify(t)))].filter(Boolean);
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
       // A Flow type that gained a field since this Space made it (flow-run.record, the run's link to its record) gets the field: the definition is additive.

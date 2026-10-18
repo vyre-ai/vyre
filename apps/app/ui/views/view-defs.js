@@ -41,9 +41,9 @@ export const viewDefs = {
     calendar: { date: "due" },
     open: "board",
   },
-  memo: {
-    plural: "Memos", titleField: "name",
-    list: { columns: ["contact", "organization"], sort: "name" },
+  note: {
+    plural: "Notes", titleField: "title",
+    list: { columns: ["ref", "state", "list"], sort: "title" },
   },
   matter: {
     plural: "Matters", titleField: "title", holdsWork: true,

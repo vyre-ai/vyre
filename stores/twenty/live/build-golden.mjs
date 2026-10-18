@@ -14,6 +14,7 @@ import { defineCore } from "../space-store.js";
 import { TwentyClient } from "../client.js";
 import { FLOW_TYPES } from "../../../kernel/flows/store.js";
 import { KIT_TYPES } from "../../../kernel/flows/kits.js";
+import { KIT_STORAGE_TYPES } from "../../../lib/kit-storage-types.js";
 import { MEMORY_FACT } from "../../../kernel/gateway/memory.js";
 import { PLANNER_TYPES } from "../../../core/planner/types.js";
 
@@ -34,14 +35,13 @@ try {
   // so a new Space starts with them and its first define finds nothing to do (each type took Twenty seconds per field, minutes in all, after Records already read as ready).
   // One at a time, and one that Twenty refuses is left to the Space to make as before: a bad extra must never stop the build.
   {
-    const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
     const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
     // the types the first-party modules declare in their manifests (needs.kernel.types: the agent, goal, preview_doc, def-watcher and file-share types), which the kernel defines when each module starts
     const coreDir = new URL("../../../core/", import.meta.url).pathname;
     const fromModules = fs.readdirSync(coreDir).sort().flatMap((/** @type {string} */ d) => {
       try { const m = JSON.parse(fs.readFileSync(path.join(coreDir, d, "module.json"), "utf8")); return Array.isArray(m?.needs?.kernel?.types) ? m.needs.kernel.types.filter((/** @type {any} */ t) => t && typeof t.name === "string") : []; } catch { return []; }
     });
-    for (const t of [...FLOW_TYPES, ...KIT_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition"), MEMORY_FACT, ...PLANNER_TYPES, ...fromModules]) {
+    for (const t of [...FLOW_TYPES, ...KIT_TYPES, ...KIT_STORAGE_TYPES, MEMORY_FACT, ...PLANNER_TYPES, ...fromModules]) {
       if (known.has(t.name)) continue;
       known.add(t.name);
       try { await store.define({ add_types: [JSON.parse(JSON.stringify(t))] }); lap(`system type ${t.name} made`); } catch (e) { lap(`system type ${t.name} NOT made, the Space will make it: ${/** @type {Error} */ (e).message}`); }

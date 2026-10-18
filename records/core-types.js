@@ -128,20 +128,6 @@ export const ORGANIZATION = {
   views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "ref", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
-/** A memo: a title and some words, about a person or a company. One of the four types a new Space starts with (People, Companies, Tasks, Memos); the planner keeps its own Note type. */
-export const MEMO = {
-  name: "memo", label: "Memo", icon: "IconNote",   // not "note": Twenty has a standard object of that name, and the planner already keeps a Note type
-  fields: [
-    text("name", "Title", { required: true }),
-    text("ref", "ID", { unique: true, read_only: true }),   // NOT-0001: made with the record, never changed (core/records-tools/ref.js)
-    f("rich_text", "body", "Note"),
-    f("link", "contact", "Person", { to: "contact", inverse: { name: "linked_notes", label: "Linked notes" } }),
-    f("link", "organization", "Company", { to: "organization", inverse: { name: "linked_notes", label: "Linked notes" } }),
-    TAGS,
-  ],
-  views: [{ name: "memos_list", type: "list", label: "All memos", columns: ["name", "ref", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
-};
-
 export const POINT_KINDS = ["email", "phone"];
 
 /**
@@ -345,4 +331,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, MEMO].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK].map((t) => Object.freeze(t)));
