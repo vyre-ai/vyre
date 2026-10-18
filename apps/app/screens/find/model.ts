@@ -157,7 +157,7 @@ export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string; t
 }
 
 /** The sections for a query, in the fixed order: Best match, Actions, Go to, Chats, Projects, People, Records, Files, Settings, From memory. A search tool that has not answered yet adds nothing; `missing` says which never will. */
-export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched): Section[] {
+export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched, opts: { best?: boolean } = {}): Section[] {
   const { scope: sc, q, type, from, within } = queryOf(raw, scope);
   const filtered = Boolean(type || from || within);
   if (q.length < 1 && !filtered) return [];
@@ -176,9 +176,13 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (sc === "all" && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   if (filtered) out = out.map((s) => ({ ...s, rows: filterRows(s.rows, { type, from, within }) })).filter((s) => s.rows.length > 0);
+  if (opts.best === false) return out;
   const { best, rest } = bestMatch(out, q);
   return best ? [{ key: "best", label: "Best match", rows: [best] }, ...rest] : rest;
 }
+
+/** The sections without the Best match lifted out of them: each row stays in its own group. */
+export const sectionsPlain = (base: Base, raw: string, scope: Scope, fetched: Fetched): Section[] => sections(base, raw, scope, fetched, { best: false });
 
 /** What shows before anything is typed: the last searches, the most recent chats, and the places. */
 export function idle(base: Base, recents: string[]): { recents: string[]; chats: Row[]; places: Row[] } {

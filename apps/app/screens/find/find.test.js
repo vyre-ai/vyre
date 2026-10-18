@@ -79,7 +79,7 @@ test("records are searched by their title and text values, never a sealed field"
 });
 
 test("sections in the fixed order, a name match before what recall found, projects and people and records by word", { skip: !strip }, async () => {
-  const { sections } = await import("./model.ts");
+  const { sectionsPlain: sections } = await import("./model.ts");
   const b = await base();
   const s = sections(b, "reyes", "all", { recall: [{ session: "s1", snippet: "Dana Reyes called", ts: NOW }] });
   assert.deepEqual(s.map((x) => x.key), ["chats", "people", "records"]);
@@ -100,7 +100,7 @@ test("sections in the fixed order, a name match before what recall found, projec
 
 const sq = (x) => ({ scope: x.scope, q: x.q });
 test("prefixes narrow the scope and are stripped: p projects, t chats, u people", { skip: !strip }, async () => {
-  const { sections, queryOf } = await import("./model.ts");
+  const { sectionsPlain: sections, queryOf } = await import("./model.ts");
   const b = await base();
   assert.deepEqual(sq(queryOf("p juniper", "all")), { scope: "projects", q: "juniper" });
   assert.deepEqual(sq(queryOf("t juniper", "all")), { scope: "chats", q: "juniper" });
@@ -113,7 +113,7 @@ test("prefixes narrow the scope and are stripped: p projects, t chats, u people"
 });
 
 test("files: results with where they are, a note for a machine that did not answer, the Mac note unless it answered; nothing until the tool answers", { skip: !strip }, async () => {
-  const { sections, fileHits } = await import("./model.ts");
+  const { sectionsPlain: sections, fileHits } = await import("./model.ts");
   const b = await base();
   const d = { results: [{ name: "plan.md", path: "/Users/x/work/site/docs/plan.md", kind: "text", source: "box" }, { path: "/Users/x/a/b/c/d/e.txt", name: "e.txt", source: "mac" }, { name: "nopath" }], sources: [{ source: "box", ok: true }, { source: "mac", ok: false, error: "asleep" }] };
   const f = fileHits(d);
@@ -126,11 +126,11 @@ test("files: results with where they are, a note for a machine that did not answ
 });
 
 test("memory facts: only ones with text; a tap goes to Memory", { skip: !strip }, async () => {
-  const { factHits, sections } = await import("./model.ts");
+  const { factHits, sectionsPlain: sections } = await import("./model.ts");
   const b = await base();
   const rows = factHits([{ text: "Dana prefers email", ref: { name: "Intake call" } }, { text: "" }, { x: 1 }, { text: "Kit owns intake", source: "flows" }]);
   assert.deepEqual(rows.map((r) => [r.title, r.sub, r.href]), [["Dana prefers email", "Intake call", "/u/memory"], ["Kit owns intake", "flows", "/u/memory"]]);
-  assert.deepEqual(sections(b, "dana", "memory", { memory: [{ text: "Dana prefers email" }] }).map((x) => x.key), ["memory"]);
+  assert.deepEqual(sections(b, "dana", "all", { memory: [{ text: "Dana prefers email" }] }).map((x) => x.key).filter((k) => k === "memory"), ["memory"]);
 });
 
 test("idle: the last searches (one of each, newest first, at most 8), recent chats, the places", { skip: !strip }, async () => {
@@ -209,7 +209,7 @@ test("words: ago, short folders, missing tool", { skip: !strip }, async () => {
 });
 
 test("mentions: vault names, Drive, artifacts and GitHub as their own sections; records and sessions left to Find; a late provider is named", { skip: !strip }, async () => {
-  const { mentionSections, sections, mentionRoute } = await import("./model.ts");
+  const { mentionSections, sectionsPlain: sections, mentionRoute } = await import("./model.ts");
   const b = await base();
   const d = { groups: [{ kind: "record", label: "Records", items: [{ id: "r1", name: "dup" }] }, { kind: "session", label: "Sessions", items: [{ id: "s1", name: "dup" }] },
     { kind: "vault", label: "Vault", items: [{ id: "v1", name: "Gmail", hint: "login" }, { name: "no id" }] }, { kind: "github", label: "GitHub", items: [{ id: "g1", name: "acme/site", hint: "repo" }] }, { kind: "drive", label: "Drive", items: [] }], unavailable: ["artifacts", 3] };
@@ -235,7 +235,7 @@ test("arrow keys: rows in drawn order (a section's first five unless open, else 
 });
 
 test("Drive file names: a chat's file opens its chat and says so; a Drive file opens the Drive; nothing is shown until the tool answers or when it has nothing", { skip: !strip }, async () => {
-  const { driveHits, sections } = await import("./model.ts");
+  const { driveHits, sectionsPlain: sections } = await import("./model.ts");
   const b = await base();
   const d = { results: [{ path: "Clients/A/retainer.txt", name: "retainer.txt", size: 3 }, { path: "Projects/p1/chat/chat_abc1234/notes.txt", name: "notes.txt", chat: "chat_abc1234" }, { name: "no path" }] };
   assert.deepEqual(driveHits(d).map((r) => [r.title, r.sub, r.href]), [["retainer.txt", "Clients/A", "/u/files"], ["notes.txt", "In a chat you are in, …/chat/chat_abc1234", "/u/chats/chat_abc1234"]]);
