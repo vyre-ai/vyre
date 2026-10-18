@@ -60,7 +60,7 @@ test("a project's group chat is made once for its team, its gap is reported, a n
   // a member's device applies the gap: the kernel's own change with the grown ring, then the gap is gone
   const dd = newDeviceKey();
   const grown = addHolders(made.doc, made.keys, { add: { [fingerprint(dd.publicJwk)]: dd.publicJwk } });
-  await ok(BEN, "work.chat.change", { chat: first.chat, add_people: gap.missing, ring: grown });
+  await ok(OWNER, "work.chat.change", { chat: first.chat, add_people: gap.missing, ring: grown });
   const healed = await ok(OWNER, "work.project.chat", { project: "acme" });
   assert.deepEqual([healed.missing, healed.extra, healed.people.includes(DEE)], [[], [], true]);
   assert.ok(!(await as(DEE, "work.chat.get", { chat: first.chat })).error, "Dee reads it now");

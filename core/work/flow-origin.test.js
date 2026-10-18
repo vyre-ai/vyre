@@ -20,6 +20,7 @@ test("a Flow drafted from a chat has a 'How it was made' thread for those in tha
   await K.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
   const call = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", { kernelFacts: callerFacts("cli", {}, {}, K, false, null, { inside: false, outside: true }) });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await call(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
+  await K.gateway.records.define(ownerChain, { add_types: [{ name: "dossier", label: "Dossier", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement"] }], stages: [{ name: "Intake" }, { name: "Engagement" }] }] });
   const mine = await K.gateway.grants.chats.create(ownerChain, {});
   const bens = await K.gateway.grants.chats.create(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "direct", session: "s-ben" }), {});
   const calls = [{ tool: "work_call", input: { tool: "dossiers.create", input: { data: { name: "Rivera" } } } }];
