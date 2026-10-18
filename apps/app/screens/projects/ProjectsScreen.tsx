@@ -10,6 +10,9 @@ import { ofPlaybook, playbookPath } from "../templates/board";
 import { startWords } from "../templates/model";
 import type { Row as TemplateRow } from "../templates/model";
 import { StartSheet, type StartExtras } from "./StartSheet";
+import { NewProjectSheet, type NewProject } from "./NewProjectSheet";
+// @ts-ignore a plain .js module
+import { createInput } from "./kinds.js";
 import { Button, ErrorState, Field, LargeTitleScreen, Sheet, Text, LoadingState, NewMenu, ProjectsList, showToast, useStore, useUiTheme, useWork } from "@vyre/ui";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor } from "../../src/real/place-tag.js";
@@ -40,11 +43,23 @@ export default function ProjectsScreen() {
   // the live templates of this Space, by what each calls its projects: "New matter", "New campaign", then "New blank project"
   const [rows, setRows] = useState<TemplateRow[]>([]);
   useEffect(() => { templates.list().then(setRows).catch(() => setRows([])); }, []);
-  const choices = newChoices(rows).map((c) => ({ label: c.label, key: c.template }));
+  // New project opens one sheet: the four kinds, and the team's live playbooks for a Stages project
+  const choices = [{ label: "New project", key: "kinds" }];
+  const playbooks = newChoices(rows).filter((c) => c.template).map((c) => ({ key: c.template as string, label: c.label.replace(/^New /, "").replace(/^./, (x) => x.toUpperCase()) }));
+  const [kinds, setKinds] = useState(false);
+  const [making, setMaking] = useState(false);
+  const make = async (p: NewProject) => {
+    setMaking(true);
+    try {
+      const r = await callT<{ project: string }>("work.project.create", createInput(p.kind, p));
+      if (r.error) throw new Error(r.error.message);
+      setKinds(false); open(projectIdOf(r.data!.project));
+    } catch (e) { showToast(String((e as Error)?.message || e)); } finally { setMaking(false); }
+  };
   const [from, setFrom] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const picked = rows.find((r) => r.template === from);
-  const choose = (key: string | null) => { if (key) setFrom(key); else void create("project"); };
+  const choose = (key: string | null) => { if (key === "kinds") setKinds(true); else if (key) setFrom(key); else void create("project"); };
   const start = async (name: string, extras: StartExtras) => {
     setStarting(true);
     try {
@@ -92,6 +107,7 @@ export default function ProjectsScreen() {
           </View>
         ) : null}
       </Sheet>
+      <NewProjectSheet open={kinds} busy={making} playbooks={playbooks} onClose={() => setKinds(false)} onMake={(p) => void make(p)} onPlaybook={(k) => { setKinds(false); setFrom(k); }} />
       <StartSheet noun={picked?.noun?.one || picked?.name || "project"} playbook={picked?.name} open={from !== null} busy={starting} onClose={() => setFrom(null)} onStart={(n, x) => void start(n, x)} />
     </View>
   );

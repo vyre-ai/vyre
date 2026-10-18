@@ -5,6 +5,11 @@ import { aid } from "../../src/store-core/kernel-view.js";
 import { teamOf } from "./model.js";
 
 const DAY = 86_400_000;
+const KIND_WORDS = /** @type {Record<string, string>} */ ({ stages: "Stages", client: "Client", ongoing: "Ongoing", simple: "Simple" });
+
+/** The word for a project's kind on its row and page. A project with none is Simple; the Personal one says Private. @param {any} data a project's fields */
+export const kindWord = (data) => (data && data.personal_of ? "Private" : KIND_WORDS[String(data && data.kind)] || "Simple");
+
 const lc = (/** @type {string} */ s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 const isDone = (/** @type {any} */ t) => t.state === "done" || t.state === "skipped";
 

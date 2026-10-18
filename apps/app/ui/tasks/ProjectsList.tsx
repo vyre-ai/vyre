@@ -14,7 +14,7 @@ import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
 import { recordTitle, spaceName, who, type World } from "./model";
-import { rowFacts } from "./project-row.js";
+import { rowFacts, kindWord } from "./project-row.js";
 import { useUiTheme } from "../theme";
 import { SpaceTag } from "../components/SpaceTag";
 
@@ -85,7 +85,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
   const factsOf = (i: Item) => rowFacts(world, i);
   const spaceId = (i: Item): string | undefined => i.row.labels?.source_spaces?.[0];
   const manySpaces = new Set(shown.map(spaceId).filter(Boolean)).size > 1;
-  const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) : null) || i.def.label;
+  const typeLabel = (i: Item) => (i.def.name === "project" ? templateNoun(i.row.data) || kindWord(i.row.data) : null) || i.def.label;
   const snapshotIcon = (i: Item): string | undefined => { try { return JSON.parse(String(i.row.data?.template_snapshot ?? "{}")).icon; } catch { return undefined; } };
   const playbookName = playbook ? playbookLabel || templateNoun(items.find((i) => i.row.data?.template === playbook)?.row.data) || playbook : "";
   const sub = (i: Item) => [typeLabel(i), manySpaces || !tagOf ? spaceName(world, spaceId(i)) : "", tagsOf(i.row.data?.tags).slice(0, 3).map((t) => `#${t}`).join(" ")].filter(Boolean).join(" · ");

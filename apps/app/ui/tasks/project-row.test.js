@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rowFacts, movedWords } from "./project-row.js";
+import { rowFacts, movedWords, kindWord } from "./project-row.js";
 
 const DAY = 86_400_000, NOW = Date.parse("2026-10-18T12:00:00");
 const actors = [{ id: "me", name: "Alex", family: "person" }, { id: "dana", name: "Dana Marsh", family: "person" }, { id: "kit", name: "Kit", family: "assistant" }];
@@ -35,4 +35,13 @@ test("when it last moved is the newest of the project and its to-dos, in plain w
   assert.equal(movedWords(NOW - 10 * DAY, NOW), "Moved last week");
   assert.equal(movedWords(NOW - 45 * DAY, NOW), "Moved over a month ago");
   assert.equal(movedWords(0, NOW), "");
+});
+
+test("a row names its kind in a word; a project with none is Simple and the Personal one is Private", () => {
+  assert.equal(kindWord({ kind: "stages" }), "Stages");
+  assert.equal(kindWord({ kind: "client" }), "Client");
+  assert.equal(kindWord({ kind: "ongoing" }), "Ongoing");
+  assert.equal(kindWord({}), "Simple");
+  assert.equal(kindWord(undefined), "Simple");
+  assert.equal(kindWord({ personal_of: "per_x", kind: "stages" }), "Private");
 });
