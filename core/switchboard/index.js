@@ -65,7 +65,7 @@ import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, rec
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
-import { closeToAddedModules } from "../../lib/first-party-door.js"; import { forkCut } from "../sessions/drivers/fork-point.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js"; import { forkCut } from "./fork-point.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -675,7 +675,7 @@ export class Switchboard {
   }
 
   /** Where a thread forks: the run of this chat that holds the agent's message, and the transcript line that ends it (core/sessions/drivers/fork-point.js reads the provider's file). @param {string} chat @param {string} message @returns {{ run: string, uuid: string }} */
-  forkPoint(chat, message) { const hit = forkCut(this.ofChat(String(chat)).reverse(), this.deps.transcripts || [], r => this.nativeOf(r.thread), String(message)); this.needCap(hit.run, "fork", "fork a thread"); return hit; }
+  forkPoint(chat, message) { const hit = forkCut(this.ofChat(String(chat)).reverse(), r => findSession(this.deps.transcripts || [], this.nativeOf(r.thread)), String(message)); this.needCap(hit.run, "fork", "fork a thread"); return hit; }
 
   /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
   terminalsOf(chat) {

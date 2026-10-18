@@ -500,6 +500,7 @@ export function registerThreads(d) {
     description: "Where a forked thread starts, for the stream's first answer in it: { run, resume_at }, or null. Only the stream asks.",
     input: obj({ chat: { type: "string" } }, ["chat"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      d.kernelOf();
       if (String(extra && extra.caller) !== "module:stream") throw fail("denied", "only the stream asks where a forked thread starts");
       const row = /** @type {any} */ (forksTable(d.ctx.store.db).prepare("SELECT source_run, resume_at FROM work_thread_forks WHERE chat = ?").get(String(input.chat)));
       if (!row) return null;
