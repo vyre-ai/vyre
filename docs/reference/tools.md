@@ -18424,10 +18424,10 @@ Preview moving your chats to your other Space (Personal to My Cloud): chat, file
 
 ### `work.engineer.chat`
 
-The Space's Engineer chat, made on first use for everyone who may use the Engineer: { chat, people, missing, extra }. A device applies the gap with work.chat.change.
+The Space's Engineer chat for its owners and admins, who all read every Engineer message: { chat, people, missing, extra }.
 
 - Input:
-  - `ring` object: on first use: the chat's key ring, made on your device for the id returned with needs_ring; the server never makes it
+  - `ring` object: A device applies missing and extra with work.chat.change. Every owner and admin can read every Engineer message any of them sends; it is not private to its sender. On first use: the chat's key ring, made on your device for the id returned with needs_ring; the server never makes it
 - Callers: any caller
 
 ### `work.file.list`
