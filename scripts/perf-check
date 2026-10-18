@@ -260,6 +260,18 @@ async function heapDetail(home) {
       cls[c][0] += size; cls[c][1]++;
       if (size > 200_000) big.push([size, c, head.replace(/\s+/g, " ")]);
     }
+    // the "other text" strings by their first 22 characters (digits folded): which kind of record holds the 5 MB
+    const heads = new Map();
+    for (let i = 0; i < nodes.length; i += n) {
+      const kind = types[nodes[i + iType]];
+      if (kind !== "string" && kind !== "concatenated string" && kind !== "sliced string") continue;
+      const text = String(strings[nodes[i + iName]]), head = text.trimStart().slice(0, 40);
+      if (/^(\/\/|\/\*|import |export |"use strict"|'use strict'|\(function|function |const |let |var |class |async |#!|[\[{])/.test(head)) continue;
+      const k = text.slice(0, 22).replace(/\d/g, "9").replace(/\s+/g, " "), e = heads.get(k) || [0, 0];
+      e[0] += nodes[i + iSize]; e[1]++; heads.set(k, e);
+    }
+    log("other text by first 22 characters (digits folded), top 20 (MB, count):");
+    for (const [k, [b, c]] of [...heads].sort((a, b2) => b2[1][0] - a[1][0]).slice(0, 20)) log(`  ${mb(b).padStart(7)} ${String(c).padStart(7)}  ${JSON.stringify(k)}`);
     log("strings split (MB, count):");
     for (const [k, [b, c]] of Object.entries(cls)) log(`  ${k.padEnd(20)} ${mb(b).padStart(7)}  ${c}`);
     log("strings over 200 KB each, largest first:");
