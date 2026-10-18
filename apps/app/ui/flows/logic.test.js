@@ -9,7 +9,7 @@ import { FORMULA_HASH, FORMULA_SOURCE, searchChoices, approverChoices, fromDefin
 import { SAMPLE_OPTIONS as O, REFUND_DRAFT, ATP_DRAFT, REMINDER_DRAFT } from "../../screens/flows/starters.js";
 
 test("the refund starter reads as one sentence", () => {
-  assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions, then if amount is more than 500: 1 step, otherwise 1, then 2 more steps.");
+  assert.equal(flowSentence(REFUND_DRAFT, O), "When the form refund-request is submitted, create a RefundRequests record with Client, Email, Amount, Reason, then hand it to the Refunds agent with your instructions, then if amount is more than 500, wait for the Manager team to say yes: Approve this refund over $500, otherwise set Status to Approved on the new RefundRequests record, then 2 more steps.");
 });
 
 test("the ATP starter says what it does", () => {
