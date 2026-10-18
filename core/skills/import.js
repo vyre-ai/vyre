@@ -14,6 +14,7 @@ import { PLUGIN_LAYOUT } from "../sessions/drivers/plugin-layout.js";
 import { SKILL_HOMES } from "../sessions/drivers/skill-homes.js";
 
 export const IMPORT_LIMITS = Object.freeze({ zip: 2 * 1024 * 1024, inflated: 6 * 1024 * 1024, entries: 400, file: LIMITS.body });
+// Grok MCP: written as a Claude-layout .mcp.json (docs.x.ai says Grok reads Claude Code plugins and MCPs); Grok documents no MCP table of its own. Not yet run.
 const bad = (/** @type {string} */ message) => Object.assign(new Error(message), { code: "bad_input" });
 const KNOWN_TOP = new Set(["skills", "commands", "agents", "hooks", ".mcp.json", ".claude-plugin", "README.md", "LICENSE", "LICENSE.md", "LICENSE.txt", "CHANGELOG.md"]);
 const text = (/** @type {Buffer} */ b, /** @type {string} */ what) => { if (b.length > IMPORT_LIMITS.file) throw bad(`${what} is larger than ${IMPORT_LIMITS.file / 1024} KB`); if (b.includes(0)) throw bad(`${what} is not text`); return b.toString("utf8"); };
