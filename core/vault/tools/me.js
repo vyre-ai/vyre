@@ -119,11 +119,18 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       const text = (/** @type {unknown} */ v, /** @type {number} */ max) => { const t = typeof v === "string" ? v : ""; if (!t || t.length > max) throw bad("that input is not valid"); return t; };
       switch (String(i.call)) {
         case "status": return people.status(id);
-        case "addkey": {
-          const label = text(input.label, 80);
-          if (/[\u0000-\u001f]/.test(label)) throw bad("a name is one line");
-          const value = text(input.value, 400);
-          if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value)) throw bad("that does not look like an API key");
+        case "addkey": case "addkeys": {
+          // the one act for a key, or for a set of them (at most 12, one proof for the set): the vault is made or opened ONCE, then each key gets a free name in THEIR vault and is put
+          const many = String(i.call) === "addkeys";
+          const raw = many ? input.items : [{ label: input.label, value: input.value }];
+          if (!Array.isArray(raw) || !raw.length || raw.length > 12) throw bad("a set is one to twelve keys");
+          const items = raw.map((/** @type {any} */ x) => {
+            const label = text(x && x.label, 80);
+            if (/[\u0000-\u001f]/.test(label)) throw bad("a name is one line");
+            const value = text(x && x.value, 400);
+            if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value)) throw bad("that does not look like an API key");
+            return { label, value };
+          });
           const st = await people.status(id);
           /** @type {string | undefined} */ let secretKey;
           if (!st.account) {
@@ -137,25 +144,31 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
           } else if (!st.unlocked) {
             await people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secret_key, 256) });
           }
-          // The vault now exists: whatever goes wrong below, its Secret Key reaches the device (a vault made and never given its key could not be opened again). A failure after the vault was made is answered as a result with no item,
-          // the reason in plain words, and the Secret Key (the one field it ever travels in); a failure before that throws as usual.
-          const finish = async () => {
+          // The vault now exists: whatever goes wrong below, its Secret Key reaches the device (a vault made and never given its key could not be opened again). A failure after that is answered as a result with the
+          // reason in plain words, and the Secret Key (the one field it ever travels in); a failure before the vault exists throws as usual.
+          const putOne = async (/** @type {{ label: string, value: string }} */ it) => {
             // the item's name: the label when free in THEIR vault, else with a number; a put on a name that exists replaces that item, so a list that cannot be read puts nothing
             let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
             if (!rows) throw bad("your vault could not be checked for that name");
             const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
             // the Vault's names are letters, digits, dot, dash and underscore: the label is kept as itemNameOf makes it, with -2, -3 when taken
-            const item = freeItemName(itemNameOf(label), used);
+            const item = freeItemName(itemNameOf(it.label), used);
             if (!item) throw bad("that name is taken in your vault");
-            await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
+            await people.put(id, { name: item, kind: "api-key", description: "", fields: { value: it.value } });
             return item;
           };
-          let item = "", failed = "";
-          try { item = await finish(); } catch (e) { if (!secretKey) throw e; failed = String(/** @type {any} */ (e).message || "your key could not be put in your vault").slice(0, 200); }
+          /** @type {{ label: string, item: string }[]} */ const added = [];
+          let failed = "", stoppedAt = -1;
+          for (let n = 0; n < items.length; n++) {
+            try { added.push({ label: items[n].label, item: await putOne(items[n]) }); }
+            catch (e) { if (!secretKey && !added.length && !many) throw e; failed = String(/** @type {any} */ (e).message || "your key could not be put in your vault").slice(0, 200); stoppedAt = n; break; }
+          }
           const after = await people.status(id);
-          return { item, ...(failed ? { failed } : {}), ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
+          const tail = { ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
+          if (many) return { added, ...(failed ? { stopped_at: stoppedAt, reason: failed } : {}), ...tail };
+          return { item: added.length ? added[0].item : "", ...(failed ? { failed } : {}), ...tail };
         }
-        default: throw bad("call is status or addkey");
+        default: throw bad("call is status, addkey or addkeys");
       }
     },
   });

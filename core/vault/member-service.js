@@ -40,6 +40,14 @@ export function createMemberVaultService(o) {
     return r.data;
   };
   const member = (/** @type {any} */ chain) => { const person = who(chain); if (!isMember(person)) throw new KernelError("not_found", "not found"); return person; };
+  /** The proof for an act on the member's own vault, from the proof name and what it covers: none given asks for one, one that does not stand asks again, nothing is written either way. */
+  const proven = async (/** @type {any} */ chain, /** @type {string} */ name, /** @type {any} */ cover, /** @type {any} */ opts) => {
+    const want = proofRequest(o.space, name, cover);
+    const proof = opts && typeof opts === "object" ? opts.presence : undefined;
+    if (!proof) throw new KernelError("needs_presence", "adding keys to your own vault needs you at your device");
+    const why = await o.kernel.presence.check({ chain, op: want.op, fields: want.fields, proof });
+    if (why !== null) throw new KernelError("needs_presence", "adding keys to your own vault needs you at your device", String(why));
+  };
   return {
     async status(/** @type {any} */ chain) { return serve("status", member(chain), {}); },
     async addkey(/** @type {any} */ chain, /** @type {any} */ input, /** @type {any} */ opts) {
@@ -55,6 +63,15 @@ export function createMemberVaultService(o) {
       const why = await o.kernel.presence.check({ chain, op: cover.op, fields: cover.fields, proof });
       if (why !== null) throw new KernelError("needs_presence", "adding a key to your own vault needs you at your device", String(why));
       return serve("addkey", person, { label, value, ...(typeof i.password === "string" ? { password: i.password } : {}), ...(typeof i.secret_key === "string" ? { secret_key: i.secret_key } : {}) });
+    },
+    async addkeys(/** @type {any} */ chain, /** @type {any} */ input, /** @type {any} */ opts) {
+      const person = member(chain);
+      if (!allow(person)) throw new KernelError("limit", "try again in a minute");
+      const i = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+      const items = Array.isArray(i.items) ? i.items : [];
+      if (!items.length || items.length > 12 || items.some((/** @type {any} */ x) => !x || typeof x.label !== "string" || typeof x.value !== "string" || !x.label || !x.value)) throw new KernelError("bad_input", "that input is not valid");
+      await proven(chain, "vaultAddKeys", { items }, opts);
+      return serve("addkeys", person, { items: items.map((/** @type {any} */ x) => ({ label: x.label, value: x.value })), ...(typeof i.password === "string" ? { password: i.password } : {}), ...(typeof i.secret_key === "string" ? { secret_key: i.secret_key } : {}) });
     },
   };
 }
