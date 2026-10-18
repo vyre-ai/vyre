@@ -1,7 +1,7 @@
 // @ts-check
 // The AI accounts step: which providers can be added, what an account is called, and which provider an API key belongs to. An account is a name and a provider; a person may have several of one kind. Pure.
 import { AIS } from "../../../../lib/ai-ids.js";
-import { anthropicKind } from "../../src/store-core/credential-shapes.js";
+import { CREDENTIAL_PREFIXES, anthropicKind } from "../../../../lib/credential-shapes.js";
 
 /** The words of the step. */
 export const ACCOUNTS_COPY = Object.freeze({
@@ -40,6 +40,9 @@ export function labelProblem(label, taken) {
   return "";
 }
 
+/** The prefixes the credential table gives Anthropic keys (a prefix that, padded to a full key, the table calls an Anthropic one), so the shape is written once, in lib/credential-shapes.js. */
+const ANTHROPIC_PREFIXES = CREDENTIAL_PREFIXES.filter((p) => anthropicKind(p + "A".repeat(24)));
+
 /**
  * What an API key is, from its prefix: the kind the server's key tool takes (sessions.accounts.key), the provider mark to show, a name to offer, and for xAI the one address it is sent to. Anthropic keys start
  * sk-ant-, OpenRouter keys sk-or-, xAI keys xai-, other OpenAI-style keys sk-. Null when the prefix says nothing.
@@ -47,7 +50,7 @@ export function labelProblem(label, taken) {
  */
 export function keyKindOf(key) {
   const k = String(key || "").trim();
-  if (anthropicKind(`${k.toLowerCase()}${"a".repeat(24)}`)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
+  if (ANTHROPIC_PREFIXES.some((p) => k.toLowerCase().startsWith(p))) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
   if (/^sk-or-/i.test(k)) return { kind: "openrouter", provider: "openrouter", label: "OpenRouter key" };
   if (/^xai-/i.test(k)) return { kind: "openai-compatible", provider: "grok", label: "Grok key", base_url: "https://api.x.ai/v1" };
   if (/^sk-/i.test(k)) return { kind: "openai-compatible", provider: "codex", label: "OpenAI key" };
@@ -63,7 +66,7 @@ export function copyWords({ from, to, count }) {
   return {
     title: "Use your AI accounts here too?",
     lead: `Copy keys from ${from} to ${to}. ${to} keeps each key in your own Vault.`,
-    confirm: count === 0 ? "Nothing to confirm." : `You'll confirm ${asks} times: once to read each of ${count === 1 ? "the key" : `the ${count} keys`} from ${from}, and once to add ${count === 1 ? "it" : "them"} to ${to}.`,
+    confirm: count === 0 ? "Nothing to confirm." : `You'll confirm ${asks} times: once to read ${count === 1 ? "the key" : `each of the ${count} keys`} from ${from}, and once to add ${count === 1 ? "it" : "them"} to ${to}.`,
     again: "Sign in again on the new Space",
     button: (/** @type {number} */ n) => (n === 1 ? "Copy 1 account" : `Copy ${n} accounts`),
   };
