@@ -29,15 +29,14 @@ sleep 3
 PROOF_ISOLATION=1 PROOF_HOLD="${PROOF_HOLD:-0}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/proof.mjs
 RC=$?
 echo "proof exit code $RC"
-# The agent computer proof (agents.mjs: two agents on one computer, a Linux user for each) runs only when per-agent users are on, the same setting as the box's computers.agentUsers. In 0.6.1 it is off, so the proof is skipped
-# and says so; it comes back in 0.6.2. Run it with AGENT_USERS=true.
-if [ "${AGENT_USERS:-false}" = true ]; then
-  PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
-  RC2=$?
-  echo "agent proof exit code $RC2"
-else
-  echo "agent proof SKIPPED: per-agent users on one computer are off until 0.6.2 (computers.agentUsers is false)"
-  RC2=0
-fi
-[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && exit 0
+# the agent computer proof (0.6): two agents on one computer, logins that survive sleep. Its own container, on the same image, proxy and network.
+PROOF_CONTINUE="${PROOF_CONTINUE:-1}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
+RC2=$?
+echo "agent proof exit code $RC2"
+# the one-computer proof (0.6): a vyred with the default settings, which agent has which computer. It needs the shared container name to itself, so the earlier proofs' containers go first.
+for c in $(docker ps -a --filter name=csproof-computer- --format '{{.Names}}'); do docker rm -f "$c" >/dev/null 2>&1; done
+PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/space.mjs
+RC3=$?
+echo "space proof exit code $RC3"
+[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && [ "$RC3" -eq 0 ] && exit 0
 exit 1

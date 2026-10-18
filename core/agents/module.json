@@ -66,6 +66,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.wake-rounds",
+        "summary": "how many review rounds a task's reviewer agent has been woken for (the Flows host only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.wake-done",
         "summary": "mark a task's wake over so it stops counting as a running job (the Flows host only)",
         "reach": "modules",

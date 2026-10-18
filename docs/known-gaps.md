@@ -171,3 +171,27 @@ A skill a member uploads is text from outside, read strictly and kept as a draft
 What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
 
 Owner: comp6 with sec53.
+
+## Some Records features do not reach a person who joined a team
+
+A person who joined a team Space reaches it through the team's member door, which carries a fixed list of calls. In Records that list covers lists, records, moves, connections, layouts, history, board totals, Busy blocks, roles on a record, logging a call, a meeting or a note, and Notes (the team's planner, notes only). It does not yet carry: undo in a record's history; putting a role on a record or moving its stage (records.role.set); sharing a synced event (records.share); and the Space-setup edits an owner or an admin makes (a type's colour or hidden flag, a new field, a new link, sample data). For a joined member those calls are sent to her own home, not the team, so they fail or act on her home.
+
+What to do: do the setup edits and role changes on the team's server itself (or as the owner there). Undo a change by setting the old value by hand.
+
+Owner: flow6b with sec53. Planned for 0.6.3: serve calls for each.
+
+## An agent's Chrome runs without Chrome's own renderer sandbox
+
+Docker's default seccomp profile refuses the namespaces Chrome's sandbox needs, so the computer's Chrome and each agent's Chrome start with `--no-sandbox`. A Chrome renderer exploit therefore runs as that agent's browser user with no renderer sandbox. It reaches that agent's profile and its debugging pipe. It does not reach another agent's files, the computer's own user or its secrets, because each agent has its own users, processes run with no capability and no new privileges, and the folders are private.
+
+What to do: keep the Chrome in the computer image current (the image carries its version). The fix is a seccomp profile that allows user namespaces, planned for 0.7.
+
+Owner: comp6 with sec53.
+
+## An agent's Chrome has no address-space cap
+
+Chrome reserves far more virtual memory than it uses and does not start under a cap on address space, so an agent's Chrome is held by a cap on committed memory (3 GiB per process), the computer's own memory limit and its process count instead. Every other agent process keeps the address-space cap.
+
+What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
+
+Owner: comp6 with sec53.

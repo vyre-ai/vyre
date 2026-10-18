@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 47 | 5 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 31 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 15 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -36,7 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`comms`](#comms) | `core/comms` | `box` | 6 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 37 | 22 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 37 | 28 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 41 | 15 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`documents`](#documents) | `core/documents` | `box` | 13 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 73 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 51 | 0 | none |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 52 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -59,7 +59,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 38 | 26 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
-| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 16 | 11 | cli, deck |
+| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 19 | 11 | cli, deck |
 | [`mcpconn`](#mcpconn) | `core/mcpconn` | `box`, `local` | 9 | 3 | cli |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
@@ -70,7 +70,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 32 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
-| [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 18 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`previews`](#previews) | `core/previews` | `box` | 23 | 6 | cli |
@@ -79,7 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 40 | 0 | cli |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 54 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 32 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
@@ -92,7 +92,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`skills`](#skills) | `core/skills` | `box`, `local` | 18 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 19 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 127 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -100,7 +100,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 5 | 2 | cli |
-| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 9 | 0 | cli |
+| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 11 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 81 | 42 | cli |
@@ -159,7 +159,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [29](tools.md#appmods), 10 of them only for other modules
+- Tools: [31](tools.md#appmods), 12 of them only for other modules
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
@@ -350,7 +350,7 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Runs on: `box`
 - Requires: none
 - Tools: [37](tools.md#computers), 8 of them only for other modules
-- Emits: [22 events](events.md#computers)
+- Emits: [28 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`, `browser-glass`, `terminal`
 - Needs vault: `vyre-shared-computer-member-key`, `vyre-agent-browser-profile-key`
@@ -442,7 +442,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [51](tools.md#flows), 1 of them only for other modules
+- Tools: [52](tools.md#flows), 1 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
@@ -613,7 +613,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [16](tools.md#mcp), 3 of them only for other modules
+- Tools: [19](tools.md#mcp), 6 of them only for other modules
 - Emits: [11 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
@@ -736,10 +736,10 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/planner`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#planner)
+- Tools: [18](tools.md#planner), 2 of them only for other modules
 - Emits: [8 events](events.md#planner)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update","records.remove","records.restore","events.read","tasks.request","tasks.read","tasks.work"],"prefixes":["reminder/*","note/*","planner_firing/*","planner_state/*","event/*","task/*","project/*"],"types":[{"name":"reminder","label":"Reminder","icon":"IconBell","protected":true,"views":[{"name":"reminders_calendar","type":"calendar","of":"reminder","label":"Calendar","dateField":"at"},{"name":"reminders_list","type":"list","of":"reminder","label":"List","sort":[{"field":"at","dir":"asc"}]}],"fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"kind","kind":"choice","label":"Kind","options":["alarm","timer","reminder","task"],"required":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"at","kind":"datetime","label":"Rings at"},{"name":"tz","kind":"text","label":"Time zone"},{"name":"floating","kind":"boolean","label":"Follows the planner's zone","hidden_from":["owner","admin","manager","member","temp"]},{"name":"wall","kind":"text","label":"Time of day (HH:MM)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"date","kind":"text","label":"Date (YYYY-MM-DD)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"repeat","kind":"text","label":"Repeat rule (JSON)"},{"name":"duration_ms","kind":"number","label":"Timer length (ms)"},{"name":"snooze_until","kind":"datetime","label":"Snoozed until"},{"name":"next_fire","kind":"number","label":"Next ring (ms, the planner's own)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"body","kind":"rich_text","label":"Notes or the instruction a task runs"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"person","kind":"text","label":"Made by (person)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"added_by","kind":"text","label":"Added by (agent)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"created","kind":"number","label":"Created (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"updated","kind":"number","label":"Updated (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"removed_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"},{"name":"legacy_id","kind":"text","label":"Carried from the old planner (its id)"},{"name":"waits_on","kind":"text","label":"Runs when this item is done"},{"name":"run_count","kind":"number","label":"Times run","hidden_from":["owner","admin","manager","member","temp"]},{"name":"last_result","kind":"text","label":"Last result","hidden_from":["owner","admin","manager","member","temp"]},{"name":"paused","kind":"boolean","label":"Paused"},{"name":"waits_on_fired","kind":"number","label":"Last completion it ran for","hidden_from":["owner","admin","manager","member","temp"]}]},{"name":"note","label":"Note","icon":"IconNote","protected":true,"fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"ref","kind":"text","label":"ID","unique":true,"read_only":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"body","kind":"rich_text","label":"Note"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"person","kind":"text","label":"Made by (person)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"added_by","kind":"text","label":"Added by (agent)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"created","kind":"number","label":"Created (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"updated","kind":"number","label":"Updated (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"removed_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"},{"name":"legacy_id","kind":"text","label":"Carried from the old planner (its id)"}]},{"name":"planner_firing","label":"Ring","icon":"IconBellRinging","fields":[{"name":"fid","kind":"text","label":"Ring id","required":true,"unique":true},{"name":"item","kind":"text","label":"Item","required":true},{"name":"kind","kind":"text","label":"Kind","required":true},{"name":"due","kind":"number","label":"Due (ms)","required":true},{"name":"ring","kind":"number","label":"Ring number"},{"name":"missed","kind":"boolean","label":"Missed"},{"name":"state","kind":"text","label":"State","required":true},{"name":"fired_at","kind":"number","label":"Fired (ms)"},{"name":"next_ring","kind":"number","label":"Next ring (ms)"},{"name":"acked_at","kind":"number","label":"Answered (ms)"},{"name":"action","kind":"text","label":"Answer"},{"name":"by","kind":"text","label":"Answered by"},{"name":"until","kind":"number","label":"Snoozed until (ms)"}]},{"name":"planner_state","label":"Planner setting","icon":"IconSettings","fields":[{"name":"key","kind":"text","label":"Key","required":true,"unique":true},{"name":"value","kind":"text","label":"Value (JSON)","required":true}]}]}`
+- Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update","records.remove","records.restore","events.read","tasks.request","tasks.read","tasks.work"],"prefixes":["reminder/*","note/*","planner_firing/*","planner_state/*","event/*","task/*","project/*"],"types":[{"name":"reminder","label":"Reminder","icon":"IconBell","protected":true,"views":[{"name":"reminders_calendar","type":"calendar","of":"reminder","label":"Calendar","dateField":"at"},{"name":"reminders_list","type":"list","of":"reminder","label":"List","sort":[{"field":"at","dir":"asc"}]}],"fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"kind","kind":"choice","label":"Kind","options":["alarm","timer","reminder","task"],"required":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"at","kind":"datetime","label":"Rings at"},{"name":"tz","kind":"text","label":"Time zone"},{"name":"floating","kind":"boolean","label":"Follows the planner's zone","hidden_from":["owner","admin","manager","member","temp"]},{"name":"wall","kind":"text","label":"Time of day (HH:MM)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"date","kind":"text","label":"Date (YYYY-MM-DD)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"repeat","kind":"text","label":"Repeat rule (JSON)"},{"name":"duration_ms","kind":"number","label":"Timer length (ms)"},{"name":"snooze_until","kind":"datetime","label":"Snoozed until"},{"name":"next_fire","kind":"number","label":"Next ring (ms, the planner's own)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"body","kind":"rich_text","label":"Notes or the instruction a task runs"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"person","kind":"text","label":"Made by (person)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"added_by","kind":"text","label":"Added by (agent)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"created","kind":"number","label":"Created (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"updated","kind":"number","label":"Updated (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"removed_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"},{"name":"legacy_id","kind":"text","label":"Carried from the old planner (its id)"},{"name":"waits_on","kind":"text","label":"Runs when this item is done"},{"name":"run_count","kind":"number","label":"Times run","hidden_from":["owner","admin","manager","member","temp"]},{"name":"last_result","kind":"text","label":"Last result","hidden_from":["owner","admin","manager","member","temp"]},{"name":"paused","kind":"boolean","label":"Paused"},{"name":"waits_on_fired","kind":"number","label":"Last completion it ran for","hidden_from":["owner","admin","manager","member","temp"]}]},{"name":"note","label":"Note","icon":"IconNote","protected":true,"fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"ref","kind":"text","label":"ID","unique":true,"read_only":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"body","kind":"rich_text","label":"Note"},{"name":"visibility","kind":"choice","label":"Who can read it","options":["private","record","space"]},{"name":"record","kind":"text","label":"About (a record's address)"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"person","kind":"text","label":"Made by (person)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"added_by","kind":"text","label":"Added by (agent)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"created","kind":"number","label":"Created (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"updated","kind":"number","label":"Updated (ms)","hidden_from":["owner","admin","manager","member","temp"]},{"name":"removed_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"},{"name":"legacy_id","kind":"text","label":"Carried from the old planner (its id)"}]},{"name":"planner_firing","label":"Ring","icon":"IconBellRinging","fields":[{"name":"fid","kind":"text","label":"Ring id","required":true,"unique":true},{"name":"item","kind":"text","label":"Item","required":true},{"name":"kind","kind":"text","label":"Kind","required":true},{"name":"due","kind":"number","label":"Due (ms)","required":true},{"name":"ring","kind":"number","label":"Ring number"},{"name":"missed","kind":"boolean","label":"Missed"},{"name":"state","kind":"text","label":"State","required":true},{"name":"fired_at","kind":"number","label":"Fired (ms)"},{"name":"next_ring","kind":"number","label":"Next ring (ms)"},{"name":"acked_at","kind":"number","label":"Answered (ms)"},{"name":"action","kind":"text","label":"Answer"},{"name":"by","kind":"text","label":"Answered by"},{"name":"until","kind":"number","label":"Snoozed until (ms)"}]},{"name":"planner_state","label":"Planner setting","icon":"IconSettings","fields":[{"name":"key","kind":"text","label":"Key","required":true,"unique":true},{"name":"value","kind":"text","label":"Value (JSON)","required":true}]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## pluginagent
@@ -838,7 +838,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [40](tools.md#records), 4 of them only for other modules
+- Tools: [54](tools.md#records), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`
@@ -994,7 +994,7 @@ The skills a session may use, found by what it is about to do, and the library t
 - Folder: `core/skills`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#skills), 8 of them only for other modules
+- Tools: [19](tools.md#skills), 9 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update"]}`
@@ -1087,7 +1087,7 @@ The app's way into a Space's tasks: one tool per Store call over the kernel's ta
 - Folder: `core/tasks-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#tasks), 3 of them only for other modules
+- Tools: [11](tools.md#tasks), 3 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`

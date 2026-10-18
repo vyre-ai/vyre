@@ -17,7 +17,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
-import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY } from "../../lib/note-share.js";
+import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY, atNoteCap } from "../../lib/note-share.js";
 import { isPerson } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
@@ -555,7 +555,7 @@ export default {
 
     const update = async (i, w) => {
       const ev = cal.row(i.item);
-      if (ev && !st.item(i.item)) return updateEvent(ev, i, w);
+      if (ev && !st.item(i.item)) { if (await viewerOf(w)) throw fail("no such item", "not_found"); return updateEvent(ev, i, w); }   // events are not scoped to a member yet
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
@@ -1115,7 +1115,7 @@ export default {
       async (i, w) => await add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared"], description: "mine: written by you; shared: notes others shared with you" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared", "space"], description: "mine: written by you; shared: notes others shared with you; space: notes shared with the whole Space" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
       async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
         const me = await viewerOf(w), want = Math.min(500, Math.max(1, i.limit || 100));
@@ -1125,6 +1125,7 @@ export default {
           if (i.record && r.record !== i.record) continue;
           if (i.scope === "mine" && r.by !== person) continue;
           if (i.scope === "shared" && (r.kind !== "note" || r.by === person)) continue;
+          if (i.scope === "space" && (r.kind !== "note" || r.visibility !== "space")) continue;
           if (await seen(r, w, me)) kept.push(r);
           if (kept.length >= want) break;
         }
@@ -1141,6 +1142,8 @@ export default {
         if (item0 && !(await seen(item0, w, me))) throw fail("no such item", "not_found");
         const item = item0;
         if (!item) {
+          // an event is any person's until the planner scopes events to the person (see door-gate.test.js): a member is told there is no such item
+          if (me) throw fail("no such item", "not_found");
           let row = cal.row(f ? f.item : i.item);
           // An event outside the window the planner rings for is still an event record.
           if (!row && i.item) { const rec = await K.records.get(K.serviceChain(), "event", String(i.item)).catch(() => null); row = rec ? fromEvent(rec, now()) : null; }
@@ -1166,6 +1169,55 @@ export default {
     tool("planner.update", "Change an item's fields, state (open, done, cancelled) or time. An agent may change only items it added.",
       { type: "object", required: ["item"], properties: { item: str, kind: str, state: { type: "string", enum: STATES }, ...itemFields } },
       async (i, w) => await update(i, w), { agents: true });
+
+    // ---- the member door: a joined team member's NOTES in the team's planner (core/work/member-tools.js) ----
+    // The two internal tools below are run only by the daemon's member door, with the member's own one-person chain in this Space. They carry notes and nothing else: kind is fixed to note, an item that is not a
+    // note (an event, a firing, a to-do, a reminder) is not found, and each call takes an exact set of keys (an unknown key is refused, not dropped), so nothing that reaches the scheduler, an agent or another Space
+    // can be sent. They run the same add and update bodies as the direct tools, so the same rules apply, with two the direct tools do not have: a note is read through the sharing rule by an owner and an admin too, and a
+    // note is changed only by its writer, whoever asks. A share with a record is judged by mayReadRecord on her own chain in THIS Space; a record address of another Space reads as unreadable.
+    const SERVE_KEYS = /** @type {Record<string, string[]>} */ ({ list: ["scope", "record", "state", "limit"], get: ["item"], add: ["title", "body", "visibility", "record"], update: ["item", "title", "body", "visibility", "record"] });
+    const NO_NOTE = "no such note";
+    const serve = (/** @type {string[]} */ calls, /** @type {boolean} */ writes) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!extra || !extra.in_space_chain || !extra.in_space) throw fail("only the team server's member door runs this", "denied");
+      if (!i || !calls.includes(i.call)) throw fail(`call is one of ${calls.join(", ")}`, "bad_input");
+      const src = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const unknown = Object.keys(src).filter(k => !SERVE_KEYS[i.call].includes(k));
+      if (unknown.length) throw fail(`${unknown.join(", ")} cannot be set on a note this way. A note takes: ${SERVE_KEYS[i.call].join(", ")}.`, "bad_input");
+      if (!K) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
+      const c = extra.in_space_chain, h = Array.isArray(c.hops) && c.hops.length === 1 ? c.hops[0] : null;
+      if (extra.in_space !== K.space || c.space !== extra.in_space || c.viewer === true || c.delegated === true || !h || !h.actor || h.actor.kind !== "person") throw fail("this call is not from a signed-in person of this Space", "denied");
+      const w = { person: true, source: "member", name: null, thread: null, chain: c, callerLabel: "member", callerRelay: undefined };
+      const person = callerPerson(c);
+      const me = await viewerOf(w);
+      const noteOf = async (/** @type {any} */ id) => { const n = st.item(String(id || "")); if (!n || n.kind !== "note" || n.deleted_at != null || !(await seen(n, w, me))) throw fail(NO_NOTE, "not_found"); return n; };
+      let out;
+      if (i.call === "list") {
+        const want = Math.min(200, Math.max(1, Number(src.limit) || 100)), kept = [];
+        for (const r of st.list({ kind: "note", state: src.state, limit: 500 })) {
+          if (src.record && r.record !== src.record) continue;
+          if (src.scope === "mine" && r.by !== person) continue;
+          if (src.scope === "shared" && r.by === person) continue;
+          if (src.scope === "space" && r.visibility !== "space") continue;
+          if (await seen(r, w, me)) kept.push(r);
+          if (kept.length >= want) break;
+        }
+        out = { items: kept.map(shape) };
+      } else if (i.call === "get") out = { item: shape(await noteOf(src.item)) };
+      else if (i.call === "add") {
+        if (atNoteCap(st.all(), person)) throw fail("too many notes: delete some first", "busy");   // a member writes on the team's server, so her notes are capped
+        out = await add({ ...src, kind: "note" }, w);
+      }
+      else {
+        const n = await noteOf(src.item);
+        if (n.by !== person) throw fail(NO_NOTE, "not_found");   // the writer's alone, an owner or an admin too
+        out = await update({ ...src, item: n.id }, w);
+      }
+      if (writes) await st.flush();
+      return out;
+    };
+    const serveInput = (/** @type {string[]} */ calls) => ({ type: "object", properties: { call: { type: "string", enum: calls }, input: { type: "object" } }, required: ["call"] });
+    ctx.tool("planner.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's notes (list, get), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["list", "get"]), run: serve(["list", "get"], false) });
+    ctx.tool("planner.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member writes a note of hers (add, update, share), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["add", "update"]), run: serve(["add", "update"], true) });
 
     tool("planner.done", "Acknowledge a firing or finish a todo or reminder. Give firing, item, or key.",
       ref, async (i, w) => { const out = done(i, w); await Promise.all(spawning.splice(0)); return out; }, { agents: true });

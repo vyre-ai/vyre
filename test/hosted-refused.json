@@ -135,6 +135,8 @@
   "memory.write.forget",
   "memory.write.restore",
   "memory.writes",
+  "planner.serve",
+  "planner.serve-write",
   "projects.access.check",
   "projects.access.grant",
   "projects.access.list",
