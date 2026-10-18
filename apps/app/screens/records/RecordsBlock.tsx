@@ -10,6 +10,7 @@ import { LayoutControls } from "./LayoutControls";
 import { FirstVisit } from "./FirstVisit";
 import { isDayOne, sampleCount } from "./first-visit.js";
 import { isStageGroup } from "./move-rule.js";
+import { taskDrop } from "./task-drop.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -116,6 +117,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     if (!g) return;
     // A stage board moves by the one rule: a stage that needs fields asks for them first (MoveStage); any other group is a plain change.
     if (to && isStageGroup(def, g)) { await mv.go(rec, def, to); return; }
+    // A task's status is the kernel's: a drop goes through tasks.move, or says why it cannot.
+    if (def.name === "task" && g === "status") {
+      const d: any = taskDrop(String(rec.data?.status ?? ""), to);
+      if (d.say) showToast(d.say);
+      else if (d.call) { const r = await callT("tasks.move", { id: rec.id, ...d.call }); if (r.error) showToast(r.error.message || "That did not move."); else reload(); }
+      return;
+    }
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
