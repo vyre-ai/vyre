@@ -938,7 +938,8 @@ export class FlowRunner {
           for (const cid of l.children) {
             const child = await this.store.getRun(String(cid));
             const cdef = child ? await this.store.getVersion(child.flow, child.version) : null;
-            if (child && cdef && sentIn(child.steps, outwardOf(cdef.flow), () => true)) throw refuse();
+            // a run or version that cannot be read cannot be shown to have sent nothing, so it counts as having sent
+            if (!child || !cdef || sentIn(child.steps, outwardOf(cdef.flow), () => true)) throw refuse();
           }
         }
         for (const k of Object.keys(run.steps)) if (k.includes("!") || again.has(k.replace(/[@!?].*$/, ""))) delete run.steps[k];

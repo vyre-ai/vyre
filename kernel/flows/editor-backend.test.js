@@ -278,3 +278,20 @@ test("(c) a send in the Flow's own failure path, or in a lane of a parallel step
   await w.runner.retry(p.id, { from: "c" }); await settle(w);
   assert.deepEqual(sb.calls, ["c"], "from after the parallel step it works");
 });
+
+test("(c) a lane whose run or version cannot be read counts as having sent: the retry is refused", async () => {
+  const sb = sandbox();
+  const w = await world({ ports: { sandbox: sb.port } });
+  const f = await install(w, flowOf([fn("a"), fn("c")]));
+  const run = await fire(w);
+  const r = await w.store.getRun(run.id);
+  r.state = "failed"; r.waiting = undefined; r.error = { step: "c", code: "boom", message: "boom" };
+  r.steps = { a: { status: "done", output: { n: "a" }, children: ["run_that_is_gone"] }, c: { status: "failed", error: { code: "boom" } } };
+  await w.store.putRun(r);
+  await assert.rejects(() => w.runner.retry(run.id, { from: "a" }), (/** @type {any} */ e) => e.code === "already_sent", "the child run is missing");
+  // a child whose version has been removed
+  const child = { ...r, id: "run_child_x", flow: f.id, version: 99, state: "done", steps: {} };
+  await w.store.putRun(child);
+  r.steps.a.children = [child.id]; await w.store.putRun(r);
+  await assert.rejects(() => w.runner.retry(run.id, { from: "a" }), (/** @type {any} */ e) => e.code === "already_sent", "the child's version is missing");
+});
