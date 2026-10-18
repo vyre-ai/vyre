@@ -41,3 +41,13 @@ test("whenStoreJoins runs the work the moment a store that is still starting joi
   assert.equal(ran, 1, "a store without the hooks is left alone");
   whenStoreJoins({ attached: () => false, whenReady: (/** @type {() => void} */ f) => f() }, () => { throw new Error("boom"); });
 });
+
+test("a retry that keeps failing says so once for each different answer, and never stops for it", async () => {
+  const release = hold();
+  let calls = 0;
+  const said = /** @type {string[]} */ ([]);
+  const r = await retryWhileAway(async () => { calls++; if (calls < 5) throw Object.assign(new Error(calls < 3 ? "Records error: GraphQL: nope" : "the record store is still starting"), { code: "unavailable" }); return "made"; }, { firstMs: 1, maxMs: 2, said: m => { said.push(m); if (said.length === 1) throw new Error("a log line never stops the retry"); } });
+  release();
+  assert.equal(r, "made");
+  assert.deepEqual(said, ["Records error: GraphQL: nope", "the record store is still starting"], "one line per different answer, not one per try");
+});

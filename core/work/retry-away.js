@@ -16,14 +16,16 @@ export function whenStoreJoins(store, f) {
 
 /**
  * Run `f` now; when the store is away, run it again after a growing pause until it gets through, then resolve with its answer. Rejects with any other error at once, and with the last one if `stop()` says so.
- * @template T @param {() => Promise<T>} f @param {{ firstMs?: number, maxMs?: number, stop?: () => boolean }} [o] @returns {Promise<T>}
+ * @template T @param {() => Promise<T>} f @param {{ firstMs?: number, maxMs?: number, stop?: () => boolean, said?: (message: string, tries: number) => void }} [o] `said`: told each time the answer changes (the first miss, then a different one), so a retry that never gets through is not silent @returns {Promise<T>}
  */
 export async function retryWhileAway(f, o = {}) {
   const first = o.firstMs ?? 5_000, max = o.maxMs ?? 60_000;
+  let last = "";
   for (let n = 0; ; n++) {
     try { return await f(); }
     catch (e) {
       if (!storeAway(e) || (o.stop && o.stop())) throw e;
+      { const m = String(/** @type {any} */ (e).message || e).slice(0, 300); if (o.said && m !== last) { last = m; try { o.said(m, n + 1); } catch { /* a log line never stops the retry */ } } }
       await new Promise(r => { const t = setTimeout(r, Math.min(first * 2 ** n, max)); if (typeof t.unref === "function") t.unref(); });
     }
   }
