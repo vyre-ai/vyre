@@ -4,6 +4,7 @@
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
+import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
@@ -11,9 +12,17 @@ import { SharedLinks } from "./SharedLinks";
 import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
-import { abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
+import { rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
+import { detailLines, quickLook } from "./files-places.js";
+import { SitePage } from "./SitePage";
+import { startThread } from "./new-thread";
+import { ComputerPage } from "./ComputerPage";
+import { Thumb } from "./Thumb";
+import { create as createSite } from "../sites/real";
+import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
 import { useFilesNav } from "./files-nav";
+import { tool } from "../../src/real/box";
 import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
 import { bytesOf, sizeWord, textOf } from "./real-model";
 import { driveRefusal } from "./real-model";
@@ -41,10 +50,15 @@ function Manager({ wide }: { wide: boolean }) {
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
   const [q, setQ] = useState("");
   const [chips, setChips] = useState<FilterChip[]>([]);
-  const [view, setView] = useState<"list" | "grid">("list");
+  const [view, setView] = useState<"list" | "grid">("grid");
   const [sel, setSel] = useState<Selection>({ set: new Set(), anchor: null });
   const [focus, setFocus] = useState(-1);
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
+  const [look, setLook] = useState<{ open: string | null }>({ open: null });
+  // the search box looks in this folder (the default) or in all the files of the Space
+  const [publishing, setPublishing] = useState<{ row: FileRow; name: string } | null>(null);
+  const [scopeAll, setScopeAll] = useState(false);
+  const [found, setFound] = useState<FileRow[] | null>(null);
 
   // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
@@ -57,6 +71,7 @@ function Manager({ wide }: { wide: boolean }) {
   const load = useCallback((p: string) => {
     const pp = parsePlace(p);
     setErr(""); setRows(null);
+    if (p === "recent") { loader.recent().then(setRows).catch((e) => { setErr(say(e)); setRows([]); }); return; }
     if (!pp) { setRows([]); return; }
     if (pp.root === "linked" && !pp.link) { setRows(folders.map((f) => ({ key: `linked:${f.id}`, place: `linked:${f.id}`, root: "linked" as const, name: f.name, dir: true, kind: "folder" as const, size: 0, modified: f.at, link: f.id, path: "" }))); return; }
     if (pp.root === "box" && !pp.share) { setRows((status?.shares ?? []).map((s) => ({ key: `box:${s.name}`, place: `box:${s.name}`, root: "box" as const, name: s.name, dir: true, kind: "folder" as const, size: 0, modified: 0, share: s.name, path: "" }))); return; }
@@ -67,19 +82,33 @@ function Manager({ wide }: { wide: boolean }) {
 
   const go = setPlace;
 
+  useEffect(() => {
+    if (!scopeAll || q.trim().length < 2) { setFound(null); return; }
+    let live = true;
+    const t = setTimeout(() => { loader.searchAll(q).then((r) => { if (live) setFound(r); }).catch(() => { if (live) setFound([]); }); }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [scopeAll, q]);
   const shown = useMemo(() => {
+    if (found) return found;
     const recs = (rows ?? []).map((row) => ({ row, data: { name: row.name, kind: KIND_WORD[row.kind] }, created_at: row.modified ? new Date(row.modified).toISOString() : undefined }));
     return sortRows((listRows(FILE_DEF, recs, chips, q) as typeof recs).map((x) => x.row), sort.key, sort.dir);
-  }, [rows, q, chips, sort]);
+  }, [rows, q, chips, sort, found]);
   const keys = useMemo(() => shown.map((r) => r.key), [shown]);
   useEffect(() => { setSel((s) => prune(s, keys)); }, [keys]);
   const picked = shown.filter((r) => sel.set.has(r.key));
   const one = picked.length === 1 && !picked[0].dir ? picked[0] : null;
 
-  const open = (r: FileRow) => { if (r.dir) go(r.place); else setSel(selectOnly(r.key)); };
+  const open = (r: FileRow) => { if (r.dir) go(r.place); else { setSel(selectOnly(r.key)); setLook((l) => quickLook(l, { type: "open", key: r.key }, shown, null)); } };
   const onKey = (e: React.KeyboardEvent) => {
     const t = e.target as HTMLElement;
     if (t && /^(input|textarea)$/i.test(t.tagName)) return;
+    // Quick Look: Space on the selected file opens it (Space or Esc closes), the arrows move through the files while it is open
+    if (look.open) {
+      if (e.key === " " || e.key === "Escape") { e.preventDefault(); setLook(quickLook(look, { type: "close" }, shown, one?.key ?? null)); return; }
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); setLook(quickLook(look, { type: "step", by: 1 }, shown, null)); return; }
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); setLook(quickLook(look, { type: "step", by: -1 }, shown, null)); return; }
+    }
+    if (e.key === " " && one) { e.preventDefault(); setLook(quickLook(look, { type: "space" }, shown, one.key)); return; }
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
       e.preventDefault();
       const i = moveFocus(focus, shown.length, e.key);
@@ -108,6 +137,8 @@ function Manager({ wide }: { wide: boolean }) {
     const items: { label: string; onPress: () => void; danger?: boolean }[] = [{ label: r.dir ? "Open" : "Details", onPress: () => { setSel(selectOnly(r.key)); if (r.dir) go(r.place); } }];
     if (!r.dir && a.download && (r.root === "space" || r.root === "linked")) items.push({ label: "Download", onPress: () => { download(r).catch((e) => showToast(say(e))); } });
     if (!r.dir && a.share && r.root === "space") items.push({ label: "Share a link", onPress: () => { linkCreate(undefined, r.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); } });
+    if (r.dir && r.root === "space") items.push({ label: "Publish as a site", onPress: () => setPublishing({ row: r, name: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) }) });
+    if (!r.dir && r.root === "box" && r.share) items.push({ label: "Send to another computer", onPress: () => { tool<{ devices?: { id: string; name: string; ready?: boolean }[] }>("files.drop.targets", {}).then((t) => { const d = (t?.devices ?? []).find((x) => x.ready); if (!d) { showToast("No other computer is set up to receive. Turn receiving on there first."); return; } return tool("files.deliver", { path: r.path, device: d.id }).then(() => showToast(`Sent to ${d.name}. It arrives when that computer is on.`)); }).catch((e) => showToast(say(e))); } });
     if (a.edit && r.root === "linked") items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
     if (a.move) items.push({ label: "Move", onPress: () => setDialog({ kind: "move", rows: [r] }) });
     if (a.remove && r.root === "linked") items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
@@ -177,8 +208,9 @@ function Manager({ wide }: { wide: boolean }) {
       action={!q && !chips.length && uploadButton ? { label: "Upload", onPress: pickUpload } : undefined} /></Card>
   );
 
-  const main = root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
-    : root === "computer" ? <Card>{status ? <View className="gap-s2"><Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>{status.why ? <Text tone="muted">{status.why}</Text> : null}{status.fix ? <Text tone="label">{status.fix}</Text> : null}</View> : <LoadingState rows={2} />}</Card>
+  const main = place.startsWith("site:") ? <SitePage name={place.slice(5)} onBack={() => go("space")} />
+    : root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
+    : root === "computer" ? <ComputerPage status={status} reload={loadRoots} />
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>
     : rows === null ? <LoadingState rows={4} />
     : !shown.length ? emptyState
@@ -186,7 +218,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
           <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
-            <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Icon name={ICON[r.kind] as never} tone="text-2" size={44 as never} /></div>
+            <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Thumb row={r} fallback={ICON[r.kind]} /></div>
             <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
           </div>
@@ -222,6 +254,7 @@ function Manager({ wide }: { wide: boolean }) {
                 <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
               </View>
             </View>
+            {root === "space" || place === "recent" ? <View className="flex-row"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
             <ListHeader noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
@@ -231,6 +264,20 @@ function Manager({ wide }: { wide: boolean }) {
         </div>
         {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
       </div>
+      <Sheet open={publishing !== null} onClose={() => setPublishing(null)} title="Publish this folder as a site">
+        {publishing ? (
+          <View className="gap-s3">
+            <Text tone="muted">{`Builds a draft from ${publishing.row.name}. Nothing is public until you publish it from the site's page.`}</Text>
+            <Field label="Site name" value={publishing.name} onChangeText={(name: string) => setPublishing({ ...publishing, name })} placeholder="spring-landing" />
+            <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Make the draft" onPress={() => {
+              const b = buildSite({ ...BLANK, name: publishing.name, kind: "drive", ref: publishing.row.path });
+              if ("error" in b) { showToast(b.error); return; }
+              createSite(b.input).then(() => { showToast("Draft made."); setPublishing(null); invalidate(); go(`site:${b.input.name}`); }).catch((e) => showToast(publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
+            }} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setPublishing(null)} /></View>
+          </View>
+        ) : null}
+      </Sheet>
+      <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} onClose={() => setLook({ open: null })} />
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); invalidate(); }} />
     </Frame>
   );
@@ -260,10 +307,21 @@ function Detail({ row, ability, onChanged }: { row: FileRow | null; ability: Ret
     spaceVersions(undefined, row.path).then((v: Version[]) => live && setVersions([...v].reverse().slice(0, 6).map((x, k) => ({ id: String(x.ver), line: `v${x.ver}${k === 0 ? " (current)" : ""}, ${when(x.at)}`, restorable: k > 0, ver: x.ver })))).catch(() => live && setVersions([]));
     return () => { live = false; };
   }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const router = useRouter();
   if (!row) return <Card><EmptyState title="Select a file" body="Its preview, versions and details show here." /></Card>;
   const source = row.root === "space" ? driveSource(row.path) : row.root === "linked" && row.link ? linkedFileSource(row.link, row.path) : null;
+  const a = abilities(row.root);
+  const lines = detailLines(row, { where: row.root === "space" ? (row.path.includes("/") ? row.path.slice(0, row.path.lastIndexOf("/")) : "All files") : rootLabel(row.root), when, versions: versions ? versions.length : undefined });
   return (
     <View className="gap-s3">
+      <Card>
+        <View className="flex-row flex-wrap items-center gap-s2">
+          {!row.dir ? <Button kind="primary" size="sm" label="Ask about this" onPress={() => { void startThread(router, "assistant", `#${row.name} `, `About ${row.name}`, row.root === "space" ? [{ kind: "space", id: row.path, name: row.name }] : row.root === "linked" && row.link ? [{ kind: "linked", id: `${row.link}:${row.path}`, name: row.name }] : undefined); }} /> : null}
+          {!row.dir && a.share && row.root === "space" ? <Button kind="ghost" size="sm" icon="share" label="Share" onPress={() => { linkCreate(undefined, row.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); }} /> : null}
+          {!row.dir && a.download && (row.root === "space" || row.root === "linked") ? <Button kind="ghost" size="sm" icon="download" label="Download" onPress={() => { download(row).catch((e) => showToast(say(e))); }} /> : null}
+        </View>
+        {lines.map((l) => <View key={l.k} className="flex-row gap-s2"><View style={{ width: 96 }}><Text size="caption" tone="label">{l.k}</Text></View><View className="min-w-0 flex-1"><Text size="caption">{l.v}</Text></View></View>)}
+      </Card>
       {source ? <FileViewer key={row.key} name={row.path} source={source} onSaved={onChanged} /> : (
         <Card><View className="gap-s2"><Text strong numberOfLines={2}>{row.name}</Text><Text size="caption" tone="muted">{[KIND_WORD[row.kind], sizeWord(row.size), when(row.modified)].filter(Boolean).join(", ")}</Text><Text tone="muted" size="caption">Files on your server open as text from the older Files tabs on a phone; there is no preview here yet.</Text></View></Card>
       )}
@@ -301,6 +359,19 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
           : <Text>It is deleted at the source, which keeps it in its own trash where it has one. Nothing else changes.</Text>}
         {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
         <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : dialog.kind === "rename" ? "Rename" : dialog.kind === "move" ? "Move" : "Delete"} onPress={busy ? () => {} : run} /><Button kind="ghost" size="sm" label="Cancel" onPress={onClose} /></View>
+      </View>
+    </Sheet>
+  );
+}
+
+/** The full-size look at one file (Space or a double click): the shared FileViewer for a file in the Space or a linked folder, in a sheet; Esc, Space or the close button closes it. */
+function QuickLookSheet({ row, onClose }: { row: FileRow | null; onClose: () => void }) {
+  if (!row) return <Sheet open={false} onClose={onClose} title="" children={null} />;
+  const source = row.root === "space" ? driveSource(row.path) : row.root === "linked" && row.link ? linkedFileSource(row.link, row.path) : null;
+  return (
+    <Sheet open onClose={onClose} title={row.name}>
+      <View className="gap-s3">
+        {source ? <FileViewer key={row.key} name={row.path} source={source} /> : <Text tone="muted">There is no preview for this source yet. {[KIND_WORD[row.kind], sizeWord(row.size)].filter(Boolean).join(", ")}</Text>}
       </View>
     </Sheet>
   );

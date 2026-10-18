@@ -38,6 +38,8 @@ export const TOOLS_WITH_SPACE = [
  "files.linked.unlink",
  "files.linked.versions",
  "files.linked.write",
+ "files.places",
+ "files.space.mentions.search",
  "flows.access.get",
  "flows.access.set",
  "flows.actions",

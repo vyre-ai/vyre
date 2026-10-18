@@ -10,6 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { createMemberVaultService } from "./member-service.js";
 import { refuseNonPerson } from "../../lib/person-body.js";
 import { gateTools } from "./member-gate.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
@@ -616,6 +617,7 @@ export default {
       ssh: cli.ssh,
       vault,
       connections: conns.connections,
+      peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createMemberVaultService(o),
       async stop() {
         if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();

@@ -1,4 +1,4 @@
-// Where this device keeps a member's vault Secret Key: the phone's secure store, or the browser's storage on the web (which has no secure store; the key is useless without the master password).
+// Where this device keeps a member's vault Secret Key: the phone's secure store, or the browser's storage on the web (which has no secure store; the key is useless without the password).
 import { Platform } from "react-native";
 
 export async function kvGet(key: string): Promise<string | null> {

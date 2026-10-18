@@ -56,3 +56,10 @@ export const healthBanner = (h) => (h && h.line ? { tone: h.level === "red" ? "e
 
 /** The one plain paragraph flows.describe gives for a run (explain), or nothing: a box without it, or an answer with no words, shows no card. @param {any} d */
 export const explainText = (d) => (d && typeof d.explain === "string" ? d.explain.trim() : "");
+
+/** Flows grouped by the project they belong to; the ones with none are Personal and come first. @param {{ project?: string }[]} flows */
+export function groupFlows(flows) {
+  /** @type {Map<string, any[]>} */ const by = new Map();
+  for (const f of flows) { const k = f.project || "Personal"; by.set(k, [...(by.get(k) ?? []), f]); }
+  return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
+}

@@ -32,6 +32,9 @@
     {"name": "files.drive.versions", "effect": "read", "reach": "person"},
     {"name": "files.drive.restore", "effect": "write", "reach": "person"},
     {"name": "files.drive.space.list", "effect": "read", "reach": "person"},
+    {"name": "files.places", "effect": "read", "reach": "person"},
+    {"name": "files.space.mentions.search", "effect": "read", "reach": "person"},
+    {"name": "files.space.mentions.resolve", "reach": "modules"},
     {"name": "files.drive.space.read", "effect": "read", "reach": "person"},
     {"name": "files.drive.link.create", "outward": true, "effect": "write", "reach": "person"},
     {"name": "files.drive.link.list", "effect": "read", "reach": "person"},
@@ -73,7 +76,7 @@
     {"name": "files.drive.local", "effect": "read", "reach": "anyone"},
     {"name": "files.dropbox.linked", "reach": "modules"}
   ] },
-  "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}, {"kind": "linked", "label": "Linked files", "icon": "file", "search": "files.linked.mentions.search", "resolve": "files.linked.mentions.resolve"}],
+  "mentions": [{"kind": "drive", "label": "Files", "icon": "file", "search": "files.mentions.search", "resolve": "files.mentions.resolve"}, {"kind": "space", "label": "Space files", "icon": "file", "search": "files.space.mentions.search", "resolve": "files.space.mentions.resolve"}, {"kind": "linked", "label": "Linked files", "icon": "file", "search": "files.linked.mentions.search", "resolve": "files.linked.mentions.resolve"}],
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },
   "needs": { "vault": ["dropbox"] },

@@ -19,9 +19,9 @@ const dropEmpty = <T extends object>(o: T): T => Object.fromEntries(Object.entri
 export const blank = (): Body => ({ name: "", stages: [{ name: "Start", tasks: [{ title: "", doer: "role:owner", output: { kind: "note" } }] }, { name: "Done" }] });
 
 export const setName = (b: Body, name: string): Body => ({ ...b, name });
-/** The plural of a word a person names their projects: "Matter" to "Matters", "Policy" to "Policies", "Branch" to "Branches". */
+/** The plural of a word a person names their projects: "Campaign" to "Campaigns", "Policy" to "Policies", "Branch" to "Branches". */
 export const pluralOf = (one: string): string => (/[^aeiou]y$/i.test(one) ? `${one.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/i.test(one) ? `${one}es` : `${one}s`);
-/** What this template's projects are called ("Matter", "Matters"). The plural follows the singular unless it was given by hand; an empty singular takes the name away. */
+/** What this template's projects are called ("Campaign", "Campaigns"). The plural follows the singular unless it was given by hand; an empty singular takes the name away. */
 export const setNoun = (b: Body, one: string, many?: string): Body => {
   const { noun: old, ...rest } = b;
   if (!one.trim()) return rest as Body;

@@ -160,9 +160,10 @@ export function createFlows(o) {
     },
     "flows.get": async (chain, i) => { const v = await view(need(i, "id", "the Flow's id (flows.list)"), [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
-    "flows.list": async () => {
+    "flows.list": async (_chain, i) => {
       const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
-      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); const group = await view(r.id).then((/** @type {any} */ v) => v.flow.group).catch(() => undefined); return { ...r, ...(group ? { group } : {}), ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+      const out = await Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); const seen = await view(r.id).then((/** @type {any} */ v) => v.flow).catch(() => ({})), group = seen.group, project = seen.project; return { ...r, ...(group ? { group } : {}), ...(project ? { project } : {}), ...(r.name && r.label === undefined ? { label: r.name } : {}), ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+      return i && typeof i.project === "string" && i.project ? out.filter((/** @type {any} */ r) => r.project === i.project) : out;
     },
     // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
     // The Vault's "Used by" (R031-70) and its scan for a secret value (R031-72): module-only reads of the stored definitions, every version of every Flow. The first answers names only; the second the

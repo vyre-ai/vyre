@@ -195,3 +195,12 @@ test("agents.level says edit, use or none for the person asking, and it changes 
   await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: null });
   assert.equal(await level(), "none", "taking it away takes it away");
 });
+
+test("agents.level is refused to a model, a harness and an agent-labelled caller, even for the owner's agent: only a person's own surface asks (Files relays the person to ask it)", { timeout: 120_000 }, async t => {
+  const { owner } = await world(t);
+  await owner("agents.create", { name: "intake", kind: "agent", projects: [], instructions: "words" });
+  for (const as of ["mcp", "harness", "cli:agent:intake"]) {
+    const r = await owner("agents.level", { agent: "intake" }, as);
+    assert.equal(r.error && r.error.code, "denied", `${as}: ${JSON.stringify(r).slice(0, 140)}`);
+  }
+});

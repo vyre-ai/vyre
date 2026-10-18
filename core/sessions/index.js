@@ -53,6 +53,8 @@ export const MODEL_ALIASES = Object.freeze([
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 import { createAccountsService } from "./accounts-service.js";
+import { memberAccountBases, memberBaseOk, memberBases } from "./member-endpoints.js";
+import { freeItemName, itemNameOf } from "../../lib/vault-item-name.js";
 
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
@@ -98,7 +100,7 @@ const MEMBER = Symbol("member door");
 /** The caller label of the daemon's own door: the only one that may run the member calls. */
 const DOOR = "module:vyred";
 /** The sign-in calls a team member reaches through the team's server, and the account tool each runs (kernel/remote/wire.js CALLS.accounts). A member adds a login of their own; a key needs a Vault of their own (0.3.4). */
-const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind", add: "sessions.accounts.add" });
+const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind", add: "sessions.accounts.add", check: "sessions.accounts.key" });
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
 const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
@@ -458,7 +460,7 @@ export default {
     };
     tool("sessions.accounts.add", "Add a provider account: label, kind, and for an api-key or setup-token the vault item that holds its credential. Never touches the value.",
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: { type: "string", description: "The vault item that already holds the credential (add it in the Vault first and grant it to threads). None for kind login: the provider's own sign-in fills the account." },
-        scope: { type: "object", description: "{ projects: \"*\"|[slugs], agents: \"*\"|[names] }. Default \"*\": every project and agent may use it until bound narrower.", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean", description: "Makes it the provider's pick when nothing else resolves." } } },
+        base_url: { type: "string", description: "The address an api-key account's key is sent to (an OpenAI-compatible endpoint). Only for kind api-key." }, scope: { type: "object", description: "{ projects: \"*\"|[slugs], agents: \"*\"|[names] }. Default \"*\": every project and agent may use it until bound narrower.", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean", description: "Makes it the provider's pick when nothing else resolves." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an account", { assistant: true });
         // Not a person's surface: the account covers only the project the request came from, never every project, and is pending
@@ -471,6 +473,8 @@ export default {
         // A member's account is a sign-in of their own (a login, run as the account's own user), or a key or setup token that lives in THEIR OWN vault (vault.me.*): the item is checked there, never in the home's
         // vault (the owner's), and the key is read only at the start of that member's own turn (vault.me.lend). Nobody else's turn, and no agent's job, uses it.
         const who = await ownerOfAccount(meta);
+        // A member's account is sent to its provider's own address only (or xAI's): they do not choose an address on this machine or elsewhere.
+        if (who && i.base_url !== undefined && !memberBaseOk(i.base_url, memberAccountBases(String(i.provider)))) throw Object.assign(new Error("that address is not one a member's account can use"), { code: "denied" });
         const wanted = i.kind || (i.vault_item ? "api-key" : "login");
         if (who && wanted !== "login") {
           if (!["api-key", "setup-token"].includes(String(wanted)) || !i.vault_item) throw Object.assign(new Error("add your own key or setup token as an item of your own vault first, then add the account naming that item"), { code: "bad_input" });
@@ -521,26 +525,41 @@ export default {
       } finally { clearTimeout(timer); }
     };
     tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
-      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it), kept as letters, digits, dot, dash and underscore (\"Work Claude\" is \"Work-Claude\"). Taken as it is when free, else with -2, -3 after it; never an existing item. Default ai-key-<provider>-<id>." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
         if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
         // The convenience stores the key in the home's own vault. A member keeps theirs in their own: they put it in their Vault, then add the account naming that item (sessions.accounts.add).
-        if (await ownerOfAccount(meta)) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
+        if (!i.check_only && (await ownerOfAccount(meta))) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
+        // A member (a check only: they cannot store through this tool) may not name an address of their own: the kind's own, or xAI's, and nothing else, so the check cannot probe this machine or another host.
+        if (i.check_only && (await ownerOfAccount(meta)) && !memberBaseOk(i.base_url, memberBases(String(i.kind)))) throw Object.assign(new Error("that address is not one a key can be checked at"), { code: "denied" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
+        if (i.check_only === true) return { checked: true, host: new URL(base).host };
         const id = crypto.randomBytes(6).toString("hex");
-        const item = `ai-key-${k.provider}-${id}`;
+        let item = `ai-key-${k.provider}-${id}`;
+        if (i.name !== undefined && String(i.name).trim()) {
+          // the Vault's names are letters, digits, dot, dash and underscore: the name asked for is kept as itemNameOf makes it ("Work Claude" is "Work-Claude")
+          const asked = itemNameOf(String(i.name));
+          // never an existing item (a put on an existing name replaces it): the name is made free with a number after it
+          const have = await ctx.call("vault.list", {});
+          // fail closed: if the Vault cannot be read, nothing is put (a put on an existing name replaces that item)
+          if (!have || have.error || !have.data || !Array.isArray(have.data.items)) throw Object.assign(new Error("the Vault could not be checked for that name"), { code: "bad_input" });
+          const names = new Set(have.data.items.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+          const cand = freeItemName(asked, names);
+          if (!cand) throw Object.assign(new Error("that name is taken in the Vault"), { code: "bad_input" });
+          item = cand;
+        }
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
         const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
         accountChanged(row, true, "key");
-        return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
+        return { account: row.id, provider: row.provider, label: row.label, item, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
     tool("sessions.accounts.signin", "Sign an account in through its provider's own login, no token pasted. Start with provider and label (or account), then poll with flow.",
       { type: "object", properties: { provider: str, label: str, account: str, flow: { type: "string", description: "From the start answer; alone it says waiting, done or failed." }, code: { type: "string", description: "With flow: the code a login asks back (step url, paste true)." } } },
@@ -637,7 +656,8 @@ export default {
         const run = tool ? runs.get(tool) : null;
         if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(String(i.person))) throw Object.assign(new Error(`call is ${Object.keys(MEMBER_ACCOUNTS).join(", ")}`), { code: "bad_input" });
         const input = i.input && typeof i.input === "object" ? { ...i.input } : {};
-        const picked = i.call === "default" ? { id: input.id, is_default: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
+        // a check is the key tool in its check-only form and nothing else: only the kind, the key and the address are taken from the member's input
+        const picked = i.call === "default" ? { id: input.id, is_default: true } : i.call === "check" ? { kind: input.kind, key: input.key, ...(input.base_url !== undefined ? { base_url: input.base_url } : {}), check_only: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
         return run(picked, { caller: "local", [MEMBER]: String(i.person) });
       },
     });

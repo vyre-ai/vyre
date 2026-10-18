@@ -96,6 +96,7 @@ export const CONTACT = {
   name: "contact", label: "Contact", icon: "IconUser",
   fields: [
     text("name", "Name", { required: true }),
+    text("ref", "ID", { unique: true, read_only: true }),   // PER-0001: made with the record, never changed (core/records-tools/ref.js)
     text("email", "Email", { unique: true }),
     text("phone", "Phone", { unique: true }),
     f("emails", "other_emails", "Other emails"),
@@ -108,7 +109,7 @@ export const CONTACT = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
-  views: [{ name: "contacts_list", type: "list", label: "All contacts", columns: ["name", "email", "phone", "organization"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "contacts_list", type: "list", label: "All contacts", columns: ["name", "ref", "email", "phone", "organization"], sort: { field: "name", dir: "asc" } }],
 };
 
 /** A firm or company, once. `domain` is unique so a message from anyone at that domain can be tied to it. */
@@ -116,6 +117,7 @@ export const ORGANIZATION = {
   name: "organization", label: "Organization", icon: "IconBuilding",
   fields: [
     text("name", "Name", { required: true }),
+    text("ref", "ID", { unique: true, read_only: true }),   // ORG-0001: made with the record, never changed (core/records-tools/ref.js)
     text("domain", "Domain", { unique: true }),
     f("url", "website", "Website"),
     text("phone", "Phone"),
@@ -123,7 +125,7 @@ export const ORGANIZATION = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
-  views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "ref", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
 export const POINT_KINDS = ["email", "phone"];
@@ -188,6 +190,7 @@ export const TASK = {
   name: "task", label: "Task", icon: "IconChecklist",
   fields: [
     text("title", "Title", { required: true }),
+    text("ref", "ID", { unique: true, read_only: true }),   // TSK-0001: made with the record, never changed (core/records-tools/ref.js)
     f("rich_text", "note", "Note"),
     f("datetime", "due", "Due"),
     choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
@@ -228,6 +231,8 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived", "moved"]),
+    // how the project runs, chosen when it starts: stages (a playbook's stage track), client (tied to a company or person), ongoing (a board plus Flows) or simple. None reads as simple. The Personal project has none: it is pinned and private.
+    choice("kind", "How it runs", ["stages", "client", "ongoing", "simple"]),
     // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
     f("link", "client", "Client", { to: "contact", inverse: { name: "projects", label: "Projects" } }),
     f("actor", "owner", "Owner"),
@@ -317,6 +322,7 @@ export const CHAT = {
     text("drive", "Project Drive folder"),
     text("location", "This chat's Drive folder"),
     text("forked_from", "Forked from (the thread and the reply it was forked at)"),   // set by work.thread.fork: a display link to the origin, never trusted to start a run
+    f("boolean", "engineer_chat", "This is the Space's Engineer chat"),   // set by work.engineer.chat on the one chat the Space has
     f("boolean", "project_chat", "This is the project's group chat"),   // set by work.project.chat on the one chat a project has; its id is fixed by the project
     TAGS,
   ],

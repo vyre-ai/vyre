@@ -23,6 +23,8 @@ export function expectedRequest(space, call, args) {
   if (call === "grants.invites.create") return request(space, "grants.invite", urn(space, "invite"), args[0]);
   if (call === "grants.invites.confirm") return request(space, "grants.invite", urn(space, "invite", String(args[0])), { confirm: args[0], words: args[1] && args[1].words });
   if (call === "grants.invites.revoke") return request(space, "grants.invite", urn(space, "invite", String(args[0])), { revoke: args[0] });
+  // a member adds an AI key to their own vault (kernel/remote/proof.js vaultAddKey): the label and the HASH of the value, never the value or the password
+  if (call === "myvault.addkey" && args[0] && typeof args[0] === "object") return request(space, "vault.add_key", urn(space, "vault-me", "self"), { label: String(args[0].label), kind: "api-key", value_sha256: sha256(String(args[0].value)) });
   return null;
 }
 
@@ -63,11 +65,16 @@ export function kernelWire(peer, space, o = {}) {
         const err = /** @type {any} */ (e);
         const ch = err && err.challenge;
         if (!(err && PRESENCE.has(err.code) && ch && typeof o.signPresence === "function" && ours(ch, call, wire))) throw e;
-        const proof = await o.signPresence({ op: ch.op, space, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, person: o.person || "", prompt: PROMPT[call] || "Approve this change" });
+        const proof = await o.signPresence({ op: ch.op, space, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, person: o.person || "", prompt: promptFor(call, wire) });
         if (!proof || typeof proof !== "object") throw e;
         return await send(call, wire, { proof, challenge: String(ch.nonce) });
       }
     },
   };
+}
+/** What the person is told they are approving: the call's own words, and for a key put in their own Vault the label they gave it (it is in the signed request, so what they read is what they sign). @param {string} call @param {any[]} args */
+export function promptFor(call, args) {
+  if (call === "myvault.addkey" && args && args[0] && typeof args[0].label === "string") return `Add ${args[0].label.slice(0, 60)} to your own Vault`;
+  return PROMPT[call] || "Approve this change";
 }
 const PROMPT = /** @type {Record<string, string>} */ ({ "grants.invites.create": "Invite someone to your team", "grants.invites.confirm": "Confirm the person you are inviting", "grants.invites.revoke": "Cancel an invite" });

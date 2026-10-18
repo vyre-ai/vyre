@@ -73,7 +73,7 @@ test("stage sets fill the stage titles in one click, keeping the tasks already t
 });
 
 test("noun suggestions are the usual law-firm words", () => {
-  assert.deepEqual(NOUN_SUGGESTIONS.slice(0, 4), ["Matter", "Client", "Case", "Engagement"]);
+  assert.deepEqual(NOUN_SUGGESTIONS.slice(0, 4), ["Client", "Case", "Engagement", "Campaign"]);
 });
 
 test("the publish sheet says what changes for new work and for what is already running", () => {

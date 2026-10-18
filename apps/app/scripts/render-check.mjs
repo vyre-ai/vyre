@@ -45,7 +45,11 @@ for (const width of WIDTHS) {
   for (const route of ROUTES) {
     const pg = await ctx.newPage();
     const errors = [];
-    pg.on("pageerror", (e) => errors.push(String(e.message).slice(0, 140)));
+    pg.on("pageerror", (e) => {
+      // A web build is minified: say where it threw, with the code around it, so a screen that does not draw can be read from the log.
+      let where = ""; try { const m = /(\/_expo\/[^\s:()]+\.js):(\d+):(\d+)/.exec(String(e.stack || "")); if (m) { const line = fs.readFileSync(path.join(DIST, m[1]), "utf8").split("\n")[Number(m[2]) - 1] || ""; where = ` @ ${m[1].split("/").pop()}:${m[2]}:${m[3]} «${line.slice(Math.max(0, Number(m[3]) - 120), Number(m[3]) + 40)}»`; } } catch { /* no source to read */ }
+      errors.push(String(e.message).slice(0, 140) + where);
+    });
     let why = "";
     try {
       await pg.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" });

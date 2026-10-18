@@ -55,6 +55,33 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
   assert.equal(checked, PERSON.length);
 });
 
+
+test("a member-surface call to vault.revert or vault.move on a shared item is refused before the tool runs: no version change, no history row", async t => {
+  // The owner's item is put from the person's own surface. A model, an agent or a module calls revert and move on it: the door refuses each one
+  // before the tool runs, so the item's versions and history stay exactly as they were. The person's own surface is past the door (positive control).
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
+  const d = await start({ presence: present, root, log: () => {}, firstPartyRoots: [] });
+  t.after(() => d.stop());
+  const put = await d.registry.call("vault.put", { name: "shared-login", kind: "login", fields: { username: "alex", password: "fixture-a-1111" } }, "local");
+  assert.ok(!put.error, JSON.stringify(put));
+  await d.registry.call("vault.put", { name: "shared-login", kind: "login", fields: { username: "alex", password: "fixture-b-2222" } }, "local");
+  const versions = async () => ((await d.registry.call("vault.history", { name: "shared-login" }, "local")).data || {}).versions || [];
+  const before = await versions();
+  assert.equal(before.length, 2, "two versions before the attempts");
+  for (const tool of ["vault.revert", "vault.move"]) {
+    const input = tool === "vault.revert" ? { name: "shared-login", version: 1 } : { name: "shared-login", to: "team" };
+    for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit" }], ["harness:agent:kit", { agent: "kit" }], ["mcp", { thread: "t-1" }], ["module:probe", {}]]) {
+      const r = await d.registry.call(tool, input, caller, meta);
+      assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${tool} as ${caller} is refused at the door: ${JSON.stringify(r)}`);
+    }
+  }
+  assert.deepEqual(await versions(), before, "no version changed and no history row was added by the refused calls");
+  // Positive control: the person's own surface is past the door for revert.
+  const own = await d.registry.call("vault.revert", { name: "shared-login", version: 1 }, "local");
+  assert.ok(!own.error || !["denied", "no_such_tool"].includes(own.error.code), `the person's own revert is past the door: ${JSON.stringify(own)}`);
+});
+
 // With the kernel on, an ADDED module runs in the sandbox supervisor (`export const handlers`, no ctx: kernel/modules/child.js), so it cannot call any vault tool: the refusal is structural. Without the kernel it is the legacy
 // in-process module and the registry's not_declared; the positive control (vault.list is not refused as not_declared) applies only there.
 const KERNEL_ON = process.env.VYRE_KERNEL !== "0"; // the kernel is on by default (a development build)

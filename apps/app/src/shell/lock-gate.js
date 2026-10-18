@@ -1,6 +1,6 @@
 // @ts-check
-// The lock gate. Coming back to the app, an identity that is made but not unlocked on this device needs its master password before anything else draws; a legacy identity that
-// has no master password yet is asked for one. After a quiet spell the app locks itself again. Pure, so Node tests it; src/shell/UnlockGate.tsx reads identity.status and calls this.
+// The lock gate. Coming back to the app, an identity that is made but not unlocked on this device needs its password before anything else draws; a legacy identity that
+// has no password yet is asked for one. After a quiet spell the app locks itself again. Pure, so Node tests it; src/shell/UnlockGate.tsx reads identity.status and calls this.
 
 /** The auto-lock choices, in minutes, as the Settings control lists them. "0" is Never. */
 export const LOCK_CHOICES = Object.freeze([["5", "5 minutes"], ["15", "15 minutes"], ["60", "1 hour"], ["0", "Never"]]);
@@ -13,7 +13,7 @@ export function lockMinutes(raw) {
 }
 
 /**
- * What the gate shows for what identity.status answered: "unlock" (made, locked), "migrate" (keys with no master password), "unreachable" (the read failed: stay covered, say so, offer Try again),
+ * What the gate shows for what identity.status answered: "unlock" (made, locked), "migrate" (keys with no password), "unreachable" (the read failed: stay covered, say so, offer Try again),
  * "pending" (not read yet: covered, blank), or "none" (nothing to ask). A lock fails closed: only a build that has no identity at all (`null`) or an answer that says nothing is locked uncovers the app.
  * @param {{ exists?: boolean, unlocked?: boolean, needsMigration?: boolean, unreachable?: boolean } | null | undefined} status @param {boolean} [loaded] has the first read finished
  * @returns {"none" | "unlock" | "migrate" | "unreachable" | "pending"}
@@ -43,7 +43,7 @@ export function unlockInput({ mode, text }) {
 
 /** The words for a refusal from identity.unlock, identity.migrate or the tool that carries them. @param {unknown} code @param {string} [message] */
 export function unlockRefusal(code, message = "") {
-  if (code === "bad_password") return "That is not your master password. Try again, or use your recovery key.";
+  if (code === "bad_password") return "That is not your password. Try again, or use your recovery key.";
   if (code === "bad_recovery") return "That recovery key does not unlock this identity. Check it and type it again.";
   if (code === "no_identity") return "There is no identity on this device yet.";
   if (code === "offline") return "Vyre is not answering on this device. Wait a moment and try again.";
