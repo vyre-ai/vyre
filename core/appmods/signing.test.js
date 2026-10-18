@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
+import { readStatus } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -257,4 +258,36 @@ test("readWaiting: the requests nobody has signed, from the app's own list, newe
   assert.deepEqual(readWaiting([row(1)]).map(r => r.submission), [1], "a bare array too");
   for (const bad of [null, undefined, 5, "x", {}, { data: "no" }]) assert.deepEqual(readWaiting(bad), []);
   assert.equal(readWaiting({ data: Array.from({ length: 80 }, (_, i) => row(i + 1, { created_at: `2026-10-01T10:${String(i % 60).padStart(2, "0")}:00Z` })) }).length, 50, "at most 50");
+});
+
+// documents.signing.status (team/0.6 ruling, 18 Oct): one request's timeline from DocuSeal's submission JSON, honestly: what was sent, opened, signed or declined,
+// and the links to its audit log and combined document, which the server fetches and saves (never a raw provider URL in the app). Red first.
+test("readStatus: one submission's signers with their sent, opened, completed and declined times, and its audit and document links", () => {
+  const fixture = {
+    id: 41, status: "pending", created_at: "2026-10-18T04:40:00Z", archived_at: null,
+    audit_log_url: "https://docuseal.example/audit/41.pdf",
+    documents: [{ name: "engagement-letter.pdf", url: "https://docuseal.example/files/41.pdf" }],
+    template: { name: "Engagement letter" },
+    submitters: [
+      { id: 1, email: "ava@example.com", name: "Ava", slug: "ava-slug", sent_at: "2026-10-18T04:40:05Z", opened_at: "2026-10-18T04:52:00Z", completed_at: "2026-10-18T05:03:00Z", declined_at: null },
+      { id: 2, email: "ben@example.com", name: "Ben", slug: "ben-slug", sent_at: "2026-10-18T04:40:05Z", opened_at: null, completed_at: null, declined_at: null },
+    ],
+  };
+  const r = readStatus(fixture);
+  assert.equal(r.submission, 41);
+  assert.equal(r.status, "pending");
+  assert.deepEqual(r.signers.map(s => [s.name, s.sent, s.opened, s.signed, s.declined]), [
+    ["Ava", Date.parse("2026-10-18T04:40:05Z"), Date.parse("2026-10-18T04:52:00Z"), Date.parse("2026-10-18T05:03:00Z"), null],
+    ["Ben", Date.parse("2026-10-18T04:40:05Z"), null, null, null],
+  ]);
+  assert.equal(r.audit_url, "https://docuseal.example/audit/41.pdf", "the audit link is returned for the server to fetch");
+  assert.ok(!JSON.stringify(r).includes("ava-slug") && !JSON.stringify(r).includes("ben-slug"), "signer page codes never leave the box");
+});
+
+test("readStatus: a declined signer shows the decline, and a missing or archived submission reads as nothing", () => {
+  const r = readStatus({ id: 7, status: "declined", submitters: [{ name: "Cy", email: "cy@example.com", sent_at: "2026-10-18T04:00:00Z", declined_at: "2026-10-18T04:30:00Z" }] });
+  assert.equal(r.signers[0].declined, Date.parse("2026-10-18T04:30:00Z"));
+  assert.equal(r.signers[0].signed, null);
+  assert.equal(readStatus(null), null);
+  assert.equal(readStatus({ id: 8, archived_at: "2026-10-18T05:00:00Z", submitters: [] }), null);
 });
