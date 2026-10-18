@@ -22,7 +22,7 @@ Off until 0.6.2. Each agent that has a computer gets its own, with its own scree
 
 ### Downloads in an agent's computer
 
-A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent. The proof reports it as a known failure; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent, and the folder the proof expects (the browser's own) is not the one computerd accepts today (the agent's Downloads). The proof reports these four checks (the two download-path checks, the landing and the read) as known failures; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
 
 ### A member's own AI account in chats
 
