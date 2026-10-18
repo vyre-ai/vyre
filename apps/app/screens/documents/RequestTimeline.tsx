@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Text } from "@vyre/ui";
+import { useRouter } from "expo-router";
+import { Button, Text } from "@vyre/ui";
 import { tool } from "../../src/real/box";
 
 type Signer = { name: string; email: string; sent: number | null; opened: number | null; signed: number | null; declined: number | null };
@@ -23,7 +24,19 @@ export function timelineLine(s: Signer): string {
  * step the server does not report is not shown.
  */
 export function RequestTimeline({ submission }: { submission: number }) {
+  const router = useRouter();
   const [status, setStatus] = useState<Status | undefined>(undefined);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  /** Download audit: the server fetches the file and saves it to Files > Signed; the button opens the saved file there. */
+  const downloadAudit = () => {
+    setBusy(true); setProblem("");
+    tool<{ path?: string }>("documents.signing.audit", { submission })
+      .then((r) => setSaved(r?.path ?? null))
+      .catch((e) => setProblem(e instanceof Error ? e.message : "The audit file could not be saved."))
+      .finally(() => setBusy(false));
+  };
   useEffect(() => {
     tool<{ status?: Status }>("documents.signing.status", { submission })
       .then((r) => setStatus(r?.status ?? null))
@@ -31,12 +44,21 @@ export function RequestTimeline({ submission }: { submission: number }) {
   }, [submission]);
   if (status === undefined) return <Text size="caption" tone="label">Loading the timeline…</Text>;
   if (!status || !status.signers.length) return null;
+  const signed = status.signers.some((s) => s.signed);
   return (
     <>
       {status.signers.map((s, i) => {
         const line = timelineLine(s);
         return line ? <Text key={`${s.email}-${i}`} size="caption" tone="muted">{line}</Text> : null;
       })}
+      {signed ? (
+        saved ? (
+          <Button kind="secondary" size="sm" label="Open the audit file" onPress={() => router.push("/u/files" as any)} />
+        ) : (
+          <Button kind="secondary" size="sm" label={busy ? "Saving the audit file…" : "Download audit"} disabled={busy} onPress={downloadAudit} />
+        )
+      ) : null}
+      {problem ? <Text size="caption" tone="label">{problem}</Text> : null}
     </>
   );
 }
