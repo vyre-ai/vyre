@@ -47,12 +47,14 @@ try {
       await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
       const src = page.locator("[data-tile]").filter({ hasText: "Juniper Studio" }).first(), dst = page.locator("[data-tile]").filter({ hasText: "Vyre site" }).first();
       if (await src.count() && await dst.count()) {
-        const a = await src.boundingBox(), b = await dst.boundingBox();
-        await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
-        await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2 + 12, { steps: 5 });
-        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
+        // a headless browser does not run a drag from the mouse, so the drag events are sent by hand, with one shared DataTransfer: the page's own handlers do the rest
+        const dt = await page.evaluateHandle(() => new DataTransfer());
+        await src.dispatchEvent("dragstart", { dataTransfer: dt }); await page.waitForTimeout(150);
+        await dst.dispatchEvent("dragenter", { dataTransfer: dt });
+        await dst.dispatchEvent("dragover", { dataTransfer: dt }); await page.waitForTimeout(150);
         await shot("9-drag-over-folder");
-        await page.mouse.up(); await shot("10-dropped");
+        await dst.dispatchEvent("drop", { dataTransfer: dt });
+        await src.dispatchEvent("dragend", { dataTransfer: dt }); await shot("10-dropped");
       } else console.log("drag shots skipped: tiles not found");
     } else {
       await page.getByText("Space", { exact: true }).first().click().catch(() => {}); await shot("2-space");
