@@ -114,6 +114,10 @@ jobs:
         run: |
           if grep -rl "vyre-peer-fake-enabled" dist; then echo "the release export carries the proof's fake wire"; exit 1; fi
           echo "release export: no fake wire"
+      - name: "No proof yes in the release export (the proof build's software yes is compiled out unless the build is made for the proof)"
+        run: |
+          if grep -rlE "vyre-proof-yes-enabled|EXPO_PUBLIC_VYRE_PROOF_YES" dist; then echo "the release export carries the proof's software yes"; exit 1; fi
+          echo "release export: no proof yes"
       - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server), on its own export made for the proof"
         run: |
           EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof --clear
