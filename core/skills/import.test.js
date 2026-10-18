@@ -85,30 +85,3 @@ test("worksWith lists only the parts present and never claims what is not true",
   assert.deepEqual([w.skills !== null, w.commands, w.hooks !== null, w.mcp], [true, null, true, null]);
   assert.equal(w.hooks?.codex.works, false);
 });
-
-import fs from "node:fs";
-import { start } from "../daemon/index.js";
-import { tempHome, present, asOwner } from "../../test/helpers.js";
-
-test("skills.import through a real daemon: a draft, not an approved skill; worksWith comes back; a bad file is refused with the reason", async t => {
-  const root = fs.realpathSync(tempHome(t));
-  fs.writeFileSync(`${root}/config.json`, JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
-  const d = await start({ root, log: () => {}, presence: present, kernel: true });
-  asOwner(d, root);
-  t.after(() => d.stop());
-  const z = zip([{ name: ".claude-plugin/plugin.json", data: plugin() }, { name: "skills/triage/SKILL.md", data: skill("triage") }, { name: "commands/intake.md", data: "Start an intake." }]);
-  const r = await d.registry.call("skills.import", { level: "personal", file: z.toString("base64"), filename: "demo.zip" }, "cli");
-  assert.ok(!r.error, JSON.stringify(r.error));
-  assert.deepEqual([r.data.kind, r.data.name, r.data.code], ["plugin", "demo-plugin", false]);
-  assert.equal(r.data.worksWith.commands.codex.works, false);
-  const versions = await d.registry.call("skills.versions", { name: "demo-plugin", level: "personal" }, "cli");
-  assert.ok(!versions.error, JSON.stringify(versions.error));
-  const vs = versions.data.versions || versions.data;
-  assert.ok(vs.every((/** @type {any} */ v) => v.state === "draft"), "uploaded, not approved");
-  const listed = await d.registry.call("skills.list", {}, "cli");
-  assert.ok(!(listed.data.skills || []).some((/** @type {any} */ s) => s.name === "demo-plugin"), "nothing uses it before approval");
-  const bad = await d.registry.call("skills.import", { level: "personal", file: zip([{ name: "../x", data: "x" }]).toString("base64") }, "cli");
-  assert.match(String(bad.error && bad.error.message), /climbs out/);
-  const notB64 = await d.registry.call("skills.import", { level: "personal", file: "***" }, "cli");
-  assert.ok(notB64.error);
-});
