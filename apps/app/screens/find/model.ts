@@ -70,7 +70,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 export type Row = { key: string; where?: string; from?: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
-export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
+export type Fetched = { messages?: { chat: string; id: string; who: string; snippet: string }[]; recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
 
 const where = (base: Base, slug: string | null, cwd?: string | null): string => (slug ? base.projects.find((p) => p.slug === slug)?.name ?? slug : String(cwd || "").split("/").filter(Boolean).pop() || "");
 
@@ -89,6 +89,9 @@ export function sessionHits(base: Base, q: string, recall: unknown): Row[] {
   }
   return out;
 }
+/** Messages found in the chats this app has opened (the on-device index): the chat's name, the words around the match, who wrote it. Opens the chat. */
+export const messageHits = (base: Base, found: { chat: string; id: string; who: string; snippet: string }[] | undefined): Row[] =>
+  (found ?? []).map((m) => { const r = base.sessions.find((x: any) => x.id === m.chat); return { key: `msg:${m.chat}:${m.id}`, kind: "message", title: r ? sessionTitle(r) : "Chat", snippet: m.snippet, sub: m.who, from: m.who, where: r ? where(base, r.project, r.cwd) : "", session: m.chat }; });
 export const projectHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.projects.filter((p) => hasAll(`${p.name} ${p.slug}`, ws)).map((p) => ({ key: `p:${p.slug}`, kind: "project", title: p.name, href: `/u/project/${encodeURIComponent(p.slug)}` })); };
 export function peopleHits(base: Base, q: string): Row[] {
   const ws = words(q);
@@ -167,6 +170,7 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (sc === "all" && q) add("actions", "Actions", actionHits(q).map((a): Row => ({ key: `x:${a.key}`, kind: "action", title: a.title, sub: "Do", href: a.href })));
   if (sc === "all" && q) add("places", "Go to", placeHits(base, q).slice(0, 4));
   if (want("chats")) add("chats", "Chats", sessionHits(base, q, q.length >= MIN ? fetched.recall : undefined));
+  if (want("chats") && q.length >= MIN) add("messages", "Messages", messageHits(base, fetched.messages));
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
   if (want("people")) add("people", "People", peopleHits(base, q));
   if (want("records")) add("records", "Records", recordHits(base, q));

@@ -10,9 +10,10 @@ import { settingsGroups } from "../settings/logic.js";
 import { find } from "./source-real";
 import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, queryOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
+import { messageIndex } from "../../src/chat/message-index.js";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
-const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
+const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", message: "chat", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
 
 export default function FindPanel({ onDone, initial = "", initialScope = "all" }: { onDone?: () => void; initial?: string; initialScope?: Scope }) {
   const findTag = usePlaceText("home");   // the search is over her own computer
@@ -63,7 +64,9 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
   }, [q]);
 
   const line = q.trim();
-  const secs = useMemo(() => sections(all, line, scope, fetched), [all, line, scope, fetched]);
+  // Messages in the chats this app has opened, searched on this device (memory only, nothing sent).
+  const messages = useMemo(() => { const f = queryOf(line, scope); return f.q.length >= MIN ? messageIndex.search(f.q, { limit: 20, ...(f.from ? { from: f.from } : {}) }) : []; }, [line, scope, loaded]);
+  const secs = useMemo(() => sections(all, line, scope, { ...fetched, messages }), [all, line, scope, fetched, messages]);
   const { cmd, chosen: target } = useMemo(() => readCommand(line, all, chosen), [line, all, chosen]);
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   const idleNow = useMemo(() => idle(all, recents), [all, recents]);

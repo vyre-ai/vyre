@@ -37,7 +37,7 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.equal(l.assistant, "juno");
   assert.deepEqual(l.sessions.map((s) => s.id).sort(), ["s1", "s2", "s3"]);
   assert.deepEqual(l.projects, [{ slug: "juniper", name: "Juniper Studio" }, { slug: "bare", name: "bare" }]);
-  assert.deepEqual(b.seen.map((s) => s.tool).sort(), ["agents.list", "projects.catalog", "projects.list", "threads.list"]);
+  assert.deepEqual(b.seen.map((s) => s.tool).sort(), ["agents.list", "projects.catalog", "projects.list", "settings.schema", "threads.list"]);
   assert.deepEqual(b.seen.find((s) => s.tool === "projects.catalog")?.input, { limit: 300 });
   assert.deepEqual(b.seen.find((s) => s.tool === "threads.list")?.input, { all: true });
   const none = await findSource(box({ error: { "agents.list": { code: "no_such_tool", message: "x" }, "threads.list": { code: "no_such_tool", message: "x" } } }).call, "web").load();
@@ -244,4 +244,17 @@ test("Drive file names: a chat's file opens its chat and says so; a Drive file o
   assert.deepEqual(sections(b, "retainer", "chats", { drive: d }).map((x) => x.key), [], "only in the all and files scopes");
   assert.deepEqual(sections(b, "retainer", "files", { drive: { results: [] } }).map((x) => x.key), []);
   assert.deepEqual(driveHits(null), []);
+});
+
+test("messages: found in the chats this app has opened, in their own group, opening the chat; none until the index answers", { skip: !strip }, async () => {
+  const { sectionsPlain: sections, messageHits } = await import("./model.ts");
+  const b = await base();
+  const sid = b.sessions[0].id;
+  const found = [{ chat: sid, id: "u:1", who: "Dana", snippet: "send the «lease» for Park Lane" }];
+  const rows = messageHits(b, found);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].kind, rows[0].session, rows[0].sub], ["message", sid, "Dana"]);
+  assert.deepEqual(sections(b, "lease", "chats", { messages: found }).map((x) => x.key).filter((k) => k === "messages"), ["messages"]);
+  assert.deepEqual(sections(b, "lease", "chats", {}).map((x) => x.key).filter((k) => k === "messages"), [], "nothing until the index has something");
+  assert.deepEqual(sections(b, "lease", "files", { messages: found }).map((x) => x.key).filter((k) => k === "messages"), [], "only in the Everything and Chats scopes");
 });

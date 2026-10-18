@@ -5,7 +5,7 @@
 export const SCOPE_LIST = /** @type {const} */ ([["all", "Everything"], ["chats", "Chats"], ["people", "People"], ["records", "Records"], ["projects", "Projects"], ["files", "Files"], ["settings", "Settings"]]);
 const SCOPE_WORDS = new Map([["everything", "all"], ["all", "all"], ["chats", "chats"], ["chat", "chats"], ["threads", "chats"], ["people", "people"], ["person", "people"], ["records", "records"], ["record", "records"], ["projects", "projects"], ["project", "projects"], ["files", "files"], ["file", "files"], ["settings", "settings"], ["setting", "settings"]]);
 /** The kinds a row can be, and the words a person may type for each after type:. */
-const TYPE_WORDS = new Map([["chat", "chat"], ["thread", "chat"], ["person", "person"], ["people", "person"], ["agent", "agent"], ["project", "project"], ["record", "record"], ["file", "file"], ["setting", "setting"], ["memory", "memory"], ["action", "action"], ["place", "place"]]);
+const TYPE_WORDS = new Map([["chat", "chat"], ["thread", "chat"], ["message", "message"], ["messages", "message"], ["person", "person"], ["people", "person"], ["agent", "agent"], ["project", "project"], ["record", "record"], ["file", "file"], ["setting", "setting"], ["memory", "memory"], ["action", "action"], ["place", "place"]]);
 
 /**
  * Split a line into the words to search and the filters it carries. A filter is `from:x`, `in:x` or `type:x`; a value with spaces is quoted ("in:'Park Lane'" or in:"Park Lane"). An unknown type or a
