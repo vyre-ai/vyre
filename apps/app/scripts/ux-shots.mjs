@@ -162,6 +162,11 @@ try {
   await browser.close();
   server.close();
 }
+// the Files screen's own pass (move to..., drag to move): files-shots.mjs on the same export, into <out>/files
+try {
+  const { execFileSync } = await import("node:child_process");
+  execFileSync(process.execPath, [path.join(path.dirname(new URL(import.meta.url).pathname), "files-shots.mjs"), path.join(out, "files"), "--dist", dist], { stdio: "inherit", env: process.env, timeout: 10 * 60_000 });
+} catch (e) { console.log("files-shots did not finish: " + String(e.message).slice(0, 200)); }
 fs.writeFileSync(path.join(out, "report.json"), JSON.stringify(report, null, 1));
 const menuBad = (report.menus || []).filter((m) => !m.found || !m.items || m.blank || m.thrown.length);
 const bad = report.pages.filter((p) => p.overflowX > 1 || p.errors?.length);

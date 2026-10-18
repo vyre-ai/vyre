@@ -38,8 +38,29 @@ try {
       const f = page.getByText("Weekly report template.docx").first();
       if (await f.count()) { await f.click(); await shot("3-selected"); }
       await page.getByRole("button", { name: "Show as a grid" }).click().catch(() => {}); await shot("4-grid");
+      // Move to...: the right-click menu, the folder picker, a folder entered, and the move done (with its Undo)
+      await page.getByText("Weekly report template.docx").first().click({ button: "right" }).catch(() => {}); await shot("5-menu");
+      await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("6-picker");
+      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("7-picker-in");
+      await page.getByRole("button", { name: "Move", exact: true }).last().click().catch(() => {}); await shot("8-moved");
+      // drag to move: a folder tile carried over another (the target is outlined and says what will happen), then dropped. A fresh load, so the sample world is as it started.
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      const src = page.locator("[data-tile]").filter({ hasText: "Juniper Studio" }).first(), dst = page.locator("[data-tile]").filter({ hasText: "Vyre site" }).first();
+      if (await src.count() && await dst.count()) {
+        const a = await src.boundingBox(), b = await dst.boundingBox();
+        await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+        await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2 + 12, { steps: 5 });
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 15 });
+        await shot("9-drag-over-folder");
+        await page.mouse.up(); await shot("10-dropped");
+      } else console.log("drag shots skipped: tiles not found");
     } else {
       await page.getByText("Space", { exact: true }).first().click().catch(() => {}); await shot("2-space");
+      // Move to... on a phone: open a file, ask to move it, pick a folder
+      await page.getByText("Juniper Studio", { exact: true }).first().click().catch(() => {}); await shot("3-folder");
+      await page.getByText("Weekly report template.docx").first().click().catch(() => {}); await shot("4-file");
+      await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("5-picker");
+      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("6-picker-in");
     }
     await ctx.close();
   }
