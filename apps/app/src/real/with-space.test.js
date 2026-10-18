@@ -19,7 +19,7 @@ test("a screen's own space wins, and All spaces or no space adds nothing", () =>
 
 test("a tool that does not take a space is left alone", () => {
   for (const t of ["records.get", "records.update", "files.drive.list", "spaces.list", "vault.list"]) assert.deepEqual(withSpace(t, { id: "x" }, A), { id: "x" }, t);
-  assert.equal(SPACE_TOOLS.size, 37, "the 34 the app named by hand, plus records.holders, files.drive.link.create and records.audit, which the tool reference says take a space too (a routing parameter only: the server decides who runs the audit)");
+  assert.equal(SPACE_TOOLS.size, 40, "the 34 the app named by hand, plus records.holders, files.drive.link.create and records.audit, which the tool reference says take a space too (a routing parameter only: the server decides who runs the audit), plus files.drive.space.delete, .move and .rename, whose schemas take { space? }");
   assert.ok(SPACE_TOOLS.has("records.audit"), "records.audit names the showing space");
   assert.deepEqual(withSpace("records.audit", { type: "x" }, A), { type: "x", space: A });
 });
