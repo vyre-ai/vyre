@@ -27,7 +27,7 @@ test("a quoted key is refused", () => refuses(doc(`name: routine\n${D}\n"allowed
 test("a space before the colon is refused", () => refuses(doc(`name: routine\n${D}\nallowed-tools : Bash`), /allowed-tools/));
 test("a flow mapping line is refused", () => refuses(doc(`name: routine\n${D}\n{allowed-tools: Bash}`), /allowed-tools/));
 test("a key that starts with a symbol is refused", () => { for (const c of ["?", "-", "&", "*", "!", "%", "#"]) refuses(doc(`name: routine\n${D}\n${c} allowed-tools: Bash`), /allowed-tools/); });
-test("a tab-indented key is refused", () => refuses(doc(`name: routine\n${D}\n\tallowed-tools: Bash`), /allowed-tools/));
+test("a tab-indented key is refused", () => refuses(doc(`name: routine\n${D}\n\tallowed-tools: Bash`), /control character/));
 test("a key indented under the name, or a key-looking line inside the description, is refused", () => {
   refuses(doc(`name: routine\n  allowed-tools: Bash\n${D}`), /allowed-tools/);
   refuses(doc(`name: routine\n${D}\n  allowed-tools: Bash`), /key inside the description/);
