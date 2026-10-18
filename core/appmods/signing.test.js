@@ -90,7 +90,7 @@ async function app(t) {
     });
   });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
-  t.after(() => server.close());
+  t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   return { origin, seen };
 }
