@@ -576,41 +576,34 @@ export const dateKindOf = (o, type, field) => { if (!(field || "").trim()) retur
 const commaWords = (/** @type {any} */ t) => String(t || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 10).map((x) => x.slice(0, 60));
 
 /**
- * The reviewer and approver of an Assign or Ask step as stored: `reviewer` and `approver` name who; `instructions` and `skills` are per slot ({ doer?, reviewer?, approver? }); `quorum` is "any". With
- * extras on the approver the step writes `approver` (a plain approver still writes the older `checker`, which reads the same). The doer's own skills ride in `skills.doer` once a slot has skills.
+ * The reviewer and approver of an Assign or Ask step as stored: `reviewer: { who, skills?, instructions? }` and `approver: { who, skills?, instructions?, quorum? }`. A plain approver (no skills or
+ * instructions) on an Assign step still writes the older `checker`, which reads the same; an Ask step always writes `approver`. The step's own `skills` stay the doer's.
  * @param {DraftStep} s @param {any} k the step as its kind writes it
  */
 function withSlots(s, k) {
   if (k.kind !== "assign" && k.kind !== "ask") return k;
-  const rSk = commaWords(s.reviewerSkills), aSk = commaWords(s.approverSkills);
-  const ins = { ...(s.reviewer && String(s.reviewerInstructions || "").trim() ? { reviewer: String(s.reviewerInstructions).trim() } : {}), ...(s.checker && String(s.approverInstructions || "").trim() ? { approver: String(s.approverInstructions).trim() } : {}) };
-  const sk = { ...(Array.isArray(k.skills) && k.skills.length ? { doer: k.skills } : {}), ...(s.reviewer && rSk.length ? { reviewer: rSk } : {}), ...(s.checker && aSk.length ? { approver: aSk } : {}) };
-  const rich = !!(s.checker && (aSk.length || ins.approver || k.kind === "ask"));
-  const { skills: _old, checker: _c, ...rest } = k;
-  return { ...rest, ...(s.reviewer ? { reviewer: doer(s.reviewer) } : {}), ...(rich ? { approver: doer(s.checker) } : s.checker ? { checker: doer(s.checker) } : {}), ...(Object.keys(ins).length ? { instructions: ins } : {}), ...(Object.keys(sk).length ? { skills: Object.keys(sk).length === 1 && sk.doer ? sk.doer : sk } : {}) };
+  const slot = (/** @type {string} */ who, /** @type {any} */ skills, /** @type {any} */ ins) => ({ who: doer(who), ...(commaWords(skills).length ? { skills: commaWords(skills) } : {}), ...(String(ins || "").trim() ? { instructions: String(ins).trim().slice(0, 2000) } : {}) });
+  const { checker: _c, ...rest } = k;
+  const approver = s.checker ? slot(s.checker, s.approverSkills, s.approverInstructions) : null;
+  const rich = !!approver && (Object.keys(approver).length > 1 || k.kind === "ask");
+  return { ...rest, ...(s.reviewer ? { reviewer: slot(s.reviewer, s.reviewerSkills, s.reviewerInstructions) } : {}), ...(approver && rich ? { approver } : approver ? { checker: approver.who } : {}) };
 }
 
-/** The reviewer, approver, instructions and skills of a stored Assign or Ask step as draft fields, and the step without them (so the kind reads it as it always did). @param {any} s */
+/** The reviewer and approver of a stored Assign or Ask step as draft fields, and the step without them (so the kind reads it as it always did). `slots` is null when a slot has a shape the editor cannot show. @param {any} s */
 function splitSlots(s) {
   if (s.kind !== "assign" && s.kind !== "ask") return { base: s, slots: {} };
   const back = (/** @type {string} */ v) => (v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
-  const obj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  const { reviewer, approver, quorum, instructions, skills, ...base } = s;
-  const okWho = (/** @type {any} */ v) => v === undefined || typeof v === "string";
-  const list = (/** @type {any} */ v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x && !x.includes(","));
-  if (!okWho(reviewer) || !okWho(approver) || (quorum !== undefined && quorum !== "any") || (instructions !== undefined && !(obj(instructions) && Object.values(instructions).every((x) => typeof x === "string"))) || (approver !== undefined && base.checker !== undefined)) return { base: s, slots: null };
-  if (skills !== undefined && !(Array.isArray(skills) || (obj(skills) && Object.values(skills).every(list)))) return { base: s, slots: null };
-  const doerSkills = Array.isArray(skills) ? skills : obj(skills) ? skills.doer : undefined;
-  const sk = obj(skills) ? skills : {};
-  if (instructions && Object.keys(instructions).some((k) => !["doer", "reviewer", "approver"].includes(k))) return { base: s, slots: null };
-  if (Object.keys(sk).some((k) => !["doer", "reviewer", "approver"].includes(k))) return { base: s, slots: null };
-  if (instructions && instructions.doer !== undefined) return { base: s, slots: null };
+  const { reviewer, approver, ...base } = s;
+  /** @param {any} v @param {string[]} allowed */
+  const good = (v, allowed) => v === undefined || (v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.who === "string" && Object.keys(v).every((k) => allowed.includes(k))
+    && (v.skills === undefined || (Array.isArray(v.skills) && v.skills.every((/** @type {any} */ x) => typeof x === "string" && x && !x.includes(","))))
+    && (v.instructions === undefined || typeof v.instructions === "string") && (v.quorum === undefined || v.quorum === "any"));
+  if (!good(reviewer, ["who", "skills", "instructions"]) || !good(approver, ["who", "skills", "instructions", "quorum"]) || (approver !== undefined && base.checker !== undefined)) return { base: s, slots: null };
   const slots = {
-    ...(reviewer ? { reviewer: back(reviewer) } : {}), ...(approver ? { checker: back(approver) } : {}),
-    ...(sk.reviewer ? { reviewerSkills: sk.reviewer.join(", ") } : {}), ...(sk.approver ? { approverSkills: sk.approver.join(", ") } : {}),
-    ...(instructions && instructions.reviewer ? { reviewerInstructions: instructions.reviewer } : {}), ...(instructions && instructions.approver ? { approverInstructions: instructions.approver } : {}),
+    ...(reviewer ? { reviewer: back(reviewer.who), ...(reviewer.skills ? { reviewerSkills: reviewer.skills.join(", ") } : {}), ...(reviewer.instructions ? { reviewerInstructions: reviewer.instructions } : {}) } : {}),
+    ...(approver ? { checker: back(approver.who), ...(approver.skills ? { approverSkills: approver.skills.join(", ") } : {}), ...(approver.instructions ? { approverInstructions: approver.instructions } : {}) } : {}),
   };
-  return { base: { ...base, ...(doerSkills ? { skills: doerSkills } : {}) }, slots };
+  return { base, slots };
 }
 
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
