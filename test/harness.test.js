@@ -98,6 +98,21 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.match(JSON.parse(outside.out).hookSpecificOutput.additionalContext, /^(About the user, from Vyre's memory[^\n]*\n(- [^\n]*\n)*\n)?Time: it is [^\n]*$/, "outside a project the brief is only the time, and at most the user-level About block before it");
 });
 
+test("hooks: the brief outside a project, once the about file is written, is the user-level About block and then the time", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { VYRE_HOME: root };
+  // the about module writes <home>/about.md 5 s after the daemon starts: wait for it, so this is the shape every brief has once it is there
+  const file = path.join(root, "about.md");
+  for (let i = 0; i < 300 && !fs.existsSync(file); i++) await new Promise(r => setTimeout(r, 100));
+  assert.ok(fs.existsSync(file), "the about file was written");
+  const outside = await hook("brief", { session_id: "s2", cwd: "/w", source: "startup" }, env);
+  assert.equal(outside.code, 0);
+  const text = JSON.parse(outside.out).hookSpecificOutput.additionalContext;
+  assert.match(text, /^About the user, from Vyre's memory[^\n]*\n(- [^\n]*\n)*\nTime: it is [^\n]*$/, text);
+});
+
 test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
