@@ -33,7 +33,7 @@ import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
 import { OriginBlock } from "./OriginBlock";
 import { loadOrigin, sampleOrigin } from "./origin-history-source";
-import type { OriginRow } from "./origin-history.js";
+import { sampleAllowed, type OriginRow } from "./origin-history.js";
 import { addToAgentThread, addToGroupChat, newThreadWith } from "./add-people";
 import { callsFromItems, flowNameOf, afterMake } from "./make-flow-model.js";
 import { callT } from "../real/call-tool";
@@ -389,7 +389,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const agentForNote = kind === "agent" ? agentNames[0] : "";
   const thisThread = here.thread ?? p.sessionId;
   useEffect(() => {
-    setForkedFrom(p.sampleFork ? { thread: "demo", message: "a1", title: "Fix the intake date check" } : null); setOriginRows(null);
+    setForkedFrom(sampleAllowed(p.sampleFork, allowsMock()) ? { thread: "demo", message: "a1", title: "Fix the intake date check" } : null); setOriginRows(null);
     if (!agentForNote || allowsMock()) return;
     let live = true;
     void agentThreads.list(agentForNote).then((r) => {
@@ -402,9 +402,9 @@ export function ChatScreen(p: ChatScreenProps) {
   }, [agentForNote, thisThread]);
   // the fork's origin, read once: what it said up to the fork, or nothing when this device cannot open it
   useEffect(() => {
-    if (!forkedFrom || (allowsMock() && !p.sampleFork)) return;
+    if (!forkedFrom || (allowsMock() && !sampleAllowed(p.sampleFork, allowsMock()))) return;
     let live = true;
-    void (p.sampleFork ? sampleOrigin() : loadOrigin(forkedFrom.thread, forkedFrom.message)).then((r) => { if (live) setOriginRows(r); });
+    void (sampleAllowed(p.sampleFork, allowsMock()) ? sampleOrigin() : loadOrigin(forkedFrom.thread, forkedFrom.message)).then((r) => { if (live) setOriginRows(r); });
     return () => { live = false; };
   }, [forkedFrom]);
   const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };

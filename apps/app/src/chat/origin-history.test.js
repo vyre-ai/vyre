@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { originRows, openOriginRows } from "./origin-history.js";
+import { originRows, openOriginRows, sampleAllowed } from "./origin-history.js";
 import { sealUserMessage } from "./private-text.js";
 
 let cur = 0;
@@ -60,4 +60,11 @@ test("a private message is opened with the origin's key; a device without the ri
   const open = await openOriginRows(raw.rows, async (kid) => (kid === "k1" ? key : null));
   assert.deepEqual(open?.map((x) => x.text), ["Secret ask", "Reply"]);
   assert.equal(await openOriginRows(raw.rows, async () => null), null);
+});
+
+test("the sample origin (a fixed key) is only for the mock world: never reached in the real app", () => {
+  assert.equal(sampleAllowed(true, true), true);
+  assert.equal(sampleAllowed(true, false), false);
+  assert.equal(sampleAllowed(false, true), false);
+  assert.equal(sampleAllowed(undefined, false), false);
 });

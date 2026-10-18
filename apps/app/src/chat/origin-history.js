@@ -48,3 +48,6 @@ export async function openOriginRows(rows, opener) {
   }
   return out;
 }
+
+/** The sample origin holds a fixed key, so it runs only on the demo route and the shots: asked for AND in the mock world. @param {boolean | undefined} asked @param {boolean} mock */
+export const sampleAllowed = (asked, mock) => asked === true && mock === true;
