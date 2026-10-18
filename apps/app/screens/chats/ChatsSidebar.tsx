@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { allowsMock, ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationHeader, ConversationList, ConversationTypes, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -20,8 +20,8 @@ import { Text } from "@vyre/ui";
 export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.exec(path)?.[1] ?? "";
 
 /** What the header and the list share: the search, the project and the tag (the header sets them, the list reads them), and what the list found for the filter menu. */
-const useChatsFilter = create<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; set: (p: Partial<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean }>) => void }>((set) => ({
-  q: "", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
+const useChatsFilter = create<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; set: (p: Partial<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean }>) => void }>((set) => ({
+  q: "", type: "all", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
 const useAdd = () => {
@@ -97,7 +97,9 @@ export function ChatsSidebar() {
   useEffect(() => { f.set({ all: convos, tags: tagNames ? tagNames.split(",") : [] }); }, [convos, tagNames]);
   // Your own pins go first, after your assistant's chat; the order inside each part is the list's.
   const pinnedFirst = (c: Convo) => (c.pinned ? 0 : c.chat && prefs.pinned.includes(c.chat) ? 1 : 2);
-  const found = [...convosShown(convos, { project: f.project, query: f.q })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
+  // a chat you pinned sits under Pinned with your assistant
+  const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
+  const found = [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
@@ -106,8 +108,9 @@ export function ChatsSidebar() {
     // one View, so the closed sheets are not seven children of a parent that spaces its children
     <View>
       {sheets}
+      <ConversationTypes type={f.type} onType={(type) => f.set({ type })} />
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
-      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
+      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </View>
   );
