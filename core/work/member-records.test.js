@@ -231,7 +231,7 @@ test("a private note and an outside calendar's event are private on every kernel
     assert.equal((await call(who, "records.log", { urn: ev.urn, kind: "call", text: "x" })).error.code, "not_found", `${name}: logging on the event is not found`);
   }
   // BEN reads both, and the Space's own events are not touched
-  assert.equal((await gw.records.query(w.chainOf(BEN), "note", { page: { limit: 50 } })).rows.length, 1);
+  assert.equal((await gw.records.query(gw.serviceChain("planner"), "note", { page: { limit: 50 } })).rows.length, 1, "the planner reads it (a member reads her notes through the planner)");
   assert.equal((await gw.records.query(w.chainOf(BEN), "event", { page: { limit: 50 } })).rows.length, 1);
   // sharing a note: only its writer, through the planner
   const item = (await call(BEN, "planner.add", { kind: "note", title: "Shared later", record: contact.urn })).data;
