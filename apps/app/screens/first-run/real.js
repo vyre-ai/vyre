@@ -153,6 +153,20 @@ export async function currentAssistant() {
   catch (e) { return fail(e); }
 }
 
+/** The other Space's AI accounts, for the copy sheet. */
+export async function listCopyable() {
+  if (MOCK) return mock.listCopyable();
+  try { return done(await tool("onboard.accounts.copyable", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** Copy chosen key accounts to the new Space. @param {{ ids: string[], password?: string }} input */
+export async function copyAccounts(input) {
+  if (MOCK) return mock.copyAccounts(input);
+  try { return done(await tool("onboard.accounts.copy", input)); }
+  catch (e) { return fail(e); }
+}
+
 /** What each connected AI account offers, for the model step. */
 export async function listAssistantModels() {
   if (MOCK) return mock.listAssistantModels();

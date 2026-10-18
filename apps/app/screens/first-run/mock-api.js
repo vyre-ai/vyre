@@ -111,6 +111,15 @@ export async function currentAssistant() {
   return { ok: true, assistant: { name: "Juno", look: "s2~c3~e1~m0~t1~b0~h2" } };
 }
 
+export async function listCopyable() {
+  return { ok: true, from: "Juniper Studio", accounts: [{ id: "a1", label: "Claude Work", provider: "claude", copy: true }, { id: "a2", label: "Codex", provider: "codex", copy: false }] };
+}
+
+/** @param {{ ids: string[] }} input */
+export async function copyAccounts(input) {
+  return { ok: true, copied: input.ids.map((id) => ({ id, label: id, ok: true })) };
+}
+
 export async function listAssistantModels() {
   return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] }] };
 }

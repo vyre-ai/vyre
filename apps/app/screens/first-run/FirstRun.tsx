@@ -14,12 +14,12 @@ import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
-import { ACCOUNTS_COPY, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, currentAssistant, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
@@ -92,6 +92,9 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
   const [asDone, setAsDone] = useState(false);
+  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean }[] } | null>(null);
+  const [copyPick, setCopyPick] = useState<string[]>([]);
+  const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(null);
   const [carried, setCarried] = useState<{ name: string; look: string } | null>(null);
   const [changing, setChanging] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
@@ -165,6 +168,18 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     }, 2500);
     return () => clearTimeout(t);
   }, [shot, screen, holdOpen, failure, spaces.length, router]);
+
+  // Adding another Space: the AI accounts of the Space already there, offered for copying (the sheet below says the count of confirmations first)
+  useEffect(() => {
+    if (shot || screen !== "id.ai" || !isAnother(path, signedIn) || copyable) return;
+    let live = true;
+    void listCopyable().then((r) => {
+      if (!live || !r.ok) return;
+      const list = Array.isArray(r.accounts) ? r.accounts : [];
+      setCopyable({ from: String(r.from || "your other Space"), accounts: list });
+    });
+    return () => { live = false; };
+  }, [shot, screen, path, signedIn, copyable]);
 
   // Adding another Space: the Assistant of the Space already there comes along (its name and look), kept with one press or changed
   useEffect(() => {
@@ -421,6 +436,37 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           if (!accounts.length) { setFailure(ACCOUNTS_COPY.empty); return; }
           onward();
         } }}>
+        {isAnother(path, signedIn) && copyable && copyable.accounts.length ? (() => {
+          const w = copyWords({ from: copyable.from, to: space || "this Space", count: copyPick.length });
+          return (
+            <View style={{ gap: 8, padding: 14, borderRadius: 16, backgroundColor: color["surface-2"] }} accessibilityLabel="Copy your AI accounts">
+              <Text strong>{w.title}</Text>
+              <Text tone="muted">{w.lead}</Text>
+              {copyable.accounts.map((a) => {
+                const on = copyPick.includes(a.id), done1 = copyDone?.find((x) => x.id === a.id);
+                return (
+                  <Pressable key={a.id} accessibilityRole="checkbox" accessibilityLabel={a.label} accessibilityState={{ checked: on, disabled: !a.copy }} disabled={!a.copy || Boolean(copyDone)}
+                    onPress={() => setCopyPick((p) => (p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]))} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6, opacity: a.copy ? 1 : 0.6 }}>
+                    <ProviderBadge provider={a.provider} size={20} />
+                    <Text>{a.label}</Text>
+                    <Text tone="muted" size="caption">{done1 ? (done1.ok ? "Copied" : done1.why || "Not copied") : !a.copy ? w.again : on ? "Selected" : ""}</Text>
+                  </Pressable>
+                );
+              })}
+              {copyPick.length && !copyDone ? <Text tone="muted" size="caption">{w.confirm}</Text> : null}
+              {!copyDone ? <Button kind="secondary" size="lg" label={w.button(copyPick.length)} loading={busy} disabled={!copyPick.length || busy} onPress={() => void run(async () => {
+                const r = await copyAccounts({ ids: copyPick, ...(keyPassword ? { password: keyPassword } : {}) });
+                setKeyPassword("");
+                if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
+                if (!r.ok) { setFailure(r.message); return; }
+                const list = Array.isArray(r.copied) ? r.copied : [];
+                setCopyDone(list);
+                setAccounts((x) => [...x, ...list.filter((c: { ok: boolean }) => c.ok).map((c: { label: string }) => ({ provider: "", label: c.label }))]);
+              })} /> : null}
+              {needPw && !copyDone ? <PasswordField label={ACCOUNTS_COPY.keyPassword} value={keyPassword} onChangeText={setKeyPassword} /> : null}
+            </View>
+          );
+        })() : null}
         <View style={{ gap: 8 }} accessibilityLabel="AI providers">
           {agents.map((a) => (
             <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`Add ${a.label}`} disabled={busy || Boolean(agentFlow)}
