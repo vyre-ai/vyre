@@ -83,6 +83,9 @@ try {
   check(!r.error, "4a computers.checkout kit", r.error ? r.error : { state: r.data.state, screen: r.data.screen, host: r.data.host ? "(container address)" : null });
   const ps = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Names}}|{{.Status}}|{{.Image}}"]);
   check(ps.startsWith(CONTAINER + "|Up"), "4a docker ps shows the container up", ps);
+  // With the default config the agent has its own computer and nothing is shared: no browser-shared container exists (the shared browser is off until 0.6.2).
+  const shared = shOk(["ps", "-a", "--filter", `name=${PREFIX}-computer-browser-shared`, "--format", "{{.Names}}"]);
+  check(shared === "", `4a docker ps shows no ${PREFIX}-computer-browser-shared`, shared || "(none)");
   const labels = JSON.parse(sh(["inspect", "-f", "{{json .Config.Labels}}", CONTAINER]));
   check(labels[`${PREFIX}.managed`] === "true" && labels[`${PREFIX}.computer`] === AGENT && labels["run.vyre"] === "1", "4a labels", labels);
   const hc = JSON.parse(sh(["inspect", "-f", "{{json .HostConfig}}", CONTAINER]));
@@ -272,7 +275,7 @@ try {
   console.log((iso.stdout || "").split("\n").filter(l => /^(not )?ok /.test(l)).map(l => "  " + l.slice(0, 170)).join("\n"));
   check(iso.status === 0 && line("fail") === "0" && line("skipped") === "0", "3 isolation.test.js on the pool's container", { pass: line("pass"), fail: line("fail"), skipped: line("skipped") });
   const bc = spawnSync("node", ["scripts/computers-proof/browser-checks.mjs", ep.data.url, ep.data.token, CONTAINER], { cwd: here, env, encoding: "utf8", timeout: 240_000 });
-  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
+  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL|KNOWN-FAIL|KNOWN-PASS|known failures)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
 
   // ---- 4g. one computer cannot reach another's ports (the matrix's J7 step 7.4) ----------------

@@ -460,7 +460,8 @@ export default {
         return { ticket, path, width: w, height: h };
       });
 
-    const agentdReady = () => { const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    // Per-agent users on the space's computer are off until 0.6.2: the box opts in with computers.agentUsers: true, and even then agentd must be up (the shared box has a container and its computerd answered, so its host is registered).
+    const agentdReady = () => { if (!(ctx.config && ctx.config.computers && ctx.config.computers.agentUsers === true)) return false; const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
     const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",

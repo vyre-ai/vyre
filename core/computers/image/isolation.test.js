@@ -455,7 +455,7 @@ test("isolation (static): each agent's browser is its own uid, whose profile, de
   assert.match(chrome, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
   assert.match(chrome, /os\.chmod\(SOCK, 0o600\)/);
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
-  assert.match(agentd, /\.\.\.bs\(\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
+  assert.match(agentd, /\.\.\.asBrowser\(u, \{ \.\.\.lim, memoryMb: 0 \}\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-chrome\.py"/, "Chrome's holder is started as the browser uid");
   assert.doesNotMatch(agentd, /asAgent\([^)]*\)[^\n]*agentd-chrome/, "never as the agent");
 });
 
