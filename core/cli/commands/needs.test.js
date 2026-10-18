@@ -161,6 +161,16 @@ async function world(t) {
         await new Promise(res => setTimeout(res, 200));
       }
     }
+    // "stopped" is the status; the session's last writes and the daemon's handlers for them can still be on their way on a loaded shard. Wait until nothing more is added to any thread (three reads in a row the same).
+    for (const id of threads) {
+      let last = -1, same = 0;
+      for (const end = Date.now() + 20_000; same < 3 && Date.now() < end;) {
+        const r = await tool("threads.get", { thread: id, limit: 1000 }).catch(() => null);
+        const n = r && r.data && Array.isArray(r.data.events) ? r.data.events.length : -1;
+        if (n === last) same++; else { same = 0; last = n; }
+        await new Promise(res => setTimeout(res, 250));
+      }
+    }
   });
   const asks = await until(async () => { const r = (await tool("threads.asks", {})).data || []; return r.length === 3 ? r : null; }, "three asks");
   return { root, screen, work, tool, draft: held.data.id,

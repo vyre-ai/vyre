@@ -7,7 +7,8 @@
 //   { op: "insert", lane: "on_failure", first | after, line | step }   a step in the Flow's own failure steps ("If the run fails")
 //   { op: "remove", step }
 //   { op: "move", step, by }                        within its list, by an offset
-//   { op: "trigger", trigger }
+//   { op: "trigger", trigger }                      the one trigger (a list of triggers becomes this one)
+//   { op: "triggers", triggers }                    the list of triggers; any of them starts a run
 //   { op: "meta", key, value }                      name, label, description, concurrency, lock, stuck_after_ms, group, project, sends, returns
 //
 // A step is named by its id. An unknown id says which ids there are and which is close.
@@ -99,13 +100,14 @@ export function applyPatch(flow, patch) {
       }
       case "remove": known(f, p.step, at); f = ops.removeStep(f, p.step); break;
       case "move": known(f, p.step, at); if (!Number.isInteger(p.by)) throw new PatchError(at, "by is a whole number of places (negative moves up)"); f = ops.moveStep(f, p.step, p.by); break;
+      case "triggers": if (!Array.isArray(p.triggers) || p.triggers.some((/** @type {any} */ t) => !t || typeof t !== "object")) throw new PatchError(at, "triggers is the list of triggers, each an object"); f = ops.setTriggers(f, p.triggers); break;
       case "trigger": if (!p.trigger || typeof p.trigger !== "object") throw new PatchError(at, "trigger is the new trigger"); f = ops.setTrigger(f, p.trigger); break;
       case "meta": {
         if (!META_KEYS.includes(p.key)) throw new PatchError(at, `key is one of ${META_KEYS.join(", ")}`);
         f = { ...f }; if (p.value === undefined) delete f[p.key]; else f[p.key] = p.value;
         break;
       }
-      default: throw new PatchError(at, `op is one of set, replace, insert, remove, move, trigger, meta${p.op ? `; ${p.op} is not one` : ""}`);
+      default: throw new PatchError(at, `op is one of set, replace, insert, remove, move, trigger, triggers, meta${p.op ? `; ${p.op} is not one` : ""}`);
     }
   });
   return f;

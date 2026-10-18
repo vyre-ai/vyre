@@ -47,6 +47,7 @@ export const MEMBER_ROWS = [
  "skills.decline",
  "skills.draft",
  "skills.get",
+ "skills.import",
  "skills.list",
  "skills.rollback",
  "skills.versions",
@@ -54,7 +55,9 @@ export const MEMBER_ROWS = [
  "tasks.list",
  "tasks.move",
  "tasks.request",
+ "tasks.review",
  "tasks.submit",
+ "tasks.update",
  "work.project-create",
  "work.start-project",
  "work.templates"

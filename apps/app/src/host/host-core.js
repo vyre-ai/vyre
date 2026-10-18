@@ -715,7 +715,7 @@ export function createHost(o) {
         }
       } catch (e) {
         const said = String((e && /** @type {any} */ (e).message) || "Not added.");
-        const clean = keys.reduce((t, k) => t.split(k.key).join("[hidden]"), said).slice(0, 160);
+        const clean = scrub(said, keys.map((k) => k.key), { marker: "[hidden]", min: 1 }).slice(0, 160);
         if (e && /** @type {any} */ (e).code === "need_password") throw e;
         throw bad(clean, e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
       } finally { keys.length = 0; }

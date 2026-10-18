@@ -79,7 +79,7 @@ When modules are ordered and started:
 - A module whose `requires` names a module that is missing, failed or not running fails with the reason.
 - A cycle in `requires` fails every module on it.
 - A second module with a name already loaded is `invalid` and ignored. Vyre's own folders load first.
-- The entry file must `export default { start(ctx) }`. If `start` throws, the module is `failed`, and its tools, streams and routes are removed.
+- The entry file must `export default { start(ctx) }`. If `start` throws, the module is `failed`, and its tools, streams and routes are removed. If the module's default export also has a `stop()`, Vyre calls it once (within 5 seconds) so what `start` opened before it threw is closed; a module that opens something in `start` should close it there too.
 
 At run time, each of these throws inside the module:
 

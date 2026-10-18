@@ -577,6 +577,8 @@ export const OPEN = new Set([
   "tasks.request",
   "tasks.move",
   "tasks.submit",
+  "tasks.update",
+  "tasks.review",
   "vault.provider.status",
   "artifacts.activity.log",
   "artifacts.mention.search",

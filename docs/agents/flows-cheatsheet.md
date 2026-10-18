@@ -74,9 +74,9 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     welcome subflow flow=send_welcome input={client: `trigger.client`}
 - wait: for_ms, until, offset_ms, event, where, timeout_ms, on_timeout; no timeout_ms
     pause wait for_ms=3600000
-- ask: to, title, form, record
+- ask: to, title, form, record, reviewer, approver
     yes ask to=role:partner title="Send the welcome email?"
-- assign: to, title, record, output, how, template, checker, await, skills, followers, notes, brief
+- assign: to, title, record, output, how, template, checker, reviewer, approver, await, skills, followers, notes, brief
     task assign to=teammate:paralegal title="Draft the engagement letter" output={kind: draft}
 - call: action, resource, input, with, approve
     mail call action=email.send resource=vyre://space/email/outbox input={to: `trigger.email`, subject: Welcome}
