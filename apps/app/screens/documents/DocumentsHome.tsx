@@ -10,6 +10,7 @@ import { FileViewerSheet } from "../drive/FileViewerSheet";
 import { aliasesFor, whenWords } from "../records/documents-model.js";
 import { MADE_GROUPS, madeSub, appState, asRecs, fillsFor, madeGroupOf, madeRows } from "./model.js";
 import { signingLabel, useSigningTemplates } from "./useSigningTemplates";
+import { RequestTimeline } from "./RequestTimeline";
 
 type Tab = "made" | "waiting" | "templates" | "setup";
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -125,6 +126,7 @@ export function DocumentsHome() {
             {waiting.map((w, i) => (
               <View key={w.submission}>{i ? <View className="h-px bg-edge" /> : null}
                 <Row dense title={String(w.template ?? "Document")} sub={`${w.signer || w.email}, sent ${whenWords(w.at, Date.now()) || "recently"}`} end={<Button kind="secondary" size="sm" label="Remind" onPress={() => void remind(w.submission)} />} />
+                <View style={{ paddingHorizontal: 16, paddingBottom: 10, gap: 2 }}><RequestTimeline submission={w.submission} /></View>
               </View>
             ))}
           </Card>
