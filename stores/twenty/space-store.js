@@ -187,6 +187,8 @@ export function createStoreFor(cfg) {
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
     log(`store for ${space}: Records ready`);
+    // The first list a person opens is the slow one (Twenty's first query of a fresh server: p95 316 ms against 41 ms after, stores/twenty/live/perf-live.mjs): ask once now, throwaway, so they never meet it.
+    if (!cfg.makeStore) void Promise.resolve().then(() => store.query("contact", { page: { limit: 50 } })).catch(() => {});
     /** @type {any} */ (store).keyCheck = checkKey;
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
