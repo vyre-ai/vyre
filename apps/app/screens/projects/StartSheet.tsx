@@ -7,7 +7,7 @@ import { startName } from "../templates/model";
 export type StartExtras = { client?: string; lead?: string; team: string[]; names: Record<string, string> };
 
 /**
- * Asks what to call a new project made from a playbook ("Rivera Family Trust"), in its own words: "Start a matter". It may be linked to a client record and given its people: who leads it, and who else is on
+ * Asks what to call a new project made from a playbook ("Rivera Family Trust"), in its own words: "Start a campaign". It may be linked to a client record and given its people: who leads it, and who else is on
  * it. Each is optional; the playbook's own assistants join as before.
  */
 export function StartSheet({ noun, playbook, open, busy, onClose, onStart }: { noun: string; /** The playbook it is made from, named in the line under the title. */ playbook?: string; open: boolean; busy: boolean; onClose: () => void; onStart: (name: string, extras: StartExtras) => void }) {

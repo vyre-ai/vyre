@@ -150,7 +150,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
     const first = body.stages[0].name;
     const lead = (body.roles || []).find((/** @type {any} */ r) => r.lead && r.agent);
     const proj = await k.records.update(chain, "project", made.id, {
-      template: rec.data.template, template_version: String(rec.data.version), template_stage: first, template_snapshot: snapshotOf(body, { id: rec.data.template, version: rec.data.version }),
+      kind: "stages", template: rec.data.template, template_version: String(rec.data.version), template_stage: first, template_snapshot: snapshotOf(body, { id: rec.data.template, version: rec.data.version }),
       ...(lead ? { lead: lead.agent } : {}), tags: changeTags(made.data.tags || "", { add: [...(body.tags || []), `from-${rec.data.template.replace(/^tpl_/, "")}`] }),
     }, made.version);
     const team = [];

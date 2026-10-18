@@ -228,6 +228,8 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived", "moved"]),
+    // how the project runs, chosen when it starts: stages (a playbook's stage track), client (tied to a company or person), ongoing (a board plus Flows) or simple. None reads as simple. The Personal project has none: it is pinned and private.
+    choice("kind", "How it runs", ["stages", "client", "ongoing", "simple"]),
     // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
     f("link", "client", "Client", { to: "contact", inverse: { name: "projects", label: "Projects" } }),
     f("actor", "owner", "Owner"),

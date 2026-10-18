@@ -11,7 +11,7 @@ permissions:
 jobs:
   refresh:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-update]') }}
-    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && (github.ref_type == 'tag' || github.ref_name == 'main' || startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'integrate/') || endsWith(github.ref_name, '/train') || startsWith(github.ref_name, 'work/lead-'))) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       VYRE_NO_DIALOGS: "1"

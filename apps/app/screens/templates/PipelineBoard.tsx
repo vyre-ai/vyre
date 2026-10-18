@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { Platform, Pressable, ScrollView, View } from "react-native";
-import { AvatarStack, Button, Card, Chip, Field, Menu, IconButton, StatusPill, Text } from "@vyre/ui";
+import { AvatarStack, Button, Card, Chip, Field, Icon, Menu, IconButton, StatusPill, Text } from "@vyre/ui";
 import type { Body } from "./model";
 import * as E from "./edit";
 import { boardColumns, type Card as TaskCard, type Person } from "./board";
@@ -128,6 +128,9 @@ export function Board({ body, onChange, selected, onOpen, people, agents, editab
         <DragBox key={c.index} what={editable ? `task:${col.index}:${c.index}` : undefined} onDrop={editable ? (w) => dropTask(w, col.index, c.index) : undefined}>
           <TaskCardView c={c} selected={selected?.si === col.index && selected?.ti === c.index} onOpen={() => onOpen(col.index, c.index)} hints={Boolean(compose)} />
         </DragBox>
+      ))}
+      {col.flows.map((f) => (
+        <Card key={`${f.flow}:${f.when}`}><View className="flex-row items-center gap-s2 p-s3"><Icon name="flows" size={14} tone="accent" /><View className="min-w-0 flex-1"><Text numberOfLines={1}>{f.flow.replace(/_/g, " ")}</Text><Text size="caption" tone="label">{f.when === "start" ? "Flow, turns on when the project starts" : `Flow, turns on here${f.note ? `. ${f.note}` : ""}`}</Text></View></View></Card>
       ))}
       {compose && editable ? <AddLine at={{ si: col.index, ti: col.tasks.length }} focused={compose.focus?.si === col.index && compose.focus?.ti === col.tasks.length} onKey={(t, k) => compose.onKey({ si: col.index, ti: col.tasks.length }, t, k)} /> : null}
       {compose && editable && col.index === 0 && !col.tasks.length && body.stages.every((s) => /^Stage \d+$|^Done$/.test(s.name)) ? (

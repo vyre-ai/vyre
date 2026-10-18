@@ -113,7 +113,7 @@ export default function TemplateScreen() {
               <Field name="Playbook name" value={draft.name} onChangeText={(v: string) => setDraft(E.setName(draft, v))} placeholder={DEFAULT_NAME} autoFocus />
               <View className="flex-row flex-wrap items-center gap-s2">
                 <Text tone="muted">Each one is called a</Text>
-                <View style={{ width: 180 }}><Field name="What one is called" value={draft.noun?.one || ""} onChangeText={(v: string) => setDraft(E.setNoun(draft, v))} placeholder="Matter" /></View>
+                <View style={{ width: 180 }}><Field name="What one is called" value={draft.noun?.one || ""} onChangeText={(v: string) => setDraft(E.setNoun(draft, v))} placeholder="Campaign" /></View>
                 {NOUN_SUGGESTIONS.map((n) => <Chip key={n} selected={draft.noun?.one === n} onPress={() => setDraft(E.setNoun(draft, n))}>{n}</Chip>)}
               </View>
             </View>

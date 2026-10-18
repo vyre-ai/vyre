@@ -18,8 +18,17 @@ import { templates } from "./templates";
 
 type Lib = Awaited<ReturnType<typeof templates.library>>;
 
+/** One segment per stage, so a playbook's shape reads at a glance; the names are for a screen reader and the stage under the pointer. */
+function StageBar({ names }: { names: string[] }) {
+  return (
+    <View className="flex-row gap-s1" accessible accessibilityLabel={`${names.length} stages: ${names.join(", ")}`}>
+      {names.map((nm, k) => <View key={`${k}:${nm}`} className="h-1 flex-1 rounded-full bg-primary" style={{ height: 4 }} />)}
+    </View>
+  );
+}
+
 /**
- * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a matter". Live and drafts sit in
+ * /u/playbooks (and the old /u/templates): the list of this Space's playbooks as cards: its name, what its projects are called, its stages as a strip, its counts and the one thing you do with it, "Start a campaign". Live and drafts sit in
  * two groups; a quiet "..." has Duplicate. "+ New" offers a blank one, one from a Kit, or "Describe it" to the Engineer.
  */
 export default function TemplatesScreen() {
@@ -35,13 +44,15 @@ export default function TemplatesScreen() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [describing, setDescribing] = useState(false);
+  const [idea, setIdea] = useState("");
   const [starting, setStarting] = useState<TemplateRow | null>(null);
   const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
   useEffect(load, [load]);
   useEffect(() => { (rows || []).forEach((r) => { if (!bodies[r.template]) templates.get(r.template, r.live ?? r.latest).then((v) => v.body && setBodies((b) => ({ ...b, [r.template]: v.body! }))).catch(() => undefined); }); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
-  const running = useMemo(() => { const m = new Map<string, number>(); for (const i of (work.data?.items ?? []) as any[]) { const t = i.row?.data?.template; if (i.def?.name === "project" && t) m.set(String(t), (m.get(String(t)) || 0) + 1); } return m; }, [work.data]);
+  // the projects each playbook has started, by name (a project that is archived is not "used by")
+  const used = useMemo(() => { const m = new Map<string, string[]>(); for (const i of (work.data?.items ?? []) as any[]) { const t = i.row?.data?.template, name = i.row?.data?.name; if (i.def?.name === "project" && t && name && i.row?.data?.status !== "archived") m.set(String(t), [...(m.get(String(t)) || []), String(name)]); } return m; }, [work.data]);
   const shown = filterRows(rows || [], query, "all");
-  const items = shown.map((r) => ({ r, c: cardOf(r, bodies[r.template] ?? null, running.get(r.template) || 0), group: cardOf(r, null, 0).group }));
+  const items = shown.map((r) => ({ r, c: cardOf(r, bodies[r.template] ?? null, used.get(r.template) || []), group: cardOf(r, null).group }));
   const act = async (name: string, fn: () => Promise<void>) => { setBusy(name); try { await fn(); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); } };
   // a blank playbook is made at once and opened as a board to write on: no form first
   const startBlank = () => act("new", async () => { const id = `tpl_untitled-${Math.random().toString(36).slice(2, 7)}`; const v = await templates.define(starterBody(), id, "started blank"); router.push(playbookPath(v.template) as never); });
@@ -63,9 +74,10 @@ export default function TemplatesScreen() {
                             {menu}
             </View>
           </Pressable>
-          {c.stages.length ? <Text size="caption" tone="label" numberOfLines={1}>{c.stages.join("  ›  ")}</Text> : null}
+          {c.stages.length ? <StageBar names={c.stages} /> : null}
+          <Text size="caption" tone="muted" numberOfLines={1}>{c.counts || " "}</Text>
+          <Text size="caption" tone="label" numberOfLines={1}>{c.usedBy}</Text>
           <View className="flex-row flex-wrap items-center gap-s2">
-            <Text size="caption" tone="muted" numberOfLines={1}>{c.counts || " "}</Text>
             <View className="ml-auto">{r.live !== null ? <Button kind="primary" size="sm" label={c.start} onPress={() => setStarting(r)} /> : <Button kind="primary" size="sm" label="Open" onPress={() => router.push(playbookPath(r.template) as never)} />}</View>
           </View>
         </View></Card>
@@ -79,6 +91,13 @@ export default function TemplatesScreen() {
         { label: "From a kit", onPress: () => setShowKits(true) },
         { label: "Describe a playbook to the Engineer", onPress: () => setDescribing(true) },
       ]} /> : undefined}>
+      <Text tone="muted">A playbook is a kind of project your team runs again and again: its stages, the to-dos in each, who does what, and the Flows that run inside it. Start a project from one in a click.</Text>
+      {mayMake ? (
+        <View className="flex-row items-end gap-s2">
+          <View className="min-w-0 flex-1"><Field label="Describe a kind of project" value={idea} onChangeText={setIdea} placeholder="For example: a product launch: brief, draft, review, launch, wrap up" /></View>
+          <Button kind="primary" size="sm" label="Draft it" disabled={!idea.trim()} onPress={() => { const words = idea.trim(); setIdea(""); openEngineer(router, { source: "playbook", words }); }} />
+        </View>
+      ) : null}
       <Field name="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} />
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
       {rows === null && !err ? <LoadingState rows={3} /> : null}

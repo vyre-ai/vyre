@@ -19,7 +19,7 @@ export function taskHeader(world: World, task: any): { title: string; context: s
   };
 }
 
-/** For a project: the emblem, its title, and "Matter · Juniper Studio". */
+/** For a project: the emblem, its title, and "Campaign · Juniper Studio". */
 export function projectHeader(world: World, def: any, row: any): { title: string; context: string; faces: AvatarRef[] } {
   const title = recordTitle(world, row);
   return {

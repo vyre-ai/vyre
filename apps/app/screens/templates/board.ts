@@ -22,7 +22,8 @@ export function doneRule(s: Stage, _b?: Body): string {
 
 export type Person = { label: string; kind: "role" | "lead" | "person" | "agent" };
 export type Card = { index: number; title: string; assignee: Person; approver: Person | null; followers: Person[]; due: string; needsYes: string; group: string; optional: boolean };
-export type Column = { index: number; name: string; rule: string; last: boolean; groups: string[]; tasks: Card[] };
+export type ColumnFlow = { flow: string; when: string; note?: string };
+export type Column = { index: number; name: string; rule: string; last: boolean; groups: string[]; tasks: Card[]; flows: ColumnFlow[] };
 
 /** One task as a card. */
 export function taskCard(t: Task, b: Body, people: Who[] = [], agents: Who[] = [], index = 0): Card {
@@ -40,6 +41,7 @@ export function boardColumns(b: Body, people: Who[] = [], agents: Who[] = []): C
   return stages.map((s, i) => ({
     index: i, name: stageModeOf(b) === "none" ? "Tasks" : s.name, rule: stageModeOf(b) === "none" ? "" : doneRule(s, b), last: i === stages.length - 1,
     groups: (s.groups || []).map((g) => g.name), tasks: (s.tasks || []).map((t, ti) => taskCard(t, b, people, agents, ti)),
+    flows: (b.automations || []).filter((a) => (i === 0 && a.when === "start") || (stageModeOf(b) !== "none" && a.when === s.name)).map((a) => ({ flow: a.flow, when: a.when, ...(a.note ? { note: a.note } : {}) })),
   }));
 }
 
@@ -74,22 +76,26 @@ export function initialsOf(label: string): string {
   return (words.length > 1 ? words[0][0] + words[1][0] : words[0][0]).toUpperCase();
 }
 
-export type TemplateCard = { name: string; projects: string; start: string; stages: string[]; counts: string; status: string; group: "Live" | "Drafts" };
+export type TemplateCard = { name: string; projects: string; start: string; stages: string[]; counts: string; usedBy: string; status: string; group: "Live" | "Drafts" };
 const n = (k: number, one: string, many = `${one}s`): string => `${k} ${k === 1 ? one : many}`;
 
-/** The button's words: "Start a matter"; a name that begins with an acronym keeps its capitals and takes no article ("Start ATP client"). */
+/** The button's words: "Start a campaign"; a name that begins with an acronym keeps its capitals and takes no article ("Start ATP client"). */
 export function startLabel(one: string): string {
   const first = one.split(/\s+/)[0] || "";
   return first.length > 1 && first === first.toUpperCase() ? `Start ${one}` : `Start a ${one.toLowerCase()}`;
 }
 
-/** A template on the list as a card. `body` is null until it has been read: then only what the list knows (the running count) is said. */
-export function cardOf(r: Row, body: Body | null, running: number): TemplateCard {
+/** Where a playbook is used, in a line: the names of the projects that started from it, the first three then "and 2 more". */
+const usedWords = (names: string[]): string => (names.length ? `Used by ${names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", ")}` : "Not used yet");
+
+/** A template on the list as a card. `body` is null until it has been read: then only what the list knows (where it is used) is said. */
+export function cardOf(r: Row, body: Body | null, usedBy: string[] = []): TemplateCard {
   const one = r.noun?.one || body?.noun?.one || "project", many = r.noun?.many || body?.noun?.many || "Projects";
   const stages = body && stageModeOf(body) !== "none" ? body.stages.map((s) => s.name) : [];
   const tasks = body ? body.stages.reduce((k, s) => k + (s.tasks || []).length, 0) : 0;
-  const parts = [...(body ? [...(stages.length ? [n(stages.length, "stage")] : []), n(tasks, "task")] : []), ...(running ? [`${running} running`] : [])];
-  return { name: r.name, projects: cap(many), start: startLabel(one), stages, counts: parts.join(" · "), status: r.live !== null ? `v${r.live}` : `Draft v${r.latest}`, group: r.live !== null ? "Live" : "Drafts" };
+  const flows = body ? new Set((body.automations || []).map((a) => a.flow)).size : 0;
+  const parts = body ? [...(stages.length ? [n(stages.length, "stage")] : []), n(tasks, "to-do"), ...(flows ? [n(flows, "Flow")] : [])] : [];
+  return { name: r.name, projects: cap(many), start: startLabel(one), stages, counts: parts.join(" · "), usedBy: usedWords(usedBy), status: r.live !== null ? `v${r.live}` : `Draft v${r.latest}`, group: r.live !== null ? "Live" : "Drafts" };
 }
 
 /** The list's search (a name or what its projects are called) and the Live/Draft filter. */
