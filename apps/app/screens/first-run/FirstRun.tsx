@@ -97,6 +97,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(shot?.copyDone || null);
   const [carried, setCarried] = useState<{ name: string; look: string } | null>(shot?.carried || null);
   const [changing, setChanging] = useState(false);
+  const [moreLook, setMoreLook] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
   const [signedIn, setSignedIn] = useState<boolean>(Boolean(shot?.another));
   const [first, setFirst] = useState(shot?.first || "");
@@ -676,7 +677,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
-          onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
+          onPart={moreLook ? (key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) })) : undefined} />
+        <Button kind="ghost" label={moreLook ? "Fewer options" : "More: eyes, mouth, top, blush, charm"} onPress={() => setMoreLook((v) => !v)} />
         </>)}
       </FlowStep>
     );
@@ -712,37 +714,22 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     );
   }
 
-  const showing = spaces.find((s) => s.id === current) || spaces[0];
+  // The last screen is what the prototype shows and nothing more: "You're all set." and the Assistant and Engineer waiting in Chats. Adding another Space lives in the Spaces menu.
   return (
-    <FlowStep steps={steps} hero mark="done" title="You're all set."
-      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : asDone ? `${asName.trim() || ASSISTANT_COPY.suggestion} and Engineer are waiting in Chats. Say hi.` : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
+    <FlowStep steps={steps} mark="done" title="You're all set."
+      lead={asDone ? `${asName.trim() || ASSISTANT_COPY.suggestion} and Engineer are waiting in Chats. Say hi.` : "Your identity is ready."}
+      failure={failure}
       primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
         router.replace("/u/now" as never);
-      }) }}
-      secondary={{ label: "Invite someone", onPress: () => { setHoldOpen(true); go("invite.share"); } }}>
-      {spaces.length > 1 ? (
-        <SpaceSwitcherTitle spaces={spaces.map((s) => ({ id: s.id, name: s.name }))} space={showing?.id || spaces[0].id} onSpace={(id) => void run(async () => {
-          setHoldOpen(true);
-          const r = await chooseSpace(id);
-          if (!r.ok) { setFailure(r.message); return; }
-          setCurrent(String(r.current || id));
-          if (r.name) setSpace(String(r.name));
-        })} />
-      ) : null}
-      {asDone && spaces.length <= 1 ? (
+      }) }}>
+      {asDone ? (
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 28 }} accessibilityLabel="Waiting in Chats">
           <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", asName.trim() || ASSISTANT_COPY.suggestion, undefined, asLookSeed)} size={56} /><Text size="caption" tone="muted">{asName.trim() || ASSISTANT_COPY.suggestion}</Text></View>
           <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", "Engineer")} size={56} /><Text size="caption" tone="muted">Engineer</Text></View>
         </View>
       ) : null}
-      {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
-      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your password.`}</Text>
-      <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
-        { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
-        { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },
-      ]} />
     </FlowStep>
   );
 }
