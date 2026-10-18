@@ -368,6 +368,7 @@ PY`).split("\n").pop();
   exitCode = 1;
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
   console.log("--- last vyred log lines\n" + logs.slice(-15).join("\n"));
+  console.log("--- every csproof container\n" + shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}|{{.Status}}"]));
   // What the computer itself says, for a failure seen on a runner that cannot be reached by hand.
   console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-6000));
   console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -30"]).slice(-3000));

@@ -43,9 +43,17 @@ const [A, B] = [U(0), U(1)];
 
 try {
   // agentd answers once the entrypoint has started it
-  let up = false;
-  for (let i = 0; i < 60 && !up; i++) { try { await ctl.createUser(A); up = true; } catch { await sleep(2000); } }
-  check(up, "agentd answers through the one allowed exec");
+  let up = false, lastErr = "";
+  for (let i = 0; i < 60 && !up; i++) { try { await ctl.createUser(A); up = true; } catch (e) { lastErr = String(e && e.message || e); await sleep(2000); } }
+  if (!up) {
+    console.log("agentd last error: " + lastErr);
+    console.log("--- processes in the computer\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -40"]));
+    console.log("--- agentd dir\n" + shOk(["exec", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/agentd /opt/agentd 2>&1 | head -40"]));
+    console.log("--- agentd status\n" + shOk(["exec", CONTAINER, "sh", "-c", "grep -E '^(Name|Uid|CapEff|CapBnd|NoNewPrivs)' /proc/$(pgrep -f agentd-main | head -1)/status 2>&1"]));
+    console.log("--- container log (full)\n" + shOk(["logs", CONTAINER]).slice(-6000));
+    console.log("--- proxy log\n" + (() => { try { return fs.readFileSync(path.join(DIR, "run", "proxy.log"), "utf8").slice(-4000); } catch (e) { return String(e.message); } })());
+  }
+  check(up, "agentd answers through the one allowed exec", lastErr || undefined);
   await ctl.createUser(B);
   for (const u of [A, B]) await ctl.startScreen(u);
   // vyred's address is pinned by computerd and written for the relay, as the pool does before it opens a screen
