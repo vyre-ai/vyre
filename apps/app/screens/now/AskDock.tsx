@@ -25,7 +25,7 @@ export function AskDock({ names, assistant }: { names: string[]; assistant: stri
     router.push(`/u/chats/${encodeURIComponent(r.thread)}` as never);
   };
   return (
-    <View className="flex-row items-end gap-s2 border-t border-edge pt-s3">
+    <View className="flex-row items-end gap-s2">
       <View className="min-w-0 flex-1"><Field label="Ask your assistant" value={text} onChangeText={setText} placeholder="Ask anything, or @ an agent" onSubmit={() => void send()} /></View>
       <Button kind="primary" label={busy ? "Starting" : "Ask"} disabled={!text.trim() || busy} onPress={() => void send()} />
     </View>

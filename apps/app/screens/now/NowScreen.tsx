@@ -52,7 +52,7 @@ export default function NowScreen() {
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(world, go);
   return (
-    <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+    <LargeTitleScreen title="Now" own wide onRefresh={q.reload} dock={real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : undefined} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       <HomeHeader now={q.data?.now ?? Date.now()} today={calendar?.length} working={working} />
       {real ? <HomeAgents onCount={setWorking} onNames={(names, assistant) => setAsk({ names, assistant })} /> : null}
       {real ? <RecordsSetup /> : null}
@@ -69,7 +69,6 @@ export default function NowScreen() {
         : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
-      {real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : null}
       {sheets}
     </LargeTitleScreen>
   );
