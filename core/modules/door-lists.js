@@ -66,7 +66,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "spaces.groups.list", "spaces.list", "spaces.members.list", "spaces.pair.install",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
   "stream.send", "stream.typing",
-  "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
+  "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.review", "tasks.submit", "tasks.update",
   "team.ask", "team.notes",
   "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.slash", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
   "threads.interrupt", "threads.items", "threads.kill-task", "threads.list", "threads.model", "threads.queue", "threads.rename", "threads.retry", "threads.rewind",

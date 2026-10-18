@@ -48,7 +48,7 @@ export function createScrub({ tasks, bodies, texts, recs, recUpdate, withoutText
       if (t) {
         const { payload, ...rest } = /** @type {any} */ (t);
         const plain = withoutText(rest);
-        tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(t.state === "needs_check" ? { state: "ready" } : {}) }));
+        tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(["needs_check", "in_review", "changes_requested"].includes(t.state) ? { state: "ready" } : {}) }));
       }
       // and the words on its record go too: the title is replaced, the note and every other text field emptied
       {

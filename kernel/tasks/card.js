@@ -8,7 +8,7 @@ const strip = (/** @type {string} */ s) => String(s ?? "").replace(/[\u0000-\u00
 /**
  * @param {any} task @param {any} body the canonical body the approval is bound to: `{ action, resource, payload, facts }` for a send (facts are the
  *   kernel's, resolved against the record and the vault, never the doer's), `{ op: "skip", ... }` for the kernel's own skip proposal
- * @param {{ doer_label?: string, action_label?: string }} [opts]
+ * @param {{ doer_label?: string, action_label?: string, review_hash?: string | null }} [opts]
  */
 export function buildCard(task, body, opts = {}) {
   if (task.kernel) {
@@ -37,6 +37,8 @@ export function buildCard(task, body, opts = {}) {
     sink: payload.delivery && typeof payload.delivery.sink === "string" ? strip(payload.delivery.sink) : null,
     sealed,
     payload_hash: task.payload ? task.payload.payload_hash : null,
+    // After a review: what the reviewer said (a person's or an agent's, marked) and the hash the approver's proof must also cover.
+    ...(task.review ? { review: Object.freeze({ by: task.review.by, type: task.review.type, result: task.review.result, checklist: task.review.checklist, note: strip(task.review_note) }), review_hash: opts.review_hash || null } : {}),
     trust: task.labels ? task.labels.trust : "member",
     buttons: Object.freeze(["approve", "reject"]),
     from_doer: Object.freeze({ label: opts.doer_label || `${task.doer.kind}:${task.doer.id}`, title: strip(task.title), note: strip(task.note), buttons: Object.freeze([]) }),
