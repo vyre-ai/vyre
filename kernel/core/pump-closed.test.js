@@ -38,7 +38,8 @@ test("any other read error still surfaces out of the pump: only a closed log is 
   for (let i = 0; i < 10; i++) log.append(owner(), { type: "contact.updated", sv: 1, subject: `vyre://${SPACE}/contact/c${i}`, data: { i } });
   /** @type {any[]} */ const loose = [];
   const note = (/** @type {unknown} */ e) => { loose.push(e); };
-  process.on("unhandledRejection", note);
+  // the runner's own listener would fail this test for the very rejection it expects: stand in for it for the length of the test
+  const saved = process.listeners("unhandledRejection"); process.removeAllListeners("unhandledRejection"); process.on("unhandledRejection", note);
   try {
     // the handler fails and the log is damaged (not closed): the second read throws an ordinary database error, which must not be taken for a closed log
     log.subscribe("damaged", {}, () => { db.exec("DROP TABLE kernel_events"); throw new Error("the handler failed"); });
@@ -46,5 +47,5 @@ test("any other read error still surfaces out of the pump: only a closed log is 
     await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r));
     assert.equal(loose.length, 1, "the read error came out of the pump");
     assert.doesNotMatch(String(loose[0] && loose[0].message), /not open/);
-  } finally { process.off("unhandledRejection", note); }
+  } finally { process.off("unhandledRejection", note); for (const l of saved) process.on("unhandledRejection", l); }
 });
