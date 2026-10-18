@@ -11,6 +11,7 @@ import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
 import { registerPipeline } from "./pipeline.js";
 import { registerRelationships } from "./relationship.js";
+import { registerRollups, withWeighted } from "./rollup.js";
 import { registerLayouts } from "./layout.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
@@ -126,7 +127,7 @@ export default {
     const hasRef = async (/** @type {any} */ d, /** @type {string} */ type) => { try { return ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === type && (t.fields || []).some((/** @type {any} */ f) => f.name === "ref")); } catch { return false; } };
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
-      try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+      try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();
@@ -174,6 +175,12 @@ export default {
         const cur = await d.gateway.records.get(d.chain, u.type, u.id);
         try { patch = splitIn(patch, qf, cur && cur.data && cur.data.extra); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       }
+      if (patch && ("amount" in patch || "probability" in patch)) {
+        // a type with amount, probability and weighted_value keeps the weighted value current (core/records-tools/rollup.js)
+        const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
+        const cur = t && (await d.gateway.records.get(d.chain, u.type, u.id));
+        if (t && cur) patch = withWeighted(t.fields || [], cur.data || {}, patch);
+      }
       const out = await d.gateway.records.update(d.chain, u.type, u.id, patch, i.base_version);
       return { record: mergeOut(out, qf.filter((f) => f.state !== "real")) };
     }, byUrn);
@@ -182,6 +189,7 @@ export default {
     registerRelationships({ tool, obj, str, refuse, parseUrn });
     registerQuick({ tool, obj, str, refuse, parseUrn });
     registerLayouts({ tool, obj, str, refuse });
+    registerRollups({ tool, obj, str, refuse });
     // ---- what links to a record, and the Kits this build ships ----
     tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {
       parseUrn(i.urn);

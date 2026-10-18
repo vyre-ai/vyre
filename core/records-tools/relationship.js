@@ -47,7 +47,7 @@ export function registerRelationships({ tool, obj, str, refuse, parseUrn }) {
       const a = parseUrn(i.from), b = parseUrn(i.to);
       if (a.space !== b.space) throw refuse("A relationship joins two records of the same Space.", "bad_input");
       if (i.from === i.to) throw refuse("A record cannot be related to itself. Pick another record for `to`.", "bad_input");
-      for (const [u, x] of [[i.from, a], [i.to, b]]) if (!(await d.gateway.records.get(d.chain, x.type, x.id))) throw refuse(`${u} is not here, or you may not read it. records.list shows the records you can.`, "not_found");
+      for (const [u, x] of [[i.from, a], [i.to, b]]) if (!(await d.gateway.records.get(d.chain, x.type, x.id))) throw refuse(`${u} is not here, or you may not read it. Pick a record you can see in Records.`, "not_found");
       const { f } = await kindField(d);
       if (f && Array.isArray(f.options) && !f.options.includes(i.kind)) throw refuse(`${i.kind} is not one of this Space's relationship kinds: ${f.options.join(", ")}. records.relationship.kinds.set changes the list.`, "bad_input");
       const data = { from_record: i.from, to_record: i.to, kind: i.kind, ...(i.since ? { since: i.since } : {}), ...(i.until ? { until: i.until } : {}), ...(i.note ? { note: i.note } : {}) };

@@ -357,12 +357,33 @@ export const QUICK_FIELD = {
     text("options", "Options (JSON)"), choice("state", "State", ["bag", "promoting", "real"], { required: true }),
   ],
 };
+/** A deal: something being sold, on the Sales pipeline. A stage can ask for fields before a deal enters it (core/records-tools/pipeline.js moves it and says what is missing); Lost asks for the reason. `weighted_value` is amount x probability / 100, kept by the tools. */
+export const DEAL_STAGES = ["Lead", "Qualified", "Proposal", "Won", "Lost"];
+export const DEAL = {
+  name: "deal", label: "Deal", icon: "IconCurrencyDollar",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("ref", "ID", { unique: true, read_only: true }),   // DEA-0001
+    f("link", "contact", "Person", { to: "contact", inverse: { name: "linked_deals", label: "Deals" } }),
+    f("link", "organization", "Company", { to: "organization", inverse: { name: "linked_deals", label: "Deals" } }),
+    f("number", "amount", "Amount"),
+    f("number", "probability", "Chance (percent)"),
+    f("number", "weighted_value", "Weighted value", { read_only: true }),
+    f("date", "close_date", "Expected close"),
+    f("stage", "stage", "Stage", { options: DEAL_STAGES }),
+    text("lost_reason", "Lost reason"),
+    TAGS,
+  ],
+  stages: [{ name: "Lead" }, { name: "Qualified" }, { name: "Proposal", enter_if: "not empty(amount)" }, { name: "Won", enter_if: "not empty(amount) and not empty(close_date)" }, { name: "Lost", enter_if: "not empty(lost_reason)" }],
+  views: [{ name: "deals_board", type: "board", label: "Sales pipeline", groupBy: "stage", columns: ["name", "amount", "close_date"] }, { name: "deals_list", type: "list", label: "All deals", columns: ["name", "ref", "stage", "amount", "close_date"], sort: { field: "name", dir: "asc" } }],
+};
+
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
   name: "record-layout", label: "Layout", icon: "IconLayout",
   fields: [text("type", "Type", { required: true }), choice("scope", "Scope", ["space", "person"], { required: true }), text("owner", "Person"), text("layout", "Layout (JSON)", { required: true })],
 };
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
-const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project"]);
+const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, QUICK_FIELD, RECORD_LAYOUT].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT].map(withBag).map((t) => Object.freeze(t)));

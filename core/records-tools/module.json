@@ -20,6 +20,7 @@
       { "name": "records.create", "effect": "write", "reach": "person" },
       { "name": "records.update", "effect": "write", "reach": "person" },
       { "name": "records.move", "effect": "write", "reach": "person" },
+      { "name": "records.rollup.add", "effect": "write", "reach": "person" },
       { "name": "records.layout.get", "effect": "read", "reach": "person" },
       { "name": "records.layout.set", "effect": "write", "reach": "person" },
       { "name": "records.field.add", "effect": "write", "reach": "person" },

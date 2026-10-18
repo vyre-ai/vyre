@@ -181,6 +181,7 @@ export const PERSON_ONLY = new Map([
   ["records.field.add", "adds a field to a Space's type: the person's own act, like records.define"],
   ["records.field.promote", "makes a fast field a real field of the store: the person's own act, like records.define"],
   ["records.layout.set", "changes how a type is shown (columns, filters, sections): the person's own choice, the Space's default an owner's or admin's act"],
+  ["records.rollup.add", "adds a total to a Space's type: the person's own act, like records.define"],
   ["records.reveal", "reveals a sealed value: needs the person's Face ID"],
   ["records.forget", "forgets a record for good: the person's own act with their presence (an assistant proposes with records.forget.propose)"],
   ["records.dev-seed", "a development-build seed for the walk, never an assistant's"],

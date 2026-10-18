@@ -74,7 +74,7 @@ export function registerQuick({ tool, obj, str, refuse }) {
       const name = nameOfLabel(i.label);
       if (!NAME.test(name) || RESERVED.has(name)) throw refuse(`"${i.label}" cannot be a field name. Pick another label.`, "bad_input");
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type);
-      if (!t) throw refuse(`There is no record type called ${type}. records.types lists them.`, "not_found");
+      if (!t) throw refuse(`There is no record type called ${type}. Pick one of the types shown in Records.`, "not_found");
       if ((t.fields || []).some((/** @type {any} */ f) => f.name === name)) throw refuse(`${t.label || type} already has a field called ${name}. Pick another label.`, "duplicate");
       if ((await fieldsOf(d, type)).some((f) => f.name === name)) throw refuse(`${t.label || type} already has a fast field called ${name}. Pick another label.`, "duplicate");
       const options = kind === "choice" ? (Array.isArray(i.options) ? i.options.map(String).filter(Boolean) : []) : [];
@@ -92,11 +92,11 @@ export function registerQuick({ tool, obj, str, refuse }) {
       admin(d);
       const type = String(i.type), name = String(i.name);
       const q = (await quickRows(d, type)).find((r) => r.data.name === name);
-      if (!q) throw refuse(`${type} has no fast field called ${name}. records.field.status lists them.`, "not_found");
+      if (!q) throw refuse(`${type} has no fast field called ${name}. Pick one of the fields shown on its page.`, "not_found");
       const f = { name, label: q.data.label, kind: q.data.kind, options: JSON.parse(q.data.options || "[]") };
       if (q.data.state === "bag") {
         const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type);
-        if (!t) throw refuse(`There is no record type called ${type}. records.types lists them.`, "not_found");
+        if (!t) throw refuse(`There is no record type called ${type}. Pick one of the types shown in Records.`, "not_found");
         if (!(t.fields || []).some((/** @type {any} */ x) => x.name === name)) {
           const real = { name, kind: f.kind, label: f.label, ...(f.kind === "choice" ? { options: f.options } : {}) };
           await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields: [...t.fields, real] }] });

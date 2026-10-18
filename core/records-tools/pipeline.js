@@ -48,7 +48,7 @@ export function missingFor(stage, data, patch) {
 export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
   const typeOf = async (/** @type {any} */ d, /** @type {string} */ name) => {
     const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === name);
-    if (!t) throw refuse(`There is no record type called ${name}. records.types lists them.`, "not_found");
+    if (!t) throw refuse(`There is no record type called ${name}. Pick one of the types shown in Records.`, "not_found");
     return t;
   };
   tool("records.pipeline.set", "Set the stages of a record type for people who do not write conditions: { type, stages: [{ name, requires?: [field], lost?: true }] }. A stage with `requires` can only be entered once those fields are filled in; a `lost` stage needs a lost_reason. The type gets a Stage field and a Lost reason field when it has none. Who may change a type is the kernel's to decide.",
@@ -75,7 +75,7 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
       const target = [...(t.stages || []), ...(t.stage_sets || []).flatMap((/** @type {any} */ x) => x.stages)].find((/** @type {any} */ s) => s.name === i.stage);
       if (!target && !(sf.options || []).includes(i.stage)) throw refuse(`${t.label || t.name} has no stage called ${i.stage}. Its stages are: ${(sf.options || []).join(", ")}.`, "bad_input");
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
-      if (!rec) throw refuse("That record is not here, or you may not read it. records.list shows the ones you can.", "not_found");
+      if (!rec) throw refuse("That record is not here, or you may not read it. Pick one you can see in Records.", "not_found");
       const patch = { ...(i.patch && typeof i.patch === "object" ? i.patch : {}), ...(i.lost_reason !== undefined ? { [LOST_REASON]: String(i.lost_reason) } : {}), [sf.name]: i.stage };
       const needs = target ? missingFor(target, rec.data || {}, patch) : [];
       if (needs.length) return { needs, stage: i.stage };
