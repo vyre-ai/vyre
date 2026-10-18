@@ -111,7 +111,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
     description: "A team member's own Vault, as the member's own chain from the team's door: status, and addkey (make the vault if none, open it if locked, put one AI key under a free name). Only the daemon's own door runs it, after the member's presence proof was checked there.",
     input: obj({ call: str, person: str, space: str, input: { type: "object" } }, ["call", "person", "space"]),
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      if (String((meta && meta.caller) || "") !== "module:vyred") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      if (String((meta && meta.caller) || "") !== "module:vyred") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" }); // internal-word: the module id compared in code, never drawn
       const id = String(i.person);
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id) || id === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
       const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
