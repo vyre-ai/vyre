@@ -75,7 +75,7 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
       const target = [...(t.stages || []), ...(t.stage_sets || []).flatMap((/** @type {any} */ x) => x.stages)].find((/** @type {any} */ s) => s.name === i.stage);
       if (!target && !(sf.options || []).includes(i.stage)) throw refuse(`${t.label || t.name} has no stage called ${i.stage}. Its stages are: ${(sf.options || []).join(", ")}.`, "bad_input");
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
-      if (!rec) throw refuse("That record is not here, or you may not read it.", "not_found");
+      if (!rec) throw refuse("That record is not here, or you may not read it. records.list shows the ones you can.", "not_found");
       const patch = { ...(i.patch && typeof i.patch === "object" ? i.patch : {}), ...(i.lost_reason !== undefined ? { [LOST_REASON]: String(i.lost_reason) } : {}), [sf.name]: i.stage };
       const needs = target ? missingFor(target, rec.data || {}, patch) : [];
       if (needs.length) return { needs, stage: i.stage };
