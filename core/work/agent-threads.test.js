@@ -12,7 +12,7 @@ import { toB64u, fromB64u } from "../../lib/databox.js";
 import { threadRow } from "./threads.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
-const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab";
+const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", CY = "per_" + "defghijklmnopqrstuvwxyzabc";
 const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
 
 test("a thread row says live, needs you or idle, and needs you wins", () => {
@@ -32,6 +32,7 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   const K = d.kernel, OWNER = K.id.owner;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await K.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
+  await K.gateway.grants.setRole(ownerChain, { person: CY, role: "member" }, { presence: proof() });
   // the owner acts directly, as the CLI does (a chat is started by a person acting directly); Ben is a member with a session of his own
   const tok = async (/** @type {string} */ p) => (p === OWNER ? { kernelFacts: callerFacts("cli", {}, {}, K, false, null, { inside: false, outside: true }) } : { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: p, path: "direct", session: "sb" }), {})).token });
   const as = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await tok(who));
@@ -77,26 +78,43 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   assert.equal(juno.latest.title, "second thread", "the latest thread");
   assert.equal(juno.live, null, "no thread is live");
   assert.equal(juno.needs_you, false);
-  assert.equal(sum.groups.length, 1, "the chat with Ben and juno is a group");
-  assert.equal(sum.groups[0].people, 2); assert.equal(sum.groups[0].agents, 1);
-  assert.deepEqual(sum.people.map((/** @type {any} */ r) => [r.kind, r.person, r.title]), [["person", BEN, "ben dm"]], "a chat of two people with no agent is a person's");
+  // one chat per set of people: "ben dm" and "with ben" are two threads of the one chat of me and Ben
+  assert.equal(sum.groups.length, 0, "no group yet");
+  assert.deepEqual(sum.people.map((/** @type {any} */ r) => [r.kind, r.person, r.threads]), [["person", BEN, 2]], "the chat of me and Ben has its two threads");
+  assert.equal(sum.people[0].agents, 1, "and juno is in one of them");
   assert.deepEqual([sum.pinned, sum.flows], [[], []]);
   // Ben's summary has only what he is in: the group and the dm, and none of the owner's agent threads
   const bens = await ok(BEN, "work.chat.summary");
-  assert.deepEqual([bens.agents.length, bens.groups.length, bens.people.length], [0, 1, 1], "a member's list is her own chats");
+  assert.deepEqual([bens.agents.length, bens.groups.length, bens.people.length], [0, 0, 1], "a member's list is her own chats");
   assert.equal(bens.people[0].person, OWNER);
+  assert.equal(bens.people[0].threads, 2);
   assert.ok((await d.registry.call("work.chat.summary", {}, "mcp", {})).error, "a call with no person has no list");
 
   // where a chat lives is derived: only me is Personal; anyone else in it makes it a Space chat; a chat shared with Ben is in Ben's list although it sits in the owner's Personal project
   assert.equal(juno.place, "personal", "an agent thread of mine is Personal");
-  assert.equal(sum.groups[0].place, "space");
   assert.equal(sum.people[0].place, "space");
-  assert.deepEqual(sum.groups[0].faces.people.map((/** @type {any} */ f) => f.id).sort(), [OWNER, BEN].sort(), "the faces are the people, with ids");
-  assert.deepEqual(sum.groups[0].faces.agents.map((/** @type {any} */ f) => f.name), ["juno"], "and the agents, by name");
-  assert.ok(sum.groups[0].faces.people.every((/** @type {any} */ f) => "name" in f), "each face has a name field");
+  assert.deepEqual(sum.people[0].faces.people.map((/** @type {any} */ f) => f.id).sort(), [OWNER, BEN].sort(), "the faces are the people, with ids");
+  assert.deepEqual(sum.people[0].faces.agents.map((/** @type {any} */ f) => f.name), ["juno"], "and the agents, by name");
+  assert.ok(sum.people[0].faces.people.every((/** @type {any} */ f) => "name" in f), "each face has a name field");
   const benList = (await ok(BEN, "work.chat.list")).chats;
-  assert.deepEqual(benList.map((/** @type {any} */ r) => r.title).sort(), ["ben dm", "with ben"], "Ben sees the chats he is in");
+  assert.deepEqual(benList.map((/** @type {any} */ r) => r.title).sort(), ["ben dm", "with ben"], "Ben sees the threads he is in (the group threads come later in this test)");
   assert.ok(benList.every((/** @type {any} */ r) => r.place === "space" && Array.isArray(r.faces.people)), "and they are Space chats");
+  // a group is a set of three: /new in it makes another thread in the same chat, whatever order the people are named in
+  const g1 = await ok(OWNER, "work.chat.thread.new", { people: [BEN, CY], title: "g1", ...ring() });
+  await new Promise(r => setTimeout(r, 1100));
+  const g2 = await ok(OWNER, "work.chat.thread.new", { people: [CY, BEN], title: "g2", ...ring() });
+  assert.notEqual(g1.thread, g2.thread);
+  assert.equal(g1.chat, g2.chat, "the same people are the same chat");
+  const grp = await ok(OWNER, "work.chat.threads", { chat: g1.chat });
+  assert.deepEqual([grp.kind, grp.count, grp.place, grp.people.length], ["group", 2, "space", 3]);
+  assert.deepEqual(grp.threads.map((/** @type {any} */ x) => x.title), ["g2", "g1"], "newest first");
+  assert.equal((await ok(OWNER, "work.chat.threads", { chat: g2.thread })).chat, g1.chat, "a thread id names its chat");
+  assert.deepEqual((await ok(CY, "work.chat.threads", { chat: g1.chat })).threads.map((/** @type {any} */ x) => x.title), ["g2", "g1"], "everyone in the group sees all its threads");
+  const dm = await ok(OWNER, "work.chat.threads", { people: [BEN] });
+  assert.deepEqual([dm.exists, dm.kind, dm.count], [true, "person", 2], "the chat of exactly me and Ben, by its people");
+  assert.equal((await ok(OWNER, "work.chat.threads", { people: [CY] })).exists, false, "no chat of me and Cy yet");
+  assert.equal((await as(CY, "work.chat.threads", { chat: first.thread })).error?.code, "not_found", "a thread Cy is not in is not found");
+  assert.deepEqual((await ok(OWNER, "work.chat.summary")).groups.map((/** @type {any} */ r) => [r.threads, r.people]), [[2, 3]], "the group is one row with its two threads");
   const ownerList = (await ok(OWNER, "work.chat.list")).chats;
   assert.ok(ownerList.every((/** @type {any} */ r, /** @type {number} */ i, /** @type {any[]} */ all) => i === 0 || String(all[i - 1].last_active) >= String(r.last_active)), "newest first");
   assert.deepEqual(ownerList.filter((/** @type {any} */ r) => r.place === "personal").map((/** @type {any} */ r) => r.title).sort(), ["first thread", "kit's thread", "second thread"]);

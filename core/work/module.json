@@ -208,6 +208,18 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.threads",
+        "summary": "the threads of one chat (a set of people), newest first",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.thread.new",
+        "summary": "start a new thread in the chat of you and these people",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.thread.fork",
         "summary": "fork a thread from one of the agent's replies into a new thread; the original stays",
         "reach": "anyone",
