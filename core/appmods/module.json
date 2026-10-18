@@ -23,6 +23,8 @@
       { "name": "appmods.publish.stop", "effect": "write", "reach": "modules" },
       { "name": "appmods.publish.remove", "effect": "write", "reach": "modules" },
       { "name": "appmods.signing.waiting", "effect": "read", "reach": "modules" },
+      { "name": "appmods.signing.status", "effect": "read", "reach": "modules" },
+      { "name": "appmods.signing.audit", "effect": "read", "reach": "modules" },
       { "name": "appmods.logs", "effect": "read", "reach": "person" },
       { "name": "appmods.install", "effect": "write", "reach": "person" },
       { "name": "appmods.start", "effect": "write", "reach": "person" },
