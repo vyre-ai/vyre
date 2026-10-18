@@ -62,3 +62,4 @@ execFileSync("docker", ["compose", "-p", n.project, "down", "-v"], { stdio: "ign
 fs.rmSync(home, { recursive: true, force: true });
 // run 14:36
 // run 14:39
+// run 14:49
