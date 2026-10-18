@@ -151,7 +151,7 @@ export const MIGRATIONS = [
   RELEASE_BODY_MIGRATION,
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
-  // What was converted once to kernel grants (a credential's scope), logged once (access.js); then the Space member a person is linked to, last so earlier steps keep their numbers (share.js).
+  // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js). Then the Space member a person is linked to, last so earlier steps keep their numbers (share.js).
   CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION, ...MEMBER_MIGRATIONS,
 ];
 
