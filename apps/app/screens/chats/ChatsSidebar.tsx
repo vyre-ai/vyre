@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { openFind } from "../find/FindHost";
-import { allowsMock, ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationList, ConversationTypes, IconButton, NewPopover, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -15,60 +14,40 @@ import { startChat } from "../../src/state/start-chat";
 import { byTag, chatsOrdered, chatsShown } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { NewAgentFlow } from "./NewAgentFlow";
+import { openEngineer } from "../engineer/openEngineer";
+import { agentThreads } from "../../src/chat/threads-source";
 import { Text } from "@vyre/ui";
 
 /** The id of the chat the path shows (/u/chats/<id> or /session/<id>), or "". */
 export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.exec(path)?.[1] ?? "";
 
 /** What the header and the list share: the search, the project and the tag (the header sets them, the list reads them), and what the list found for the filter menu. */
-const useChatsFilter = create<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; set: (p: Partial<{ q: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean }>) => void }>((set) => ({
-  q: "", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
+const useChatsFilter = create<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; compose: boolean; set: (p: Partial<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; compose: boolean }>) => void }>((set) => ({
+  q: "", type: "all", project: "all", tag: "", all: [], tags: [], compose: false, newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
-const useAdd = () => {
-  const router = useRouter();
-  const go = (p: string) => router.push(p as never);
-  return [
-    { label: "New chat", onPress: () => go("/u/chats/new") },
-    { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
-    { label: "New agent", onPress: () => useChatsFilter.getState().set({ newAgent: true }) },
-    { label: "New email", onPress: () => go("/u/mail/compose") },
-  ];
+/** New agent: the Engineer drafts it in a thread (the "From Agents" handoff), and the person says yes to create it. The sample preview (?newagent=1) keeps the form. */
+export const openNewAgent = (router: { push: (to: never) => void }) => {
+  if (allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search)) { useChatsFilter.getState().set({ newAgent: true }); return; }
+  openEngineer(router, { source: "agent", intent: "create" });
 };
 
-/** The section's + (New chat, New group chat, New agent, New email): the sidebar's top bar. */
+/** The compose button: opens and closes the New menu (also Cmd N). */
+const toggleCompose = () => { const st = useChatsFilter.getState(); st.set({ compose: !st.compose }); };
+
+/** The section's + : the New menu, a compact popover (To:, agents, people, New group, New agent, New Flow). */
 export function ChatsPlusButton() {
-  const add = useAdd();
-  return <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />;
+  return <IconButton icon="plus" label="New" kind="ghost" onPress={toggleCompose} />;
 }
 
-/** The filter control inside the search's right end: All, each project, No project, tags and Flows. */
-export function ChatsFilterButton() {
-  const router = useRouter();
-  const f = useChatsFilter();
-  const items = [
-    ...convoChips(f.all).map((k) => ({ label: k.label, selected: f.project === k.id, onPress: () => f.set({ project: k.id }) })),
-    ...f.tags.map((t) => ({ label: `#${t}`, selected: f.tag === t, onPress: () => f.set({ tag: f.tag === t ? "" : t }) })),
-    { label: "Flows", onPress: () => router.push("/u/flows" as never) },
-  ];
-  const narrowed = f.project !== "all" || Boolean(f.tag);
-  return <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={items} />;
-}
-
-/** The search, filter and + as one row: the top of a phone's Chat page (the sidebar spreads the same three pieces over its search and top bar). */
+/** The top of a phone's Chats page: the name and the compose button. There is no search here: the one search is the main one. */
 export function ChatsSidebarHeader() {
-  const f = useChatsFilter();
-  const add = useAdd();
   return (
-    <ConversationHeader all={f.all} query={f.q} onQuery={(q) => f.set({ q })} onSearch={() => openFind("chats")} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })} add={add} />
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
+      <View />
+      <ChatsPlusButton />
+    </View>
   );
-}
-
-/** What the sidebar's search reads and writes. */
-export function useChatsSearch() {
-  const q = useChatsFilter((s) => s.q);
-  const set = useChatsFilter((s) => s.set);
-  return { q, set };
 }
 
 /**
@@ -98,18 +77,46 @@ export function ChatsSidebar() {
   useEffect(() => { f.set({ all: convos, tags: tagNames ? tagNames.split(",") : [] }); }, [convos, tagNames]);
   // Your own pins go first, after your assistant's chat; the order inside each part is the list's.
   const pinnedFirst = (c: Convo) => (c.pinned ? 0 : c.chat && prefs.pinned.includes(c.chat) ? 1 : 2);
-  const found = [...convosShown(convos, { project: f.project, query: f.q })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
+  // a chat you pinned sits under Pinned with your assistant
+  const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
+  const found = [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
+    if (c.kind === "flow") { router.push(`/u/chats/flow/${encodeURIComponent(c.chat)}` as never); return; }
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
+  };
+  // The New menu: To:, agents (each starts a thread), people, New group, New agent, New Flow. Cmd N opens it.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => { if ((e.key === "n" || e.key === "N") && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); toggleCompose(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const byId = new Map(convos.map((c) => [c.id, c]));
+  const agentRows = convos.filter((c) => c.lone === "agent").map((c) => ({ id: c.id, name: c.title }));
+  const personRows = convos.filter((c) => c.lone === "person").map((c) => ({ id: c.id, name: c.title }));
+  const pickNew = (r: { kind: string; id: string; label: string }) => {
+    if (r.kind === "group") router.push("/u/chats/new?group=1" as never);
+    else if (r.kind === "new-agent") openNewAgent(router);
+    else if (r.kind === "flow") router.push("/u/flows" as never);
+    else if (r.kind === "person") { const c = byId.get(r.id); if (c) open(c); }
+    else if (r.kind === "agent") {
+      void agentThreads.start(r.label).then((x) => {
+        if ("problem" in x) showToast(x.problem);
+        else if (allowsMock()) showToast("A new thread opens as its own chat in a real Space.");
+        else { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.thread } }); }
+      });
+    }
   };
   return (
     // one View, so the closed sheets are not seven children of a parent that spaces its children
     <View>
+      <NewPopover open={f.compose} onClose={() => f.set({ compose: false })} agents={agentRows} people={personRows} onPick={pickNew} />
       {sheets}
+      <ConversationTypes type={f.type} onType={(type: string) => f.set({ type })} />
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
-      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
-      <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
+      {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
+      <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat && c.kind !== "flow" ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
     </View>
   );
 }

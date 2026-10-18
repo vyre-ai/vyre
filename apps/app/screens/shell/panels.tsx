@@ -5,7 +5,7 @@ import { Platform, useWindowDimensions } from "react-native";
 import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
 import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
-import { ChatsFilterButton, ChatsPlusButton, ChatsSidebar, useChatsSearch } from "../chats/ChatsSidebar";
+import { ChatsPlusButton, ChatsSidebar } from "../chats/ChatsSidebar";
 import { openFind } from "../find/FindHost";
 import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
@@ -64,7 +64,7 @@ const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
 const SEARCH_SCOPE: Record<string, import("../find/model").Scope> = { projects: "projects", chats: "chats", settings: "settings" };
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
-  chats: { title: "Chat", icon: "chat", search: "Search", empty: "" },
+  chats: { title: "Chats", icon: "chat", empty: "" },
   records: { title: "Records", icon: "records", empty: "" },
   flows: { title: "Flows", icon: "flows", search: "Search flows", empty: "No flows yet." },
   settings: { title: "Settings", icon: "settings", search: "Search settings", empty: "" },
@@ -87,7 +87,6 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
-  const chatSearch = useChatsSearch();
   const { width } = useWindowDimensions();
   const id = panelFor(path, search);
   // Files' tree and the Vault's groups are the web's wide screens' panels; a phone keeps each screen's own list.
@@ -100,7 +99,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   return {
     id,
     panel: {
-      id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { query: chatSearch.q, onQuery: (q: string) => chatSearch.set({ q }), filter: <ChatsFilterButton />, plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
+      id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}

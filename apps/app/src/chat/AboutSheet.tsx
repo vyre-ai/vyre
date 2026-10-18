@@ -50,8 +50,8 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
   const [busy, setBusy] = useState("");
   const [problem, setProblem] = useState("");
   const { color } = useUiTheme();
-  const here = info.runsOn === "mac" ? "This Mac" : "The server";
-  const there = info.runsOn === "mac" ? "the server" : "this Mac";
+  const here = info.runsOn === "mac" ? "My Computer" : "Space's Cloud";
+  const there = info.runsOn === "mac" ? "Space's Cloud" : "My Computer";
   return (
     <Sheet open={open} onClose={onClose} title="In this chat">
       <View style={{ gap: 16, paddingBottom: 8 }}>
