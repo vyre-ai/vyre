@@ -573,10 +573,50 @@ export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Numb
 /** The kind ("date" or "datetime") of a field a Create or Update step sets, when the object says so, else null. The field is named as typed: it is matched by the name the engine stores it under. @param {Options} o @param {string | undefined} type @param {string | undefined} field */
 export const dateKindOf = (o, type, field) => { if (!(field || "").trim()) return null; const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.name === slug(field || "")); return f && (f.kind === "date" || f.kind === "datetime") ? f.kind : null; };
 
+const commaWords = (/** @type {any} */ t) => String(t || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 10).map((x) => x.slice(0, 60));
+
+/**
+ * The reviewer and approver of an Assign or Ask step as stored: `reviewer` and `approver` name who; `instructions` and `skills` are per slot ({ doer?, reviewer?, approver? }); `quorum` is "any". With
+ * extras on the approver the step writes `approver` (a plain approver still writes the older `checker`, which reads the same). The doer's own skills ride in `skills.doer` once a slot has skills.
+ * @param {DraftStep} s @param {any} k the step as its kind writes it
+ */
+function withSlots(s, k) {
+  if (k.kind !== "assign" && k.kind !== "ask") return k;
+  const rSk = commaWords(s.reviewerSkills), aSk = commaWords(s.approverSkills);
+  const ins = { ...(s.reviewer && String(s.reviewerInstructions || "").trim() ? { reviewer: String(s.reviewerInstructions).trim() } : {}), ...(s.checker && String(s.approverInstructions || "").trim() ? { approver: String(s.approverInstructions).trim() } : {}) };
+  const sk = { ...(Array.isArray(k.skills) && k.skills.length ? { doer: k.skills } : {}), ...(s.reviewer && rSk.length ? { reviewer: rSk } : {}), ...(s.checker && aSk.length ? { approver: aSk } : {}) };
+  const rich = !!(s.checker && (aSk.length || ins.approver || k.kind === "ask"));
+  const { skills: _old, checker: _c, ...rest } = k;
+  return { ...rest, ...(s.reviewer ? { reviewer: doer(s.reviewer) } : {}), ...(rich ? { approver: doer(s.checker) } : s.checker ? { checker: doer(s.checker) } : {}), ...(Object.keys(ins).length ? { instructions: ins } : {}), ...(Object.keys(sk).length ? { skills: Object.keys(sk).length === 1 && sk.doer ? sk.doer : sk } : {}) };
+}
+
+/** The reviewer, approver, instructions and skills of a stored Assign or Ask step as draft fields, and the step without them (so the kind reads it as it always did). @param {any} s */
+function splitSlots(s) {
+  if (s.kind !== "assign" && s.kind !== "ask") return { base: s, slots: {} };
+  const back = (/** @type {string} */ v) => (v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
+  const obj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const { reviewer, approver, quorum, instructions, skills, ...base } = s;
+  const okWho = (/** @type {any} */ v) => v === undefined || typeof v === "string";
+  const list = (/** @type {any} */ v) => Array.isArray(v) && v.every((x) => typeof x === "string" && x && !x.includes(","));
+  if (!okWho(reviewer) || !okWho(approver) || (quorum !== undefined && quorum !== "any") || (instructions !== undefined && !(obj(instructions) && Object.values(instructions).every((x) => typeof x === "string"))) || (approver !== undefined && base.checker !== undefined)) return { base: s, slots: null };
+  if (skills !== undefined && !(Array.isArray(skills) || (obj(skills) && Object.values(skills).every(list)))) return { base: s, slots: null };
+  const doerSkills = Array.isArray(skills) ? skills : obj(skills) ? skills.doer : undefined;
+  const sk = obj(skills) ? skills : {};
+  if (instructions && Object.keys(instructions).some((k) => !["doer", "reviewer", "approver"].includes(k))) return { base: s, slots: null };
+  if (Object.keys(sk).some((k) => !["doer", "reviewer", "approver"].includes(k))) return { base: s, slots: null };
+  if (instructions && instructions.doer !== undefined) return { base: s, slots: null };
+  const slots = {
+    ...(reviewer ? { reviewer: back(reviewer) } : {}), ...(approver ? { checker: back(approver) } : {}),
+    ...(sk.reviewer ? { reviewerSkills: sk.reviewer.join(", ") } : {}), ...(sk.approver ? { approverSkills: sk.approver.join(", ") } : {}),
+    ...(instructions && instructions.reviewer ? { reviewerInstructions: instructions.reviewer } : {}), ...(instructions && instructions.approver ? { approverInstructions: instructions.approver } : {}),
+  };
+  return { base: { ...base, ...(doerSkills ? { skills: doerSkills } : {}) }, slots };
+}
+
 /** A step as stored: what its kind says, and the failure settings it carries (time limit, retry, check, "If this fails"). @param {DraftStep} s @param {Draft} d */
 export function stepDefinition(s, d) {
   if (s.kind === "advanced") return s.raw;
-  const k = kindDefinition(s, d);
+  const k = withSlots(s, kindDefinition(s, d));
   return { ...k, ...(s.approve === true && (k.kind === "call" || k.kind === "service") ? { approve: true } : {}), ...policyDefinition(s, (/** @type {DraftStep} */ x) => stepDefinition(x, d)) };
 }
 
@@ -645,10 +685,7 @@ export const FORMULA_HASH = "7qwxhVRKeL6pL4KISfzabcHuuGGlWbVtqWloRYyYn_c";
 /** The approver, the followers and what they are told, as the stored step has them. @param {DraftStep} s */
 export function peopleOf(s) {
   const notes = { ...(s.approverNote && s.approverNote.trim() ? { approver: s.approverNote } : {}), ...(s.followerNote && s.followerNote.trim() ? { followers: s.followerNote } : {}) };
-  const words = (/** @type {any} */ t) => String(t || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 20);
-  const slot = (/** @type {string} */ who, /** @type {any} */ skills, /** @type {any} */ ins, /** @type {any} */ due, /** @type {any} */ extra) => ({ who: doer(who), ...(words(skills).length ? { skills: words(skills) } : {}), ...(String(ins || "").trim() ? { instructions: String(ins).trim() } : {}), ...(String(due || "").trim() ? { due: String(due).trim() } : {}), ...extra });
-  const rich = !!(s.approverSkills || s.approverInstructions || s.approverDue || s.quorum === "all");
-  return { ...(s.reviewer ? { reviewer: slot(s.reviewer, s.reviewerSkills, s.reviewerInstructions, s.reviewerDue, {}) } : {}), ...(s.checker && rich ? { approver: slot(s.checker, s.approverSkills, s.approverInstructions, s.approverDue, s.quorum === "all" ? { quorum: "all" } : {}) } : {}), ...(s.checker && !rich ? { checker: doer(s.checker) } : {}), ...((s.reviewer || s.checker) && s.escalateTo ? { escalate_to: s.escalateTo } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
+  return { ...(s.checker ? { checker: doer(s.checker) } : {}), ...(Array.isArray(s.followers) && s.followers.length ? { followers: s.followers.map(doer) } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
 }
 
 /** A draft trigger as stored. @param {Trigger} t */
@@ -821,19 +858,8 @@ export const SPECIAL_ACTIONS = new Set(SPECIAL_BUILDER_ACTIONS);
 /** @param {any} o */
 const rowsOf = (o) => { const rows = Object.entries(o || {}).map(([field, v]) => ({ field, value: unval(v) })); return rows.every((r) => r.value !== null) ? (rows.length ? rows : [{ field: "", value: "" }]) : null; };
 
-/** The reviewer and approver slots of a stored step as draft fields; a legacy `checker` reads as the approver. @param {any} s */
-const slotsFrom = (s) => {
-  const back = (/** @type {string} */ v) => (v.startsWith("teammate:") ? `agent:${v.slice(9)}` : v);
-  const r = s.reviewer, a = s.approver;
-  return {
-    ...(r && typeof r.who === "string" ? { reviewer: back(r.who), ...(r.skills ? { reviewerSkills: r.skills.join(", ") } : {}), ...(r.instructions ? { reviewerInstructions: r.instructions } : {}), ...(r.due ? { reviewerDue: r.due } : {}) } : {}),
-    ...(a && typeof a.who === "string" ? { checker: back(a.who), ...(a.skills ? { approverSkills: a.skills.join(", ") } : {}), ...(a.instructions ? { approverInstructions: a.instructions } : {}), ...(a.due ? { approverDue: a.due } : {}), ...(a.quorum === "all" ? { quorum: "all" } : {}) } : {}),
-    ...(typeof s.escalate_to === "string" ? { escalateTo: s.escalate_to } : {}),
-  };
-};
-
 /** @param {any} s */
-const peopleFrom = (s) => ({ ...slotsFrom(s), ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
+const peopleFrom = (s) => ({ ...(s.checker ? { checker: s.checker.startsWith("teammate:") ? `agent:${s.checker.slice(9)}` : s.checker } : {}), ...(Array.isArray(s.followers) ? { followers: s.followers.map((/** @type {string} */ f) => (f.startsWith("teammate:") ? `agent:${f.slice(9)}` : f)) } : {}), ...(s.notes && s.notes.approver ? { approverNote: s.notes.approver } : {}), ...(s.notes && s.notes.followers ? { followerNote: s.notes.followers } : {}) });
 
 /** A stored condition back to the builder's field / operator / value when it is that simple, else the formula as it is. @param {string} e */
 function condFrom(e) {
@@ -872,15 +898,17 @@ function clauseFrom(e) {
   return { source: m[2] || "trigger", field: m[3], op: m[4], value: m[5].startsWith('"') ? m[5].slice(1, -1) : m[5] };
 }
 
-/** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} s @returns {DraftStep} */
-function stepFrom(s) {
+/** A stored step as a draft step: its kind's settings and its failure settings. A step with a setting the builder cannot show stays an Advanced step, whole. @param {any} whole @returns {DraftStep} */
+function stepFrom(whole) {
+  const { base: s, slots } = splitSlots(whole);
+  if (slots === null) return { id: whole.id, kind: "advanced", raw: whole, summary: whole.label || undefined };
   const { plain, policy } = splitPolicy(s);
   // `approve: true` is the step's own "always ask a person" and rides on any call or service step.
   const asks = plain.approve === true && (plain.kind === "call" || plain.kind === "service");
   const { approve: _approve, ...bare } = plain;
   void _approve;
   const d = stepFromKind(asks ? bare : plain);
-  return d.kind === "advanced" ? { ...d, raw: s } : { ...d, ...(asks ? { approve: true } : {}), ...policyDraft(policy, stepFrom) };
+  return d.kind === "advanced" ? { ...d, raw: whole } : { ...d, ...slots, ...(asks ? { approve: true } : {}), ...policyDraft(policy, stepFrom) };
 }
 
 /** @param {any} s @returns {DraftStep} */
@@ -950,10 +978,10 @@ function stepFromKind(s) {
     case "agent": {
       const rec = refOf(s.record);
       const ppl = peopleFrom(s);
-      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && outputFrom(s.output) !== null && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "reviewer", "approver", "escalate_to", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
+      return typeof s.assistant === "string" && s.assistant.startsWith("teammate:") && rec && unval(s.instructions) !== null && unval(s.title) !== null && outputFrom(s.output) !== null && keys(s, ["id", "kind", "assistant", "title", "instructions", "output", "record", "await", "skills", "label", "checker", "followers", "notes"]) && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null
         ? { id: s.id, kind: "agent", agent: s.assistant.slice(9), title: unval(s.title), instructions: unval(s.instructions), record: rec, ...(s.await === false ? { await: false } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...outputFrom(s.output), ...ppl } : adv;
     }
-    case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "reviewer", "approver", "escalate_to", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
+    case "assign": return unval(s.title) !== null && typeof s.to === "string" && outputFrom(s.output) !== null && keys(s, ["id", "kind", "to", "title", "output", "record", "await", "skills", "how", "template", "brief", "checker", "followers", "notes"]) && (s.how === undefined || HOWS.some((x) => x[0] === s.how)) && (s.template === undefined || typeof s.template === "string") && (s.await === undefined || typeof s.await === "boolean") && skillsFrom(s.skills) !== null && (s.record === undefined || refOf(s.record)) ? { id: s.id, kind: "assign", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.await === true ? { await: true } : {}), ...(s.skills ? { skills: skillsFrom(s.skills) } : {}), ...(s.how ? { how: s.how } : {}), ...(s.template ? { template: s.template } : {}), ...outputFrom(s.output), ...(s.brief ? { brief: s.brief } : {}), ...peopleFrom(s) } : adv;
     case "ask": return unval(s.title) !== null && typeof s.to === "string" && keys(s, ["id", "kind", "to", "title", "form", "record"]) && (s.record === undefined || refOf(s.record)) && (s.form === undefined || formFrom(s.form) !== null) ? { id: s.id, kind: "ask", to: who(s.to), title: unval(s.title), ...(s.record ? { record: refOf(s.record) } : {}), ...(s.form ? { form: formFrom(s.form) } : {}) } : adv;
     case "update": {
       const rec = refOf(s.record), f = Object.keys(s.set || {});

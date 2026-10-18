@@ -101,20 +101,27 @@ test("a step turned off keeps enabled false and stays an editable step", () => {
   assert.equal("enabled" in toDefinition(on, O).steps[0], false, "turned on again, the key goes");
 });
 
-test("an assign step keeps its reviewer and approver slots, and a plain checker stays a checker", () => {
+test("an assign step keeps its reviewer and approver slots in the engine's shape, and a plain checker stays a checker", () => {
   const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it" };
-  const rich = { ...base, reviewer: { who: "per_bo", skills: ["voice"], instructions: "Plain words", due: "2 days" }, approver: { who: "per_ana", quorum: "all" }, escalate_to: "role:admins" };
+  const rich = { ...base, reviewer: "person:per_bo", approver: "role:admins", instructions: { reviewer: "Plain words" }, skills: { doer: ["intake"], reviewer: ["voice"], approver: ["contracts"] }, quorum: "any" };
+  const { quorum: _q, ...stored } = rich;
   const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [rich] });
   assert.equal(d.steps[0].kind, "assign", "not an Advanced step");
-  assert.equal(d.steps[0].reviewer, "per_bo");
+  assert.equal(d.steps[0].reviewer, "person:per_bo");
   assert.equal(d.steps[0].reviewerSkills, "voice");
-  assert.equal(d.steps[0].checker, "per_ana");
-  assert.equal(d.steps[0].quorum, "all");
+  assert.equal(d.steps[0].approverSkills, "contracts");
+  assert.equal(d.steps[0].skills, "intake");
+  assert.equal(d.steps[0].checker, "role:admins");
   const back = toDefinition(d, O).steps[0];
-  assert.deepEqual(back.reviewer, rich.reviewer);
-  assert.deepEqual(back.approver, rich.approver);
-  assert.equal(back.escalate_to, "role:admins");
+  assert.equal(back.reviewer, "person:per_bo");
+  assert.equal(back.approver, "role:admins");
   assert.equal(back.checker, undefined);
-  const plain = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, checker: "per_ana" }] });
-  assert.equal(toDefinition(plain, O).steps[0].checker, "per_ana");
+  assert.deepEqual(back.skills, stored.skills);
+  assert.deepEqual(back.instructions, stored.instructions);
+  const plain = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, checker: "role:admins", skills: ["intake"] }] });
+  const out = toDefinition(plain, O).steps[0];
+  assert.equal(out.checker, "role:admins");
+  assert.deepEqual(out.skills, ["intake"], "the doer's skills stay a plain list when no slot has skills");
+  const both = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, approver: "role:admins", checker: "role:admins" }] });
+  assert.equal(both.steps[0].kind, "advanced", "both approver and checker stays whole");
 });
