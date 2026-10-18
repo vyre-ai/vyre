@@ -488,7 +488,7 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
       try { for (const p of plans) { await driveTool(p.c!.call.tool, p.c!.call.input); done.push(p.c!); } }
       finally {
         const undos = done.map((d) => d.undo).filter((u): u is NonNullable<typeof u> => Boolean(u));
-        if (done.length) onDone(`${dialog.kind === "delete" ? "Deleted" : dialog.kind === "rename" ? "Renamed" : "Moved"} ${done.length === 1 ? "1 item" : `${done.length} items`}.`, undos);
+        if (done.length) onDone(dialog.kind === "move" ? movedLine(done.length, to.trim().replace(/^\/+|\/+$/g, "").split("/").pop() || "the top", dialog.rows.length - rowsToRun.length) : `${dialog.kind === "delete" ? "Deleted" : "Renamed"} ${done.length === 1 ? "1 item" : `${done.length} items`}.`, undos);
       }
     })().catch((e) => setErr(say(e))).finally(() => setBusy(false));
   };
