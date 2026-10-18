@@ -277,3 +277,43 @@ test("the end of a review round marks the slot wakes over and takes the hold bac
   await onEvent({ type: "task.changes-requested", data: { task: { id: "t1" } } });
   assert.deepEqual(calls, ['agents.wake-done {"task":"t1","slots":true}', "reclaim t1"]);
 });
+
+test("changes requested on a task whose doer is an agent wakes the doer again with the reviewer's answer as information, in a job of its own, and re-binds its hold to the new thread", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const t = task({ state: "changes_requested", review: { by: { kind: "agent", id: "rev" }, type: "agent", result: "changes", checklist: [{ skill: "s/voice", item: "names the firm", ok: false }], at: 7 }, review_note: "add the Rivera figures" });
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {} } }, chain: () => ({}), clock: () => NOW, log: () => {},
+    lend: async x => { calls.push(`lend ${x.id}`); }, bind: async (x, th) => { calls.push(`bind ${th}`); }, reclaimSlots: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async (tool, input) => { calls.push(tool === "agents.wake" ? { wake: input } : tool); return { thread: "th2", already: false, rounds: 1 }; } });
+  await onEvent({ type: "task.changes-requested", data: { task: { id: "t1" } } });
+  const wake = calls.find(c => c && c.wake);
+  assert.equal(wake.wake.slot, "changes");
+  assert.equal(wake.wake.task, "t1#changes:7");
+  assert.equal(wake.wake.task_id, "t1");
+  assert.equal(wake.wake.agent, "juno");
+  assert.equal(wake.wake.info.review.note, "add the Rivera figures");
+  assert.deepEqual(wake.wake.info.review.checklist, [{ skill: "s/voice", item: "names the firm", ok: false }]);
+  assert.ok(calls.indexOf("lend t1") < calls.indexOf(wake) && calls.indexOf(wake) < calls.indexOf("bind th2"), "lent first, woken, then held to the new thread");
+  // a task whose doer is a person is not woken for it
+  const person = createAgentWake({ space: "s", gw: { ask: { get: async () => task({ state: "changes_requested", doer: { kind: "person", id: "ana" } }), edit: async () => {} } }, chain: () => ({}), clock: () => NOW, log: () => {}, lend: async () => { throw new Error("no"); }, callModule: async () => ({}) });
+  await person({ type: "task.changes-requested", data: { task: { id: "t1" } } });
+});
+
+test("an agent doer and an agent reviewer that go round five times are stopped: no wake after the cap, and a person is given the task once", async () => {
+  let now = NOW, rounds = 0, state = "ready";
+  const wakes = /** @type {string[]} */ ([]), asked = /** @type {any[]} */ ([]);
+  const t = () => task({ state, reviewer: { kind: "agent", id: "rev" }, payload: { payload_hash: `h${now}${"x".repeat(12)}` }, review: { result: "changes", checklist: [], at: now } });
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => t(), edit: async () => {}, request: async (_c, spec, o) => { asked.push({ spec, o }); return {}; } } }, chain: () => ({}), clock: () => now, log: () => {},
+    lend: async () => {}, bind: async () => {}, lendSlot: async () => {}, bindSlot: async () => {}, reclaimSlots: async () => {},
+    callModule: async (tool, input) => { if (tool === "agents.wake") { wakes.push(input.slot); if (input.slot === "reviewer") rounds++; return { thread: "th", already: false }; } if (tool === "agents.wake-rounds") return { rounds }; return {}; } });
+  for (let i = 0; i < 7; i++) {
+    now += 10_000; state = "in_review";
+    await onEvent({ type: "task.in-review", data: { task: { id: "t1" } } });
+    now += 10_000; state = "changes_requested";
+    await onEvent({ type: "task.changes-requested", data: { task: { id: "t1" } } });
+  }
+  assert.equal(wakes.filter(s => s === "reviewer").length, 5, "five review rounds, no more");
+  assert.equal(wakes.filter(s => s === "changes").length, 4, "the doer is woken for the changes of the first four rounds, then the cap holds it");
+  assert.equal(asked.length >= 1, true, "a person is told");
+  assert.equal(asked[0].spec.doer.id, "ana");
+  assert.equal(asked[0].o.idem, "review-cap:t1", "told once, however often the events come");
+});

@@ -12,6 +12,10 @@ const TYPES = /^task\.(created|readied|unblocked)$/;
 const SLOT_TYPES = /^task\.(in-review|needs-check)$/;
 /** The ends of a review or an approval round: the slot wake is over, though the task is not (the doer may be given changes to make). */
 const SLOT_ENDS = /^task\.(changes-requested|review-passed|review-pass-kept|declined)$/;
+/** How many rounds an agent reviewer may be woken for one task before a person takes it (agent doer, agent reviewer, changes, doer again must end). The one number. */
+export const AGENT_REVIEW_ROUNDS = 5;
+/** A reviewer or doer is not woken again for the same task within this time (a burst of events is one wake; a real round takes longer). */
+const DEBOUNCE_MS = 3_000;
 const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthori[sz]ed|api key/i;
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided|withdrawn)$/;
 
@@ -79,6 +83,42 @@ export function createAgentWake(o) {
     } catch (err) { log(`agent wake ${o.space}: the session for withdrawn task ${taskId} was not ended (${/** @type {Error} */ (err).message})`); }
   }
 
+  /** @type {Map<string, number>} when a task last woke an agent, for the debounce */
+  const lastWake = new Map();
+  const debounced = (/** @type {string} */ key) => { const now = clock(), at = lastWake.get(key); if (at !== undefined && now - at < DEBOUNCE_MS) return true; lastWake.set(key, now); return false; };
+  /**
+   * The loop agent doer, agent reviewer, changes, doer again ends: after AGENT_REVIEW_ROUNDS reviews by an agent the task goes to a person (a note task for the one who gave it) and no agent is woken for it again.
+   * @param {any} t @returns {Promise<boolean>} true when the cap is reached and a person has it
+   */
+  async function capped(t) {
+    let rounds = 0;
+    try { const r = await o.callModule("agents.wake-rounds", { task: t.id }, o.space); rounds = r && Number.isInteger(r.rounds) ? r.rounds : 0; } catch { return false; }
+    if (rounds < AGENT_REVIEW_ROUNDS) return false;
+    const who = t.assigned_by && t.assigned_by.kind === "person" ? t.assigned_by : null;
+    if (who && typeof o.gw.ask.request === "function") {
+      try { await o.gw.ask.request(o.chain(), { title: `A person is needed on "${String(t.title).slice(0, 120)}"`, doer: who, output: { kind: "note" }, source: "flow_step", ...(t.record ? { record: t.record } : {}), note: `The agents went ${AGENT_REVIEW_ROUNDS} rounds of review without settling it. It is waiting for a person: open the task and decide.`, form: { fyi: true } }, { idem: `review-cap:${t.id}` }); }
+      catch (err) { log(`agent wake ${o.space}: task ${t.id} reached ${AGENT_REVIEW_ROUNDS} review rounds but no person was told (${/** @type {Error} */ (err).message})`); }
+    }
+    return true;
+  }
+  /**
+   * Changes were requested on a task whose doer is an agent: the doer is woken again, in a job of its own, with the reviewer's answer as information, so the loop does not stall after the first "changes".
+   * @param {string} id
+   */
+  async function wakeForChanges(id) {
+    try {
+      const t = await o.gw.ask.get(o.chain(), id);
+      if (!t || t.kernel || t.state !== "changes_requested" || !t.doer || t.doer.kind !== "agent" || typeof o.lend !== "function") return;
+      if (await capped(t) || debounced(`${t.id}:doer`)) return;
+      await o.lend(t);
+      const rv = t.review && typeof t.review === "object" ? t.review : {};
+      const info = { review: { by: rv.by ? { kind: rv.by.kind, id: rv.by.id } : undefined, type: rv.type, result: rv.result, checklist: Array.isArray(rv.checklist) ? rv.checklist : [], ...(typeof t.review_note === "string" && t.review_note ? { note: t.review_note } : {}) } };
+      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
+      const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
+      const r = await o.callModule("agents.wake", { task: `${t.id}#changes:${rv.at || clock()}`, task_id: t.id, slot: "changes", agent: t.doer.id, title: t.title, info, ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}) }, o.space);
+      if (r && typeof r.thread === "string" && typeof o.bind === "function") await o.bind(t, r.thread).catch((/** @type {Error} */ err) => log(`agent wake ${o.space}: the lend of task ${t.id} was not held to its thread (${err.message})`));
+    } catch (err) { log(`agent wake ${o.space}: task ${id} did not wake its doer for the changes (${/** @type {Error} */ (err).message})`); }
+  }
   /**
    * An agent holding the reviewer slot (task in_review) or the approver slot (task needs_check, internal work) is woken once per hand-in with what it may do: review against the checklist, or decide. It holds the task for
    * that one job (a grant on this task only, ending with the round), never the doer's. A person in the slot is not woken; an agent that is the doer is not woken for its own work.
@@ -92,6 +132,8 @@ export function createAgentWake(o) {
       const agent = slot === "reviewer" ? t.reviewer : slot === "approver" ? t.checker : null;
       if (!slot || !agent || typeof o.lendSlot !== "function" || (t.doer && t.doer.kind === "agent" && t.doer.id === agent.id)) return;
       if (typeof t.created_at === "number" && clock() - t.created_at > MAX_AGE_MS) return;
+      if (slot === "reviewer" && await capped(t)) return;
+      if (debounced(`${t.id}:${slot}`)) return;
       const hand = t.payload && typeof t.payload.payload_hash === "string" ? t.payload.payload_hash.slice(0, 12) : String(t.updated_at || 0);
       const key = `${t.id}#${slot}:${hand}`;
       await o.lendSlot(t, agent.id, slot);
@@ -118,7 +160,12 @@ export function createAgentWake(o) {
       if (e.type === "task.withdrawn") await stopThread(id);
       return;
     }
-    if (e && SLOT_ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") { await o.callModule("agents.wake-done", { task: e.data.task.id, slots: true }, o.space).catch(() => null); if (typeof o.reclaimSlots === "function") await o.reclaimSlots(e.data.task.id).catch(() => null); return; }
+    if (e && SLOT_ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") {
+      await o.callModule("agents.wake-done", { task: e.data.task.id, slots: true }, o.space).catch(() => null);
+      if (typeof o.reclaimSlots === "function") await o.reclaimSlots(e.data.task.id).catch(() => null);
+      if (e.type === "task.changes-requested") await wakeForChanges(e.data.task.id);
+      return;
+    }
     if (e && SLOT_TYPES.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") return wakeSlot(e.data.task.id);
     if (!e || !TYPES.test(String(e.type))) return;
     const id = e.data && e.data.task && typeof e.data.task.id === "string" ? e.data.task.id : null;
