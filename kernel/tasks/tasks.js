@@ -318,6 +318,17 @@ export function createTasks(cfg) {
   const pinnedItems = (t) => ((t.guides && t.guides.skills && t.guides.skills.reviewer) || []).flatMap((/** @type {any} */ k) => k.checklist.map((/** @type {string} */ item) => ({ skill: k.id, item })));
   /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
   const taskDataHash = (t) => (t.details !== undefined || t.outputs !== undefined ? { task_data_hash: sha256(canonical({ details: t.details ?? null, outputs: t.outputs ?? [] })) } : {});
+  /**
+   * The skills a slot is held to are the ones pinned when the task was made. Before the holder works, reviews or approves, each is asked for again as the holder's own chain: a skill that changed since, or that the
+   * holder may not read, stops the step (the holder would follow text the hash does not cover). One refusal for both, so it says nothing about what the holder cannot read.
+   * @param {any} chain @param {any} t @param {"doer" | "reviewer" | "approver"} slot
+   */
+  const pinsHold = async (chain, t, slot) => {
+    for (const k of (t.guides && t.guides.skills && t.guides.skills[slot]) || []) {
+      const now = cfg.skills ? await cfg.skills.pin(k.id, chain) : null;
+      if (!now || now.hash !== k.hash) throw new KernelError("bad_state", `skill ${k.id.slice(0, 80)} changed since this task was made, or you may not use it`);
+    }
+  };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
   const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
@@ -432,7 +443,7 @@ export function createTasks(cfg) {
           for (const i of ids) {
             const found = cfg.skills ? await cfg.skills.pin(i, chain) : null;
             if (!found || typeof found.hash !== "string" || !Array.isArray(found.checklist) || found.checklist.length > 60) throw new KernelError("bad_input", `skill ${i} is not one of this Space's skills`);
-            pinned[k].push(freeze({ id: i, hash: found.hash, checklist: freeze(found.checklist.map((/** @type {any} */ c) => String(c).slice(0, 200))) }));
+            pinned[k].push(freeze({ id: i, ...(typeof found.name === "string" && found.name ? { name: found.name.slice(0, 80) } : {}), hash: found.hash, checklist: freeze(found.checklist.map((/** @type {any} */ c) => String(c).slice(0, 200))) }));
           }
           pinned[k] = freeze(pinned[k]);
         }
@@ -528,6 +539,7 @@ export function createTasks(cfg) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer starts a task");
+      await pinsHold(chain, t, "doer");
       rule(t, "working", "doer");
       const n = put(t, { state: "working" });
       note(chain, "task.started", n, {});
@@ -595,6 +607,7 @@ export function createTasks(cfg) {
       if (t.kernel || !(isDoer(chain, t) || helper)) throw new KernelError("not_allowed", "only the doer or a helper updates a task");
       if (!["ready", "working", "changes_requested"].includes(t.state)) throw new KernelError("bad_state", `a task that is ${t.state} cannot be updated: it is with a reviewer or an approver, or finished`);
       if (!a || typeof a !== "object" || (a.details === undefined && a.note === undefined && a.outputs === undefined)) throw new KernelError("bad_input", "update details, a progress note or outputs");
+      await pinsHold(chain, t, "doer");
       const patch = /** @type {any} */ ({});
       const did = [];
       if (a.details !== undefined) { patch.details = opaque(a.details); did.push("details"); }
@@ -626,6 +639,7 @@ export function createTasks(cfg) {
       // never the doer, a helper, or anything that acts under the doer (a person's own assistant cannot review that person's work); an agent reviewer is another agent by uid
       if (chain.hops.some((/** @type {any} */ h) => same(h.actor, t.doer) || (t.helpers || []).some((/** @type {any} */ x) => same(x, h.actor)))) throw new KernelError("not_allowed", "nobody reviews their own work");
       if (!reviewersOf(t).some((/** @type {any} */ r) => same(r, who))) throw new KernelError("not_allowed", "you are not this task's reviewer");
+      await pinsHold(chain, t, "reviewer");
       if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, holdersOf(t)))) throw new KernelError("not_found", "no such task");
       const text = a.note === undefined ? "" : String(a.note).slice(0, FIX_CAP);
       if (a.result === "changes" && !text.trim()) throw new KernelError("bad_input", "asking for changes needs a note saying what to change");
@@ -690,6 +704,7 @@ export function createTasks(cfg) {
       if (t.state !== "needs_check") throw new KernelError("bad_state", "that task is not waiting for a check");
       // The checker is resolved to people when the task is made and again now; an assistant that holds the role is filtered out.
       if (!checkersOf(t).some((/** @type {any} */ c) => same(c, person)) || same(person, t.doer)) throw new KernelError("not_allowed", "you are not this task's checker");
+      if (a.outcome === "approved") await pinsHold(chain, t, "approver");
       if (a.outcome === "rejected") {
         if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
         rule(t, "ready", "checker");

@@ -422,6 +422,34 @@ export default {
       return /** @type {any} */ (memberOps)[i.call](String(h.actor.id), chain, i.input && typeof i.input === "object" ? i.input : {});
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    // The checklist of a skill: the "- [ ]" lines under its "## Checklist" heading, read the same way every time. A skill with no such heading has none; a heading with anything but items under it, or no items, is
+    // refused rather than guessed at. @param {string} text
+    const checklistOf = (text) => {
+      const lines = String(text).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").split(/\r?\n/);
+      const at = lines.findIndex((l) => /^##\s+Checklist\s*$/i.test(l));
+      if (at < 0) return [];
+      const items = [];
+      for (const l of lines.slice(at + 1)) {
+        if (/^#{1,6}\s/.test(l)) break;
+        if (!l.trim()) continue;
+        const m = /^\s*[-*]\s+\[ \]\s+(\S.*?)\s*$/.exec(l);
+        if (!m || m[1].length > 200) throw err("bad_input", "this skill's Checklist is not a list of \"- [ ] item\" lines of at most 200 characters");
+        items.push(m[1]);
+      }
+      if (!items.length || items.length > 60) throw err("bad_input", "this skill's Checklist has between 1 and 60 \"- [ ] item\" lines");
+      return items;
+    };
+    // A task pins a skill by id: the hash of the whole SKILL.md (so any edit changes it) and its checklist. Only the daemon's kernel-held pin callback runs it, with the chain of whoever is asking; the skill must be one that
+    // person may use, and one that is not (or is not there) answers exactly alike. An assistant acting for a person is judged as that person.
+    ctx.tool("skills.pin", { effect: "read", internal: true, callers: ["module"], description: "A skill's content hash and checklist for a task to pin, as the person asking. Only the kernel's pin callback runs it.", input: obj({ id: { type: "string", minLength: 3, maxLength: 200 } }, ["id"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      const none = () => err("not_found", `skill ${String(i.id).slice(0, 80)} is not one of this Space's skills`);
+      if (!extra || !extra.in_space_chain || !extra.in_space || !kernelOk() || String(extra.in_space) !== String(ctx.kernel.space || "")) throw none();
+      const h = extra.in_space_chain.hops && extra.in_space_chain.hops[0];
+      if (!h || h.actor.kind !== "person") throw none();
+      let s;
+      try { s = await /** @type {any} */ (memberOps).get(String(h.actor.id), extra.in_space_chain, { id: String(i.id) }); } catch { throw none(); }
+      return { hash: createHash("sha256").update(String(s.text)).digest("hex"), name: String(s.name || "").slice(0, 80), checklist: checklistOf(s.text) };
+    } });
     ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["browse", "list", "get", "versions"]), run: serve(["browse", "list", "get", "versions"]) });
     ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve", "decline", "rollback"]), run: serve(["draft", "approve", "decline", "rollback"]) });
     return { async stop() {} };

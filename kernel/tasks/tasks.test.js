@@ -1060,14 +1060,22 @@ test("pinned guides: instructions and skills ride on the task, the checklist is 
   await assert.rejects(r.tasks.request(owner(), spec({ instructions: { doer: "x".repeat(2001) } })), { code: "bad_input" });
   const t = await r.tasks.request(owner(), spec());
   assert.equal(t.guides.skills.reviewer[0].hash, "h1");
-  catalog["brand-voice"] = { hash: "h2", checklist: [] };   // a later edit to the skill does not weaken this review
   await r.tasks.start(asIntake(), t.id);
   await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  catalog["brand-voice"] = { hash: "h2", checklist: [] };   // the skill is edited after the task was made: the review stops, it does not run against text the hash does not cover
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [] }), { code: "bad_state" });
+  catalog["brand-voice"] = { hash: "h1", checklist: ["no jargon", "names the firm"] };
   await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }] }), { code: "bad_input" }, "an item left out");
   await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "made up", ok: true }] }), { code: "bad_input" });
   const done = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "names the firm", ok: true }] });
   assert.equal(done.state, "needs_check");
   assert.ok(done.review.checklist_hash, "the result stores the hash of the checklist it was judged against");
+  // the approver's card shows what the approval binds: instructions (marked untrusted), pinned skills and the reviewer's checklist result
+  const card = await r.tasks.card(alice(), t.id);
+  assert.equal(card.guides.untrusted, true);
+  assert.equal(card.guides.instructions.reviewer, "Check the tone");
+  assert.equal(card.guides.skills.reviewer[0].hash, "h1");
+  assert.equal(card.review.checklist.length, 2);
 });
 
 test("pinned guides: a skill the caller may not read refuses exactly like a missing one, a repeated skill id is refused, and the guides have a size cap", async () => {

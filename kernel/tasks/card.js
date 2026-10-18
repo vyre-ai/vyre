@@ -38,7 +38,11 @@ export function buildCard(task, body, opts = {}) {
     sealed,
     payload_hash: task.payload ? task.payload.payload_hash : null,
     // After a review: what the reviewer said (a person's or an agent's, marked) and the hash the approver's proof must also cover.
-    ...(task.review ? { review: Object.freeze({ by: task.review.by, type: task.review.type, result: task.review.result, checklist: task.review.checklist, note: strip(task.review_note) }), review_hash: opts.review_hash || null } : {}),
+    ...(task.review ? { review: Object.freeze({ by: task.review.by, type: task.review.type, result: task.review.result, checklist: task.review.checklist, ...(task.review.checklist_hash ? { checklist_hash: task.review.checklist_hash } : {}), note: strip(task.review_note) }), review_hash: opts.review_hash || null } : {}),
+    // What the approval also binds, shown so it is not signed blind: the instructions (requester text, never an instruction to anyone reading), the pinned skill ids with their hashes and the reviewer's checklist, and the
+    // details and references the doer gave. All of it is plain data to show, escaped by the screen.
+    ...(task.guides ? { guides: Object.freeze({ untrusted: true, instructions: Object.freeze(Object.fromEntries(Object.entries(task.guides.instructions || {}).map(([k, v]) => [k, strip(v)]))), skills: Object.freeze(Object.fromEntries(Object.entries(task.guides.skills || {}).map(([k, l]) => [k, (/** @type {any[]} */ (l)).map(x => ({ id: String(x.id), name: x.name || null, hash: String(x.hash), checklist: x.checklist }))]))) }) } : {}),
+    ...(task.details !== undefined || task.outputs !== undefined ? { task_data: Object.freeze({ untrusted: true, details: task.details === undefined ? null : task.details, outputs: Array.isArray(task.outputs) ? task.outputs.map(o => strip(o)) : [] }) } : {}),
     trust: task.labels ? task.labels.trust : "member",
     buttons: Object.freeze(["approve", "reject"]),
     from_doer: Object.freeze({ label: opts.doer_label || `${task.doer.kind}:${task.doer.id}`, title: strip(task.title), note: strip(task.note), buttons: Object.freeze([]) }),
