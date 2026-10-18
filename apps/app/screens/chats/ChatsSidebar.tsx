@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { allowsMock, ConversationHeader, ConversationList, ConversationTypes, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationList, ConversationTypes, IconButton, Menu, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -44,31 +44,15 @@ export function ChatsPlusButton() {
   return <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />;
 }
 
-/** The filter control inside the search's right end: All, each project, No project and tags. The type row (All, People, Groups, Agents, Flows) is above the list. */
-export function ChatsFilterButton() {
-  const f = useChatsFilter();
-  const items = [
-    ...convoChips(f.all).map((k) => ({ label: k.label, selected: f.project === k.id, onPress: () => f.set({ project: k.id }) })),
-    ...f.tags.map((t) => ({ label: `#${t}`, selected: f.tag === t, onPress: () => f.set({ tag: f.tag === t ? "" : t }) })),
-  ];
-  const narrowed = f.project !== "all" || Boolean(f.tag);
-  return <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={items} />;
-}
-
-/** The search, filter and + as one row: the top of a phone's Chat page (the sidebar spreads the same three pieces over its search and top bar). */
+/** The top of a phone's Chats page: the name and the compose button. There is no search here: the one search is the main one. */
 export function ChatsSidebarHeader() {
-  const f = useChatsFilter();
   const add = useAdd();
   return (
-    <ConversationHeader all={f.all} query={f.q} onQuery={(q) => f.set({ q })} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })} add={add} />
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
+      <Text size="title" medium>Chats</Text>
+      <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />
+    </View>
   );
-}
-
-/** What the sidebar's search reads and writes. */
-export function useChatsSearch() {
-  const q = useChatsFilter((s) => s.q);
-  const set = useChatsFilter((s) => s.set);
-  return { q, set };
 }
 
 /**
