@@ -35,6 +35,7 @@ test("a card is rebuilt from the owner's list, closes with the outcome the owner
       if (tool === "threads.asks") return { data: [] };
       if (tool === "flows.attention") return { data: { runs: [] } };
       if (tool === "models.evals") return { data: { evals: [] } };
+      if (tool === "requests.attention") return { data: { requests: [], refusing: [] } };
       return { error: { code: "unknown_tool" } };
     },
     on: (pattern, fn) => { handlers.set(pattern, fn); return () => handlers.delete(pattern); },

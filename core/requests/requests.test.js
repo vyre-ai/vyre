@@ -167,7 +167,7 @@ test("approve is checked through the Space's door under the approver's own chain
   const chain = { space: SPACE, hops: [{ actor: { kind: "person", id: ADMIN } }] };
   const go = (svc, extra = {}) => svc.decide(chain, { id: "req_1", approve: true, invite: token, ...extra }).then(() => "ok", (e) => `${e.code}:${e.message}`);
   assert.equal(await go(mk(listed)), "ok");
-  assert.deepEqual([calls[0].invite, calls[0].invite_id, calls[0].invitee], [token, invId, ASKER]);
+  assert.deepEqual([calls[0].input.invite, calls[0].input.invite_id, calls[0].input.invitee], [token, invId, ASKER]);
   for (const [why, list] of [["not found", []], ["made by someone else", [{ ...listed[0], issued_by: OWNER }]], ["already used", [{ ...listed[0], status: "used" }]], ["expired", [{ ...listed[0], status: "expired" }]], ["a role above the approver's", [{ ...listed[0], role: "owner" }]], ["no invitee", [{ ...listed[0], invitee: null }]]]) {
     const n = calls.length;
     assert.match(await go(mk(list)), /^bad_input:Approve by creating the invite first/, why);
