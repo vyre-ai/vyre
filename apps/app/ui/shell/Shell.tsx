@@ -47,6 +47,8 @@ export type ShellProps = NavDef & {
   onSearch?: () => void;
   /** Lock the vault on this device (the account menu's Lock). */
   onLock?: () => void;
+  /** The few latest chats, under the places: a short Recent list. Folded, it is not drawn. */
+  recent?: { id: string; label: string; href: string }[];
   children: React.ReactNode;
 };
 
@@ -96,6 +98,12 @@ function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
       <ArrowNav>
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
           {p.items.map(row)}
+          {!folded && p.recent && p.recent.length > 0 ? (
+            <View style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel="Recent">
+              <SidebarLabel>Recent</SidebarLabel>
+              {p.recent.slice(0, 5).map((r) => <SidebarRow key={r.id} label={r.label} icon="chat" tone="label" on={p.current === r.href} onPress={() => p.onNavigate(r.href)} />)}
+            </View>
+          ) : null}
           {(p.groups ?? []).map((g) => (
             <View key={g.name} style={{ gap: RAIL.rowGap }} role="group" accessibilityLabel={g.name}>
               {folded ? <View style={{ height: 1, backgroundColor: color.edge, marginHorizontal: 8, marginVertical: 6 }} /> : <SidebarLabel>{g.name}</SidebarLabel>}
@@ -104,16 +112,16 @@ function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
           ))}
         </ScrollView>
       </ArrowNav>
+      {p.bottom.length > 0 ? <View style={{ gap: RAIL.rowGap }}>{p.bottom.map(row)}</View> : null}
     </View>
   );
 }
 
-/** You at the foot: your face (28) and nothing else. A tap opens a popover above it with your name and the space, then Settings, Build, Collapse and Lock. Every section's sidebar has this same foot. */
+/** You at the foot: your face (28) and nothing else. A tap opens a popover above it with your name and the space, then Collapse and Lock (Vault, Build and Settings are rows above it). Every section's sidebar has this same foot. */
 function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
   const { color } = useUiTheme();
   const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
   const items = [
-    ...p.bottom.map((it) => ({ label: it.label, onPress: () => p.onNavigate(it.href) })),
     { label: folded ? "Expand sidebar" : "Collapse sidebar", onPress: toggle },
     ...(p.onLock ? [{ label: "Lock", onPress: p.onLock }] : []),
   ];

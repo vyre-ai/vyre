@@ -12,6 +12,7 @@ import { useSpaceLogos } from "../../ui/marks/useSpaceLogos";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
 import { whoIsThere } from "./gate.js";
+import { recentChats } from "./recent.js";
 import { gatedPath } from "./basic.js";
 import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
@@ -89,11 +90,19 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const nav = { ...arranged, items: arranged.items.map((it) => (it.id === "now" && waiting ? { ...it, badge: waiting } : it)) };
   const look = looks[space === "all" ? "mine" : space];
   useEffect(() => { useSpaceLogos.getState().set(Object.fromEntries(Object.entries(looks).filter(([, l]) => l.logo).map(([id, l]) => [id, l.logo as string]))); }, [looks]);
+  // Recent: the latest chats under the places, read again when the person moves and the last read is over 20 s old.
+  const [recent, setRecent] = useState<{ id: string; label: string; href: string }[]>([]);
+  const [recentAt, setRecentAt] = useState(0);
+  useEffect(() => {
+    if (allowsMock() || gate !== "in" || Date.now() - recentAt < 20_000) return;
+    setRecentAt(Date.now());
+    void call<unknown>("threads.list", { all: true }).then((r) => { if (!r.error) setRecent(recentChats(r.data)); }).catch(() => {});
+  }, [gate, path, recentAt]);
   const go = (href: string) => router.push(href as never);
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
+    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />

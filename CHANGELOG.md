@@ -91,6 +91,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(app): the Flows list opens with one box, "What should happen on its own?", that hands the words to Engineer, and a Needs you section above the rest; a Flow's page has "Change it in chat"; the Flow's run threads have a source over work.flow.threads (empty until the box has the tool).
 - feat(app): Home opens with the date, a greeting by the person's local time and a one-line summary (home-model.js, HomeHeader).
 
+- ci: gen-kits-branch.yml recompiles records/kits/*/kit.ts into kit.json on a work/polish/** branch and commits the result back (a person may not run the compiler on a Mac). Two jobs, as in gen-tokens-branch.yml and regen.yml: the job that runs the branch's compiler has a read-only token and keeps no credentials; the job that writes runs none of the branch's code and applies the patch only when it names records/kits/<name>/kit.json files. Starts on a change to a kit source, the language or the workflow. Checked by scripts/gen-kits-workflow.test.js.
 ## 0.6.0
 
 - feat(flows): a Flow may name the project it runs in (`project`, the project's short name), set by flows.define, the text language and flows.patch, and flows.list takes `{ project }` to show that project's Flows only.
