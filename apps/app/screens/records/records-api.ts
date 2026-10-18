@@ -29,6 +29,8 @@ export const recordsApi = {
     o.type === "note" || o.type === "record-note"
       ? callT<unknown>("planner.update", note({ item: urn.split("/").pop(), visibility, ...(o.record ? { record: o.record } : {}) }))
       : callT<unknown>("records.share", { urn, visibility }),
+  /** A new note of your own, private until shared (planner.add; in a joined team it lands in the team's planner). */
+  noteAdd: (title: string, body: string) => callT<unknown>("planner.add", note({ kind: "note", title, ...(body ? { body } : {}), visibility: "private" })),
   /** One note, and a change to your own (planner.get, planner.update). */
   noteGet: (id: string) => callT<unknown>("planner.get", note({ item: id })),
   noteUpdate: (input: Record<string, any>) => callT<unknown>("planner.update", note(input)),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Card, Chip, Row, Text } from "@vyre/ui";
+import { Button, Card, Chip, Field, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { recordsApi, type NoteRow } from "./records-api";
 import { ShareControl } from "./ShareControl";
 import { NoteSheet } from "./NoteSheet";
@@ -14,6 +14,17 @@ export function NotesList({ scope, me }: { scope: "mine" | "shared" | "space"; m
   const [problem, setProblem] = useState("");
   const [n, setN] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    setBusy(true);
+    const r = await recordsApi.noteAdd(title.trim(), body.trim());
+    setBusy(false);
+    if (r.error) { showToast(r.error.message || "That did not save."); return; }
+    setAdding(false); setTitle(""); setBody(""); setN((c) => c + 1);
+  };
   useEffect(() => {
     let live = true;
     setRows(null); setProblem("");
@@ -22,6 +33,18 @@ export function NotesList({ scope, me }: { scope: "mine" | "shared" | "space"; m
   }, [scope, n]);
   if (rows === null) return <Text tone="label">Loading</Text>;
   return (
+    <View className="gap-s3">
+    <View className="flex-row"><Button kind="secondary" size="sm" icon="plus" label="New note" onPress={() => setAdding(true)} /></View>
+    <Sheet open={adding} onClose={() => setAdding(false)} title="New note">
+      <View className="gap-s3">
+        <Field label="Title" value={title} onChangeText={setTitle} />
+        <Field label="Note" value={body} onChangeText={setBody} multiline lines={5} />
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label="Save" loading={busy} disabled={busy || !title.trim()} onPress={() => void add()} />
+          <Button kind="ghost" label="Cancel" onPress={() => setAdding(false)} />
+        </View>
+      </View>
+    </Sheet>
     <Card>
       {rows.length ? rows.map((x) => (
         <View key={x.id} className="gap-s2 pb-s3">
@@ -31,5 +54,6 @@ export function NotesList({ scope, me }: { scope: "mine" | "shared" | "space"; m
       )) : <Text tone="label">{problem || (scope === "mine" ? "You have not written a note yet." : scope === "shared" ? "Nothing has been shared with you." : "No note is shared with the whole Space yet.")}</Text>}
     <NoteSheet id={open} me={me} onClose={() => setOpen(null)} onChanged={() => setN((c) => c + 1)} />
     </Card>
+    </View>
   );
 }

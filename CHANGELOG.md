@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records. The Notes tab has New note (planner.add, private, with the notes marker), so a joined member's note lands in the team's planner.
 - fix(app): Records. "Add a note" on a record writes the note with planner.add (private, about the record, with the notes marker), so a joined team's note lands in the team's planner; a call or a meeting is still a records.log.
 - fix(app): Records. Every Notes call (planner.list, planner.get, planner.update) carries the notes marker, so a joined team's notes go through the team's door and a home Space's stay at home; no other planner call carries it.
 - feat(app): Records. A row of the Notes tab opens the note (planner.get). Your own note can be edited and shared in place (planner.update); a note shared with you reads on its own and says it is read-only (screens/records/NoteSheet.tsx, note-model.js).
