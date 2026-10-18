@@ -103,6 +103,32 @@ test("history tools: vault.history is names only for Claude, revert and old-vers
   assert.equal((await run("vault.revert", { name: "site-login", version: 1 })).version, 3);
 });
 
+
+test("a member of a shared vault cannot revert or move an item in it: her own vault has no such item, nothing changes, and the tools refuse her surface", async t => {
+  // A shared item lives in the owner's vault. A member reads and uses it through the owner's Space tools with her own chain. Her revert
+  // resolves the name only in her own vault (mustRow), so the owner's item is not found for her. The tool layer refuses her surface before a tool runs.
+  const owner = setup(t), member = setup(t);
+  await owner.vault.put({ name: "shared-login", kind: "login", fields: { username: "alex", password: fake("p1") } }, "cli");
+  await owner.vault.put({ name: "shared-login", kind: "login", fields: { username: "alex", password: fake("p2") } }, "cli");
+  const itemId = () => owner.vault.row("shared-login").id;
+  const ownerVer = () => owner.vault.row("shared-login").ver;
+  const ownerHist = () => owner.db.prepare("SELECT COUNT(*) AS n FROM vault_history WHERE item = ?").get(itemId()).n;
+  const before = { ver: ownerVer(), hist: ownerHist() };
+  await assert.rejects(member.vault.revert({ name: "shared-login", version: 1 }, "member:juno"), "a member's revert does not reach the owner's item");
+  assert.equal(ownerVer(), before.ver, "the item's version is unchanged");
+  assert.equal(ownerHist(), before.hist, "no history row was added");
+  assert.equal(member.db.prepare("SELECT COUNT(*) AS n FROM vault_history").get().n, 0, "the member's vault gained no history row");
+  // the tool layer: revert and move accept only the person's own surfaces, so a member's call is refused before the tool runs
+  const { tools } = await recorded(t);
+  for (const name of ["vault.revert", "vault.move"]) {
+    const callers = tools.get(name).callers;
+    for (const viewer of ["member", "mcp", "agent", "chat", "phone", "device", "tailnet", "space", "module"]) {
+      assert.ok(!callers.includes(viewer), `${name}: ${viewer} is refused`);
+    }
+  }
+});
+
+
 test("a viewer of a shared item cannot revert it: vault.revert is callable only from the person's own surfaces, never from a member, agent, model or device that only reads or uses a shared item", async t => {
   // The registry refuses a call whose surface is not in a tool's callers list before the tool runs. The list is the gate here: a member who
   // holds only use or read on a shared item reaches the Vault from these surfaces, and none of them may revert.
