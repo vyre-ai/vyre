@@ -25,6 +25,7 @@ import { createKernel } from "../../kernel/index.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { createKernelSessions } from "../../lib/kernel-session.js";
 import { lendKey } from "../daemon/lend-key.js";
+import { callLend } from "../modules/lend-call.js";
 import { connect, wsDuplex } from "./client.js";
 import { FAKE } from "../sessions/testing/boot.js";
 
@@ -88,7 +89,7 @@ async function world(t, opts = {}) {
     // vyred's side of a person's send, as the daemon composes it (core/daemon/index.js): the Switchboard asks deps.kernelSession for each turn and gets the asker's own session in the chat.
     // Nothing here wraps a call: the Switchboard itself carries chat and asker (it honours them from module:stream alone).
     // a member's own AI key for her own turn: the daemon's lendKey (core/daemon/lend-key.js) over this kernel, with the registry's callLend; `lend: false` is a daemon that has none (fail closed)
-    if (o.lend !== false) reg.deps.lendKey = lendKey({ kernel: k, personChainFor, callLend: (/** @type {any} */ i, /** @type {any} */ x) => reg.callLend(i, x) });
+    if (o.lend !== false) reg.deps.lendKey = lendKey({ kernel: k, personChainFor, callLend: (/** @type {any} */ i, /** @type {any} */ x) => callLend(reg, i, x) });
     reg.deps.sandbox = { off: true }; // the daemon's own development switch (VYRE_SESSION_SANDBOX_OFF=1): the sandbox has its own tests
     reg.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
       const person = k.chains.fromFacts({ kind: "session_person", person: q.asker || OWNER, session: `thread:${q.thread}`, vouched: true });

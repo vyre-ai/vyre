@@ -42,8 +42,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.j
 import { recordTags } from "../../lib/record-tags.js"; import { memberVaultTags } from "./member-vault-chips.js"; import { registerTurnAsker } from "./turn-asker.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
-import { memberKey } from "./member-key.js";
-import { lendTurn } from "./lend-turn.js";
+import { memberKey, lendTurn } from "./member-key.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";

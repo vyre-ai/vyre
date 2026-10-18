@@ -6,6 +6,7 @@
 // `turn` is what lend-turn.js settled before asking: the verified asker of this turn, still in the chat, and the account that same person's. Without it (no daemon, no asker) nothing is lent.
 
 import { mayReadHomeVault } from "../../lib/account-source.js";
+export { lendTurn } from "./lend-turn.js";
 
 const refuse = (/** @type {string} */ message, code = "denied") => Object.assign(new Error(message), { code });
 

@@ -55,3 +55,14 @@ test("the asker comes only from the verified asker or the stored one: a person n
   // no verified or stored asker at all: naming ada in the options lends nothing
   await assert.rejects(lendTurn(sbOf().sb, "t1", recOf, { person: "per_ada" }, acct({ person: "per_ada" })), /not available to this turn/);
 });
+
+import { callLend } from "../modules/lend-call.js";
+test("the registry's lend call is vault.me.lend as module:threads on the given token, and nothing without a token", async () => {
+  /** @type {any[]} */ const calls = [];
+  const registry = { call: async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => { calls.push({ tool, input, caller, meta }); return { data: { value: "v" } }; } };
+  assert.deepEqual(await callLend(registry, { account: "acc1", other: "x" }, { token: "T" }), { data: { value: "v" } });
+  assert.deepEqual(calls, [{ tool: "vault.me.lend", input: { account: "acc1" }, caller: "module:threads", meta: { origin: "deck", token: "T" } }]);
+  assert.equal((await callLend(registry, { account: "acc1" }, { token: "" })).error.code, "denied");
+  assert.equal((await callLend(registry, { account: "acc1" }, /** @type {any} */ (null))).error.code, "denied");
+  assert.equal(calls.length, 1, "no token, no call");
+});

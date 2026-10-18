@@ -1392,15 +1392,6 @@ export class Registry {
   }
 
   /**
-   * The Switchboard's one way to a member's own AI key (needs.daemon "lendKey", core/daemon/lend-key.js): vault.me.lend and nothing else, as module:threads, on `token`, a one-turn session of that one person
-   * which the daemon opened and ends. Nothing a tool or a client sends can reach this: only the daemon's lendKey holds the registry. @param {{ account: string }} input @param {{ token: string }} o
-   */
-  async callLend(input, o) {
-    if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a member's key is lent on that member's own session" } };
-    return this.call("vault.me.lend", { account: String(input && input.account || "") }, "module:threads", { origin: "deck", token: o.token });
-  }
-
-  /**
    * Run a flow.steps tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
    * only for a read tool or after it spent the Flow's one approval for exactly this act (the kernel's task approval, bound to the input): the tool's own outward hold is the same yes, never a second.
    * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string, task?: string }} o (`task`: the approved task the host just spent for this act)
