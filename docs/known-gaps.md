@@ -132,6 +132,12 @@ A task taken from a group can be taken over by another member only while it is b
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
 
+### A file you hand in is checked on its form only
+
+When a task asks for a file, Vyre checks that you named a file in the right form (a path inside your drive, or a record of this Space that you can see). It cannot look inside your drive to see that the file is really there, so a file you name but never saved is accepted as your word.
+
+What to do today: the person who checks the task opens the file before saying yes.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.

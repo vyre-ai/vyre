@@ -40,5 +40,32 @@ test("1. a task whose output is a file, a draft or fields can be handed in and c
   await assert.rejects(finish(gone, { file: `vyre://${space}/file/nothing-here` }), { code: "output_check_failed" });
 });
 
+
+test("1b. the hand-in lookup runs on the doer's own chain: a record the doer may not read is refused exactly as one that does not exist", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const { ask, ownerChain, space, K } = w;
+  const CAT = "per_" + "defghijklmnopqrstuvwxyzabc";
+  const proof = () => ({ op: "stand-in", fields: {}, n: Math.random() });
+  await K.gateway.grants.setRole(ownerChain, { person: CAT, role: "member" }, { presence: proof() });
+  const cat = K.chains.fromFacts({ kind: "device", device_key_id: "d-cat", person: CAT, path: "relay" });
+  // a project of the owner's, which a member who is not on it cannot read
+  const rec = await K.gateway.records.create(ownerChain, "project", { name: "Private matter", slug: "private-matter", status: "active" });
+  const secret = `vyre://${space}/project/${rec.id}`, missing = `vyre://${space}/project/no-such-record-at-all`;
+  await assert.rejects(K.gateway.records.get(cat, "project", rec.id), "the member really cannot read it");
+  const refusal = async (/** @type {string} */ urn) => {
+    const task = await ask.request(ownerChain, { title: "Hand it in", doer: { kind: "person", id: CAT, space }, output: { kind: "file" } });
+    await ask.start(cat, task.id);
+    try { await ask.complete(cat, task.id, { file: urn }); return "accepted"; } catch (e) { return `${e.code}: ${e.message}`; }
+  };
+  const unseen = await refusal(secret), absent = await refusal(missing);
+  assert.match(unseen, /^output_check_failed/, unseen);
+  assert.equal(unseen, absent, "a record the doer cannot see is refused in the same words as one that is not there");
+  // the owner, who can read it, hands the same record in
+  const mine = await ask.request(ownerChain, { title: "Mine", doer: w.me, output: { kind: "file" } });
+  await ask.start(ownerChain, mine.id);
+  assert.equal((await ask.complete(ownerChain, mine.id, { file: secret })).state, "done");
+});
+
+
 // Items 3 (the person responsible for an agent) and 4 (a Kit's teammate) are not proved here: both need an agent running under a lent grant, or a Kit install through its approval, which a bare daemon test cannot set up.
 // Read from code: with no responsible port the maker of an agent unblocks its stuck task with a fresh proof like anyone else, and a Kit teammate part is skipped because the Flows host provides no teammates port.
