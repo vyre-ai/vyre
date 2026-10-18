@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -28,6 +28,17 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
+import { chatKind, threadsTab } from "./threads-model.js";
+import { agentThreads } from "./threads-source";
+import { ForwardSheet } from "./ForwardSheet";
+import { OriginBlock } from "./OriginBlock";
+import { loadOrigin, sampleOrigin } from "./origin-history-source";
+import { sampleAllowed, type OriginRow } from "./origin-history.js";
+import { addToAgentThread, addToGroupChat, newThreadWith } from "./add-people";
+import { callsFromItems, flowNameOf, afterMake } from "./make-flow-model.js";
+import { callT } from "../real/call-tool";
+import { chatTools } from "../../screens/chat-tools/instance";
+import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
@@ -88,7 +99,13 @@ export type ChatScreenProps = {
   /** Open "About this chat" at first (shots). */
   initialAbout?: boolean;
   /** The panel's tab when it opens first (the sample build's ?tab=computer, for a picture). */
-  initialTab?: "details" | "library" | "computer";
+  initialTab?: string;
+  /** A Flow is one chat whose runs are its threads. */
+  flow?: boolean;
+  /** The sample world only: show a group (two people and two agents) for the design preview. */
+  sampleGroup?: boolean;
+  /** The sample world's fork: shows the forked-thread banner and reads its origin from sample frames (the demo route and the shots). */
+  sampleFork?: boolean;
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
   /** The project this chat is in, for the header (a name, never an id). */
@@ -152,7 +169,15 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
-  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">(p.initialTab ?? "details");
+  const [forward, setForward] = useState<{ text: string } | null>(null);
+  // A thread forked from another says so, and where the earlier part lives.
+  const [forkedFrom, setForkedFrom] = useState<{ thread: string; title: string; message: string } | null>(null);
+  const [originRows, setOriginRows] = useState<OriginRow[] | null>(null);
+  const [originShown, setOriginShown] = useState(true);
+  const forkAsThread = useRef(false);
+  const threadRef = useRef("");
+  const openThreadRef = useRef<(t: string) => void>(() => {});
+  const [panelTab, setPanelTab] = useState<string>(p.initialTab ?? "");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
@@ -275,14 +300,18 @@ export function ChatScreen(p: ChatScreenProps) {
             onRetryMessage: async (uuid: string) => { setNote(null); const r = await actions.retry!(uuid); if (!r.ok) setNote(r.reason); },
             onBranchFrom: async (uuid: string) => {
               setNote(null);
+              // an agent chat forks as a new thread of the same agent (work.thread.fork); the new chat opens
+              if (forkAsThread.current) { const f = await agentThreads.fork(threadRef.current, uuid); if ("problem" in f) setNote(f.problem); else openThreadRef.current(f.thread); return; }
               const r = await actions.branch!(uuid);
               if (!r.ok) setNote(r.reason);
               else if (r.thread) onBranched?.(r.thread);
             },
             onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
             onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid),
+            onForward: (_uuid: string, text: string) => setForward({ text }),
+            onSay: (text: string) => { void sendRef.current?.(text); },
           }
-        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid) }),
+        : { ...(allowsMock() ? { onBranchFrom: async (uuid: string) => { if (forkAsThread.current) { const f = await agentThreads.fork(threadRef.current, uuid); if ("problem" in f) setNote(f.problem); else openThreadRef.current(f.thread); } } } : {}), onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid), onForward: (_uuid: string, text: string) => setForward({ text }), onSay: (text: string) => { void sendRef.current?.(text); } }),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
@@ -347,10 +376,52 @@ export function ChatScreen(p: ChatScreenProps) {
   const group = store.group;
   const found = group.participants();
   // Before the stream says who is here: a real chat asks the box (work.chat.get); only the sample world shows its sample people.
-  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const },
+    ...(p.sampleGroup ? [{ id: "per_sam", name: "Sam Reyes", family: "person" as const }, { id: "assistant:scout", name: "scout", family: "assistant" as const }] : [])];
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
+  // What kind of chat this is decides the side panel's tabs and what /threads opens.
+  const others = faces.filter((f) => f.id !== viewerId);
+  const agentNames = others.filter((f) => f.family === "assistant").map((f) => f.name);
+  const kind = chatKind({ others, flow: p.flow });
+  forkAsThread.current = kind === "agent"; threadRef.current = here.thread ?? p.sessionId;
+  const agentForNote = kind === "agent" ? agentNames[0] : "";
+  const thisThread = here.thread ?? p.sessionId;
+  useEffect(() => {
+    setForkedFrom(sampleAllowed(p.sampleFork, allowsMock()) ? { thread: "demo", message: "a1", title: "Fix the intake date check" } : null); setOriginRows(null);
+    if (!agentForNote || allowsMock()) return;
+    let live = true;
+    void agentThreads.list(agentForNote).then((r) => {
+      if (!live || !("rows" in r)) return;
+      const me = r.rows.find((t) => t.id === thisThread);
+      const from = me?.forkedFrom;
+      if (from) setForkedFrom({ thread: from.thread, message: from.message, title: r.rows.find((t) => t.id === from.thread)?.title ?? "the original thread" });
+    });
+    return () => { live = false; };
+  }, [agentForNote, thisThread]);
+  // the fork's origin, read once: what it said up to the fork, or nothing when this device cannot open it
+  useEffect(() => {
+    if (!forkedFrom || (allowsMock() && !sampleAllowed(p.sampleFork, allowsMock()))) return;
+    let live = true;
+    void (sampleAllowed(p.sampleFork, allowsMock()) ? sampleOrigin() : loadOrigin(forkedFrom.thread, forkedFrom.message)).then((r) => { if (live) setOriginRows(r); });
+    return () => { live = false; };
+  }, [forkedFrom]);
+  const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };
+  const panelNow = useRef({ panel, toggle: togglePanel });
+  panelNow.current = { panel, toggle: togglePanel };
+  // Cmd . (or Ctrl .) opens and closes the side panel, as the name pill does.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "." && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); panelNow.current.toggle(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  // /new starts a thread with this agent; /threads opens the tab that lists them; switching keeps the old ones saved.
+  // A thread is a chat of the person and the agent, so opening one is opening that chat.
+  const openThread = (thread: string) => { if (phone) setPanel(null); if (allowsMock()) { showToast("A thread opens as its own chat in a real Space."); return; } router.push({ pathname: "/u/chats/[id]", params: { id: thread } } as never); };
+  openThreadRef.current = openThread;
+  const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; openThread(r.thread); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
@@ -377,11 +448,17 @@ export function ChatScreen(p: ChatScreenProps) {
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} title={head.title}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={openThread} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
-        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
+        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onFind={() => setFindOpen(true)} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
-        onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
+        onAdd={realComposer ? async (who) => {
+          // a thread with an agent moves into the chat of exactly those people; a one-to-one chat gets a new thread in the chat of exactly that set; a group just gains them
+          if (kind === "agent" && who.family !== "assistant") return addToAgentThread(here.thread ?? p.sessionId, [String(who.id ?? who.name)]);
+          if (kind === "person" && who.family !== "assistant") { const r = await newThreadWith([...others.filter((f) => f.family !== "assistant").map((f) => f.id), String(who.id ?? who.name)]); if ("say" in r) return r.say; openThreadRef.current(r.thread); return null; }
+          if (kind === "group" && who.family !== "assistant") return addToGroupChat(here.thread ?? p.sessionId, [String(who.id ?? who.name)]);
+          try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; }
+        } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={sharedChat} replyMode={store.group.replyMode()}
@@ -395,11 +472,12 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={() => { setPanelTab("details"); setPanel("root"); }} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={kind === "agent" && agentNames[0] ? agentNames[0] : head.title} sub={kind === "agent" && agentNames[0] ? head.title : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
           { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
           ...(faces.some((f) => f.family === "assistant" && f.id !== viewerId) ? [{ label: "Computer", onPress: () => { setPanelTab("computer"); setPanel("root"); } }] : []),
+          ...(kind === "agent" ? [{ label: "Make a Flow from this chat", onPress: () => void makeFlow() }] : []),
           { label: "Move to a project", onPress: () => setPanel("project") },
           { label: "Find in this conversation", onPress: () => setFindOpen(true) },
           { label: pinned ? "Unpin" : "Pin", onPress: () => setPinned(!pinned) },
@@ -408,6 +486,8 @@ export function ChatScreen(p: ChatScreenProps) {
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
+      {forkedFrom ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Banner><View style={{ gap: 4, alignItems: "flex-start" }}><Text>{`Forked from ${forkedFrom.title}. Everything up to that point is in the original.`}</Text><Button kind="ghost" size="sm" label="Open the original" onPress={() => openThread(forkedFrom.thread)} /></View></Banner></View> : null}
+      {forkedFrom && originRows && originShown ? <OriginBlock rows={originRows} title={forkedFrom.title} phone={phone} onHide={() => setOriginShown(false)} /> : null}
 
       <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
       <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -519,6 +599,8 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          agentName={kind === "agent" ? agentNames[0] : undefined}
+          onRename={async (name) => { const r = await chatTools.rename(here.thread ?? p.sessionId, name); if (r.ok) { showToast("Renamed."); return null; } showToast(r.reason); return r.reason; }}
           key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
@@ -541,6 +623,14 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={answerSlots}
           peopleOnly={peopleChat}
           onLocalCommand={(name) => {
+            if (name === "rename") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? d : "/rename "); setDraftN((n) => n + 1); return true; }
+            if (name === "threads") { const t = threadsTab(kind, agentNames, panelTab); if (!t) return false; setPanelTab(t); setPanel("root"); return true; }
+            if (name === "new") { if (kind !== "agent" || !agentNames[0]) return false; void newThread(agentNames[0]).then((why) => { if (why) showToast(why); else { setPanelTab("threads"); setPanel("root"); } }); return true; }
+            if (name === "fork") { showToast("Use Fork from here on a message of the agent."); return true; }
+            if (name === "fresh") { void onSend("/roll"); return true; }
+            if (name === "where") { setPanel("more"); return true; }
+            if (name === "flow") { router.push("/u/flows" as never); return true; }
+            if (name === "agent") { openNewAgent(router); return true; }
             if (name === "move") { setPanel("project"); return true; }
             if (name === "rewind") { caps.api.openRewind(); return true; }
             if (name === "find") { setFindOpen(true); return true; }
@@ -578,5 +668,14 @@ export function ChatScreen(p: ChatScreenProps) {
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
   const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
   // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
-  return phone ? <>{main}{panelEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}</View>;
+  // "Make a Flow from this chat": the Vyre tools the assistant called here become the calls of a draft Flow, and its page opens.
+  const makeFlow = async () => {
+    const calls = callsFromItems(layoutRows.filter((r) => r.kind === "tool").map((r) => store.item(r.key)));
+    if (!calls.length) { showToast("There is nothing here yet that a Flow could repeat."); return; }
+    const r = await callT<any>("flows.from-chat", { name: flowNameOf(head.title), calls, chat: here.thread ?? p.sessionId });
+    const out = afterMake(r.error ? { ok: false, errors: [{ message: r.error.message }] } : r.data);
+    if ("open" in out) router.push(out.open as never); else showToast(out.say);
+  };
+  const forwardEl = <ForwardSheet open={forward !== null} text={forward?.text ?? ""} from={head.title} onClose={() => setForward(null)} />;
+  return phone ? <>{main}{panelEl}{forwardEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}{forwardEl}</View>;
 }

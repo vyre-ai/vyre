@@ -9,6 +9,10 @@ import { FileViewer, Avatar, AvatarStack, Banner, Button, Chip, Divider, Icon, P
 import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
+import { ThreadsTab } from "./ThreadsTab";
+import { callT } from "../real/call-tool";
+import { sharedView } from "./person-shared-model.js";
+import { addPeopleLine, chatKind, groupView, panelTabs, tabOf, threadsTab } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -30,7 +34,11 @@ const fam = (f: string) => (f === "assistant" ? "assistant" : f === "model" ? "m
 export type ChatPanelProps = {
   open: boolean; onClose: () => void; phone: boolean; page: PanelPage; onPage: (p: PanelPage) => void;
   /** The tab showing on the first page, and its change (the chat screen keeps it, so the header menu can open the panel on one). */
-  tab: "details" | "library" | "computer"; onTab: (t: "details" | "library" | "computer") => void;
+  tab: string; onTab: (t: string) => void;
+  /** A Flow is one chat whose runs are its threads: the tabs are Runs and Details. */ flow?: boolean;
+  /** Switch to one of an agent's threads; start a new one (null when it started, else why not). */
+  /** Search this chat (the Find action under the name). */ onFind?: () => void;
+  onSwitchThread?: (thread: string) => void; onNewThread?: (agent: string) => Promise<string | null>;
   /** The chat's name, for the top of the panel. */ title: string;
   participants: readonly Participant[]; viewer: string; info: AboutInfo;
   muted: boolean; pinned: boolean; onMute: (on: boolean) => void; onPin: (on: boolean) => void;
@@ -61,6 +69,9 @@ export function ChatPanel(p: ChatPanelProps) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [adding, setAdding] = useState(false);
+  // Adding someone to a thread with an agent says plainly what they and the agent get, before it is done.
+  const [confirm, setConfirm] = useState<{ name: string; id?: string; family: string } | null>(null);
+  const doAdd = async (a: { name: string; id?: string; family: string }) => { const r = await p.onAdd?.(a); if (r) setProblem(r); else setAdding(false); };
   const moving = useRef(false);
   const [running, setRunning] = useState<number | null>(null);
   useEffect(() => { setMode(p.state?.mode ?? null); setThinking(p.state?.thinking ?? null); setEffort(p.state?.effort ?? null); }, [p.state?.mode, p.state?.thinking, p.state?.effort]);
@@ -113,8 +124,8 @@ export function ChatPanel(p: ChatPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.open, p.page]);
 
-  const here = p.info.runsOn === "mac" ? "This Mac" : "The server";
-  const there = p.info.runsOn === "mac" ? "the server" : "this Mac";
+  const here = p.info.runsOn === "mac" ? "My Computer" : "Space's Cloud";
+  const there = p.info.runsOn === "mac" ? "Space's Cloud" : "My Computer";
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
   // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
   const router = useRouter();
@@ -124,11 +135,24 @@ export function ChatPanel(p: ChatPanelProps) {
   const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
   const [helpers, setHelpers] = useState<Task[] | null>(null);
   useEffect(() => {
-    if (!p.open || tab !== "library") return;
+    if (!p.open || (tab !== "library" && tab !== "details" && tab !== "threads")) return;
     let on = true;
     chatTools.tasks(p.thread).then((t) => { if (on) setHelpers(subagentsOf(t)); }).catch(() => { if (on) setHelpers([]); });
     return () => { on = false; };
   }, [p.open, tab, p.thread]);
+
+  const addBlock = (
+    <>
+      {p.onAdd && p.addable ? (adding ? (
+        <View style={{ gap: 4 }}>
+          {p.addable.length ? p.addable.map((a) => (
+            <Row key={a.id ?? a.name} dense lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Agent" : "Person"}
+              end={<Button size="sm" kind="secondary" label="Add" onPress={() => { if (a.family !== "assistant" && agents.length === 1 && others.length === 1) setConfirm(a); else void doAdd(a); }} />} />
+          )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
+        </View>
+      ) : <Row dense title="Add people" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
+    </>
+  );
 
   const details = (
     <View style={{ gap: 4 }}>
@@ -137,14 +161,7 @@ export function ChatPanel(p: ChatPanelProps) {
           sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
           onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
       ))}
-      {p.onAdd && p.addable ? (adding ? (
-        <View style={{ gap: 4 }}>
-          {p.addable.length ? p.addable.map((a) => (
-            <Row key={a.id ?? a.name} dense lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Agent" : "Person"}
-              end={<Button size="sm" kind="secondary" label="Add" onPress={async () => { const r = await p.onAdd?.(a); if (r) setProblem(r); else setAdding(false); }} />} />
-          )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
-        </View>
-      ) : <Row dense title="Add a teammate" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
+      {addBlock}
 
       <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => { cameFromMore.current = false; p.onPage("project"); }} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
       <Row dense lead={<Icon name="more" size={20} />} title="More" sub="Effort, permissions, where it runs and the rest" chevron onPress={() => open("more")} />
@@ -202,7 +219,73 @@ export function ChatPanel(p: ChatPanelProps) {
       {helpers === null ? <Text tone="muted">Looking.</Text> : helpers.length ? helpers.map((t) => <Row key={t.id} dense lead={<Icon name="users" size={20} />} title={t.title} sub={t.status} chevron onPress={() => p.onPage("tasks")} />) : <Text tone="muted">Helpers this chat starts to work for it show here.</Text>}
     </View>
   );
-  const tabs: ["details" | "library" | "computer", string][] = [["details", "Details"], ["library", "Library"], ...(agents.length ? [["computer", "Computer"] as ["computer", string]] : [])];
+  // The tabs depend on the chat: an agent has Threads, Computer, Details; a group has Group and a tab per agent; a Flow has Runs and Details; a person has Details.
+  const kind = chatKind({ others: p.participants.filter((x) => x.id !== p.viewer), flow: p.flow });
+  const tabs = panelTabs(kind, agents.map((x) => x.name));
+  const cur = tabOf(tabs, tab === "library" ? "details" : tab);
+  const threadsOf = (agent: string, noun: "thread" | "run" = "thread") => <ThreadsTab key={agent} agent={agent} noun={noun} current={p.thread} onSwitch={(t) => p.onSwitchThread?.(t)} onNew={p.onNewThread ? () => p.onNewThread!(agent) : undefined} />;
+  // A group's panel: everyone as faces plus the group's threads; a tap on someone goes in, with Back.
+  const view = kind === "group" ? groupView(tab, p.participants) : null;
+  const [drillTab, setDrillTab] = useState("threads");
+  useEffect(() => { setDrillTab("threads"); }, [tab]);
+  const faceOf = (x: (typeof p.participants)[number]) => (
+    <Pressable key={x.id} accessibilityRole="button" accessibilityLabel={x.id === p.viewer ? "You" : `Open ${x.name}`} disabled={x.id === p.viewer}
+      onPress={() => setTab(x.family === "assistant" ? `agent:${x.name}` : `person:${x.id}`)} style={{ alignItems: "center", gap: 4, width: 72 }}>
+      <Face name={x.name} family={fam(x.family)} size={44} id={x.id} />
+      <Text size="caption" numberOfLines={1}>{x.id === p.viewer ? "You" : x.name}</Text>
+    </Pressable>
+  );
+  const groupFirst = (
+    <View style={{ gap: 16 }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{p.participants.map(faceOf)}</View>
+      {addBlock}
+      <View style={{ gap: 8 }}>
+        <Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>Threads</Text>
+        <ThreadsTab key={p.chat} agent={p.title} chat={p.chat} current={p.thread} onSwitch={(t) => p.onSwitchThread?.(t)} onNew={p.onNewThread ? () => p.onNewThread!(p.title) : undefined} />
+      </View>
+      <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} />
+    </View>
+  );
+  const backRow = <Row dense lead={<Icon name="chev-l" size={20} />} title="Back" onPress={() => setTab("group")} />;
+  const agentView = (name: string) => {
+    const who = p.participants.find((x) => x.name === name);
+    return (
+      <View style={{ gap: 16 }}>
+        {backRow}
+        <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{name}</Text></View>
+        <Tabs items={[["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]]} value={drillTab} onChange={setDrillTab} />
+        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <Row dense title={`Open ${name}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} />}
+      </View>
+    );
+  };
+  const [shared, setShared] = useState<ReturnType<typeof sharedView> | null>(null);
+  const openedPerson = view && view.level === "person" ? view.id : "";
+  useEffect(() => {
+    setShared(null);
+    if (!openedPerson) return;
+    let live = true;
+    void callT<any>("work.person.shared", { person: openedPerson.replace(/^person:/, "") }).then((r) => { if (live) setShared(sharedView(r.error ? null : r.data)); });
+    return () => { live = false; };
+  }, [openedPerson]);
+  const personView = (id: string) => {
+    const who = p.participants.find((x) => x.id === id);
+    if (!who) return null;
+    return (
+      <View style={{ gap: 16 }}>
+        {backRow}
+        <View style={{ alignItems: "center", gap: 6 }}><Face name={who.name} family="person" size={56} id={who.id} /><Text size="title" medium>{who.name}</Text>{who.role ? <Text tone="label">{who.role}</Text> : null}</View>
+        <View style={{ gap: 4 }}>
+          <Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>{`You and ${who.name}`}</Text>
+          {p.onOpenParticipant ? <Row dense lead={<Icon name="chat" size={20} />} title="Your chat" sub="Just the two of you" chevron onPress={() => p.onOpenParticipant?.(who.id)} /> : null}
+          {shared && shared.threads.length ? <><Text size="caption" tone="label" style={{ paddingHorizontal: 12, paddingTop: 8 }}>{`Threads you share${shared.count > shared.threads.length ? ` (${shared.count})` : ""}`}</Text>{shared.threads.map((t) => <Row key={t.id} dense lead={<Icon name="chat" size={20} />} title={t.title} chevron onPress={() => p.onSwitchThread?.(t.id)} />)}</> : null}
+          {shared && shared.projects.length ? <><Text size="caption" tone="label" style={{ paddingHorizontal: 12, paddingTop: 8 }}>Projects together</Text>{shared.projects.map((n) => <Row key={n} dense lead={<Icon name="projects" size={20} />} title={n} />)}</> : null}
+        </View>
+      </View>
+    );
+  };
+  const body0 = view ? (view.level === "agent" ? agentView(view.name) : view.level === "person" ? personView(view.id) : groupFirst)
+    : cur === "threads" && agents[0] ? threadsOf(agents[0].name) : cur === "runs" ? threadsOf(p.title, "run") : cur === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} />
+    : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{details}{library}</View> : details;
   // The top of the panel: one face, the name, the labels. A chat with one other shows their face; more than one shows a small stack.
   const others = p.participants.filter((x) => x.id !== p.viewer);
   const hero = (
@@ -210,15 +293,35 @@ export function ChatPanel(p: ChatPanelProps) {
       {others.length === 1
         ? <Avatar of={markRef(others[0].family === "assistant" ? "agent" : "person", others[0].name, others[0].id)} size={56} />
         : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
-      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
+      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{kind === "agent" && agents[0] ? agents[0].name : p.title}</Text>
       <ChatTags chat={p.chat} thread={p.thread} />
+      {/* the four quick actions under the name: Pinned, Find, Threads (when this chat has them), Mute */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 4 }}>
+        <Button kind={p.pinned ? "secondary" : "ghost"} size="sm" label={p.pinned ? "Pinned" : "Pin"} onPress={() => p.onPin(!p.pinned)} />
+        {p.onFind ? <Button kind="ghost" size="sm" label="Find" onPress={() => { p.onClose(); p.onFind?.(); }} /> : null}
+        {threadsTab(kind, agents.map((x) => x.name), cur) ? <Button kind="ghost" size="sm" label={kind === "flow" ? "Runs" : "Threads"} onPress={() => setTab(threadsTab(kind, agents.map((x) => x.name), cur) as string)} /> : null}
+        <Button kind={p.muted ? "secondary" : "ghost"} size="sm" label={p.muted ? "Muted" : "Mute"} onPress={() => p.onMute(!p.muted)} />
+      </View>
     </View>
   );
+  const drilled = Boolean(view && view.level !== "first");
+  const sure = confirm ? (
+    <Sheet open onClose={() => setConfirm(null)} title={`Add ${confirm.name}`}>
+      <View style={{ gap: 16 }}>
+        <Text>{addPeopleLine([confirm.name], agents[0]?.name ?? "The agent")}</Text>
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+          <Button kind="ghost" label="Cancel" onPress={() => setConfirm(null)} />
+          <Button kind="primary" label="Add" onPress={() => { const a = confirm; setConfirm(null); void doAdd(a); }} />
+        </View>
+      </View>
+    </Sheet>
+  ) : null;
   const root = (
     <View style={{ gap: 16 }}>
-      {hero}
-      <Tabs items={tabs} value={tab} onChange={setTab} />
-      {tab === "library" ? library : tab === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} /> : details}
+      {sure}
+      {drilled ? null : hero}
+      {tabs.length > 1 ? <Tabs items={tabs} value={cur} onChange={setTab} /> : null}
+      {body0}
     </View>
   );
 
