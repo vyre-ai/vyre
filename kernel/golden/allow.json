@@ -696,6 +696,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.step.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; tries one step of a Flow on a past run of that Flow or on sample values: reads run for real, nothing is stored, sent or emitted, and a past run is shown only as far as the caller may see it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.test.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the saved test cases of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
