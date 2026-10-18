@@ -229,7 +229,7 @@ export function registerDocuments(ctx) {
 
   // One request's timeline (18 Oct ruling): what was sent, opened, signed or declined, read from the signing app through its own module.
   ctx.tool("documents.signing.status", {
-    description: "One signature request's timeline: { submission } -> { status: { submission, status, signers: [{ name, email, sent, opened, signed, declined }], audit_url } | null }. Times are milliseconds.",
+    description: "One signature request's timeline: sent, opened, signed or declined per signer, with the audit link. Takes { submission }; times are milliseconds.",
     input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

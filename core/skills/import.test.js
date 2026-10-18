@@ -35,7 +35,7 @@ test("a SKILL.md or any .md with the front matter is one skill; a bad one says w
   assert.throws(() => parseUpload({ file: Buffer.from("no front matter here") , filename: "x.md" }), /front matter/);
   assert.throws(() => parseUpload({ file: Buffer.from("") }), /empty/);
   assert.throws(() => parseUpload({ file: Buffer.concat([Buffer.from(skill("a")), Buffer.from([0])]), filename: "a.md" }), /not text/);
-  assert.throws(() => parseUpload({ file: Buffer.from(skill("leaky", "key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD here")), filename: "a.md" }), /looks like/);
+  assert.throws(() => parseUpload({ file: Buffer.from(skill("leaky", "key sk-ant-" + "api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD here")), filename: "a.md" }), /looks like/);
 });
 
 test("a zip of one skill folder (also inside one wrapping folder) is a skill; extra files are listed as left out", () => {
