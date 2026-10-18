@@ -440,6 +440,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; documents.signing.flow opened to a model or a module in 2f459afa0 (10 Oct 2026); the body decides: read-only: returns a Flow definition and creates nothing (callers list)"
  },
  {
+  "tool": "documents.signing.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; documents.signing.status opened to a model or a module in 8b6d68bd3 (18 Oct 2026); the body decides: read-only: one request's timeline (what was sent, opened, signed or declined) from the signing app; the audit link is shown to a person's own surface only, never to a model (callers list, door, the audit rule in lib/audit-rules.js)"
+ },
+ {
   "tool": "documents.signing.waiting",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; documents.signing.waiting opened to a model or a module in e9c422518 (10 Oct 2026); the body decides: read-only list of the requests nobody has signed; under the caller's own chain (callers list, gate, check), or the approvals queue's module reading it for the owner's Needs you"
  },
@@ -548,12 +552,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
  },
  {
+  "tool": "files.places",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the caller's own places: projects they are on and agents they own or were given, with the Drive folder of each; the kernel decides what they may open there"
+ },
+ {
   "tool": "files.receive",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns on or off whether the Mac takes in files the box delivers, the receive switch"
  },
  {
   "tool": "files.send",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
+ },
+ {
+  "tool": "files.space.mentions.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): Space Drive file paths matching a # query, only files the kernel lets the caller read"
  },
  {
   "tool": "flows.actions",
