@@ -50,7 +50,7 @@ export function registerLinkFields({ tool, obj, str, refuse, parseUrn }) {
       return { field: made || field };
     });
 
-  tool("records.link.set", "Connect a record through one of its link fields: { urn, field, to, kind? }. `to` is a record urn (a list of urns for a list field; null clears it). With `kind` (one of records.relationship.kinds) the connection is also kept as a relationship, so it keeps its kind and dates and shows on both records.",
+  tool("records.link.set", "Connect a record through a link field: { urn, field, to, kind? }. With kind it is also kept as a relationship.",
     obj({ space: str, urn: str, field: str, to: { type: ["string", "array", "null"] }, kind: str }, ["urn", "field"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);

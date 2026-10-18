@@ -94,7 +94,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
     try { return (await d.gateway.events.read(d.chain, { subject_prefix: urn, limit: 1 }))[0] || null; } catch { return null; }
   };
 
-  tool("records.history", "A record's history, newest first: every change with who made it (a person or an assistant), the calls, meetings and notes logged on it, and whether each can be undone. { urn, limit? } -> { items: [{ id, kind, actor: { kind, id, name }, text, at, undo }] }.",
+  tool("records.history", "A record's history, newest first: changes with who made each, plus logged calls, meetings and notes. { urn, limit? }.",
     obj({ space: str, urn: str, limit: { type: "integer" } }, ["urn"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
@@ -164,7 +164,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       return { undone: id, record: String(ev.subject) };
     });
 
-  tool("records.log", "Log a call, a meeting or a note on a record: { urn, kind: call|meeting|note, text }. It shows in the record's history with who wrote it. A note starts private to its writer.",
+  tool("records.log", "Log a call, a meeting or a note on a record: { urn, kind: call|meeting|note, text }. A note starts private.",
     obj({ space: str, urn: str, kind: str, text: str }, ["urn", "kind", "text"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       if (!LOG_KINDS.includes(String(i.kind))) throw refuse(`Log a ${LOG_KINDS.join(", a ")}. ${i.kind} is not one of them.`, "bad_input");

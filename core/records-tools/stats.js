@@ -35,7 +35,7 @@ export function shape(t, by, sums, rows) {
 
 /** @param {{ tool: Function, obj: Function, str: any, refuse: Function }} h */
 export function registerStats({ tool, obj, str, refuse }) {
-  tool("records.stats", "Totals for a board: { type, group_by?, sum?, filter? } -> { groups: [{ key, count, <sum fields> }], total }. group_by is a stage, choice or yes/no field (default the stage field); sum is the number fields to add up (default amount and weighted_value where the type has them); filter is a records.list filter. Every option of the field is listed, empty ones with zeros. Only rows the caller may read are counted.",
+  tool("records.stats", "Counts and sums per stage or choice for a board: { type, group_by?, sum?, filter? }, over records you may read.",
     obj({ space: str, type: str, group_by: str, sum: { type: "array", items: { type: "string" } }, filter: { type: "object" } }, ["type"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === i.type);
       if (!t) throw refuse(`There is no record type called ${i.type}. Pick one of the types shown in Records.`, "not_found");

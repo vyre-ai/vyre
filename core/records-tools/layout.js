@@ -36,7 +36,7 @@ export function cleanLayout(l) {
   if (l.related !== undefined) {
     if (!Array.isArray(l.related) || l.related.length > 12) throw new Error("related is a list of up to 12 { type, via, label }.");
     out.related = l.related.map((/** @type {any} */ r) => {
-      if (!r || !NAME.test(String(r.type)) || !NAME.test(String(r.via))) throw new Error("A related list is { type, via, label }: the type that points here and the field it points with.");
+      if (!r || typeof r.type !== "string" || typeof r.via !== "string" || !NAME.test(r.type) || !NAME.test(r.via)) throw new Error("A related list is { type, via, label }: the type that points here and the field it points with.");
       return { type: r.type, via: r.via, label: String(r.label || r.type).slice(0, 60) };
     });
   }

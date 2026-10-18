@@ -44,7 +44,7 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
   const roleTypes = async (/** @type {any} */ d) => ((await d.gateway.definitions(d.chain)) || []).filter((/** @type {any} */ t) => t.role && typeof t.role.link === "string");
   const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
-  tool("records.role.set", "Put a role on a person or a company, or move the one it has to another stage: { urn, role, stage? }. `role` is a role type (records.roles.summary lists them). A record can hold several roles, each with its own stage; a new role starts in its first stage unless you name one. -> { role: { role, label, stage, current, id, urn } }.",
+  tool("records.role.set", "Put a role on a person or company, or move its stage: { urn, role, stage? }. A record can hold several roles.",
     obj({ space: str, urn: str, role: str, stage: str, since: str }, ["urn", "role"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const t = (await roleTypes(d)).find((/** @type {any} */ x) => x.name === i.role);
@@ -65,7 +65,7 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
       return { role: labelled(t, { role: t.name, stage, current: true, record: rec }) };
     }, byUrn);
 
-  tool("records.roles.summary", "Roles at a glance. With { urn }: that record's roles, current first, each with its label, stage and colour, and `line`, the short text a list shows (\"Lead (New), Client (Active)\"). Without: every role this Space has, with how many hold it by stage. -> { roles, line } or { roles: [{ role, label, color, stages, current, ended, by_stage }] }.",
+  tool("records.roles.summary", "A record's roles with stage and colour, or with no urn, how many hold each role by stage: { urn? }.",
     obj({ space: str, urn: str }), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const types = await roleTypes(d);
       if (i.urn) {

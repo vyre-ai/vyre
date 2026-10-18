@@ -17,7 +17,7 @@ test("only a stage, choice or yes/no field groups, and only number fields add up
   assert.throws(() => specFor(DEAL, { group_by: "name" }), /not a stage, choice or yes\/no field/);
   assert.throws(() => specFor(DEAL, { sum: ["close_date"] }), /not a number field/);
   assert.throws(() => specFor({ label: "Note", fields: [{ name: "body", kind: "text" }] }, {}), /no stage field/);
-  assert.deepEqual(specFor({ fields: [{ name: "kind", kind: "choice", options: ["a"] }] }, {}).sum, []);
+  assert.deepEqual(specFor({ fields: [{ name: "kind", kind: "choice", options: ["a"] }] }, { group_by: "kind" }).sum, []);
 });
 
 test("every stage is listed in its own order, empty ones with zeros, and there is a grand total", () => {

@@ -53,7 +53,7 @@ export function registerVisibility({ tool, obj, str, refuse, parseUrn }) {
       return { record: out };
     }, byUrn);
 
-  tool("records.busy", "The blocks of time other people's private calendar events take up, as Busy and nothing else: { from?, to? } (default the next 14 days, at most 62) -> { busy: [{ starts_at, ends_at, all_day, busy }] }. Events you may read in full come from records.list.",
+  tool("records.busy", "Blocks of time other people's private calendar events take up, as Busy only: { from?, to? }, default 14 days.",
     obj({ space: str, from: str, to: str }), async (/** @type {any} */ i, /** @type {any} */ d) => {
       let w; try { w = windowOf(i); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       const spec = { filter: { and: [{ field: "starts_at", op: "gte", value: w.from }, { field: "starts_at", op: "lt", value: w.to }] }, page: { limit: 200 } };
