@@ -1068,5 +1068,4 @@ test("pinned guides: instructions and skills ride on the task, the checklist is 
   const done = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "names the firm", ok: true }] });
   assert.equal(done.state, "needs_check");
   assert.ok(done.review.checklist_hash, "the result stores the hash of the checklist it was judged against");
-  assert.ok(r.tasks.card ? true : true);
 });
