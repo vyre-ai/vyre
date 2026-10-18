@@ -31,6 +31,8 @@ import { ChatHeader } from "./ChatHeader";
 import { chatKind, threadsTab } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
+import { callsFromItems, flowNameOf, afterMake } from "./make-flow-model.js";
+import { callT } from "../real/call-tool";
 import { chatTools } from "../../screens/chat-tools/instance";
 import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
@@ -437,6 +439,7 @@ export function ChatScreen(p: ChatScreenProps) {
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
           { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
           ...(faces.some((f) => f.family === "assistant" && f.id !== viewerId) ? [{ label: "Computer", onPress: () => { setPanelTab("computer"); setPanel("root"); } }] : []),
+          ...(kind === "agent" ? [{ label: "Make a Flow from this chat", onPress: () => void makeFlow() }] : []),
           { label: "Move to a project", onPress: () => setPanel("project") },
           { label: "Find in this conversation", onPress: () => setFindOpen(true) },
           { label: pinned ? "Unpin" : "Pin", onPress: () => setPinned(!pinned) },
@@ -625,6 +628,14 @@ export function ChatScreen(p: ChatScreenProps) {
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
   const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
   // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
+  // "Make a Flow from this chat": the Vyre tools the assistant called here become the calls of a draft Flow, and its page opens.
+  const makeFlow = async () => {
+    const calls = callsFromItems(layoutRows.filter((r) => r.kind === "tool").map((r) => store.item(r.key)));
+    if (!calls.length) { showToast("There is nothing here yet that a Flow could repeat."); return; }
+    const r = await callT<any>("flows.from-chat", { name: flowNameOf(head.title), calls });
+    const out = afterMake(r.error ? { ok: false, errors: [{ message: r.error.message }] } : r.data);
+    if ("open" in out) router.push(out.open as never); else showToast(out.say);
+  };
   const forwardEl = <ForwardSheet open={forward !== null} text={forward?.text ?? ""} from={head.title} onClose={() => setForward(null)} />;
   return phone ? <>{main}{panelEl}{forwardEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}{forwardEl}</View>;
 }

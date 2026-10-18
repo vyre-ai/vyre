@@ -43,6 +43,9 @@ try {
       const [route, query = ""] = r.split("?");
       await page.goto(`http://127.0.0.1:${port}/app/${route}${query ? "?" + query : ""}`, { waitUntil: "networkidle" });
       await page.waitForTimeout(Number(process.env.SHOT_WAIT || 600)); // SHOT_WAIT: a screen that boots slowly (the Chats list) is shot after it has loaded
+      // ctx=<css selector>: right-click that element (a message's menu), then shoot
+      const ctxSel = new URLSearchParams(query).get("ctx");
+      if (ctxSel) { await page.click(ctxSel, { button: "right", timeout: 5000 }).catch((e) => console.log(`WARN ${r}: right-click failed: ${String(e).slice(0, 100)}`)); await page.waitForTimeout(400); }
       const sideways = await page.evaluate(() => document.scrollingElement.scrollWidth > innerWidth + 1);
       if (sideways) { bad++; console.log(`WARN ${w} ${r} ${theme}: scrolls sideways`); }
       const full = await page.evaluate(() => Math.max(document.scrollingElement.scrollHeight, ...[...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY !== "visible").map((e) => e.scrollHeight)));

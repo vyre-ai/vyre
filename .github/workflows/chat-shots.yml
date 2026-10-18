@@ -58,6 +58,7 @@ jobs:
             "chat-demo?scenario=group&tab=group&hold=1&note=0&about=0" \
             "chat-demo?scenario=group&tab=agent:scout&hold=1&note=0&about=0" \
             "chat-demo?scenario=group&tab=person:per_sam&hold=1&note=0&about=0" \
+            "chat-demo?at=9500&hold=1&note=0&actions=1&ctx=%5Bdata-msg%3D%221%22%5D%5Bdata-mine%3D%220%22%5D" \
             --dist dist --w 390,1280 --theme dark --h 860 --fixed 1 | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
