@@ -87,7 +87,11 @@ const open = async (s, t) => {
   if (!browser.isConnected()) browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: s.w, height: 1400 }, colorScheme: t.scheme, reducedMotion: "reduce", deviceScaleFactor: 1 });
   const page = await ctx.newPage();
-  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("pageerror", (e) => {
+    // A web build is minified: say where the error was thrown, with the code around it, so a fixture that does not render can be read.
+    let where = ""; try { const m = /(\/_expo\/[^\s:()]+\.js):(\d+):(\d+)/.exec(String(e.stack || "")); if (m) { const line = fs.readFileSync(path.join(dist, m[1]), "utf8").split("\n")[Number(m[2]) - 1] || ""; where = ` @ ${m[1].split("/").pop()}:${m[2]}:${m[3]} «${line.slice(Math.max(0, Number(m[3]) - 140), Number(m[3]) + 60)}»`; } } catch { /* no source to read */ }
+    errors.push(String(e) + where);
+  });
   // The static server answers index.html for the service worker's script path: a harness artefact, not the screen's.
   page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text()); });
   return { ctx, page };
@@ -140,7 +144,7 @@ try {
       errors.length = 0;
       const row = { id, surface: s.name, theme: t.name, status: "same", rules: [] };
       const got = await shoot(cur, s, t, id);
-      if (got.missing) { row.status = "missing"; row.rules.push(`the fixture did not render${errors.length ? `: ${errors.slice(0, 2).join(" | ").slice(0, 300)}` : ""}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
+      if (got.missing) { row.status = "missing"; row.rules.push(`the fixture did not render${errors.length ? `: ${errors.slice(0, 2).join(" | ").slice(0, 700)}` : ""}`); failed++; report.push(row); console.log(`MISSING  ${id} ${s.name} ${t.name}`); continue; }
       const { after } = got;
       row.rules = got.rules;
       if (errors.length) row.rules.push(`console: ${errors.slice(0, 2).join(" | ").slice(0, 160)}`);
