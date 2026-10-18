@@ -13,7 +13,7 @@ import { allowLoopbackForTests } from "../../lib/http.js";
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
 
-function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})) } = {}) {
+function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})), denied = /** @type {any[]} */ ([]) } = {}) {
   /** @type {Map<string, Buffer[]>} */ const files = new Map();
   const made = /** @type {any[]} */ ([]);
   const gateway = {
@@ -21,7 +21,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
       async put(_c, p, bytes) { const v = files.get(p) || []; v.push(Buffer.from(bytes)); files.set(p, v); return { version: v.length, conflict: false }; },
       async get(_c, p, o) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return new Uint8Array(v[(o && o.version ? o.version : v.length) - 1]); },
       async history(_c, p) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return v.map((b, i) => ({ ver: i + 1, size: b.length })); },
-      async stat(_c, p) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return { path: p, version: v.length, size: v.at(-1).length }; },
+      async stat(_c, p) { if (denied.includes(_c)) throw Object.assign(new Error("not yours to read"), { code: "denied" }); const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return { path: p, version: v.length, size: v.at(-1).length }; },
       async listPage(_c, prefix) { return { entries: [...files.keys()].filter(k => k.startsWith(prefix)).map(k => ({ path: k, size: files.get(k)?.at(-1)?.length })), next: null }; },
     },
     async definitions() { return types.map(n => ({ name: n, fields: [{ name: "name" }, { name: "status" }, { name: "template" }, { name: "template_version" }, { name: "file" }, { name: "contact" }, { name: "project" }, { name: "sha256" }, { name: "source" }] })); },
@@ -369,6 +369,14 @@ test("Download audit end to end: the first call saves Signed/audit-<n>.pdf once,
   const notPdf = rig({ call: async () => ({ data: { bytes: Buffer.from("<html>error</html>").toString("base64") } }) });
   assert.equal((await code(notPdf.run("documents.signing.audit", { submission: 9 }, { caller: "cli" }))).code, "app_refused");
   assert.equal(notPdf.files.has("Signed/audit-9.pdf"), false, "an error page is never saved as an audit file");
+
+  // A second person who cannot read the first person's file gets a refusal, never the first person's path, and nothing is written for her (sec53).
+  const bob = { hops: [{ actor: { kind: "person", id: "per_bob", space: SPACE } }] };
+  const other = rig({ chain: bob, call, denied: [bob] });
+  other.files.set("Signed/audit-41.pdf", [pdf]);
+  const bobTry = await code(other.run("documents.signing.audit", { submission: 41 }, { caller: "cli" }));
+  assert.equal(bobTry?.code, "denied", "a person who cannot read the file is refused");
+  assert.equal(other.files.get("Signed/audit-41.pdf")?.length, 1, "nothing is written for her");
 
   const model = rig({ call });
   assert.equal((await code(model.run("documents.signing.audit", { submission: 41 }, { caller: "mcp" }))).code, "denied", "a model is refused before the app is asked");
