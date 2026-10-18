@@ -22,7 +22,7 @@ import {
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -359,7 +359,16 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Pick a username." lead="It's how people find and add you, in any Space."
+        failure={failure} primary={{ label: "Continue", disabled: !nameOk, onPress: () => go("id.password") }}>
+        <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "id.password") {
+    return (
+      <FlowStep steps={steps} onBack={back} title="Make your password." lead="It locks your account and your vault. Nobody can reset it for you, not even us, so pick one you'll remember."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
@@ -368,7 +377,6 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setUsername(r.username || usernameOf(username));
           go("id.recovery");
         }) }}>
-        <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
         <PasswordField label="Password" meter value={password} onChangeText={setPassword} />
         <PasswordField label="Confirm password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same password again." : undefined} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />

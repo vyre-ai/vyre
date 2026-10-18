@@ -53,7 +53,7 @@ async function walk(name, fn) {
     sees: async (text) => { await p.getByText(text, { exact: false }).first().waitFor({ timeout: 6000 }); },
     absent: async (text) => { if (await p.getByText(text, { exact: false }).count()) throw new Error(`this screen still says "${text}"`); },
     body: async () => p.locator("body").innerText(),
-    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Create your identity"); },
+    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Pick a username."); },
   };
   try {
     await fn(t);
@@ -75,6 +75,8 @@ async function identity(t) {
   await t.start();
   await t.type("Username", "ab"); await t.sees("3 to 20");
   await t.type("Username", "alex"); await t.sees("vyre.run/u/alex");
+  await t.press("Continue");
+  await t.at("Make your password.");
   if (await t.enabled("Create")) throw new Error("Create should wait for a password");
   await t.type("Password", PASS);
   await t.type("Confirm password", PASS);
@@ -165,7 +167,9 @@ await walk("Back retraces identity", async (t) => {
   await t.press("Back");
   await t.at("Save your recovery key");
   await t.press("Back");
-  await t.at("Create your identity");
+  await t.at("Make your password.");
+  await t.press("Back");
+  await t.at("Pick a username.");
   await t.press("Back");
   await t.at("What should we call you?");
   await t.press("Back");

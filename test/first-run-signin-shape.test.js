@@ -18,7 +18,7 @@ test("a person with no path opens on the choice of creating or signing in; an ex
 });
 
 test("every sign-in screen is in the Identity phase", () => {
-  for (const s of ["id.choice", "id.signin", "id.signin.spaces", "id.create", "id.name", "id.recovery", "id.ai"]) assert.equal(phaseOf(s), 0, s);
+  for (const s of ["id.choice", "id.signin", "id.signin.spaces", "id.create", "id.password", "id.name", "id.recovery", "id.ai"]) assert.equal(phaseOf(s), 0, s);
   assert.equal(phaseOf("setup.assistant"), 2);
   assert.equal(phaseOf("space.choice"), 1);
   assert.equal(phaseOf("ready"), 2);
