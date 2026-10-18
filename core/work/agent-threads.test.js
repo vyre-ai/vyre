@@ -9,7 +9,7 @@ import { tempHome } from "../../test/helpers.js";
 import { holdersOf, createRing, addHolders } from "../../lib/chat-keys.js";
 import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
 import { toB64u, fromB64u } from "../../lib/databox.js";
-import { threadRow } from "./threads.js";
+import { threadRow, runThread } from "./threads.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", CY = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -23,6 +23,14 @@ test("a thread row says live, needs you or idle, and needs you wins", () => {
   assert.equal(threadRow(rec, [], 0).title, "New thread", "an untitled thread has a plain name");
   assert.deepEqual(threadRow({ data: { ...rec.data, forked_from: { thread: "chat_0", message: "m1" } } }, [], 0).forked_from, { thread: "chat_0", message: "m1" });
   assert.equal(threadRow(rec, [{ last_line: "hello", last: 5 }], 0).last_line, "hello");
+});
+
+test("a run held at a gate needs you, though its state says waiting; a finished run never does", () => {
+  const run = { id: "r1", flow: "f1", state: "waiting", started_at: 1 };
+  assert.equal(runThread(run).state, "live", "waiting with nothing to answer is live");
+  const held = runThread(run, { run: "r1", kind: "gate", gate: true, message: "Approve the send" });
+  assert.deepEqual([held.state, held.needs], ["needs_you", { gate: true, reason: "Approve the send" }]);
+  assert.equal(runThread({ ...run, state: "done" }, { kind: "gate", gate: true }).state, "idle");
 });
 
 test("two threads with one agent, newest first; a group chat, another agent's chat and another member's view are not threads with it", { timeout: 240_000 }, async t => {
@@ -171,6 +179,7 @@ test("a Flow's runs are its threads, and the chat list has one row per Flow with
   assert.ok(["live", "idle", "needs_you"].includes(threads[0].state));
   const rows = (await ok("work.chat.summary")).flows;
   assert.deepEqual(rows.map((/** @type {any} */ r) => [r.kind, r.flow, r.runs]), [["flow", def.id, 1]]);
+  assert.equal(rows[0].name, "Census", "a Flow row has the Flow's own name, not its id");
   assert.equal(rows[0].latest.id, runId);
   assert.ok((await d.registry.call("work.flow.threads", { flow: def.id }, "mcp", {})).error, "a call with no person reads none");
 });

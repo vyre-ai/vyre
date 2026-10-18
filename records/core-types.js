@@ -319,6 +319,7 @@ export const CHAT = {
     text("drive", "Project Drive folder"),
     text("location", "This chat's Drive folder"),
     text("forked_from", "Forked from (the thread and the reply it was forked at)"),   // set by work.thread.fork: a display link to the origin, never trusted to start a run
+    f("boolean", "project_chat", "This is the project's group chat"),   // set by work.project.chat on the one chat a project has; its id is fixed by the project
     TAGS,
   ],
 };

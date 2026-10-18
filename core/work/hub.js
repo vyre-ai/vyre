@@ -389,6 +389,24 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /**
+   * The people on a project's team and the level each has (its owner is a lead; a row with no level is a contributor). Not the people of its chats. Null when there is no such project.
+   * @param {string} ref @returns {Promise<{ urn: string, slug: string, name: string, personal_of: string | null, people: { id: string, level: string }[] } | null>}
+   */
+  async function teamOf(ref) {
+    const proj = await projectOf(ref);
+    if (!proj) return null;
+    const d = data(proj) || {};
+    const head = { urn: proj.urn, slug: String(d.slug || ""), name: String(d.name || "") };
+    if (d.personal_of) return { ...head, personal_of: String(d.personal_of), people: [{ id: String(d.personal_of), level: "lead" }] };
+    /** @type {Map<string, string>} */ const out = new Map();
+    const own = d.owner && d.owner.actor && d.owner.actor.kind === "person" ? String(d.owner.actor.id) : "";
+    if (own) out.set(own, "lead");
+    const team = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+    for (const x of team) { const m = data(x) || {}; if (m.kind === "person" && m.actor && m.actor.actor && m.actor.actor.id && !out.has(String(m.actor.actor.id))) out.set(String(m.actor.actor.id), levelOfSeat(m)); }
+    return { ...head, personal_of: null, people: [...out].map(([id, level]) => ({ id, level })) };
+  }
+
+  /**
    * Where a person stands on a project: its owner, on its team (a team-member row of kind person), or neither. Null when there is no such project. Not the people of its chats: this is who may SEND WORK to its teammates.
    * `level` is the person's seat level on it (lib/seat-levels.js): lead for the owner, else the row's level (contributor when it has none), null when not on the team.
    * @param {string} ref @param {string} person @returns {Promise<{ owner: boolean, team: boolean, level: "lead" | "contributor" | "viewer" | null } | null>}
@@ -566,5 +584,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, seatOf, setSeatLevel, onInviteUsed, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ isStaff, mayViewChat, mayViewShare, peopleOf, teamOf, seatOf, setSeatLevel, onInviteUsed, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, mayFileChat, mayUseProject, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }
