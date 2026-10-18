@@ -69,6 +69,7 @@ const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
 
 import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
 import { showable } from "./runner-faults.js";
+import { hideRun } from "./redact.js";
 export { showable };
 
 /**
@@ -2052,7 +2053,7 @@ export class FlowRunner {
   /**
    * Try ONE step of a Flow against the recorded inputs of a past run (its trigger and the output of every step but this one) or against sample values, in the dry mode simulation uses: reads happen, nothing is
    * created, changed or sent. Answers the step's input (redacted as the ledger shows it), what it would give back, and what it would send or do.
-   * @param {any} flow @param {string} stepId @param {{ approver: any, run?: string, flowId?: string, sample?: any }} o
+   * @param {any} flow @param {string} stepId @param {{ approver: any, run?: string, flowId?: string, sample?: any, hideFor?: string }} o
    */
   async testStep(flow, stepId, o) {
     const cat = /** @type {any} */ (await this.catalogFn());
@@ -2066,8 +2067,10 @@ export class FlowRunner {
     /** @type {any} */ let trigger = { kind: "manual", key: "step-test", input: o.sample ?? {} };
     /** @type {Record<string, any>} */ const steps = {};
     if (o.run !== undefined) {
-      const rec = await this.store.getRun(String(o.run));
-      if (!rec || (o.flowId && rec.flow !== o.flowId)) throw Object.assign(new Error("that is not a run of this Flow (flows.runs)"), { code: "not_found" });
+      const stored = await this.store.getRun(String(o.run));
+      if (!stored || !o.flowId || stored.flow !== o.flowId) throw Object.assign(new Error("that is not a run of this Flow (flows.runs)"), { code: "not_found" });
+      // the run as this viewer may see it: what flows.run would hide from them (a run on someone else's authority) is not there for the step to read or echo
+      const rec = o.hideFor ? hideRun(stored, o.hideFor) : stored;
       trigger = rec.trigger;
       for (const [k, l] of Object.entries(rec.steps || {})) if (l && ["done", "skipped", "failed_handled"].includes(l.status) && k.replace(/[@!?].*$/, "") !== stepId && !k.includes("?")) steps[k] = { status: l.status, output: l.output };
     }

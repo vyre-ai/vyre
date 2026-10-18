@@ -295,3 +295,24 @@ test("(c) a lane whose run or version cannot be read counts as having sent: the 
   r.steps.a.children = [child.id]; await w.store.putRun(r);
   await assert.rejects(() => w.runner.retry(run.id, { from: "a" }), (/** @type {any} */ e) => e.code === "already_sent", "the child's version is missing");
 });
+
+test("flows.step.test reads a past run only through a named Flow's own run, and only what that viewer may see of it", async () => {
+  const sb = sandbox();
+  const w = await world({ ports: { sandbox: sb.port } });
+  const { SPACE } = await import("./testing/fixtures.js");
+  const mailTo = { id: "mail", kind: "call", action: "email.draft", resource: `vyre://${SPACE}/mail/*`, input: { to: { expr: "steps.a.n" } } };
+  const f = await install(w, flowOf([fn("a"), mailTo]));
+  const run = await fire(w);
+  const t = toolsOf(w).tools["flows.step.test"];
+  // a run is read only for a Flow that is named, and it must be that Flow's own
+  const draft = flowOf([fn("a"), mailTo]);
+  await assert.rejects(() => t(chainOf(), { flow: draft, step: "mail", run: run.id }), (/** @type {any} */ e) => e.code === "bad_input" && /name the Flow/.test(e.message), "an unsaved Flow alone cannot load a run");
+  const other = await install(w, { ...flowOf([fn("z")]), name: "other", trigger: { on: "event", event: "other.thing" } });
+  await assert.rejects(() => t(chainOf(), { id: other.id, step: "z", run: run.id }), (/** @type {any} */ e) => e.code === "not_found", "another Flow's run is not loaded through this one");
+  const ok = await t(chainOf(), { id: f.id, flow: draft, step: "mail", run: run.id });
+  assert.equal(ok.input.to, "a", "an unsaved version of the run's own Flow can be tried on it");
+  // what flows.run would hide from this viewer is not there for the step to read
+  const hidden = await t(chainOf(), { id: f.id, step: "mail", run: run.id, hide_for: "per_bob" });
+  assert.notEqual(hidden.input.to, "a");
+  assert.ok(!JSON.stringify(hidden).includes('"a"') || hidden.input.to === null || hidden.input.to === undefined, "the hidden output is not echoed: " + JSON.stringify(hidden.input));
+});
