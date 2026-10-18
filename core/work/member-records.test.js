@@ -150,3 +150,47 @@ test("the audit is a row of the member door: an admin and the owner read it as t
   const agentChain = { ...w.chainOf(ZED), hops: [...w.chainOf(ZED).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
   assert.equal(await code(/** @type {any} */ (w.svc).records.audit(agentChain, {})), "not_found", "an agent behind an admin gets nothing");
 });
+
+
+test("through the member door a member moves a record, relates two, saves her own layout, and is refused the Space's layout and a pipeline", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const { DEAL, RELATIONSHIP, RECORD_LAYOUT } = await import("../../records/core-types.js");
+  const clean = (/** @type {any} */ x) => ({ ...x, fields: x.fields.filter((/** @type {any} */ f) => !(x.name === "deal" && f.name === "organization")) });
+  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: [clean(DEAL), RELATIONSHIP, RECORD_LAYOUT] }).catch(() => {});
+  for (const k of ["records.move", "records.relationship.add", "records.relationship.remove", "records.layout.set"]) {
+    assert.equal(MEMBER_TOOLS[k].tool, "records.serve-update", `${k} is a write of the member door`);
+    assert.ok(/** @type {any} */ (CALLS).records.includes(MEMBER_TOOLS[k].call), `${k} is a call of the group`);
+  }
+  const deal = (await w.as(ANA, "records.create", { type: "deal", data: { name: "Okafor", amount: 1000 } })).record;
+  const ref = deal.data.ref;
+  assert.equal(await code(w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified", patch: { ref: "DEA-9999" } })), "field_not_allowed", "a move cannot change the ID");
+  const moved = (await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" })).record;
+  assert.equal(moved.data.stage, "Qualified"); assert.equal(moved.data.ref, ref);
+  const a = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  const b = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Sam" } })).record;
+  const rel = (await w.as(ANA, "records.relationship.add", { from: a.urn, to: b.urn, kind: "Colleague" })).relationship;
+  assert.equal((await w.as(ANA, "records.relationship.list", { urn: a.urn })).relationships.length, 1);
+  await w.as(ANA, "records.relationship.remove", { id: rel.id });
+  assert.equal((await w.as(ANA, "records.relationship.list", { urn: a.urn })).relationships.length, 0);
+  await w.as(ANA, "records.layout.set", { type: "deal", scope: "mine", layout: { columns: ["name"] } });
+  assert.equal((await w.as(ANA, "records.layout.get", { type: "deal" })).layout.columns.join(), "name");
+  assert.equal(await code(w.as(ANA, "records.layout.set", { type: "deal", scope: "space", layout: { columns: ["name"] } })), "not_allowed");
+  assert.ok(await code(w.as(ANA, "records.pipeline.set", { type: "deal", stages: [{ name: "A" }] })) !== null, "pipeline.set is not a member call");
+  assert.ok((await w.as(w.OWNER, "records.layout.get", { type: "deal" })).layout.columns === undefined, "her layout is hers alone");
+});
+
+test("an admin cannot read a member's private note through the raw route; the member and a shared note are read", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const { PLANNER_TYPES } = await import("../planner/types.js");
+  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: PLANNER_TYPES.map((x) => ({ ...x })) }).catch(() => {});
+  await w.d.kernel.gateway.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
+  const svc = w.d.kernel.gateway.serviceChain("planner");
+  const note = async (/** @type {string} */ title, /** @type {any} */ more) => w.d.kernel.gateway.records.create(svc, "note", { title, state: "open", person: BEN, ...more }, { on_behalf: w.chainOf(BEN) });
+  const priv = await note("secret", { visibility: "private" }), shared = await note("for all", { visibility: "space" });
+  const titles = async (/** @type {string} */ p) => ((await w.d.registry.call("records.list", { type: "note" }, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(p), {})).token })).data.rows || []).map((/** @type {any} */ r) => r.data.title).sort();
+  assert.deepEqual(await titles(ZED), ["for all"], "an admin reads only what is shared");
+  assert.deepEqual(await titles(w.OWNER), ["for all"], "so does the owner");
+  const got = await w.d.registry.call("records.get", { urn: priv.urn }, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(ZED), {})).token });
+  assert.equal(got.data.record, null, "and cannot open the private one");
+  assert.ok(shared.urn);
+});
