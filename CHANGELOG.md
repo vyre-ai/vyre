@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2 (join by address)
 
+- fix(join): the 15-second refresh of the asks cleared the reason an Approve or Decline had just failed, so a refused approval showed nothing. The refresh now keeps its own message apart.
+
 - feat(join): Approve shows where it is ("Making their invite.", then "Letting them in."), so a slow approval is not a blank wait.
 
 - test(join): the walk pressed "Approve" by a loose name, and the ask's own row ("before you approve") matched first, so the press only folded the row away. The browser driver takes an exact name and the walk uses it for Approve.

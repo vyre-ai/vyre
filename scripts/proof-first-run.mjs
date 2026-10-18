@@ -501,7 +501,7 @@ try {
       await drv.click("Approve", true);
       await until(async () => !/asks to join/.test(await drv.text()), 60_000, "the ask leaving the owner's list once approved").catch(async (e) => {
         await drv.shot("fail-owner-approve");
-        throw new Error(`${e.message} | the owner's screen: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 500)}`);
+        throw new Error(`${e.message} | the owner's screen: ${(await drv.text()).replace(/\s+/g, " ").replace(/^.*?(?=Let people ask to join)/, "").slice(0, 600)}`);
       });
     }, { needs: READY });
     await run.step(S("group: the second person is let in and lands in the Space"), async () => {

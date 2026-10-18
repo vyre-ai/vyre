@@ -15,17 +15,18 @@ type State = { accepting: boolean; requests: Waiting[]; refused: number; open: n
 export function JoinRequests({ space, label }: { space: string; label: string }) {
   const [st, setSt] = useState<State | null>(null);
   const [problem, setProblem] = useState("");
+  const [listed, setListed] = useState("");
   const [open, setOpen] = useState("");
   const [words, setWords] = useState<string[] | undefined>(undefined);
   const [busy, setBusy] = useState("");
   const [stage, setStage] = useState("");
   const load = useCallback(async () => {
     if (MOCK || !/^spc_[a-z2-7]{12,26}$/.test(space)) return;
-    try { const { teamRequests } = await import("../../src/real/team-join"); setSt((await teamRequests(space)) as State); setProblem(""); } catch (e) { setProblem(said(e)); }
+    try { const { teamRequests } = await import("../../src/real/team-join"); setSt((await teamRequests(space)) as State); setListed(""); } catch (e) { setListed(said(e)); }
   }, [space]);
   useEffect(() => { void load(); const t = setInterval(() => void load(), 15000); return () => clearInterval(t); }, [load]);
   useEffect(() => { void import("@vyre/relay-client/words.js").then((m) => setWords(m.WORDS as unknown as string[])).catch(() => {}); }, []);
-  if (MOCK || !st) return problem ? <Banner icon="refresh"><Text tone="warn">{problem}</Text></Banner> : null;
+  if (MOCK || !st) return listed ? <Banner icon="refresh"><Text tone="warn">{listed}</Text></Banner> : null;
   const act = async (key: string, fn: () => Promise<unknown>) => { setBusy(key); setProblem(""); try { await fn(); await load(); setOpen(""); } catch (e) { setProblem(said(e)); } setBusy(""); setStage(""); };
   const approve = (r: Waiting) => act(r.id, async () => {
     const { makeTeamInvite, teamDecide } = await import("../../src/real/team-join");
