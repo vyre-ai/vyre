@@ -31,7 +31,7 @@ import { createMemberFiles } from "./member-files.js";
 import { createPersistent } from "./persistent.js";
 import { createChatPrefs } from "./chat-prefs.js";
 import { parseStored } from "../../lib/attachments.js";
-import { retryWhileAway, storeAway } from "./retry-away.js";
+import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
 import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
@@ -174,7 +174,10 @@ export default {
       const t = setTimeout(() => { void retryWhileAway(raiseRestore).catch(() => {}); }, 1500); if (typeof t.unref === "function") t.unref();
       // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
       // (a team Space's own record store may still be starting: this is tried again until it is there, not given up on until the next restart)
-      void retryWhileAway(() => hubOf().personalProject().then(() => hubOf().migrateGeneral())).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
+      const makePersonal = () => hubOf().personalProject().then(() => hubOf().migrateGeneral());
+      void retryWhileAway(makePersonal).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
+      // the pause between looks grows to a minute: when the store joins, make it at once, so the Personal project is there as soon as Records is
+      try { whenStoreJoins(kernelOf().store, makePersonal); } catch { /* no kernel handle yet: the retry above covers it */ }
     }
     // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
     const templatesOf = createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
