@@ -42,7 +42,7 @@ export default {
     tool("tasks.update", "The doer adds details, a progress note or the outputs it made, while the task is ready, working or has changes requested.", obj({ space: str, id: str, details: { type: "object" }, note: str, outputs: { type: "array", items: str } }, ["id"]), async (i, d) => ({
       task: withSlots(await asks(d).update(d.chain, String(i.id), { ...(i.details !== undefined ? { details: i.details } : {}), ...(i.note !== undefined ? { note: String(i.note) } : {}), ...(i.outputs !== undefined ? { outputs: i.outputs } : {}) })),
     }));
-    tool("tasks.review", "The reviewer passes the work or asks for changes, with the checklist and a note. A pass never sends anything; the approver still decides what leaves.", obj({ space: str, id: str, result: { type: "string", enum: ["pass", "changes"] }, checklist: { type: "array", items: { type: "object" } }, note: str }, ["id", "result"]), async (i, d) => ({
+    tool("tasks.review", "The reviewer passes the work or asks for changes, with a checklist and note. A pass sends nothing; the approver decides.", obj({ space: str, id: str, result: { type: "string", enum: ["pass", "changes"] }, checklist: { type: "array", items: { type: "object" } }, note: str }, ["id", "result"]), async (i, d) => ({
       task: withSlots(await asks(d).review(d.chain, String(i.id), { result: i.result, ...(Array.isArray(i.checklist) ? { checklist: i.checklist } : {}), ...(i.note !== undefined ? { note: String(i.note) } : {}) })),
     }));
     tool("tasks.get", "One task, or null when it is not there or not the caller's to read.", obj({ space: str, id: str }, ["id"]), async (i, d) => ({ task: withSlots(await asks(d).get(d.chain, String(i.id))) }));

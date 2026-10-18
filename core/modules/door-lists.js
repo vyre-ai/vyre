@@ -360,7 +360,7 @@ export const GUEST_MAY = Object.freeze(new Set([
   "roles.tools",
   "spaces.list",
   "stream.catchup", "stream.mark-read", "stream.open", "stream.react", "stream.read", "stream.send", "stream.typing",
-  "tasks.get", "tasks.list", "tasks.review", "tasks.submit", "tasks.update",
+  "tasks.get", "tasks.list", "tasks.submit",
   "threads.get", "threads.items", "threads.list",
   "work.chat.get", "work.chat.list", "work.file.list",
   "files.drive.space.list", "files.drive.space.read",
