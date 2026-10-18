@@ -29,7 +29,7 @@ export function worksWith(parts) {
     skills: row(parts.skills, { claude: [true, "read from the skills folder"], codex: [true, "verified against Codex CLI 0.159.3"], grok: [true, "from Grok's documentation, not yet run"] }),
     commands: row(parts.commands, { claude: [true, "slash commands"], codex: [false, "Codex has no plugin commands; the text is not placed"], grok: [true, "from Grok's documentation (it reads the Claude plugin layout), not yet run"] }),
     hooks: row(parts.hooks, { claude: [true, "run through Vyre's script sandbox"], codex: [false, "Codex has no matching hooks here"], grok: [true, "from Grok's documentation, not yet run"] }),
-    mcp: row(parts.mcp, { claude: [true, "becomes a Vyre Connection the AI reaches through Vyre's tools"], codex: [true, "becomes a Vyre Connection the AI reaches through Vyre's tools; not written into Codex's own config"], grok: [true, "becomes a Vyre Connection the AI reaches through Vyre's tools; not written into Grok's own config"] }),
+    mcp: row(parts.mcp, { claude: [true, "placed in the plugin's .mcp.json once approved"], codex: [true, "placed in Codex's config.toml once approved (stdio and http; an sse server is not placed)"], grok: [true, "placed in the plugin's .mcp.json once approved (Grok reads the Claude plugin layout; from its documentation, not yet run)"] }),
   };
 }
 

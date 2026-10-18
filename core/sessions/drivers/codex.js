@@ -24,6 +24,29 @@ import { acpProvider } from "./acp.js";
 const CONFIG = 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\n';
 
 /**
+ * The [mcp_servers] tables for the approved plugins' MCP servers, from the neutral list the skill library wrote (mcp.json beside the skills). Rebuilt here with every field checked again, never copied as text:
+ * a name that is a plain key, a command and arguments as TOML strings, or a url that is http(s). Codex speaks stdio and streamable HTTP; an `sse` server is not placed. No env and no headers are ever written.
+ * @param {string} skillsDir @returns {string}
+ */
+export function mcpToml(skillsDir) {
+  let list;
+  try { list = JSON.parse(fs.readFileSync(path.join(skillsDir, "mcp.json"), "utf8")).servers; } catch { return ""; }
+  if (!Array.isArray(list)) return "";
+  const str = (/** @type {unknown} */ v) => JSON.stringify(String(v));   // a JSON string is a valid TOML basic string
+  let out = "";
+  for (const m of list.slice(0, 10)) {
+    if (!m || !/^[a-z][a-z0-9-]{0,24}$/.test(String(m.name))) continue;
+    if (m.transport === "stdio" && typeof m.command === "string" && m.command && !/[\0\n\r]/.test(m.command)) {
+      const args = (Array.isArray(m.args) ? m.args : []).slice(0, 40).map(String).filter(a => !/[\0\n\r]/.test(a));
+      out += `\n[mcp_servers.${m.name}]\ncommand = ${str(m.command)}\nargs = [${args.map(str).join(", ")}]\n`;
+    } else if (m.transport === "http" && typeof m.url === "string" && /^https?:\/\/[^\s"\\]+$/.test(m.url)) {
+      out += `\n[mcp_servers.${m.name}]\nurl = ${str(m.url)}\n`;
+    }
+  }
+  return out;
+}
+
+/**
  * The CODEX_HOME a session runs with (R031-19). With no library, the account's own folder. With the Space's approved skills written for Codex (`VYRE_SKILLS_DIR`, a content-addressed folder the skills module
  * made), a home of its own beside it: the account's sign-in linked in (never copied), Vyre's config, and the skills folder linked, so sessions with the same skills share one home and a session never sees skills
  * that are not its project's or agent's. The folder is named by the skills' own content id, so nothing here needs cleaning up when they change.
@@ -31,13 +54,13 @@ const CONFIG = 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"
  */
 export function codexHomeFor(home, skillsDir) {
   const own = path.join(home, ".codex");
-  if (!skillsDir || !fs.existsSync(path.join(skillsDir, "skills"))) return own;
+  if (!skillsDir || !(fs.existsSync(path.join(skillsDir, "skills")) || fs.existsSync(path.join(skillsDir, "mcp.json")))) return own;
   const dir = path.join(home, ".codex-lib", path.basename(skillsDir));
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const link = (/** @type {string} */ name, /** @type {string} */ target) => { const at = path.join(dir, name); try { if (fs.readlinkSync(at) === target) return; fs.rmSync(at, { force: true }); } catch { /* not a link yet */ } try { fs.rmSync(at, { recursive: true, force: true }); fs.symlinkSync(target, at); } catch { /* the folder is read-only or gone: the session runs without it */ } };
   if (fs.existsSync(path.join(own, "auth.json"))) link("auth.json", path.join(own, "auth.json"));
-  fs.writeFileSync(path.join(dir, "config.toml"), CONFIG, { mode: 0o600 });
-  link("skills", path.join(skillsDir, "skills"));
+  fs.writeFileSync(path.join(dir, "config.toml"), CONFIG + mcpToml(skillsDir), { mode: 0o600 });
+  if (fs.existsSync(path.join(skillsDir, "skills"))) link("skills", path.join(skillsDir, "skills"));
   return dir;
 }
 
