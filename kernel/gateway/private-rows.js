@@ -111,6 +111,7 @@ export async function visiblePage(spec, getPage, ok) {
   return { rows, ...(more ? { next_cursor: next } : {}) };
 }
 
+export const OWN_ONLY = Object.freeze(new Set(["event", "note"]));   // read rules that bind an owner and an admin too (a note is about a record, never a note: mayReadRef refuses one, so no cycle)
 /**
  * Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
  * people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
@@ -118,7 +119,6 @@ export async function visiblePage(spec, getPage, ok) {
  * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (lib/note-share.js).
  * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any, mayReadRef?: (chain: any, ref: string) => Promise<boolean> }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
  */
-export const OWN_ONLY = Object.freeze(new Set(["event", "note"]));   // read rules that bind an owner and an admin too
 export function createReadRules(d) {
   const { store, urn, attrsOf } = d;
   const seatOf = projectTeamOf(store, urn, attrsOf);
