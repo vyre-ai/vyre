@@ -513,7 +513,7 @@ export default {
       } finally { clearTimeout(timer); }
     };
     tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
-      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it). Taken as it is when free, else with a number after it; never an existing item. Default ai-key-<provider>-<id>." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
@@ -526,7 +526,18 @@ export default {
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
         const id = crypto.randomBytes(6).toString("hex");
-        const item = `ai-key-${k.provider}-${id}`;
+        let item = `ai-key-${k.provider}-${id}`;
+        if (i.name !== undefined && String(i.name).trim()) {
+          const asked = String(i.name).trim();
+          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(asked)) throw Object.assign(new Error("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -"), { code: "bad_input" });
+          // never an existing item (a put on an existing name replaces it): the name is made free with a number after it
+          const have = await ctx.call("vault.list", {});
+          const names = new Set(((have && have.data && Array.isArray(have.data.items) ? have.data.items : [])).map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+          let cand = asked, n = 2;
+          while (names.has(cand.toLowerCase()) && n < 100) cand = `${asked} ${n++}`;
+          if (names.has(cand.toLowerCase())) throw Object.assign(new Error("that name is taken in the Vault"), { code: "bad_input" });
+          item = cand;
+        }
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;

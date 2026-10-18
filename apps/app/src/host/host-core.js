@@ -553,7 +553,14 @@ export function createHost(o) {
       const base = input && input.base_url ? String(input.base_url) : "";
       if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
       const ports = await o.space.load();
-      const r = /** @type {any} */ (await ports.call("sessions.accounts.key", { kind, key, label, ...(base ? { base_url: base } : {}) }, box));
+      /** @type {any} */ let r;
+      try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
+      catch (e) {
+        // whatever the server or the provider said, the key is never in what is thrown here
+        const code = e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed";
+        const said = String((e && /** @type {any} */ (e).message) || "That key could not be added.").split(key).join("[key]").slice(0, 200);
+        throw bad(said, code);
+      }
       return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked) };
     },
 

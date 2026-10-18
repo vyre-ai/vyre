@@ -463,6 +463,47 @@ test("a tool that writes the Assistant never lands on the current space's server
   assert.deepEqual(sent, [], "nothing was sent to either server");
 });
 
+test("the API key tool sends the key once to the server's key tool and never lets it out: not in what it returns, not in what it throws, only the owner adds one, and only the one allowed address is accepted", async (t) => {
+  const { pp, host, store } = await ready(t);
+  const KEY = "sk-ant-RECOGNISABLE-KEY-0123456789";
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "no_server");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  const sent = [];
+  let mode = "ok";
+  pp.call = async (name, input, box) => {
+    if (name === "sessions.accounts.key") {
+      sent.push({ name, input, box });
+      if (mode === "echo") throw Object.assign(new Error(`the service refused the key ${input.key} at https://api.anthropic.com`), { code: "bad_input" });
+      return { account: "ac_9", provider: "claude", label: input.label, checked: true, host: "api.anthropic.com", secret: input.key };
+    }
+    return first(name, input, box);
+  };
+  // the key never comes back, and the server gets the name for its Vault item
+  const r = await host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" });
+  assert.deepEqual(r, { account: "ac_9", provider: "claude", label: "Work Claude", checked: true });
+  assert.ok(!JSON.stringify(r).includes(KEY));
+  assert.deepEqual([sent[0].box, sent[0].input.name, sent[0].input.label, sent[0].input.kind], ["boxA", "Work Claude", "Work Claude", "anthropic-compatible"]);
+  // an error that echoes the key is thrown without it
+  mode = "echo";
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" }), (e) => { assert.ok(!String(e.message).includes(KEY), "the thrown words carry no key"); assert.equal(e.code, "bad_input"); return true; });
+  // other addresses, kinds, keys and names are refused with nothing sent
+  sent.length = 0;
+  for (const bad of [{ kind: "anthropic-compatible", base_url: "https://evil.example/v1" }, { kind: "openai-compatible", base_url: "https://evil.example/v1" }, { kind: "openrouter", base_url: "https://api.x.ai/v1" }, { kind: "mystery" }, { kind: "openrouter", key: "short" }, { kind: "openrouter", label: "" }]) {
+    await assert.rejects(() => host.call("onboard.agent.key", { kind: "openrouter", key: KEY, label: "Work", ...bad }), (e) => e.code === "bad_address" || e.code === "bad_kind" || e.code === "bad_key" || e.code === "bad_name");
+  }
+  const ok = await host.call("onboard.agent.key", { kind: "openai-compatible", key: "xai-0123456789abcdef", label: "Grok", base_url: "https://api.x.ai/v1" });
+  assert.equal(ok.account, "ac_9");
+  assert.equal(sent.length, 1, "only the allowed address went to the server");
+  // a member of the space does not add a key here
+  sent.length = 0;
+  { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "not_owner");
+  assert.deepEqual(sent, [], "nothing was sent for a member");
+});
+
 test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {
   const { pp, host } = await ready(t);
   await assert.rejects(() => host.call("onboard.assistant.models", {}), (e) => e.code === "no_server");
