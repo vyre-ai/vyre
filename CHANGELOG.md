@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+
+## 0.6.2 (join by address)
+
+- feat(join): asking to join a Space by its address, to sec53's seven conditions. (1) The ask door: a person with no invite signs a v3 hello with the purpose "ask" (vyre-invitee-hello-v3, the box, the Space, their identity and device key, the channel's key) and may call only requests.ask and requests.status; the old invite hello cannot call them and an ask hello cannot be taken as an invite one. Rates run before the directory is asked (per channel and Space-wide per hour; a relay channel key is free to mint, so the caps that hold are per identity, the open cap and the 24-hour newcomer device rule; address caps are the relay's job, a dependency of this feature). (2) The requests module (core/requests): one row per Space and identity, the note as plain text (200 characters, never on a card, never read by a model), five asks an hour per identity, 20 open per Space, 14 days; off by default for every Space and turned on only by the owner at their own device with presence; when off, full, already a member or unknown, the asker gets the same fixed words ("This Space only takes invites."); declined and expired read "Not accepted."; approval is only by naming the invite made through the ordinary invite path with the approver's presence. (3) A Needs-you card per ask in fixed words with the fingerprint reminder (never the note), and one notice with Clear all when the list is full. (4) The app: the join screen accepts a Space's address and waits on a screen that shows the asker's four words; Settings, People has \"Let people ask to join\" and the asks to review (their four words, their note as plain text, Approve and Decline).
+
 ## Unreleased
 
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
