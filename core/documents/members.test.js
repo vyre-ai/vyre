@@ -53,7 +53,9 @@ test("a member is met by the module, not the door, for the three signing views, 
   for (const [tool, input] of /** @type {[string, any][]} */ ([["documents.signing.status", { submission: 1 }], ["documents.signing.audit", { submission: 1 }], ["documents.signing.waiting", {}]])) {
     const m = await as("member", tool, input);
     assert.ok(!gated(m, tool), `${tool}: not the door's refusal: ${JSON.stringify(m).slice(0, 160)}`);
-    if (tool !== "documents.signing.waiting") assert.ok(m.error && m.error.code === "not_found" && /no such request/.test(m.error.message), `${tool}: the module's one answer, ${JSON.stringify(m).slice(0, 160)}`);
+    // the audit download is a person's own surface only (the tool's own rule, for a member as for the owner); the one not_found for a request that is not hers is checked in documents.test.js on a person's call
+    if (tool === "documents.signing.audit") assert.ok(m.error && m.error.code === "denied" && /not available to mcp callers/.test(m.error.message), `${tool}: the tool's own person-only rule, ${JSON.stringify(m).slice(0, 160)}`);
+    else if (tool === "documents.signing.status") assert.ok(m.error && m.error.code === "not_found" && /no such request/.test(m.error.message), `${tool}: the module's one answer, ${JSON.stringify(m).slice(0, 160)}`);
   }
 });
 
