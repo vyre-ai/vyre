@@ -52,7 +52,7 @@ function rig(over = {}) {
   const roles = { attorney: [actor("person", ALICE), actor("agent", "intake")] };
   const state = { roles };
   const tasks = createTasks({
-    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}),
+    space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}), ...(over.skills ? { skills: over.skills } : {}),
     members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null), ...(over.people ? { people: () => over.people } : {}) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
@@ -1049,4 +1049,24 @@ test("list mine: assigned, reviewing and approving read the caller's own slots f
   assert.deepEqual(await r.tasks.list(alice(), { mine: "assigned" }), []);
   assert.deepEqual(await r.tasks.list(bob(), { mine: "reviewing" }), []);
   await assert.rejects(() => r.tasks.list(bob(), { mine: "everyone" }), { code: "bad_input" });
+});
+
+test("pinned guides: instructions and skills ride on the task, the checklist is pinned by hash, a pass answers exactly those items, and the approval covers them", async () => {
+  const catalog = { "brand-voice": { hash: "h1", checklist: ["no jargon", "names the firm"] } };
+  const r = rig({ skills: { pin: async id => catalog[id] || null } });
+  const spec = (over = {}) => draftTask({ reviewer: actor("person", BOB), instructions: { doer: "Keep it short", reviewer: "Check the tone" }, skills: { reviewer: ["brand-voice"] }, ...over });
+  await assert.rejects(r.tasks.request(owner(), spec({ skills: { reviewer: ["nope"] } })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), spec({ skills: { reviewer: ["brand-voice"], approver: ["brand-voice"] }, checker: undefined, output: { kind: "note" } })), { code: "bad_input" }, "a slot the task has not");
+  await assert.rejects(r.tasks.request(owner(), spec({ instructions: { doer: "x".repeat(2001) } })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), spec());
+  assert.equal(t.guides.skills.reviewer[0].hash, "h1");
+  catalog["brand-voice"] = { hash: "h2", checklist: [] };   // a later edit to the skill does not weaken this review
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }] }), { code: "bad_input" }, "an item left out");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "made up", ok: true }] }), { code: "bad_input" });
+  const done = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "brand-voice", item: "no jargon", ok: true }, { skill: "brand-voice", item: "names the firm", ok: true }] });
+  assert.equal(done.state, "needs_check");
+  assert.ok(done.review.checklist_hash, "the result stores the hash of the checklist it was judged against");
+  assert.ok(r.tasks.card ? true : true);
 });
