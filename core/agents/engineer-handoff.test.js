@@ -12,7 +12,9 @@ test("the Engineer's instructions teach the handoff: read, two or three question
 });
 
 test("a home holding the instructions this build shipped before is upgraded; the earlier ones are listed", () => {
-  assert.equal(ENGINEER.previous.length, 3);
+  assert.equal(ENGINEER.previous.length, 4);
   assert.ok(ENGINEER.instructions.startsWith(ENGINEER.previous[2]), "the new text is the earlier text plus the handoff");
+  assert.ok(ENGINEER.previous[3].startsWith(ENGINEER.previous[2]) && ENGINEER.previous[3] !== ENGINEER.instructions, "the handoff before new agents is kept, so a home holding it is brought up to date");
+  assert.match(ENGINEER.instructions, /agent\.new/, "and the Engineer is told how to propose a new agent");
   assert.ok(!ENGINEER.previous.includes(ENGINEER.instructions));
 });
