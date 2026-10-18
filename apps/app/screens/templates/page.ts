@@ -20,7 +20,7 @@ export function sentenceOf(b: Body, short = false): string {
   return `${article(name)} ${name} goes ${join(b.stages.map((s) => s.name))}${!short && counts ? `, with ${counts}` : ""}.`;
 }
 
-export type StageTodo = { title: string; doer: string; checker: string; brief: string; optional: boolean };
+export type StageTodo = { title: string; doer: string; approver: string; brief: string; optional: boolean };
 export type StageFlow = { flow: string; label: string; when: string; note: string };
 export type StageCard = { index: number; name: string; summary: string; todos: StageTodo[]; flows: StageFlow[] };
 
@@ -30,7 +30,7 @@ const firstLine = (text: string | undefined): string => { const l = String(text 
 /** One card per stage: its to-dos (doer, checker, the first line of the brief), the Flows that turn on there (start Flows in the first stage), and the line the closed card shows. */
 export function stageCards(b: Body, people: Who[] = [], agents: Who[] = []): StageCard[] {
   return b.stages.map((s, i) => {
-    const todos = (s.tasks || []).map((t): StageTodo => ({ title: t.title, doer: assigneeWords(t.doer, people, agents), checker: t.checker ? assigneeWords(t.checker, people, agents) : "", brief: firstLine(t.brief), optional: t.required === false }));
+    const todos = (s.tasks || []).map((t): StageTodo => ({ title: t.title, doer: assigneeWords(t.doer, people, agents), approver: t.checker ? assigneeWords(t.checker, people, agents) : "", brief: firstLine(t.brief), optional: t.required === false }));
     const flows = (b.automations || []).filter((a) => (i === 0 && a.when === "start") || a.when === s.name).map((a): StageFlow => ({ flow: a.flow, label: a.flow.replace(/_/g, " "), when: a.when, note: a.note || "" }));
     const summary = todos.length || flows.length ? [...(todos.length ? [plural(todos.length, "to-do")] : []), ...(flows.length ? [plural(flows.length, "Flow")] : [])].join(" · ") : "No to-dos";
     return { index: i, name: s.name, summary, todos, flows };
