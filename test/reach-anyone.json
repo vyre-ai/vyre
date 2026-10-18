@@ -2696,6 +2696,10 @@
   "microsoft.accounts": {
    "module": "microsoft",
    "reason": "read-only, and scoped in code by the call's verified chain (actingPerson): a member sees only her own provisioned account, the owner the firm app; the Vault's Apps list asks it as a module for the member it is serving"
+  },
+  "mcp.keys.waiting": {
+   "module": "mcp",
+   "reason": "the body refuses an agent, mcp, harness and guest caller (lib/person-body.js); first-party modules and the person's surfaces pass; it lists server names and the names and labels of the keys they wait for, never a value"
   }
  }
 }
