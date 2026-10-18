@@ -12,12 +12,13 @@ import { SharedLinks } from "./SharedLinks";
 import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
-import { rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
+import { type Place, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
 import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
+import { canDrop, carriesFiles, dropTarget, dropWords, plan, progressLine } from "./drop-model.js";
 import { Thumb } from "./Thumb";
 import { create as createSite } from "../sites/real";
 import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
@@ -31,6 +32,7 @@ import { dayOf, spaceDriveRefusal, toBase64, MAX_UPLOAD, type Version } from "./
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
 const ROW_H = 40;
+type FolderOf = { place: string; root: string; path: string; link?: string };
 const ICON: Record<string, string> = { folder: "folder", pdf: "file", doc: "file", sheet: "file", image: "file", video: "file", audio: "file", archive: "file", text: "file", file: "file" };
 const KIND_WORD: Record<string, string> = { folder: "Folder", pdf: "PDF", doc: "Document", sheet: "Spreadsheet", image: "Image", video: "Video", audio: "Audio", archive: "Archive", text: "Text", file: "File" };
 /** What the shared list header filters on: a file as a record with a name and a kind. */
@@ -152,20 +154,33 @@ function Manager({ wide }: { wide: boolean }) {
 
   // upload: the picker and a drop onto the open folder (the Space and linked folders take files)
   const [dropping, setDropping] = useState(false);
-  const upload = async (files: File[]) => {
-    if (!parsed || !ability.upload || !files.length) return;
-    const base = parsed.path ? `${parsed.path}/` : "";
+  // the folder row the pointer is over during a drag of files (a drop onto it uploads into it)
+  const [overRow, setOverRow] = useState<string | null>(null);
+  const uploadTo = async (target: Place, files: File[], known?: FileRow[] | null) => {
+    if (!files.length) return;
+    const { go: sendable, skipped } = plan(files, MAX_UPLOAD);
+    for (const x of skipped) showToast(x.why === "too_large" ? spaceDriveRefusal("too_large", "") : `${x.name} is a folder, not a file. Open it and drop its files instead.`);
+    const base = target.path ? `${target.path}/` : "";
+    const byName = new Map(sendable.map((f) => [f.name, files.find((g) => g.name === f.name)!]));
     let done = 0;
-    for (const f of files) {
-      if (f.size > MAX_UPLOAD) { showToast(spaceDriveRefusal("too_large", "")); continue; }
+    for (const f of sendable) {
+      const file = byName.get(f.name)!;
+      showToast(progressLine(done, sendable.length, f.name));
       try {
-        const b64 = toBase64(new Uint8Array(await f.arrayBuffer()));
-        if (parsed.root === "space") await spaceUpload(undefined, `${base}${f.name}`, b64, rows?.find((x) => !x.dir && x.name === f.name)?.ver);
-        else if (parsed.root === "linked" && parsed.link) await linked.write(parsed.link, `${base}${f.name}`, b64);
+        const b64 = toBase64(new Uint8Array(await file.arrayBuffer()));
+        if (target.root === "space") await spaceUpload(undefined, `${base}${f.name}`, b64, known?.find((x) => !x.dir && x.name === f.name)?.ver);
+        else if (target.root === "linked" && target.link) await linked.write(target.link, `${base}${f.name}`, b64);
         done++;
       } catch (e) { showToast(say(e)); }
     }
     if (done) { showToast(done === 1 ? "Uploaded." : `Uploaded ${done} files.`); load(place); }
+  };
+  const upload = (files: File[]) => (parsed && ability.upload ? uploadTo(parsed, files, rows) : Promise.resolve());
+  /** The folder a drag over the page would land in: the folder row under the pointer, else the open folder. */
+  const targetNow = () => {
+    const over = overRow ? shown.find((r) => r.key === overRow) : null;
+    const asFolder = (p: FolderOf) => ({ place: p.place, root: p.root, path: p.path, ...(p.link ? { link: p.link } : {}) });
+    return dropTarget(parsed ? asFolder({ place, root: parsed.root, path: parsed.path, link: parsed.link }) : null, over ? { ...asFolder(over), dir: over.dir } : null);
   };
   const pickUpload = () => {
     const input = document.createElement("input");
@@ -185,7 +200,7 @@ function Manager({ wide }: { wide: boolean }) {
     return (
       <div key={r.key} style={style}>
         <MenuRow items={menuFor(r)}>{(menu) => (
-          <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)}
+          <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} onDragOver={() => setOverRow(r.dir ? r.key : null)}
             style={{ display: "grid", gridTemplateColumns: GRID_COLS, alignItems: "center", columnGap: 12, height: ROW_H, boxSizing: "border-box", padding: "0 12px", cursor: "pointer", background: on ? "var(--surface-3)" : "transparent", outline: i === focus ? "1px solid var(--edge-strong)" : "none", outlineOffset: -1 }}>
             <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}><Icon name={ICON[r.kind] as never} tone="text-2" size={18} /><div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></div></div>
             {showDetail ? null : <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><Text size="caption" tone="muted" numberOfLines={1}>{KIND_WORD[r.kind]}</Text></div>}
@@ -217,7 +232,7 @@ function Manager({ wide }: { wide: boolean }) {
     : view === "grid" ? (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
-          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
+          <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} onDragOver={() => setOverRow(r.dir ? r.key : null)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
             <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Thumb row={r} fallback={ICON[r.kind]} /></div>
             <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
@@ -243,8 +258,8 @@ function Manager({ wide }: { wide: boolean }) {
   return (
     <Frame title="Files">
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
-        <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(true); } }} onDragLeave={() => setDropping(false)}
-          onDrop={(e) => { if (ability.upload && canOpenFolder) { e.preventDefault(); setDropping(false); void upload(Array.from(e.dataTransfer.files)); } }}>
+        <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (carriesFiles(e.dataTransfer) && targetNow()) { e.preventDefault(); setDropping(true); } }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropping(false); setOverRow(null); } }}
+          onDrop={(e) => { if (!carriesFiles(e.dataTransfer)) return; const t = targetNow(); setDropping(false); setOverRow(null); if (t) { e.preventDefault(); void uploadTo(t as unknown as Place, Array.from(e.dataTransfer.files), t.place === place ? rows : null); } }}>
           <View className="gap-s3">
             <View className="flex-row items-center gap-s3">
               <View className="min-w-0 flex-1"><Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} /></View>
@@ -259,7 +274,10 @@ function Manager({ wide }: { wide: boolean }) {
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
             ) : null}
-            <div style={{ outline: dropping ? "2px dashed var(--edge-strong)" : "none", outlineOffset: 4, borderRadius: 14 }}>{main}</div>
+            <div style={{ position: "relative", outline: dropping ? "2px solid var(--edge-strong)" : "none", outlineOffset: 4, borderRadius: 14, background: dropping ? "var(--surface-2)" : "transparent", transition: "background 120ms" }}>
+              {dropping ? <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 2 }}><div style={{ padding: "6px 14px", borderRadius: 999, background: "var(--surface-3)", border: "1px solid var(--edge)" }}><Text size="caption" strong>{dropWords(targetNow(), (f) => (f.place === place ? crumbs[crumbs.length - 1]?.name ?? "this folder" : rows?.find((r) => r.key === overRow)?.name ?? f.path))}</Text></div></div> : null}
+              {main}
+            </div>
           </View>
         </div>
         {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
