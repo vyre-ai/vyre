@@ -18603,8 +18603,10 @@ Make a Project: one record that holds the work's sessions, Drive folder (Project
 - Input:
   - `name` string, required
   - `client` string
+  - `kind` one of "stages", "client", "ongoing", "simple"
   - `repo` string
   - `slug` string
+  - `stages` list of string
 - Callers: any caller
 
 ### `work.project.ensure`
