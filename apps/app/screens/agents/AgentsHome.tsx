@@ -9,6 +9,7 @@ import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
 import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
+import { ageOf } from "../chats/chat-model.js";
 import { AGENT_GROUPS, agentRow, agentsDef, asRecords, byRecent, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
 import { useChats } from "../../src/state/chats";
 import { useMembers } from "../spaces/state";
@@ -97,6 +98,7 @@ export function AgentsHome() {
             <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{r.kind === "assistant" ? <Chip>Your assistant</Chip> : null}{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>
             <Text size="caption" tone="label" numberOfLines={phone ? 3 : 1}>{[r.model, r.works].join(", ")}</Text>
+            {typeof r.last_active === "number" ? <Text size="caption" tone="muted">{`Last active ${ageOf(r.last_active, Date.now())}`}</Text> : null}
           </View>
           {phone ? menu : <View className="flex-row items-center gap-s2">{pill}{menu}</View>}
         </View>
