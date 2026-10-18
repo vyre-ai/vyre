@@ -1244,3 +1244,17 @@ test("escalation: a late reviewer slot passes to the role the author named, once
   await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved" }), { code: "needs_presence" }, "no proof, no approval");
   assert.equal((await r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) })).state, "done");
 });
+
+test("escalation and quorum all do not combine: a slot that needs everyone is never completed by one person because it ran late", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  r.state.roles.designers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all", escalation: { reviewer: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), draftTask({ checker: { role: "editors" }, quorum: "all", escalation: { approver: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  // and a late all-slot stays an all-slot
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  T += 10_000_000;
+  assert.equal((await r.tasks.review(alice(), t.id, { result: "pass" })).state, "in_review", "still waits for the other holder");
+});

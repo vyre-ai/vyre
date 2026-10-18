@@ -503,6 +503,7 @@ export function createTasks(cfg) {
         if (!esc || typeof esc !== "object" || Array.isArray(esc) || Object.keys(esc).some(k => k !== "reviewer" && k !== "approver")) throw new KernelError("bad_input", "escalation is { reviewer?, approver? }, each { due_ms, to: { role } }");
         const escalate = /** @type {any} */ ({});
         for (const [k, e] of Object.entries(esc)) {
+          if ((k === "reviewer" && spec.reviewer_quorum === "all") || (k === "approver" && spec.quorum === "all")) throw new KernelError("bad_input", "a slot that needs everyone cannot also pass to a role when it runs late: use quorum any, or no escalation");
           if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !e || typeof e !== "object" || !Number.isInteger(e.due_ms) || e.due_ms < 60_000 || e.due_ms > 90 * 86_400_000 || !e.to || typeof e.to.role !== "string" || !e.to.role || Object.keys(e.to).length !== 1) throw new KernelError("bad_input", "an escalation is { due_ms (a minute to 90 days), to: { role } } for a slot the task has");
           if (!chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && isStaffRole(cfg.members.roleOf ? cfg.members.roleOf(h.actor) : null))) throw new KernelError("not_allowed", "only an owner or an admin names the role a late slot passes to");
           if (!roleHolders(e.to.role).some((/** @type {any} */ a) => a && a.kind === "person")) throw new KernelError("no_checker", "nobody holds the role a late slot passes to");
@@ -724,7 +725,7 @@ export function createTasks(cfg) {
       }
       // Quorum "all" on a role: every person who holds the role now must pass; one pass is kept per person, and the last pass completes the review with the others recorded beside it. A person taken out of the role is no longer waited for.
       let reviewOut = review;
-      if (t.reviewer_quorum === "all" && !escalatedTo(t, "reviewer")) {
+      if (t.reviewer_quorum === "all") {
         const passes = [...(t.review_passes || []).filter((/** @type {any} */ p) => !same(p.by, who)), freeze({ by: review.by, review })];
         const waiting = reviewersOf(t).filter((/** @type {any} */ h) => !passes.some((/** @type {any} */ p) => same(p.by, h)));
         if (waiting.length) {
@@ -815,7 +816,7 @@ export function createTasks(cfg) {
       const why = p ? await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, ...(reviewHashOf(t) ? { review_hash: reviewHashOf(t) } : {}) }, proof: p }) : "no_proof";
       if (why) throw needsPresence("approving needs your confirmation on this device, over exactly this", why);
       // Quorum "all" on a role: each holder's own yes, each with their own presence proof over this same payload, is kept; the last one completes the approval. A holder taken out of the role is no longer waited for.
-      if (t.approver_quorum === "all" && !escalatedTo(t, "approver")) {
+      if (t.approver_quorum === "all") {
         const votes = [...(t.approvals || []).filter((/** @type {any} */ v) => !same(v.by, person)), freeze({ by: freeze({ kind: "person", id: person.id }), key_id: p.key_id })];
         const waiting = checkersOf(t).filter((/** @type {any} */ c) => !votes.some((/** @type {any} */ v) => same(v.by, c)));
         if (waiting.length) {

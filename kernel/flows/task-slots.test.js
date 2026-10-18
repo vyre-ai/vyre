@@ -29,6 +29,7 @@ test("slots are refused when malformed: who, quorum, both approver and checker, 
   bad({ approver: { who: "person:per_b", quorum: "all" } }, /quorum is any/);
   bad({ reviewer: { who: "role:r", quorum: "most" } }, /quorum is any/);
   bad({ reviewer: { who: "role:r", due: 3_600_000 } }, /come together/);
+  bad({ approver: { who: "role:r", quorum: "all", due: 3_600_000, escalate_to: "role:x" } }, /needs everyone/);
   bad({ reviewer: { who: "role:r", due: 5, escalate_to: "role:x" } }, /from a minute/);
   bad({ reviewer: { who: "role:r", due: 3_600_000, escalate_to: "x" } }, /escalate_to is role/);
   bad({ approver: { who: "person:per_b" }, checker: "person:per_c" }, /not both/);
