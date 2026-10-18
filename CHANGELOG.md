@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(tests): isolation.test.js test 19 matches agentd.js as it is in this release (`...bs()` starts Chrome's holder as the browser uid). The asBrowser form belongs to the 0.6.2 agentd and made the test fail in security-live.
 - test(runner): the lease key the lent-rig test sealer issues is different in every rig. It was one fixed hash of the member and the computer, so test files running side by side on one fscrypt volume shared an fscrypt key and the first to close its workspace removed the key from under the others ("key did not take", ENOENT under enc/).
 
 - test(computers-proof): run.sh skips the agent proof (agents.mjs) in 0.6.1, with the reason printed, because per-agent users are off; step 4a checks that the agent has its own csproof-computer container and that no csproof-computer-browser-shared exists; browser-checks keeps file:// and chrome:// required and reports the two download-folder checks as named KNOWN-FAIL lines and a `known failures (0.6.1)` summary instead of failing the run.
