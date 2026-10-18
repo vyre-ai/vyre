@@ -71,6 +71,8 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.notEqual(v2.ack, dr.ack, "adding a need changes what the card says yes to");
   assert.equal((await call("skills.approve", { name: "notes", level: "personal", version: 2, ack: dr.ack }).catch(e => e)).code, "needs_ack");
   await call("skills.approve", { name: "notes", level: "personal", version: 2, ack: v2.ack, items: { "notes.NOTES_API_KEY": "notes-key-2" } });
+  const probe = await call("mcp.test", { name: "p-notes-notes" });
+  assert.equal(probe.ok, false, "tried again with the new choice: still no grant, so it waits");
   const after = await call("mcp.servers", {});
   const sv2 = (Array.isArray(after) ? after : after.servers || []).find((/** @type {any} */ s) => s.name === "p-notes-notes");
   assert.deepEqual(sv2.env, { NOTES_API_KEY: "notes-key-2" }, "the new choice replaced the old one; NOTES_WORKSPACE has no item yet");
