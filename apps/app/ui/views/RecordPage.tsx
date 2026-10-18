@@ -11,6 +11,7 @@ import { Banner } from "../components/Banner";
 import { Button, IconButton } from "../components/Button";
 import { Segmented } from "../components/Segmented";
 import { Menu } from "../components/Menu";
+import { Switch } from "../components/Switch";
 import { Sheet } from "../components/Sheet";
 import { Field } from "../components/Field";
 import { Avatar } from "../components/Avatar";
@@ -25,6 +26,7 @@ import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
 import { theirTimeOf } from "../../src/time/show.js";
+import { useShowEmpty } from "../../src/state/record-prefs";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { actorWords, ago, assistantNote, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
@@ -46,7 +48,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const [draft, setDraft] = useState<any>(undefined);
   const [confirm, setConfirm] = useState<{ f: any } | null>(null);
   const [adding, setAdding] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
+  const [showEmpty, setShowEmpty] = useShowEmpty();
   const [hover, setHover] = useState<string | null>(null);
   const [rowMenu, setRowMenu] = useState<any>(null);
   const ai = who === "assistant";
@@ -82,7 +84,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const pool = world.byType[def.name] || [rec];
   // The stage strip above is the stage field's renderer, so the list leaves it out; empty fields wait behind one line, except the one being edited.
   const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && states[f.name]?.visible !== false);
-  const isBlank = (f: any) => f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;
+  const isBlank = (f: any) => !showEmpty && f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;
   const filled = listed.filter((f: any) => !isBlank(f));
   const empty = listed.filter(isBlank);
 
@@ -142,19 +144,30 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const main = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
       {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
+      {!ai ? (
+        <View className="flex-row items-center justify-between gap-s3 pb-s2">
+          <Text tone="label">Show empty fields</Text>
+          <Switch on={showEmpty} onChange={setShowEmpty} label="Show empty fields" />
+        </View>
+      ) : null}
       {def.groups?.length ? (
         <GroupedList groups={def.groups} items={filled} itemNoun="fields" renderItems={(items) => <Card flush>{items.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}</Card>} />
       ) : null}
       <Card flush>
         {def.groups?.length ? null : filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
         {empty.length ? (
-          <View>
-            {filled.length && !def.groups?.length ? <Divider /> : null}
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showEmpty }} onPress={() => setShowEmpty(!showEmpty)} className="min-h-control flex-row items-center justify-between px-s4 py-s3">
-              <Text tone="label">{`${empty.length} empty ${empty.length === 1 ? "field" : "fields"}`}</Text>
-              <Icon name={showEmpty ? "chevron-up" : "chevron-down"} size={16} tone="label" />
-            </Pressable>
-            {showEmpty ? empty.map((f: any) => <View key={f.name}><Divider />{fieldRow(f)}</View>) : null}
+          // One quiet line: how many are empty, and their names; a name opens that field in place. Nothing moves on hover.
+          <View className="gap-s1 px-s4 py-s3">
+            {filled.length && !def.groups?.length ? <View className="-mx-s4 mb-s2"><Divider /></View> : null}
+            <View className="flex-row flex-wrap items-center gap-x-s2 gap-y-s1">
+              <Text tone="label">{`${empty.length} empty`}</Text>
+              {empty.map((f: any, i: number) => (
+                <Pressable key={f.name} accessibilityRole="button" accessibilityLabel={`Fill in ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="flex-row">
+                  <Text tone="muted">{f.label}</Text>
+                  {i < empty.length - 1 ? <Text tone="label">,</Text> : null}
+                </Pressable>
+              ))}
+            </View>
           </View>
         ) : null}
       </Card>
