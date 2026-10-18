@@ -30,6 +30,7 @@ import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { chatKind, threadsTab } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
+import { chatTools } from "../../screens/chat-tools/instance";
 import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
 import { type AboutInfo } from "./AboutSheet";
@@ -543,6 +544,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
           agentName={kind === "agent" ? agentNames[0] : undefined}
+          onRename={async (name) => { const r = await chatTools.rename(here.thread ?? p.sessionId, name); if (r.ok) { showToast("Renamed."); return null; } showToast(r.reason); return r.reason; }}
           key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
@@ -565,6 +567,7 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={answerSlots}
           peopleOnly={peopleChat}
           onLocalCommand={(name) => {
+            if (name === "rename") { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d?.trim() ? d : "/rename "); setDraftN((n) => n + 1); return true; }
             if (name === "threads") { const t = threadsTab(kind, agentNames, panelTab); if (!t) return false; setPanelTab(t); setPanel("root"); return true; }
             if (name === "new") { if (kind !== "agent" || !agentNames[0]) return false; void newThread(agentNames[0]).then((why) => { if (why) showToast(why); else { setPanelTab("threads"); setPanel("root"); } }); return true; }
             if (name === "fork") { showToast("Use Fork from here on a message of the agent."); return true; }

@@ -56,6 +56,8 @@ export type ComposerProps = {
   onLocalCommand?: (name: string) => boolean;
   /** The agent this chat is with (an agent chat only): the line under the box says /new and /threads, and steer or queue while it works. */
   agentName?: string;
+  /** /rename <name>: the screen renames this thread; the answer is null when it did, else why not. */
+  onRename?: (name: string) => Promise<string | null>;
   /** Plus-menu shortcuts the screen handles (export, memory, roll, later, find). */
   onMenuCapability?: (id: "export" | "memory" | "roll" | "later" | "find") => void;
   /** Opens the Answering / model picker when the person picks /model locally. */
@@ -304,6 +306,8 @@ export function ChatComposer(p: ComposerProps) {
   const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
     if (!t && !files) return;
+    const renamed = /^\/rename\s+(\S.*)$/.exec(t);
+    if (renamed && p.onRename) { void p.onRename(renamed[1].trim()); setText(""); setCaret(0); return; }
     const typed = /^\/(\w+)\s*$/.exec(t);
     if (typed && !files && p.onLocalCommand?.(typed[1])) { setText(""); setCaret(0); return; }
     const people = p.people ?? [];

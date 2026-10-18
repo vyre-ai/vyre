@@ -21,7 +21,7 @@ import { scoreFields, compareScores } from "./match.js";
 /**
  * source: "session" (built in), "project", "user", "plugin", "skill", "vyre". local: the composer
  * does it itself, nothing is sent.
- * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move"|"skills"|"new"|"threads"|"fork"|"flow"|"agent"|"fresh"|"where" }} Command
+ * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move"|"skills"|"new"|"threads"|"fork"|"flow"|"agent"|"fresh"|"where"|"rename" }} Command
  */
 
 /** @type {readonly Command[]} */
@@ -40,7 +40,7 @@ export const COMMANDS = Object.freeze([
   { name: "clear", description: "Start the conversation over", aliases: ["reset"], source: "session" },
   { name: "init", description: "Write a project guide for this folder", source: "session" },
   { name: "review", description: "Review a pull request", hint: "[pr]", source: "session" },
-  { name: "rename", description: "Rename this session", hint: "<name>", source: "session" },
+  { name: "rename", description: "Rename this thread", hint: "<name>", source: "session", local: "rename" },
   { name: "model", description: "Switch the model for this session", hint: "[model]", source: "session", local: "model" },
   { name: "rewind", description: "Go back to an earlier message", source: "session", local: "rewind" },
   { name: "undo", description: "Take this session's changes back", source: "session", local: "undo" },
