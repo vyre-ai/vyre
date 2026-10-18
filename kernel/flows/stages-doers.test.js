@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { world, settle, ALEX, BOB } from "./testing/world.js";
 import { stagedCatalog } from "./testing/fixtures.js";
 import { snapshotOf, problems } from "../../lib/project-template.js";
+import { createStages } from "./stages.js";
 
 const tpl = () => ({
   name: "Matter", noun: { one: "Matter", many: "Matters" }, roles: [{ role: "attorney" }],
@@ -162,4 +163,25 @@ test("a gated template task that could not be made holds the stage: the other ta
   await w2.kernel.completeTask((await by(w2, "Needs a check")).id, {});
   await settle(w2);
   assert.equal(await stageOfProject(w2, r2), "Done");
+});
+
+test("the hold on an unmade gated task survives a restart: the module that takes the open gate back still refuses to move the record on, and says why", { timeout: 90_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [
+    { title: "Plain one", doer: "teammate:research", output: { kind: "note" } },
+    { title: "Needs a check", doer: "teammate:research", output: { kind: "note" }, approver: { who: "person:per_alex", skills: ["personal/mine"] } },
+  ];
+  const w = await mk();
+  const r = await start(w, {}, t);
+  await w.kernel.completeTask((await by(w, "Plain one")).id, {});
+  await settle(w);
+  const stageOfProject = async () => (await w.kernel.records.get(w.kernel.sysChain(), "project", r.id)).data.template_stage;
+  assert.equal(await stageOfProject(), "Opening");
+  const events = /** @type {any[]} */ ([]);
+  const fresh = createStages({ kernel: w.kernel, catalog: () => w.cat, chain: () => w.kernel.moduleChain({ module: "stages", approver: ALEX }), gates: w.runner.gatePort(), clock: () => w.clock.t, emit: (type, data) => events.push({ type, data }), hook: true, isAdmin: who => who.id === ALEX.id,
+    ports: { roles: () => [ALEX, BOB] } });
+  assert.equal(fresh.entries().length, 0, "it starts knowing nothing");
+  assert.equal(await fresh.resume(), 1, "it takes the open gate back");
+  await fresh.idle();
+  assert.equal(await stageOfProject(), "Opening", "the restarted module does not move the record on");
+  assert.ok(events.some(e => e.type === "stage.blocked" && /approval step could not be made.*Needs a check/.test(e.data.why)), JSON.stringify(events.map(e => e.type)));
 });

@@ -212,7 +212,7 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -329,7 +329,7 @@ export function createStages(o) {
     for (const run of await o.gates.list()) {
       const g = run.gate;
       if (!g || entries.has(g.key)) continue;
-      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, run: run.id, owner: g.owner, next: g.next };
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next };
       entries.set(g.key, ent);
       latest.set(`${g.urn}|${g.stage}`, g.key);
       for (const t of ent.tasks) taskEntry.set(t.id, g.key);
