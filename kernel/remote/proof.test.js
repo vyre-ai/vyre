@@ -47,7 +47,7 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
   const rule = await g.rules.set(owner, rr, proofFrom(signed("ruleSet", rr)));
   assert.equal((await g.rules.disable(owner, rule.id, proofFrom(signed("ruleDisable", rule.id)))).status, "disabled");
   assert.equal((await g.rules.enable(owner, rule.id, proofFrom(signed("ruleEnable", rule.id)))).status, "active");
-  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "inviteRevoke", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer", "upgrade", "vaultAddKey"]);
+  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "inviteRevoke", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer", "upgrade", "vaultAddKey", "vaultAddKeys"]);
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
@@ -91,4 +91,17 @@ test("sealExportApproveRequest: the one approval of a sealed-value move covers t
   assert.equal(r.payload_hash, payloadHash("seal.export_approve", "spc_a", r.fields));
   assert.notEqual(sealExportApproveRequest("spc_a", { plan_hash: "ph2", target_key: "TK", refs: ["a", "b"] }).payload_hash, r.payload_hash, "another plan is another proof");
   assert.throws(() => sealExportApproveRequest("spc_a", { plan_hash: "ph1", target_key: "TK", refs: [] }), { code: "bad_input" });
+});
+
+test("the set proof for a member's keys covers the sorted list of labels and value hashes: the order given does not matter, any change to the set does, and no value appears", () => {
+  const A = { label: "Work", value: "sk-ant-0123456789abcdef" }, B = { label: "Home", value: "sk-or-0123456789abcdef" };
+  const one = proofRequest("spc_aaaaaaaaaaaa", "vaultAddKeys", { items: [A, B] });
+  const two = proofRequest("spc_aaaaaaaaaaaa", "vaultAddKeys", { items: [B, A] });
+  assert.equal(one.payload_hash, two.payload_hash, "the same set in another order is the same proof");
+  assert.equal(one.op, "grant.add_keys");
+  assert.ok(!JSON.stringify(one).includes("sk-ant-") && !JSON.stringify(one).includes("sk-or-"));
+  assert.notEqual(one.payload_hash, proofRequest("spc_aaaaaaaaaaaa", "vaultAddKeys", { items: [A] }).payload_hash, "a dropped key is another proof");
+  assert.notEqual(one.payload_hash, proofRequest("spc_aaaaaaaaaaaa", "vaultAddKeys", { items: [A, { ...B, value: B.value + "x" }] }).payload_hash, "a swapped key is another proof");
+  assert.notEqual(one.payload_hash, proofRequest("spc_aaaaaaaaaaaa", "vaultAddKeys", { items: [A, { ...B, label: "Other" }] }).payload_hash, "a renamed key is another proof");
+  assert.notEqual(one.payload_hash, proofRequest("spc_aaaaaaaaaaaa", "vaultAddKey", A).payload_hash, "a set is not a single key");
 });
