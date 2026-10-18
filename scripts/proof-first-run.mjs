@@ -372,7 +372,7 @@ try {
     await look("Records", "08-records", /Contacts|All objects|No records|setting up|still starting/i, 90_000, async () => { await open("Records", "/u/records/contact", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Sites lists, with no refusal"), async () => {
-    await look("Sites", "09-sites", /No sites|New site|Create a site|Your sites|Published|Visit|Add a site|site/i, 60_000, async () => { await open("Sites", "/u/sites", false); });
+    await look("Sites", "09-sites", /Nothing published|Publish a site|No sites yet|Your sites|Live|Draft/i, 60_000, async () => { await open("Sites", "/u/sites", false); });
   }, { needs: READY });
   await run.step(S("owner walk: Vault, Mine, opens"), async () => {
     await look("Vault Mine", "10-vault-mine", /Nothing here|Make your own vault|is locked|Add (a|your|an)|No item|Add item/i, 60_000, async () => { await drv.go("/u/vault"); try { await drv.click("Mine"); } catch { /* it shows Mine already */ } });
