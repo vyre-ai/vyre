@@ -5,6 +5,8 @@ import { callT } from "../../src/real/call-tool";
 import { RecordScreen } from "./RecordScreen";
 import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
+import { useTypeLayout } from "./layout-state";
+import { LayoutControls } from "./LayoutControls";
 import { isStageGroup } from "./move-rule.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
@@ -65,6 +67,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   const mv = useMoveStage(env, reload);
+  const lay = useTypeLayout(type);
   const cards = useMembers((st) => st.spaces);
   const showing = useSpaces((st) => st.space);
   usePlaceText("showing");   // loads the spaces the row tags are read from
@@ -118,7 +121,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
   const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
-  const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
+  const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
   const tagged = { ...table, content: { ...table.content, rows: table.content.rows.map((r: any) => ({ ...r, tag: tagFor(cards, spaceOfUrn(r.urn) || showing, showing) })) } };
   // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
@@ -130,6 +133,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
     showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
   };
+  const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
     <View className="min-h-0 flex-1">
@@ -159,6 +163,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         ) : (
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
+        <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} canSpace={canShare} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />

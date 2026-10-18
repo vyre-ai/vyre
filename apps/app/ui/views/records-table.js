@@ -5,6 +5,7 @@
 //   A sealed field (kind sealed, a definition that seals, or a value that is a seal reference) becomes { k: "sealed", on } and nothing else. The value, its reference and its sort key never enter
 //   the content, so they cannot reach a log, a chat card, an agent or a screenshot through it.
 import { viewDefOf } from "./view-defs.js";
+import { applyLayout, layoutRows } from "./layout.js";
 import { fieldOf, listColumns, optionsOf, titleOf, val, viewRows } from "./logic.js";
 import { isEmpty, isSealedValue, normalizeKind, sortKey, urnOf, actorIdOf } from "../fields/logic.js";
 
@@ -41,14 +42,14 @@ const defOf = f => ({ name: f.name, label: f.label, kind: normalizeKind(f.kind),
 
 /**
  * @param {any} def the type definition @param {any[]} rows its records
- * @param {{ view?: string, noFilter?: boolean, env?: { actors?: any[], links?: Record<string, any> } }} [o]
+ * @param {{ view?: string, noFilter?: boolean, layout?: any, env?: { actors?: any[], links?: Record<string, any> } }} [o] `layout` is the person's own layout of the type (records.layout.get): its columns, sort and filters lie over the view's
  * @returns {{ props: Record<string, any>, content: Record<string, any> }}
  */
 export function tableFromRecords(def, rows, o = {}) {
   const env = o.env || {};
-  const vd = viewDefOf(def, undefined, o.view);
+  const vd = applyLayout(viewDefOf(def, undefined, o.view), o.layout);
   const cols = listColumns(def, vd);
-  const kept = viewRows(rows, o.noFilter ? undefined : vd.list?.filter);
+  const kept = layoutRows(viewRows(rows, o.noFilter ? undefined : vd.list?.filter), o.noFilter ? undefined : o.layout?.filters);
   const money = cols.find((/** @type {any} */ f) => normalizeKind(f.kind) === "money");
   const dateField = vd.calendar ? fieldOf(def, vd.calendar.date) : null;
   const titleField = fieldOf(def, vd.titleField);
