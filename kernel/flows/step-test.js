@@ -58,7 +58,10 @@ export async function testStepOf(h, flow, stepId, o) {
   const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
   /** @type {any} */ const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: [], dryAsks: 0, dryTasks: [], softReads: false };
   const scope = h.scope(ctx);
-  const input = showable(inputOf(step, (/** @type {string} */ src) => evaluate(parse(src), scope), (/** @type {any} */ v) => resolveValue(v, scope)), STEP_INPUT_CAP);
+  let given = inputOf(step, (/** @type {string} */ src) => evaluate(parse(src), scope), (/** @type {any} */ v) => resolveValue(v, scope));
+  // a call is given its `input`; the action and the resource it names are what it does (the effects below say so), not what it is given
+  if (step.kind === "call" && given && typeof given.input === "object" && given.input !== null && !Array.isArray(given.input)) given = given.input;
+  const input = showable(given, STEP_INPUT_CAP);
   /** @type {{ code: string, message: string } | null} */ let error = null;
   let asks = false;
   try { await h.step(ctx, step); }
