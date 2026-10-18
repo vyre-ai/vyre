@@ -119,6 +119,17 @@ async function helloFor(d, channel, space, invite, channelKey) {
 }
 
 /**
+ * The signed ask for the home's door (v3, purpose "ask"; core/daemon/peer-door.js checkAsk): this identity key over the purpose, the box, the space, the identity, its entry, the time, the nonce and the channel's own key id.
+ * It names no invite. @param {Deps} d @param {{ box: string }} channel @param {string} space @param {string} channelKey
+ */
+async function askHelloFor(d, channel, space, channelKey) {
+  const ts = (d.now ?? Date.now)();
+  const nonce = b64url(crypto.getRandomValues(new Uint8Array(12)));
+  const sig = b64url(await d.who.sign(enc.encode(`vyre-invitee-hello-v3\nask\n${channel.box}\n${space}\n${d.who.id}\n${d.who.eid}\n${ts}\n${nonce}\n${channelKey}`)));
+  return { v: 3, purpose: "ask", space, channel: channelKey, identity: d.who.id, ...(d.who.name ? { name: `${String(d.who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: d.who.eid, ts, nonce, sig };
+}
+
+/**
  * A kernel call session to a space's home as an invitee (invite id) or as a member (invite "member"): a throwaway channel key, the signed hello in the stream head, and `call(name, args)`.
  * @param {Deps} d @param {{ relay: string, route: string, box: string }} channel @param {string} space @param {string} invite
  */
@@ -132,7 +143,7 @@ export async function homeSession(d, channel, space, invite) {
     await within(conn.ready(), 10_000, () => refuse("unreachable", "That server is not the one this space names, or it cannot be reached."));
     const channelKey = conn.reply && conn.reply.invitee;
     if (typeof channelKey !== "string") throw refuse("unreachable", "That server did not admit this device as an invitee.");
-    const hello = await helloFor(d, channel, space, invite, channelKey);
+    const hello = invite === "ask" ? await askHelloFor(d, channel, space, channelKey) : await helloFor(d, channel, space, invite, channelKey);
     peer = await d.openServerPeer(conn, { invitee: hello });
   } catch (e) { try { conn.close(); } catch { /* closed */ } throw e; }
   let n = 0;
@@ -220,6 +231,35 @@ export async function openInvite(d, link) {
       close: () => home.close(),
     };
   } catch (e) { home.close(); throw e; }
+}
+
+/** The Space a person names by its address, its record from the names directory and where its home is: nothing is trusted yet beyond the directory (the invite that may follow proves the server holds the Space). @param {Deps} d @param {string} address */
+async function spaceByAddress(d, address) {
+  const name = String(address || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\.vyre\.run\/?$/, "");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) throw refuse("bad_input", "That is not the address of a Space.");
+  const { payload } = await resolveSpace(d, name, undefined);
+  const spaceId = String(payload.id || "");
+  const route = payload.route;
+  if (!/^spc_[a-z2-7]{12,26}$/.test(spaceId) || !route || typeof route.route !== "string") throw refuse("not_found", "That Space could not be reached.");
+  return { name, spaceId, label: spaceName({ label: payload.label, name }), channel: { relay: String(route.relay || ""), route: route.route, box: String(route.box || "") } };
+}
+
+/** Ask to join a Space by its address: the answer is always one of waiting, approved (with the invite to accept), not accepted, or the closed words. @param {Deps} d @param {string} address @param {string} [note] */
+export async function askToJoin(d, address, note = "") {
+  const sp = await spaceByAddress(d, address);
+  const home = await homeSession(d, sp.channel, sp.spaceId, "ask");
+  try { return { ...(await home.call("requests.ask", [{ note: String(note).slice(0, 200) }])), space: sp.name, label: sp.label }; } finally { home.close(); }
+}
+
+/** Where an ask stands, for the asker's own row only. @param {Deps} d @param {string} address */
+export async function askStatus(d, address) {
+  const sp = await spaceByAddress(d, address);
+  const home = await homeSession(d, sp.channel, sp.spaceId, "ask");
+  try {
+    const r = await home.call("requests.status", []);
+    // an approval brings the invite the approver made for this person: the join link is built from it, and joining is the ordinary invite accept
+    return { ...r, space: sp.name, label: sp.label, ...(r && r.state === "approved" && typeof r.invite === "string" ? { link: `https://${sp.name}.vyre.run/join/${r.invite}` } : {}) };
+  } finally { home.close(); }
 }
 
 /**

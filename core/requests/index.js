@@ -64,7 +64,7 @@ export default {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE id = ? AND space = ?").get(String(i.id || ""), space));
       if (!row || row.state !== "open") throw refuse("No such request is waiting.", "not_found");
       if (i.approve === true) {
-        // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here; it is a plain id, checked in form
+        // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here; it is an invite token, checked in form
         if (typeof i.invite !== "string" || !INVITE.test(i.invite)) throw refuse("Approve by creating the invite first, then name it.", "bad_input");
         db.prepare("UPDATE join_requests SET state = 'approved', invite = ?, decided = ?, decided_by = ? WHERE id = ?").run(i.invite, now(), by, row.id);
       } else db.prepare("UPDATE join_requests SET state = 'declined', decided = ?, decided_by = ? WHERE id = ?").run(now(), by, row.id);

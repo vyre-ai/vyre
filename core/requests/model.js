@@ -33,5 +33,6 @@ export function statusFor(row, now) {
 export const SPACE = /^spc_[a-z2-7]{12,26}$/;
 export const IDENTITY = /^per_[a-z2-7]{26}$/;
 export const ENTRY = /^[a-z2-7]{26}$/;
-export const INVITE = /^inv_[0-9a-f]{32}$/;
+/** The invite the approver made for this person: the kernel's id, with the pin its link carries after a dot (the asker builds the join link from it). */
+export const INVITE = /^inv_[0-9a-f]{32}(?:\.[A-Za-z0-9_-]{1,300})?$/;
 export const NAME = /^[a-z0-9.-]{3,253}$/;

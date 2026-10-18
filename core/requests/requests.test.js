@@ -98,7 +98,7 @@ test("the owner sees the waiting asks and a refused count; decline and clear lea
   assert.deepEqual([first.name, first.entry, first.note], ["ada.vyre.run", ENTRY, "hi"]);
   assert.equal((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true })).error.code, "bad_input", "no approval without the invite");
   assert.equal((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true, invite: "inv_nothex" })).error.code, "bad_input");
-  const inv = "inv_" + "a".repeat(32);
+  const inv = "inv_" + "a".repeat(32) + ".pinPIN_123-abc";
   assert.ok((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true, invite: inv })).data.ok);
   assert.deepEqual((await w.serve("status", ASKER, null)).data, { state: "approved", invite: inv });
   const second = l.requests.find((r) => r.identity === ASKER2);
