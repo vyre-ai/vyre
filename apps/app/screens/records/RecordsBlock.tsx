@@ -14,6 +14,7 @@ import { taskDrop } from "./task-drop.js";
 import { MyTasks } from "./MyTasks";
 import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
+import { filterByScope, scopesFor } from "./scope-views.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -55,6 +56,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const [panelId, setPanelId] = useState<string | null>(null);
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
+  const [scopePicked, setScopePicked] = useState("");
   const [making, setMaking] = useState(false);
   const [addingType, setAddingType] = useState(false);
   const [pane, setPane] = useState("records");
@@ -110,7 +112,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
-  const all = world.byType[def.name] || [];
+  const scopes = scopesFor(def.name);
+  const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : scopes[0]?.[0] ?? "";
+  const everyone = world.byType[def.name] || [];
+  const all = scopes.length ? filterByScope(everyone, scope, (world as any).me) : everyone;
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
   const rows = listRows(def, all, chips, query, lctx);
   const filter = (vd as any)[shown]?.filter as string | undefined;
@@ -206,6 +211,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </View>
         </Card>
       ) : null}
+      {scopes.length ? <Segmented<string> label="Show" value={scope} onChange={setScopePicked} options={scopes} /> : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
