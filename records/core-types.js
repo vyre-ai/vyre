@@ -96,6 +96,7 @@ export const CONTACT = {
   name: "contact", label: "Contact", icon: "IconUser",
   fields: [
     text("name", "Name", { required: true }),
+    text("ref", "ID", { unique: true }),   // PER-0001: made with the record, never changed (core/records-tools/ref.js)
     text("email", "Email", { unique: true }),
     text("phone", "Phone", { unique: true }),
     f("emails", "other_emails", "Other emails"),
@@ -108,7 +109,7 @@ export const CONTACT = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
-  views: [{ name: "contacts_list", type: "list", label: "All contacts", columns: ["name", "email", "phone", "organization"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "contacts_list", type: "list", label: "All contacts", columns: ["name", "ref", "email", "phone", "organization"], sort: { field: "name", dir: "asc" } }],
 };
 
 /** A firm or company, once. `domain` is unique so a message from anyone at that domain can be tied to it. */
@@ -116,6 +117,7 @@ export const ORGANIZATION = {
   name: "organization", label: "Organization", icon: "IconBuilding",
   fields: [
     text("name", "Name", { required: true }),
+    text("ref", "ID", { unique: true }),   // ORG-0001: made with the record, never changed (core/records-tools/ref.js)
     text("domain", "Domain", { unique: true }),
     f("url", "website", "Website"),
     text("phone", "Phone"),
@@ -123,7 +125,7 @@ export const ORGANIZATION = {
     f("rich_text", "notes", "Notes"),
     TAGS,
   ],
-  views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "ref", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
 /** A note: a title and some words, about a person or a company. One of the four types a new Space starts with (People, Companies, Tasks, Notes). */
@@ -131,12 +133,13 @@ export const MEMO = {
   name: "memo", label: "Note", icon: "IconNote",   // not "note": Twenty has a standard object of that name
   fields: [
     text("name", "Title", { required: true }),
+    text("ref", "ID", { unique: true }),   // NOT-0001: made with the record, never changed (core/records-tools/ref.js)
     f("rich_text", "body", "Note"),
     f("link", "contact", "Person", { to: "contact", inverse: { name: "linked_notes", label: "Linked notes" } }),
     f("link", "organization", "Company", { to: "organization", inverse: { name: "linked_notes", label: "Linked notes" } }),
     TAGS,
   ],
-  views: [{ name: "memos_list", type: "list", label: "All notes", columns: ["name", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "memos_list", type: "list", label: "All notes", columns: ["name", "ref", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
 };
 
 export const POINT_KINDS = ["email", "phone"];
@@ -201,6 +204,7 @@ export const TASK = {
   name: "task", label: "Task", icon: "IconChecklist",
   fields: [
     text("title", "Title", { required: true }),
+    text("ref", "ID", { unique: true }),   // TSK-0001: made with the record, never changed (core/records-tools/ref.js)
     f("rich_text", "note", "Note"),
     f("datetime", "due", "Due"),
     choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),

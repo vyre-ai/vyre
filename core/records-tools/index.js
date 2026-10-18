@@ -9,6 +9,7 @@ import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
+import { nextRef } from "./ref.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -104,9 +105,24 @@ export default {
       const u = parseUrn(i.urn);
       return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
     }, byUrn);
-    tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data) }));
-    tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
+    // A type with a `ref` field gives each record an ID when it is made (PER-0001, the next after the highest): minted here, one at a time per type so two at once do not share one, and never taken from the caller.
+    /** @type {Map<string, Promise<any>>} */ const minting = new Map();
+    const hasRef = async (/** @type {any} */ d, /** @type {string} */ type) => { try { return ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === type && (t.fields || []).some((/** @type {any} */ f) => f.name === "ref")); } catch { return false; } };
+    tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
+      const type = String(i.type);
+      if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
+      const before = minting.get(type) || Promise.resolve();
+      const mine = before.catch(() => {}).then(async () => {
+        const last = await d.gateway.records.query(d.chain, type, { sort: [{ field: "ref", dir: "desc" }], page: { limit: 5 } }).catch(() => ({ rows: [] }));
+        const ref = nextRef(type, ((last && last.rows) || []).map((/** @type {any} */ r) => r && r.data && r.data.ref));
+        return d.gateway.records.create(d.chain, type, { ...(i.data || {}), ref });
+      });
+      minting.set(type, mine);
+      return { record: await mine };
+    });
+    tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
+      if (i.patch && Object.prototype.hasOwnProperty.call(i.patch, "ref") && await hasRef(d, u.type)) throw Object.assign(new Error("A record's ID is made when the record is made and never changes."), { code: "field_not_allowed" });
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
     }, byUrn);
 

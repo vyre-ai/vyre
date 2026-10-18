@@ -195,3 +195,28 @@ test("every Space has the core types (contact, communication, event ...) the cal
   for (const n of ["contact", "contact_point", "organization", "communication", "event"]) assert.ok(types.includes(n), `${n} is defined in a fresh Space`);
   assert.ok(d.registry.deps.flowsHost.get(d.kernel.id.space).calendar, "and the calendar sync is started for the Space");
 });
+
+test("records.create gives a record of a type with an ID field the next ID (PER-0001, PER-0002), two at once get two, and records.update never changes it", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const { call } = await import("../daemon/client.js");
+  const ok = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ref", kind: "text", label: "ID", unique: true }] }, { name: "plain", label: "Plain", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  const first = (await ok("records.create", { type: "contact", data: { name: "Jane" } })).record;
+  assert.equal(first.data.ref, "PER-0001");
+  const two = await Promise.all([ok("records.create", { type: "contact", data: { name: "Ann" } }), ok("records.create", { type: "contact", data: { name: "Bo" } })]);
+  assert.deepEqual(two.map(r => r.record.data.ref).sort(), ["PER-0002", "PER-0003"], "two at once do not share an ID");
+  const forged = (await ok("records.create", { type: "contact", data: { name: "Cy", ref: "PER-0001" } })).record;
+  assert.equal(forged.data.ref, "PER-0004", "an ID the caller names is not used");
+  const refused = await call("records.update", { urn: first.urn, patch: { ref: "PER-0099" }, base_version: first.version }, { root, caller: "cli" });
+  assert.equal(refused.error && refused.error.code, "field_not_allowed", JSON.stringify(refused));
+  assert.match(String(refused.error.message), /never changes/);
+  assert.ok(!(await call("records.update", { urn: first.urn, patch: { name: "Jane Doe" }, base_version: first.version }, { root, caller: "cli" })).error, "other fields still change");
+  const plain = (await ok("records.create", { type: "plain", data: { name: "x" } })).record;
+  assert.equal(plain.data.ref, undefined, "a type without an ID field is made as before");
+});
