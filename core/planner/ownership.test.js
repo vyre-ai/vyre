@@ -195,3 +195,13 @@ test("a member lists her own notes and the ones shared with her, never another m
   assert.ok(!(await asMember(w, "planner.update", { item: her.id, visibility: "space" })).error, "she shares her own");
   assert.deepEqual(await titles(await as2("planner.list", { kind: "note", state: "all" })), ["HER private", "OTHER private", "OWNER space"], "and now the other member sees it, still not the owner's private note or the one about her project");
 });
+
+test("a member cannot open or change an event through planner.get or planner.update: events are not scoped to her yet", async t => {
+  const { w } = await rig(t);
+  const made = await w.call("planner.add", { kind: "event", title: "Owner's meeting", at: "2027-01-01T10:00:00Z" });
+  const id = made.data && made.data.id;
+  assert.ok(id, JSON.stringify(made).slice(0, 200));
+  assert.equal((await asMember(w, "planner.get", { item: id })).error?.code, "not_found");
+  assert.equal((await asMember(w, "planner.update", { item: id, title: "mine now" })).error?.code, "not_found");
+  assert.ok((await w.call("planner.get", { item: id })).data, "the owner still opens it");
+});

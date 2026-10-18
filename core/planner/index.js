@@ -555,7 +555,7 @@ export default {
 
     const update = async (i, w) => {
       const ev = cal.row(i.item);
-      if (ev && !st.item(i.item)) return updateEvent(ev, i, w);
+      if (ev && !st.item(i.item)) { if (await viewerOf(w)) throw fail("no such item", "not_found"); return updateEvent(ev, i, w); }   // events are not scoped to a member yet
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
@@ -1142,6 +1142,8 @@ export default {
         if (item0 && !(await seen(item0, w, me))) throw fail("no such item", "not_found");
         const item = item0;
         if (!item) {
+          // an event is any person's until the planner scopes events to the person (see door-gate.test.js): a member is told there is no such item
+          if (me) throw fail("no such item", "not_found");
           let row = cal.row(f ? f.item : i.item);
           // An event outside the window the planner rings for is still an event record.
           if (!row && i.item) { const rec = await K.records.get(K.serviceChain(), "event", String(i.item)).catch(() => null); row = rec ? fromEvent(rec, now()) : null; }
