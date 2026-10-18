@@ -428,6 +428,8 @@ export default {
     // A WebSocket on an app's origin (a preview's hot reload): the same checks, tunnelled.
     front.on("upgrade", (req, socket, head) => { hostProxy.upgrade(req, /** @type {any} */ (socket), head).then(done => { if (!done) socket.destroy(); }).catch(() => socket.destroy()); });
     await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
+    // From here a throw (a tool the manifest does not declare, say) would leave the front listening with no handle to stop it: it is closed first, so a module that fails to start leaves nothing open.
+    try {
     ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
       const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening: wait a minute and call again, then ask the owner of this server", "unavailable"); return { port: a.port };
     } });
@@ -701,5 +703,6 @@ export default {
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
     return { async stop() { offRotate(); for (const t of rotating.values()) clearTimeout(t); rotating.clear(); for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
+    } catch (e) { try { front.close(); front.closeAllConnections(); } catch { /* already closed */ } throw e; }
   },
 };
