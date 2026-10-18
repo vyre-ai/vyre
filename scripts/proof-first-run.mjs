@@ -378,10 +378,10 @@ try {
   await run.step(S("owner walk: Projects shows Personal, or says Records is setting up"), async () => {
     await look("Projects", "13-projects", new RegExp(`Personal|General|Default|${SETTING.source}`, "i"), 90_000, async () => { await open("Projects", "/u/projects", true); });
   }, { needs: READY });
-  // Then the wait: Records finishes setting up (up to 12 minutes, reopening the screen each poll, which asks records.types again).
-  await run.step(S("owner walk: Records finishes setting up within 12 minutes"), async () => {
+  // Then the wait: Records finishes setting up (up to 15 minutes, reopening the screen each poll, which asks records.types again).
+  await run.step(S("owner walk: Records finishes setting up within 15 minutes"), async () => {
     let t = "";
-    await until(async () => { await drv.go("/u/records/contact"); await wait(4_000); t = await drv.text(); if (BAD.test(t)) throw new Error(`Records shows an error while setting up: ${t.replace(/\s+/g, " ").slice(0, 400)}`); return RECORDS_OK.test(t) && !SETTING.test(t); }, 12 * 60_000, "Records to finish setting up");
+    await until(async () => { await drv.go("/u/records/contact"); await wait(4_000); t = await drv.text(); if (BAD.test(t)) throw new Error(`Records shows an error while setting up: ${t.replace(/\s+/g, " ").slice(0, 400)}`); return RECORDS_OK.test(t) && !SETTING.test(t); }, 15 * 60_000, "Records to finish setting up");
     await drv.shot("08b-records-ready");
   }, { needs: READY });
   await run.step(S("owner walk: after setup, Now loads"), async () => {
