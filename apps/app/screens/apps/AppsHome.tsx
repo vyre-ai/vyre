@@ -23,6 +23,7 @@ const BUILT: Tile[] = [
   { id: "templates", label: "Templates", sub: "Word and signing templates and what each asks for", route: "/u/documents?tab=templates" },
   { id: "flows", label: "Flows", sub: "Steps that run for you", route: "/u/flows" },
   { id: "playbooks", label: "Playbooks", sub: "Repeatable ways of working", route: "/u/playbooks" },
+  { id: "agents", label: "Agents", sub: "Who works on this Space, and what each can do", route: "/u/agents" },
 ];
 
 /**
