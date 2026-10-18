@@ -365,11 +365,33 @@ try {
     if (bad) throw new Error(`${name} shows "${bad[0]}": ${t.replace(/\s+/g, " ").slice(0, 400)}`);
     return t;
   };
-  await run.step(S("owner walk: Now loads, with no skeleton after 90 s"), async () => {
-    await look("Now", "07-now", /Good (morning|afternoon|evening)/i, 90_000, async () => { await open("Now", "/u/now", true); });
+  // First 90 s: a screen that needs Records either shows its content or says, calmly, that Records is setting up (the honest first-start state). An error sentence is never accepted.
+  const SETTING = /Records is setting up/i;
+  const NOW_OK = /Good (morning|afternoon|evening)/i;
+  const RECORDS_OK = /Contacts|All objects|No records/i;
+  await run.step(S("owner walk: Now loads, or says Records is setting up, with no skeleton after 90 s"), async () => {
+    await look("Now", "07-now", new RegExp(`${NOW_OK.source}|${SETTING.source}`, "i"), 90_000, async () => { await open("Now", "/u/now", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Records shows its list, or says it is setting up"), async () => {
-    await look("Records", "08-records", /Contacts|All objects|No records|setting up|still starting/i, 90_000, async () => { await open("Records", "/u/records/contact", true); });
+    await look("Records", "08-records", new RegExp(`${RECORDS_OK.source}|${SETTING.source}|still starting`, "i"), 90_000, async () => { await open("Records", "/u/records/contact", true); });
+  }, { needs: READY });
+  await run.step(S("owner walk: Projects shows Personal, or says Records is setting up"), async () => {
+    await look("Projects", "13-projects", new RegExp(`Personal|General|Default|${SETTING.source}`, "i"), 90_000, async () => { await open("Projects", "/u/projects", true); });
+  }, { needs: READY });
+  // Then the wait: Records finishes setting up (up to 12 minutes, reopening the screen each poll, which asks records.types again).
+  await run.step(S("owner walk: Records finishes setting up within 12 minutes"), async () => {
+    let t = "";
+    await until(async () => { await drv.go("/u/records/contact"); await wait(4_000); t = await drv.text(); if (BAD.test(t)) throw new Error(`Records shows an error while setting up: ${t.replace(/\s+/g, " ").slice(0, 400)}`); return RECORDS_OK.test(t) && !SETTING.test(t); }, 12 * 60_000, "Records to finish setting up");
+    await drv.shot("08b-records-ready");
+  }, { needs: READY });
+  await run.step(S("owner walk: after setup, Now loads"), async () => {
+    await look("Now", "07b-now-ready", NOW_OK, 90_000, async () => { await open("Now", "/u/now", true); });
+  }, { needs: READY });
+  await run.step(S("owner walk: after setup, Records lists"), async () => {
+    await look("Records", "08c-records-list", RECORDS_OK, 60_000, async () => { await open("Records", "/u/records/contact", true); });
+  }, { needs: READY });
+  await run.step(S("owner walk: after setup, the Personal project exists"), async () => {
+    await look("Projects", "13b-projects-ready", /Personal/i, 60_000, async () => { await open("Projects", "/u/projects", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Sites lists, with no refusal"), async () => {
     await look("Sites", "09-sites", /Nothing published|Publish a site|No sites yet|Your sites|Live|Draft/i, 60_000, async () => { await open("Sites", "/u/sites", false); });
@@ -386,9 +408,6 @@ try {
     await drv.click("Create");
     await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
     await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await open("Agents", "/u/agents", false); });
-  }, { needs: READY });
-  await run.step(S("owner walk: Projects has a Personal or default project"), async () => {
-    await look("Projects", "13-projects", /Personal|General|Default/i, 60_000, async () => { await open("Projects", "/u/projects", true); });
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
     await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
