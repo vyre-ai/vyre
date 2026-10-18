@@ -31,3 +31,20 @@ test("a consumer whose handler fails as the log closes: the pump ends quietly, n
     assert.deepEqual(loose, [], "no unhandled rejection");
   } finally { process.off("unhandledRejection", note); }
 });
+
+test("any other read error still surfaces out of the pump: only a closed log is nothing to retry", async () => {
+  const db = new DatabaseSync(":memory:");
+  const log = createSqliteEventLog({ db, space: SPACE, clock, window: { events: 3, bytes: 1_000_000 }, rand: n => Buffer.alloc(n, 7) });
+  for (let i = 0; i < 10; i++) log.append(owner(), { type: "contact.updated", sv: 1, subject: `vyre://${SPACE}/contact/c${i}`, data: { i } });
+  /** @type {any[]} */ const loose = [];
+  const note = (/** @type {unknown} */ e) => { loose.push(e); };
+  process.on("unhandledRejection", note);
+  try {
+    // the handler fails and the log is damaged (not closed): the second read throws an ordinary database error, which must not be taken for a closed log
+    log.subscribe("damaged", {}, () => { db.exec("DROP TABLE kernel_events"); throw new Error("the handler failed"); });
+    await log.pump().catch(() => {});
+    await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r));
+    assert.equal(loose.length, 1, "the read error came out of the pump");
+    assert.doesNotMatch(String(loose[0] && loose[0].message), /not open/);
+  } finally { process.off("unhandledRejection", note); }
+});
