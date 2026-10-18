@@ -140,6 +140,12 @@ A task taken from a group can be taken over by another member only while it is b
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
 
+### A file or draft hand-in is checked by its form
+
+A file or draft hand-in is checked by its form (a path or a record address that is there), not by looking at the file: a task with no checker accepts the doer's word, so give any task that matters a checker.
+
+What to do today: the person who checks the task opens the file before saying yes.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
