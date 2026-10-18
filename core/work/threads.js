@@ -56,6 +56,17 @@ function forkedOf(v) {
   return o && typeof o === "object" && typeof o.thread === "string" && o.thread ? { thread: o.thread, message: String(o.message || "") } : null;
 }
 
+/** What the Gate holds for this person, by the engine run it was filed under: a held send, share or post is a question only they can answer. Read as the person (the Gate shows only what they may handle). @param {any} ctx @returns {Promise<Map<string, number>>} */
+async function heldThreads(ctx) {
+  const r = await ctx.call("gate.held", {}, { relay: true }).catch(() => null);
+  /** @type {Map<string, number>} */ const out = new Map();
+  for (const it of (r && Array.isArray(r.data) ? r.data : [])) if (it && it.thread) out.set(String(it.thread), (out.get(String(it.thread)) || 0) + 1);
+  return out;
+}
+
+/** The runs with the held items counted as open questions, so a thread waiting on the Gate needs the person. @param {any[]} runs @param {Map<string, number>} held */
+export const withHeld = (runs, held) => runs.map(r => (held.get(String(r.thread)) ? { ...r, needs: (Number(r.needs) || 0) + (held.get(String(r.thread)) || 0) } : r));
+
 /**
  * One thread as a screen reads it.
  * @param {any} rec the chat record (data) @param {any[]} runs the chat's engine runs (threads.of-chat) @param {number} unread
@@ -100,13 +111,14 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   const keys = await agentKeys(d.ctx, agent);
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
+  const held = await heldThreads(d.ctx);
   /** @type {any[]} */ const out = [];
   for (const r of rows) {
     let c; try { c = k.chats.read(chain, r.data.chat); } catch { continue; }
     const people = [...c.people], agents = [...c.assistants];
     if (people.length !== 1 || people[0] !== me || agents.length !== 1 || !keys.has(String(agents[0]))) continue;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
-    out.push(threadRow({ ...r.data, agents }, runs, unreadOf(d.ctx.store && d.ctx.store.db, me, r.data.chat)));
+    out.push(threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(d.ctx.store && d.ctx.store.db, me, r.data.chat)));
   }
   out.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
   const after = before ? out.filter(t => String(t.last_active || "") < String(before)) : out;
@@ -141,6 +153,7 @@ async function loadMine(d, extra) {
   const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
   const pins = d.pinnedOf(me);
   const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
+  const held = await heldThreads(d.ctx);
   /** @type {any[]} */ const items = [];
   for (const r of rows) {
     let c; try { c = k.chats.read(chain, r.data.chat); } catch { continue; }
@@ -148,7 +161,7 @@ async function loadMine(d, extra) {
     const proj = r.data.project && r.data.project.urn ? projects.get(r.data.project.urn) || null : null, place = placeOf(proj, ppl.length);
     const project = place === "project" && proj ? { urn: proj.urn, name: proj.name } : null;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
-    const thread = { ...threadRow({ ...r.data, agents }, runs, unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned: pins.get(String(r.data.chat)) || null };
+    const thread = { ...threadRow({ ...r.data, agents }, withHeld(runs, held), unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned: pins.get(String(r.data.chat)) || null };
     items.push({ ppl, agents, place, project, projectChat: Boolean(r.data.project_chat), thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
   }
   return { me, k, faces, items };
@@ -282,10 +295,18 @@ async function runsOf(ctx, flow) {
 export async function flowRows(ctx) {
   const byFlow = new Map();
   for (const t of await runsOf(ctx, null).catch(() => /** @type {any[]} */ ([]))) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
-  // a Flow's name, for the Flows that have runs the caller may see (flows.list gives every name; only these are used)
-  const names = new Map(((await ctx.call("flows.list", {}, { relay: true }).then((/** @type {any} */ x) => (x && Array.isArray(x.data) ? x.data : [])).catch(() => [])).map((/** @type {any} */ f) => [String(f.id), String(f.label || f.name || "")])));
-  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: names.get(String(flow)) || flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
-    .sort((a, b) => String(b.latest.started || "").localeCompare(String(a.latest.started || "")));
+  // every Flow is a chat of its own, with or without runs. flows.list names every Flow in the Space, so a Flow is shown only when the caller may inspect it: it has runs they were shown, or flows.runs for it
+  // does not refuse them (flows.runs applies the same inspect rule). Its name is the list's label.
+  const listed = (await ctx.call("flows.list", {}, { relay: true }).then((/** @type {any} */ x) => (x && Array.isArray(x.data) ? x.data : [])).catch(() => [])).slice(0, 200);
+  const names = new Map(listed.map((/** @type {any} */ f) => [String(f.id), String(f.label || f.name || "")]));
+  /** @type {any[]} */ const rows = [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: names.get(String(flow)) || flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you"), last_active: runs[0].started || null }));
+  for (const f of listed) {
+    const id = String(f.id);
+    if (byFlow.has(id)) continue;
+    const mine = await ctx.call("flows.runs", { id, limit: 1 }, { relay: true }).then((/** @type {any} */ r) => !(r && r.error)).catch(() => false);
+    if (mine) rows.push({ kind: "flow", flow: id, name: names.get(id) || id, runs: 0, latest: null, live: null, needs_you: false, last_active: f.updated_at || f.created_at || null });
+  }
+  return rows.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
 }
 
 /** The table that remembers where a fork starts: the new thread, the engine run and transcript message to fork from. Written only by work.thread.fork, read only by the stream when the fork first runs. @param {any} db */
