@@ -11,7 +11,10 @@ export function greeting(hour, name) {
 }
 
 /** The date line, "Sunday, 18 October". @param {number} at ms @param {string} [zone] */
-export const dateLine = (at, zone) => new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", ...(zone ? { timeZone: zone } : {}) }).format(new Date(at));
+export const dateLine = (at, zone) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", ...(zone ? { timeZone: zone } : {}) }).formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+  return `${p.weekday}, ${p.day} ${p.month}`;
+};
 
 /** One sentence: what waits on the person, what is working, what is on today. @param {{ waiting?: number, working?: number, today?: number }} n */
 export function summary(n) {
