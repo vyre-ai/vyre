@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
-import { allowsMock, ConversationList, ConversationTypes, IconButton, Menu, convosShown, showToast } from "@vyre/ui";
+import { allowsMock, ConversationList, ConversationTypes, IconButton, NewPopover, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
 import { useChatPrefs } from "../../src/state/chat-prefs";
@@ -14,43 +14,34 @@ import { startChat } from "../../src/state/start-chat";
 import { byTag, chatsOrdered, chatsShown } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { NewAgentFlow } from "./NewAgentFlow";
+import { agentThreads } from "../../src/chat/threads-source";
 import { Text } from "@vyre/ui";
 
 /** The id of the chat the path shows (/u/chats/<id> or /session/<id>), or "". */
 export const openChatOf = (path: string) => /^\/(?:u\/chats|session)\/([^/]+)$/.exec(path)?.[1] ?? "";
 
 /** What the header and the list share: the search, the project and the tag (the header sets them, the list reads them), and what the list found for the filter menu. */
-const useChatsFilter = create<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; set: (p: Partial<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean }>) => void }>((set) => ({
-  q: "", type: "all", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
+const useChatsFilter = create<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; compose: boolean; set: (p: Partial<{ q: string; type: string; project: string; tag: string; all: Convo[]; tags: string[]; newAgent: boolean; compose: boolean }>) => void }>((set) => ({
+  q: "", type: "all", project: "all", tag: "", all: [], tags: [], compose: false, newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
 /** Opens the New agent dialog (the /agent command and the + menu). */
 export const openNewAgent = () => useChatsFilter.getState().set({ newAgent: true });
 
-const useAdd = () => {
-  const router = useRouter();
-  const go = (p: string) => router.push(p as never);
-  return [
-    { label: "New chat", onPress: () => go("/u/chats/new") },
-    { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
-    { label: "New agent", onPress: openNewAgent },
-    { label: "New email", onPress: () => go("/u/mail/compose") },
-  ];
-};
+/** The compose button: opens and closes the New menu (also Cmd N). */
+const toggleCompose = () => { const st = useChatsFilter.getState(); st.set({ compose: !st.compose }); };
 
-/** The section's + (New chat, New group chat, New agent, New email): the sidebar's top bar. */
+/** The section's + : the New menu, a compact popover (To:, agents, people, New group, New agent, New Flow). */
 export function ChatsPlusButton() {
-  const add = useAdd();
-  return <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />;
+  return <IconButton icon="plus" label="New" kind="ghost" onPress={toggleCompose} />;
 }
 
 /** The top of a phone's Chats page: the name and the compose button. There is no search here: the one search is the main one. */
 export function ChatsSidebarHeader() {
-  const add = useAdd();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
-      <Text size="title" medium>Chats</Text>
-      <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />
+      <View />
+      <ChatsPlusButton />
     </View>
   );
 }
@@ -90,9 +81,33 @@ export function ChatsSidebar() {
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));
   };
+  // The New menu: To:, agents (each starts a thread), people, New group, New agent, New Flow. Cmd N opens it.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => { if ((e.key === "n" || e.key === "N") && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); toggleCompose(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  const byId = new Map(convos.map((c) => [c.id, c]));
+  const agentRows = convos.filter((c) => c.lone === "agent").map((c) => ({ id: c.id, name: c.title }));
+  const personRows = convos.filter((c) => c.lone === "person").map((c) => ({ id: c.id, name: c.title }));
+  const pickNew = (r: { kind: string; id: string; label: string }) => {
+    if (r.kind === "group") router.push("/u/chats/new?group=1" as never);
+    else if (r.kind === "new-agent") openNewAgent();
+    else if (r.kind === "flow") router.push("/u/flows" as never);
+    else if (r.kind === "person") { const c = byId.get(r.id); if (c) open(c); }
+    else if (r.kind === "agent") {
+      void agentThreads.start(r.label).then((x) => {
+        if ("problem" in x) showToast(x.problem);
+        else if (allowsMock()) showToast("A new thread opens as its own chat in a real Space.");
+        else { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.thread } }); }
+      });
+    }
+  };
   return (
     // one View, so the closed sheets are not seven children of a parent that spaces its children
     <View>
+      <NewPopover open={f.compose} onClose={() => f.set({ compose: false })} agents={agentRows} people={personRows} onPick={pickNew} />
       {sheets}
       <ConversationTypes type={f.type} onType={(type: string) => f.set({ type })} />
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
