@@ -132,9 +132,9 @@ A task taken from a group can be taken over by another member only while it is b
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
 
-### A file you hand in is checked on its form only
+### A file or draft hand-in is checked by its form
 
-When a task asks for a file, Vyre checks that you named a file in the right form (a path inside your drive, or a record of this Space that you can see). It cannot look inside your drive to see that the file is really there, so a file you name but never saved is accepted as your word.
+A file or draft hand-in is checked by its form (a path or a record address that is there), not by looking at the file: a task with no checker accepts the doer's word, so give any task that matters a checker.
 
 What to do today: the person who checks the task opens the file before saying yes.
 
