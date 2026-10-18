@@ -277,3 +277,13 @@ test("a to-do can be assigned to a role, the lead, a person, an agent or whoever
   assert.equal(c.indexOf("group:attorney") > c.indexOf("lead"), true);
   assert.equal(setTask(b, 0, 0, { doer: "group:attorney" }).stages[0].tasks[0].doer, "group:attorney");
 });
+
+test("reviewers, approvers and fallbacks are chosen from Space roles, people and agents; a stored template role stays but is marked", async () => {
+  const { slotWhoChoices, SPACE_ROLES } = await import("./edit.ts");
+  const c = slotWhoChoices([{ id: "p1", name: "Ana" }], [{ id: "scout", name: "Scout" }]);
+  assert.deepEqual(c.slice(0, 4), SPACE_ROLES);
+  assert.ok(c.some(([v]) => v === "person:p1") && c.some(([v]) => v === "teammate:scout"));
+  assert.equal(c.some(([v]) => v === "role:attorney"), false, "a template role is not offered");
+  const kept = slotWhoChoices([], [], "role:attorney");
+  assert.equal(kept[kept.length - 1][1], "The attorney (not a Space role)");
+});

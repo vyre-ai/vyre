@@ -173,6 +173,13 @@ export const doerPickChoices = (b: Body, people: { id: string; name: string }[] 
   const i = base.findIndex(([v]) => v === "lead");
   return [...base.slice(0, i + 1), ...groups, ...base.slice(i + 1)];
 };
+/** The roles a Space has. A reviewer, approver or fallback names one of these (a Space member whose role is that name), not a template role like "attorney", which only means something inside one project. */
+export const SPACE_ROLES: [string, string][] = [["role:owner", "The owners"], ["role:admin", "The admins"], ["role:manager", "The managers"], ["role:member", "The members"]];
+/** Who can review or approve: people, agents and the Space's roles. A value already on the slot that is none of those stays choosable, marked, so it is not lost. */
+export function slotWhoChoices(people: { id: string; name: string }[], agents: { id: string; name: string }[], current = ""): [string, string][] {
+  const list: [string, string][] = [...SPACE_ROLES, ...people.map((p): [string, string] => [`person:${p.id}`, p.name]), ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (agent)`])];
+  return current && !list.some(([v]) => v === current) ? [...list, [current, `${assigneeWords(current, people, agents)} (not a Space role)`]] : list;
+}
 export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
 /** The doer in words, even when the person or agent is not in the lists. */
 export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {

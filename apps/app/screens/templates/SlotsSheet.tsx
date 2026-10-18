@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Button, Field, Select, Sheet, SkillsPicker, Switch, Text } from "@vyre/ui";
-import { approverOf, assigneeChoices, doerPickChoices, slotProblems } from "./edit";
+import { SPACE_ROLES, approverOf, doerPickChoices, slotProblems, slotWhoChoices } from "./edit";
 import type { Body, Slot, Task } from "./model";
 
 const DUE: [string, string][] = [["", "No time limit"], ["3600000", "1 hour"], ["14400000", "4 hours"], ["86400000", "1 day"], ["172800000", "2 days"], ["259200000", "3 days"], ["604800000", "1 week"], ["1209600000", "2 weeks"]];
 
 /** One slot's fields: who, the Space skills it checks against, what to look for, a time limit with the role it passes to, and (approver) whether everyone must answer. */
 function SlotFields({ label, slot, onChange, body, people, agents, approver }: { label: string; slot: Slot | null; onChange: (s: Slot | null) => void; body: Body; people: { id: string; name: string }[]; agents: { id: string; name: string }[]; approver?: boolean }) {
-  const who = assigneeChoices(body, people, agents).filter(([v]) => v !== "lead");
-  const roles = (body.roles || []).map((r): [string, string] => [`role:${r.role}`, `The ${r.role}`]);
+  const who = slotWhoChoices(people, agents, slot?.who);
+  const roles = slot?.escalate_to && !SPACE_ROLES.some(([v]) => v === slot.escalate_to) ? [...SPACE_ROLES, [slot.escalate_to, `${slot.escalate_to.replace(/^role:/, "The ")} (not a Space role)`] as [string, string]] : SPACE_ROLES;
   const set = (patch: Partial<Slot>) => slot && onChange({ ...slot, ...patch });
   return (
     <View className="gap-s3">
@@ -20,7 +20,7 @@ function SlotFields({ label, slot, onChange, body, people, agents, approver }: {
           <Field label="Instructions (optional)" value={slot.instructions ?? ""} onChangeText={(t) => set({ instructions: t.slice(0, 2000) })} multiline placeholder="What to look for" />
           <Select label="Time limit" value={String(slot.due ?? "")} options={DUE} onChange={(v) => set({ due: v ? Number(v) : undefined })} />
           <Select label="If it runs late, pass it to" value={slot.escalate_to ?? ""} options={[["", "No one"], ...roles]} onChange={(v) => set({ escalate_to: v || undefined })} />
-          {slot.escalate_to ? <Text size="caption" tone="label">That team needs at least one member, or the stage holds when a project reaches it.</Text> : null}
+          {slot.escalate_to ? <Text size="caption" tone="label">Someone in that role needs to be in the Space, or the stage holds when a project reaches it.</Text> : null}
           {approver ? <Switch label="Everyone on the team must approve" on={slot.quorum === "all"} onChange={(on) => set({ quorum: on ? "all" : "any" })} /> : null}
         </>
       ) : null}
