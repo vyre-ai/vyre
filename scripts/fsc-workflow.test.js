@@ -15,8 +15,9 @@ for (const file of ["node.yml", "test-files.yml"]) {
     assert.ok(!/\/mnt\/fsc(?!-)/.test(yml), "no path shared with other runners");
     assert.match(yml, /fsc="\/mnt\/fsc-\$\(printf '%s' "\$RUNNER_NAME" \| tr -c 'A-Za-z0-9_\.-' '-'\)"/, "the runner's own path, outside /home (the sandbox plan refuses a writable bind under /home)");
     assert.ok(!/RUNNER_TEMP\/fsc"/.test(yml.replace(/RUNNER_TEMP\/fsc\.img/g, "")), "the volume is not under the runner's temp folder, which is under /home");
+    assert.match(yml, /while mountpoint -q "\$fsc"; do sudo umount -l "\$fsc" \|\| break; done/, "a mount left by a killed job goes first");
     assert.match(yml, /mount -o loop "\$RUNNER_TEMP\/fsc\.img" "\$fsc"/);
     assert.match(yml, /VYRE_FSCRYPT_DIR=\$fsc" >> "\$GITHUB_ENV"/);
-    assert.match(yml, /- name: Unmount the job's volume\n        if: \$\{\{ always\(\) \}\}\n        run: \|\n          case "\$VYRE_FSCRYPT_DIR" in \/mnt\/fsc-\*\) sudo umount -l "\$VYRE_FSCRYPT_DIR"/);
+    assert.match(yml, /- name: Unmount the job's volume\n        if: \$\{\{ always\(\) \}\}\n        run: \|\n          case "\$VYRE_FSCRYPT_DIR" in \/mnt\/fsc-\*\) sudo umount -l "\$VYRE_FSCRYPT_DIR" 2>\/dev\/null \|\| true; sudo rmdir "\$VYRE_FSCRYPT_DIR"/);
   });
 }
