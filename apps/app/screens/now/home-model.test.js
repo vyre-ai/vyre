@@ -19,3 +19,13 @@ test("the summary names only what is there", () => {
 test("the date line is the weekday and day", () => {
   assert.equal(dateLine(Date.UTC(2026, 9, 18, 12), "UTC"), "Sunday, 18 October");
 });
+
+import { agentCards, workingCount } from "./home-model.js";
+
+test("the agent row puts the assistant first, then live agents, and counts who is working", () => {
+  const cards = agentCards([{ name: "kit", doing: "idle" }, { name: "juno", doing: "working" }, { name: "alex", kind: "assistant", doing: "idle" }, { name: "sam", doing: "waiting on your answer" }, null, { nope: 1 }]);
+  assert.deepEqual(cards.map((c) => c.name), ["alex", "juno", "sam", "kit"]);
+  assert.deepEqual(cards.map((c) => [c.live, c.needsYou]), [[false, false], [true, false], [true, true], [false, false]]);
+  assert.equal(workingCount(cards), 2);
+  assert.deepEqual(agentCards(undefined), []);
+});

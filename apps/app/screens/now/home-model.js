@@ -25,3 +25,18 @@ export function summary(n) {
   if (t) bits.push(`${t} on today`);
   return bits.length ? `${bits.join(", ")}.` : "Nothing needs you right now.";
 }
+
+/** The agent row on Home from agents.list: the assistant first, each with whether it is live (working or waiting on the person). @param {any[]} rows */
+export function agentCards(rows) {
+  const list = (Array.isArray(rows) ? rows : []).filter((a) => a && typeof a.name === "string").map((a) => ({
+    name: a.name,
+    kind: a.kind === "assistant" || a.role === "assistant" ? "assistant" : "agent",
+    live: a.doing === "working" || a.doing === "waiting on your answer",
+    needsYou: a.doing === "waiting on your answer",
+    doing: typeof a.doing === "string" ? a.doing : "idle",
+  }));
+  return [...list.filter((a) => a.kind === "assistant"), ...list.filter((a) => a.kind !== "assistant").sort((x, y) => Number(y.live) - Number(x.live))];
+}
+
+/** How many agents are working now, for the summary line. @param {{ live: boolean }[]} cards */
+export const workingCount = (cards) => cards.filter((a) => a.live).length;
