@@ -34,7 +34,7 @@ export function JoinRequests({ space, label }: { space: string; label: string })
   });
   return (
     <Card>
-      <Row title={ASK_COPY.settingTitle} sub={ASK_COPY.settingHelp} trailing={<Switch accessibilityLabel={ASK_COPY.settingTitle} value={st.accepting} onValueChange={(v) => void act("setting", () => tool("requests.accept", { space, accepting: v }))} />} />
+      <Row title={ASK_COPY.settingTitle} sub={ASK_COPY.settingHelp} end={<Switch label={ASK_COPY.settingTitle} on={st.accepting} onChange={(v) => void act("setting", () => tool("requests.accept", { space, accepting: v }))} />} />
       {problem ? <Banner icon="refresh"><Text tone="warn">{problem}</Text></Banner> : null}
       {st.refused > 0 ? <Banner icon="refresh"><View className="gap-s2"><Text>{`Requests are being refused: ${st.open} waiting.`}</Text><View className="self-start"><Button size="sm" label="Clear all" loading={busy === "clear"} onPress={() => void act("clear", () => tool("requests.decide", { space, id: "*", clear: true }))} /></View></View></Banner> : null}
       {st.requests.map((r) => (
