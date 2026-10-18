@@ -9,6 +9,7 @@
     "core/runner/runner.session.test.js": ["*"],
     "core/runner/runner.handover.test.js": ["*"],
     "core/runner/runner.handover-slow.test.js": ["*"],
-    "core/runner/beat-loop.test.js": ["*"]
+    "core/runner/beat-loop.test.js": ["*"],
+    "kernel/tasks/tasks.test.js": ["card: built from the payload", "K4-2:", "K4-3:", "K4-4 and 5:", "K4-10, 12", "N1 and N2:", "the card tells the approver's client"]
   }
 }

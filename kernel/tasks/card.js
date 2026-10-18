@@ -1,4 +1,4 @@
-// kernel/tasks/card.js: the approval card, built by the kernel from the canonical payload (contract 9.4, R6-3, T37).
+// kernel/tasks/card.js: NOT trusted base (kernel/size.test.js): it formats what the approver is shown and decides no grant and approves nothing; the fields that are signed come from decideFields in tasks.js and the check is in decide. The approval card, built by the kernel from the canonical payload (contract 9.4, R6-3, T37).
 // What the doer wrote (title, reason, suggested fix, notes) goes in a separate "from <doer>" block: labelled,
 // length-capped, with no links or buttons inside it. A sealed part is shown masked, with its class and recipient.
 
