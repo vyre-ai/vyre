@@ -29,7 +29,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -170,6 +170,14 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>}
         onSave={() => { const r = chipsToFilters(chips, def); setPreset({ filters: r.filters }); setMaking(true); }}
         saveNote={chipsToFilters(chips, def).skipped ? `${chipsToFilters(chips, def).skipped} of these filters cannot be kept by a saved view yet and are left out.` : undefined} />
+      {/* The views of the type as a row of chips, a person's own marked with a lock (the approved design); the title menu above is the same list. */}
+      {named.length ? (
+        <View className="flex-row flex-wrap items-center gap-s2">
+          <Text size="caption" tone="label">Views</Text>
+          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+        </View>
+      ) : null}
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
         <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />

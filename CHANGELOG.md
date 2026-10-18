@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records. The views of a type show as a row of chips under the tabs ("Views: All people, My leads, Clients to call"), a person's own marked with a lock; the title menu keeps the same list.
 - fix(app): Records. Every type is a tab with its count ("People 14") in a strip that scrolls sideways, as in the approved design, instead of a Type dropdown once a Space has more than five; the plus at the end still adds a type.
 - fix(app): Records. The Mine / Shared with me / Space, Mine / On records I can see and Mine / Team / Everyone tabs are cut on the box (records.list owner eq or ne "$me", visibility eq space) through a new filters argument of the records world loader, so they stay right once a list pages; Notes and Communications open on Mine, Events on Team. The loader reads every other type whole, as before.
 - feat(app): Records. A board's column counts and totals, and the forecast line ("$X weighted, $Y closing this month"), come from records.stats across every record, not only the cards loaded; a box without the tool keeps the loaded rows' answer (ui/views/board-stats.js).
