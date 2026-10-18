@@ -45,7 +45,7 @@ jobs:
           const root = process.argv[2];
           const types = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ttf": "font/ttf", ".wasm": "application/wasm" };
           const server = http.createServer((q, r) => {
-            let p = decodeURIComponent(new URL(q.url, "http://x").pathname); let f = path.join(root, p);
+            let p = decodeURIComponent(new URL(q.url, "http://x").pathname).replace(/^\/app(?=\/|$)/, ""); let f = path.join(root, p);
             if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { if (p !== "/") console.log("fallback to index.html for", p); f = path.join(root, "index.html"); }
             r.writeHead(200, { "content-type": types[path.extname(f)] || "application/octet-stream" }); fs.createReadStream(f).pipe(r);
           }).listen(0);
@@ -55,7 +55,7 @@ jobs:
           pg.on("pageerror", (e) => errs.push(String(e.stack || e.message || e)));
           pg.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text()); });
           console.log("dist files:", fs.readdirSync(root).join(" "));
-          await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: "load" });
+          await pg.goto(`http://127.0.0.1:${port}/app/`, { waitUntil: "load" });
           await pg.waitForTimeout(8000);
           console.log("page errors:", errs.length);
           for (const e of errs.slice(0, 8)) console.log("----\n" + e.slice(0, 1800));
