@@ -44,6 +44,7 @@ export default function TemplatesScreen() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [describing, setDescribing] = useState(false);
+  const [idea, setIdea] = useState("");
   const [starting, setStarting] = useState<TemplateRow | null>(null);
   const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
   useEffect(load, [load]);
@@ -90,6 +91,13 @@ export default function TemplatesScreen() {
         { label: "From a kit", onPress: () => setShowKits(true) },
         { label: "Describe a playbook to the Engineer", onPress: () => setDescribing(true) },
       ]} /> : undefined}>
+      <Text tone="muted">A playbook is a kind of project your team runs again and again: its stages, the to-dos in each, who does what, and the Flows that run inside it. Start a project from one in a click.</Text>
+      {mayMake ? (
+        <View className="flex-row items-end gap-s2">
+          <View className="min-w-0 flex-1"><Field label="Describe a kind of project" value={idea} onChangeText={setIdea} placeholder="For example: a product launch: brief, draft, review, launch, wrap up" /></View>
+          <Button kind="primary" size="sm" label="Draft it" disabled={!idea.trim()} onPress={() => { const words = idea.trim(); setIdea(""); openEngineer(router, { source: "playbook", words }); }} />
+        </View>
+      ) : null}
       <Field name="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} />
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
       {rows === null && !err ? <LoadingState rows={3} /> : null}
