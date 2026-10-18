@@ -3,7 +3,7 @@
 // records.history { urn } -> { items }, records.history.undo { id }, records.log { urn, kind, text }. Changes come from the signed event log the caller may read; calls and meetings are `communication` rows
 // and notes are `note` rows that link to the record. An undo is a change of its own (the old values written back, a made record removed, a removed one restored), so it shows in the history too.
 
-/** Notes are the planner's Note type (core/planner/note-share.js decides who reads one). */
+/** Notes are the planner's Note type (lib/note-share.js decides who reads one). */
 export const NOTE = "note";
 export const LOG_KINDS = ["call", "meeting", "note"];
 const CHANGE = /^([a-z][a-z0-9-]*)\.(created|updated|removed|restored)$/;

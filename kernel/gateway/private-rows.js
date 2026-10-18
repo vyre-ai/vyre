@@ -115,7 +115,7 @@ export async function visiblePage(spec, getPage, ok) {
  * Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
  * people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
  * An event that came from an outside
- * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (core/planner/note-share.js).
+ * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (lib/note-share.js).
  * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
  */
 /** Types whose read rule binds an owner and an admin as well: private means private. */

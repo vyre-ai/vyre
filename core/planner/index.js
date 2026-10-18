@@ -17,7 +17,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
-import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY } from "./note-share.js";
+import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY } from "../../lib/note-share.js";
 import { isPerson } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 

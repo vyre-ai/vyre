@@ -1,5 +1,5 @@
 // @ts-check
-// Who sees a synced event. (A note is the planner's Note type and is shared with planner.update { item, visibility, record }; see core/planner/note-share.js.) An event that came from an outside calendar starts private to the
+// Who sees a synced event. (A note is the planner's Note type and is shared with planner.update { item, visibility, record }; see lib/note-share.js.) An event that came from an outside calendar starts private to the
 // person whose calendar it is, and the others see a Busy block. The kernel decides every read (kernel/gateway/private-rows.js: the `note` and `event` rules, which bind an owner and an admin too);
 // these tools change the setting and answer the Busy blocks.
 // records.share { urn, visibility } changes it (the writer only). records.busy { from, to } lists the blocks of time that other people's private events take up, with nothing else of them.

@@ -51,7 +51,7 @@ export const NOTE = {
     text("ref", "ID", { unique: true, read_only: true }),   // NOT-0001: made with the record, never changed (core/records-tools/ref.js)
     { name: "state", kind: "choice", label: "State", options: ITEM_STATES, required: true },
     { name: "body", kind: "rich_text", label: "Note" },
-    // who can read it (core/planner/note-share.js): private to its writer, shared with the record it is about, or with the Space
+    // who can read it (lib/note-share.js): private to its writer, shared with the record it is about, or with the Space
     { name: "visibility", kind: "choice", label: "Who can read it", options: ["private", "record", "space"] },
     text("record", "About (a record's address)"),
     ...FILING, ...MADE,

@@ -21,7 +21,7 @@ import { registerLinkFields } from "./link-fields.js";
 import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
 import { withMe, withOwner } from "./me.js";
-import { seesNote } from "../planner/note-share.js";
+import { seesNote } from "../../lib/note-share.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
