@@ -530,6 +530,8 @@ export const OPEN = new Set([
   "connectors.logging",
   "files.drive.space.list",
   "files.drive.space.read",
+  "files.places",
+  "files.space.mentions.search",
   "records.linked",
   "records.roles",
   "records.holders",

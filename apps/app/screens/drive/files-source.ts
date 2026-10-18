@@ -2,6 +2,7 @@
 // under a place for the tree. A place the screen draws on its own (Shared, On your computer) has no rows.
 import { children } from "./space-model.ts";
 import { parsePlace, placeId, rowsFromBox, rowsFromLinked, rowsFromSpace, type FileRow, type TreeNode } from "./files-model.ts";
+import { recentOf } from "./files-places.js";
 import type { LinkedEntry } from "./linked-model.ts";
 import type { Entry, Listing } from "./real-model.ts";
 import type { SpaceEntry } from "./space-model.ts";
@@ -38,5 +39,22 @@ export function filesLoader(s: FilesSources) {
     const p = parsePlace(id);
     return (await rows(id)).filter((r) => r.dir).map((r) => ({ id: r.place, label: r.name, root: p!.root, kids: [] }));
   }
-  return { rows, dirs, placeId };
+  /** The files changed most recently anywhere in the Space (folders are not listed): the Recent place. */
+  async function recent(n = 30): Promise<FileRow[]> {
+    const r = await s.space.list(undefined, "");
+    const at = (v: unknown): number => (typeof v === "number" ? v : typeof v === "string" && !Number.isNaN(Date.parse(v)) ? Date.parse(v) : 0);
+    const files = r.entries.filter((e) => typeof e.path === "string" && e.path).map((e) => ({ name: e.name || e.path!.split("/").pop()!, dir: false, path: e.path!, size: e.size ?? 0, ver: e.ver ?? e.version ?? 0, at: at(e.at ?? e.mtime) }));
+    return recentOf(rowsFromSpace(files, ""), n);
+  }
+  /** Every file in the Space whose name or folder holds the words, newest first: the "All files" scope of the search box (the Space's own entries, filtered here). */
+  async function searchAll(q: string, n = 100): Promise<FileRow[]> {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const r = await s.space.list(undefined, "");
+    const at = (v: unknown): number => (typeof v === "number" ? v : typeof v === "string" && !Number.isNaN(Date.parse(v)) ? Date.parse(v) : 0);
+    const files = r.entries.filter((e) => typeof e.path === "string" && e.path && words.every((w) => e.path!.toLowerCase().includes(w)))
+      .map((e) => ({ name: e.name || e.path!.split("/").pop()!, dir: false, path: e.path!, size: e.size ?? 0, ver: e.ver ?? e.version ?? 0, at: at(e.at ?? e.mtime) }));
+    return rowsFromSpace(files, "").sort((a, b) => b.modified - a.modified).slice(0, n);
+  }
+  return { rows, dirs, recent, searchAll, placeId };
 }

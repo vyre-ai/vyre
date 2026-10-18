@@ -103,6 +103,8 @@ export const OPEN_NOTES = Object.freeze({
   "files.drive.unmount": "unmounts a box share from the person's Mac",
   "files.drive.unshare": "stops sharing a folder over VyreDrive, which only takes access away",
   "files.mentions.search": "file names on the box's VyreDrive shares matching a # query, names only",
+  "files.places": "the caller's own places: projects they are on and agents they own or were given, with the Drive folder of each; the kernel decides what they may open there",
+  "files.space.mentions.search": "Space Drive file paths matching a # query, only files the kernel lets the caller read",
   "files.receive": "turns on or off whether the Mac takes in files the box delivers, the receive switch",
   "github.mcp.sync": "makes sure each connected GitHub account has GitHub's hosted MCP server in the hub, using a token already in the vault",
   "github.project": "makes a new project from a repo by cloning it into the projects folder",
