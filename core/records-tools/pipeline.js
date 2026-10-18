@@ -3,6 +3,8 @@
 // enforces a stage's entry condition (`enter_if`, stage_entry_refused); this file turns the plain list into that condition and back, and gives the move a friendly answer: `needs: [fields]` and nothing written.
 // Pure helpers first, the two tools after (records.pipeline.set, records.move), registered by index.js.
 
+import { isColour, COLOUR_NAMES } from "./type-settings.js";
+
 export const LOST_REASON = "lost_reason";
 const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -76,7 +78,7 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn, update }) {
     if (!t) throw refuse(`There is no record type called ${name}. Pick one of the types shown in Records.`, "not_found");
     return t;
   };
-  tool("records.pipeline.set", "Set the stages of a record type for people who do not write conditions: { type, stages: [{ name, requires?: [field], lost?: true }] }. A stage with `requires` can only be entered once those fields are filled in; a `lost` stage needs a lost_reason. The type gets a Stage field and a Lost reason field when it has none. Who may change a type is the kernel's to decide.",
+  tool("records.pipeline.set", "Set the stages of a record type for people who do not write conditions: { type, stages: [{ name, requires?: [field], lost?: true, probability?: 0-100, color? }] }, or several pipelines { type, pipelines: [{ name, stages }] } (the first is the default). A stage with `requires` can only be entered once those fields are filled in; a `lost` stage needs a lost_reason. The type gets a Stage field and a Lost reason field when it has none. Who may change a type is the kernel's to decide.",
     obj({ space: str, type: str, stages: { type: "array", items: { type: "object" } }, pipelines: { type: "array", items: { type: "object" } } }, ["type"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const t = await typeOf(d, String(i.type));
       const fields = [...(t.fields || [])];
@@ -88,6 +90,12 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn, update }) {
       try { built = Array.isArray(i.pipelines) ? pipelinesFrom(i.pipelines, new Set(fields.map((f) => f.name))) : (() => { const stages = stagesFrom(i.stages, new Set(fields.map((f) => f.name))); return { names: [], stages, stage_sets: [], options: stages.map((s) => s.name) }; })(); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       // setting just the default stages keeps the other pipelines as they are, and the stage field still offers their stages
       if (!Array.isArray(i.pipelines)) built.options = [...new Set([...built.options, ...(t.stage_sets || []).flatMap((/** @type {any} */ x) => (x.stages || []).map((/** @type {any} */ st) => st.name))])];
+      // a stage may carry a colour; the colours of the stage names live with the type (option_colors.stage), the same place records.type.update puts them
+      const colours = /** @type {Record<string, string>} */ ({});
+      for (const l of lists) for (const s of l) if (s && s.color !== undefined && s.color !== null && s.color !== "") {
+        if (!isColour(s.color)) throw refuse(`Stage ${s.name}: a colour is one of ${COLOUR_NAMES.join(", ")} or a hex like #3b82f6.`, "bad_input");
+        colours[String(s.name).trim()] = s.color;
+      }
       const sf = fields.find((f) => f.kind === "stage");
       if (sf) fields[fields.indexOf(sf)] = { ...sf, options: built.options };
       else fields.push({ name: "stage", kind: "stage", label: "Stage", options: built.options });
@@ -96,7 +104,7 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn, update }) {
         if (pf) fields[fields.indexOf(pf)] = { ...pf, kind: "choice", options: built.names };
         else fields.push({ name: "pipeline", kind: "choice", label: "Pipeline", options: built.names });
       }
-      await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields, stages: built.stages, ...(built.stage_sets.length ? { stage_sets: built.stage_sets } : Array.isArray(i.pipelines) ? { stage_sets: [] } : {}) }] });
+      await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields, ...(Object.keys(colours).length ? { option_colors: { ...(t.option_colors || {}), stage: { ...((t.option_colors || {}).stage || {}), ...Object.fromEntries(Object.entries(colours).filter(([n]) => built.options.includes(n))) } } } : {}), stages: built.stages, ...(built.stage_sets.length ? { stage_sets: built.stage_sets } : Array.isArray(i.pipelines) ? { stage_sets: [] } : {}) }] });
       const shape = (/** @type {any[]} */ l) => l.map((s) => ({ name: s.name, ...(typeof s.probability === "number" ? { probability: s.probability } : {}), requires: requiresOf(s.enter_if), lost: isLost(s) }));
       return { type: t.name, stages: shape(built.stages), ...(built.names.length > 1 ? { pipelines: [{ name: built.names[0], stages: shape(built.stages) }, ...built.stage_sets.map((/** @type {any} */ s) => ({ name: s.name, stages: shape(s.stages) }))] } : {}) };
     });

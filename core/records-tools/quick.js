@@ -4,6 +4,8 @@
 // The fields are rows of the `quick-field` type { type, name, label, kind, options, state }. All of it runs under the caller's own chain; adding a field is an owner's or admin's act, as defining a type is.
 
 export const QUICK_KINDS = ["text", "rich_text", "number", "boolean", "date", "datetime", "choice"];
+/** A link is not a fast field (it needs the store's own field and an inverse): records.field.add hands it to records.link.add. */
+export const LINK_KIND = "link";
 const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 const RESERVED = new Set(["id", "ref", "extra", "stage", "name", "version", "created_at", "updated_at"]);
 
@@ -62,13 +64,14 @@ export function bagInQuery(spec, fields) {
   return hit.length ? hit[0] : null;
 }
 
-/** @param {{ tool: Function, obj: Function, str: any, refuse: Function, parseUrn: Function }} h */
-export function registerQuick({ tool, obj, str, refuse }) {
+/** @param {{ tool: Function, obj: Function, str: any, refuse: Function, parseUrn: Function, addLink: (i: any, d: any) => Promise<any> }} h */
+export function registerQuick({ tool, obj, str, refuse, addLink }) {
   const fieldsOf = async (/** @type {any} */ d, /** @type {string} */ type) => quickFieldsOf(d, type);
   const admin = (/** @type {any} */ d) => { let role = null; try { role = d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { /* none */ } if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin adds a field. Ask one of them.", "not_allowed"); };
-  tool("records.field.add", "Add a field to a record type so it works at once: { type, label, kind (text|rich_text|number|boolean|date|datetime|choice), options? }. The value is kept with the record until records.field.promote makes it a real field (the app does that in the background). An owner's or admin's act.",
-    obj({ space: str, type: str, label: str, kind: str, options: { type: "array", items: { type: "string" } } }, ["type", "label", "kind"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
+  tool("records.field.add", "Add a field to a record type so it works at once: { type, label, kind (text|rich_text|number|boolean|date|datetime|choice|link), options? }. kind link also takes { to: the type it links to, inverse?: what the other type calls it, many? } and is a real field at once (the same as records.link.add); a relationship kind belongs to the connection, so pass kind to records.link.set. The value is kept with the record until records.field.promote makes it a real field (the app does that in the background). An owner's or admin's act.",
+    obj({ space: str, type: str, label: str, kind: str, options: { type: "array", items: { type: "string" } }, to: str, inverse: str, many: { type: "boolean" } }, ["type", "label", "kind"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       admin(d);
+      if (i.kind === LINK_KIND) return addLink(i, d);
       const type = String(i.type), kind = String(i.kind);
       if (!QUICK_KINDS.includes(kind)) throw refuse(`A fast field is one of: ${QUICK_KINDS.join(", ")}. Other kinds are added from Settings, Objects.`, "bad_input");
       const name = nameOfLabel(i.label);

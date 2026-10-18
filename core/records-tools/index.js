@@ -20,6 +20,7 @@ import { registerRoles } from "./roles.js";
 import { registerLinkFields } from "./link-fields.js";
 import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
+import { withMe, withOwner } from "./me.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
@@ -116,7 +117,7 @@ export default {
       const qf = (await quickFieldsOf(d, String(i.type))).filter((f) => f.state !== "real");
       const hit = bagInQuery({ filter: i.filter, sort: i.sort }, qf);
       if (hit) throw refuse(`${hit} is still being set up, so it cannot be filtered or sorted yet. Try again in a minute.`, "bad_input");
-      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
       return { rows: qf.length ? r.rows.map((/** @type {any} */ x) => mergeOut(x, qf)) : r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
@@ -135,6 +136,7 @@ export default {
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
       try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["record-note", "communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();
@@ -196,7 +198,7 @@ export default {
 
     registerPipeline({ tool, obj, str, refuse, parseUrn, update: applyUpdate });
     registerRelationships({ tool, obj, str, refuse, parseUrn });
-    registerQuick({ tool, obj, str, refuse, parseUrn });
+    registerQuick({ tool, obj, str, refuse, parseUrn, addLink: (/** @type {any} */ i, /** @type {any} */ d) => /** @type {any} */ (ops.get("records.link.add")).fn({ type: i.type, label: i.label, to: i.to, many: i.many, ...(i.inverse !== undefined ? { inverse_label: i.inverse } : {}) }, d) });
     registerLayouts({ tool, obj, str, refuse });
     registerHistory({ tool, obj, str, refuse, parseUrn });
     registerVisibility({ tool, obj, str, refuse, parseUrn });
