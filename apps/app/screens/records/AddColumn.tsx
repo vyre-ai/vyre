@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Field, Select, Sheet, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Field, IconButton, Select, Sheet, Switch, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { COLUMN_KINDS, columnCall, madeName } from "./add-column.js";
 
 /** "Add a column" on a table: a name and a kind, saved at once, and the column is shown straight away. A link makes its twin on the other type. The box decides who may; its sentence is what shows. */
-export function AddColumn({ type, types, onAdded }: { type: string; types: { name: string; label: string }[]; onAdded: (name?: string) => void }) {
+export function AddColumn({ type, types, onAdded, compact }: { compact?: boolean; type: string; types: { name: string; label: string }[]; onAdded: (name?: string) => void }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState("text");
@@ -27,7 +27,7 @@ export function AddColumn({ type, types, onAdded }: { type: string; types: { nam
   };
   return (
     <>
-      <Button kind="secondary" size="sm" icon="plus" label="Add a column" onPress={() => setOpen(true)} />
+      {compact ? <IconButton icon="plus" label="Add a column" onPress={() => setOpen(true)} /> : <Button kind="secondary" size="sm" icon="plus" label="Add a column" onPress={() => setOpen(true)} />}
       <Sheet open={open} onClose={() => setOpen(false)} title="Add a column">
         <View className="gap-s3">
           <Field label="Name" value={label} placeholder="Budget, Source, Next step" onChangeText={setLabel} />

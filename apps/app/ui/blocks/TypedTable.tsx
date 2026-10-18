@@ -120,7 +120,7 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
     <View className="gap-s3">
       {controls}
       {chips}
-      {phone ? phoneList : <Table columns={columns} rows={shown} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
+      {phone ? phoneList : <Table columns={columns} headerEnd={h.slot?.(k, "header-end")} rows={shown} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
       {shown.length ? <Text size="caption" tone="label">{shown.length} of {b.content?.total ?? all.length}</Text> : null}
     </View>
   );

@@ -6,7 +6,7 @@ import { EmptyState } from "./States";
 import { Appear } from "../motion/Appear";
 
 export type Column<T> = { key: string; label: string; render?: (row: T) => React.ReactNode; align?: "left" | "right"; sortValue?: (row: T) => string | number };
-export type TableProps<T> = { columns: Column<T>[]; rows: T[]; onRow?: (row: T) => void; empty?: string; rowKey: (row: T) => string };
+export type TableProps<T> = { columns: Column<T>[]; rows: T[]; onRow?: (row: T) => void; empty?: string; rowKey: (row: T) => string; /** A control at the end of the header row, such as the "+" that adds a column. Wide tables only; rows keep a matching blank so the columns line up. */ headerEnd?: React.ReactNode };
 
 /** A column's cell for a row: its render, or the plain value under its key. Called as a function (never mounted), so it may not use hooks. */
 export function cellValue<T>(c: Column<T>, row: T): React.ReactNode {

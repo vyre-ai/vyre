@@ -19,7 +19,7 @@ export function Table<T>(p: TableProps<T>) {
   return phone ? <RowsTable {...p} /> : <WideTable {...p} />;
 }
 
-function WideTable<T>({ columns, rows, onRow, empty, rowKey }: TableProps<T>) {
+function WideTable<T>({ columns, rows, onRow, empty, rowKey, headerEnd }: TableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const defs: ColumnDef<T>[] = columns.map((c) => ({
     id: c.key,
@@ -48,11 +48,13 @@ function WideTable<T>({ columns, rows, onRow, empty, rowKey }: TableProps<T>) {
             </Pressable>
           );
         })}
+        {headerEnd ? <View style={{ flexGrow: 0, flexShrink: 0, width: 32 }} className="items-center">{headerEnd}</View> : null}
       </View>
       {model.map((r, ri) => {
         const body = r.getVisibleCells().map((c, i) => (
           <View key={c.id} style={sizeOf(i)} className="min-w-0">{asNode(cellOf(c), i === 0)}</View>
         ));
+        if (headerEnd) body.push(<View key="_end" style={{ flexGrow: 0, flexShrink: 0, width: 32 }} />);
         const cls = cn("min-h-touch flex-row items-center gap-s3 px-s4 py-s1", ri > 0 && "border-t border-edge");
         return onRow ? (
           <Pressable key={rowKey(r.original)} accessibilityRole="button" onPress={() => onRow(r.original)} className={cls} style={({ pressed, hovered }: any) => (pressed ? { backgroundColor: "var(--press)" } : hovered ? { backgroundColor: "var(--hover)" } : undefined)}>{body}</Pressable>

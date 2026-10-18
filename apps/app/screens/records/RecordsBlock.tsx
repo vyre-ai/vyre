@@ -147,6 +147,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
   };
   const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
+  const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
     <View className="min-h-0 flex-1">
@@ -176,7 +177,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         ) : (
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
-        {shown === "list" ? <AddColumn type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} /> : null}
+        {shown === "list" ? addColumn(false) : null}
         <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
@@ -207,7 +208,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       ) : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
-      {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: () => switcher }} /> : switcher}
+      {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
