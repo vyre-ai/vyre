@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Button, Card, Field, Row, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
+import { dayOf } from "../../src/time/show";
 
 const fail = (e: unknown, fallback: string) => showToast(String((e as { message?: string })?.message || fallback));
-const when = (at: unknown) => { const d = new Date(Number(at) || String(at)); return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(); };
+/** A time shown through lib/time (src/time/show), in the viewer's zone, as the day and year. */
+const when = (at: unknown) => { const ms = Number(at) || Date.parse(String(at)); return Number.isFinite(ms) ? dayOf(ms) : ""; };
 
 /** Earlier versions of one item: when it changed, by whom, and which fields changed. Putting one back makes it the newest version. */
 /** canPutBack: only the person's own items get Put back here; a shared item is changed by its owner. The server's refusal for a shared item is pinned in core/vault/history.test.js. */
