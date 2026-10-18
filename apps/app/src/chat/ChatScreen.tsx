@@ -400,7 +400,7 @@ export function ChatScreen(p: ChatScreenProps) {
     <ChatPanel
         open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={() => { if (phone) setPanel(null); }} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
-        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
+        muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onFind={() => setFindOpen(true)} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}

@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
 import { ThreadsTab } from "./ThreadsTab";
-import { chatKind, panelTabs, tabOf } from "./threads-model.js";
+import { chatKind, panelTabs, tabOf, threadsTab } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -35,6 +35,7 @@ export type ChatPanelProps = {
   tab: string; onTab: (t: string) => void;
   /** A Flow is one chat whose runs are its threads: the tabs are Runs and Details. */ flow?: boolean;
   /** Switch to one of an agent's threads; start a new one (null when it started, else why not). */
+  /** Search this chat (the Find action under the name). */ onFind?: () => void;
   onSwitchThread?: (thread: string) => void; onNewThread?: (agent: string) => Promise<string | null>;
   /** The chat's name, for the top of the panel. */ title: string;
   participants: readonly Participant[]; viewer: string; info: AboutInfo;
@@ -224,6 +225,13 @@ export function ChatPanel(p: ChatPanelProps) {
         : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
       <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
       <ChatTags chat={p.chat} thread={p.thread} />
+      {/* the four quick actions under the name: Pinned, Find, Threads (when this chat has them), Mute */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 4 }}>
+        <Button kind={p.pinned ? "secondary" : "ghost"} size="sm" label={p.pinned ? "Pinned" : "Pin"} onPress={() => p.onPin(!p.pinned)} />
+        {p.onFind ? <Button kind="ghost" size="sm" label="Find" onPress={() => { p.onClose(); p.onFind?.(); }} /> : null}
+        {threadsTab(kind, agents.map((x) => x.name), cur) ? <Button kind="ghost" size="sm" label={kind === "flow" ? "Runs" : "Threads"} onPress={() => setTab(threadsTab(kind, agents.map((x) => x.name), cur) as string)} /> : null}
+        <Button kind={p.muted ? "secondary" : "ghost"} size="sm" label={p.muted ? "Muted" : "Mute"} onPress={() => p.onMute(!p.muted)} />
+      </View>
     </View>
   );
   const root = (
