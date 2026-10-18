@@ -532,7 +532,9 @@ export default {
           if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(asked)) throw Object.assign(new Error("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -"), { code: "bad_input" });
           // never an existing item (a put on an existing name replaces it): the name is made free with a number after it
           const have = await ctx.call("vault.list", {});
-          const names = new Set(((have && have.data && Array.isArray(have.data.items) ? have.data.items : [])).map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+          // fail closed: if the Vault cannot be read, nothing is put (a put on an existing name replaces that item)
+          if (!have || have.error || !have.data || !Array.isArray(have.data.items)) throw Object.assign(new Error("the Vault could not be checked for that name"), { code: "bad_input" });
+          const names = new Set(have.data.items.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
           let cand = asked, n = 2;
           while (names.has(cand.toLowerCase()) && n < 100) cand = `${asked} ${n++}`;
           if (names.has(cand.toLowerCase())) throw Object.assign(new Error("that name is taken in the Vault"), { code: "bad_input" });

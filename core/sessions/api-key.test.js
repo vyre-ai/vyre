@@ -51,6 +51,21 @@ test("api key: a name for the Vault item is used when free, made free with a num
   assert.equal((await w.tool("vault.list", {})).data.items.find((x) => x.name === "seed-item") !== undefined, true, "the seeded item is still there");
 });
 
+test("api key: when the Vault cannot be checked for the item's name, nothing is put and no account is made", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+  const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
+  const s = await service(t);
+  const real = w.d.registry.call.bind(w.d.registry);
+  const puts = [];
+  w.d.registry.call = async (name, ...rest) => { if (name === "vault.list") return { error: { code: "unavailable", message: "down" } }; if (name === "vault.put") puts.push(rest[0]); return real(name, ...rest); };
+  const r = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, label: "Gmail", name: "Gmail" });
+  w.d.registry.call = real;
+  assert.equal(r.error && r.error.code, "bad_input", JSON.stringify(r));
+  assert.match(r.error.message, /could not be checked/);
+  assert.deepEqual(puts, [], "nothing was put");
+  assert.equal((await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.length, 0, "no account was made");
+});
+
 test("api key: an OpenAI-compatible key is checked, vaulted, bound to its address, never returned, and a thread on it sends the key only there", async t => {
   process.env.VYRE_LEGACY_DIRECT_MODEL = "1";   // this harness has no inference door; the door path is lib/door-bridge.test.js
   const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
