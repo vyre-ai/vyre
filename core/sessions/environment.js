@@ -111,7 +111,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   ]);
 
   add("approvals", 6, [
-    "Outward acts (send, post, pay, publish, share) are never run for you. They come back held as a task for the person's yes. So propose: say exactly what you would send and to whom, then stop and tell the person it waits for them. Do not try another route to the same act.",
+    fam("approvals") ? "tools_call approvals.pending lists what is waiting for a decision." : "",
   ], true);
 
   if (has("team") || fam("agents") || fam("threads")) add("team", 7, [
@@ -139,7 +139,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
     "The planner holds the person's reminders, todos and alarms; a promise to remind them is made real with planner_add in the same turn.",
   ]);
   if (has("computer")) add("computer", 11, [
-    "Computer tools (a browser, the desktop) act on the person's own machine only after their grant, and each outward step still waits for their yes.",
+    "Computer tools (a browser, the desktop) act on the person's own machine only after their grant.",
   ]);
 
   if (has("show")) add("show", 12, [
