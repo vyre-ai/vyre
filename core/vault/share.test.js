@@ -240,7 +240,7 @@ test("a Vault person is linked to a Space member: a linked row answers its name,
   assert.equal(o.v.share.personOfMember({ member: "per_nobody" }), null, "an unknown member answers nothing");
   // a model cannot set or change the link
   const m = newIdentity();
-  await assert.rejects(o.v.share.addPerson({ card: card("mo", m), name: "mo", member: "per_mo" }, "mcp"), /denied|not allowed|only/i, "a model cannot link a member");
+  await assert.rejects(o.v.share.addPerson({ card: card("mo", m), name: "mo", member: "per_mo" }, "mcp"), /model cannot link/, "a model cannot link a member");
   assert.equal(o.v.share.personOfMember({ member: "per_mo" }), null, "the refused link was not stored");
 });
 
