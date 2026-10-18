@@ -51,7 +51,7 @@ test("environment: a source that does not answer drops its line, and a family th
   const e = environmentOf({ ...base, types: null, spaces: [], space: null, connectors: [], team: [], tools: ["memory.retrieve", "recall.turn"] });
   assert.match(e.text, /Memory is automatic/);
   assert.doesNotMatch(e.text, /Types here|Connected:|Teammates on this install|They also belong|work\.call|Vyre Records|Projects? is one record/);
-  assert.match(e.text, /approvals\.pending/, "the approvals tool is named");
+  assert.doesNotMatch(e.text, /approvals\.pending/, "a family the agent cannot reach is not named");
   assert.match(environmentOf({ ...base, types: null }).text, /Ask records\.types for the types/);
 });
 
@@ -169,7 +169,7 @@ for (const driver of ["cli", "sdk"]) {
     for (const [who, text] of Object.entries(seen)) {
       assert.ok(text.includes("[Vyre environment]"), who);
       assert.ok(text.includes(want.text.split("\n\n")[0]), `${who} has the same opening`);
-      assert.match(text, /Outward acts[\s\S]*propose/, who);
+      assert.match(text, /approvals\.pending/, who);
       assert.match(text, /memory_turn/, who);
     }
     // For the ACP agents the person's words come after it.
