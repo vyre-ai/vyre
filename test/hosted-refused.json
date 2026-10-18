@@ -273,6 +273,7 @@
   "work.chat.serve",
   "work.chat.upgrade-move",
   "work.chat.upgrade-plan",
+  "work.chat.add-people",
   "work.thread.add-people"
  ]
 }

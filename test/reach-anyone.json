@@ -2009,6 +2009,14 @@
    "module": "work",
    "reason": "starts another thread in a chat the caller is already in, as themselves; the kernel authorizes the create and the ring comes from the device"
   },
+  "work.chat.add-people": {
+   "module": "work",
+   "reason": "the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
+  },
+  "work.project.chat": {
+   "module": "work",
+   "reason": "the caller must read the project; it finds or makes the project's one chat (a fixed id) for the team as the caller acting directly, the kernel authorizes the create, and a viewer is never put in it; it changes no one's membership, it only reports the gap"
+  },
   "work.chat.threads": {
    "module": "work",
    "reason": "read-only: the threads of one chat the caller may read"
