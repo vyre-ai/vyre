@@ -6,6 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - feat(records): People, Companies, Tasks and Notes (the Note type is `memo`, Twenty reserves "note"), the Gallery view (Companies open in it), and every starting type has an ID (`PER-0001`, `ORG-0001`, `TSK-0001`, `NOT-0001`): a read-only unique `ref` field, made with the record and never changed. A new type starts with its first field and an ID; Blank is a Name and an ID. Older records get their ID, oldest first, when `records.define` adds the field; a record the person who defined it cannot see (a private row) gets its ID later, when someone who can see it defines the type again. `records.list` never writes.
 - feat(records): Add a type opens on its templates (Blank, Order, Property, Deal) and the Kits the box offers; a Kit asks for a yes in Now. It opens from Records (New type) as well as from Settings. The sheet is one component, `AddTypeSheet`.
+- feat(records): a type has Access and History tabs (Settings, Objects, the type). Access shows what the person is, what each role may do with the type and how many hold it, who holds its roles (a role type), and the record as the person or their assistant sees it (records.sees-as). History shows what changed on its records: the audit with the value before and after for an owner or admin (records.audit), the log's plain lines for anyone else (records.events).
 
 ## 0.6.0
 

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
 import type { Draft, Group, Rules } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useKernelTypes } from "./kernel-types";
+import { TypeAccess } from "./TypeAccess";
+import { TypeHistory } from "./TypeHistory";
 import type { Def } from "./kernel-types";
 import { addStage, moveStage, renameStage } from "./logic.js";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
@@ -28,6 +30,7 @@ export function TypeScreen() {
   const { defs, load, loading, save, busy } = useKernelTypes();
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
+  const [tab, setTab] = useState("fields");
   const [label, setLabel] = useState("");
   const [names, setNames] = useState<Record<number, string>>({});
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
@@ -106,7 +109,9 @@ export function TypeScreen() {
   return (
     <Page title={def.label ? `${self.plural}` : "Type"} sub="Objects" back="/u/settings/customize">
       {working ? <Banner><Text strong>{`Setting up ${def.label} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
-      <View className={phone ? "gap-s3" : "flex-row items-start gap-s4"}>
+      <Tabs value={tab} onChange={setTab} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
+      {tab === "access" ? <TypeAccess type={def.name} label={self.plural} /> : tab === "history" ? <TypeHistory type={def.name} /> : null}
+      <View className={tab !== "fields" ? "hidden" : phone ? "gap-s3" : "flex-row items-start gap-s4"}>
         {list}
         {!phone && pane ? <View className="min-w-0 flex-1 gap-s3"><SectionLabel first>{edit?.orig ? `Edit ${edit.orig.label}` : "New field"}</SectionLabel><Card>{pane}</Card></View> : null}
       </View>
