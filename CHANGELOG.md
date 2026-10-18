@@ -2,7 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## Unreleased
+## 0.6.1 (polish train)
 
 - fix(kernel): the event bus no longer throws out of its pump when the log is closed. A handler that failed (or a retry that came due) as the kernel stopped read the log again in its retry path, got "database is not open" and left an unhandled rejection that failed whichever test was running (member-read-scope, needs, threads answer on the v0.6.1 node).
 
