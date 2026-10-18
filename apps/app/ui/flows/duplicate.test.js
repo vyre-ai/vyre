@@ -2,6 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { duplicateDeep, flat } from "./tree.js";
+import { flowSentence } from "./logic.js";
+import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const flow = () => [
   { id: "find1", kind: "find", type: "contact" },
@@ -32,4 +34,12 @@ test("a copy inside a lane lands in that lane; an unknown id changes nothing", (
   assert.equal(r.steps[1].then.length, 2);
   assert.equal(r.steps[1].then[1].kind, "email");
   assert.deepEqual(duplicateDeep(f, "nope", []), { steps: f, id: null });
+});
+
+test("the headline sentence reads an If as its branches", () => {
+  const d = { name: "T", trigger: { kind: "created", type: "contact" }, steps: [
+    { id: "decide1", kind: "decide", cond: { mode: "build", source: "trigger", field: "amount", op: ">", value: "500" }, then: [{ id: "ask2", kind: "ask", to: "role:owner", title: "Approve it" }], else: [{ id: "email3", kind: "email", to: "a@b.c", subject: "s", body: "b" }] },
+  ] };
+  const s = flowSentence(d, O);
+  assert.match(s, /, if amount is more than 500, wait for .* to say yes: approve it, otherwise /i);
 });

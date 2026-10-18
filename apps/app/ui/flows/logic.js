@@ -180,8 +180,16 @@ export function linkWords(ref, d, o) {
 }
 
 /** The whole Flow as one sentence: "When a record is created in RefundRequests, create a RefundRequests record, then hand it to the Refunds agent." @param {Draft} d @param {Options} o */
+/** A step in the headline sentence: an If reads as its branches ("if the amount is over 500, ask the Admins first, otherwise email them"), any other step as its summary. @param {DraftStep} s @param {Options} o @param {Draft} d @returns {string} */
+function branchWords(s, o, d) {
+  if (s.kind !== "decide") return stepSummary(s, o, d);
+  const side = (/** @type {DraftStep[] | undefined} */ list) => (list || []).map((x) => lc(branchWords(x, o, d))).join(", then ") || "do nothing";
+  const c = condWords(s.cond, d.trigger);
+  return `if ${lc(c)}, ${side(s.then)}${(s.else || []).length ? `, otherwise ${side(s.else)}` : ""}`;
+}
+
 export function flowSentence(d, o) {
-  const parts = d.steps.map((s) => lc(stepSummary(s, o, d)));
+  const parts = d.steps.map((s) => lc(branchWords(s, o, d)));
   const shown = parts.slice(0, 3);
   const rest = parts.length - shown.length;
   const body = !shown.length ? "do nothing yet" : shown.join(", then ") + (rest > 0 ? `, then ${rest} more step${rest === 1 ? "" : "s"}` : "");
