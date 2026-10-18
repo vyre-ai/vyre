@@ -1258,3 +1258,25 @@ test("escalation and quorum all do not combine: a slot that needs everyone is ne
   T += 10_000_000;
   assert.equal((await r.tasks.review(alice(), t.id, { result: "pass" })).state, "in_review", "still waits for the other holder");
 });
+
+test("the card tells the approver's client what to sign: the same fields the kernel checks, the review hash included once the work was reviewed", async () => {
+  const r = rig();
+  const A = alice();
+  // no review: task, payload hash and decision only
+  const plain = await toNeedsCheck(r);
+  const pc = await r.tasks.card(A, plain.id);
+  assert.deepEqual(pc.sign, { op: "task.decide", fields: { task: plain.id, payload_hash: plain.payload.payload_hash, decision: plain.payload.decision } });
+  assert.equal((await r.tasks.decide(A, plain.id, { outcome: "approved", proof: r.sign(A, ALICE, pc.sign.op, pc.sign.fields) })).state, "done");
+  // reviewed: the review hash is in the fields, and a proof over exactly them is accepted
+  const t = await r.tasks.request(owner(), draftTask({ reviewer: actor("person", BOB) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await r.tasks.review(bob(), t.id, { result: "pass", note: "fine" });
+  const c = await r.tasks.card(A, t.id);
+  assert.equal(c.sign.fields.review_hash, c.review_hash);
+  assert.ok(c.sign.fields.review_hash);
+  await assert.rejects(r.tasks.decide(A, t.id, { outcome: "approved", proof: r.proof(A, ALICE, await r.tasks.get(A, t.id)) }), { code: "needs_presence" }, "a proof without the review hash is refused");
+  assert.equal((await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.sign(A, ALICE, c.sign.op, c.sign.fields) })).state, "done");
+  // a task that is not waiting for a check has nothing to sign
+  assert.equal((await r.tasks.card(A, t.id)).sign, undefined);
+});
