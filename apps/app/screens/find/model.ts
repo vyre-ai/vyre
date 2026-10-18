@@ -3,6 +3,7 @@
 // (deck/js/commands.js, find-prefix.js, chat/lib/sessions.js), so a line means the same thing on every surface.
 import { parseCommand, plan, type Command } from "./commands.js";
 import { parsePrefix } from "./find-prefix.js";
+import { SCOPE_LIST, actionHits, bestMatch, filterRows, parseQuery } from "./query.js";
 import { mergeSessions, title as sessionTitle } from "../../src/chat/core/sessions.js";
 
 export { parseCommand, plan, parsePrefix, mergeSessions, sessionTitle };
@@ -15,8 +16,8 @@ const arr = (v: unknown): Record<string, any>[] => (Array.isArray(v) ? v.filter(
 export const MIN = 2;
 export const SHOW = 5;
 export const RECENT_MAX = 8;
-export const SCOPES: [Scope, string][] = [["all", "All"], ["chats", "Chats"], ["projects", "Projects"], ["people", "People"], ["files", "Files"], ["memory", "Memory"]];
-export type Scope = "all" | "chats" | "projects" | "people" | "files" | "memory";
+export const SCOPES: [Scope, string][] = SCOPE_LIST.map(([k, v]) => [k as Scope, v]);
+export type Scope = "all" | "chats" | "people" | "records" | "projects" | "files" | "settings";
 
 export const words = (q: string): string[] => q.toLowerCase().split(/\s+/).filter(Boolean);
 export const hasAll = (text: unknown, ws: string[]): boolean => { const t = String(text || "").toLowerCase(); return ws.every((w) => t.includes(w)); };
@@ -29,8 +30,10 @@ export type Base = {
   projects: { slug: string; name: string }[];
   records: { id: string; type: string; typeLabel: string; title: string; sub: string; person: boolean }[];
   places: { id: string; label: string; href: string }[];
+  /** The Settings pages, one row each (title, the line under it, where it opens). */
+  settings: { title: string; sub: string; href: string }[];
 };
-export const emptyBase = (): Base => ({ assistant: null, agents: [], sessions: [], projects: [], records: [], places: [] });
+export const emptyBase = (): Base => ({ assistant: null, agents: [], sessions: [], projects: [], records: [], places: [], settings: [] });
 
 export function pickAgents(d: unknown): Base["agents"] {
   const list = Array.isArray(d) ? d : (d as { agents?: unknown } | null)?.agents;
@@ -64,7 +67,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 
 // ---- hits ----
 
-export type Row = { key: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
+export type Row = { key: string; where?: string; from?: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
 export type Fetched = { recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
@@ -77,7 +80,7 @@ export function sessionHits(base: Base, q: string, recall: unknown): Row[] {
   const byId = new Map(base.sessions.map((r: any) => [r.id, r]));
   const seen = new Set<string>();
   const out: Row[] = [];
-  for (const r of base.sessions) if (r.name && hasAll(r.name, ws)) { seen.add(r.id); out.push({ key: `s:${r.id}`, kind: "chat", title: sessionTitle(r), sub: [where(base, r.project, r.cwd), r.last ? ago(r.last) : ""].filter(Boolean).join(", "), session: r.id }); }
+  for (const r of base.sessions) if (r.name && hasAll(r.name, ws)) { seen.add(r.id); out.push({ key: `s:${r.id}`, kind: "chat", title: sessionTitle(r), sub: [where(base, r.project, r.cwd), r.last ? ago(r.last) : ""].filter(Boolean).join(", "), where: where(base, r.project, r.cwd), ...(r.agent ? { from: String(r.agent) } : {}), session: r.id }); }
   for (const x of arr(recall)) {
     if (!x.session || seen.has(x.session)) continue;
     seen.add(x.session);
@@ -94,6 +97,7 @@ export function peopleHits(base: Base, q: string): Row[] {
   return [...agents, ...people];
 }
 export const recordHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.records.filter((r) => !r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r) => ({ key: `r:${r.id}`, kind: "record", title: r.title, sub: r.typeLabel, href: `/u/record/${r.id}` })); };
+export const settingsHits = (base: Base, q: string): Row[] => { const ws = words(q); return (base.settings || []).filter((x) => hasAll(`${x.title} ${x.sub}`, ws)).map((x) => ({ key: `st:${x.href}`, kind: "setting", title: x.title, sub: x.sub, href: x.href })); };
 export const placeHits = (base: Base, q: string): Row[] => { const lc = q.toLowerCase(); return base.places.filter((p) => p.label.toLowerCase().includes(lc)).map((p) => ({ key: `g:${p.id}`, kind: "place", title: p.label, sub: "Go to", href: p.href })); };
 
 /** files.search: the results, and a note for each machine that did not answer. The box never searches the Mac's files itself, so that is said unless the Mac answered. */
@@ -145,28 +149,35 @@ export function ago(ms: number, now = Date.now()): string {
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : m < 2880 ? "yesterday" : `${Math.round(m / 1440)} days ago`;
 }
 
-/** The scope a typed line asks for: a p, t or u prefix narrows it; the words after it are what is searched. */
-export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string } {
+/** The scope and words a typed line asks for: a p, t or u prefix narrows it; in:, from: and type: filter it (query.js); the words left are what is searched. */
+export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string; type: string | null; from: string | null; within: string | null } {
   const p = parsePrefix(raw) as { scope: Scope; rest: string } | null;
-  return p ? { scope: p.scope, q: p.rest } : { scope, q: raw.trim() };
+  const f = parseQuery(p ? p.rest : raw);
+  return { scope: (f.scope as Scope | null) ?? (p ? p.scope : scope), q: f.text, type: f.type, from: f.from, within: f.within };
 }
 
-/** The sections for a query, in the fixed order: Go to, Chats, Projects, People, Records, Files, Memory. A search tool that has not answered yet adds nothing; `missing` says which never will. */
+/** The sections for a query, in the fixed order: Best match, Actions, Go to, Chats, Projects, People, Records, Files, Settings, From memory. A search tool that has not answered yet adds nothing; `missing` says which never will. */
 export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched): Section[] {
-  const { scope: sc, q } = queryOf(raw, scope);
-  if (q.length < 1) return [];
+  const { scope: sc, q, type, from, within } = queryOf(raw, scope);
+  const filtered = Boolean(type || from || within);
+  if (q.length < 1 && !filtered) return [];
   const want = (s: Scope) => sc === "all" || sc === s;
-  const out: Section[] = [];
+  let out: Section[] = [];
   const add = (key: string, label: string, rows: Row[], notes: string[] = []) => { if (rows.length || notes.length) out.push({ key, label, rows, ...(notes.length ? { notes } : {}) }); };
-  if (sc === "all") add("places", "Go to", placeHits(base, q).slice(0, 4));
+  if (sc === "all" && q) add("actions", "Actions", actionHits(q).map((a): Row => ({ key: `x:${a.key}`, kind: "action", title: a.title, sub: "Do", href: a.href })));
+  if (sc === "all" && q) add("places", "Go to", placeHits(base, q).slice(0, 4));
   if (want("chats")) add("chats", "Chats", sessionHits(base, q, q.length >= MIN ? fetched.recall : undefined));
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
-  if (want("people")) { add("people", "People", peopleHits(base, q)); if (sc === "all") add("records", "Records", recordHits(base, q)); }
+  if (want("people")) add("people", "People", peopleHits(base, q));
+  if (want("records")) add("records", "Records", recordHits(base, q));
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
   if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Files", driveHits(fetched.drive));
-  if (want("memory") && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
+  if (want("settings") && q) add("settings", "Settings", settingsHits(base, q));
+  if (sc === "all" && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
-  return out;
+  if (filtered) out = out.map((s) => ({ ...s, rows: filterRows(s.rows, { type, from, within }) })).filter((s) => s.rows.length > 0);
+  const { best, rest } = bestMatch(out, q);
+  return best ? [{ key: "best", label: "Best match", rows: [best] }, ...rest] : rest;
 }
 
 /** What shows before anything is typed: the last searches, the most recent chats, and the places. */

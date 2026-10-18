@@ -98,14 +98,15 @@ test("sections in the fixed order, a name match before what recall found, projec
   assert.deepEqual(s4.find((x) => x.key === "people")?.rows.map((r) => [r.title, r.sub]), [["kit", "Reviews contracts"]]);
 });
 
+const sq = (x) => ({ scope: x.scope, q: x.q });
 test("prefixes narrow the scope and are stripped: p projects, t chats, u people", { skip: !strip }, async () => {
   const { sections, queryOf } = await import("./model.ts");
   const b = await base();
-  assert.deepEqual(queryOf("p juniper", "all"), { scope: "projects", q: "juniper" });
-  assert.deepEqual(queryOf("t juniper", "all"), { scope: "chats", q: "juniper" });
-  assert.deepEqual(queryOf("u kit", "all"), { scope: "people", q: "kit" });
-  assert.deepEqual(queryOf("park", "all"), { scope: "all", q: "park" });
-  assert.deepEqual(queryOf("juniper", "files"), { scope: "files", q: "juniper" });
+  assert.deepEqual(sq(queryOf("p juniper", "all")), { scope: "projects", q: "juniper" });
+  assert.deepEqual(sq(queryOf("t juniper", "all")), { scope: "chats", q: "juniper" });
+  assert.deepEqual(sq(queryOf("u kit", "all")), { scope: "people", q: "kit" });
+  assert.deepEqual(sq(queryOf("park", "all")), { scope: "all", q: "park" });
+  assert.deepEqual(sq(queryOf("juniper", "files")), { scope: "files", q: "juniper" });
   assert.deepEqual(sections(b, "p juniper", "all", {}).map((x) => x.key), ["projects"]);
   assert.deepEqual(sections(b, "u reyes", "all", {}).map((x) => x.key), ["people"]);
   assert.deepEqual(sections(b, "reyes", "projects", {}).map((x) => x.key), []);
