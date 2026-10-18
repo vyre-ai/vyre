@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Polish
 
+- feat(app): a Flow's Settings tab has Limits (whether Flows are running, the daily AI allowance with a save for an owner or an admin) and Connections used by that Flow.
 - feat(app): Needs you on the Flows list shows the runs that need a person (flows.attention) with Retry, Skip, Stop, and Move on (with a reason) for a stage gate (flows.settle).
 - feat(app): a Flow's headline shows what starts it and each step in the accent colour; the steps are cards with Runs beside them (Retry on a failed run, All runs opens the Runs tab); Try it is at the top right; the map is behind a switch in Settings; a Flow shows its project's name.
 - feat(app): a Flow's page is a plain-sentence headline, a meta line, the on switch, Change it in chat and Run now, then Steps, Runs and Settings tabs; the Flows list groups by project (Personal first); Back goes to Apps.

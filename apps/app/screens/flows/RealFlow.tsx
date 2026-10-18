@@ -13,6 +13,7 @@ import { sentenceParts } from "./sentence.js";
 import { usePhone } from "../places/Page";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
+import { FlowLimits } from "./FlowLimits";
 import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
@@ -197,6 +198,7 @@ export function RealFlow({ id }: { id: string }) {
       ) : null}
       {tab === "settings" ? (
         <View className="gap-s4 pt-s3">
+        <FlowLimits id={id} />
         <Switch label="Show the map of this Flow" on={mapOn} onChange={setMapOn} />
         {mapOn ? <View className="gap-s3">
       <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
