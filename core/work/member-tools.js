@@ -27,6 +27,7 @@ export const MEMBER_TOOLS = Object.freeze({
   "skills.get": { tool: "skills.serve", call: "get", keys: ["id"], types: ["skill"] },
   "skills.versions": { tool: "skills.serve", call: "versions", keys: ["name", "level", "scope", "state"], types: ["skill"] },
   "skills.draft": { tool: "skills.serve-write", call: "draft", keys: ["name", "level", "scope", "kind", "body", "note"], types: ["skill"] },
+  "skills.import": { tool: "skills.serve-write", call: "import", keys: ["level", "scope", "file", "filename"], types: ["skill"] },
   "skills.approve": { tool: "skills.serve-write", call: "approve", keys: ["name", "level", "scope", "version", "ack"], types: ["skill"] },
   "skills.decline": { tool: "skills.serve-write", call: "decline", keys: ["name", "level", "scope", "version"], types: ["skill"] },
   "skills.rollback": { tool: "skills.serve-write", call: "rollback", keys: ["name", "level", "scope", "to", "ack"], types: ["skill"] },
