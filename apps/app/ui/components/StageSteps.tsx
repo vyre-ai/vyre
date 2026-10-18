@@ -53,7 +53,7 @@ function Bar({ state }: { state: BarState }) {
  * An ordered stage strip: done, current, to come. Used by records, projects and Flows. Each step is a mark and a word, so colour is never the only signal.
  * `strip` is the phone's form (ui-review, record page): 4 high bars with a 6 gap and only the current stage's name, once, above them.
  */
-export function StageSteps({ stages, current, onSelect, strip }: { stages: string[]; current: number; onSelect?: (stage: string, i: number) => void; strip?: boolean }) {
+export function StageSteps({ stages, current, onSelect, strip, quiet }: { stages: string[]; current: number; onSelect?: (stage: string, i: number) => void; strip?: boolean; /** With `strip`: no stage name above the bars (the caller already says it). */ quiet?: boolean }) {
   const list = (
     <View accessibilityRole="list" className={strip ? "flex-row gap-s2" : "flex-row gap-s1"} style={strip ? { gap: 6 } : undefined}>
       {stages.map((s, i) => {
@@ -76,7 +76,7 @@ export function StageSteps({ stages, current, onSelect, strip }: { stages: strin
   if (!strip) return list;
   return (
     <View className="gap-s1">
-      {stages[current] ? <Text size="caption" strong tone="muted">{stages[current]}</Text> : null}
+      {stages[current] && !quiet ? <Text size="caption" strong tone="muted">{stages[current]}</Text> : null}
       {list}
     </View>
   );

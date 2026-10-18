@@ -41,7 +41,7 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
   // Over the halftone field the step sits on a glass surface (the prototype's form look): the page colour at about three quarters, blurred behind, with a hairline edge; the dots show faintly through it.
   const glass = over ? ({ backgroundColor: /^#[0-9a-fA-F]{6}$/.test(color["surface-1"] || "") ? `${color["surface-1"]}bd` : color["surface-1"], borderWidth: 0.5, borderColor: color["edge-strong"], borderRadius: 20, padding: 24, backdropFilter: "blur(18px) saturate(1.3)" } as object) : undefined;
   return (
-    <ScrollView className={over ? "flex-1" : "flex-1 bg-bg"} contentContainerClassName="grow items-center px-s4 py-s5" keyboardShouldPersistTaps="handled">
+    <ScrollView className={over ? "flex-1" : "flex-1 bg-bg"} contentContainerClassName={over ? "grow items-center justify-center px-s4 py-s5" : "grow items-center px-s4 py-s5"} keyboardShouldPersistTaps="handled">
       <View id="onboard-content" className="w-full max-w-read gap-s5" style={glass}>
         <View className="min-h-control flex-row items-center justify-between">
           {hero ? <View /> : <VyreMark lockup size="sm" state={mark} />}
@@ -50,8 +50,8 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
         {hero ? <View className="items-center py-s4"><VyreMark size="lg" state={mark} /></View> : null}
         {steps ? (
           <View className="gap-s1" accessible accessibilityLabel={steps.kind === "phase" ? steps.labels[steps.current] : `Step ${steps.current + 1} of ${steps.labels.length}, ${steps.labels[steps.current]}`}>
-            <Text size="caption" tone="label">{steps.kind === "phase" ? steps.labels[steps.current] : `Step ${steps.current + 1} of ${steps.labels.length}`}</Text>
-            <StageSteps stages={steps.labels} current={steps.current} strip />
+            <Text size="caption" tone="label">{steps.kind === "phase" ? `${steps.current + 1} of ${steps.labels.length} \u00b7 ${steps.labels[steps.current]}` : `Step ${steps.current + 1} of ${steps.labels.length}`}</Text>
+            <StageSteps stages={steps.labels} current={steps.current} strip quiet={steps.kind === "phase"} />
           </View>
         ) : null}
         <Appear index={1}><View className={hero ? "items-center gap-s2" : "gap-s2"}>
