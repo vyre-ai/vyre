@@ -113,6 +113,11 @@ try {
   const cookieDb = when => console.log(`--- cookie files ${when}\n` + shOk(["exec", "-u", "21000", CONTAINER, "python3", "-c",
     "import sqlite3,glob,os\nfor f in glob.glob('/var/lib/vyre/browsers/agb21000/profile/**/Cookies', recursive=True):\n    print(f, os.path.getsize(f))\n    try:\n        c=sqlite3.connect('file:'+f+'?mode=ro', uri=True)\n        print(c.execute('select host_key,name,length(value),length(encrypted_value),expires_utc,is_persistent from cookies').fetchall())\n    except Exception as e:\n        print('sqlite', e)"]));
   cookieDb("before sleeping");
+  // a login made in the last seconds before the computer sleeps: only a clean close of Chrome (Browser.close from the holder) writes it
+  adapter.drop("a");
+  const a3 = await connect("a");
+  await a3.send("Storage.setCookies", { cookies: [{ name: "proof_fresh", value: "just-now", domain: "example.com", path: "/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true }] });
+  await a3.close(); adapter.drop("a");
 
   await ctl.stopScreen(A); await sleep(8000);   // Chrome ends on SIGTERM and writes its profile
   check(!/chromium/.test(shOk(["exec", CONTAINER, "sh", "-c", "ps -u 21000 -o args= || true"])), "A's Chrome is gone after sleep");
@@ -124,6 +129,7 @@ try {
   const after = (await cookiesOf(a2)).map(c => `${c.name}=${c.value}`);
   if (!after.includes("proof_login=signed-in-1")) { cookieDb("after waking"); console.log("all cookies: " + JSON.stringify((await a2.send("Storage.getCookies", {})).cookies.map(c => c.domain + " " + c.name))); }
   check(after.includes("proof_login=signed-in-1"), "the login survived the computer sleeping and waking", after);
+  check(after.includes("proof_fresh=just-now"), "a login made seconds before the computer slept survived too (Chrome closed cleanly and wrote its profile)", after);
 
   const b = await connect("b");
   const bCookies = (await cookiesOf(b)).map(c => c.name);
