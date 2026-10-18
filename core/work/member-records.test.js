@@ -359,8 +359,8 @@ test("through the member door a joined member reads a record's history, board to
   assert.ok(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "email", text: "x" })), "an email is not logged this way");
   // totals, roles
   const stats = await w.as(BEN, "records.stats", { type: "deal" });
-  assert.equal(stats.total.count, 1);
-  assert.equal(stats.groups.find((/** @type {any} */ g) => g.key === "Qualified").count, 1);
+  assert.equal(stats.total.count, 1, JSON.stringify(stats));
+  assert.equal(stats.groups.find((/** @type {any} */ g) => g.key === "Qualified").count, 1, JSON.stringify(stats));
   const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
   assert.deepEqual((await w.as(ANA, "records.roles.summary", { urn: contact.urn })).roles, []);
   assert.ok((await w.as(ANA, "records.roles.summary", {})).roles.some((/** @type {any} */ r) => r.role === "role-lead"));
@@ -368,7 +368,7 @@ test("through the member door a joined member reads a record's history, board to
   const ev = await gw.records.create(w.chainOf(BEN), "event", { title: "Dentist", starts_at: new Date(Date.now() + 86_400_000).toISOString(), source: "google", owner: `person:${BEN}` });
   assert.ok(ev.urn);
   const busy = (await w.as(ANA, "records.busy", {})).busy;
-  assert.equal(busy.length, 1);
+  assert.equal(busy.length, 1, JSON.stringify(busy));
   assert.ok(!JSON.stringify(busy).includes("Dentist"), "no title reaches her");
   assert.equal(await code(w.as(ANA, "records.history", { urn: ev.urn })), "not_found", "and the event's history is not hers");
   // unknown keys are dropped by the door: a limit or a window she names is not obeyed
