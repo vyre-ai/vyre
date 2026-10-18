@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { create } from "zustand";
+import { openFind } from "../find/FindHost";
 import { allowsMock, ConversationHeader, ConversationList, IconButton, Menu, convoChips, convosShown, showToast } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { useChatMenu } from "./useChatMenu";
@@ -59,7 +60,7 @@ export function ChatsSidebarHeader() {
   const f = useChatsFilter();
   const add = useAdd();
   return (
-    <ConversationHeader all={f.all} query={f.q} onQuery={(q) => f.set({ q })} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })} add={add} />
+    <ConversationHeader all={f.all} query={f.q} onQuery={(q) => f.set({ q })} onSearch={() => openFind("chats")} project={f.project} onProject={(project) => f.set({ project })} tags={f.tags} tag={f.tag} onTag={(tag) => f.set({ tag })} add={add} />
   );
 }
 

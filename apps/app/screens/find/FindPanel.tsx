@@ -6,21 +6,22 @@ import { Image, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, SpaceTag, Text, useRecordsWorld, type IconName } from "@vyre/ui";
 import { NAV } from "../shell/nav";
+import { settingsGroups } from "../settings/logic.js";
 import { find } from "./source-real";
-import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
+import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, queryOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
-const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName };
+const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
 
-export default function FindPanel({ onDone, initial = "" }: { onDone?: () => void; initial?: string }) {
+export default function FindPanel({ onDone, initial = "", initialScope = "all" }: { onDone?: () => void; initial?: string; initialScope?: Scope }) {
   const findTag = usePlaceText("home");   // the search is over her own computer
   const router = useRouter();
   const { data: world } = useRecordsWorld();
   const [base, setBase] = useState<Base>(emptyBase);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState(initial);
-  const [scope, setScope] = useState<Scope>("all");
+  const [scope, setScope] = useState<Scope>(initialScope);
   const [fetched, setFetched] = useState<Fetched>({});
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [recents, setRecents] = useState<string[]>([]);
@@ -40,7 +41,8 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
 
   const places = useMemo(() => [...NAV.items, ...(NAV.more ?? []), ...(NAV.bottom ?? [])].filter((i) => i.id !== "search").map((i) => ({ id: i.id, label: i.label, href: i.href })), []);
   const records = useMemo(() => (world ? recordRows(world.types, world.byType) : []), [world]);
-  const all: Base = useMemo(() => ({ ...base, records, places }), [base, records, places]);
+  const settings = useMemo(() => settingsGroups("this Space").flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), []);
+  const all: Base = useMemo(() => ({ ...base, records, places, settings }), [base, records, places, settings]);
 
   // A query asks the three tools, 150 ms after typing stops; an answer for an old query is dropped.
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void askRef.current(); return; }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       if (!flatRef.current.length) return;
       e.preventDefault();
@@ -112,7 +115,14 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         if (r.done) setQ("");
         return;
       }
-      // Anything else asks the assistant, and its thread opens.
+      await askAssistant();
+    } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
+  };
+  /** Ask the assistant the line, and open the thread it lands in (Cmd Enter, or the row at the top). */
+  const askAssistant = async () => {
+    if (!line) return;
+    remember();
+    try {
       if (!all.assistant) { setDone("No agent is set up yet."); return; }
       setDone(`Asking ${assistant}.`);
       const r = await find.ask(all.assistant, line);
@@ -120,6 +130,8 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       setDone(r.note || `Sent to ${assistant}.`);
     } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
   };
+  const askRef = useRef(askAssistant);
+  askRef.current = askAssistant;
 
   const hit = (r: Hit) => (
     <Row key={r.key} dense selected={flat[hi]?.key === r.key} lead={<Icon name={ICON[r.kind] ?? "file"} size={16} tone="label" />} title={r.title}
@@ -148,6 +160,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         </View>
       ) : (
         <View className="gap-s3">
+          <Card flush><Row dense lead={<Icon name="spark" size={16} tone="label" />} title={`Ask ${assistant} about "${queryOf(line, scope).q || line}"`} state="Cmd Enter" onPress={() => void askAssistant()} /></Card>
           {secs.map((s) => {
             const shown = open[s.key] ? s.rows : s.rows.slice(0, SHOW);
             return (

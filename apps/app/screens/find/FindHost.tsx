@@ -5,21 +5,23 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 import { Sheet } from "@vyre/ui";
 import FindPanel from "./FindPanel";
+import type { Scope } from "./model";
 
-const useBar = create<{ open: boolean; n: number }>(() => ({ open: false, n: 0 }));
-export const openFind = () => useBar.setState((s) => ({ open: true, n: s.n + 1 }));
+const useBar = create<{ open: boolean; n: number; scope: Scope }>(() => ({ open: false, n: 0, scope: "all" }));
+/** Opens the main search. A page's own search button passes its scope (chats, projects, settings, ...); the bar's Cmd K and the sidebar's Search open it on everything. */
+export const openFind = (scope: Scope = "all") => useBar.setState((s) => ({ open: true, n: s.n + 1, scope }));
 export const closeFind = () => useBar.setState({ open: false });
 
 export function FindHost() {
-  const { open, n } = useBar();
+  const { open, n, scope } = useBar();
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const key = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); useBar.setState((s) => ({ open: !s.open, n: s.n + 1 })); }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); useBar.setState((s) => ({ open: !s.open, n: s.n + 1, scope: "all" })); }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, []);
   // A new panel (and so a clean box and fresh recents) each time it opens.
-  return <Sheet open={open} onClose={closeFind} title="Find">{open ? <FindPanel key={n} onDone={closeFind} /> : null}</Sheet>;
+  return <Sheet open={open} onClose={closeFind} title="Find">{open ? <FindPanel key={n} onDone={closeFind} initialScope={scope} /> : null}</Sheet>;
 }
