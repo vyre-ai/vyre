@@ -10,10 +10,14 @@ import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
-import { tempHome } from "./helpers.js";
+import fs from "node:fs";
+import path from "node:path";
+import { tempHome, present } from "./helpers.js";
+import { FAKE } from "../core/sessions/testing/boot.js";
+import { createMemberTools } from "../core/work/member-tools.js";
 import { canonical, sha256 } from "../kernel/core/canonical.js";
 
-process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
+process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1"; process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
 /** What this walk cannot do in a bare daemon, and why. */
 export const SKIPPED = Object.freeze({
@@ -21,6 +25,8 @@ export const SKIPPED = Object.freeze({
   "a file in Drive": "there is no Drive gateway in a bare daemon, so the file and the draft are handed in as relative Drive paths, whose form is all the kernel checks (kernel/tasks/facts.js); a hand-in that names a record is read on the doer's own chain and is covered by test/prod-wiring-daemon.test.js",
   "a running agent session": "the agent's hand-in is made on the agent's own chain; no model runs",
   "an outward send held at the Gate": "no sender is configured in a bare daemon",
+  "a model in a woken session": "the wake tests use the stand-in provider the session tests use: a job thread starts, nothing is thought, and the round's grant is minted by the test the way the Flows host mints it once the wake has ended",
+  "a joined member's notes on a record": "records.log refuses a note (it belongs to the planner) and the member's notes on a record stay her home's until 0.6.3",
 });
 
 const used = new Set();
@@ -44,8 +50,18 @@ const templateFor = (/** @type {string} */ owner) => ({
 const INTAKE = { name: "intake", label: "Intake", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["New", "Retained"] }], stages: [{ name: "New" }, { name: "Retained" }] };
 
 /** @param {any} t */
-async function boot(t) {
-  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: presence });
+async function boot(t, { fake = false } = {}) {
+  const root = tempHome(t);
+  if (fake) {
+    // a stand-in model (the fake provider the session tests use), so a wake starts a real job thread: no model runs, which is what the wake tests need and no more
+    const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+    const transcripts = path.join(root, "transcripts");
+    Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = /** @type {string} */ (v); } });
+    fs.mkdirSync(transcripts);
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  }
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence, ...(fake ? { presence: present } : {}) });
   t.after(() => d.stop());
   const K = d.kernel, space = K.id.space, owner = K.id.owner;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: owner, path: "direct", session: "s" });
@@ -142,4 +158,91 @@ test("3. a Flow with two triggers and an If: each trigger starts one run, the If
   assert.ok(steps.check && steps.check.input, `the If's input is readable: ${JSON.stringify(steps).slice(0, 300)}`);
   assert.ok(steps.look && steps.look.output !== undefined, "the step inside the taken branch ran and its output is readable");
   void space;
+});
+
+/** The wake rows the daemon wrote (agents_wakes): which task and slot an agent was woken for, and the job thread it got. @param {any} d @param {string} id @param {string} slot */
+const wakes = (d, id, slot) => /** @type {any[]} */ (d.registry.deps.db.prepare("SELECT task, agent, thread FROM agents_wakes WHERE substr(task, 1, ?) = ?").all(id.length + slot.length + 2, `${id}#${slot}:`));
+const agentIn = (/** @type {any} */ w, /** @type {string} */ agent, /** @type {string} */ thread) => w.K.chains.fromFacts({ kind: "agent_session", agent, session: thread, thread, person: w.owner, vouched: true });
+const newAgent = async (/** @type {any} */ w, /** @type {string} */ name) => {
+  const r = await w.callAs(w.ownerChain, "agents.create", { name, kind: "agent", projects: "*" });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  const actor = { kind: "agent", id: name, space: w.space };
+  await w.K.gateway.grants.addActor(w.ownerChain, actor, {});
+  return actor;
+};
+const ANA = "per_" + "bcdefghijklmnopqrstuvwxyza";
+
+test("4. an agent reviewer is woken once for a hand-in, holds that one task for the round, and passes it", { timeout: 180_000 }, async t => {
+  const w = await boot(t, { fake: true });
+  const { K, ask, ownerChain, space, d } = w;
+  const grantAna = { person: ANA, role: "member" };
+  await K.gateway.grants.setRole(ownerChain, grantAna, { presence: grantProof("grants.role", grantAna, `vyre://${space}/member/${ANA}`) });
+  const anaChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-ana", person: ANA, path: "relay" });
+  const checker = await newAgent(w, "checker");
+  const task = await ask.request(ownerChain, { title: "Check the memo", doer: { kind: "person", id: ANA, space }, reviewer: checker, output: { kind: "note" } });
+  await ask.start(anaChain, task.id);
+  assert.equal((await ask.complete(anaChain, task.id, { note: "done", sources: ["https://example.test/a"] })).state, "in_review");
+  // the daemon's own wake: one job thread for the reviewer, counted as one review round
+  const row = await until(async () => { const r = wakes(d, task.id, "reviewer"); seen.v = r; return r.length ? r : null; }, "the reviewer agent to be woken");
+  assert.equal(row.length, 1, "woken once for the hand-in");
+  assert.equal(row[0].agent, "checker");
+  assert.ok(row[0].thread, "it got a job thread");
+  assert.equal((await d.registry.call("agents.wake-rounds", { task: task.id }, "module:vyred")).data.rounds, 1, "one review round");
+  // with no model here the wake ends and takes its hold back; the round's grant is then minted the way the Flows host mints it, for this one task and the job's thread, and the agent passes with it
+  const held = async () => (await K.gateway.grants.list(ownerChain)).filter((/** @type {any} */ g) => g.status === "active" && String(g.source || "").startsWith(`flows:task:${task.id}:`));
+  await until(async () => (await held()).length === 0, "the wake's hold to end");
+  const needs = JSON.parse(fs.readFileSync(new URL("../core/flows/module.json", import.meta.url), "utf8")).needs;
+  const sh = K.kernelFor({ name: "flows", needs });
+  await sh.mint.make({ subject: { kind: "actor", actor: checker }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 }, where: { sessions: [row[0].thread] } }, source: `flows:task:${task.id}:reviewer`, reason: "test" });
+  assert.equal((await ask.review(agentIn(w, "checker", row[0].thread), task.id, { result: "pass", note: "reads well" })).state, "done", "the agent reviewer passes it");
+});
+
+test("5. changes requested on an agent doer's task wake the doer again, with the reviewer's answer; its second hand-in passes", { timeout: 180_000 }, async t => {
+  const w = await boot(t, { fake: true });
+  const { K, ask, ownerChain, miaChain, space, d } = w;
+  const writer = await newAgent(w, "writer");
+  const g = { subject: { kind: "actor", actor: writer }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
+  await K.gateway.grants.create(ownerChain, g, { presence: grantProof("grants.create", g, `vyre://${space}/grant/new`) });
+  const task = await ask.request(ownerChain, { title: "Write the memo", doer: writer, reviewer: { kind: "person", id: MIA, space }, output: { kind: "note" } });
+  const wc = agentIn(w, "writer", "t-writer");
+  await ask.start(wc, task.id);
+  assert.equal((await ask.complete(wc, task.id, { note: "first", sources: ["https://example.test/a"] })).state, "in_review");
+  const asked = await ask.review(miaChain, task.id, { result: "changes", note: "Say who it is for." });
+  assert.equal(asked.state, "changes_requested");
+  // the doer is woken again, in a job of its own, for the changes
+  const again = await until(async () => { const r = wakes(d, task.id, "changes"); seen.v = r; return r.length ? r : null; }, "the doer agent to be woken for the changes");
+  assert.equal(again.length, 1, "woken once for the changes");
+  assert.equal(again[0].agent, "writer");
+  assert.ok(again[0].thread, "in a job thread of its own");
+  // it hands in again and the manager passes it
+  await ask.start(wc, task.id);
+  assert.equal((await ask.complete(wc, task.id, { note: "second, for the board", sources: ["https://example.test/b"] })).state, "in_review");
+  assert.equal((await ask.review(miaChain, task.id, { result: "pass" })).state, "done");
+});
+
+test("6. a joined member works in the team's planner and records through the member door: her private note stays hers, and her changes and logged call are in the record's history as her", { timeout: 180_000 }, async t => {
+  const w = await boot(t);
+  const { d, K, space, owner, ownerChain, R, call } = w;
+  const svc = createMemberTools({ space, kernel: K, registry: d.registry });
+  const as = (/** @type {string} */ person, /** @type {string} */ door, /** @type {any} */ input) => { const [g, c] = [door.slice(0, door.indexOf(".")), door.slice(door.indexOf(".") + 1)]; return /** @type {any} */ (svc)[g][c](K.chains.fromFacts({ kind: "device", device_key_id: "d-mia", person: person, path: "relay" }), input); };
+  const code = (/** @type {Promise<any>} */ p) => p.then(() => null, (/** @type {any} */ e) => e && e.code);
+  // her notes, as herself
+  const mine = await as(MIA, "planner.add", { title: "Mia door note", body: "x" });
+  const itemId = (mine.item || mine).id;
+  assert.ok(itemId, "she writes a note through the door");
+  const hers = (await as(MIA, "planner.list", { state: "all" })).items.map((/** @type {any} */ x) => x.title);
+  assert.deepEqual(hers, ["Mia door note"]);
+  const ownerSees = (await call("planner.list", { state: "all" })) || [];
+  assert.ok(!ownerSees.some((/** @type {any} */ x) => x.title === "Mia door note"), "the owner's planner does not hold her private note");
+  assert.equal(await code(as(owner, "planner.get", { item: itemId })), "not_found", "and the owner cannot open it by id through the door either");
+  // her records work, with its history
+  await R.define(ownerChain, { add_types: [INTAKE] });
+  const rec = (await as(MIA, "records.create", { type: "intake", data: { name: "Okafor", stage: "New" } })).record;
+  await as(MIA, "records.move", { urn: rec.urn, stage: "Retained" });
+  await as(MIA, "records.log", { urn: rec.urn, kind: "call", text: "Spoke to Okafor" });
+  // a note is not logged here: the door sends it to the planner (a joined member's notes on a record stay her home's until 0.6.3, see docs)
+  assert.ok(await code(as(MIA, "records.log", { urn: rec.urn, kind: "note", text: "Wants a warmer blue" })), "a note is refused by records.log and goes through the planner");
+  const items = (await as(MIA, "records.history", { urn: rec.urn })).items;
+  assert.ok(items.some((/** @type {any} */ x) => /stage/i.test(x.text) && x.actor.id === MIA), `her stage change is in the history as her: ${JSON.stringify(items.map((/** @type {any} */ x) => [x.kind, x.text])).slice(0, 300)}`);
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "and the call she logged");
 });
