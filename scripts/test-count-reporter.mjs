@@ -3,6 +3,25 @@
 import fs from "node:fs";
 import path from "node:path";
 
+/** @param {unknown} v @returns {string} */
+function show(v) {
+  try { return (typeof v === "string" ? JSON.stringify(v) : JSON.stringify(v, null, 1) ?? String(v)).slice(0, 600); } catch { return String(v).slice(0, 600); }
+}
+
+/** The text of one failed test: its file, name, the assertion's message, expected and actual, and the start of its stack, at most 60 lines. @param {string} rel @param {any} d @returns {string} */
+function failureText(rel, d) {
+  const wrapped = d.details?.error;
+  const err = wrapped && wrapped.cause && typeof wrapped.cause === "object" ? wrapped.cause : wrapped;
+  const lines = [`FAILED TEST ${rel}: ${d.name}`];
+  if (err) {
+    lines.push(...String(err.message ?? err).split("\n"));
+    if (err.expected !== undefined) lines.push(`expected: ${show(err.expected)}`);
+    if (err.actual !== undefined) lines.push(`actual: ${show(err.actual)}`);
+    if (err.stack) lines.push(...String(err.stack).split("\n").slice(0, 8));
+  }
+  return lines.slice(0, 60).map(l => l.slice(0, 300)).join("\n") + "\n";
+}
+
 /** @param {AsyncIterable<{ type: string, data: any }>} source */
 export default async function* countReporter(source) {
   /** @type {Record<string, number>} */ const counts = {};
@@ -16,6 +35,8 @@ export default async function* countReporter(source) {
     const rel = process.env.VYRE_TEST_COUNTS_FILE ? process.env.VYRE_TEST_COUNTS_FILE : path.relative(root, d.file).split(path.sep).join("/");
     // A file that crashed or was cancelled reports itself as one failed "test" whose name is its path; it is not a counted test.
     if (d.nesting === 0 && d.name === d.file && ev.type === "test:fail") { counts[rel] ||= 0; continue; }
+    // A failing test prints its own error at once (message, expected, actual, stack), capped at 60 lines: the spec reporter prints these only in its closing summary, which a file that never exits does not reach.
+    if (ev.type === "test:fail") yield failureText(rel, d);
     counts[rel] = (counts[rel] || 0) + 1;
     if (d.skip || d.todo) (skipped[rel] ||= []).push(String(d.name));
   }

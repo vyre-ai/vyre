@@ -32,7 +32,7 @@ const code = (/** @type {Promise<any>} */ p) => p.then(() => null, (e) => e.code
 test("the three tools are the person's own surfaces and nothing else", () => {
   const r = rig();
   assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.space.delete", "files.drive.space.move", "files.drive.space.rename"]);
-  for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
+  for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "device"]);
 });
 
 test("a file moves: the new path is written before the old is removed, under the caller's chain, and the old bytes arrive", async () => {

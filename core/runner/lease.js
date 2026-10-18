@@ -38,7 +38,9 @@ export function createLease(o) {
   const stopTimers = () => { if (timer) clear(timer); if (expiry) clear(expiry); if (ticker) clearInterval(ticker); timer = expiry = ticker = null; };
   const zero = () => { if (key) { key.fill(0); key = null; } };
 
+  let ended = 0;   // counts the ends, so an acquire can tell that one happened while it waited for the vault
   async function end(why) {
+    ended++;
     stopTimers();
     zero();
     state = why === "revoked" ? "revoked" : "locked";
@@ -92,9 +94,12 @@ export function createLease(o) {
     /** Ask the vault for the key. Resolves with { ok: true } or { ok: false, why }. */
     async acquire() {
       if (state === "open") return { ok: true };
+      const was = ended;
       let r;
       try { r = await o.vault.lease({ space: o.space, device: o.device }); } catch (e) { return { ok: false, why: /** @type {any} */ (e) && /** @type {any} */ (e).code === "needs_presence" ? "lending this computer to the space was not approved on this computer" : "the space could not be reached" }; }
       if (!r || r.revoked) { await end("revoked"); return { ok: false, why: "access to this space has ended" }; }
+      // Access ended while the vault was answering: the key it just sent is not kept, and the lease does not open. A new, deliberate acquire after the vault grants again is the only way back.
+      if (ended !== was && state === "revoked") return { ok: false, why: "access to this space has ended" };
       zero();
       key = Buffer.from(String(r.key), "base64");
       id = String(r.id);
