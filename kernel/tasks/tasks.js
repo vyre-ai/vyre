@@ -345,8 +345,8 @@ export function createTasks(cfg) {
     if (who.kind === "person" ? !actsAsPerson(chain) : who.kind !== "agent") throw new KernelError("not_allowed", "only a person or an assistant of the group takes this task");
     await pinsHold(chain, get_(id), "doer");
     const t = get_(id);
-    if (t.claimed && !lostHolder(t)) throw new KernelError("already_taken", "someone else has taken this task");
     if (!roleHolders(t.pool.role).some((/** @type {any} */ a) => same(a, who))) throw new KernelError("not_allowed", "you are not in the group this task is for");
+    if (t.claimed && !lostHolder(t)) throw new KernelError("already_taken", "someone else has taken this task");
     if (!(t.claimed ? ["working", "changes_requested"] : ["ready"]).includes(t.state)) throw new KernelError("bad_state", `a task that is ${t.state} cannot be taken`);
     const probe = { ...t, doer: freeze({ kind: who.kind, id: who.id, space: cfg.space }) };
     if ((t.checker && !checkersOf(probe).length) || (t.reviewer && !reviewersOf(probe).length)) throw new KernelError("same_actor", "you cannot take a task nobody else could review or approve");
@@ -572,7 +572,7 @@ export function createTasks(cfg) {
     async start(/** @type {any} */ chain, /** @type {string} */ id) {
       const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
-      if (t.pool && (!t.claimed || lostHolder(t))) return claimPool(chain, id, d);
+      if (t.pool && !(t.claimed && isDoer(chain, t))) return claimPool(chain, id, d);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer starts a task");
       await pinsHold(chain, t, "doer");
       rule(t, "working", "doer");
