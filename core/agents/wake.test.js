@@ -168,5 +168,8 @@ test("agents.wake: nothing in the information can close its section; a long one 
   assert.ok(inner.endsWith(" [cut]") && inner.length <= 4000 + 8, `cut to the cap with the marker (${inner.length})`);
   const { dataJson } = await import("./index.js");
   const edge = dataJson({ s: "é<".repeat(3000) }, 4000);   // the cap may fall inside an escape: it must not leave half of one
-  assert.ok(!/\\(u[0-9a-f]{0,3})? \[cut\]$/.test(edge.replace(/\\\\/g, "")), edge.slice(-30));
+  const kept = edge.replace(/ \[cut\]$/, "");
+  const slashes = /\\+$/.exec(kept);
+  assert.ok(!slashes || slashes[0].length % 2 === 0, "no lone backslash at the cut");
+  assert.ok(!/\\u[0-9a-f]{0,3}$/.test(kept), "no half of a \\u escape at the cut");
 });
