@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView } from "./threads-model.js";
+import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView, addPeopleLine } from "./threads-model.js";
 
 const agent = { family: "assistant" }, person = { family: "person" };
 
@@ -58,4 +58,9 @@ test("a group's panel: first level, or one person or agent drilled into; someone
   assert.deepEqual(groupView("agent:kit", m), { level: "agent", name: "kit" });
   assert.deepEqual(groupView("person:per_gone", m), { level: "first" });
   assert.deepEqual(groupView("agent:Sam", m), { level: "first" }, "a person is not an agent");
+});
+
+test("before people join a thread with an agent, one line says what they and the agent get", () => {
+  assert.equal(addPeopleLine(["Dana", "Sam"], "Juno"), "Dana and Sam will see this thread's earlier messages. Juno keeps what it knows from this thread.");
+  assert.equal(addPeopleLine(["Dana"], "Juno"), "Dana will see this thread's earlier messages. Juno keeps what it knows from this thread.");
 });

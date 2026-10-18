@@ -53,6 +53,12 @@ export function threadRows(raw) {
     .sort((a, b) => Number(b.live) - Number(a.live) || b.at - a.at);
 }
 
+/** One line before people are added to a thread with an agent: what they and the agent get. @param {readonly string[]} names @param {string} agent */
+export function addPeopleLine(names, agent) {
+  const who = names.length <= 1 ? names[0] ?? "They" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${who} will see this thread's earlier messages. ${agent} keeps what it knows from this thread.`;
+}
+
 /** The hint under the composer for an agent: /new and /threads. @param {string} agent @param {boolean} working */
 export function agentHint(agent, working) {
   return working ? `Your message steers ${agent} now. Press Tab to queue it for after.` : `/new starts a new thread. /threads shows every thread with ${agent}, ready to continue.`;

@@ -33,7 +33,7 @@ export function cardOf(input) {
   rows.push(["Projects", i.projects === "*" ? "Every project" : Array.isArray(i.projects) && i.projects.length ? i.projects.join(", ") : "None yet"]);
   if (Array.isArray(i.skills) && i.skills.length) rows.push(["Skills", i.skills.join(", ")]);
   if (a.vault || a.fallback) rows.push(["AI account", [a.vault ? String(a.vault) : "", a.fallback ? `then ${a.fallback}${typeof a.budget_usd === "number" ? ` (up to $${a.budget_usd} a month)` : ""}` : ""].filter(Boolean).join(", ")]);
-  if (i.model) rows.push(["Model", String(i.model)]);
+  if (i.model || i.fallback_model) rows.push(["Model", [i.model ? String(i.model) : "", i.fallback_model ? `then ${i.fallback_model} if it runs out` : ""].filter(Boolean).join(", ")]);
   if (i.effort) rows.push(["Effort", String(i.effort)]);
   return { name: String(i.name ?? ""), look: String(i.look ?? ""), grants, rows };
 }

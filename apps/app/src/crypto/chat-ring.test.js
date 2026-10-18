@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { jwkOfAgree, holdersFor, newChatRing, lendChatKey } from "./chat-ring.js";
+import { jwkOfAgree, holdersFor, newChatRing, lendChatKey, ringWithHolders } from "./chat-ring.js";
 import { b64, fingerprint, pointOf } from "../../../../lib/keywrap.js";
 import { openBundle, openRing } from "../../../../lib/chat-keys.js";
 
@@ -68,4 +68,15 @@ test("lending: begin, open the ring with this device's key, answer with a bundle
   assert.equal(server.keys.size, 1);
   await assert.rejects(() => openBundle(bundle, "chat_x2", me.ecdh), (e) => e.code === "cannot_open", "only the session key opens it");
   await assert.rejects(() => lendChatKey(async (t) => (t === "work.chat.get" ? {} : { request: "r", session_pub: sess.pub }), "chat_x3", { holder: me.holder, ecdh: me.ecdh }), (e) => e.code === "no_ring");
+});
+
+test("adding a person to a chat's ring: their device opens the same key, and what was said before stays readable; a device that was not added still cannot", async () => {
+  const me = await device(), bob = await device(), eve = await device();
+  const made = await newChatRing("chat_x", { [me.holder]: me.pub });
+  const next = await ringWithHolders(made.ring, me, { [bob.holder]: bob.pub });
+  const mine = await openRing(next, me.holder, me.ecdh), his = await openRing(next, bob.holder, bob.ecdh);
+  assert.equal(mine.epoch, 1);
+  assert.equal(his.epoch, 1, "the same epoch: the earlier messages are his to read");
+  await assert.rejects(() => openRing(next, eve.holder, eve.ecdh), "a device that was not added holds no wrap");
+  assert.equal(made.ring.epochs[1].wraps[bob.holder], undefined, "the ring it started from is not changed");
 });

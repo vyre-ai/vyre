@@ -31,6 +31,7 @@ import { ChatHeader } from "./ChatHeader";
 import { chatKind, threadsTab } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
 import { ForwardSheet } from "./ForwardSheet";
+import { addToAgentThread, newThreadWith } from "./add-people";
 import { callsFromItems, flowNameOf, afterMake } from "./make-flow-model.js";
 import { callT } from "../real/call-tool";
 import { chatTools } from "../../screens/chat-tools/instance";
@@ -421,7 +422,12 @@ export function ChatScreen(p: ChatScreenProps) {
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onFind={() => setFindOpen(true)} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
-        onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
+        onAdd={realComposer ? async (who) => {
+          // a thread with an agent moves into the chat of exactly those people; a one-to-one chat gets a new thread in the chat of exactly that set; a group just gains them
+          if (kind === "agent" && who.family !== "assistant") return addToAgentThread(here.thread ?? p.sessionId, [String(who.id ?? who.name)]);
+          if (kind === "person" && who.family !== "assistant") { const r = await newThreadWith([...others.filter((f) => f.family !== "assistant").map((f) => f.id), String(who.id ?? who.name)]); if ("say" in r) return r.say; openThreadRef.current(r.thread); return null; }
+          try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; }
+        } : undefined}
         project={chatProject} file={viewing} onOpenInFiles={() => router.push("/u/files" as never)}
         onLinkRecord={() => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} #` : `${d}#`); setDraftN((n) => n + 1); }}
         shared={sharedChat} replyMode={store.group.replyMode()}
