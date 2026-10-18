@@ -47,13 +47,14 @@ export const PRIVACY_ROWS = [
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
-const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/groups", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
+const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/groups", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer", "/u/playbooks"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
-const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
+const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules", "/u/settings/assistant-access"];
 
 /**
- * Settings home, in the prototype's groups. Every place has its own icon from the family (logic.test.js keeps it so): a list of ten rows reads at a glance only when no two look alike. `space` names the group for the space showing. `role` is the person's role in it: a row their role cannot use
- * is not offered. No role (All spaces showing, or not known yet) shows every row, and the screen behind each row still decides.
+ * Settings home: a profile row, then three groups (You, the Space, Devices) of about eleven rows, and the rest under Advanced (the home shows it behind "Show advanced"). Every row has its own
+ * icon from the family (logic.test.js keeps it so). `space` names the group for the space showing. `role` is the person's role there: a row an owner or admin uses is not offered to others, and a
+ * temp member is not offered the space-wide places. No role (All spaces showing, or not known yet) shows every row, and the screen behind each row still decides.
  * @param {string} space @param {string} [role]
  */
 export function settingsGroups(space, role) {
@@ -64,49 +65,38 @@ export function settingsGroups(space, role) {
 function all(/** @type {string} */ space) {
   return [
     { title: "You", rows: [
-      ["Account and recovery", "Your sign-in, recovery code and GitHub link", "/u/settings/account", "face"],
-      ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
-      ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
-      ["Notifications", "Choose what can reach you, and when", "/u/settings/notifications", "bell"],
+      ["Account and recovery", "Your name, sign-in, recovery code and GitHub link", "/u/settings/account", "face"],
       ["AI accounts", "Connect Claude, OpenAI and others, each with a budget", "/u/settings/ai", "spark"],
-      ["Connections", "Link services, MCP servers, Google and GitHub", "/u/connections", "link"],
-      ["Your AI keys", "Name a key for each AI tool that acts as you", "/u/settings/mcp", "key"],
-      ["Outside agents", "Let agents running elsewhere reach what you choose", "/u/settings/outside", "agents"],
-      ["Spending limits", "Cap what each AI provider can spend in a day", "/u/settings/spend", "budget"],
-      ["Standing permissions", "Decide what may go ahead without asking you", "/u/settings/permissions", "shield"],
-      ["What my agents can see", "Choose, Space by Space, what your agents may read", "/u/settings/seeing", "eye"],
-      ["What my agent may do", "Turn off tools and areas your assistant may use", "/u/settings/assistant-access", "filter"],
-    ] },
-    { title: "Devices", rows: [
-      ["Devices", "Your phone and computers; remove one you lost", "/u/settings/devices", "devices"],
-      ["Servers", "The servers you use and the Space on each", "/u/settings/servers", "server"],
-      ["Backups", "Choose which Spaces are backed up", "/u/settings/backups", "storage"],
-      ["Access", "See who and what can reach this Space: people, agents, Kits and Flows", "/u/access", "access"],
+      ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
+      ["Notifications", "Choose what can reach you, and when", "/u/settings/notifications", "bell"],
+      ["Skills and plugins", "The skills and plugins only you use", "/u/skills?level=personal", "board"],
     ] },
     { title: space, rows: [
-      ["Customize", "Add and change object types, fields and stages", "/u/settings/customize", "records"],
-      ["Spaces and members", "Switch Space, see who is in each, invite people", "/u/spaces", "space"],
-      ["Roles", "Decide what each person can do, see and use", "/u/settings/roles", "users"],
-      ["Groups", "Sets of people and agents you give things to at once", "/u/settings/groups", "contacts"],
-      ["Rules", "Set what an agent never does, drafts only, or asks about first", "/u/settings/rules", "hand"],
-      ["Privacy and sealing", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
+      ["People and roles", "Who is in this Space and what each person can do, see and use", "/u/settings/roles", "users"],
+      ["What agents may do", "The areas and tools your agents may use, and what they ask first", "/u/settings/assistant-access", "shield"],
+      ["Connections", "Link services, MCP servers, Google and GitHub", "/u/connections", "link"],
+      ["Privacy", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
+      ["Look and name", "Switch Space, and change a Space's name, colour and logo", "/u/spaces", "space"],
+      ["Skills and plugins for the Space", "What members draft and admins approve for everyone", "/u/skills?level=space", "box"],
+    ] },
+    { title: "Devices", rows: [
+      ["Devices and computers", "Your phone and computers; approve a new one, remove one you lost", "/u/settings/devices", "devices"],
+      ["Updates and backups", "Check for and install a new version, and see what is backed up", "/u/settings/updates", "download"],
+    ] },
+    { title: "Advanced", advanced: true, rows: [
       ["Audit", "See who changed what on a record, with the value before and after", "/u/settings/audit", "clock"],
-      ["Kits", "Add or remove ready-made sets for a kind of work", "/u/kits", "kits"],
+      ["Roles in detail and groups", "Sets of people and agents you give things to at once", "/u/settings/groups", "contacts"],
+      ["Rules", "Set what an agent never does, drafts only, or asks about first", "/u/settings/rules", "hand"],
+      ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
+      ["Build", "Playbooks, objects, templates and Kits for a kind of work", "/u/playbooks", "kits"],
+      ["Customize", "Add and change object types, fields and stages", "/u/settings/customize", "records"],
       ["Engineer", "Set up your Space by describing what you want", "/u/settings/engineer", "bolt"],
-    ] },
-    { title: "More places", rows: [
-      ["Memory", "See and edit what Vyre remembers", "/u/memory", "memory"],
-      ["Vault", "Store logins, keys and cards, sealed", "/u/vault", "vault"],
-      ["Flows", "Set up work that runs by itself", "/u/flows", "flows"],
-      ["Tags", "Find everything marked with a tag", "/u/tags", "hash"],
-      ["Sites and publishing", "Put pages online from this Space and set their address", "/u/sites", "globe"],
-      ["Planner", "Your agenda, alarms, to-dos and notes", "/u/planner", "cal"],
-      ["Agents", "Your assistant and the agents that work for you", "/u/settings/assistants", "assistants"],
-    ] },
-    { title: "Vyre", rows: [
-      ["All settings", "Every setting this server offers, with search", "/u/settings/all", "settings"],
+      ["Servers and outside agents", "The servers you use, and agents running elsewhere", "/u/settings/servers", "server"],
+      ["Your AI keys", "Name a key for each AI tool that acts as you", "/u/settings/mcp", "key"],
+      ["Backups", "Choose which Spaces are backed up", "/u/settings/backups", "storage"],
+      ["Access", "See who and what can reach this Space: people, agents, Kits and Flows", "/u/access", "access"],
       ["This computer", "What runs on this computer, its history and shares", "/u/settings/system", "laptop"],
-      ["Updates", "Check for and install a new version", "/u/settings/updates", "download"],
+      ["All settings", "Every setting this server offers; find one with the main search", "/u/settings/all", "settings"],
       ["About", "Version, who made Vyre, and where to star it", "/u/about", "info"],
     ] },
   ];

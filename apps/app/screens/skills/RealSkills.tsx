@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { IconTile } from "../places/Page";
@@ -21,7 +22,9 @@ const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not
 const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
 
 export function RealSkills() {
-  const [level, setLevel] = useState<string>("space");
+  // Settings opens this at a level: Skills and plugins under You is personal, under the Space it is the Space's.
+  const { level: asked } = useLocalSearchParams<{ level?: string }>();
+  const [level, setLevel] = useState<string>(LEVELS.some((l) => l.id === asked) ? String(asked) : "space");
   const [pack, setPack] = useState<BrowsePack | null>(null);
   const [err, setErr] = useState("");
   const [pick, setPick] = useState<SkillRow | null>(null);

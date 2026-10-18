@@ -38,11 +38,18 @@ test("three autonomy levels and five budget steps", () => {
   assert.equal(BUDGET_STEPS.length, 5);
 });
 
-test("settings has five groups and the space group carries the space name", () => {
+test("settings is You, the Space, Devices and Advanced, and the space group carries the space name", () => {
   const g = settingsGroups("Juniper Studio");
-  assert.equal(g.length, 5);
-  assert.equal(g[2].title, "Juniper Studio");
+  assert.deepEqual(g.map((x) => x.title), ["You", "Juniper Studio", "Devices", "Advanced"]);
+  assert.equal(g[3].advanced, true, "Advanced is the group the home puts behind Show advanced");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
+  assert.deepEqual(g.slice(0, 3).map((x) => x.rows.length), [5, 6, 2], "about eleven rows up front, plus Skills and plugins in both groups");
+});
+
+test("Skills and plugins is a row in both groups, opening the library at the level", () => {
+  const rows = settingsGroups("Juniper Studio").flatMap((x) => x.rows);
+  assert.ok(rows.some((r) => r[2] === "/u/skills?level=personal"));
+  assert.ok(rows.some((r) => r[2] === "/u/skills?level=space"));
 });
 
 test("settings hides what a role cannot use", () => {
@@ -53,9 +60,8 @@ test("settings hides what a role cannot use", () => {
   assert.ok(!hrefs("manager").includes("/u/settings/privacy"));
   assert.ok(hrefs("member").includes("/u/settings/rules"));
   assert.ok(!hrefs("temp").includes("/u/settings/rules"));
+  assert.ok(!hrefs("temp").includes("/u/settings/assistant-access"), "a temp member is not offered what agents may do");
   assert.ok(hrefs("member").includes("/u/spaces"));
-  assert.ok(!hrefs("temp").includes("/u/memory"));
-  assert.ok(hrefs("member").includes("/u/memory"));
   assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
 });
 
