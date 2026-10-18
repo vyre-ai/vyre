@@ -93,7 +93,8 @@ try {
   if (a === null) {
     console.log("--- processes of agent A's screen\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -E 'agb2|ag2|Xvnc|fluxbox|chromium|agentd' | grep -v grep | cut -c1-220 | head -30"]));
     console.log("--- agent A's browser folder\n" + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/browsers/agb21000 /var/lib/vyre/x/ag20000 2>&1 | head -30"]));
-    console.log("--- chromium by hand as the browser uid (8 s)\n" + shOk(["exec", "-u", "21000", "-e", "HOME=/var/lib/vyre/browsers/agb21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "timeout 8 chromium --user-data-dir=/var/lib/vyre/browsers/agb21000/handtest --no-first-run --remote-debugging-pipe about:blank 2>&1 | head -25"]));
+    console.log("--- agentd-chrome.py by hand as the browser uid (8 s)\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "timeout 8 python3 -I /opt/agentd/agentd-chrome.py 2>&1 | head -30; echo exit $?"]));
+    console.log("--- id and limits of the browser uid\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "id; ulimit -a | head -20; df -h /dev/shm | tail -1; ls -ld /var/lib/vyre/browsers/agb21000 /var/lib/vyre/browsers/agb21000/profile 2>&1"]));
   }
   check(a !== null, "agent A's Chrome answers over its debugging pipe");
   await a.send("Network.setCookie", { name: "proof_login", value: "signed-in-1", url: "https://example.com/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true });
