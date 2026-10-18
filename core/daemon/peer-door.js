@@ -345,7 +345,10 @@ export function createPeerDoor(o) {
           if (input.space !== a.space || !ASK_CALLS.has(String(input.call))) throw err("denied", "an ask opens two calls and nothing else");
           const sv = serverFor(a.space);
           if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
-          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(a.name ? { name: a.name } : {}) });
+          // the device key that signed the ask and the username the directory confirmed for it are the DOOR's facts: they go into the arguments over anything the asker sent
+          const sent = Array.isArray(input.args) && input.args[0] && typeof input.args[0] === "object" && !Array.isArray(input.args[0]) ? input.args[0] : {};
+          const args2 = input.call === "requests.ask" ? [{ note: typeof sent.note === "string" ? sent.note.slice(0, 400) : "", entry: a.entry, ...(a.name ? { name: a.name } : {}) }] : [];
+          return sv.serve({ ...input, args: args2 }, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(a.name ? { name: a.name } : {}) });
         }
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
