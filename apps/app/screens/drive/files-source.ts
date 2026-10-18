@@ -42,7 +42,9 @@ export function filesLoader(s: FilesSources) {
   /** The files changed most recently anywhere in the Space (folders are not listed): the Recent place. */
   async function recent(n = 30): Promise<FileRow[]> {
     const r = await s.space.list(undefined, "");
-    return recentOf(rowsFromSpace(r.entries.filter((e) => !e.dir), ""), n);
+    const at = (v: unknown): number => (typeof v === "number" ? v : typeof v === "string" && !Number.isNaN(Date.parse(v)) ? Date.parse(v) : 0);
+    const files = r.entries.filter((e) => typeof e.path === "string" && e.path).map((e) => ({ name: e.name || e.path!.split("/").pop()!, dir: false, path: e.path!, size: e.size ?? 0, ver: e.ver ?? e.version ?? 0, at: at(e.at ?? e.mtime) }));
+    return recentOf(rowsFromSpace(files, ""), n);
   }
   return { rows, dirs, recent, placeId };
 }

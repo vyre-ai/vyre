@@ -51,7 +51,7 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
         <Text strong>{site.name}</Text>
         <Chip tone={site.status.tone}>{site.status.label}</Chip>
         <View className="flex-1" />
-        <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => router.push(`/u/chats/new?start=${encodeURIComponent(`Change my site ${site.name}: `)}` as never)} />
+        <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => router.push(`/u/chats/new?begin=${encodeURIComponent(`Change my site ${site.name}: `)}` as never)} />
         {address.url ? <Button kind="ghost" size="sm" label="Visit" onPress={() => { window.open(address.url!, "_blank", "noopener"); }} /> : null}
         {next && !held ? <Button kind="primary" size="sm" label={busy ? "Working" : waiting ? "Publish changes" : next.label} disabled={busy} onPress={publish} /> : null}
       </View>
