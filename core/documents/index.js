@@ -237,7 +237,7 @@ export function registerDocuments(ctx) {
       const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
       const st = (r && r.data && r.data.status) || null;
-      // The audit link is for a person's own surface only (sec53): the file itself is saved on the server, never handed to a model.
+      // The audit link is for a person's own surface only : the file itself is saved on the server, never handed to a model.
       return { status: st ? { ...st, audit_url: auditShown(meta && meta.caller, st.audit_url) } : null };
     },
   });

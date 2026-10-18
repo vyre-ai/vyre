@@ -292,7 +292,7 @@ test("readStatus: a declined signer shows the decline, and a missing or archived
   assert.equal(readStatus({ id: 8, archived_at: "2026-10-18T05:00:00Z", submitters: [] }), null);
 });
 
-test("auditShown: the audit link is returned only to a person's own surface; a model, a harness or a module gets none (sec53)", () => {
+test("auditShown: the audit link is returned only to a person's own surface; a model, a harness or a module gets none ", () => {
   const url = "https://docuseal.example/audit/41.pdf";
   for (const caller of ["cli", "local", "deck", "capsule", "device"]) assert.equal(auditShown(caller, url), url, caller);
   for (const caller of ["mcp", "harness", "module:documents", "agent", "mcp:agent:juno"]) assert.equal(auditShown(caller, url), null, caller);

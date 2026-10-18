@@ -142,7 +142,7 @@ export function readWaiting(json) {
   return out.sort((a, b) => b.at - a.at || b.submission - a.submission).slice(0, 50);
 }
 
-/** The audit link a caller may see: a person's own surface only, and only https. A model, a harness or a module never gets it (the file is saved on the server, sec53). @param {string} caller @param {string | null} url */
+/** The audit link a caller may see: a person's own surface only, and only https. A model, a harness or a module never gets it (the file is saved on the server, the reviewer). @param {string} caller @param {string | null} url */
 export function auditShown(caller, url) {
   const person = ["cli", "local", "deck", "capsule", "device"].includes(String(caller || ""));
   return person && typeof url === "string" && /^https:\/\//.test(url) ? url : null;
