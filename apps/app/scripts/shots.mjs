@@ -21,7 +21,9 @@ const { chromium } = require("playwright");
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".json": "application/json", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".ttf": "font/ttf" };
 const server = http.createServer((req, res) => {
-  const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  let p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  // a screen two levels down (u/chats) asks for its scripts relative to itself: serve them from the root
+  { const m = /\/(?:_expo|assets)\/.*/.exec(p); if (m) p = m[0]; }
   let f = path.join(dist, p);
   if (!f.startsWith(dist) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(dist, "index.html");
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
