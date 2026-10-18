@@ -226,7 +226,9 @@ test("records.create gives a record of a type with an ID field the next ID (PER-
   await d.kernel.gateway.records.define(ownerChain, { change_types: [withId] });
   await ok("records.list", { type: "oldtype", limit: 10 });
   assert.deepEqual((await ok("records.list", { type: "oldtype", limit: 10 })).rows.map(r => r.data.ref ?? null), [null, null], "listing gave nobody an ID: a read does not write");
-  await ok("records.define", { diff: { change_types: [withId] } });
+  const typeBefore = JSON.stringify((await ok("records.types", {})).types.find(t => t.name === "oldtype"));
+  await ok("records.define", { diff: { change_types: [withId] } });   // the same definition again: what the app asks when an owner or admin opens a type with older records
+  assert.equal(JSON.stringify((await ok("records.types", {})).types.find(t => t.name === "oldtype")), typeBefore, "the type is not changed by asking again");
   const filled = (await ok("records.list", { type: "oldtype", limit: 10 })).rows;
   assert.deepEqual(filled.map(r => [r.data.name, r.data.ref]).sort(), [["first", "OLD-0001"], ["second", "OLD-0002"]], "oldest first");
   await ok("records.define", { diff: { change_types: [withId] } });

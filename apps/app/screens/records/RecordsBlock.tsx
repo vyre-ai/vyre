@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
+import { callT } from "../../src/real/call-tool";
+import { needsIdFill } from "./records-screen.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { useEffectiveList } from "./views-actions";
@@ -50,6 +52,15 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const cards = useMembers((st) => st.spaces);
   const showing = useSpaces((st) => st.space);
   usePlaceText("showing");   // loads the spaces the row tags are read from
+  // Older records without their ID (a type that gained the field): an owner or admin opening the type asks for its own definition again, unchanged, which gives them their IDs (core/records-tools); once for a type in a visit
+  const idAsked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!world || idAsked.current.has(type)) return;
+    const def = world.types.find((t) => t.name === type);
+    if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
+    idAsked.current.add(type);
+    void callT("records.define", { diff: { change_types: [def] } }).then(() => reload()).catch(() => {});
+  }, [world, type, canShare, reload]);
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
