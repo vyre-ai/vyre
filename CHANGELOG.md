@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(ci): the polish train's node reds. skills import reads the ZIP reader and the plugin and skill-home tables from lib/ (zip.js, plugin-layout.js, skill-homes.js; the old paths re-export them), so core/skills no longer imports the vault or sessions; paper's ok and warn words are darker so they pass AA on their wash (tokens v2 now has no known miss); documents.signing.status has a lean description; the error catalogue has `partial`; the page host's Assistant, AI-account and API-key tools are listed in the app tool-name test; one changelog line no longer carries a bare `**`.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
 - perf(records): the store asks Twenty for one throwaway list as soon as Records is ready, so the first list a person opens is not the cold one (about 316 ms against 41 ms warm in the perf run).
 - test(records): perf-twenty.yml (stores/twenty/live/perf-live.mjs) times a list of 50 rows, get, create, update, a view switch, search and defining one field through the kernel gateway on a real Twenty (p50 and p95 over 20 runs, a new Space's saved database) and prints the Twenty containers' memory after they settle.
@@ -112,7 +113,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(app): the Flows list opens with one box, "What should happen on its own?", that hands the words to Engineer, and a Needs you section above the rest; a Flow's page has "Change it in chat"; the Flow's run threads have a source over work.flow.threads (empty until the box has the tool).
 - feat(app): Home opens with the date, a greeting by the person's local time and a one-line summary (home-model.js, HomeHeader).
 
-- ci: gen-kits-branch.yml recompiles records/kits/*/kit.ts into kit.json on a work/polish/** branch and commits the result back (a person may not run the compiler on a Mac). Two jobs, as in gen-tokens-branch.yml and regen.yml: the job that runs the branch's compiler has a read-only token and keeps no credentials; the job that writes runs none of the branch's code and applies the patch only when it names records/kits/<name>/kit.json files. Starts on a change to a kit source, the language or the workflow. Checked by scripts/gen-kits-workflow.test.js.
+- ci: gen-kits-branch.yml recompiles `records/kits/*/kit.ts` into `kit.json` on a `work/polish/**` branch and commits the result back (a person may not run the compiler on a Mac). Two jobs, as in gen-tokens-branch.yml and regen.yml: the job that runs the branch's compiler has a read-only token and keeps no credentials; the job that writes runs none of the branch's code and applies the patch only when it names `records/kits/NAME/kit.json` files. Starts on a change to a kit source, the language or the workflow. Checked by scripts/gen-kits-workflow.test.js.
 ## 0.6.0
 
 - feat(flows): a Flow may name the project it runs in (`project`, the project's short name), set by flows.define, the text language and flows.patch, and flows.list takes `{ project }` to show that project's Flows only.
