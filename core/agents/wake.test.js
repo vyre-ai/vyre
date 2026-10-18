@@ -166,7 +166,7 @@ test("agents.wake: nothing in the information can close its section; a long one 
   const q = globalThis.__launched.at(-1).prompt;
   const inner = q.slice(q.indexOf("<information>") + 13, q.lastIndexOf("</information>")).trim();
   assert.ok(inner.endsWith(" [cut]") && inner.length <= 4000 + 8, `cut to the cap with the marker (${inner.length})`);
-  const { dataJson } = await import("./index.js");
+  const { dataJson } = await import("../../lib/prompt-data.js");
   const edge = dataJson({ s: "é<".repeat(3000) }, 4000);   // the cap may fall inside an escape: it must not leave half of one
   const kept = edge.replace(/ \[cut\]$/, "");
   const slashes = /\\+$/.exec(kept);
