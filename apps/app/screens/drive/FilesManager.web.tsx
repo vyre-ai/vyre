@@ -18,6 +18,7 @@ import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
+import { Thumb } from "./Thumb";
 import { create as createSite } from "../sites/real";
 import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
 import { useFilesNav } from "./files-nav";
@@ -49,7 +50,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
   const [q, setQ] = useState("");
   const [chips, setChips] = useState<FilterChip[]>([]);
-  const [view, setView] = useState<"list" | "grid">("list");
+  const [view, setView] = useState<"list" | "grid">("grid");
   const [sel, setSel] = useState<Selection>({ set: new Set(), anchor: null });
   const [focus, setFocus] = useState(-1);
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
@@ -217,7 +218,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
           <div key={r.key} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
-            <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Icon name={ICON[r.kind] as never} tone="text-2" size={44 as never} /></div>
+            <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Thumb row={r} fallback={ICON[r.kind]} /></div>
             <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
           </div>
