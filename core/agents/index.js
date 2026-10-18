@@ -611,11 +611,24 @@ export default {
       }
       return out;
     };
+    // Only the Flows host stores, reads the title of and applies a new-agent draft, and it calls as vyred itself: any other module that could call these would make an agent with no card and no yes.
+    const FLOWS_HOST = "module:vyred";
+    const onlyHost = (/** @type {any} */ meta) => { if (String((meta && meta.caller) || "") !== FLOWS_HOST) throw Object.assign(new Error("a new agent is stored and made only through a proposal the owner or an admin says yes to"), { code: "denied" }); };
+    /** Whether this person is the Space's owner or an admin (the same test as who may check the card). With no kernel there are no members to tell apart. @param {string} person */
+    const isStaff = async person => {
+      if (!K) return true;
+      const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+      if (K.owner && canon(person) === canon(String(K.owner))) return true;
+      const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
+    };
     const titleOfNew = (/** @type {any} */ name) => `Make the agent ${name}?`.slice(0, 200);
     ctx.tool("agents.new.draft", {
       description: "Store a proposed new agent (the agents.create input) and say whose yes it needs (the owner, else an admin). For the Flows proposals path (kind agent.new).", internal: true, callers: ["module"],
       input: { type: "object", required: ["input", "proposer"], properties: { input: { type: "object" }, proposer: { type: "string" }, by: { type: "string" } } },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
+        if (!(await isStaff(String(i.proposer)))) throw Object.assign(new Error("only an owner or an admin proposes a new agent"), { code: "denied" });
         const input = cleanNew(i.input);
         const hash = hashOf({ new: input });
         let d = db.prepare("SELECT * FROM agents_newdrafts WHERE hash = ? AND state = 'open'").get(hash);
@@ -626,7 +639,8 @@ export default {
     ctx.tool("agents.new.title", {
       description: "The title a stored new-agent draft really has, or null when it is gone, settled, or its name is taken since. For the proposals path.", internal: true, callers: ["module"],
       input: { type: "object", required: ["id", "hash"], properties: { id: { type: "string" }, hash: { type: "string" } } },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
         const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
         if (!d || d.state !== "open" || d.hash !== i.hash || get(String(d.name)) || d.hash !== hashOf({ new: JSON.parse(String(d.input)) })) return null;
         return titleOfNew(String(d.name));
@@ -636,6 +650,9 @@ export default {
       description: "Make the agent a stored draft describes, on an owner's or an admin's yes, through the same path as agents.create. For the proposals path.", internal: true, callers: ["module"],
       input: { type: "object", required: ["id", "hash", "approver"], properties: { id: { type: "string" }, hash: { type: "string" }, approver: { type: "string" } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        onlyHost(meta);
+        // the one who says yes must be the owner or an admin: the new agent's owner is then a verified person, never a string from the input
+        if (!(await isStaff(String(i.approver)))) throw Object.assign(new Error("only an owner or an admin says yes to a new agent"), { code: "denied" });
         const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
         if (!d || d.state !== "open" || d.hash !== i.hash) throw Object.assign(new Error("that agent is no longer waiting; ask for it again"), { code: "not_found" });
         const input = JSON.parse(String(d.input));

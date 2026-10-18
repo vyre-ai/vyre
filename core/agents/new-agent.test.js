@@ -10,12 +10,12 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 
-async function boot(/** @type {any} */ t) {
+async function boot(/** @type {any} */ t, kernel = false) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, ...(kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
-  return { c: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ as = "local") => d.registry.call(tool, input, as) };
+  return { d, c: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ as = "local") => d.registry.call(tool, input, as) };
 }
 const NEW = { name: "scout", instructions: "Find three photographers.", projects: [], skills: ["research"], effort: "high", look: "s2~c4~e1~m2~t3~b1~h5", auth: { vault: "claude-setup-token", fallback: "anthropic-api-key", budget_usd: 20 } };
 
@@ -78,4 +78,29 @@ test("a draft whose name was taken meanwhile does not apply", async t => {
   await c("agents.create", { name: "scout", kind: "agent", projects: [] });
   assert.equal((await c("agents.new.title", { id: d.id, hash: d.hash }, "module:vyred")).data, null);
   assert.match(String((await c("agents.new.apply", { id: d.id, hash: d.hash, approver: "per_o" }, "module:vyred")).error?.message), /already an agent/);
+});
+
+test("only the Flows host (vyred) stores, titles or applies a draft: any other module is refused and nothing is made", async t => {
+  const { c } = await boot(t);
+  const d = (await c("agents.new.draft", { input: NEW, proposer: "per_a" }, "module:vyred")).data;
+  for (const who of ["module:mail", "module:flows", "module:agents", "module:added"]) {
+    assert.equal((await c("agents.new.draft", { input: { ...NEW, name: "other" }, proposer: "per_o" }, who)).error?.code, "denied", `${who} draft`);
+    assert.equal((await c("agents.new.title", { id: d.id, hash: d.hash }, who)).error?.code, "denied", `${who} title`);
+    assert.equal((await c("agents.new.apply", { id: d.id, hash: d.hash, approver: "per_o" }, who)).error?.code, "denied", `${who} apply`);
+  }
+  const names = (await c("agents.list")).data.map((/** @type {any} */ r) => r.name);
+  assert.ok(!names.includes("scout") && !names.includes("other"), "no agent was made");
+  assert.equal((await c("agents.new.title", { id: d.id, hash: d.hash }, "module:vyred")).data, "Make the agent scout?", "the draft is still waiting, untouched");
+});
+
+test("the one who says yes must be the owner or an admin: another person is refused, and nothing is made", async t => {
+  const { c, d: daemon } = await boot(t, true);
+  const owner = daemon.kernel.id.owner;
+  const draft = (await c("agents.new.draft", { input: NEW, proposer: owner }, "module:vyred")).data;
+  const stranger = "per_" + "z".repeat(26);
+  assert.equal((await c("agents.new.apply", { id: draft.id, hash: draft.hash, approver: stranger }, "module:vyred")).error?.code, "denied");
+  assert.equal((await c("agents.new.draft", { input: { ...NEW, name: "other" }, proposer: stranger }, "module:vyred")).error?.code, "denied", "a stranger cannot propose either");
+  assert.ok(!(await c("agents.list")).data.some((/** @type {any} */ r) => r.name === "scout"));
+  const made = await c("agents.new.apply", { id: draft.id, hash: draft.hash, approver: owner }, "module:vyred");
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
 });
