@@ -265,7 +265,7 @@ function didWhat(t) {
  * The tasks of each stage, in stage order, with "n of m done". A stage with no task is left out unless it is the current one; tasks without a stage (or with one the type
  * does not have) form one group at the end. `done` and `total` count the required tasks, or every task when none is required.
  * @param {any[]} tasks @param {string[]} stages @param {string|undefined} current
- * @returns {{ stage: string|null, label: string, tasks: any[], done: number, total: number, current: boolean, complete: boolean }[]}
+ * @returns {{ stage: string|null, label: string, tasks: any[], done: number, total: number, current: boolean, complete: boolean, declined: any[] }[]}
  */
 export function stageGroups(tasks, stages, current) {
   const make = (/** @type {string|null} */ stage, /** @type {string} */ label, /** @type {any[]} */ list, /** @type {boolean} */ isCurrent) => {
