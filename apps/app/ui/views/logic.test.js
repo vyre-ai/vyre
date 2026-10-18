@@ -71,7 +71,7 @@ test("calendar: the start month is the first with a dated row from now on, and r
 test("Seal for all names how many records have a value", () => {
   const f = fieldOf(def("contact"), "ssn");
   const s = sealSpec(def("contact"), f, byType.contact);
-  assert.match(s.title, /Seal SSN for all contacts\?/);
+  assert.match(s.title, /Seal SSN for all people\?/);
   assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} contacts`));
   assert.equal(isSealedField(f), true);
   assert.equal(isSealedField(fieldOf(def("contact"), "name")), false);
@@ -262,12 +262,12 @@ test("the four starting types open as they should: People and Companies as table
   const { viewDefOf } = await import("./view-defs.js");
   const { CORE_TYPES } = await import("../../../../records/core-types.js");
   const of = (/** @type {string} */ n) => CORE_TYPES.find((/** @type {any} */ t) => t.name === n);
-  const names = Object.fromEntries(["contact", "organization", "task", "note"].map((n) => [n, viewDefOf(of(n)).plural]));
-  assert.deepEqual(names, { contact: "People", organization: "Companies", task: "Tasks", note: "Notes" });
+  const names = Object.fromEntries(["contact", "organization", "task", "memo"].map((n) => [n, viewDefOf(of(n)).plural]));
+  assert.deepEqual(names, { contact: "People", organization: "Companies", task: "Tasks", memo: "Notes" });
   assert.equal(viewDefOf(of("task")).open, "board", "Tasks open as a board");
   assert.equal(viewDefOf(of("contact")).open, undefined, "People open as the table");
   assert.deepEqual(viewsOf(of("task"), viewDefOf(of("task"))), ["list", "board", "calendar"], "Tasks offer a board and a calendar: they have a status and a due date");
-  assert.deepEqual(viewsOf(of("note"), viewDefOf(of("note"))), ["list"], "Notes have nothing to group or date by: only the list");
+  assert.deepEqual(viewsOf(of("memo"), viewDefOf(of("memo"))), ["list"], "Notes have nothing to group or date by: only the list");
   assert.deepEqual(viewsOf(of("organization"), viewDefOf(of("organization"))), ["list", "gallery"], "Companies offer the gallery");
   assert.equal(viewDefOf(of("organization")).open, "gallery", "Companies open as cards");
 });

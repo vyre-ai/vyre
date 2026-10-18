@@ -127,16 +127,16 @@ export const ORGANIZATION = {
 };
 
 /** A note: a title and some words, about a person or a company. One of the four types a new Space starts with (People, Companies, Tasks, Notes). */
-export const NOTE = {
-  name: "note", label: "Note", icon: "IconNote",
+export const MEMO = {
+  name: "memo", label: "Note", icon: "IconNote",   // not "note": Twenty has a standard object of that name
   fields: [
     text("name", "Title", { required: true }),
     f("rich_text", "body", "Note"),
     f("link", "contact", "Person", { to: "contact", inverse: { name: "note_records", label: "Notes" } }),
-    f("link", "organization", "Company", { to: "organization", inverse: { name: "note_records", label: "Notes" } }),
+    f("link", "organization", "Company", { to: "organization", inverse: { name: "company_notes", label: "Notes" } }),
     TAGS,
   ],
-  views: [{ name: "notes_list", type: "list", label: "All notes", columns: ["name", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
+  views: [{ name: "memos_list", type: "list", label: "All notes", columns: ["name", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
 };
 
 export const POINT_KINDS = ["email", "phone"];
@@ -339,4 +339,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, NOTE].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, MEMO].map((t) => Object.freeze(t)));
