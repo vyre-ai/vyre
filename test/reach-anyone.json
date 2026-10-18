@@ -1273,6 +1273,10 @@
    "module": "sessions",
    "reason": "read-only (an agent sees accounts without their vault item names)"
   },
+  "sessions.accounts.models": {
+   "module": "sessions",
+   "reason": "read-only: the models one account's provider offers, for an account the caller may see (sessions.accounts.list); an unseen account is not_found"
+  },
   "sessions.accounts.signin": {
    "module": "sessions",
    "reason": "askedOnly(): as add; a non-person starts a sign-in only for a new or still-pending account, scoped to the request's project, and the account stays pending after the sign-in, whoever completed it, until the person confirms it on their own surface (bind with confirm)"

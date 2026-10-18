@@ -2287,7 +2287,8 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    if (typeof fb.model === "string" && fb.model) this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(fb.model, id);
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, ...(typeof fb.model === "string" && fb.model ? { model: fb.model } : {}), budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 

@@ -352,13 +352,15 @@ export function registerThreads(d) {
       const origin = String(input.thread), message = String(input.message);
       const solo = soloAgent(k, chain, origin);
       if (!solo) throw fail("not_found", "no such thread (work.agent.threads lists yours); only a thread of you and one agent can be forked");
+      // a fork is a NEW chat: an id that already names a chat (this thread's own, or any other) is refused before anything is made, and a repeat id can never rewrite another thread's fork origin
+      if (input.id && (await d.hubOf().chatRecord(String(input.id)) || (() => { try { return k.chats.read(chain, String(input.id)); } catch { return null; } })())) throw fail("exists", "that id already names a chat: a fork needs a new one");
       const point = await d.ctx.call("threads.fork-point", { chat: origin, message });
       if (point.error) throw fail(point.error.code || "failed", point.error.message);
       const rec = await d.hubOf().chatRecord(origin);
       const title = String(input.title || "") || `${(rec && rec.data.title) || "Thread"} (fork)`;
       const project = rec && rec.data.project && rec.data.project.urn ? String(rec.data.project.urn) : null;
       const made = await d.createChat({ agents: [solo.agent], title, ...(project ? { project } : {}), ...(input.id ? { id: String(input.id) } : {}), ...(input.ring ? { ring: input.ring } : {}) }, extra);
-      forksTable(d.ctx.store.db).prepare("INSERT OR REPLACE INTO work_thread_forks (chat, source_run, resume_at, origin, message, at) VALUES (?,?,?,?,?,?)").run(String(made.chat), String(point.data.run), String(point.data.uuid), origin, message, Date.now());
+      forksTable(d.ctx.store.db).prepare("INSERT INTO work_thread_forks (chat, source_run, resume_at, origin, message, at) VALUES (?,?,?,?,?,?)").run(String(made.chat), String(point.data.run), String(point.data.uuid), origin, message, Date.now());
       const mine = await d.hubOf().chatRecord(String(made.chat));
       const link = { thread: origin, message };
       if (mine) await d.hubOf().setChatFields(mine, { forked_from: JSON.stringify(link) });

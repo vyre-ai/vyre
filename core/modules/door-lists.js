@@ -61,7 +61,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "roles.catalogue", "roles.get", "roles.list", "roles.tools",
   "rules.get", "rules.list", "rules.test",
   "runner.move",
-  "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.signin",
+  "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.models", "sessions.accounts.signin",
   "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.list",
   "spaces.groups.list", "spaces.list", "spaces.members.list", "spaces.pair.install",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
