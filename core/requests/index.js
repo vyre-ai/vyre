@@ -77,7 +77,7 @@ export default {
     };
     const doDecide = (/** @type {string} */ space, /** @type {string} */ by, /** @type {any} */ i) => {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM requests_asks WHERE id = ? AND space = ?").get(String(i.id || ""), space));
-      if (!row || row.state !== "open") throw refuse("No such request is waiting.", "not_found");
+      if (!row || row.state !== "open") throw refuse("No such request is waiting. Look at the list of requests waiting, which may have changed, then answer one that is there.", "not_found");
       if (i.approve === true) {
         // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here. The SPACE'S DOOR has already checked, under the approver's own chain, that it exists, is theirs,
         // unused and unexpired, grants no role above theirs; here it must also be made for THIS asker and not already linked to another ask.
@@ -169,13 +169,13 @@ export default {
           case "ask": return doAsk(space, person, role, input);
           case "status": return doStatus(space, person, role);
           case "setting": {
-            if (role !== "owner") throw refuse("not found", "not_found");
+            if (role !== "owner") throw refuse("not found. Ask the Space owner to do this.", "not_found");
             db.prepare("INSERT INTO requests_settings (space, accepting, refused, updated) VALUES (?, ?, 0, ?) ON CONFLICT(space) DO UPDATE SET accepting = excluded.accepting, updated = excluded.updated").run(space, input.accepting === true ? 1 : 0, now());
             ctx.events.emit("requests.setting", { space, accepting: input.accepting === true });
             return doList(space);
           }
           case "list": case "decide": case "clear":
-            if (role !== "owner" && role !== "admin") throw refuse("not found", "not_found");
+            if (role !== "owner" && role !== "admin") throw refuse("not found. Ask the Space owner or an admin to do this.", "not_found");
             return i.call === "list" ? doList(space) : i.call === "clear" ? doClear(space, person) : doDecide(space, person, input);
           default: throw refuse("call is ask, status, setting, list, decide or clear", "bad_input");
         }
