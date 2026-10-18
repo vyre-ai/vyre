@@ -27,7 +27,7 @@ export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
 
-const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, { screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string }>)[key] : undefined);
+const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, any>)[key] as ({ screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string; [k: string]: any } | undefined) : undefined);
 
 /**
  * First run: Identity, then a space, then Ready. Every button calls a registry tool. One halftone field sits behind the whole flow, mounted here once so it lives through every
@@ -55,7 +55,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const router = useRouter();
   const { phone, color } = useUiTheme();
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
-  const path = one(params.path);
+  const path = one(params.path) || (shot?.another ? "create" : undefined);
   const shot = shotOf(one(params.shot) || "");
   const [stack, setStack] = useState<Screen[]>([shot?.screen || entryScreen(path)]);
   const [username, setUsername] = useState(shot?.username || "");
@@ -87,20 +87,20 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
-  const [asName, setAsName] = useState("");
-  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
+  const [asName, setAsName] = useState<string>(shot?.asName || "");
+  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(shot?.models || null);
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
-  const [asDone, setAsDone] = useState(false);
-  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean; why?: string }[] } | null>(null);
-  const [copyPick, setCopyPick] = useState<string[]>([]);
-  const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(null);
-  const [carried, setCarried] = useState<{ name: string; look: string } | null>(null);
+  const [asDone, setAsDone] = useState<boolean>(Boolean(shot?.asDone));
+  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean; why?: string }[] } | null>(shot?.copyable || null);
+  const [copyPick, setCopyPick] = useState<string[]>(shot?.copyPick || []);
+  const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(shot?.copyDone || null);
+  const [carried, setCarried] = useState<{ name: string; look: string } | null>(shot?.carried || null);
   const [changing, setChanging] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
-  const [signedIn, setSignedIn] = useState(false);
-  const [first, setFirst] = useState("");
-  const [last, setLast] = useState("");
+  const [signedIn, setSignedIn] = useState<boolean>(Boolean(shot?.another));
+  const [first, setFirst] = useState(shot?.first || "");
+  const [last, setLast] = useState(shot?.last || "");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
   const [expiresAt, setExpiresAt] = useState("");
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
