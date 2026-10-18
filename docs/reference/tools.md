@@ -3372,7 +3372,7 @@ Email the signer their signing link again: { submission }. One yes, like any sen
 
 ### `documents.signing.status`
 
-One signature request's timeline: { submission } -> { status: { submission, status, signers: [{ name, email, sent, opened, signed, declined }], audit_url } | null }. Times are milliseconds.
+One signature request's timeline: sent, opened, signed or declined per signer, with the audit link. Takes { submission }; times are milliseconds.
 
 - Input:
   - `submission` integer, required
