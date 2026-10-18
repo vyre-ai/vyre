@@ -201,12 +201,17 @@ test("install-box.sh v2: the Records store's images that release.json names are 
   const b = box(t);
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { store: STORE }) }, ["--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  for (const ref of STORE) assert.ok(b.calls().includes(`docker pull -q ${ref}`), `${ref} pulled:\n${b.calls()}`);
+  for (const ref of STORE) assert.ok(b.calls().includes(`docker pull -q -- ${ref}`), `${ref} pulled:\n${b.calls()}`);
   const c = box(t);
   const bad = run({ ...c.env, VYRE_BOX_URL: site(c.base, { store: ["twentycrm/twenty:latest"] }) }, ["--yes"]);
   assert.notEqual(bad.status, 0, "a Records image without a digest is refused");
   assert.match(bad.stdout + bad.stderr, /not pinned by digest/);
   assert.ok(!c.calls().includes("docker pull"), "nothing was pulled");
+  const d = box(t);
+  const dash = run({ ...d.env, VYRE_BOX_URL: site(d.base, { store: ["-x@sha256:" + "f".repeat(64)] }) }, ["--yes"]);
+  assert.notEqual(dash.status, 0, "a ref that starts with a dash is refused");
+  assert.match(dash.stdout + dash.stderr, /not pinned by digest/);
+  assert.ok(!d.calls().includes("docker pull"), "nothing was pulled");
 });
 
 test("install-box.sh v2: a failed signature check stops the install before anything is laid out", t => {
