@@ -235,3 +235,12 @@ test("a job thread that ends with its task still open ends what was lent for it,
   await onEvent.threadEnded("job", "stopped");
   assert.deepEqual(calls, ["reclaim r1", "stuck"], "the second end ends the lend, then marks it stuck");
 });
+
+test("a task's slot instructions, the doer's skills, details and outputs go to the agent as info, apart from its instructions", async () => {
+  const r = rig([task({ guides: { instructions: { doer: "Keep it short", reviewer: "for the reviewer only" }, skills: { doer: [{ id: "s/brand", name: "brand", hash: "h", checklist: ["names the firm"] }] } }, details: { client: "Jane" }, outputs: ["vyre://s/file/1"] })]);
+  await r.onEvent(created("t1"));
+  assert.deepEqual(r.woke[0].info, { instructions: "Keep it short", skills: [{ name: "brand", checklist: ["names the firm"] }], details: { client: "Jane" }, outputs: ["vyre://s/file/1"] });
+  const plain = rig([task()]);
+  await plain.onEvent(created("t1"));
+  assert.equal("info" in plain.woke[0], false, "a task with none of it sends no info");
+});
