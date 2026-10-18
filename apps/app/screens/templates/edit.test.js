@@ -241,3 +241,22 @@ test("a task is dropped at a place in a stage, in its own or another; a stage is
   assert.deepEqual(moveStageTo(b, 0, 3).stages.map((s) => s.name), ["Done", "Stage 3", "Stage 4", "Start"]);
   assert.equal(moveStageTo(b, 2, 2), b);
 });
+
+test("a to-do's reviewer and approver slots are set, replace the older checker, and carry a time limit with a fallback role", async () => {
+  const { setSlot, approverOf, slotProblems, lateWords } = await import("./edit.ts");
+  let b = base();
+  b = setTask(b, 0, 0, { checker: "role:attorney" });
+  assert.deepEqual(approverOf(b.stages[0].tasks[0]), { who: "role:attorney" });
+  b = setSlot(b, 0, 0, "reviewer", { who: "role:researcher", skills: ["voice"], instructions: "Plain words", due: 172800000, escalate_to: "role:attorney" });
+  b = setSlot(b, 0, 0, "approver", { who: "role:attorney", quorum: "any" });
+  const t = b.stages[0].tasks[0];
+  assert.equal(t.checker, undefined, "an approver slot replaces the checker");
+  assert.deepEqual(t.approver, { who: "role:attorney" });
+  assert.deepEqual(t.reviewer.skills, ["voice"]);
+  assert.equal(lateWords(t), "Reviewer passes to the attorney after 2 days");
+  assert.deepEqual(slotProblems({ who: "x", due: 1000 }, "reviewer"), ["Set both the time limit and who it passes to for the reviewer, or neither."]);
+  assert.equal(slotProblems({ who: "x", quorum: "all", due: 60000, escalate_to: "role:a" }, "approver").length, 1);
+  b = setSlot(b, 0, 0, "reviewer", null);
+  assert.equal(b.stages[0].tasks[0].reviewer, undefined);
+  assert.deepEqual(b.stages[0].tasks[0].approver, { who: "role:attorney" }, "taking one slot away leaves the other");
+});
