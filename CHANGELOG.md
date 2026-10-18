@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(records): pipelines for any type. records.pipeline.set takes a plain stage list (a stage can require fields, a lost stage requires a reason) and writes the type's stages and entry conditions; records.move moves a record and answers `needs: [fields]`, writing nothing, when the stage's required fields are empty.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
 - perf(records): the store asks Twenty for one throwaway list as soon as Records is ready, so the first list a person opens is not the cold one (about 316 ms against 41 ms warm in the perf run).
 - test(records): perf-twenty.yml (stores/twenty/live/perf-live.mjs) times a list of 50 rows, get, create, update, a view switch, search and defining one field through the kernel gateway on a real Twenty (p50 and p95 over 20 runs, a new Space's saved database) and prints the Twenty containers' memory after they settle.

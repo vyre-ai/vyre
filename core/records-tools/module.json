@@ -19,6 +19,8 @@
       { "name": "records.reference", "effect": "read", "reach": "person" },
       { "name": "records.create", "effect": "write", "reach": "person" },
       { "name": "records.update", "effect": "write", "reach": "person" },
+      { "name": "records.move", "effect": "write", "reach": "person" },
+      { "name": "records.pipeline.set", "effect": "write", "reach": "person" },
       { "name": "records.linked", "effect": "read", "reach": "person" },
       { "name": "records.roles", "effect": "read", "reach": "person" },
       { "name": "records.holders", "effect": "read", "reach": "person" },

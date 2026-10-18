@@ -9,6 +9,7 @@ import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
+import { registerPipeline } from "./pipeline.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -162,6 +163,7 @@ export default {
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
     }, byUrn);
 
+    registerPipeline({ tool, obj, str, refuse, parseUrn });
     // ---- what links to a record, and the Kits this build ships ----
     tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {
       parseUrn(i.urn);
