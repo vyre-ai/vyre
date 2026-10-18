@@ -7,6 +7,7 @@ import { Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";
 import { useKernelTypes } from "./kernel-types";
 import { AddTypeSheet } from "./AddTypeSheet";
+import { HiddenTypes } from "./HiddenTypes";
 
 /** Settings, Customize: the model of the space (every record type, its counts and links), and Add a type. A type opens to its fields, groups and stages. */
 export function CustomizeScreen() {
@@ -27,6 +28,7 @@ export function CustomizeScreen() {
       {error ? <Banner tone="warn">{error}</Banner> : null}
       {working.length ? <Banner><Text strong>{`Setting up ${working.join(", ")} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
       {loading && !defs.length ? <LoadingState rows={3} /> : <ModelMap types={types} onOpen={(n) => router.push(`/u/settings/customize/${n}` as never)} />}
+      <HiddenTypes types={defs.filter((d: any) => d.hidden_in_records).map((d) => ({ name: d.name, label: d.label, plural: (d.plural as string) ?? `${d.label}s` }))} onChanged={() => void load(!allowsMock() && showing !== "all" ? showing : undefined)} />
       <View className="flex-row"><Button kind="primary" icon="plus" label="Add a type" loading={working.length > 0} disabled={working.length > 0} onPress={() => setAdding(true)} /></View>
       <AddTypeSheet open={adding} onClose={() => setAdding(false)} space={showing} taken={defs.map((x) => x.name)} onAdd={(t, plural) => { create(t); showToast(`${plural} added.`); }} />
     </Page>
