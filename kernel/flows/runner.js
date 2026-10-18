@@ -1801,9 +1801,12 @@ export class FlowRunner {
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
       // The task's slots (tasks v2): a reviewer, an approver, and per-slot instructions and Space skills, as the author wrote them. The kernel pins the skills and refuses what the Flow's person may not use.
+      const slotOf = (/** @type {any} */ v) => (v && typeof v === "object" ? v : null);
+      const rv = slotOf(s.reviewer), ap = slotOf(s.approver);
       const slots = {
-        ...(s.reviewer ? { reviewer: await this.#checker(ctx, s.reviewer) } : {}), ...(s.approver ? { approver: await this.#checker(ctx, s.approver) } : {}),
-        ...(s.instructions && typeof s.instructions === "object" && s.kind !== "agent" ? { instructions: s.instructions } : {}), ...(s.skills && !Array.isArray(s.skills) ? { skills: s.skills } : {}),
+        ...(rv ? { reviewer: await this.#checker(ctx, rv.who) } : {}), ...(ap ? { approver: await this.#checker(ctx, ap.who) } : {}),
+        ...((rv && rv.instructions) || (ap && ap.instructions) ? { instructions: { ...(rv && rv.instructions ? { reviewer: rv.instructions } : {}), ...(ap && ap.instructions ? { approver: ap.instructions } : {}) } } : {}),
+        ...((rv && rv.skills) || (ap && ap.skills) ? { skills: { ...(rv && rv.skills ? { reviewer: rv.skills } : {}), ...(ap && ap.skills ? { approver: ap.skills } : {}) } } : {}),
       };
       const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...slots, flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.

@@ -10,23 +10,23 @@ const assign = (/** @type {any} */ over = {}) => ({ kind: "assign", to: "role:de
 const ask = (/** @type {any} */ over = {}) => ({ kind: "ask", to: "person:per_a", title: "Ok?", ...over });
 const problems = (/** @type {any} */ f) => { const r = /** @type {any} */ (checkFlow(f)); return (Array.isArray(r) ? r : r.problems || r.errors || []).map((/** @type {any} */ x) => `${x.path}: ${x.message}`); };
 
-test("assign and ask steps take a reviewer, an approver, instructions and skills per slot", () => {
-  const slots = { reviewer: "role:editors", approver: "person:per_b", quorum: "any", instructions: { doer: "Keep it short", reviewer: "Check the tone", approver: "Only if it names the firm" }, skills: { doer: ["voice"], reviewer: ["brand-voice"] } };
+test("assign and ask steps take a reviewer and an approver, each with its own skills and instructions", () => {
+  const slots = { reviewer: { who: "role:editors", skills: ["brand-voice"], instructions: "Check the tone" }, approver: { who: "person:per_b", skills: ["sign-off"], instructions: "Only if it names the firm", quorum: "any" } };
   assert.deepEqual(problems(flow(assign(slots))), []);
-  assert.deepEqual(problems(flow(ask({ reviewer: "teammate:editor", approver: "role:partners", instructions: { approver: "Say yes only if sure" } }))), []);
-  assert.deepEqual(problems(flow(assign({ skills: ["probate"] }))), [], "the old list of words still stands for the doer");
+  assert.deepEqual(problems(flow(ask({ reviewer: { who: "teammate:editor" }, approver: { who: "role:partners", instructions: "Say yes only if sure" } }))), []);
+  assert.deepEqual(problems(flow(assign({ skills: ["probate"] }))), [], "the step's own list of words still stands for the doer");
+  assert.deepEqual(problems(flow(assign({ checker: "person:per_c" }))), [], "checker is the old name of the approver");
 });
 
-test("slots are refused when malformed: who, quorum, both approver and checker, a slot the step lacks, repeated or too many skills, a long instruction", () => {
+test("slots are refused when malformed: who, quorum, both approver and checker, repeated or too many skills, a long instruction, a stray key", () => {
   const bad = (/** @type {any} */ over, /** @type {RegExp} */ re) => assert.match(problems(flow(assign(over))).join("\n"), re);
-  bad({ reviewer: "someone" }, /reviewer is person/);
-  bad({ approver: "pool:x" }, /approver is person/);
-  bad({ quorum: "all" }, /quorum is any/);
-  bad({ approver: "person:per_b", checker: "person:per_c" }, /not both/);
-  bad({ instructions: { reviewer: "x" } }, /no reviewer/);
-  bad({ reviewer: "role:r", skills: { reviewer: ["a", "a"] } }, /different Space skill ids/);
-  bad({ skills: { doer: Array.from({ length: 11 }, (_, i) => `s${i}`) } }, /up to 10/);
-  bad({ instructions: { doer: "x".repeat(2001) } }, /2000/);
-  bad({ instructions: { mayor: "x" } }, /not part of this/);
-  assert.match(problems(flow(ask({ skills: ["a"] }))).join("\n"), /skills on a question/);
+  bad({ reviewer: "role:r" }, /reviewer is \{ who/);
+  bad({ reviewer: { who: "someone" } }, /reviewer is person/);
+  bad({ approver: { who: "pool:x" } }, /approver is person/);
+  bad({ approver: { who: "person:per_b", quorum: "all" } }, /quorum is any/);
+  bad({ reviewer: { who: "role:r", quorum: "any" } }, /not part of this/);
+  bad({ approver: { who: "person:per_b" }, checker: "person:per_c" }, /not both/);
+  bad({ reviewer: { who: "role:r", skills: ["a", "a"] } }, /up to 10 different/);
+  bad({ reviewer: { who: "role:r", skills: Array.from({ length: 11 }, (_, i) => `s${i}`) } }, /up to 10 different/);
+  bad({ approver: { who: "person:per_b", instructions: "x".repeat(2001) } }, /2000/);
 });
