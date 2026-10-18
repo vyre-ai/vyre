@@ -38,6 +38,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(welcome): a member's key never replaces an item of their own Vault: their list is read first (and if it cannot be, nothing is put), the account's name is used when free, else with a number, and that chosen name is both the vault put and the account's item (sec53).
 - fix(sessions): sessions.accounts.key's item name fails closed: when the Vault cannot be read for the name, nothing is put and no account is made (sec53).
 - fix(words): "Password", never "master password", in every product string of the app, the sign-in error words and the first-run messages; recovery key and vault wording stay. The first-run proof moves with the strings in this commit.
+## 0.6.1
+
+- feat(threads): a member's own AI key is lent to her own turn (lendKey, closing the 0.6.0 known issue). The daemon (core/daemon/lend-key.js, needs.daemon "lendKey") opens a 20-second kernel session of the asker alone (no agent hop, no chat), makes the one call vault.me.lend on it through Registry.callLend as module:threads, and ends the session in a finally; the token never leaves that function. The Switchboard settles who first (core/switchboard/lend-turn.js): the verified asker of the launch or the stored asker of a turn being handed over (two that differ, or none, are refused), still in the chat at lend time, and an account that is that same person's; the Vault's pair check stays the second lock. The two skipped lent-key tests run again
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
