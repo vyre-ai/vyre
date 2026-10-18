@@ -24,7 +24,7 @@ export function chatAnswer(r) {
 
 /** What the page says about the chat, in one line, or null when the button alone is enough. @param {ReturnType<typeof chatAnswer>} c */
 export function chatNote(c) {
-  if (c.state === "waiting") return "You are on the team. Another member's device adds you to the group chat.";
+  if (c.state === "waiting") return "The group chat is made on a teammate's device first. It opens here the next time you come in.";
   if (c.state === "pending") return "Nobody has made this project's group chat yet.";
   if (c.state === "open" && c.adding) return `Adding ${c.adding} ${c.adding === 1 ? "person" : "people"} to the group chat...`;
   if (c.state === "open" && c.readOnly) return "You can read the group chat. Only the team writes in it.";
@@ -33,3 +33,15 @@ export function chatNote(c) {
 
 /** Where a chat opens. @param {string} id */
 export const chatPath = (id) => `/u/chats/${encodeURIComponent(id)}`;
+
+/**
+ * What the page shows once ensureProjectChat (src/chat/project-chat.ts: makes or mends the chat on this device) and the read of work.project.chat have both answered. A made chat is open, and the read adds whether the person
+ * can only read it and who is still being added. A teammate's device that has to make it first is waiting. A viewer before anyone made it is pending; a box without the tool shows nothing; anything else is a failure with the line the keys gave.
+ * @param {{ chat: string | null, state: "ready" | "waiting" | "none", say?: string }} ensured @param {ReturnType<typeof chatAnswer>} read
+ */
+export function chatState(ensured, read) {
+  if (ensured.state === "ready" && ensured.chat) return read.state === "open" ? { ...read, chat: ensured.chat } : /** @type {const} */ ({ state: "open", chat: ensured.chat, adding: 0, readOnly: false });
+  if (read.state === "pending" || read.state === "missing") return read;
+  if (ensured.state === "waiting" || read.state === "making" || read.state === "waiting") return /** @type {const} */ ({ state: "waiting" });
+  return /** @type {const} */ ({ state: "failed", why: ensured.say || (read.state === "failed" ? read.why : "The group chat did not open.") });
+}
