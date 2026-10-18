@@ -91,10 +91,11 @@ test("hooks: with vyred up, rules answer in Claude Code's shape and learn record
   assert.equal(JSON.parse(ask.out).hookSpecificOutput.permissionDecision, "ask");
   assert.deepEqual(await hook("learn", { session_id: "s1", cwd: "/w", tool_name: "Write", tool_input: { file_path: "notes.md" } }, env), { code: 0, out: "" });
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
-  // outside a project the brief carries only the person's time (the time-zone line every session gets), nothing of a project
+  // outside a project the brief carries the person's time (the time-zone line every session gets) and, once the about module has written its file (it does, 5 s after the daemon starts, so on a loaded machine
+  // before this hook runs), the user-level About block; never anything of a project
   const outside = await hook("brief", { session_id: "s1", cwd: "/w", source: "startup" }, env);
   assert.equal(outside.code, 0);
-  assert.match(JSON.parse(outside.out).hookSpecificOutput.additionalContext, /^Time: it is [^\n]*$/, "outside a project the brief is only the time");
+  assert.match(JSON.parse(outside.out).hookSpecificOutput.additionalContext, /^(About the user, from Vyre's memory[^\n]*\n(- [^\n]*\n)*\n)?Time: it is [^\n]*$/, "outside a project the brief is only the time, and at most the user-level About block before it");
 });
 
 test("hooks: PostToolUseFailure and PostToolUse on Bash reach Learning as failed, then fixed", async t => {
