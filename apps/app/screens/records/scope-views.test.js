@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultScope, filterByScope, scopeFilter, scopesFor } from "./scope-views.js";
+import { defaultScope, filterByScope, scopeFilter, scopeNote, scopesFor } from "./scope-views.js";
 
 const rows = [
   { id: "1", data: { owner: "person:me1", visibility: "private" } },
@@ -46,4 +46,9 @@ test("a scope is cut on the box with $me and visibility", () => {
   assert.deepEqual(scopeFilter("space"), { field: "visibility", op: "eq", value: "space" });
   assert.equal(scopeFilter("everyone"), undefined);
   assert.equal(scopeFilter("visible"), undefined);
+});
+
+test("Events say what each tab shows; other types say nothing", () => {
+  assert.match(scopeNote("event", "team"), /Busy/);
+  assert.equal(scopeNote("note", "mine"), "");
 });

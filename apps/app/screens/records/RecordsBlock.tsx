@@ -18,7 +18,7 @@ import { MyTasks } from "./MyTasks";
 import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
 import { BoardWithStats } from "./BoardWithStats";
-import { defaultScope, filterByScope, scopeFilter, scopesFor } from "./scope-views.js";
+import { defaultScope, filterByScope, scopeFilter, scopeNote, scopesFor } from "./scope-views.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -227,7 +227,17 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </View>
         </Card>
       ) : null}
-      {scopes.length ? <Segmented<string> label="Show" value={scope} onChange={setScopePicked} options={scopes} /> : null}
+      {scopes.length && def.name === "event" ? (
+        <View className="flex-row flex-wrap items-center gap-s3">
+          <Segmented<string> label="Show" value={scope} onChange={setScopePicked} options={scopes} />
+          <Text size="caption" tone="label">{scopeNote(def.name, scope)}</Text>
+        </View>
+      ) : scopes.length ? (
+        <View className="flex-row flex-wrap items-center gap-s2">
+          <Text size="caption" tone="label">Views</Text>
+          {scopes.map(([k, l]) => <Chip key={k} selected={k === scope} onPress={() => setScopePicked(k)}>{l}</Chip>)}
+        </View>
+      ) : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
       {shown === "list" && !phone ? (

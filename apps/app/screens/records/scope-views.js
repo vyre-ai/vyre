@@ -36,3 +36,9 @@ export function scopeFilter(scope) {
   if (scope === "space") return { field: "visibility", op: "eq", value: "space" };
   return undefined;
 }
+
+/** One line under the scope tabs of Events, in the words of the approved design. @param {string} type @param {string} scope */
+export function scopeNote(type, scope) {
+  if (type !== "event") return "";
+  return /** @type {Record<string, string>} */ ({ mine: "Your events and the ones you are on.", team: "Space events and your team's calendars. Private ones show as Busy.", everyone: "Only events shared with the whole Space." })[scope] || "";
+}
