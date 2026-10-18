@@ -20,6 +20,7 @@
 import { createHash } from "node:crypto";
 import { holds, stagesFor } from "../../lib/expr/conditions.js";
 import { renderBrief, evalChecklist } from "./checklist.js";
+import { slotsOf } from "./assign.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
@@ -163,6 +164,7 @@ export function createStages(o) {
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
+        ...(t.reviewer || t.approver ? await slotsOf(t, async (/** @type {string} */ ref) => (ref.startsWith("teammate:") ? { kind: "agent", id: ref.slice(9), space } : checkerFor(ref, space))) : {}),
         ...(noteOf(t, data) ? { note: noteOf(t, data) } : {}),
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
@@ -170,7 +172,7 @@ export function createStages(o) {
         ...(owner && t.due_offset_ms && owner.id !== doer.id ? { escalate_after: t.due_offset_ms, escalate_to: owner } : {}),
         // The kernel treats `required` as guarded (completion needs a check). A required task with no checker would wait for nobody, so the flag
         // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
-        ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),
+        ...(t.required !== false && (t.checker || t.approver || t.output.kind === "sent") ? { required: true } : {}),
       };
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.

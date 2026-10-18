@@ -113,3 +113,19 @@ test("a follower's note task gives her no read on the project or on the doer's t
   };
   assert.deepEqual(await readsOf(true), await readsOf(false));
 });
+
+test("a template task may carry a reviewer and an approver, each { who, skills?, instructions? }: checked as a Flow step is, and made as the task's slots", { timeout: 60_000 }, async () => {
+  const slotsTpl = () => { const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", instructions: "Check the tone" }, approver: { who: "person:" + ALEX } }]; return t; };
+  assert.deepEqual(problems(slotsTpl()), []);
+  const bad = (/** @type {(t: any) => void} */ f, /** @type {RegExp} */ re) => { const t = slotsTpl(); f(t.stages[0].tasks[0]); assert.ok(problems(t).some(p => re.test(p.message)), JSON.stringify(problems(t))); };
+  bad(k => { k.reviewer = "person:per_bob"; }, /reviewer is \{ who/);
+  bad(k => { k.approver = { who: "pool:x" }; }, /approver is person/);
+  bad(k => { k.checker = "person:per_bob"; }, /not both/);
+  bad(k => { k.reviewer.skills = ["a", "a"]; }, /up to 10 different/);
+  const w = await mk();
+  await start(w, {}, slotsTpl());
+  const t = await by(w, "Draft it");
+  assert.equal(t.reviewer.id, "per_bob", JSON.stringify(t));
+  assert.equal(t.checker.id, ALEX);
+  assert.equal(t.state, "ready");
+});

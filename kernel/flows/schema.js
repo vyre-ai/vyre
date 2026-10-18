@@ -83,7 +83,7 @@ function checkPeople(s, p, out) {
  * `skills` and `brief` on the step itself keep meaning the doer's. Due and escalate_to arrive with the kernel's escalation.
  * @param {any} s @param {string} p @param {Problem[]} out
  */
-function checkSlots(s, p, out) {
+export function checkSlots(s, p, out) {
   const who = (/** @type {any} */ v) => typeof v === "string" && /^(?:person|role|teammate):[A-Za-z0-9._:-]{1,80}$/.test(v);
   for (const slot of ["reviewer", "approver"]) {
     const v = s[slot];
