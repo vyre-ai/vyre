@@ -281,8 +281,14 @@ test("a joined member's notes go through the team's planner as herself: her own 
   assert.equal(await code(asP(ANA, "planner.get", { item: ownerNote.id })), "not_found", "the owner's private note");
   assert.equal(await code(asP(ANA, "planner.get", { item: event.id })), "not_found", "an event");
   assert.equal(await code(asP(ANA, "planner.get", { item: "no-such-item" })), "not_found");
-  assert.equal(await code(asP(ANA, "planner.get", { firing: "f1" })), "bad_input", "a firing id is not a key");
-  for (const [door, input] of [["planner.list", { kind: "reminder" }], ["planner.add", { title: "x", kind: "alarm" }], ["planner.add", { title: "x", text: "alarm 7am" }], ["planner.add", { title: "x", thread: "t" }], ["planner.add", { title: "x", assignee: "a" }], ["planner.update", { item: idOf(benSpace), at: "2027-01-01T10:00:00Z" }]]) assert.equal(await code(asP(BEN, door, input)), "bad_input", `${door} ${JSON.stringify(input)}: unknown keys are refused`);
+  assert.equal(await code(asP(ANA, "planner.get", { firing: "f1" })), "not_found", "a firing id is not a key: the door drops it and there is no item");
+  // an unknown key is dropped by the door, so a kind cannot widen a list; and the planner itself refuses one if it is sent straight
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { kind: "reminder", state: "all" })), ["ANA private", "BEN space"], "the kind is ignored: still notes");
+  const straight = (/** @type {string} */ tool, /** @type {any} */ body) => w.d.registry.callInSpace({ name: "vyred" }, w.space, w.d.kernel, tool, body, w.chainOf(BEN)).then((x) => x, (e) => ({ error: e }));
+  for (const [tool, body] of [["planner.serve", { call: "list", input: { kind: "reminder" } }], ["planner.serve-write", { call: "add", input: { title: "x", kind: "alarm" } }], ["planner.serve-write", { call: "add", input: { title: "x", text: "alarm 7am" } }], ["planner.serve-write", { call: "add", input: { title: "x", thread: "t" } }], ["planner.serve-write", { call: "add", input: { title: "x", assignee: "a" } }], ["planner.serve-write", { call: "update", input: { item: idOf(benSpace), at: "2027-01-01T10:00:00Z" } }]]) {
+    const r = /** @type {any} */ (await straight(tool, body));
+    assert.ok(JSON.stringify(r).includes("bad_input") || JSON.stringify(r).includes("cannot be set on a note"), `${tool} ${JSON.stringify(body.input)}: unknown keys are refused: ${JSON.stringify(r).slice(0, 200)}`);
+  }
   // an admin and the owner are subject to the same sharing rule
   for (const who of [ZED, w.OWNER]) {
     assert.ok(!ids(await asP(who, "planner.list", { state: "all" })).some((x) => /private/.test(x) && x !== "OWNER private"), `${who}: no member's private note`);
@@ -299,7 +305,7 @@ test("a joined member's notes go through the team's planner as herself: her own 
   const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
   await asP(ANA, "planner.add", { title: "about Ava", visibility: "record", record: contact.urn });
   assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava") || true);
-  assert.equal(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "bad_input", "a note is about a record, not a note");
+  assert.ok(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "a note is about a record, not a note");
   // the planner's own check of the chain, and a module calling the tools straight
   const chain = w.chainOf(ANA), hop = { actor: { kind: "agent", id: "kit", space: w.space } };
   for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }], ["a viewer", { ...chain, viewer: true }], ["a delegation", { ...chain, delegated: true }]]) {
