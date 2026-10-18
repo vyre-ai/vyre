@@ -23,6 +23,7 @@ import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { once } from "../../lib/once.js";
 import { connect } from "./client.js";
 import { memberServers, storeOverCalls, legacyRows, remoteOk } from "../../lib/member-mcp.js";
 import { searchCatalog, urlKey } from "../../lib/mcp-catalog.js";
@@ -61,8 +62,6 @@ export default {
     };
 
     // The shipped presets and the reviewed snapshot are read when first asked for, not at boot: most boxes never connect an app.
-    /** @template T @param {() => T} f @returns {() => T} */
-    const once = (f) => { /** @type {T | undefined} */ let v; let done = false; return () => (done ? /** @type {T} */ (v) : (done = true, v = f())); };
     const curatedOf = once(() => catalogFrom(ctx.config));
     const fromSnapshotOf = once(() => snapshotCatalog(loadSnapshot(ctx.config), curatedOf()));
     const hub = new Hub({
