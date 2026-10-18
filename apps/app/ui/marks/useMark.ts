@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { parse } from "react-native-svg";
 import { markKey, markSource, seedOf, slug as slugOf, type MarkKind, type Scheme, type DeviceType } from "./source.js";
 import { useUiTheme } from "../theme";
-import { withParts } from "../chat/agent-look.js";
+import { lookFor, withParts } from "../chat/agent-look.js";
 
 /** A parsed mark, kept for the life of the app: lists render dozens, so each (kind, seed, size band, scheme) is parsed once, never per row. */
 const CACHE = new Map<string, ReturnType<typeof parse>>();
@@ -11,8 +11,8 @@ const MAX = 512;
 export type MarkRef = { kind: MarkKind; id: string; name: string; seed?: string; device?: DeviceType };
 
 export function astFor(of: MarkRef, size: number, scheme: Scheme) {
-  // An agent is drawn as a little character: the parts its look names, and the rest from a hash of its uid, so it never changes.
-  const seed = of.kind === "agent" ? withParts(seedOf(of), of.id) : seedOf(of);
+  // An agent (the Assistant too) is drawn as a little character: the parts its look names, and the rest from a hash of its name, so it never changes and every surface draws the same one.
+  const seed = of.kind === "agent" || of.kind === "assistant" ? withParts(seedOf({ ...of, seed: of.seed || lookFor(of.name) || undefined }), String(of.name || of.id).toLowerCase()) : seedOf(of);
   const key = markKey(of.kind, seed, size, scheme, of.device ?? "");
   let ast = CACHE.get(key);
   if (ast === undefined) {

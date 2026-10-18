@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { convosFrom, useStore } from "@vyre/ui";
+import { convosFrom, rememberLook, useStore } from "@vyre/ui";
 import type { Convo } from "@vyre/ui";
 import { agentsList } from "../settings/real";
 import { agentRow, visibleAgents } from "../agents/home-model.js";
@@ -25,6 +25,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
       try {
         const me = String((await (st.me?.() as Promise<string> | undefined)?.catch(() => "")) ?? "");
         const list: any[] = await agentsList().catch(() => []);
+        for (const x of list) rememberLook(String(x.name), x.look ? String(x.look) : "");
         const rows = visibleAgents(list.map((x) => agentRow(x, me)), me).filter((r) => r.kind !== "assistant");
         const ids = (name: string): string[] => { const a = list.find((x) => String(x.name) === name); return Array.isArray(a?.projects) ? a.projects.map(String) : []; };
         const slugs = [...new Set(rows.flatMap((r) => ids(r.name)))];

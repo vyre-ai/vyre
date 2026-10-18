@@ -13,4 +13,4 @@ export { convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONV
 export { AgentComputerPane, type ComputerView } from "./AgentComputerPane";
 export { computerOf, computerWords, computerActions, DOCK } from "./computer-model.js";
 export { NewAgentDialog, AgentLookPicker, type NewAgentValues } from "./NewAgentDialog";
-export { SHAPES, COLOR_COUNT, lookSeed, lookOf } from "./agent-look.js";
+export { SHAPES, COLOR_COUNT, lookSeed, lookOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor } from "./agent-look.js";

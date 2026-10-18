@@ -55,3 +55,10 @@ export function setPart(seed, uid, key, value) {
   const parts = { ...partsOf(withParts(seed, uid)), [key]: v };
   return base + PARTS.map((p) => `~${p.key}${parts[p.key]}`).join("");
 }
+
+// The looks the app has seen, by agent name, so a face that is only given a name (a chat's header, a message) draws the agent as its sidebar row does.
+/** @type {Map<string, string>} */ const seen = new Map();
+/** Remember an agent's look (what agents.list says). @param {string} name @param {string | null | undefined} look */
+export const rememberLook = (name, look) => { if (name && look) seen.set(String(name).toLowerCase(), String(look)); };
+/** The look the app has seen for an agent, or "". @param {string} name */
+export const lookFor = (name) => seen.get(String(name || "").toLowerCase()) ?? "";

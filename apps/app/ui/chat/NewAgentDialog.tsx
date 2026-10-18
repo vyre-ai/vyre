@@ -17,7 +17,8 @@ import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
 // @ts-ignore the agent family's renderer is plain JavaScript
 import { AGENT_COLORS } from "../../../../lib/wink-code/agent2.js";
-import { SHAPES, lookSeed } from "./agent-look.js";
+import { PARTS, SHAPES, lookSeed } from "./agent-look.js";
+import { Chip } from "../components/Chip";
 
 export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string; model: string; effort: string; computer: boolean; personal: boolean };
 
@@ -25,7 +26,7 @@ export type NewAgentValues = { name: string; shape: number; color: number; job: 
 const EFFORTS: [string, string][] = [["", "Default"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["max", "Max"]];
 
 /** The grid of eight shapes and the row of eight colours that make an agent's look. Used by the New agent dialog and by an agent's Details. */
-export function AgentLookPicker({ shape, color: col, onChange }: { shape: number; color: number; onChange: (p: { shape?: number; color?: number }) => void }) {
+export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: { shape: number; color: number; onChange: (p: { shape?: number; color?: number }) => void; /** The character's parts now, by key (e, m, t, b, h): with onPart the picker also lets the person change them. */ parts?: Record<string, number>; onPart?: (key: string, value: number) => void }) {
   const { color } = useUiTheme();
   const values = { shape, color: col };
   return (
@@ -46,6 +47,18 @@ export function AgentLookPicker({ shape, color: col, onChange }: { shape: number
             </Pressable>
           ))}
         </View>
+        {parts && onPart ? (
+          <View style={{ gap: 12 }}>
+            {PARTS.map((p) => (
+              <View key={p.key} accessibilityLabel={p.label} style={{ gap: 6 }}>
+                <Text size="caption" tone="label">{p.label}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {p.words.map((w, i) => <Chip key={w} selected={parts[p.key] === i} onPress={() => onPart(p.key, i)}>{w}</Chip>)}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
     </View>
   );
 }
