@@ -45,16 +45,20 @@ try {
       await page.getByRole("button", { name: "Move", exact: true }).last().click().catch(() => {}); await shot("8-moved");
       // drag to move: a folder tile carried over another (the target is outlined and says what will happen), then dropped. A fresh load, so the sample world is as it started.
       await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
-      const src = page.locator("[data-tile]").filter({ hasText: "Juniper Studio" }).first(), dst = page.locator("[data-tile]").filter({ hasText: "Vyre site" }).first();
-      if (await src.count() && await dst.count()) {
-        // a headless browser does not run a drag from the mouse, so the drag events are sent by hand, with one shared DataTransfer: the page's own handlers do the rest
-        const dt = await page.evaluateHandle(() => new DataTransfer());
-        await src.dispatchEvent("dragstart", { dataTransfer: dt }); await page.waitForTimeout(150);
-        await dst.dispatchEvent("dragenter", { dataTransfer: dt });
-        await dst.dispatchEvent("dragover", { dataTransfer: dt }); await page.waitForTimeout(150);
+      // a headless browser does not run a drag from the mouse, so the drag events are sent by hand from the page, with one shared DataTransfer: the page's own handlers do the rest
+      await page.waitForSelector("[data-tile]", { timeout: 30000 }).catch(() => {});
+      const fire = (type, name) => page.evaluate(([t, n]) => {
+        const el = [...document.querySelectorAll("[data-tile]")].find((x) => (x.textContent || "").includes(n));
+        if (!el) return false;
+        window.__dt = window.__dt || new DataTransfer();
+        el.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: window.__dt }));
+        return true;
+      }, [type, name]);
+      if (await fire("dragstart", "Juniper Studio")) {
+        await page.waitForTimeout(200);
+        await fire("dragenter", "Vyre site"); await fire("dragover", "Vyre site"); await page.waitForTimeout(200);
         await shot("9-drag-over-folder");
-        await dst.dispatchEvent("drop", { dataTransfer: dt });
-        await src.dispatchEvent("dragend", { dataTransfer: dt }); await shot("10-dropped");
+        await fire("drop", "Vyre site"); await fire("dragend", "Juniper Studio"); await shot("10-dropped");
       } else console.log("drag shots skipped: tiles not found");
     } else {
       await page.getByText("Space", { exact: true }).first().click().catch(() => {}); await shot("2-space");
