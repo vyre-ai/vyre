@@ -41,6 +41,7 @@ export const PERSON_ONLY = new Map([
   ["agents.vault.list", "lists the Vault item names put at an agent's disposal: the person's own view"],
   ["agents.vault.assign", "puts a Vault item name on an agent's list: the person's own act; it touches what an agent may be told about the Vault"],
   ["agents.vault.unassign", "takes a Vault item name off an agent's list: the person's own act"],
+  ["agents.draft.get", "reads the settings the Engineer proposed for a new agent, for the person to approve: the person's own view; an assistant proposes through the Engineer's task and never reads the draft by tool"],
   ["agents.used", "where an agent is used (its chats and flows): the person's own view"],
   ["agents.level", "what the person may do with an agent (edit, use or none): the person's own view"],
   ["agents.access.get", "who an agent is shared with: the person's own view"],
