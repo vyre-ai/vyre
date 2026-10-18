@@ -1,3 +1,4 @@
+# probe of the first-run shot fix
 # Loads the web export (not minified) in headless Chromium and prints every page error with its stack: a module-order crash ("Cannot access 'X' before initialization") then names X and the file.
 # Runs on a push to a probe branch, never on a feature branch.
 name: web-boot-probe
