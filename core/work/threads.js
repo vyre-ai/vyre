@@ -79,12 +79,12 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
-    description: "Your threads with one agent, newest first, each with its state (live, needs_you or idle), last line and unread count. A thread is a chat of you and that agent.",
+    description: "Your threads with one agent, newest first: title, state (live, needs_you, idle), last line, unread. A thread is a chat of you and that agent.",
     input: obj({ agent: { type: "string", description: "the agent's name or id" }, limit: { type: "integer" }, before: { type: "string", description: "a last_active value: only older threads" } }, ["agent"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => threadsOf(d, String(input.agent), extra, { limit: input.limit, before: input.before ? String(input.before) : null }),
   });
   d.chatTool("work.agent.thread.new", {
-    description: "Start a new thread with an agent: a new chat of you and that agent. Your old threads with it stay as they are, and any of them can be continued. Returns { thread, agent }.",
+    description: "Start a new thread with an agent: a new chat of you and it. Old threads stay as they are and can be continued. Returns { thread, agent }.",
     input: obj({ agent: { type: "string", description: "the agent's name or id" }, title: { type: "string" }, project: { type: "string" }, id: { type: "string", description: "the thread's id (chat_<uuid>), chosen by the device that made its key ring" }, ring: { type: "object", description: "the chat's key ring, made on your device (as work.chat.create takes it)" } }, ["agent"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const agent = String(input.agent);
