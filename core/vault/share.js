@@ -54,7 +54,11 @@ export const SHARE_MIGRATIONS = [
      id TEXT PRIMARY KEY, kind TEXT NOT NULL, subject TEXT NOT NULL, payload TEXT NOT NULL,
      by TEXT NOT NULL, at INTEGER NOT NULL
    );`,
-  // The Space member a person is linked to (their identity id). Set only from the person's own surface; never a model's.
+];
+
+// The Space member a person is linked to (their identity id). Set only from the person's own surface; never a model's. Its own list, appended
+// last in vault.js, so no existing step changes its version number.
+export const MEMBER_MIGRATIONS = [
   `ALTER TABLE vault_people ADD COLUMN member TEXT;
    CREATE INDEX vault_people_member ON vault_people (member);`,
 ];
