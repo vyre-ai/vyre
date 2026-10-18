@@ -1,7 +1,7 @@
 // @ts-check
 // The chat-key operations a device makes against the box (team/0.3/DESIGN-chat-keys.md, "Wired end to end"): make the ring for a new chat, and lend the key to the server so it can open the chat's files for
 // the participants. The ring math is lib/keywrap.js and lib/chat-keys.js (noble, the same files the server runs); this is the calls around it. `call(tool, input)` is the app's one tool call and throws with the box's words. A chat made with no ring stays in the clear.
-import { b64, createRing, openRing, unb64, fingerprint, addHolders } from "../../../../lib/keywrap.js";
+import { b64, createRing, openRing, unb64, fingerprint, addHolders, removeHolders } from "../../../../lib/keywrap.js";
 import { bundleFor } from "../../../../lib/chat-keys.js";
 
 /** The P-256 public JWK of a raw uncompressed point (an identity entry's `agree`, base64url). @param {string} agree @returns {{ kty: "EC", crv: "P-256", x: string, y: string } | null} */
@@ -87,4 +87,28 @@ export async function ringWithPeople(call, chat, people, me) {
   if (!r.listed) return { say: "This device isn't ready for private chats yet." };
   if (r.without.length) return { say: "Some devices can't open private chats yet." };
   return { ring: await ringWithHolders(got.ring, me, r.holders) };
+}
+
+/**
+ * A chat's ring with some devices taken out, made on this device: a new epoch wrapped to the devices that stay, and the removed devices' wraps deleted from every epoch (they keep what they already read and
+ * read nothing new). @param {any} ring @param {{ holder: string, ecdh: any }} me @param {Record<string, any>} keep the devices that stay @param {string[]} drop the removed devices' holder names
+ */
+export async function ringWithoutHolders(ring, me, keep, drop) {
+  const keys = await openRing(ring, me.holder, me.ecdh);
+  try { return removeHolders(ring, keys, { keep, drop }); } finally { keys.lock(); }
+}
+
+/**
+ * The ring of a chat with these people taken out (a project's chat after someone left the team), for work.chat.change { remove_people, ring }.
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {string[]} remaining everyone who stays, this person included @param {string[]} removed @param {{ holder: string, ecdh: any }} me
+ * @returns {Promise<{ ring: any } | { say: string }>}
+ */
+export async function ringWithoutPeople(call, chat, remaining, removed, me) {
+  const got = await call("work.chat.get", { chat });
+  if (!got?.ring) return { say: "This chat has no key to change." };
+  const keep = await holdersFor(call, remaining, me);
+  if (!keep.listed) return { say: "This device isn't ready for private chats yet." };
+  if (keep.without.length) return { say: "Some devices can't open private chats yet." };
+  const gone = await holdersFor(call, removed, me);
+  return { ring: await ringWithoutHolders(got.ring, me, keep.holders, Object.keys(gone.holders).filter((h) => !(h in keep.holders))) };
 }

@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { jwkOfAgree, holdersFor, newChatRing, lendChatKey, ringWithHolders } from "./chat-ring.js";
+import { jwkOfAgree, holdersFor, newChatRing, lendChatKey, ringWithHolders, ringWithoutHolders } from "./chat-ring.js";
 import { b64, fingerprint, pointOf } from "../../../../lib/keywrap.js";
 import { openBundle, openRing } from "../../../../lib/chat-keys.js";
 
@@ -79,4 +79,14 @@ test("adding a person to a chat's ring: their device opens the same key, and wha
   assert.equal(his.epoch, 1, "the same epoch: the earlier messages are his to read");
   await assert.rejects(() => openRing(next, eve.holder, eve.ecdh), "a device that was not added holds no wrap");
   assert.equal(made.ring.epochs[1].wraps[bob.holder], undefined, "the ring it started from is not changed");
+});
+
+test("taking a person out of a chat's ring: a new epoch the rest can open, the removed device keeps the past and reads nothing new", async () => {
+  const me = await device(), bob = await device();
+  const made = await newChatRing("chat_y", { [me.holder]: me.pub });
+  const both = await ringWithHolders(made.ring, me, { [bob.holder]: bob.pub });
+  const next = await ringWithoutHolders(both, me, { [me.holder]: me.pub }, [bob.holder]);
+  assert.equal((await openRing(next, me.holder, me.ecdh)).epoch, 2, "a new epoch");
+  await assert.rejects(() => openRing(next, bob.holder, bob.ecdh), "the removed device holds no wrap of any epoch in the new ring");
+  assert.ok(both.epochs[1].wraps[bob.holder], "the ring it started from is not changed");
 });
