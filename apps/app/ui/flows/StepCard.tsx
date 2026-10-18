@@ -11,9 +11,9 @@ import { cn } from "../lib/cn";
  * One step of a Flow, drawn as a card: a lead word ("When", "Then", "Step 2"), the kind of step, and what it does in one plain sentence. Closed it is one row; open it shows its settings
  * (children) and Move up, Move down and Remove. `problem` says in words what the step still needs. Used by the Flow builder for the trigger and every step.
  */
-export function StepCard({ lead, icon, title, summary, open, onToggle, problem, children, onUp, onDown, onRemove, last }: {
+export function StepCard({ lead, icon, title, summary, open, onToggle, problem, children, onUp, onDown, onRemove, onDuplicate, last }: {
   lead: string; icon: IconName; title: string; summary: string; open: boolean; onToggle: () => void; problem?: string | null;
-  children?: React.ReactNode; onUp?: () => void; onDown?: () => void; onRemove?: () => void;
+  children?: React.ReactNode; onUp?: () => void; onDown?: () => void; onRemove?: () => void; /** A copy right after this step. */ onDuplicate?: () => void;
   /** The last card in the column draws no line below it. */ last?: boolean;
 }) {
   return (
@@ -23,7 +23,7 @@ export function StepCard({ lead, icon, title, summary, open, onToggle, problem, 
         {last ? null : <View className="mt-s1 w-px flex-1 bg-edge" />}
       </View>
       <View className={cn("min-w-0 flex-1 rounded-card border bg-surface-2", open ? "border-edge-strong" : "border-edge", last ? "" : "mb-s3")}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${lead}, ${title}. ${summary}`} onPress={onToggle} className="min-h-control flex-row items-center gap-s3 px-s4 py-s3">
+        <Pressable {...({ onKeyDown: (e: { altKey?: boolean; key?: string; preventDefault?: () => void }) => { if (!e.altKey) return; if (e.key === "ArrowUp" && onUp) { e.preventDefault?.(); onUp(); } else if (e.key === "ArrowDown" && onDown) { e.preventDefault?.(); onDown(); } } } as object)} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${lead}, ${title}. ${summary}`} onPress={onToggle} className="min-h-control flex-row items-center gap-s3 px-s4 py-s3">
           <View className="min-w-0 flex-1 gap-s1">
             <View className="flex-row items-center gap-s2"><Text size="caption" tone="label" strong>{lead}</Text><Text strong numberOfLines={1} className="min-w-0 flex-shrink">{title}</Text></View>
             <Text tone="muted" numberOfLines={open ? undefined : 2}>{summary}</Text>
@@ -35,10 +35,11 @@ export function StepCard({ lead, icon, title, summary, open, onToggle, problem, 
           <View className="gap-s3 border-t border-edge px-s4 pb-s4 pt-s3">
             {children}
             {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
-            {onUp || onDown || onRemove ? (
+            {onUp || onDown || onRemove || onDuplicate ? (
               <View className="flex-row flex-wrap items-center gap-s2 pt-s1">
                 {onUp ? <Button kind="ghost" size="sm" icon="chevron-up" label="Move up" onPress={onUp} /> : null}
                 {onDown ? <Button kind="ghost" size="sm" icon="chevron-down" label="Move down" onPress={onDown} /> : null}
+                {onDuplicate ? <Button kind="ghost" size="sm" icon="copy" label="Duplicate" onPress={onDuplicate} /> : null}
                 {onRemove ? <Button kind="ghost" size="sm" icon="trash" label="Remove step" onPress={onRemove} /> : null}
               </View>
             ) : null}

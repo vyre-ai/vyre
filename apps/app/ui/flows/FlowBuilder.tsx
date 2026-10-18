@@ -16,7 +16,7 @@ import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
 import { ContextBox } from "./ContextBox";
 import { EVERY_CHOICES, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, choiceOf, flowSentence, isRecordTrigger, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
-import { addTo, canMove, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
+import { addTo, canMove, duplicateDeep, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 import type { LaneRef } from "./tree.js";
 
@@ -125,6 +125,7 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
     <View>
       <StepCard lead={`Step ${n}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? "Advanced step"} summary={`${stepSummary(s, options, draft)}${policyWords(s)}`} problem={stepProblem(s, options)} open={open === s.id} onToggle={() => toggle(s.id)} last={false}
         onUp={!readOnly && mv.up ? () => change(root, moveDeep(mine, s.id, -1)) : undefined} onDown={!readOnly && mv.down ? () => change(root, moveDeep(mine, s.id, 1)) : undefined}
+        onDuplicate={readOnly ? undefined : () => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }}
         onRemove={readOnly ? undefined : () => { change(root, removeDeep(mine, s.id)); setOpen(null); }}>
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
       </StepCard>

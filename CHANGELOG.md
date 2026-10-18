@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.2
+
+- feat(flows): a step can be duplicated (a copy right after it, with fresh ids for it and the steps in its lanes), and Alt+Up and Alt+Down move the open step up or down.
+
 ## Unreleased
 
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
