@@ -52,16 +52,21 @@ def main():
             return 0
         if cmd == "remove":
             # Lock: the key's identifier is read from the directory's own policy, so no key is needed (the lease key is gone by now).
+            # The identifier is read through the workspace folder, which is then CLOSED before the key is removed: the ioctl goes through the
+            # folder above it (any fd on the filesystem will do). Holding the encrypted folder itself open made every removal answer "incomplete".
             fd = open_dir(path)
             try:
                 buf = ctypes.create_string_buffer(8 + 24)
                 struct.pack_into("<Q", buf, 0, 24)
                 fcntl.ioctl(fd, GET_POLICY_EX, buf, True)
-                b = spec_buf(bytes(buf[16:32]), 64)
-                fcntl.ioctl(fd, REMOVE, b, True)
+            finally: os.close(fd)
+            b = spec_buf(bytes(buf[16:32]), 64)
+            pfd = open_dir(os.path.dirname(os.path.abspath(path)))
+            try:
+                fcntl.ioctl(pfd, REMOVE, b, True)
                 flags = struct.unpack_from("<I", b, 40)[0]
                 print("incomplete" if flags & 1 else "removed"); return 0
-            finally: os.close(fd)
+            finally: os.close(pfd)
         if cmd in ("add", "policy"):
             raw = read_key(); fd = open_dir(path)
             try:
