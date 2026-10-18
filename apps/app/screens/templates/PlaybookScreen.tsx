@@ -8,7 +8,8 @@ import { useMembers } from "../spaces/state";
 import { openEngineer } from "../engineer/openEngineer";
 import { errWords, projectIdOf, startWords, type Body, type Version } from "./model";
 import { playbookPath } from "./board";
-import { PAGE_TABS, metaParts, sentenceOf, stageCards } from "./page";
+import { PAGE_TABS, metaParts, sentenceOf, stageCards, waitingForYes } from "./page";
+import { callT } from "../../src/real/call-tool";
 import { useMayMakeTemplates } from "./role";
 import { templates } from "./templates";
 
@@ -34,6 +35,7 @@ export default function PlaybookScreen() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [test, setTest] = useState<{ ok: boolean; lines: string[] } | null>(null);
+  const [waiting, setWaiting] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const people = useMemo(() => members.map((m) => ({ id: m.id, name: m.name })), [members]);
@@ -46,6 +48,7 @@ export default function PlaybookScreen() {
     }).catch((e) => setErr(errWords(e)));
   }, [template]);
   useEffect(load, [load]);
+  useEffect(() => { if (shown) callT("approvals.pending", {}).then((r) => setWaiting(!r.error && waitingForYes(r.data, template, shown.name))); }, [template, shown]);
   useEffect(() => { templates.agents().then(setAgents).catch(() => setAgents([])); }, []);
   const act = async (name: string, fn: () => Promise<void>) => { setBusy(name); try { await fn(); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); } };
 
@@ -80,6 +83,7 @@ export default function PlaybookScreen() {
       {!err && !shown ? <LoadingState rows={3} /> : null}
       {shown && body ? (
         <>
+          {waiting ? <Chip tone="accent" onPress={() => router.push("/u/now/needs" as never)}>Waiting for a yes. Open Needs you</Chip> : null}
           {draftAhead && draftAhead.version !== shown.version ? <Chip tone="warn">{`Draft version ${draftAhead.version} is waiting to go live`}</Chip> : null}
           <Tabs items={PAGE_TABS as [Tab, string][]} value={tab} onChange={setTab} />
           {tab === "stages" ? (

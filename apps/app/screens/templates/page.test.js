@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sentenceOf, stageCards, metaParts, rowLine, PAGE_TABS } from "./page.ts";
+import { sentenceOf, stageCards, metaParts, rowLine, waitingForYes, PAGE_TABS } from "./page.ts";
 
 const body = (extra = {}) => ({
   name: "Launch", stages: [
@@ -48,4 +48,14 @@ test("a list row says its sentence's shape, its counts and where it is used", ()
 
 test("the page has four tabs in order", () => {
   assert.deepEqual(PAGE_TABS, [["stages", "Stages"], ["projects", "Projects"], ["test", "Test"], ["versions", "Versions"]]);
+});
+
+test("a playbook waits for a yes when a pending card names its template, or says its version goes live", () => {
+  const answer = { approvals: [{ id: "a", title: "Put Launch version 3 live", body: "A new version of the playbook", fields: { template: "tpl_launch" } }, { id: "b", title: "Send the invoice", body: "", fields: {} }, { id: "c", title: "Make the Hiring playbook live", body: "", fields: {} }] };
+  assert.equal(waitingForYes(answer, "tpl_launch", "Launch"), true, "by template id");
+  assert.equal(waitingForYes(answer, "tpl_hiring", "Hiring"), true, "by the words");
+  assert.equal(waitingForYes(answer, "tpl_other", "Onboarding"), false);
+  assert.equal(waitingForYes({ approvals: [{ id: "d", title: "Send the Launch invoice", fields: {} }] }, "tpl_launch", "Launch"), false, "a card that only mentions the name is not a playbook change");
+  assert.equal(waitingForYes(null, "tpl_launch", "Launch"), false);
+  assert.equal(waitingForYes({ approvals: [] }, "tpl_launch", "Launch"), false);
 });

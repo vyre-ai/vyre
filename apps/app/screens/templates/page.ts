@@ -46,3 +46,10 @@ export function metaParts(o: { name: string; version: number; by: string | null;
 export function rowLine(o: { stages: number; todos: number; flows: number; usedBy: string }): string {
   return [plural(o.stages, "stage"), plural(o.todos, "to-do"), ...(o.flows ? [plural(o.flows, "Flow")] : []), o.usedBy].join(" · ");
 }
+
+/** Whether a version of this playbook is waiting for someone's yes: an approvals.pending card that names the template, or says in its words that a version of it goes live. */
+export function waitingForYes(answer: unknown, template: string, name: string): boolean {
+  const cards = Array.isArray((answer as { approvals?: unknown[] } | null)?.approvals) ? ((answer as { approvals: any[] }).approvals) : [];
+  const word = name.trim().toLowerCase();
+  return cards.some((c) => c && (c.fields?.template === template || (word && `${c.title ?? ""} ${c.body ?? ""}`.toLowerCase().includes(word) && /playbook|template|goes live|go live/i.test(`${c.title ?? ""} ${c.body ?? ""}`))));
+}
