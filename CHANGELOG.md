@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
 - fix(app): the type check knows react-dom's createPortal (a local declaration, no new dependency), which the web message menu uses.
 - test: journey-fork-continue expects the owner's wording for where a fork runs ("Space's Cloud", "My Computer").
 - fix(app): the message menu offers Copy only for a message that is finished (done is true), and the wiring test reads the Rewind and Second opinion labels from the menu model.
