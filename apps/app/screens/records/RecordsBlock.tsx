@@ -61,7 +61,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const sf = scopeFilter(scope);
   const { data: world, loading, error, reload } = useRecordsWorld(sf && type !== "note" ? { [type]: sf } : undefined);
   const { phone } = useUiTheme();
-  const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length));
+  const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length), world?.byType?.[type] ?? []);
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
   const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-import { Chip, Menu, Text, showToast } from "@vyre/ui";
+import { allowsMock, Chip, Menu, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { roleChips, summaryChips } from "./roles-model.js";
+import { SAMPLE_KINDS, sampleHeld } from "./roles-sample.js";
 
 type Kind = { role: string; label: string; color?: string; stages?: string[] };
 type Held = { role: string; label: string; stage?: string; current: boolean; color?: string; urn: string };
@@ -14,16 +15,17 @@ const toneFor = (c: { ended: boolean; tone: string }) => (c.ended ? "plain" : ((
  * What a contact or organization is to the Space: one pill per role ("Client · Active"), a press on a pill moves it to another stage of that role (records.move on the role record), and "+ Role" gives it a
  * role it does not have yet (records.role.set). A box without the roles summary shows the plain chips, which open the role record.
  */
-export function Roles({ urn, onOpen }: { urn: string; onOpen: (urn: string) => void }) {
+export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string) => void; /** The record's name, used only by the sample world (roles-sample.js). */ name?: string }) {
   const [held, setHeld] = useState<Held[] | null>(null);
   const [kinds, setKinds] = useState<Kind[]>([]);
   const [plain, setPlain] = useState<{ key: string; label: string; urn: string; ended: boolean; tone: string }[] | null>(null);
   const load = useCallback(() => {
+    if (allowsMock()) { setHeld(sampleHeld(name ?? "", urn) as Held[]); setKinds(SAMPLE_KINDS as Kind[]); setPlain(null); return; }
     void Promise.all([callT<{ roles: Held[] }>("records.roles.summary", { urn }), callT<{ roles: Kind[] }>("records.roles.summary", {})]).then(([mine, all]) => {
       if (mine.data) { setHeld(mine.data.roles); setKinds(all.data?.roles ?? []); setPlain(null); return; }
       return callT<{ roles: any[] }>("records.roles", { urn }).then((q) => { setHeld(null); setPlain(roleChips(q.data?.roles ?? [])); });
     });
-  }, [urn]);
+  }, [urn, name]);
   useEffect(() => { setHeld(null); setPlain(null); load(); }, [load]);
   const move = async (r: Held, stage: string) => {
     const x = await callT<{ needs?: string[] }>("records.move", { urn: r.urn, stage });

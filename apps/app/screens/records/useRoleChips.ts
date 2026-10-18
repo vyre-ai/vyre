@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
+import { allowsMock } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-import { chipsByHolder } from "./roles-model.js";
+import { chipsByHolder, summaryChips } from "./roles-model.js";
+import { sampleHeld } from "./roles-sample.js";
 
 export type HolderChips = Record<string, { label: string; tone: string; ended: boolean }[]>;
 
 /** Every holder's role chips for a People or Companies table: one call for the role kinds (records.roles.summary) and one for who holds each (records.holders). Null until loaded, and for any other type or a box without the tools. */
-export function useRoleChips(type: string, version: string): HolderChips | null {
+export function useRoleChips(type: string, version: string, rows: { urn: string; data?: any }[] = []): HolderChips | null {
   const [chips, setChips] = useState<HolderChips | null>(null);
   useEffect(() => {
     if (type !== "contact" && type !== "organization") { setChips(null); return; }
     let live = true;
+    // The sample world has no roles tools: its people carry the sample roles (roles-sample.js), so the Roles column can be seen.
+    if (allowsMock()) {
+      const out: HolderChips = {};
+      for (const r of rows) { const c = summaryChips(sampleHeld(String(r.data?.name ?? ""), r.urn)); if (c.length) out[r.urn] = c.map((x) => ({ label: x.label, tone: x.tone, ended: x.ended })); }
+      setChips(out);
+      return;
+    }
     void (async () => {
       const s = await callT<{ roles: { role: string; label: string; color: string }[] }>("records.roles.summary", {});
       const kinds = s.data?.roles ?? [];
@@ -18,6 +27,6 @@ export function useRoleChips(type: string, version: string): HolderChips | null 
       if (live) setChips(chipsByHolder(kinds, Object.fromEntries(got)));
     })();
     return () => { live = false; };
-  }, [type, version]);
+  }, [type, version, rows.length]);
   return chips;
 }
