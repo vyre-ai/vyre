@@ -36,4 +36,4 @@ The approval carries a short acknowledgement of that declaration. A plugin chang
 
 ## Uploading a skill as a team member
 
-A member of the team can upload a skill file: a `SKILL.md`, a `.md`, or a `.zip` that holds one skill. It becomes a draft of your own personal skill, and you approve it yourself. A plugin (anything with hooks, commands or MCP servers) is for the owner or an admin to add. You can upload ten files a minute, and your waiting drafts count toward the limit of fifty.
+A member of the team can upload one skill: a `SKILL.md`, a `.md`, or a `.zip` of one skill folder. The front matter has a name and a description and nothing else, and the folder holds text files only. It becomes a draft of your own personal skill, and you approve it yourself. A plugin, a script, or anything that looks like a key is refused. You can upload ten files an hour and thirty a day, and keep fifty personal skills. The owner or an admin adds plugins.
