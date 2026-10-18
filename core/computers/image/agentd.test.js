@@ -71,8 +71,11 @@ test("two agents get two displays, sockets and profiles that never overlap", () 
 
 test("sleeping signals only the browser uid's processes (the browser, the window manager, the screen), as itself, and never the tmux server", () => {
   const steps = planStopScreen(U);
-  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && x.slice(-5, -1).join(" ") === "-TERM -u 21000 -x"), "the browser, the window manager and the screen are all the browser uid's");
-  assert.deepEqual(steps.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
+  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ")), "every step is the browser uid's");
+  const signals = steps.filter(x => x.includes("/usr/bin/pkill") && !x.includes("-f"));
+  assert.ok(signals.every(x => x.slice(-5, -1).join(" ") === "-TERM -u 21000 -x"), "the browser, the window manager and the screen are all the browser uid's");
+  assert.deepEqual(signals.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
+  assert.ok(steps[0].includes("-f") && steps[1].includes("/usr/bin/sleep"), "the holder first, then the wait for Chrome's clean close");
   assert.ok(!steps.flat().includes("tmux"));
 });
 
@@ -125,7 +128,9 @@ test("sleep keeps the Chrome profile: stopping only signals processes, the profi
   assert.match(holder, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
   assert.match(holder, /"--user-data-dir=" \+ PROFILE/);
   assert.match(holder, /--restore-last-session/, "the tabs and their logins come back when Chrome does");
-  assert.ok(planStopScreen(U).every(x => x.includes("/usr/bin/pkill") && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
+  assert.ok(planStopScreen(U).every(x => (x.includes("/usr/bin/pkill") || x.includes("/usr/bin/sleep")) && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
+  assert.match(planStopScreen(U)[0].join(" "), /pkill -TERM -u 21000 -f \^\/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py\$/, "Chrome's holder is asked first, so Chrome closes itself and writes its profile");
+  assert.match(fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8"), /Browser\.close/);
   assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/browsers/agb21000")), "only a reset empties the browser profile");
   assert.ok(planRemove(U).some(x => x.includes("-delete")));
 });

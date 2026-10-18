@@ -100,8 +100,17 @@ def drop():
 
 
 def finish(*_):
+    # Ask Chrome to close itself first, over the pipe this holder owns: a clean close writes the profile (cookies are committed on a timer, so a login made seconds ago is lost to a plain SIGTERM).
+    # Give it a few seconds, then end it.
     try:
-        chrome.terminate()
+        if chrome.poll() is None:
+            os.write(to_chrome_w, b'{"id":1,"method":"Browser.close"}\0')
+            chrome.wait(timeout=8)
+    except Exception:
+        pass
+    try:
+        if chrome.poll() is None:
+            chrome.terminate()
     except OSError:
         pass
     try:

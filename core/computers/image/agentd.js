@@ -135,7 +135,13 @@ export function planStopScreen(u) {
   check(u);
   const bs = asBrowser(u), b = browserOf(u);
   // all three are the browser uid's: Chrome first (it ends on SIGTERM and writes its profile; its holder ends with it), then the window manager, then the screen
-  return ["chromium", "fluxbox", "Xvnc"].map(name => [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-x", name]);
+  // First Chrome's holder: it asks Chrome to close itself over the debugging pipe, which writes the profile (a login made in the last 30 s is in it); the wait gives that its few seconds.
+  // Then the plain SIGTERM to whatever is left, the window manager and the screen.
+  return [
+    [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-f", "^/usr/bin/python3 -I /opt/agentd/agentd-chrome.py$"],
+    [...bs, "/usr/bin/sleep", "4"],
+    ...["chromium", "fluxbox", "Xvnc"].map(name => [...bs, "/usr/bin/pkill", "-TERM", "-u", String(b.uid), "-x", name]),
+  ];
 }
 
 /** Empty the agent's home but keep the folder, its owner and its mode: Chrome profile, files and terminal state go. Run as the agent. @param {{ user: string, uid: number, display: number }} u */
