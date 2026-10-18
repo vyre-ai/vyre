@@ -112,13 +112,15 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" || name === "flows.runs" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" || name === "flows.runs" || name === "flows.list" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
           // The approvals queue lists what needs attention as itself, with no person's chain on the call (it holds the person's queue); no other module may.
           // The vault lends a Connection to a task's doer only after flows says which approved Kit version names it; it holds no person's chain for that, and no other module may ask.
+          // flows.list names every Flow: of the modules, only work asks (for the names of Flows whose runs a person may see), as that person
+          if (name === "flows.list" && meta && typeof meta.caller === "string" && meta.caller.startsWith("module:") && meta.caller !== "module:work") throw refuse("only the work module asks for the Flow list as a module; a person asks it themselves", "denied");
           if (name === "flows.kit.credentials" && !(meta && meta.caller === "module:vault")) throw refuse("only the vault asks which Connections a task's Kit names", "denied");
           if ((name === "flows.credential-uses" || name === "flows.definitions.scan") && !(meta && meta.caller === "module:vault")) throw refuse("only the vault asks which Flows use a credential", "denied");
           const chain = (name === "flows.attention" && meta && meta.caller === "module:approvals") || name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? null : await chainOf(f, meta);

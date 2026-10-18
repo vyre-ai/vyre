@@ -248,9 +248,12 @@ export async function chatThreads(d, extra, q) {
 /** A run's state in a thread's words: running or waiting is live, paused or failed needs the person, the rest is idle. @param {string} state */
 const runState = state => (state === "running" || state === "waiting" ? "live" : state === "paused" || state === "failed" ? "needs_you" : "idle");
 
-/** One Flow run as a thread of that Flow. @param {any} r a row of flows.runs */
-export function runThread(r) {
-  return { kind: "run", id: String(r.id), flow: String(r.flow), state: runState(String(r.state)), started: r.started_at || null, finished: r.finished_at || null, summary: r.label ? String(r.label) : null, error: r.error && r.error.message ? String(r.error.message).slice(0, 200) : null };
+/** One Flow run as a thread of that Flow. @param {any} r a row of flows.runs @param {any} [attention] its row of flows.attention, when a person has to look at it */
+export function runThread(r, attention = null) {
+  // a run held at a gate, or stuck, is waiting for a person even though its state says waiting
+  const over = ["done", "cancelled"].includes(String(r.state));
+  const asks = attention && !over ? { gate: attention.gate === true, reason: String(attention.message || attention.step_label || attention.kind || "").slice(0, 200) } : null;
+  return { kind: "run", id: String(r.id), flow: String(r.flow), state: asks ? "needs_you" : runState(String(r.state)), ...(asks ? { needs: asks } : {}), started: r.started_at || null, finished: r.finished_at || null, summary: r.label ? String(r.label) : null, error: r.error && r.error.message ? String(r.error.message).slice(0, 200) : null };
 }
 
 /**
@@ -261,14 +264,20 @@ async function runsOf(ctx, flow) {
   const r = await ctx.call("flows.runs", { ...(flow ? { id: flow } : {}), limit: 200 }, { relay: true });
   if (r && r.error) { if (r.error.code === "not_found") return []; throw fail(r.error.code || "failed", r.error.message); }
   const rows = r && Array.isArray(r.data) ? r.data : [];
-  return rows.map(runThread).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
+  // which of the runs the caller may see are waiting for a person (a held gate, a stuck step): flows.attention lists the Space's, so only the ids flows.runs already showed are used
+  const seen = new Set(rows.map((/** @type {any} */ x) => String(x.id)));
+  const att = await ctx.call("flows.attention", {}, { relay: true }).then((/** @type {any} */ a) => (a && a.data && Array.isArray(a.data.runs) ? a.data.runs : [])).catch(() => []);
+  const need = new Map(att.filter((/** @type {any} */ a) => seen.has(String(a.run))).map((/** @type {any} */ a) => [String(a.run), a]));
+  return rows.map((/** @type {any} */ x) => runThread(x, need.get(String(x.id)) || null)).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
 }
 
 /** The Flow rows of the chat list: one per Flow that has runs, with its run count and latest or live run. @param {any} ctx */
 export async function flowRows(ctx) {
   const byFlow = new Map();
   for (const t of await runsOf(ctx, null).catch(() => /** @type {any[]} */ ([]))) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
-  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
+  // a Flow's name, for the Flows that have runs the caller may see (flows.list gives every name; only these are used)
+  const names = new Map(((await ctx.call("flows.list", {}, { relay: true }).then((/** @type {any} */ x) => (x && Array.isArray(x.data) ? x.data : [])).catch(() => [])).map((/** @type {any} */ f) => [String(f.id), String(f.label || f.name || "")])));
+  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: names.get(String(flow)) || flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
     .sort((a, b) => String(b.latest.started || "").localeCompare(String(a.latest.started || "")));
 }
 
