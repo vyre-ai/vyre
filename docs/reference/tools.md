@@ -529,23 +529,21 @@ What a surface paints for one device (and project): preset, scheme, merged token
 
 The install card for one app: what runs, what it uses, what it may reach, what it shows. Built from the manifest, not the app.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.catalog`
 
 The apps this build can run as modules, each with its install card and whether it is installed here.
 
-- Input: none
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.connection`
 
 The Connection an installed app declares, as { app, label, auth, credential: { item, field }, check, operations }, with its Vault item.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.domain.add`
@@ -587,10 +585,7 @@ The loopback port the apps' front listens on: { port }. For Vyre's own modules (
 
 An app's webhook, from the daemon's hook door. Checks the app's token.
 
-- Input:
-  - `name` string, required
-  - `body` object
-  - `token` string
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.hosts`
@@ -604,25 +599,21 @@ The host names the installed apps need served (one per app): the front door's ce
 
 Install an app module. The owner's yes: it makes the app's keys in the Vault, starts the container on this server, sets the app up and connects its events. Takes a minute or two.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
-- Needs a person present.
 
 ### `appmods.list`
 
 The app modules installed on this server and their state.
 
-- Input: none
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.logs`
 
 The last lines an app wrote. For the person who owns this server.
 
-- Input:
-  - `name` string, required
-  - `lines` integer
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.open`
@@ -636,8 +627,7 @@ Open an installed app's screen: answers { url }, an address on the app's own ori
 
 Where a running app is reached from this daemon: { origin }. For Vyre's own modules only (the Connections module calls it for a Connection made from an app).
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.publish.install`
@@ -672,17 +662,14 @@ No description.
 
 Remove an installed app: the container and its network. Its data stays unless you say data: true.
 
-- Input:
-  - `name` string, required
-  - `data` boolean
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
-- Needs a person present.
 
 ### `appmods.screens`
 
 List screens of running installed apps as [{ module, id, label, path, icon? }]; appmods.open makes the address from path.
 
-- Input: none
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.signed.link`
@@ -731,24 +718,21 @@ No description.
 
 Start an installed app again.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.status`
 
 One installed app: its state and what the runtime says.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.stop`
 
 Stop an installed app. Its data stays.
 
-- Input:
-  - `name` string, required
+- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `appmods.ticket`
