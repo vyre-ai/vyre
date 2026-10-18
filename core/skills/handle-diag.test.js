@@ -6,9 +6,9 @@ import net from "node:net";
 import { start } from "../daemon/index.js";
 import { tempHome, present, asOwner } from "../../test/helpers.js";
 
-const stacks = [];
+const stacks = []; const servers = [];
 const origListen = net.Server.prototype.listen;
-net.Server.prototype.listen = function (...a) { stacks.push(String(a[0]) + " " + String(a[1]) + "\n" + new Error().stack.split("\n").slice(2, 9).join("\n")); return origListen.apply(this, a); };
+net.Server.prototype.listen = function (...a) { servers.push([this, new Error().stack.split("\n").slice(2, 6).join(" | ")]); stacks.push(String(a[0]) + " " + String(a[1]) + "\n" + new Error().stack.split("\n").slice(2, 9).join("\n")); return origListen.apply(this, a); };
 
 test("diag: what is open after stop", async t => {
   const root = fs.realpathSync(tempHome(t));
@@ -30,6 +30,7 @@ test("diag: what is open after stop", async t => {
     } catch (e) { extra = String(e); }
     lines.push(`${n} ${extra}`);
   }
+  console.log("DIAG-SERVERS\n" + servers.map(([sv, st]) => `listening=${sv.listening} ${st}`).join("\n") + "\nDIAG-SERVERS-END");
   console.log("DIAG-LISTEN\n" + stacks.filter(x => /127\.0\.0\.1|^0 /.test(x)).join("\n--\n") + "\nDIAG-LISTEN-END");
   console.log("DIAG-HANDLES\n" + lines.join("\n") + "\nDIAG-END");
 });
