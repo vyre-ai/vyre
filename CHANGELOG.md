@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2
 
+- feat(flows): an If or a parallel step shows its lanes side by side on a wide screen; the run history has All, Failed and Waiting filters and a search; a run step's input and output can be shown raw.
 - feat(flows): a step can be duplicated (a copy right after it, with fresh ids for it and the steps in its lanes), and Alt+Up and Alt+Down move the open step up or down.
 
 ## Unreleased

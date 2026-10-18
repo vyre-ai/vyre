@@ -63,3 +63,10 @@ export function groupFlows(flows) {
   for (const f of flows) { const k = f.project || "Personal"; by.set(k, [...(by.get(k) ?? []), f]); }
   return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
 }
+
+/** The runs list narrowed by what the person picked: All, Failed (failed or stopped), Waiting (waiting, paused or held), and a search over the run's words (its label, its error and its date text). @param {{ state: string, label?: string, error?: { message?: string } | null, when?: string }[]} runs @param {"all" | "failed" | "waiting"} filter @param {string} query */
+export function filterRuns(runs, filter, query) {
+  const want = filter === "failed" ? ["failed", "cancelled"] : filter === "waiting" ? ["waiting", "paused", "queued"] : null;
+  const q = String(query || "").trim().toLowerCase();
+  return runs.filter((r) => (!want || want.includes(r.state)) && (!q || [r.label, r.error && r.error.message, r.when, r.state].filter(Boolean).join(" ").toLowerCase().includes(q)));
+}

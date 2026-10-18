@@ -16,6 +16,7 @@ import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
 import { ContextBox } from "./ContextBox";
 import { EVERY_CHOICES, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, choiceOf, flowSentence, isRecordTrigger, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
+import { useUiTheme } from "../theme";
 import { addTo, canMove, duplicateDeep, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 import type { LaneRef } from "./tree.js";
@@ -121,6 +122,16 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
   const c = choiceOf(s.kind);
   const lanes = lanesOf(s);
   const mv = canMove(mine, s.id);
+  const { phone } = useUiTheme();
+  const main = lanes.filter((l) => l.key !== "on_fail");
+  const rest = lanes.filter((l) => l.key === "on_fail");
+  const side = !phone && (s.kind === "decide" || s.kind === "parallel") && main.length >= 2;
+  const laneView = (l: (typeof lanes)[number], wide: boolean) => (
+    <View key={l.key} className={wide ? "min-w-0 flex-1 gap-s1 rounded-card border border-edge bg-surface-2 p-s3" : "ml-s6 gap-s1 border-l-2 border-edge pl-s3"}>
+          <View className="flex-row items-center gap-s2 pb-s1"><Chip tone={l.key === "else" || l.key === "on_fail" ? "warn" : "accent"}>{l.label}</Chip>{l.key === "on_fail" ? <Text size="caption" tone="label">{s.on_fail?.then === "continue" ? "when it fails, then the Flow carries on" : "when it fails, then the Flow stops"}</Text> : s.kind === "decide" && l.key === "then" ? <Text size="caption" tone="label">when the condition holds</Text> : s.kind === "decide" && l.key === "else" ? <Text size="caption" tone="label">when it does not</Text> : null}</View>
+          <Lane lane={{ parent: s.id, key: l.key }} steps={laneSteps(s, l.key)} ctx={ctx} root={root} inHandler={inHandler || l.key === "on_fail"} />
+        </View>
+  );
   return (
     <View>
       <StepCard lead={`Step ${n}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? "Advanced step"} summary={`${stepSummary(s, options, draft)}${policyWords(s)}`} problem={stepProblem(s, options)} open={open === s.id} onToggle={() => toggle(s.id)} last={false}
@@ -129,12 +140,12 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
         onRemove={readOnly ? undefined : () => { change(root, removeDeep(mine, s.id)); setOpen(null); }}>
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
       </StepCard>
-      {lanes.map((l) => (
-        <View key={l.key} className="ml-s6 gap-s1 border-l-2 border-edge pl-s3">
-          <View className="flex-row items-center gap-s2 pb-s1"><Chip tone={l.key === "else" || l.key === "on_fail" ? "warn" : "accent"}>{l.label}</Chip>{l.key === "on_fail" ? <Text size="caption" tone="label">{s.on_fail?.then === "continue" ? "when it fails, then the Flow carries on" : "when it fails, then the Flow stops"}</Text> : s.kind === "decide" && l.key === "then" ? <Text size="caption" tone="label">when the condition holds</Text> : s.kind === "decide" && l.key === "else" ? <Text size="caption" tone="label">when it does not</Text> : null}</View>
-          <Lane lane={{ parent: s.id, key: l.key }} steps={laneSteps(s, l.key)} ctx={ctx} root={root} inHandler={inHandler || l.key === "on_fail"} />
+      {side ? (
+        <View className="ml-s6 flex-row items-start gap-s3 pb-s3">
+          {main.map((l) => laneView(l, true))}
         </View>
-      ))}
+      ) : null}
+      {(side ? rest : lanes).map((l) => laneView(l, false))}
       {s.kind === "parallel" && !readOnly ? (
         <View className="ml-s6 flex-row gap-s2 pb-s3">
           <Button kind="ghost" size="sm" icon="plus" label="Add a side" onPress={() => change(root, mapStep(mine, s.id, (p) => ({ ...p, lanes: [...(p.lanes ?? []), { steps: [] }] })))} />

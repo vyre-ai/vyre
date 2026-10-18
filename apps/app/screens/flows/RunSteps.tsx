@@ -14,7 +14,8 @@ function Pairs({ label, items }: { label: string; items: [string, string][] }) {
   );
 }
 
-function Detail({ r, name, thread, open }: { r: StepRow; name: (id: string) => string; thread?: string; open?: (thread: string) => void }) {
+function Detail({ r, name, thread, open, ledger }: { r: StepRow; name: (id: string) => string; thread?: string; open?: (thread: string) => void; ledger?: Ledger }) {
+  const [raw, setRaw] = useState(false);
   if (!r.inputs.length && !r.outputs.length && !r.error && !r.wakes && !r.by && !r.tries.length) return <Text size="secondary" tone="muted">Nothing more to show for this step.</Text>;
   return (
     <View className="gap-s2 pb-s2">
@@ -23,8 +24,8 @@ function Detail({ r, name, thread, open }: { r: StepRow; name: (id: string) => s
       {r.by ? <Text size="secondary" tone="muted">{`${r.tone === "accent" ? "Waiting on" : "Answered by"} ${name(r.by)}`}</Text> : null}
       {r.tries.map((t) => <Text key={t} size="secondary" tone="muted">{t}</Text>)}
       {thread && open ? <View className="self-start"><Button kind="secondary" size="sm" label="Open the agent's work" onPress={() => open(thread)} /></View> : null}
-      <Pairs label="Went in" items={r.inputs} />
-      <Pairs label="Came out" items={r.outputs} />
+      {raw ? <Text size="secondary" className="font-mono">{JSON.stringify({ input: ledger?.input ?? null, output: ledger?.output ?? null }, null, 1)}</Text> : <><Pairs label="Went in" items={r.inputs} /><Pairs label="Came out" items={r.outputs} /></>}
+      {r.inputs.length || r.outputs.length ? <View className="self-start"><Button kind="ghost" size="sm" label={raw ? "Show readable" : "Show raw"} onPress={() => setRaw(!raw)} /></View> : null}
     </View>
   );
 }
@@ -39,7 +40,7 @@ export function RunSteps({ painted, steps, max, fmt, name = (id) => id, rail, th
       {rows.map((r, i) => (
         <View key={r.key}>{i ? <Divider /> : null}
           <Row dense lead={rail ? <View className={`h-[10px] w-[10px] rounded-full ${DOT[r.tone]}`} /> : undefined} selected={open === r.key} onPress={() => setOpen(open === r.key ? null : r.key)} title={r.title} sub={[r.took, r.wakes].filter(Boolean).join(" · ") || undefined} end={<Chip tone={r.tone}>{r.status}</Chip>} />
-          {open === r.key ? <View className="px-s4"><Detail r={r} name={name} thread={r.task ? threads?.[r.task] : undefined} open={openThread} /></View> : null}
+          {open === r.key ? <View className="px-s4"><Detail r={r} name={name} thread={r.task ? threads?.[r.task] : undefined} open={openThread} ledger={steps?.[r.key]} /></View> : null}
         </View>
       ))}
     </>
