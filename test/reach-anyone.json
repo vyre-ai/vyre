@@ -1273,6 +1273,10 @@
    "module": "sessions",
    "reason": "read-only (an agent sees accounts without their vault item names)"
   },
+  "sessions.accounts.models": {
+   "module": "sessions",
+   "reason": "read-only: the models one account's provider offers, for an account the caller may see (sessions.accounts.list); an unseen account is not_found"
+  },
   "sessions.accounts.signin": {
    "module": "sessions",
    "reason": "askedOnly(): as add; a non-person starts a sign-in only for a new or still-pending account, scoped to the request's project, and the account stays pending after the sign-in, whoever completed it, until the person confirms it on their own surface (bind with confirm)"
@@ -1988,6 +1992,50 @@
   "work.chat.history-import": {
    "module": "work",
    "reason": "guarded: the caller must be in the chat (the kernel's chat read on their own chain), the file is read under their own chain (drive.read), and the writes go to the stream's and the switchboard's module-only import tools"
+  },
+  "work.agent.thread.new": {
+   "module": "work",
+   "reason": "starts a new thread (a chat with one agent) for the caller as themselves; the kernel authorizes the chat create and the key ring comes from the caller's device"
+  },
+  "work.agent.threads": {
+   "module": "work",
+   "reason": "read-only: the caller's own threads with one agent, only chats the kernel lets them read"
+  },
+  "work.chat.summary": {
+   "module": "work",
+   "reason": "read-only: one row per chat the caller may read, from the kernel's chat read"
+  },
+  "work.chat.thread.new": {
+   "module": "work",
+   "reason": "starts another thread in a chat the caller is already in, as themselves; the kernel authorizes the create and the ring comes from the device"
+  },
+  "work.chat.add-people": {
+   "module": "work",
+   "reason": "the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
+  },
+  "work.project.chat": {
+   "module": "work",
+   "reason": "the caller must read the project; it finds or makes the project's one chat (a fixed id) for the team as the caller acting directly, the kernel authorizes the create, and a viewer is never put in it; it changes no one's membership, it only reports the gap"
+  },
+  "work.chat.threads": {
+   "module": "work",
+   "reason": "read-only: the threads of one chat the caller may read"
+  },
+  "work.flow.threads": {
+   "module": "work",
+   "reason": "read-only: the caller's Flow runs as threads, filtered by flows.runs mayInspect"
+  },
+  "work.person.shared": {
+   "module": "work",
+   "reason": "read-only: chats and projects the caller shares with one person, each read through the kernel as the caller"
+  },
+  "work.thread.add-people": {
+   "module": "work",
+   "reason": "moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
+  },
+  "work.thread.fork": {
+   "module": "work",
+   "reason": "starts a new thread from a chosen message of one the caller is in; the cut is checked by the switchboard and the kernel authorizes the new chat"
   },
   "work.chat.list": {
    "module": "work",

@@ -190,6 +190,82 @@
         "effect": "write"
       },
       {
+        "name": "work.agent.threads",
+        "summary": "your threads with one agent, newest first: state, last line, unread",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.summary",
+        "summary": "your chat list in sections: pinned, people, groups, agents with their threads, Flows",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.flow.threads",
+        "summary": "a Flow's runs as its threads, newest first",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.add-people",
+        "summary": "add people to a chat of several people: every thread in it takes them",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.chat",
+        "summary": "a project's group chat, made on first use, with who is missing from it",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.threads",
+        "summary": "the threads of one chat (a set of people), newest first",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.person.shared",
+        "summary": "what you and one person share: your chat, your shared threads, your projects together",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.thread.add-people",
+        "summary": "add people to your thread with an agent; it moves into the chat of exactly those people",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.thread.new",
+        "summary": "start a new thread in the chat of you and these people",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.thread.fork",
+        "summary": "fork a thread from one of the agent's replies into a new thread; the original stays",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.flow.origin",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.fork-source",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "work.agent.thread.new",
+        "summary": "start a new thread with an agent; the old ones stay",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
@@ -754,6 +830,16 @@
               "name": "location",
               "kind": "text",
               "label": "This chat's Drive folder"
+            },
+            {
+              "name": "forked_from",
+              "kind": "text",
+              "label": "Forked from (the thread and the reply it was forked at)"
+            },
+            {
+              "name": "project_chat",
+              "kind": "boolean",
+              "label": "This is the project's group chat"
             },
             {
               "name": "tags",
