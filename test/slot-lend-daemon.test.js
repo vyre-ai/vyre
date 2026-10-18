@@ -39,7 +39,11 @@ test("a reviewer or approver agent holds one task for a round through the minted
   await handIn(other.id);
   await assert.rejects(ask.review(agentChain("job-1"), a.id, { result: "pass" }), "no grant, no review");
   await lend(a, "reviewer");
-  { const ch = agentChain("job-1"); const v = await K.gateway.authorize({ chain: ch, action: "tasks.work", resource: `vyre://${space}/task/${a.id}` }).catch((/** @type {any} */ e) => ({ err: String(e && e.message) })); console.log("DEBUGAUTH", JSON.stringify({ v, hops: ch.hops.map((/** @type {any} */ h) => h.actor), grants: (await K.gateway.grants.list(ownerChain).catch(() => [])).filter((/** @type {any} */ g) => g.subject && g.subject.actor && g.subject.actor.id === "rev").map((/** @type {any} */ g) => ({ a: g.actions, r: g.resource, c: g.conditions, s: g.source, st: g.status })) }).slice(0, 1500)); }
+  { const ch = agentChain("job-1"); const res = `vyre://${space}/task/${a.id}`; const out = /** @type {any} */ ({ now: Date.now() });
+    for (const act of ["tasks.read", "tasks.work"]) out[act] = await K.gateway.authorize({ chain: ch, action: act, resource: res }).then((/** @type {any} */ v) => ({ e: v.effect, r: v.reason })).catch((/** @type {any} */ e) => String(e && e.message));
+    out.ownerWork = await K.gateway.authorize({ chain: K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }), action: "tasks.work", resource: res }).then((/** @type {any} */ v) => ({ e: v.effect, r: v.reason })).catch((/** @type {any} */ e) => String(e && e.message));
+    out.labels = ch.labels; out.hops = ch.hops.map((/** @type {any} */ h) => ({ k: h.actor.kind, via: h.entered_by }));
+    console.log("DEBUGAUTH", JSON.stringify(out).slice(0, 1500)); }
   await assert.rejects(ask.review(agentChain("job-1"), other.id, { result: "pass" }), "another task is out of reach");
   assert.equal((await ask.review(agentChain("job-1"), a.id, { result: "pass" })).state, "done", "the reviewer agent passes the task it was asked to review");
 
