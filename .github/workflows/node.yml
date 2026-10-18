@@ -79,7 +79,7 @@ jobs:
         # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
         # requests run both versions.
         node: ${{ fromJSON(github.ref_type == 'tag' && '[24]' || ((github.event_name == 'pull_request' && (github.event.pull_request.draft == true || startsWith(github.base_ref, 'integrate/'))) || (github.event_name != 'pull_request' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2')) && '[24]' || '[22, 24]') }}
-        # Ten shards on the self-hosted runners (twelve of them, so a run takes about half the time), five on GitHub's hosted ones (node --test-shard); the eval and the perf gate run on shard 1 only.
+        # Ten shards on the self-hosted runners (twelve of them, so a run takes about half the time), five on GitHub's hosted ones (node --test-shard); the eval runs on shard 1 only; the perf gate is its own job below, on a hosted runner.
         shard: ${{ fromJSON(needs.select.outputs.all != 'true' && '[1]' || (vars.CI_SELF_HOSTED == '1' && github.event_name != 'pull_request_target' && github.event.pull_request.head.repo.fork != true) && '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]' || '[1,2,3,4,5]') }}
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
@@ -160,8 +160,28 @@ jobs:
         run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
       - if: ${{ matrix.shard == 1 && needs.select.outputs.all == 'true' }}
         run: npm run eval:answer
-      - if: ${{ matrix.shard == 1 && needs.select.outputs.all == 'true' }}
-        run: npm run perf-check
+  # The idle budget of vyred (scripts/perf-check: CPU p95 under 0.9 %, sustained under 1.8 %, heap after a GC under 60 MB, no recurring timer under 60 s). The budgets were calibrated on a quiet GitHub-hosted runner
+  # (issue 71), so this runs there and never on the shared self-hosted runners: shard 1 ran it beside five busy runners and measured the neighbours (load average 8.9 on 8 cores, v0.5.7 itself at p95 0.65 %).
+  # One run, and it must pass: the budgets are the same and no retry loosens the gate. It is a job of this workflow, so release.yml's `node` call, and the release job that needs it, depend on it.
+  perf:
+    needs: select
+    if: needs.select.outputs.all == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(github.ref_type == 'tag' && '[24]' || '[22, 24]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
   # only files that pass there), so a red result means something, and it blocks: a regression cannot
   # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
