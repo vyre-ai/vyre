@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records. "Add a column" on a table: a name and a kind (text, number, date, pick one, yes or no, or a link to another type, which makes its twin on the other type); it is saved at once and shown as a column (records.field.add, records.link.add; screens/records/AddColumn.tsx).
 - feat(app): Settings, Objects. A type with stages edits them as one or several pipelines: add a pipeline, and for each stage a name, a chance of closing, a colour, the fields it needs, move, remove and Counts as lost (records.pipeline.set, records.type.update; screens/customize/PipelinesEditor.tsx, pipelines.js).
 - feat(app): Records. A note or an outside-calendar event says who can read it (Only me, Whoever can see the record, Everyone in the Space) and changes it in place (records.share; only the writer may, and a refusal shows in the box's words). The Events tab lists other people's private events as Busy blocks, the time and nothing else (records.busy). screens/records/ShareControl.tsx, BusyBlocks.tsx, share-model.js.
 - fix(app): Records. "Delete for good" on a record page and "Who sees it" in New view are always shown; the server decides who may and a refusal shows in its own words.
