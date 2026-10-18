@@ -193,7 +193,7 @@ export function registerThreads(d) {
     run: async (/** @type {any} */ _input, /** @type {any} */ extra) => summarize(d, extra),
   });
   d.chatTool("work.flow.threads", {
-    description: "A Flow's runs as its threads, newest first: id, state (live, needs_you, idle), started, finished, error. You see the Flows you made or that are shared with you.",
+    description: "A Flow's runs as its threads, newest first: id, state (live, needs_you, idle), started, finished, error. Only Flows you made or share.",
     input: obj({ flow: { type: "string", description: "the Flow's id" } }, ["flow"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra);
