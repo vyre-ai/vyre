@@ -257,7 +257,8 @@ export function createEventLog(cfg) {
         }
       } catch {
         // The cursor did not move: retry with a growing delay; after MAX_ATTEMPTS set the event aside (dead letter) so a poison event cannot stall the consumer (K1 item 9f).
-        const next = nextFor(c);
+        // The log may be closed by now (the kernel stopped while a handler was running or a retry was due): nothing is left to read, so there is nothing to retry. Without this the second read threw out of pump, an unhandled rejection that failed whichever test was running.
+        /** @type {any} */ let next; try { next = nextFor(c); } catch { next = undefined; }
         if (next) {
           c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
           if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(() => pump(true)); }

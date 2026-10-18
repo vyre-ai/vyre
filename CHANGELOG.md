@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(kernel): the event bus no longer throws out of its pump when the log is closed. A handler that failed (or a retry that came due) as the kernel stopped read the log again in its retry path, got "database is not open" and left an unhandled rejection that failed whichever test was running (member-read-scope, needs, threads answer on the v0.6.1 node).
+
 - test(computers-proof): run.sh sets PROOF_ISOLATION=1, so security-live runs proof steps 4g (one computer cannot reach another's ports) and 4h (the agent uid holds no capability). PROOF_KILL stays off.
 - fix(tests): isolation.test.js test 19 matches agentd.js as it is in this release (`...bs()` starts Chrome's holder as the browser uid). The asBrowser form belongs to the 0.6.2 agentd and made the test fail in security-live.
 - test(runner): the lease key the lent-rig test sealer issues is different in every rig. It was one fixed hash of the member and the computer, so test files running side by side on one fscrypt volume shared an fscrypt key and the first to close its workspace removed the key from under the others ("key did not take", ENOENT under enc/).
