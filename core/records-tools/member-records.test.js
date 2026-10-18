@@ -57,7 +57,7 @@ test("a move cannot change the ID; a member moves, relates and saves her own lay
   const own = await as(BEN, "records.layout.set", { type: "deal", scope: "mine", layout: { columns: ["name", "amount"] } });
   assert.ok(!own.error, JSON.stringify(own.error));
   assert.equal((await as(BEN, "records.layout.set", { type: "deal", scope: "space", layout: { columns: ["name"] } })).error.code, "not_allowed");
-  { const got = await as(BEN, "records.layout.get", { type: "deal" }); assert.equal(JSON.stringify(got.data && got.data.layout && got.data.layout.columns), JSON.stringify(["name", "amount"]), JSON.stringify(got) + " rows: " + JSON.stringify((((await as(OWNER, "records.list", { type: "record-layout" })).data) || {}).rows)); }
+  { const got = await as(BEN, "records.layout.get", { type: "deal" }); assert.equal(JSON.stringify(got.data && got.data.layout && got.data.layout.columns), JSON.stringify(["name", "amount"]), JSON.stringify(got) + " rows: " + JSON.stringify((((await as(OWNER, "records.list", { type: "record-layout" })).data) || {}).rows) + " as her: " + JSON.stringify(await as(BEN, "records.list", { type: "record-layout" })) + " filtered: " + JSON.stringify(await as(BEN, "records.list", { type: "record-layout", filter: { field: "type", op: "eq", value: "deal" } }))); }
   // the Space's pipelines and fast fields stay with an owner or an admin
   const pipe = await as(BEN, "records.pipeline.set", { type: "deal", stages: [{ name: "A" }, { name: "B" }] });
   assert.ok(pipe.error, "a member cannot change the pipeline");
