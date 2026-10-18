@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import { Button, Text } from "@vyre/ui";
 import { tool } from "../../src/real/box";
+import { FileViewerSheet } from "../drive/FileViewerSheet";
 
 type Signer = { name: string; email: string; sent: number | null; opened: number | null; signed: number | null; declined: number | null };
 type Status = { submission: number; status: string; signers: Signer[]; audit_url: string | null } | null;
@@ -28,6 +29,7 @@ export function RequestTimeline({ submission }: { submission: number }) {
   const [status, setStatus] = useState<Status | undefined>(undefined);
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
   const [problem, setProblem] = useState("");
   /** Download audit: the server fetches the file and saves it to Files > Signed; the button opens the saved file there. */
   const downloadAudit = () => {
@@ -53,7 +55,10 @@ export function RequestTimeline({ submission }: { submission: number }) {
       })}
       {signed ? (
         saved ? (
-          <Button kind="secondary" size="sm" label="Open the audit file" onPress={() => router.push("/u/files" as any)} />
+          <>
+            <Button kind="secondary" size="sm" label="Open the audit file" onPress={() => setPreview(true)} />
+            <FileViewerSheet path={preview ? saved : null} onClose={() => setPreview(false)} />
+          </>
         ) : (
           <Button kind="secondary" size="sm" label={busy ? "Saving the audit file…" : "Download audit"} disabled={busy} onPress={downloadAudit} />
         )
