@@ -5,15 +5,17 @@
 // listed but not readable still refuses.
 import { createDoor } from "../../lib/gateway-door.js";
 import { projectFiles, whereIs } from "../../lib/files/layout.js";
+import { personCallOpts } from "../../lib/person-relay.js";
 
 const READ_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "mcp"];
 
 /**
  * The places out of the records the caller may read. A project is listed by its record's Drive folder (`Projects/<id>`), kept out when it moved away or has none; an agent by the folder its record names.
- * @param {readonly any[]} projectRows @param {readonly any[]} agentRows
+ * An agent is listed only when the caller is "on" it: `levels` (agents.level by name) says edit or use. An agent with no level answered, or none, is left out.
+ * @param {readonly any[]} projectRows @param {readonly any[]} agentRows @param {ReadonlyMap<string, string>} [levels]
  * @returns {{ mine: { path: string }, projects: { slug: string, name: string, path: string }[], agents: { name: string, path: string }[] }}
  */
-export function placesOf(projectRows, agentRows) {
+export function placesOf(projectRows, agentRows, levels = new Map()) {
   const projects = [];
   for (const r of projectRows) {
     const d = r && r.data;
@@ -29,6 +31,8 @@ export function placesOf(projectRows, agentRows) {
     if (!d || typeof d.folder !== "string" || !d.folder || typeof d.name !== "string") continue;
     const w = whereIs(d.folder);
     if (!w || w.kind !== "agent") continue;
+    const level = levels.get(d.name);
+    if (level !== "edit" && level !== "use") continue;
     agents.push({ name: d.name, path: d.folder });
   }
   const by = (/** @type {{ name: string }} */ a, /** @type {{ name: string }} */ b) => a.name.localeCompare(b.name);
@@ -39,7 +43,7 @@ export function placesOf(projectRows, agentRows) {
 export function registerPlaces(ctx) {
   const door = createDoor(ctx);
   ctx.tool("files.places", {
-    description: "Where your files are: your own, the projects you are on (each with its Drive folder) and the agents you can see (each with its folder): { mine, projects: [{ slug, name, path }], agents: [{ name, path }] }. Only what the kernel lets you read; open a path with files.drive.space.list.",
+    description: "Where your files are: your own, the projects you are on and the agents you own or have been given (each with its Drive folder): { mine, projects: [{ slug, name, path }], agents: [{ name, path }] }. A listed place is not a grant: the Drive decides when you open it (files.drive.space.list).",
     input: { type: "object", properties: { space: { type: "string" } } },
     callers: READ_CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -49,7 +53,18 @@ export function registerPlaces(ctx) {
         catch (e) { const c = /** @type {any} */ (e).code; if (c === "not_found" || c === "unknown_type" || c === "bad_input") return []; throw e; }   // a Space that has no such type has none of them
       };
       const [p, a] = await Promise.all([rows("project"), rows("agent")]);
-      return placesOf(p, a);
+      // the agents this person is on (agents.level, asked as them): a call that is not a person's own surface has none
+      const opts = personCallOpts(String((meta && meta.caller) || ""), meta);
+      const levels = new Map();
+      if (opts) {
+        await Promise.all(a.map(async (/** @type {any} */ r) => {
+          const name = r && r.data && typeof r.data.name === "string" ? r.data.name : "";
+          if (!name) return;
+          try { const x = /** @type {any} */ (await ctx.call("agents.level", { agent: name }, opts)); const v = x && x.data !== undefined ? x.data : x; levels.set(name, v && !v.error ? String(v.level) : "none"); }
+          catch { levels.set(name, "none"); }
+        }));
+      }
+      return placesOf(p, a, levels);
     },
   });
 }
