@@ -40,7 +40,7 @@ test("sample stages and roles are real ones, and a deal's weighted value is its 
 
 test("the sample set names no industry", () => {
   const text = JSON.stringify(samplePlan(NOW));
-  assert.doesNotMatch(text, /law|legal|attorney|lawyer|client matter|estate|probate|—/i.source ? /law|legal|attorney|lawyer|estate|probate|—/i : /x/);
+  assert.doesNotMatch(text, /law|legal|attorney|lawyer|estate|probate|\u2014/i);
 });
 
 test("a reference is filled in with an address, a link becomes { urn }, and a missing one is a plain error", () => {
