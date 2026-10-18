@@ -2,5 +2,5 @@
 import { createContext } from "react";
 
 export type MenuAt = { x: number; y: number } | null;
-export type MenuHost = { open: { current: ((at: MenuAt) => void) | null } };
+export type MenuHost = { open: { current: ((at: MenuAt) => void) | null }; /** The row's own switch: while the menu is open its action row stays shown. */ shown?: (on: boolean) => void };
 export const MenuHostCtx = createContext<MenuHost | null>(null);

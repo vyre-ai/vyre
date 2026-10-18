@@ -86,9 +86,9 @@ const showActions = () => allowsMock() && typeof location !== "undefined" && /[?
 function ActionRow({ children, side }: { children: React.ReactNode; side: "left" | "right" }) {
   const on = useContext(ActionsOn);
   const { color } = useUiTheme();
-  if (!on) return null;
+  // Kept mounted when hidden: the bar is what a right-click or a long press asks to open the message menu, so it has to be there before anyone hovers.
   return (
-    <View style={{ position: "absolute", top: -14, zIndex: 5, [side]: 8, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
+    <View style={{ display: on ? "flex" : "none", position: "absolute", top: -14, zIndex: 5, [side]: 8, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, minHeight: 28, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"] }}>
       {children}
     </View>
   );
@@ -101,8 +101,9 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
   const [hover, setHover] = useState(false);
   const [held, setHeld] = useState(false);
   const [focus, setFocus] = useState(false);
+  const [menuShown, setMenuShown] = useState(false);
   // The message menu: a right-click on the message opens it at the pointer, a long press as a sheet. The action bar registers its opener here.
-  const menuHost = useRef<MenuHost>({ open: { current: null } });
+  const menuHost = useRef<MenuHost>({ open: { current: null }, shown: (on) => setMenuShown(on) });
   const rowRef = useRef<View>(null);
   useEffect(() => {
     const el = rowRef.current as unknown as HTMLElement | null;
@@ -121,7 +122,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider, mine
       {dress?.divider ? <View style={{ paddingHorizontal: side }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => { const open = menuHost.current.open.current; if (open) open(null); else setHeld((v) => !v); }} delayLongPress={450} accessible={false}>
       <MenuHostCtx.Provider value={menuHost.current}>
-      <ActionsOn.Provider value={hover || held || focus || showActions()}>
+      <ActionsOn.Provider value={hover || held || focus || menuShown || showActions()}>
       <View style={{ paddingHorizontal: side, paddingTop: continued ? 8 : 16, paddingBottom: 0, alignItems: mine ? "flex-end" : "flex-start" }}>
         {showWho ? <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 4, paddingLeft: 2 }}><Face name={who} family={family} size={24} provider={provider} /><Text size="caption" medium tone="label">{who}</Text></View> : null}
         {/* The bubble is the anchor of its toolbar: the actions float over its top corner on hover, focus or a long press, so they take no room between messages. */}

@@ -23,7 +23,8 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   // The message menu: opened by a right-click or a long press on the message (the row calls the opener), or by the three dots; at: where the pointer was, or null for a sheet.
   const host = useContext(MenuHostCtx);
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null | undefined>(undefined);
-  useEffect(() => { if (!host) return; host.open.current = (at) => setMenuAt(at); return () => { host.open.current = null; }; }, [host]);
+  useEffect(() => { if (!host) return; host.open.current = (at) => { setMenuAt(at); host.shown?.(true); }; return () => { host.open.current = null; }; }, [host]);
+  const closeMenu = () => { setMenuAt(undefined); host?.shown?.(false); };
   const forms = copyForms(text);
   const blocks = codeBlocks(text);
   const h = ctx.wide ? 28 : 44;
@@ -77,7 +78,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   ) : null;
 
   // The hover bar is three things: Copy, Reply and the three dots, which open the same menu a right-click does.
-  const dots = (e: any) => { const n = e?.nativeEvent; setMenuAt(Platform.OS === "web" && n && typeof n.clientX === "number" ? { x: n.clientX, y: n.clientY } : null); };
+  const dots = (e: any) => { const n = e?.nativeEvent; setMenuAt(Platform.OS === "web" && n && typeof n.clientX === "number" ? { x: n.clientX, y: n.clientY } : null); host?.shown?.(true); };
   return (
     <View ref={root} {...(Platform.OS === "web" ? ({ dataSet: { msgbar: "1" } } as object) : {})} style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 2 }}>
       {icon(said ? "check" : "copy", said ? "Copied" : "Copy", "C. Shift for Markdown", actions.copy, actions["copy-md"])}
@@ -86,7 +87,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
         style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
         <Icon name="more" size={16} tone="label" />
       </Pressable>
-      {menuAt !== undefined && (menu.groups.length || menu.reactions.length) ? <MessageMenuView menu={menu} at={menuAt} onPick={pickItem} onReact={(e) => group?.onReact?.(e)} onClose={() => setMenuAt(undefined)} /> : null}
+      {menuAt !== undefined && (menu.groups.length || menu.reactions.length) ? <MessageMenuView menu={menu} at={menuAt} onPick={pickItem} onReact={(e) => group?.onReact?.(e)} onClose={closeMenu} /> : null}
     </View>
   );
 }
