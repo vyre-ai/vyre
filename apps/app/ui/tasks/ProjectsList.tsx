@@ -25,7 +25,7 @@ const workTypes = (items: Item[]) => [...new Map(items.map((i) => [i.def.name, i
 
 /**
  * The New menu: a plus icon button on a wide screen, the floating 56 button on a phone. A choice per type that holds work ("New trip"). `choices` are the ways a project is started, each a template
- * by what it calls its projects ("New matter") and last the blank one ("New blank project"); when given they stand in for the plain Project type, and `onChoose` gets the choice's key (a template id, or null for blank).
+ * by what it calls its projects ("New client project") and last the blank one ("New blank project"); when given they stand in for the plain Project type, and `onChoose` gets the choice's key (a template id, or null for blank).
  */
 export function NewMenu({ items, onNew, floating, choices, onChoose }: { items: Item[]; onNew: (type: string) => void; floating?: boolean; choices?: { label: string; key: string | null }[]; onChoose?: (key: string | null) => void }) {
   const menu = newMenuItems(workTypes(items), choices).map((m) => ({ label: m.label, onPress: () => (m.type ? onNew(m.type) : onChoose?.(m.key ?? null)) }));
@@ -62,9 +62,9 @@ function Faces({ ids, world }: { ids: string[]; world: World }) {
 
 
 /**
- * Projects, calm: a header (count, search with "/", Filter, New), the playbook chip when the list is narrowed to one, and one row per project: a tint tile with the playbook's icon, the name with
- * "Matter · Juniper Studio" under it, a neutral stage pill ("Stage 2 of 5", violet only when something needs you), tasks "2/4" on one line, the owner's face and first name, and a "..." menu (Open,
- * Rename, Archive). The whole row opens; Up and Down move through the rows and Enter opens one. On a phone each project is a card.
+ * Projects, calm: a header (count, search with "/", Filter, New), the playbook chip when the list is narrowed to one, and one row per project: a tint tile with the playbook's icon, the name with what is next
+ * under it ("Waiting on you: ..." in the accent when something needs the reader), what kind it is, tasks "2/4", who is on it, when it last moved (rowFacts in project-row.js), and a "..." menu (Open, Rename,
+ * Archive). The whole row opens; Up and Down move through the rows and Enter opens one. On a phone each project is a card.
  */
 export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose, playbook, playbookName: playbookLabel, onClearPlaybook, onRename, onArchive }: {
   world: World; items: Item[]; onOpen: (id: string) => void; onNew: (type: string) => void; /** The small tag that says where a project lives, from its source space (placeTag). */ tagOf?: (spaceId?: string) => string | null;
