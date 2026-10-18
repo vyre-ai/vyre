@@ -141,10 +141,26 @@ async function world(t) {
   const held = await tool("gate.request", { kind: "send", via: "mail", to: "kit@northwind.example",
     content: { subject: "Opening hours", body: "The shop opens at 7 from Monday." } }, "mcp");
   assert.equal(held.data.state, "held", JSON.stringify(held));
+  const threads = [];
   for (const prompt of ["ask", "bash npm test", "write menu.md"]) {
     const started = await tool("threads.start", { cwd: work, prompt, surface: "deck" });
     assert.ok(started.data, `${prompt}: ${JSON.stringify(started.error || started)}`);
+    threads.push(started.data.id);
   }
+  // The started threads are live fake sessions that keep writing to the store. Stop them and wait until they are stopped BEFORE the daemon closes (hooks run last-in first-out, so this runs ahead of the
+  // daemon's stop): otherwise one can still be writing when the database is shut, which fails the file as "database is not open" after the test ended.
+  t.after(async () => {
+    const end = Date.now() + 20_000;
+    for (const id of threads) {
+      await tool("threads.stop", { thread: id }).catch(() => {});
+      for (;;) {
+        const r = await tool("threads.get", { thread: id }).catch(() => null);
+        const st = r && r.data && r.data.thread && r.data.thread.status;
+        if (!st || st === "stopped" || Date.now() > end) break;
+        await new Promise(res => setTimeout(res, 200));
+      }
+    }
+  });
   const asks = await until(async () => { const r = (await tool("threads.asks", {})).data || []; return r.length === 3 ? r : null; }, "three asks");
   return { root, screen, work, tool, draft: held.data.id,
     question: asks.find(a => a.kind === "question"), bash: asks.find(a => a.tool === "Bash"), write: asks.find(a => a.tool === "Write") };
