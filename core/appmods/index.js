@@ -46,6 +46,7 @@ export const MIGRATIONS = [
 export function loadCatalog(log = () => {}) {
   /** @type {Map<string, any>} */ const out = new Map();
   for (const f of fs.readdirSync(CATALOG).filter(x => x.endsWith(".json")).sort()) {
+    if (typeof ctx.own === "function") ctx.own(() => new Promise(r => { front.close(() => r(undefined)); front.closeAllConnections(); }));
     try {
       const m = JSON.parse(fs.readFileSync(path.join(CATALOG, f), "utf8"));
       const problems = checkAppModule(m);

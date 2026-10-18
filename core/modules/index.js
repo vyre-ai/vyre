@@ -10,6 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
+import { startWithCleanup } from "./start-cleanup.js";
 import { RELAY_ALLOWED } from "./relay-allowed.js";
 import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
@@ -806,7 +807,7 @@ export class Registry {
       }
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
-      rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
+      rec.handle = await startWithCleanup(mod, adapter.context(this.context(adapter.manifest(m))), this.deps.log, m.name);
       rec.state = "running"; delete rec.error;
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {

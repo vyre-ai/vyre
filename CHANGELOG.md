@@ -61,6 +61,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Polish
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(modules): a module that opens something in start() and then fails has it closed. ctx.own(close) registers it; if start throws (or the registry refuses a tool it registered) the closers run, each bounded at 5 s, and then the failure is reported as before; a start that succeeds drops them. appmods uses it for its front
+
 - fix(appmods): a start that fails after the apps' front began listening (a tool its manifest does not declare) closes the front, so the module leaves nothing open. That open port was why daemon tests passed and then never exited
 
 - feat(skills): an approved plugin's MCP servers now reach each AI: a .mcp.json in the plugin folder for Claude and Grok, and [mcp_servers] tables in the Codex home's config.toml (stdio and http; rebuilt from checked fields, never copied; no env, no headers; sse is not placed for Codex). Needs the owner's ack as any plugin with code
