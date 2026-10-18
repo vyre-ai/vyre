@@ -19,6 +19,7 @@ const FIELD = /^(created_by|createdBy|owner|person|as|actor|author|by|user|decid
 const RULES = /** @type {[RegExp, string, "target"|"lookup"|"designation"|"narrowing"|"shim"|"caller", string][]} */ ([
   [/^spaces\./, "person", "target", "an admin names the member the act is about; the role engine and the kernel authorize it against the caller's own chain"],
   [/^spaces\./, "member", "target", "the person whose computer is lent or stopped; authorized against the caller's own chain"],
+  [/^work\.person\.shared$/, "person", "lookup", "the other person you look up: only the chats and projects you share with them are read, through your own chain; the caller is always the one asking"],
   [/^bridges\./, "person", "target", "the person whose view or reference is read or shared; the bridge checks the caller's own chain can act for them"],
   [/^vault\.(emergency\.|members\.|offboard$)/, "person", "target", "the person added, removed or asked of; the Vault checks the caller's own chain"],
   [/^vault\.space\.(grant|rotate)$/, "person", "target", "the member the space vault key is wrapped to or dropped for; membership is checked against the caller's own chain"],
