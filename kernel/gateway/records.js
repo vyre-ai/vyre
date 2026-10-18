@@ -1310,12 +1310,12 @@ export function createRecords(cfg) {
     mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!(await privateType(type))) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if ((await privateType(type)) && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) && (!(await privateType(type)) || await mayView(chain, type, r)) ? r : null; }
       const r = await api.get(chain, type, id);
       return r && (await privateType(type)) && !(await mayView(chain, type, r)) ? null : r;
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); const priv = await privateType(type); const rows = []; for (const x of r.rows) if (madeByTrusted(urn(type, x.id)) && (!priv || await mayView(chain, type, x))) rows.push(x); return { ...r, rows }; }
       if (!(await privateType(type))) return api.query(chain, type, spec);
       // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
       return visiblePage(spec = checkPage(spec), page => api.query(chain, type, { ...spec, page }), x => mayView(chain, type, x));
