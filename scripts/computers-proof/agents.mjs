@@ -157,14 +157,11 @@ try {
   const vsock = shOk(["exec", "-u", "20000", CONTAINER, "python3", "-c", "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/vyre/browsers/agb21000/vnc.sock')"]);
   check(denied(vsock), "the agent cannot open the screen's VNC socket", vsock.slice(-80));
   const xenv = ["-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
-  const info = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo | grep -c SECURITY"]);
-  if (!/^[1-9]/.test(info)) {
-    console.log("--- xdpyinfo as the agent\n" + shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo 2>&1 | head -8"]));
-    console.log("--- the agent's cookie file\n" + shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/x/ag20000/ 2>&1; xauth -f /var/lib/vyre/x/ag20000/xauth list 2>&1 | cut -c1-80"]));
-    console.log("--- xdpyinfo as the screen's owner\n" + shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "xdpyinfo 2>&1 | grep -i -E 'extensions|SECURITY|error|unable' | head"]));
-    console.log("--- Xvnc command line\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo args | grep '[X]vnc :20' | cut -c1-400"]));
-  }
-  check(/^[1-9]/.test(info), "the agent's untrusted cookie works and the X SECURITY extension is on", info);
+  // The cookie works (the agent's X clients connect), and the extension that makes it untrusted is on: the owner sees SECURITY in the server's extension list, the untrusted client is not shown it.
+  const info = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo 2>&1 | head -1"]);
+  check(/name of display:\s+:20/.test(info), "the agent's untrusted cookie works: its X clients connect to its own screen", info);
+  const ownerExt = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "xdpyinfo | grep -c SECURITY"]);
+  check(/^[1-9]/.test(ownerExt), "the X SECURITY extension is on in the agent's screen (the owner lists it)", ownerExt);
   const grab = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "import -window root /tmp/agent-grab.png >/dev/null 2>&1; echo $?"]);
   const ownGrab = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "import -window root /tmp/browser-grab.png >/dev/null 2>&1; echo $?"]);
   check(ownGrab === "0", "the screen's owner can capture its own screen", ownGrab);
