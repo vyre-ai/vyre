@@ -113,3 +113,27 @@ test("a follower's note task gives her no read on the project or on the doer's t
   };
   assert.deepEqual(await readsOf(true), await readsOf(false));
 });
+
+test("a template task may carry a reviewer and an approver, each { who, skills?, instructions? }: checked as a Flow step is, and made as the task's slots", { timeout: 60_000 }, async () => {
+  const slotsTpl = () => { const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", instructions: "Check the tone" }, approver: { who: "person:per_alex" } }]; return t; };
+  assert.deepEqual(problems(slotsTpl()), []);
+  const bad = (/** @type {(t: any) => void} */ f, /** @type {RegExp} */ re) => { const t = slotsTpl(); f(t.stages[0].tasks[0]); assert.ok(problems(t).some(p => re.test(p.message)), JSON.stringify(problems(t))); };
+  bad(k => { k.reviewer = "person:per_bob"; }, /reviewer is \{ who/);
+  bad(k => { k.approver = { who: "pool:x" }; }, /approver is person/);
+  bad(k => { k.checker = "person:per_bob"; }, /not both/);
+  bad(k => { k.reviewer.skills = ["a", "a"]; }, /up to 10 different/);
+  const w = await mk();
+  await start(w, {}, slotsTpl());
+  const t = await by(w, "Draft it");
+  assert.equal(t.reviewer.id, "per_bob", JSON.stringify(t));
+  assert.equal(t.checker.id, "per_alex");
+  assert.equal(t.state, "ready");
+});
+
+test("a template that names a skill the stage cannot pin for everyone is refused in plain words for that task, and nothing half-made is left", { timeout: 60_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", skills: ["personal/mine"] } }, { title: "Plain one", doer: "teammate:research", output: { kind: "note" } }];
+  const w = await mk();
+  await start(w, {}, t);
+  assert.equal(await by(w, "Draft it"), undefined, "the task that names the skill is not made");
+  assert.ok(await by(w, "Plain one"), "the stage's other task is made");
+});

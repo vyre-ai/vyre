@@ -20,6 +20,7 @@
 import { createHash } from "node:crypto";
 import { holds, stagesFor } from "../../lib/expr/conditions.js";
 import { renderBrief, evalChecklist } from "./checklist.js";
+import { slotsOf } from "./assign.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
@@ -163,6 +164,7 @@ export function createStages(o) {
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
+        ...(t.reviewer || t.approver ? { space_skills: true } : {}), ...(t.reviewer || t.approver ? await slotsOf(t, async (/** @type {string} */ ref) => (ref.startsWith("teammate:") ? { kind: "agent", id: ref.slice(9), space } : checkerFor(ref, space))) : {}),
         ...(noteOf(t, data) ? { note: noteOf(t, data) } : {}),
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
@@ -170,7 +172,7 @@ export function createStages(o) {
         ...(owner && t.due_offset_ms && owner.id !== doer.id ? { escalate_after: t.due_offset_ms, escalate_to: owner } : {}),
         // The kernel treats `required` as guarded (completion needs a check). A required task with no checker would wait for nobody, so the flag
         // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
-        ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),
+        ...(t.required !== false && (t.checker || t.approver || t.output.kind === "sent") ? { required: true } : {}),
       };
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
@@ -243,7 +245,8 @@ export function createStages(o) {
     for (const r of rows) if (!r.checkedFail && !((ent.tasks.find(/** @param {any} t */ t => t.id === r.id) || {}).checklist && r.state === "done")) await mark(ent, `task:${r.title}`, DONE.has(r.state) ? { status: "done" } : r.state === "skipped" ? { status: "skipped" } : r.state === "stuck" ? { status: "failed", error: { code: "stuck", message: "the task is stuck" } } : { status: "waiting" });
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
-    if (!ok) { if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
+    if (!ok) { if (rows.some(r => r.state === "declined")) emit("stage.declined", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "declined").map(r => r.id) });
+      if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
     await mark(ent, "tasks", { status: "done" });
     const cur = await o.kernel.records.get(chain, ent.type, ent.id);
     // The stages this record follows: its stage set when the type has sets, else the type's own list.

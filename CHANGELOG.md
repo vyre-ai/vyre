@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased (0.6.2: tasks v2, slice 1)
+
+- feat(tasks): a task can have a reviewer (a person, an agent, or a role) besides its doer and approver. The kernel adds the states In review and Changes requested (and Declined, not used yet): handing in goes to In review when there is a reviewer; the reviewer passes (to Awaiting approval, or Done when nothing else waits and nothing leaves) or asks for changes with a note; the doer hands in again. Nobody reviews their own work: not the doer, a helper, or anyone acting under the doer; an agent reviewer must be another agent and made by an owner or admin; in a Space where only the doer's own person could review, the step is skipped and recorded ("No one else to check this"). A review never frees an outward output. `approver` is accepted as the new name of `checker`. The reviewer step is skipped only when the Space has no one else who could hold it (counted from the Space's members, recorded with the count); a Space that cannot say is treated as a team. Coming back In review drops the last review; the changes note is kept as text on the task for the doer (the log holds its hash). An approval after a review is bound to it: the approver's proof must also cover the review hash (result, checklist, note) shown on the card. New tools tasks.update (the doer or a helper adds details, a progress note and outputs while the task is theirs to work; every call is a line of activity, free text kept out of the log) and tasks.review; tasks.get and tasks.list show the three slots and filter by reviewer or approver; the approval body covers the details and outputs. Quorum all, groups and per-slot skills follow.
+
 ## Unreleased
 
 - refactor(flows): the Flow runner sheds code to stay under its size cap: trying one step, what a step was given and retry from a step move to kernel/flows/step-test.js, and the small pure helpers to kernel/flows/runner-helpers.js, with no change in behaviour. flows.step.test, flows.runs and flows.retry descriptions are under 25 words, and no_such_step has a catalogue entry.

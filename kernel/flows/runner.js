@@ -31,7 +31,7 @@ import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
-import { chooseDoer } from "./assign.js";
+import { chooseDoer, slotsOf } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
@@ -1773,7 +1773,7 @@ export class FlowRunner {
         this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
         throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
       }
-      const t = res.task || {};
+      const t = res.task || {}; if (t.state === "declined") throw new StepFail("refused", `step ${s.id} was declined by the person it was given to`);   // the task was declined: the step fails at once and its on_fail path runs
       // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
       let values;
       if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
@@ -1812,7 +1812,7 @@ export class FlowRunner {
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...(await slotsOf(s, (/** @type {string} */ r) => this.#checker(ctx, r))), flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {

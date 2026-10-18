@@ -26,7 +26,7 @@ export const SERVICE_BODY_CAP = 64 * 1024;
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
 /** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
 export const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
-export const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
+export const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped", "task.declined"]);
 
 export function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }
 
