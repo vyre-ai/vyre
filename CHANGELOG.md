@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(needs): each started thread gets its own 60 s wait to stop before the daemon closes (a shared 20 s ran out on a loaded shard and a session wrote to a closed database).
+- fix(runner): a computer that comes back in contact while its sessions are still being stopped after a lease end opens the workspace again, and the late closing leaves it alone. Before, the workspace stayed closed with the key held (the lease-ends test timed out waiting for the remount).
 - fix(guards): the polish train's suite guards. Refusals in Files move, appmods audit, sessions key check and the Vault member link now say what to do next; the partial-move code has a catalogue entry; documents.signing.status is under the 25-word cap; the Files move tools take the one person-surface list (no bare mobile); the audit link check reads that list too; the AI accounts step reads the Anthropic key shape from the shared table; the Vault migration list is one line shorter.
 
 - fix(tests): the node reds on the vault, kernel and documents files. vault.person.of is recorded as needing no presence (a name and a verified flag, no value, owner-only by reach); dev-sign-proof's sample covers vaultAddKey and vaultAddKeys; member-endpoints.js and host-core.js are registered in kernel/door/sinks.json as not inference (an address list and address checks, no provider request); documents.signing.status has a description under the 25-word cap.
