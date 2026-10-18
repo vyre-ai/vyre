@@ -30,6 +30,7 @@ import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { chatKind, threadsTab } from "./threads-model.js";
 import { agentThreads } from "./threads-source";
+import { ForwardSheet } from "./ForwardSheet";
 import { chatTools } from "../../screens/chat-tools/instance";
 import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
@@ -160,6 +161,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
+  const [forward, setForward] = useState<{ text: string } | null>(null);
   const forkAsThread = useRef(false);
   const threadRef = useRef("");
   const openThreadRef = useRef<(t: string) => void>(() => {});
@@ -294,8 +296,9 @@ export function ChatScreen(p: ChatScreenProps) {
             },
             onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
             onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid),
+            onForward: (_uuid: string, text: string) => setForward({ text }),
           }
-        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid) }),
+        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid), onForward: (_uuid: string, text: string) => setForward({ text }) }),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
@@ -622,5 +625,6 @@ export function ChatScreen(p: ChatScreenProps) {
   // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
   const main = paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
   // On a wide screen the chat panel sits beside the thread (it pushes it over); on a phone it is a sheet.
-  return phone ? <>{main}{panelEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}</View>;
+  const forwardEl = <ForwardSheet open={forward !== null} text={forward?.text ?? ""} from={head.title} onClose={() => setForward(null)} />;
+  return phone ? <>{main}{panelEl}{forwardEl}</> : <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{main}</View>{panelEl}{forwardEl}</View>;
 }

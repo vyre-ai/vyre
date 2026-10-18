@@ -97,7 +97,7 @@ export function ConversationHeader({ lead, all, query, onQuery, project, onProje
 /** The filter row: All, People, Groups, Agents, Flows. One is chosen. */
 export function ConversationTypes({ type, onType }: { type: string; onType: (t: string) => void }) {
   return (
-    <ScrollView accessibilityLabel="Show" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 4, paddingHorizontal: RAIL.gutter }} style={{ flexGrow: 0 }}>
+    <ScrollView accessibilityLabel="Show" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 4, paddingHorizontal: RAIL.gutter }} style={{ flexGrow: 0, flexShrink: 0, height: 40 }}>
       {CONVO_TYPES.map((t) => <Chip key={t.id} selected={type === t.id} onPress={() => onType(t.id)}>{t.label}</Chip>)}
     </ScrollView>
   );

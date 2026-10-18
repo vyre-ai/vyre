@@ -84,6 +84,8 @@ export type BlockCtx = {
   onBranchFrom?: (uuid: string) => void;
   /** Go back to before this message (threads.rewind). */
   onRewindTo?: (uuid: string) => void;
+  /** Forward this message to another chat or an agent (the Forward sheet): its id, its words and who wrote it. */
+  onForward?: (uuid: string, text: string, from: string) => void;
   /** Ask another assistant or model for a second opinion on this answer (stream.second-opinion). */
   onSecondOpinion?: (uuid: string) => void;
   /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
