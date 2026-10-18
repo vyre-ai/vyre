@@ -128,7 +128,7 @@ export function AgentsHome() {
               <ListHeader onSearch={() => openFind("people")} title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
                 actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
               {shown.length ? (
-                <GroupedList groups={groups} items={shown} itemNoun="agents"
+                <GroupedList<(typeof shown)[number] & { group?: string }> groups={groups} items={shown} itemNoun="agents"
                   onChange={({ groups: g, items: it }) => { const p = { ...placed, ...Object.fromEntries(it.map((i) => [i.name, i.group as string])) }; setGroups(g); setPlaced(p); persist(g, p); }}
                   renderItems={(its) => <Card flush>{its.map((r, i) => <View key={r.name}>{i ? <View className="h-px bg-edge" /> : null}{rowCard(r)}</View>)}</Card>} />
               ) : <Card><EmptyState title="No agents match" body="Clear the search or a filter to see them all." action={{ label: "Clear", onPress: () => { setQuery(""); setChips([]); } }} /></Card>}
