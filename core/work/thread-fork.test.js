@@ -53,7 +53,8 @@ test("a fork keeps the conversation up to and including the chosen reply, starts
   const assistantLines = (/** @type {string} */ text) => text.split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(j => j.type === "assistant");
   await until(() => lines().some(x => assistantLines(x.text).length >= 1), "the first reply is in the transcript", 30000);
   await until(async () => ((await call("threads.get", { thread: run, limit: 5 })).data.thread || {}).status !== "starting", "the run is up", 30000);
-  await call("threads.send", { thread: run, text: "second question", surface: "deck" });
+  const second = await call("threads.send", { thread: run, text: "second question", surface: "deck" });
+  assert.ok(!second.error && second.data && second.data.sent !== false, `the second question was sent: ${JSON.stringify(second)}`);
   await until(() => lines().some(x => assistantLines(x.text).length >= 2), "the second reply is in the transcript", 30000);
   const original = lines().find(x => assistantLines(x.text).length >= 2);
   assert.ok(original);
