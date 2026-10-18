@@ -24,13 +24,16 @@ const useChatsFilter = create<{ q: string; type: string; project: string; tag: s
   q: "", type: "all", project: "all", tag: "", all: [], tags: [], newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
+/** Opens the New agent dialog (the /agent command and the + menu). */
+export const openNewAgent = () => useChatsFilter.getState().set({ newAgent: true });
+
 const useAdd = () => {
   const router = useRouter();
   const go = (p: string) => router.push(p as never);
   return [
     { label: "New chat", onPress: () => go("/u/chats/new") },
     { label: "New group chat", onPress: () => go("/u/chats/new?group=1") },
-    { label: "New agent", onPress: () => useChatsFilter.getState().set({ newAgent: true }) },
+    { label: "New agent", onPress: openNewAgent },
     { label: "New email", onPress: () => go("/u/mail/compose") },
   ];
 };

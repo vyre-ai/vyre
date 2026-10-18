@@ -13,6 +13,7 @@ import { answeringSummary, composerShortcut, deleteTokenBack, filterItems, moveA
 import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@vyre/ui/lib/nest-model.js";
 import { useMentionNodes } from "./useMentionNodes";
 import { Face } from "./Face";
+import { agentHint } from "./threads-model.js";
 import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
@@ -52,6 +53,8 @@ export type ComposerProps = {
   onCancelEdit?: () => void;
   /** A command the screen answers itself (/move opens the chat panel on its project page): true when it did, and nothing is sent. */
   onLocalCommand?: (name: string) => boolean;
+  /** The agent this chat is with (an agent chat only): the line under the box says /new and /threads, and steer or queue while it works. */
+  agentName?: string;
   /** Plus-menu shortcuts the screen handles (export, memory, roll, later, find). */
   onMenuCapability?: (id: "export" | "memory" | "roll" | "later" | "find") => void;
   /** Opens the Answering / model picker when the person picks /model locally. */
@@ -449,6 +452,7 @@ export function ChatComposer(p: ComposerProps) {
           {sendBtn}
         </View>
       </View>
+      {p.agentName ? <Text size="caption" tone="label" style={{ textAlign: "center", paddingTop: 6 }}>{agentHint(p.agentName, working)}</Text> : null}
     </View>
   );
 }

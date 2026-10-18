@@ -9,12 +9,21 @@ const THUMB = `data:image/svg+xml;base64,${typeof btoa === "function" ? btoa(svg
 const settle = (a: string): S => { const s = (W[a] ??= { state: "none", since: 0, last: 0 }); if (s.state === "waking" && now() - s.since > 3000) { s.state = "live"; } return s; };
 const shape = (s: S) => ({ state: s.state, lastActive: s.last, display: s.state === "live" ? 1 : null, ...(s.state === "live" ? { thumbnail: THUMB } : {}) });
 
+const HOUR = 3_600_000;
+/** An agent's threads in the sample world: the first is live for ads and Engineer-like agents; a new thread is added on top. */
+const T: Record<string, { id: string; title: string; at: number; live?: boolean; needs?: boolean }[]> = {
+  juno: [{ id: "j1", title: "Fix the intake date check", at: now() - HOUR / 4, live: true }, { id: "j2", title: "Signup form", at: now() - 30 * HOUR }, { id: "j3", title: "Pricing page", at: now() - 80 * HOUR }],
+  ads: [{ id: "a1", title: "Book the photographer", at: now() - HOUR / 5, live: true, needs: true }, { id: "a2", title: "Spring campaign budget", at: now() - 50 * HOUR }],
+  kit: [{ id: "k1", title: "Research the two vendors", at: now() - 5 * HOUR }],
+};
 let upToDate = false;
 const IMG = "ghcr.io/vyre-ai/agent-computer";
 const updateStatus = () => ({ present: true, current: upToDate, image: upToDate, want: { image: `${IMG}:0.6.0`, version: "0.6.0", layout: 2 }, have: { image: upToDate ? `${IMG}:0.6.0` : `${IMG}:0.5.4`, version: upToDate ? "0.6.0" : "0.5.4", layout: upToDate ? 2 : 1, container: "c1", at: now() } });
 
 export const mockComputerTools: Record<string, (i: any) => unknown> = {
   "system.info": () => ({ host: "juniper-box", role: "box", version: "0.6.0", platform: "linux", node: "v22.11.0" }),
+  "agents.threads": (i) => ({ threads: T[String(i.agent)] ?? [] }),
+  "agents.thread.new": (i) => { const a = String(i.agent); const id = `${a}-${(T[a] ?? []).length + 1}`; (T[a] ??= []).forEach((t) => { t.live = false; }); T[a].unshift({ id, title: "New thread", at: now(), live: true }); return { thread: id }; },
   "computers.update.status": () => updateStatus(),
   "computers.update": () => { if (upToDate) return { updated: false, state: "current", message: "The agent computer already matches this version of Vyre." }; upToDate = true; return { updated: true, state: "updated", message: "The agent computer was updated. 2 agents had their screens closed." }; },
   "computers.agent.status": (i) => shape(settle(String(i.agent))),

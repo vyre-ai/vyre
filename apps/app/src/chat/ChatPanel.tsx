@@ -9,6 +9,8 @@ import { FileViewer, Avatar, AvatarStack, Banner, Button, Chip, Divider, Icon, P
 import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
+import { ThreadsTab } from "./ThreadsTab";
+import { chatKind, panelTabs, tabOf } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -30,7 +32,10 @@ const fam = (f: string) => (f === "assistant" ? "assistant" : f === "model" ? "m
 export type ChatPanelProps = {
   open: boolean; onClose: () => void; phone: boolean; page: PanelPage; onPage: (p: PanelPage) => void;
   /** The tab showing on the first page, and its change (the chat screen keeps it, so the header menu can open the panel on one). */
-  tab: "details" | "library" | "computer"; onTab: (t: "details" | "library" | "computer") => void;
+  tab: string; onTab: (t: string) => void;
+  /** A Flow is one chat whose runs are its threads: the tabs are Runs and Details. */ flow?: boolean;
+  /** Switch to one of an agent's threads; start a new one (null when it started, else why not). */
+  onSwitchThread?: (thread: string) => void; onNewThread?: (agent: string) => Promise<string | null>;
   /** The chat's name, for the top of the panel. */ title: string;
   participants: readonly Participant[]; viewer: string; info: AboutInfo;
   muted: boolean; pinned: boolean; onMute: (on: boolean) => void; onPin: (on: boolean) => void;
@@ -124,7 +129,7 @@ export function ChatPanel(p: ChatPanelProps) {
   const agents = p.participants.filter((x) => x.family === "assistant" && x.id !== p.viewer);
   const [helpers, setHelpers] = useState<Task[] | null>(null);
   useEffect(() => {
-    if (!p.open || tab !== "library") return;
+    if (!p.open || (tab !== "library" && tab !== "details" && tab !== "threads")) return;
     let on = true;
     chatTools.tasks(p.thread).then((t) => { if (on) setHelpers(subagentsOf(t)); }).catch(() => { if (on) setHelpers([]); });
     return () => { on = false; };
@@ -202,7 +207,14 @@ export function ChatPanel(p: ChatPanelProps) {
       {helpers === null ? <Text tone="muted">Looking.</Text> : helpers.length ? helpers.map((t) => <Row key={t.id} dense lead={<Icon name="users" size={20} />} title={t.title} sub={t.status} chevron onPress={() => p.onPage("tasks")} />) : <Text tone="muted">Helpers this chat starts to work for it show here.</Text>}
     </View>
   );
-  const tabs: ["details" | "library" | "computer", string][] = [["details", "Details"], ["library", "Library"], ...(agents.length ? [["computer", "Computer"] as ["computer", string]] : [])];
+  // The tabs depend on the chat: an agent has Threads, Computer, Details; a group has Group and a tab per agent; a Flow has Runs and Details; a person has Details.
+  const kind = chatKind({ others: p.participants.filter((x) => x.id !== p.viewer), flow: p.flow });
+  const tabs = panelTabs(kind, agents.map((x) => x.name));
+  const cur = tabOf(tabs, tab === "library" ? "details" : tab);
+  const threadsOf = (agent: string, noun: "thread" | "run" = "thread") => <ThreadsTab key={agent} agent={agent} noun={noun} current={p.thread} onSwitch={(t) => p.onSwitchThread?.(t)} onNew={p.onNewThread ? () => p.onNewThread!(agent) : undefined} />;
+  const agentBody = (agent: string) => <View style={{ gap: 16 }}>{threadsOf(agent)}<ComputerTab agents={[agent]} onLeave={p.onClose} /></View>;
+  const body0 = cur === "threads" && agents[0] ? threadsOf(agents[0].name) : cur === "runs" ? threadsOf(p.title, "run") : cur === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} />
+    : /^agent:/.test(cur) ? agentBody(cur.slice(6)) : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{details}{library}</View> : details;
   // The top of the panel: one face, the name, the labels. A chat with one other shows their face; more than one shows a small stack.
   const others = p.participants.filter((x) => x.id !== p.viewer);
   const hero = (
@@ -217,8 +229,8 @@ export function ChatPanel(p: ChatPanelProps) {
   const root = (
     <View style={{ gap: 16 }}>
       {hero}
-      <Tabs items={tabs} value={tab} onChange={setTab} />
-      {tab === "library" ? library : tab === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} /> : details}
+      {tabs.length > 1 ? <Tabs items={tabs} value={cur} onChange={setTab} /> : null}
+      {body0}
     </View>
   );
 

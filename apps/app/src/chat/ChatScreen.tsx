@@ -28,6 +28,9 @@ import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
+import { chatKind, threadsTab } from "./threads-model.js";
+import { agentThreads } from "./threads-source";
+import { openNewAgent } from "../../screens/chats/ChatsSidebar";
 import { Face } from "./Face";
 import { type AboutInfo } from "./AboutSheet";
 import { ChatPanel, type PanelPage } from "./ChatPanel";
@@ -88,7 +91,9 @@ export type ChatScreenProps = {
   /** Open "About this chat" at first (shots). */
   initialAbout?: boolean;
   /** The panel's tab when it opens first (the sample build's ?tab=computer, for a picture). */
-  initialTab?: "details" | "library" | "computer";
+  initialTab?: string;
+  /** A Flow is one chat whose runs are its threads. */
+  flow?: boolean;
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
   /** The project this chat is in, for the header (a name, never an id). */
@@ -152,7 +157,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
-  const [panelTab, setPanelTab] = useState<"details" | "library" | "computer">(p.initialTab ?? "details");
+  const [panelTab, setPanelTab] = useState<string>(p.initialTab ?? "");
   const toolsOpen = panel !== null;
   const chatProject = useChatProject(p.sessionId, p.project);
   // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
@@ -351,6 +356,22 @@ export function ChatScreen(p: ChatScreenProps) {
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
+  // What kind of chat this is decides the side panel's tabs and what /threads opens.
+  const others = faces.filter((f) => f.id !== viewerId);
+  const agentNames = others.filter((f) => f.family === "assistant").map((f) => f.name);
+  const kind = chatKind({ others, flow: p.flow });
+  const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };
+  const panelNow = useRef({ panel, toggle: togglePanel });
+  panelNow.current = { panel, toggle: togglePanel };
+  // Cmd . (or Ctrl .) opens and closes the side panel, as the name pill does.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "." && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); panelNow.current.toggle(); } };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  // /new starts a thread with this agent; /threads opens the tab that lists them; switching keeps the old ones saved.
+  const newThread = async (agent: string): Promise<string | null> => { const r = await agentThreads.start(agent); if ("problem" in r) return r.problem; showToast("New thread started."); return null; };
   const answering = faces.filter((f) => f.family === "assistant" || f.family === "model").map((f) => f.name);
   const head = headerParts({ title: p.title, project: chatProject.current?.name ?? p.project ?? info.record?.title ?? null, space: info.space ?? null, answeredBy: answering, where: allowsMock() ? null : here.where });
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
@@ -377,7 +398,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const paneOpen = usePreviewPane();
   const panelEl = (
     <ChatPanel
-        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} title={head.title}
+        open={panel !== null} onClose={() => setPanel(null)} phone={phone} page={panel ?? "root"} onPage={setPanel} tab={panelTab} onTab={setPanelTab} flow={p.flow} onNewThread={newThread} onSwitchThread={() => { if (phone) setPanel(null); }} title={head.title}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))} viewer={viewerId} info={info}
         muted={muted} pinned={pinned} onMute={setMuted} onPin={setPinned} onMove={() => { const to = runsOn === "mac" ? "server" : "mac"; void placed.move(to); }} onOpenTerminal={p.onOpenTerminal}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
@@ -395,7 +416,7 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={() => { setPanelTab("details"); setPanel("root"); }} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
           { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
@@ -519,6 +540,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
+          agentName={kind === "agent" ? agentNames[0] : undefined}
           key={draftN}
           draftKey={p.sessionId}
           state={meta.state}
@@ -541,6 +563,13 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={answerSlots}
           peopleOnly={peopleChat}
           onLocalCommand={(name) => {
+            if (name === "threads") { const t = threadsTab(kind, agentNames, panelTab); if (!t) return false; setPanelTab(t); setPanel("root"); return true; }
+            if (name === "new") { if (kind !== "agent" || !agentNames[0]) return false; void newThread(agentNames[0]).then((why) => { if (why) showToast(why); else { setPanelTab("threads"); setPanel("root"); } }); return true; }
+            if (name === "fork") { showToast("Use Fork from here on a message of the agent."); return true; }
+            if (name === "fresh") { void onSend("/roll"); return true; }
+            if (name === "where") { setPanel("more"); return true; }
+            if (name === "flow") { router.push("/u/flows" as never); return true; }
+            if (name === "agent") { openNewAgent(); router.push("/u/chats" as never); return true; }
             if (name === "move") { setPanel("project"); return true; }
             if (name === "rewind") { caps.api.openRewind(); return true; }
             if (name === "find") { setFindOpen(true); return true; }
