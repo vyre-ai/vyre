@@ -17,7 +17,7 @@ export function GalleryView({ def, rows, onOpen, view, noFilter }: { def: any; v
       {cards.map((c: any) => (
         <PressableScale key={c.key} depth={0.98} accessibilityRole="button" accessibilityLabel={c.title} onPress={() => onOpen?.(c.rec)} style={{ width: 168 }}>
           <Card className="items-center gap-s2 p-s4">
-            {c.image ? <Avatar of={{ kind: "service", id: c.key, name: c.title, image: c.image } as any} size={48} /> : <Avatar of={{ kind: "person", id: c.key, name: c.title }} size={48} />}
+            {c.image ? <Avatar of={{ kind: "service", id: c.key, name: c.title, image: c.image } as any} size={44} /> : <Avatar of={{ kind: "person", id: c.key, name: c.title }} size={44} />}
             <Text strong numberOfLines={1} className="text-center">{c.title}</Text>
             {c.subtitle ? <Text size="caption" tone="label" numberOfLines={1} className="text-center">{c.subtitle}</Text> : null}
           </Card>
