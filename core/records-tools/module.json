@@ -28,6 +28,8 @@
       { "name": "records.type.update", "effect": "write", "reach": "person" },
       { "name": "records.role.set", "effect": "write", "reach": "person" },
       { "name": "records.roles.summary", "effect": "read", "reach": "person" },
+      { "name": "records.link.add", "effect": "write", "reach": "person" },
+      { "name": "records.link.set", "effect": "write", "reach": "person" },
       { "name": "records.rollup.add", "effect": "write", "reach": "person" },
       { "name": "records.layout.get", "effect": "read", "reach": "person" },
       { "name": "records.layout.set", "effect": "write", "reach": "person" },

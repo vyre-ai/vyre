@@ -67,6 +67,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.busy": "the blocks of time other people's private calendar events take up, as Busy and nothing else: read as the Space and cut to the start, the end and the all-day flag before it is answered",
   "records.role.set": "puts a role on a record, or moves its stage, under the caller's own chain; the kernel decides who may read the holder and write the role",
   "records.roles.summary": "a record's roles as short labels, or the count of holders by role and stage, read under the caller's own chain so only rows the caller may read are counted",
+  "records.link.set": "connects a record through one of its link fields, and may keep the connection as a relationship, under the caller's own chain; the kernel decides who may read both ends and write the record",
   "records.log": "logs a call, a meeting or a note on a record under the caller's own chain; the kernel decides who may write, and a note starts private",
   "records.field.status": "lists a type's fast fields and where each is; no record data",
   "records.get": "reads one record under the caller's own chain; the kernel decides",
