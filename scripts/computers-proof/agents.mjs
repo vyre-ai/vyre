@@ -54,7 +54,7 @@ try {
     console.log("--- container log (full)\n" + shOk(["logs", CONTAINER]).slice(-6000));
     console.log("--- proxy log\n" + (() => { try { return fs.readFileSync(path.join(DIR, "run", "proxy.log"), "utf8").slice(-4000); } catch (e) { return String(e.message); } })());
   }
-  check(up, "agentd answers through the one allowed exec", lastErr || undefined);
+  check(up, "agentd answers through the one allowed exec", up ? undefined : lastErr);
   // the process itself: agentctl's uid, no new privileges, and a bounding set of setuid and setgid only (the entrypoint cannot set securebits: that needs CAP_SETPCAP, which no computer has)
   const apid = shOk(["exec", CONTAINER, "sh", "-c", "pgrep -u agentctl -f agentd-main | head -1"]);
   const ast = shOk(["exec", CONTAINER, "grep", "-E", "^(Uid|CapEff|CapBnd|NoNewPrivs):", `/proc/${apid}/status`]);
@@ -90,6 +90,11 @@ try {
   // Chrome takes a while to start; the holder's socket appears with it
   let a = null;
   for (let i = 0; i < 30 && !a; i++) { try { a = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
+  if (a === null) {
+    console.log("--- processes of agent A's screen\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -E 'agb2|ag2|Xvnc|fluxbox|chromium|agentd' | grep -v grep | cut -c1-220 | head -30"]));
+    console.log("--- agent A's browser folder\n" + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/browsers/agb21000 /var/lib/vyre/x/ag20000 2>&1 | head -30"]));
+    console.log("--- chromium by hand as the browser uid (8 s)\n" + shOk(["exec", "-u", "21000", "-e", "HOME=/var/lib/vyre/browsers/agb21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "timeout 8 chromium --user-data-dir=/var/lib/vyre/browsers/agb21000/handtest --no-first-run --remote-debugging-pipe about:blank 2>&1 | head -25"]));
+  }
   check(a !== null, "agent A's Chrome answers over its debugging pipe");
   await a.send("Network.setCookie", { name: "proof_login", value: "signed-in-1", url: "https://example.com/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true });
   const before = (await a.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => c.name);
