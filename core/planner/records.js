@@ -264,7 +264,9 @@ export async function openRecords(o) {
       /** An event of the planner's own: the record, and its calendar row. */
       async create(/** @type {any} */ data, /** @type {any} */ onBehalf = undefined) {
         // The person the event is for (their own chain, when a person added it) is named so the Bin lists it to them; calendar sync has no person and leaves it to the owner.
-        const rec = await K.records.create(chain(), "event", data, onBehalf ? { on_behalf: onBehalf } : {});
+        // the person it is for owns it (Mine, Team and Everyone are filters on `owner`, "person:<id>")
+        const who = onBehalf && Array.isArray(onBehalf.hops) ? onBehalf.hops.find((/** @type {any} */ h) => h.actor && h.actor.kind === "person") : null;
+        const rec = await K.records.create(chain(), "event", who && data.owner === undefined ? { ...data, owner: `person:${who.actor.id}` } : data, onBehalf ? { on_behalf: onBehalf } : {});
         known.set(rec.id, rec.version);
         return fromEvent(rec, now());
       },

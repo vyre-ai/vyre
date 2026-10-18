@@ -25,12 +25,18 @@ docker network create --internal csproof-net >/dev/null || exit 1
 $NI node scripts/computers-proof/proxy-up.mjs "$PORT" "$DIR/run/bearer" > "$DIR/run/proxy.log" 2>&1 &
 PROXY_PID=$!
 sleep 3
-PROOF_HOLD="${PROOF_HOLD:-0}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/proof.mjs
+# PROOF_ISOLATION=1 runs steps 4g and 4h (one computer cannot reach another's ports; the agent uid holds no capability): the v0.6.1 security text rests on them. PROOF_KILL (4f, the computer dies mid-task) stays off; it is on the 0.6.2 backlog.
+PROOF_ISOLATION=1 PROOF_HOLD="${PROOF_HOLD:-0}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/proof.mjs
 RC=$?
 echo "proof exit code $RC"
 # the agent computer proof (0.6): two agents on one computer, logins that survive sleep. Its own container, on the same image, proxy and network.
-PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
+PROOF_CONTINUE="${PROOF_CONTINUE:-1}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
 RC2=$?
 echo "agent proof exit code $RC2"
-[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && exit 0
+# the one-computer proof (0.6): a vyred with the default settings, which agent has which computer. It needs the shared container name to itself, so the earlier proofs' containers go first.
+for c in $(docker ps -a --filter name=csproof-computer- --format '{{.Names}}'); do docker rm -f "$c" >/dev/null 2>&1; done
+PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/space.mjs
+RC3=$?
+echo "space proof exit code $RC3"
+[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && [ "$RC3" -eq 0 ] && exit 0
 exit 1

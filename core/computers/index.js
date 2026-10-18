@@ -280,18 +280,20 @@ export default {
     // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
     // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
     const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
-    const lazy = name => async u => {
+    const lazy = name => async (/** @type {any[]} */ ...args) => {
       const driver = pool.driver;
       const box = pool.row(SHARED_COMPUTER_ID);
       if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
       const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
-      return /** @type {any} */ (ctl)[name](u);
+      return /** @type {any} */ (ctl)[name](...args);
     };
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
       // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
       emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
-      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome") } });
+      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome"),
+        // the screen relay's tickets, the Chrome link, a harness session, a command and the terminals: every action agentd answers, or AgentUsers says "this computer cannot" and the agent has no Chrome of its own
+        screenTicket: lazy("screenTicket"), cdpTicket: lazy("cdpTicket"), runTicket: lazy("runTicket"), terminalTicket: lazy("terminalTicket"), exec: lazy("exec"), terminals: lazy("terminals") } });
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
@@ -460,7 +462,28 @@ export default {
         return { ticket, path, width: w, height: h };
       });
 
-    const agentdReady = () => { const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    // Per-agent users on the space's computer are off until 0.6.2: the box opts in with computers.agentUsers: true, and even then agentd must be up (the shared box has a container and its computerd answered, so its host is registered).
+    const agentdReady = () => { if (!(ctx.config && ctx.config.computers && ctx.config.computers.agentUsers === true)) return false; const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    // The Space's computer for agentBrowser: never the shared browser unless computers.browse is "browser" on purpose. It waits (bounded) for the computer and agentd, and says so loudly when they do not come.
+    {
+      agentBrowser.log = ctx.log;
+      const canExec = Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function");
+      agentBrowser.space = !canExec ? null : { endpoint: async agent => {
+        const waitMs = Number((ctx.config && ctx.config.computers && ctx.config.computers.agentdWaitMs) ?? 90_000), t0 = Date.now();
+        let last = NOT_SET, said = false;
+        for (;;) {
+          if (agentdReady()) {
+            try { await agentTools.place(agent); await agentUsers.wake(agent); return await cdpAdapter.endpoint(agent); } catch (e) { last = /** @type {Error} */ (e).message; }
+          }
+          if (Date.now() - t0 > waitMs) {
+            ctx.log(`AGENT COMPUTER NOT READY: ${agent} waited ${Math.round(waitMs / 1000)} s for the Space's computer and agentd (${last}); the shared browser is not used because computers.browse is not "browser"`);
+            throw new Error(`the Space's computer is not ready yet (${last}); try again in a moment. The shared browser is used only when computers.browse is "browser".`);
+          }
+          if (!said) { said = true; ctx.log(`agent computer: starting the Space's computer for ${agent}; waiting up to ${Math.round(waitMs / 1000)} s for agentd`); }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      } };
+    }
     const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",

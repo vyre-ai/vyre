@@ -93,7 +93,7 @@ export async function createKernel(cfg) {
   // Who holds a role now, read live: the Space members whose role is that name. The one meaning of "role" for a task slot and a Flow (the Flows host asks the kernel for it).
   const roleHolders = (/** @type {string} */ role) => (grantsStore && members && typeof members.people === "function" ? members.people().filter((/** @type {any} */ p) => grantsStore.roleOf(p) === role) : []);
   const tasks = createTasks({
-    roleHolders, facts: createFacts(store, cfg.space), agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
+    roleHolders, facts: (/** @type {any} */ c) => createFacts(gateway.records, c, cfg.space), agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
     skills: { pin: async (/** @type {string} */ id, /** @type {any} */ chain, /** @type {boolean} */ spaceOnly = false) => (skillPinFn ? skillPinFn(id, chain, spaceOnly) : null) },
     canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null), ...(members && typeof members.people === "function" ? { people: () => members.people() } : {}) },

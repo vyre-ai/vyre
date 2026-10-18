@@ -140,7 +140,7 @@ as_vyre chmod 0660 "${CHROME_LOG}" || exit 1
 # ---- the three homes -------------------------------------------------------------------------
 # The agent's home is group-writable (setgid, so new folders keep the group) for computerd's
 # Files; the agent can undo that for any folder it wants private.
-as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox" "$HOME/Downloads"'
+as_agent sh -c 'chmod 2775 "$HOME" && mkdir -p "$HOME/.fluxbox"'
 as_vyre sh -c 'umask 077; mkdir -p "$HOME/.vnc"'
 # browser's own subtree (the Chrome profile, downloads) is pre-made by the Dockerfile with its
 # final ownership already on it -- a fresh volume copies that as-is, so nothing here needs to
@@ -356,12 +356,29 @@ exec 9> >(freezer)
 # A dedicated uid (1004) that keeps exactly CAP_SETUID and CAP_SETGID, ambient, so it can start an agent's processes as that agent's uid and do nothing else: no chown, no signals to
 # another uid, no files of another uid. Its socket and its token file are its own, 0600 and 0400 (the driver seeds the token like .boot); an agent uid has no access to either. Started only
 # when the token is there, so a computer made before agents lived on it starts as it always did.
+# No --securebits here: setting them needs CAP_SETPCAP, which the container does not have (the driver adds SETUID and SETGID only), so setpriv failed and agentd never started (security-live 18 Oct).
+# --no-new-privs and the bounding set carry the limit instead: an exec by agentd gains nothing, and it holds no capability beyond SETUID and SETGID.
 AGENTD_DIR="${VYRE_HOME}/agentd"
-if [ -f "${AGENTD_DIR}/token" ]; then
+# The test runs as agentctl: the folder is its own, 0700, and this script (root, no DAC_OVERRIDE) cannot even look inside it, so a plain [ -f ] was always false and agentd never started.
+if setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- test -f "${AGENTD_DIR}/token"; then
   log "starting agentd"
-  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --securebits=+noroot,+noroot_locked --no-new-privs -- \
+  setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --no-new-privs -- \
     env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
     node /opt/agentd/agentd-main.js &
+  AGENTD_PID=$!
+  # It was started with &, so a start that fails (setpriv refusing a flag, node dying) is invisible unless something looks: say so in the container log, loudly, and vyred says so too when it waits for agentd.
+  (
+    n=0
+    until setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- test -S "${AGENTD_DIR}/agentd.sock"; do
+      n=$((n + 1))
+      if ! setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- /bin/sh -c 'kill -0 "$0"' "${AGENTD_PID}" 2>/dev/null; then
+        log "AGENTD EXITED: it is not running, so agents get no computer of their own"; exit 1
+      fi
+      if [ "$n" -ge 40 ]; then log "AGENTD DID NOT START: its socket never appeared in 20 s, so agents get no computer of their own"; exit 1; fi
+      sleep 0.5
+    done
+    log "agentd is up"
+  ) &
 fi
 
 # ---- computerd, in the foreground, as vyre: its exit is the container's exit ------------------
@@ -379,6 +396,6 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     AGENT_TOKENS_FILE="${VYRE_HOME}/.agent-tokens" \
-    AGENT_DOWNLOADS="${AGENT_HOME}/Downloads" \
+    AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
     VYRE_FREEZE_FD=9 VNC_SOCKET="${VNC_SOCKET}" \
   node /opt/computerd/index.js

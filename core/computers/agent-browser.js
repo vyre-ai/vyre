@@ -6,7 +6,7 @@
 
 import { NO_DRIVER } from "./pool.js";
 import { helper as thawHelper } from "./helper.js";
-import { cdpUrlOf, glassStreamPath, sharedBrowserOn } from "../../lib/browser-access.js";
+import { cdpUrlOf, glassStreamPath, sharedBrowserOn, sharedBrowserExplicit } from "../../lib/browser-access.js";
 import { Cdp } from "../../lib/cdp.js";
 
 /**
@@ -18,6 +18,34 @@ export class AgentBrowser {
     this.pool = deps.pool;
     this.shared = deps.shared;
     this.cfg = deps.cfg;
+    /**
+     * The Space's computer, where each agent is its own Linux user with its own Chrome: wired by the module once agentd's pieces exist. endpoint(agent) brings the computer up, waits for agentd
+     * (bounded) and answers the agent's own Chrome; it throws a plain sentence when it cannot. Unset only in tests and on a machine that cannot run it.
+     * @type {{ endpoint: (agent: string) => Promise<{ url: string, token: string }> } | null}
+     */
+    this.space = null;
+    /** @type {(m: string) => void} */
+    this.log = () => {};
+    this.said = new Set();
+  }
+
+  /** The owner chose the shared browser on purpose. */
+  explicitShared() { return sharedBrowserExplicit(this.cfg()); }
+
+  /** Say once per agent and model which Chrome serves it. @param {string} agent @param {"computer"|"browser"|"desktop"} model */
+  saySo(agent, model) {
+    const k = `${agent}:${model}`;
+    if (this.said.has(k)) return;
+    this.said.add(k);
+    this.log(`agent browser: ${agent} is served by ${model === "computer" ? "its own Linux user on the Space's computer (agentd)" : model === "browser" ? "the shared browser (computers.browse is \"browser\" on purpose)" : "its own desktop computer"}`);
+  }
+
+  /** Never the shared browser unless the owner asked for it: the agent's own Chrome on the Space's computer, or a plain error. @param {string} agent */
+  async ownChrome(agent) {
+    if (!this.space) throw new Error("the agent computer is not set up on this machine: this machine cannot run commands in the Space's computer, and the shared browser is used only when computers.browse is \"browser\"");
+    const helper = await this.space.endpoint(agent);
+    this.saySo(agent, "computer");
+    return helper;
   }
 
   mode() {
@@ -29,6 +57,8 @@ export class AgentBrowser {
     if (!this.pool.driver) throw new Error(NO_DRIVER);
     if (this.mode() === "browser") {
       await this.shared.hold(agent, { thread: o.thread || null, why: o.why });
+      if (!this.explicitShared()) return { helper: await this.ownChrome(agent), mode: "computer" };
+      this.saySo(agent, "browser");
       return { ...await this.shared.endpoint(agent), mode: "browser" };
     }
     await this.pool.checkout(agent, { thread: o.thread, why: o.why || "hands" });
@@ -50,6 +80,8 @@ export class AgentBrowser {
   async helper(agent) {
     if (this.mode() === "browser") {
       await this.shared.touch(agent);
+      if (!this.explicitShared()) return this.ownChrome(agent);
+      this.saySo(agent, "browser");
       return (await this.shared.endpoint(agent)).helper;
     }
     return thawHelper(this.pool, agent);
@@ -59,9 +91,13 @@ export class AgentBrowser {
   async checkout(agent, o = {}) {
     if (this.mode() === "browser") {
       await this.shared.hold(agent, o);
-      return { agent, screen: null, thread: o.thread || null };
+      // which model served the checkout is part of the answer: the agent's own Chrome on the Space's computer, or the shared browser the owner asked for
+      if (!this.explicitShared()) { await this.ownChrome(agent); return { agent, screen: null, thread: o.thread || null, model: "computer" }; }
+      this.saySo(agent, "browser");
+      return { agent, screen: null, thread: o.thread || null, model: "browser" };
     }
-    return this.pool.checkout(agent, o);
+    this.saySo(agent, "desktop");
+    return { ...(await this.pool.checkout(agent, o)), model: "desktop" };
   }
 
   computerRow(agent) {

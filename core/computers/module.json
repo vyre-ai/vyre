@@ -50,7 +50,8 @@
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
       "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
       "computer.shielded", "computer.unshielded", "computer.joined", "computer.left",
-      "computer.member-added", "computer.member-removed", "computer.member-rotated", "computer.updated"
+      "computer.member-added", "computer.member-removed", "computer.member-rotated", "computer.updated",
+      "computer.agent-added", "computer.agent-waking", "computer.agent-live", "computer.agent-asleep", "computer.agent-reset", "computer.agent-removed"
     ]
   },
   "shows": { "streams": ["glass", "browser-glass", "terminal"], "cli": ["computers"], "deck": ["panel:glass"] },
