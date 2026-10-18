@@ -214,6 +214,12 @@
         "effect": "write"
       },
       {
+        "name": "work.engineer.chat",
+        "summary": "the Space's Engineer chat, made on first use for everyone who may use the Engineer",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.project.chat",
         "summary": "a project's group chat, made on first use, with who is missing from it",
         "reach": "anyone",
@@ -838,6 +844,11 @@
               "name": "forked_from",
               "kind": "text",
               "label": "Forked from (the thread and the reply it was forked at)"
+            },
+            {
+              "name": "engineer_chat",
+              "kind": "boolean",
+              "label": "This is the Space's Engineer chat"
             },
             {
               "name": "project_chat",

@@ -146,6 +146,7 @@
   "work.chat.thread.new": "reads or starts a chat the person is in, or names and pins it",
   "work.chat.threads": "reads or starts a chat the person is in, or names and pins it",
   "work.project.chat": "reads or starts a chat the person is in, or names and pins it",
+  "work.engineer.chat": "reads or starts a chat the person is in, or names and pins it",
   "work.flow.threads": "reads or starts a chat the person is in, or names and pins it",
   "work.person.shared": "reads or starts a chat the person is in, or names and pins it",
   "work.thread.fork": "reads or starts a chat the person is in, or names and pins it"
