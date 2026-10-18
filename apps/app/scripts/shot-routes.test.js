@@ -43,6 +43,21 @@ test("no real screen links to a blocked page", () => {
   assert.deepEqual(hits, [], "a link to a page a release does not have");
 });
 
+test("no page a real build keeps imports a page it leaves out (the build would fail to bundle)", () => {
+  /** @type {string[]} */ const hits = [];
+  const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) { walk(f); continue; }
+    if (!/\.tsx$/.test(e.name) || mockRe.test(f) || proofRe.test(f)) continue;
+    for (const m of fs.readFileSync(f, "utf8").matchAll(/from "(\.[^"]*)"/g)) {
+      const target = path.resolve(path.dirname(f), m[1]) + ".tsx";
+      if (fs.existsSync(target) && (mockRe.test(target) || proofRe.test(target))) hits.push(`${path.relative(app, f)} imports ${path.relative(app, target)}`);
+    }
+  } };
+  walk(path.join(app, "app"));
+  assert.deepEqual(hits, []);
+});
+
 test("the release export check finds a blocked page by its chunk or by the router's file map, and passes a clean export", () => {
   const clean = ["index.html", "_expo/static/js/web/entry-0123456789abcdef.js", "_expo/static/js/web/onboard-893096b1004853156007001f703efcdb.js"];
   assert.deepEqual(leaks(clean, () => "routes: ./onboard.tsx ./u/now.tsx"), []);

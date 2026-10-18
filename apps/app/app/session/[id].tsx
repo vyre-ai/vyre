@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Text as UiText, ThemeProvider, useUiTheme } from "@vyre/ui";
-import ChatDemo from "../chat-demo";
+import ChatDemo from "../../screens/chat/ChatDemoScreen";
 import { call, boxOrigin } from "../../src/api/box";
 import { ChatScreen } from "../../src/chat/ChatScreen";
 import { useGlassFor } from "../../src/state/glass";

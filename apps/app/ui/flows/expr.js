@@ -1,4 +1,4 @@
-// @ts-nocheck (the app does not type-check this copy of kernel/flows/expr.js; the kernel does)
+// @ts-check
 // The Expression language for conditions, filters and values inside a Flow (contract 5.2, "Expression"). No eval, no
 // Function, no regular expressions: a hand-written tokenizer and a Pratt parser, an AST, and an evaluator that counts its
 // own steps. A condition can read its scope and call a fixed list of pure functions; it cannot do anything else.
@@ -78,32 +78,32 @@ export function parse(src) {
   const bump = (/** @type {number} */ depth) => { if (++nodes > LIMITS.nodes) throw new ExprError("the expression is too large"); if (depth > LIMITS.depth) throw new ExprError("the expression is nested too deeply"); };
 
   /** @param {number} d @returns {Node} */
-  function or(d) { bump(d); let a = and(d + 1); while (isWord("or") || isOp("or")) { p++; a = { k: "bin", op: "or", a, b: and(d + 1) }; } return a; }
+  function or(d) { bump(d); let a = and(d); while (isWord("or") || isOp("or")) { p++; a = { k: "bin", op: "or", a, b: and(d) }; } return a; }
   /** @param {number} d @returns {Node} */
-  function and(d) { bump(d); let a = not(d + 1); while (isWord("and") || isOp("and")) { p++; a = { k: "bin", op: "and", a, b: not(d + 1) }; } return a; }
+  function and(d) { bump(d); let a = not(d); while (isWord("and") || isOp("and")) { p++; a = { k: "bin", op: "and", a, b: not(d) }; } return a; }
   /** @param {number} d @returns {Node} */
-  function not(d) { bump(d); if (isWord("not") || isOp("!")) { p++; return { k: "un", op: "not", a: not(d + 1) }; } return cmp(d + 1); }
+  function not(d) { bump(d); if (isWord("not") || isOp("!")) { p++; return { k: "un", op: "not", a: not(d + 1) }; } return cmp(d); }
   /** @param {number} d @returns {Node} */
   function cmp(d) {
     bump(d);
-    let a = add(d + 1);
+    let a = add(d);
     for (;;) {
       const t = peek();
       const op = t.t === "op" && ["==", "!=", "<", "<=", ">", ">="].includes(t.v) ? t.v : t.t === "id" && (t.v === "in" || t.v === "contains") ? t.v : null;
       if (!op) return a;
-      p++; a = { k: "bin", op, a, b: add(d + 1) };
+      p++; a = { k: "bin", op, a, b: add(d) };
     }
   }
   /** @param {number} d @returns {Node} */
-  function add(d) { bump(d); let a = mul(d + 1); while (isOp("+") || isOp("-")) { const op = toks[p++].v; a = { k: "bin", op, a, b: mul(d + 1) }; } return a; }
+  function add(d) { bump(d); let a = mul(d); while (isOp("+") || isOp("-")) { const op = toks[p++].v; a = { k: "bin", op, a, b: mul(d) }; } return a; }
   /** @param {number} d @returns {Node} */
-  function mul(d) { bump(d); let a = unary(d + 1); while (isOp("*") || isOp("/") || isOp("%")) { const op = toks[p++].v; a = { k: "bin", op, a, b: unary(d + 1) }; } return a; }
+  function mul(d) { bump(d); let a = unary(d); while (isOp("*") || isOp("/") || isOp("%")) { const op = toks[p++].v; a = { k: "bin", op, a, b: unary(d) }; } return a; }
   /** @param {number} d @returns {Node} */
-  function unary(d) { bump(d); if (isOp("-")) { p++; return { k: "un", op: "neg", a: unary(d + 1) }; } return postfix(d + 1); }
+  function unary(d) { bump(d); if (isOp("-")) { p++; return { k: "un", op: "neg", a: unary(d + 1) }; } return postfix(d); }
   /** @param {number} d @returns {Node} */
   function postfix(d) {
     bump(d);
-    let a = primary(d + 1);
+    let a = primary(d);
     for (;;) {
       if (isOp(".")) {
         p++;
