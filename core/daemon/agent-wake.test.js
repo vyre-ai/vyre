@@ -244,3 +244,36 @@ test("a task's slot instructions, the doer's skills, details and outputs go to t
   await plain.onEvent(created("t1"));
   assert.equal("info" in plain.woke[0], false, "a task with none of it sends no info");
 });
+
+test("an agent holding the reviewer slot is woken once per hand-in when the task enters review, with the task id and the slot; a person in the slot, the doer itself, and an outward approval are not woken", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const mk = (/** @type {any} */ t) => createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {} } }, chain: () => ({}), clock: () => NOW, log: () => {},
+    lendSlot: async (x, agent, slot) => { calls.push(`lend ${x.id} ${agent} ${slot}`); }, bindSlot: async (x, agent, slot, th) => { calls.push(`bind ${slot} ${th}`); }, reclaimSlots: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async (tool, input) => { calls.push(tool === "agents.wake" ? { wake: input } : tool); return { thread: "th", already: false }; } });
+  const reviewed = task({ state: "in_review", reviewer: { kind: "agent", id: "rev" }, payload: { payload_hash: "abcdef0123456789zz" }, guides: { instructions: { reviewer: "check the tone" }, skills: { reviewer: [{ id: "s/voice", name: "voice", hash: "h", checklist: ["names the firm"] }] } }, details: { client: "Jane" } });
+  await mk(reviewed)({ type: "task.in-review", data: { task: { id: "t1" } } });
+  assert.equal(calls[0], "lend t1 rev reviewer");
+  assert.equal(calls[1].wake.task, "t1#reviewer:abcdef012345");
+  assert.equal(calls[1].wake.task_id, "t1");
+  assert.equal(calls[1].wake.slot, "reviewer");
+  assert.equal(calls[1].wake.agent, "rev");
+  assert.deepEqual(calls[1].wake.info, { instructions: "check the tone", skills: [{ name: "voice", checklist: ["names the firm"] }], details: { client: "Jane" } });
+  assert.equal(calls[2], "bind reviewer th");
+  calls.length = 0;
+  await mk(task({ state: "in_review", reviewer: { kind: "person", id: "ana" } }))({ type: "task.in-review", data: { task: { id: "t1" } } });
+  await mk(task({ state: "in_review", reviewer: { kind: "agent", id: "juno" } }))({ type: "task.in-review", data: { task: { id: "t1" } } });   // juno is the doer
+  await mk(task({ state: "needs_check", checker: { kind: "agent", id: "rev" }, output: { kind: "sent" } }))({ type: "task.needs-check", data: { task: { id: "t1" } } });
+  assert.deepEqual(calls, [], "none of those wakes an agent");
+  // an internal check by an agent is woken as the approver
+  await mk(task({ state: "needs_check", checker: { kind: "agent", id: "rev" }, output: { kind: "note" }, payload: { payload_hash: "ff00" } }))({ type: "task.needs-check", data: { task: { id: "t1" } } });
+  assert.equal(calls[0], "lend t1 rev approver");
+  assert.equal(calls[1].wake.slot, "approver");
+});
+
+test("the end of a review round marks the slot wakes over and takes the hold back", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => task(), edit: async () => {} } }, chain: () => ({}), clock: () => NOW, log: () => {}, reclaimSlots: async id => { calls.push(`reclaim ${id}`); },
+    callModule: async (tool, input) => { calls.push(`${tool} ${JSON.stringify(input)}`); return {}; } });
+  await onEvent({ type: "task.changes-requested", data: { task: { id: "t1" } } });
+  assert.deepEqual(calls, ['agents.wake-done {"task":"t1","slots":true}', "reclaim t1"]);
+});

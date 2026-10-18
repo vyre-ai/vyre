@@ -8,6 +8,10 @@
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
+/** A task handed to a reviewer or an approver (the kernel writes these two events when it enters those steps). */
+const SLOT_TYPES = /^task\.(in-review|needs-check)$/;
+/** The ends of a review or an approval round: the slot wake is over, though the task is not (the doer may be given changes to make). */
+const SLOT_ENDS = /^task\.(changes-requested|review-passed|review-pass-kept|declined)$/;
 const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthori[sz]ed|api key/i;
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided|withdrawn)$/;
 
@@ -42,6 +46,8 @@ export function createAgentWake(o) {
     try {
       const w = await o.callModule("agents.woken", { thread }, o.space);
       if (!w || !w.task) return;
+      // a review or an approval round's job ended: its hold on the task ends with it (the task stays where it is for a person, or the next round)
+      if (String(w.task).includes("#")) { const real = String(w.task).split("#")[0]; await o.callModule("agents.wake-done", { task: real, slots: true }, o.space).catch(() => null); if (typeof o.reclaimSlots === "function") await o.reclaimSlots(real).catch(() => null); return; }
       const t = await o.gw.ask.get(o.chain(), w.task);
       if (!t || !["ready", "working"].includes(t.state)) return;
       await drop(t.id);   // the job is gone: what was lent for it (the task grant and the connections) ends with it; a retry lends again
@@ -73,16 +79,47 @@ export function createAgentWake(o) {
     } catch (err) { log(`agent wake ${o.space}: the session for withdrawn task ${taskId} was not ended (${/** @type {Error} */ (err).message})`); }
   }
 
+  /**
+   * An agent holding the reviewer slot (task in_review) or the approver slot (task needs_check, internal work) is woken once per hand-in with what it may do: review against the checklist, or decide. It holds the task for
+   * that one job (a grant on this task only, ending with the round), never the doer's. A person in the slot is not woken; an agent that is the doer is not woken for its own work.
+   * @param {string} id
+   */
+  async function wakeSlot(id) {
+    try {
+      const t = await o.gw.ask.get(o.chain(), id);
+      if (!t || t.kernel) return;
+      const slot = t.state === "in_review" && t.reviewer && t.reviewer.kind === "agent" ? "reviewer" : t.state === "needs_check" && t.checker && t.checker.kind === "agent" && !t.stage && !(t.output && t.output.kind === "sent") ? "approver" : null;
+      const agent = slot === "reviewer" ? t.reviewer : slot === "approver" ? t.checker : null;
+      if (!slot || !agent || typeof o.lendSlot !== "function" || (t.doer && t.doer.kind === "agent" && t.doer.id === agent.id)) return;
+      if (typeof t.created_at === "number" && clock() - t.created_at > MAX_AGE_MS) return;
+      const hand = t.payload && typeof t.payload.payload_hash === "string" ? t.payload.payload_hash.slice(0, 12) : String(t.updated_at || 0);
+      const key = `${t.id}#${slot}:${hand}`;
+      await o.lendSlot(t, agent.id, slot);
+      const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
+      const g = t.guides && typeof t.guides === "object" ? t.guides : null;
+      const skills = g && g.skills && Array.isArray(g.skills[slot]) ? g.skills[slot] : [];
+      const info = { ...(g && g.instructions && g.instructions[slot] ? { instructions: g.instructions[slot] } : {}), ...(skills.length ? { skills: skills.map((/** @type {any} */ k) => ({ name: k.name || k.id, checklist: k.checklist })) } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(Array.isArray(t.outputs) && t.outputs.length ? { outputs: t.outputs } : {}) };
+      const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
+      const r = await o.callModule("agents.wake", { task: key, task_id: t.id, slot, agent: agent.id, title: t.title, ...(Object.keys(info).length ? { info } : {}), ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}) }, o.space);
+      if (r && typeof r.thread === "string" && typeof o.bindSlot === "function") await o.bindSlot(t, agent.id, slot, r.thread).catch((/** @type {Error} */ err) => log(`agent wake ${o.space}: the lend of ${slot} on task ${t.id} was not held to its thread (${err.message})`));
+    } catch (err) {
+      log(`agent wake ${o.space}: task ${id} did not wake its reviewer or approver (${/** @type {Error} */ (err).message})`);
+      if (typeof o.reclaimSlots === "function") await o.reclaimSlots(id).catch(() => null);
+    }
+  }
+
   async function onEvent(e) {
     if (e && ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") {
       const id = e.data.task.id;
       // the task is over: the use of it lent to the agent ends with it
-      await o.callModule("agents.wake-done", { task: id }, o.space).catch(() => null);
+      await o.callModule("agents.wake-done", { task: id, slots: true }, o.space).catch(() => null);
       if (typeof o.reclaim === "function") { try { await o.reclaim(id); } catch (err) { log(`agent wake ${o.space}: the lent use of task ${id} was not ended (${/** @type {Error} */ (err).message})`); } }
       // withdrawn at its due time: the agent's session for it ends too (a thread already stopped is the same answer). Every step is safe to repeat, so a replay of this event after a restart finishes what a crash left.
       if (e.type === "task.withdrawn") await stopThread(id);
       return;
     }
+    if (e && SLOT_ENDS.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") { await o.callModule("agents.wake-done", { task: e.data.task.id, slots: true }, o.space).catch(() => null); if (typeof o.reclaimSlots === "function") await o.reclaimSlots(e.data.task.id).catch(() => null); return; }
+    if (e && SLOT_TYPES.test(String(e.type)) && e.data && e.data.task && typeof e.data.task.id === "string") return wakeSlot(e.data.task.id);
     if (!e || !TYPES.test(String(e.type))) return;
     const id = e.data && e.data.task && typeof e.data.task.id === "string" ? e.data.task.id : null;
     if (!id) return;

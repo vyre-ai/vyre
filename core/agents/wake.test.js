@@ -173,3 +173,27 @@ test("agents.wake: nothing in the information can close its section; a long one 
   assert.ok(!slashes || slashes[0].length % 2 === 0, "no lone backslash at the cut");
   assert.ok(!/\\u[0-9a-f]{0,3}$/.test(kept), "no half of a \\u escape at the cut");
 });
+
+test("agents.wake for a review or an approval: its own prompt, the real task id, the slot's tools; each hand-in is a wake of its own", async t => {
+  const call = await world(t);
+  await call("agents.create", { name: "rev", kind: "agent", projects: ["harlow-legal"] });
+  const w = { task: "t7#reviewer:aaaa", task_id: "t7", slot: "reviewer", agent: "rev", title: "Check the letter", info: { skills: [{ name: "voice", checklist: ["names the firm"] }] }, project: "harlow-legal" };
+  const r = await call("agents.wake", w, "module:vyred");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  const p = globalThis.__launched.at(-1).prompt;
+  assert.match(p, /asked to review a task: Check the letter/);
+  assert.match(p, /Task id: t7\./);
+  assert.match(p, /tasks\.review \{ id: "t7"/);
+  assert.match(p, /tasks\.get \{ id: "t7"/);
+  assert.doesNotMatch(p, /#reviewer/, "the claim key is not shown");
+  assert.doesNotMatch(p, /tasks\.submit/, "a reviewer is not told to hand work in");
+  assert.match(p, /<information>[\s\S]*names the firm[\s\S]*<\/information>/);
+  assert.equal((await call("agents.wake", w, "module:vyred")).data.already, true, "the same hand-in is not woken twice");
+  const again = await call("agents.wake", { ...w, task: "t7#reviewer:bbbb" }, "module:vyred");
+  assert.equal(again.data.already, false, "a new hand-in is a new round");
+  const ap = await call("agents.wake", { task: "t7#approver:cccc", task_id: "t7", slot: "approver", agent: "rev", title: "Approve it", project: "harlow-legal" }, "module:vyred");
+  assert.equal(ap.error, undefined, JSON.stringify(ap));
+  assert.match(globalThis.__launched.at(-1).prompt, /tasks\.decide \{ id: "t7"/);
+  const done = await call("agents.wake-done", { task: "t7", slots: true }, "module:vyred");
+  assert.ok(done.data.ended >= 3, "all the rounds of the task are marked over");
+});
