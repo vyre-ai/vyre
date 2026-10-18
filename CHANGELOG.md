@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Records. Role chips take each role's name, stage and colour from records.roles.summary, and fall back to records.roles on a box without it.
 - feat(ui): the Table takes a headerEnd control, shown at the end of its header row on a wide screen (rows keep a matching blank); Records puts a "+" there that opens Add a column, next to the toolbar button.
 - feat(app): Records. "Add a column" on a table: a name and a kind (text, number, date, pick one, yes or no, or a link to another type, which makes its twin on the other type); it is saved at once and shown as a column (records.field.add, records.link.add; screens/records/AddColumn.tsx).
 - feat(app): Settings, Objects. A type with stages edits them as one or several pipelines: add a pipeline, and for each stage a name, a chance of closing, a colour, the fields it needs, move, remove and Counts as lost (records.pipeline.set, records.type.update; screens/customize/PipelinesEditor.tsx, pipelines.js).

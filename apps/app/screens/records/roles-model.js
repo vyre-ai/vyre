@@ -14,3 +14,20 @@ export function roleChips(rows) {
   };
   return [...list.filter((r) => r && r.current).map(chip), ...list.filter((r) => r && !r.current).map(chip)];
 }
+
+/** The chip tone a type colour gets (records.type.update colours): green is good news, yellow and orange need a look, red is bad, the cool colours are accents, grey and unknown are plain. @param {unknown} colour @returns {"ok" | "warn" | "err" | "accent" | "plain"} */
+export function toneOfColour(colour) {
+  const c = String(colour || "").toLowerCase();
+  if (c === "green") return "ok";
+  if (c === "yellow" || c === "orange") return "warn";
+  if (c === "red") return "err";
+  if (["blue", "teal", "purple", "pink"].includes(c)) return "accent";
+  return "plain";
+}
+
+/** The chips of records.roles.summary ({ role, label, stage, current, color, urn }): "Lead · Talking" in the role's colour, current first, ended last. @param {any[]} rows */
+export function summaryChips(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const chip = (/** @type {any} */ r) => ({ key: String(r && (r.urn || r.id) || `${r && r.role}:${r && r.stage}`), label: [String(r && (r.label || r.role) || "Role"), r && r.stage ? String(r.stage) : ""].filter(Boolean).join(" · "), urn: String(r && r.urn || ""), ended: !(r && r.current), tone: toneOfColour(r && r.color) });
+  return [...list.filter((r) => r && r.current).map(chip), ...list.filter((r) => r && !r.current).map(chip)];
+}
