@@ -14,6 +14,7 @@ import { crumbsOf, nestHint, nestKey, nestRows, nestStep, type NestRow } from "@
 import { useMentionNodes } from "./useMentionNodes";
 import { Face } from "./Face";
 import { agentHint } from "./threads-model.js";
+import { popoverLeft } from "./caret-x.js";
 import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
@@ -103,6 +104,17 @@ type Pop = null | "plus" | "files" | "vyrefiles" | "answering" | "model";
 const fileIcon = (name: string): IconName => (/\.(png|jpe?g|gif|webp|heic|svg)$/i.test(name) ? "eye" : /\.(mp3|m4a|wav|ogg|flac)$/i.test(name) ? "mic" : /\.(mp4|mov|webm|mkv)$/i.test(name) ? "play" : "file");
 type Row = PickerItem & { run: () => void };
 
+/** The width of a line of text in the box's font, on the web (a canvas); elsewhere nothing is measured and the popover opens at the left. */
+const canvas: { cx?: CanvasRenderingContext2D | null } = {};
+function measureLine(size: number): (s: string) => number {
+  if (typeof document === "undefined") return () => 0;
+  if (canvas.cx === undefined) canvas.cx = document.createElement("canvas").getContext("2d");
+  const cx = canvas.cx;
+  if (!cx) return () => 0;
+  cx.font = `${size}px system-ui, -apple-system, sans-serif`;
+  return (t) => cx.measureText(t).width;
+}
+
 export function ChatComposer(p: ComposerProps) {
   const { color } = useUiTheme();
   const [text, setText] = useState(() => (p.draftKey ? readDraft(p.draftKey) : ""));
@@ -155,6 +167,10 @@ export function ChatComposer(p: ComposerProps) {
   const working = busyState(p.state);
   const expanded = !p.phone || focused || text.length > 0 || !!trig || !!pop;
   const big = p.phone;
+  // The popover opens where the trigger was typed (web: measured with the box's font), not centred over the box.
+  const [boxW, setBoxW] = useState(0);
+  const popW = !p.phone && boxW > 420 ? 340 : undefined;
+  const popX = popW && trig && trig.kind !== "command" ? popoverLeft(text, trig.range.start, measureLine(p.phone ? 16 : 14), boxW - 32, popW) : 0;
   const ctl = big ? T : 36;
   const web = Platform.OS === "web";
 
@@ -416,7 +432,7 @@ export function ChatComposer(p: ComposerProps) {
   const aiMenu = pm || slots.length > 1 || !!p.models?.length;
 
   return (
-    <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
+    <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setBoxW((o) => (Math.abs(o - w) > 4 ? w : o)); }} style={{ width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 16, paddingBottom: 16, paddingTop: 6 }}>
       {p.editing ? (
         <View accessibilityLabel="Editing a message" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: big ? T : 36, paddingHorizontal: 12, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["accent-wash"] }}>
           <Icon name="refresh" />
@@ -427,7 +443,7 @@ export function ChatComposer(p: ComposerProps) {
         </View>
       ) : null}
       {open ? (
-        <View style={{ marginBottom: 6 }}>
+        <View style={{ marginBottom: 6, width: popW, marginLeft: popX }}>
           <PickerList id={POP_ID} label={header ?? "Suggestions"} header={header} crumbs={crumbs} onCrumb={(i) => { if (i < nestPath.length) setNestPath(nestPath.slice(0, i)); }} items={rows} active={active} onActive={setActive} onPick={pickRow} footer={footer} maxRows={pop ? 9 : 6} />
         </View>
       ) : null}
