@@ -421,6 +421,32 @@ test("V2s: a session wrapped in a subreaper (tini on a box that has it): the que
   assert.ok(!textOf(watcher.frames).includes("open somewhere else"), "and nobody was told the session is open somewhere else");
 });
 
+test("a thread whose own account is carol's login, with bob asking: bob's turn runs on bob's own account (or is refused), never on carol's login", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: "C-FIRST", to: ["assistant:assistant"], cwd: w.work })).error);
+  await answered(w, watcher, "C-FIRST", 90_000);
+  const db = b.reg.deps.db;
+  const idOf = (/** @type {string} */ who) => String(db.prepare("SELECT id FROM sessions_accounts WHERE label = ?").get(`${who}'s Claude`).id);
+  const carolsLogin = idOf("carol"), bobsLogin = idOf("bob");
+  const rows = () => /** @type {any[]} */ (db.prepare("SELECT account, status FROM threads_runs").all());
+  assert.deepEqual(rows().map(r => r.account), [carolsLogin], "the thread is on carol's login after her turn");
+  // every account the thread rests on while bob's words are being handled, sampled
+  const seen = new Set(); const sampler = setInterval(() => { for (const r of rows()) seen.add(String(r.account)); }, 20); t.after(() => clearInterval(sampler));
+  assert.ok(!(await b.as("bob")("stream.send", { chat: chat.id, text: "B-AFTER", to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => userMsgs(watcher.frames).includes("B-AFTER"), "bob's words in the chat", 30_000);
+  const ran = await answered(w, watcher, "B-AFTER", 90_000).then(() => true, () => false);   // answered, or refused: both are allowed
+  clearInterval(sampler);
+  if (ran) {
+    assert.ok(askersOf(w).includes(BOB), "bob's turn opened under bob");
+    assert.ok(seen.has(bobsLogin), `bob's turn ran on bob's own account (seen: ${[...seen].join(",")}, bob's ${bobsLogin}, carol's ${carolsLogin})`);
+  }
+  // refused or answered, the words were never answered as carol's login: the reply, if any, was written for bob
+  if (ran) assert.equal((await answered(w, watcher, "B-AFTER", 5_000)).who, BOB);
+});
+
 test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", { timeout: 300_000 }, async t => {
   const w = await world(t);
   const b = await world0(w, t);

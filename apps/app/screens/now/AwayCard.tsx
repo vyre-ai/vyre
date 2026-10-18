@@ -2,7 +2,7 @@
 // signed, new members). Seen means seen: dismissing it, or leaving Now with it on screen, moves this device's mark forward, so the same changes never come back. The words are away.js; the card only draws them.
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Icon, Text } from "@vyre/ui";
+import { Button, Card, Divider, Row, SectionLabel } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { kvGet, kvSet } from "../../src/state/kv";
 import { useSpaces } from "../shell/state";
@@ -15,13 +15,15 @@ type Ev = { type?: string; seq?: number; data?: unknown };
 /** The card, drawn from its lines (the gallery draws it from a sample). */
 export function AwayView({ lines, onSeen }: { lines: string[]; onSeen: () => void }) {
   return (
-    <Card>
-      <View className="gap-s2">
-        <View className="flex-row items-center gap-s2"><Icon name="clock" tone="accent" /><Text strong>While you were away</Text></View>
-        {lines.map((l) => <Text key={l}>{l}</Text>)}
-        <View className="self-start pt-s1"><Button kind="ghost" label="Got it" onPress={onSeen} /></View>
+    <View className="gap-s1 pb-s3">
+      <View className="flex-row items-center justify-between">
+        <SectionLabel>While you were away</SectionLabel>
+        <Button kind="ghost" size="sm" label="Got it" onPress={onSeen} />
       </View>
-    </Card>
+      <Card flush>
+        {lines.map((l, i) => <View key={l}>{i ? <Divider /> : null}<Row dense title={l} /></View>)}
+      </Card>
+    </View>
   );
 }
 

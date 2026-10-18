@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text, LoadingState } from "@vyre/ui";
 import { ChatScreen } from "../../src/chat/ChatScreen";
+import { ensureEngineerChat } from "../../src/chat/engineer-chat";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { Frame } from "../places/Frame";
 import { ENGINEER, engineerRefusal, findEngineer, mayTalk, proposals, stateOf, type Agent } from "./assistant-model";
@@ -34,7 +35,7 @@ export function RealEngineer() {
   useEffect(() => {
     if (role === null || !mayTalk(role)) return;
     let live = true;
-    void ensurePersistent("engineer").then((r) => { if (!live) return; if ("chat" in r) setChat(r.chat); else setErr(r.say); }).catch((e) => { if (live) setErr(said(e)); });
+    void ensureEngineerChat().then((e) => (e.state === "ready" && e.chat ? { chat: e.chat } : ensurePersistent("engineer"))).then((r) => { if (!live) return; if ("chat" in r) setChat(r.chat); else setErr(r.say); }).catch((e) => { if (live) setErr(said(e)); });
     return () => { live = false; };
   }, [role]);
   // What is waiting is read when the page opens, when you come back, and once a minute while it is open: never faster.

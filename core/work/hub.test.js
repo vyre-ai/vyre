@@ -196,3 +196,28 @@ test("mayUseProject: a name that matches no project is no; an error reading the 
   await assert.rejects(() => hub2.mayUseProject("per_x", "owners-matter"), /store down/, "a read error throws, so the caller counts it as no");
   void made;
 });
+
+test("a project is made with how it runs: stages, client, ongoing or simple; none is kept as none, and any other word is refused before anything is made", async () => {
+  const { kernel, rows } = fake();
+  const hub = createHub({ kernel });
+  for (const kind of ["stages", "client", "ongoing", "simple"]) assert.equal((await hub.createProject({ who: "p" }, { name: `P ${kind}`, kind })).data.kind, kind);
+  assert.equal((await hub.createProject({ who: "p" }, { name: "Plain" })).data.kind, undefined, "left out stays left out; the app reads it as simple");
+  const before = rows.size;
+  await assert.rejects(() => hub.createProject({ who: "p" }, { name: "Odd", kind: "matter" }), /stages, client, ongoing, simple/);
+  assert.equal(rows.size, before, "nothing was made");
+});
+
+test("a Stages project pins its stage names and sits in the first; with none named it takes the default list; the other kinds take no stages; a bad list is refused before anything is made", async () => {
+  const { kernel, rows } = fake();
+  const hub = createHub({ kernel });
+  const named = await hub.createProject({ who: "p" }, { name: "Spring launch", kind: "stages", stages: ["Plan", "Do", "Check"] });
+  assert.deepEqual(JSON.parse(named.data.template_snapshot).stages.map((/** @type {any} */ s) => s.name), ["Plan", "Do", "Check"]);
+  assert.equal(named.data.template_stage, "Plan");
+  const def = await hub.createProject({ who: "p" }, { name: "Default", kind: "stages" });
+  assert.deepEqual(JSON.parse(def.data.template_snapshot).stages.map((/** @type {any} */ s) => s.name), ["Brief", "Draft", "Review", "Launch", "Wrap up"]);
+  assert.equal((await hub.createProject({ who: "p" }, { name: "Board", kind: "ongoing" })).data.template_snapshot, undefined, "only a Stages project has stages");
+  const before = rows.size;
+  for (const bad of [[], ["A", "A"], [" A"], ["x".repeat(61)], Array.from({ length: 13 }, (_, i) => `S${i}`), [3]]) await assert.rejects(() => hub.createProject({ who: "p" }, { name: "Bad", kind: "stages", stages: /** @type {any} */ (bad) }), /1 to 12 different stages/);
+  await assert.rejects(() => hub.createProject({ who: "p" }, { name: "Bad", kind: "ongoing", stages: ["A"] }), /1 to 12 different stages/, "stages belong to a Stages project");
+  assert.equal(rows.size, before);
+});

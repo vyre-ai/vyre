@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { refPrefix, refNumber, formatRef, nextRef, isClash, clashStep, MAX_MINT_TRIES, mintRef } from "./ref.js";
 
 test("an ID is a type prefix and a counter: PER-0001, and the next one follows the highest", () => {
-  assert.deepEqual(["contact", "organization", "task", "memo", "invoice", "x"].map(refPrefix), ["PER", "ORG", "TSK", "NOT", "INV", "X"]);
+  assert.deepEqual(["contact", "organization", "task", "note", "invoice", "x"].map(refPrefix), ["PER", "ORG", "TSK", "NOT", "INV", "X"]);
   assert.equal(formatRef("PER", 7), "PER-0007");
   assert.equal(nextRef("contact", []), "PER-0001", "the first");
   assert.equal(nextRef("contact", ["PER-0001", "PER-0009", "PER-0003"]), "PER-0010", "after the highest, in any order");

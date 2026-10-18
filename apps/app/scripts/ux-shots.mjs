@@ -15,10 +15,12 @@ fs.mkdirSync(out, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
 
-const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/records/contact", "u/records/matter", "u/calendar", "u/drive", "u/sites",
+const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/matter", "u/calendar", "u/drive", "u/sites",
   "u/flows", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules", "u/settings/audit",
-  "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard"];
+  "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard",
+  // the welcome flow's newer screens, from the sample world's fixtures (screens/first-run/mock.js SHOT_TABLE)
+  ...["id.name", "id.password", "setup.assistant", "setup.assistant.keep", "setup.model", "ready.assistant", "copy.normal", "copy.partial", "copy.hand", "copy.notyours", "create.kind", "create.wait", "join.link"].map((k) => `onboard?shot=${k}`)];
 const SIZES = [{ n: "phone", w: 390, h: 844 }, { n: "tablet", w: 820, h: 1180 }, { n: "desktop", w: 1280, h: 800 }];
 const THEMES = ["dark", "paper"];
 const FOCUS_ROUTES = ["u/now", "u/projects", "u/records/contact", "u/spaces", "u/access", "u/drive", "u/vault", "u/flows", "u/kits", "u/settings"];

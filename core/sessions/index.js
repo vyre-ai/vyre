@@ -559,7 +559,7 @@ export default {
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
         const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
         accountChanged(row, true, "key");
-        return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
+        return { account: row.id, provider: row.provider, label: row.label, item, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
     tool("sessions.accounts.signin", "Sign an account in through its provider's own login, no token pasted. Start with provider and label (or account), then poll with flow.",
       { type: "object", properties: { provider: str, label: str, account: str, flow: { type: "string", description: "From the start answer; alone it says waiting, done or failed." }, code: { type: "string", description: "With flow: the code a login asks back (step url, paste true)." } } },

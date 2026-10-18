@@ -19,6 +19,7 @@ export type PanelDef = {
   /** The search's placeholder. Absent: no search. */ search?: string;
   /** A search the section owns (the Chat list's); else the panel keeps its own and filters its items by it. */ query?: string; onQuery?: (q: string) => void;
   /** A control inside the search's right end (a filter menu's button). */ filter?: React.ReactNode;
+  /** Opens the main search with this section's scope. When given, the panel draws a Search button in place of a search box of its own: the one search bar is the main one. */ onSearch?: () => void;
   /** The section's + at the right of the top bar (a menu or a button). */ plus?: React.ReactNode;
   before?: React.ReactNode; after?: React.ReactNode; empty?: string;
 };
@@ -49,7 +50,8 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
   }
   return (
     <View style={{ flex: 1, gap: 8, minHeight: 0 }}>
-      {panel.search ? <SidebarSearch value={q} onChange={panel.onQuery ?? setOwn} placeholder={panel.search} end={panel.filter} /> : null}
+      {panel.onSearch ? <PanelSearchButton label={panel.search ?? "Search"} onPress={panel.onSearch} end={panel.filter} />
+        : panel.search ? <SidebarSearch value={q} onChange={panel.onQuery ?? setOwn} placeholder={panel.search} end={panel.filter} /> : null}
       <ArrowNav>
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: RAIL.rowGap }}>
           {/* Back to the main sidebar is the first row, the same as any other place. */}
@@ -65,6 +67,21 @@ export function SidebarPanel({ panel, folded, onOpen }: { panel: PanelDef; folde
           {panel.after}
         </ScrollView>
       </ArrowNav>
+    </View>
+  );
+}
+
+/** Where a panel's search box used to be: a button that opens the main search on this section's scope (Cmd K opens it on everything). */
+function PanelSearchButton({ label, onPress, end }: { label: string; onPress: () => void; end?: React.ReactNode }) {
+  const { color } = useUiTheme();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginHorizontal: RAIL.gutter }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ hovered, focused }: any) => [{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8, height: RAIL.searchH, paddingHorizontal: 12, borderRadius: RAIL.rowRadius, backgroundColor: hovered || focused ? color.hover : color["surface-2"] }]}>
+        <Icon name="search" tone="label" size={RAIL.iconSize} />
+        <Text tone="label" style={{ flex: 1, fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }} numberOfLines={1}>{label}</Text>
+        <Text size="caption" tone="faint">Cmd K</Text>
+      </Pressable>
+      {end}
     </View>
   );
 }

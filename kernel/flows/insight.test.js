@@ -82,6 +82,20 @@ test("group: a Flow may name the group it is listed under, flows.list carries it
   assert.match(checkFlow(flowOf(steps, { group: "  " }))[0].message, /group is a short string/);
 });
 
+test("project: a Flow may name the project it runs in, flows.list carries it and filters by it, and it is a short string", async () => {
+  const w = await world();
+  const steps = [{ id: "m", kind: "create", type: "matter", set: { client: "x" } }];
+  await install(w, flowOf(steps, { project: "spring-launch" }));
+  await install(w, flowOf(steps, { name: "other_flow", project: "office" }));
+  await install(w, flowOf(steps, { name: "loose_flow" }));
+  const all = await toolsOf(w).tools["flows.list"](chainOf(), {});
+  assert.deepEqual(all.filter((/** @type {any} */ r) => r.project).map((/** @type {any} */ r) => r.project).sort(), ["office", "spring-launch"]);
+  const mine = await toolsOf(w).tools["flows.list"](chainOf(), { project: "spring-launch" });
+  assert.deepEqual(mine.map((/** @type {any} */ r) => r.project), ["spring-launch"], "the filter keeps that project's Flows only");
+  assert.deepEqual(checkFlow(flowOf(steps, { project: "spring-launch" })), []);
+  for (const bad of [7, "  ", "x".repeat(121), "Has Space", "UPPER"]) assert.match(checkFlow(flowOf(steps, { project: bad }))[0].message, /project is the project's short name/);
+});
+
 // ------------------------------------------------------------------ f12
 
 test("f12: the timeline shows tries, the check, a skip with who gave the value, and an approval with who answered", async () => {

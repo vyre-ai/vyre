@@ -449,6 +449,30 @@ test("vault.me.serve: a vault just made hands over its Secret Key even when the 
   assert.equal(again.data.secret_key, undefined, "no second Secret Key");
 });
 
+test("vault.me.serve addkeys: one vault opening, every key a free name in the member's own vault, a stop on the first failure with what was added, and the Secret Key once", async t => {
+  const { reg, people } = rig(t);
+  const run = (/** @type {any} */ input) => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", call: "addkeys", person: BOB, input }, { caller: "module:vyred" }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
+  const K = (/** @type {string} */ n) => `sk-ant-${n.repeat(16)}`;
+  assert.equal((await run({ items: [] })).error.code, "bad_input");
+  assert.equal((await run({ items: Array.from({ length: 13 }, (_, n) => ({ label: `k${n}`, value: K("a") })) })).error.code, "bad_input");
+  assert.equal((await run({ items: [{ label: "Work", value: K("a") }] })).error.code, "bad_input", "no vault and no password");
+  const r = await run({ items: [{ label: "Work Claude", value: K("a") }, { label: "Work Claude", value: K("b") }, { label: "Home", value: K("c") }], password: PW });
+  assert.equal(r.error, undefined, JSON.stringify(r.error?.message));
+  assert.deepEqual(r.data.added, [{ label: "Work Claude", item: "Work-Claude" }, { label: "Work Claude", item: "Work-Claude-2" }, { label: "Home", item: "Home" }]);
+  assert.ok(r.data.secret_key && r.data.acct, "the vault was made: its Secret Key comes back once");
+  assert.ok(!JSON.stringify(r.data).includes(K("a")) && !JSON.stringify(r.data).includes(PW));
+  const again = await run({ items: [{ label: "Home", value: K("d") }] });
+  assert.deepEqual(again.data.added, [{ label: "Home", item: "Home-2" }], "open already: no password, a taken name gets a number, no second Secret Key");
+  assert.equal(again.data.secret_key, undefined);
+  // the list fails on the second key: the first stays added, the call stops and says where
+  const list = people.list.bind(people); let n = 0;
+  people.list = async (...a) => { if (++n === 2) throw new Error("the list is down"); return list(...a); };
+  const part = await run({ items: [{ label: "One", value: K("e") }, { label: "Two", value: K("f") }, { label: "Three", value: K("g") }] });
+  people.list = list;
+  assert.deepEqual([part.data.added.map((x) => x.label), part.data.stopped_at], [["One"], 1]);
+  assert.match(part.data.reason, /could not be checked/);
+});
+
 test("vault.me.serve: only the daemon's door runs it, never as the owner; addkey makes or opens the member's own vault, picks a free name, puts one AI key, and returns no value or password", async t => {
   const { reg, call: asBob } = rig(t);
   const run = (/** @type {any} */ i, caller = "module:vyred") => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", ...i }, { caller }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));

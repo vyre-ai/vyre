@@ -238,4 +238,4 @@ export async function callTeam(d, spaceId, call, args = [], opt = undefined) {
 }
 
 /** The member-door calls that need the person's own yes (kernel/remote/proof.js). */
-const SIGNED_CALLS = new Set(["myvault.addkey"]);
+const SIGNED_CALLS = new Set(["myvault.addkey", "myvault.addkeys"]);

@@ -2193,6 +2193,10 @@
    "module": "documents",
    "reason": "read-only list of the requests nobody has signed; under the caller's own chain (callers list, gate, check), or the approvals queue's module reading it for the owner's Needs you"
   },
+  "documents.signing.status": {
+   "module": "documents",
+   "reason": "read-only: one request's timeline (what was sent, opened, signed or declined) from the signing app; the audit link is shown to a person's own surface only, never to a model (callers list, door, the audit rule in lib/audit-rules.js)"
+  },
   "documents.signed-link.revoke": {
    "module": "documents",
    "reason": "ends access only: every earlier link to a signed copy stops opening and a new link works; under the caller's own chain (callers list, gate, check)"

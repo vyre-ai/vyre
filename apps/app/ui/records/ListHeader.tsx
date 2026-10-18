@@ -22,9 +22,9 @@ export type ListCtx = { /** Every tag the records carry: the tag filter offers t
  * a press removes, and "Save as view". A filter is built from the type's own fields (grouped as the type groups them): the field, how (that kind's own operators), and a value
  * picked, not typed, where the field has choices, people or links. Nothing here knows a record type.
  */
-export function ListHeader({ title, noun, shown, total, query, onQuery, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions }: {
+export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions }: {
   title: React.ReactNode; noun: string; shown: number; total: number; query: string; onQuery: (q: string) => void; chips: FilterChip[]; onChips: (c: FilterChip[]) => void; def: any; ctx: ListCtx;
-  /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Given, an Export CSV button sits beside Import (web only: the caller leaves it out elsewhere). */ onExport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
+  /** Given, the page has no search box of its own: a search icon opens the main search on this page's scope. */ onSearch?: () => void; /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Given, an Export CSV button sits beside Import (web only: the caller leaves it out elsewhere). */ onExport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
 }) {
   const { phone } = useUiTheme();
   const ref = useRef<TextInput>(null);
@@ -48,7 +48,9 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, chips, o
         <View className="min-w-0 flex-1">{title}<Text size="caption" tone="label">{narrowed ? `${shown} of ${total} ${noun}` : `${total} ${noun}`}</Text></View>
       </View>
       <View className="flex-row flex-wrap items-center gap-s2">
+        {onSearch ? <IconButton kind="ghost" icon="search" label={`Search ${noun}`} onPress={onSearch} /> : (
         <View className={phone ? "w-full" : "min-w-menu flex-1"}><Field name="Search" value={query} onChangeText={onQuery} placeholder={`Search ${noun}   /`} inputRef={ref} onKey={(k) => { if (k === "Escape") { onQuery(""); ref.current?.blur(); } }} /></View>
+        )}
         {phone ? <IconButton kind="secondary" icon="filter" label="Filter" onPress={() => setAdding(true)} /> : <Button kind="secondary" size="sm" icon="plus" label="Filter" onPress={() => setAdding(true)} />}
         {onImport ? (phone ? <IconButton icon="upload" label="Import" onPress={onImport} /> : <Button kind="ghost" size="sm" icon="upload" label="Import" onPress={onImport} />) : null}
         {onExport ? (phone ? <IconButton icon="download" label="Export CSV" onPress={onExport} /> : <Button kind="ghost" size="sm" icon="download" label="Export CSV" onPress={onExport} />) : null}

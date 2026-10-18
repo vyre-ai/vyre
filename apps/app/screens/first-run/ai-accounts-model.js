@@ -55,3 +55,15 @@ export function keyKindOf(key) {
 
 /** Whether a typed key could be a key at all (the server's own bounds): 12 to 400 characters, no spaces. @param {string} key */
 export const keyShapeOk = (key) => { const k = String(key || "").trim(); return k.length >= 12 && k.length <= 400 && !/[\s\u0000-\u001f\u007f]/.test(k); };
+
+/** What the copy sheet says before anything is read: where from, where to, and how many times the person will be asked (a read of each key from the other Space, then one for the whole set). @param {{ from: string, to: string, count: number }} i */
+export function copyWords({ from, to, count }) {
+  const asks = count + 1;
+  return {
+    title: "Use your AI accounts here too?",
+    lead: `Copy keys from ${from} to ${to}. ${to} keeps each key in your own Vault.`,
+    confirm: count === 0 ? "Nothing to confirm." : `You'll confirm ${asks} times: once to read each of ${count === 1 ? "the key" : `the ${count} keys`} from ${from}, and once to add ${count === 1 ? "it" : "them"} to ${to}.`,
+    again: "Sign in again on the new Space",
+    button: (/** @type {number} */ n) => (n === 1 ? "Copy 1 account" : `Copy ${n} accounts`),
+  };
+}

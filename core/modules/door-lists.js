@@ -126,7 +126,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
-  "files.drive.share", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
+  "files.drive.share", "files.drive.space.delete", "files.drive.space.move", "files.drive.space.rename", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
   "files.drop.meta", "files.drop.pending", "files.drop.put", "files.drop.register", "files.drop.targets", "files.drop.unregister", "files.fetch", "files.mentions.search",
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).

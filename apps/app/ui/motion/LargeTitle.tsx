@@ -16,7 +16,8 @@ const BAR = 44;
  * `onRefresh` adds pull to refresh (the system's refresh control; the page keeps its content while it runs).
  * On a wide screen there is no bar: the title is the first line of the page, as before.
  */
-export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own, wide, startAt }: {
+export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own, wide, startAt, dock }: {
+  /** Pinned under the scrolling page, always in view (the ask box on Home): above the tab bar on a phone, at the bottom of the column on a wide screen. */ dock?: ReactNode;
   /** Scroll this far (dp) once the page has drawn: for captures, which show a card further down. */ startAt?: number;
   title: string; /** A two-column page (Now): the content stops at the wide width (1040) with a 32 gutter on a wide screen. */ wide?: boolean; sub?: string; actions?: ReactNode; /** The page draws its own large title (a heading with its own actions); this supplies the bar, the collapse and the refresh. */ own?: boolean; onRefresh?: () => void | Promise<void>; children: ReactNode;
 }) {
@@ -60,12 +61,18 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
     ? { width: "100%", maxWidth: px("--wide-max") + 2 * px("--s-8"), alignSelf: "center", gap: px("--s-4"), paddingHorizontal: px("--s-8"), paddingTop: px("--s-6"), paddingBottom: px("--s-12") }
     : { width: "100%", maxWidth: px("--page-max") || undefined, alignSelf: "center", gap: px("--s-4"), padding: px("--s-4"), paddingBottom: px("--s-12") };
   if (!phone) {
-    return (
+    const page = (
       <Animated.ScrollView refreshControl={refresh} style={{ flex: 1 }} contentContainerStyle={content}>
         {head}
         {children}
       </Animated.ScrollView>
     );
+    return dock ? (
+      <View className="min-h-0 flex-1">
+        {page}
+        <View style={{ width: "100%", maxWidth: px("--wide-max") + 2 * px("--s-8"), alignSelf: "center", paddingHorizontal: px("--s-8"), paddingVertical: px("--s-3"), backgroundColor: color.bg }}>{dock}</View>
+      </View>
+    ) : page;
   }
   return (
     <View className="min-h-0 flex-1">
@@ -73,6 +80,7 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
         {head}
         {children}
       </Animated.ScrollView>
+      {dock ? <View style={{ paddingHorizontal: px("--s-4"), paddingVertical: px("--s-2"), backgroundColor: color.bg, borderTopWidth: 1, borderTopColor: color.edge }}>{dock}</View> : null}
       <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: 0, height: BAR } as StyleProp<ViewStyle>}>
         <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: color.bg, borderBottomWidth: 1, borderBottomColor: color.edge }, bar]} />
         <Animated.View style={[{ flex: 1, justifyContent: "center", paddingHorizontal: 16, alignItems: android ? "flex-start" : "center" }, small]}>

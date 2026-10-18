@@ -211,6 +211,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const prefs = useChatPrefs();
   const muted = prefs.muted.includes(p.sessionId);
   const pinned = prefs.pinned.includes(p.sessionId);
+  const engineerChat = useChats().rows.find((c) => c.id === p.sessionId)?.engineer === true;
   const noFork = !canFork(useChats().rows.find((c) => c.id === p.sessionId));
   const setMuted = (on: boolean) => chatPrefs.setMuted(p.sessionId, on);
   const setPinned = (on: boolean) => chatPrefs.setPinned(p.sessionId, on);
@@ -486,6 +487,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
+      {engineerChat ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Text size="caption" tone="label">Everyone who can use the Engineer reads this chat.</Text></View> : null}
       {forkedFrom ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Banner><View style={{ gap: 4, alignItems: "flex-start" }}><Text>{`Forked from ${forkedFrom.title}. Everything up to that point is in the original.`}</Text><Button kind="ghost" size="sm" label="Open the original" onPress={() => openThread(forkedFrom.thread)} /></View></Banner></View> : null}
       {forkedFrom && originRows && originShown ? <OriginBlock rows={originRows} title={forkedFrom.title} phone={phone} onHide={() => setOriginShown(false)} /> : null}
 

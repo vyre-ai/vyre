@@ -89,3 +89,15 @@ test("the library Kit falls back to records.kits.get on a box without the flows 
   const gone = box({ "flows.kit.library.get": { error: { code: "not_found", message: "no Kit a in the library" } } });
   await assert.rejects(kitsSource(gone.call).libraryKit("a"), (/** @type {any} */ e) => e.code === "not_found");
 });
+
+test("Check this kit is a read-only flows.kit.test on the kit, and its answer reads as lines", { skip: !strip }, async () => {
+  const { kitsSource } = await import("./kits-source.ts");
+  const { checkLines } = await import("./kits-model.ts");
+  const seen = /** @type {any[]} */ ([]);
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { seen.push([tool, input]); return { data: { ok: false, errors: [{ path: "type", message: "this Kit has no type with stages to try" }] } }; };
+  const r = await kitsSource(/** @type {any} */ (call)).check({ id: "k" });
+  assert.deepEqual(seen, [["flows.kit.test", { kit: { id: "k" } }]]);
+  assert.deepEqual(checkLines(r), ["type: this Kit has no type with stages to try"]);
+  assert.deepEqual(checkLines({ ok: true, lines: [{ text: "Task: Call back" }, 5] }), ["Task: Call back"]);
+  assert.deepEqual(checkLines({ ok: true, lines: [] }), ["Nothing went wrong in the dry run."]);
+});

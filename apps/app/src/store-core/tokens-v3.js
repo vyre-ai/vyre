@@ -56,8 +56,8 @@ export const V3 = {
         "controlSm": 30,
         "row": 56,
         "body": [
-          14,
-          20
+          13,
+          18
         ]
       },
       "comfortable": {

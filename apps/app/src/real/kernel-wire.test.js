@@ -24,3 +24,12 @@ test("the person is told which key they are approving: its label, which is in th
   assert.equal(promptFor("grants.invites.create", [{}]), "Invite someone to your team");
   assert.equal(promptFor("grants.unknown", []), "Approve this change");
 });
+
+test("the app works out the SAME set request the home does, in any order, and tells the person which keys they are approving", () => {
+  const items = [{ label: "Work", value: "sk-ant-0123456789abcdef" }, { label: "Home", value: "sk-or-0123456789abcdef" }];
+  const mine = expectedRequest(SPACE, "myvault.addkeys", [{ items, password: "pw" }]);
+  const theirs = proofRequest(SPACE, "vaultAddKeys", { items: [...items].reverse() });
+  assert.deepEqual([mine.op, mine.fields, mine.payload_hash], [theirs.op, theirs.fields, theirs.payload_hash]);
+  assert.equal(promptFor("myvault.addkeys", [{ items }]), "Add 2 keys to your own Vault: Work, Home");
+  assert.ok(!promptFor("myvault.addkeys", [{ items }]).includes("sk-"));
+});

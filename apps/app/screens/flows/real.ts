@@ -10,17 +10,25 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
   return r.data as T;
 }
 
-export type RealFlow = { id: string; name: string; status: string; active: boolean; versions: number; paused: unknown; trigger: string; level?: string; line?: string; sentence?: string };
+export type RealFlow = { id: string; name: string; status: string; active: boolean; versions: number; paused: unknown; trigger: string; level?: string; line?: string; sentence?: string; project?: string };
 export type Graph = { nodes: any[]; edges: { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" }[]; trigger: string; warnings?: (string | { path?: string; message: string })[]; ok?: boolean };
 export type RunRow = { id: string; flow: string; version: number; state: string; started_at: number; finished_at: number | null; tainted?: boolean; parent?: string; label?: string; error: { message?: string } | null };
 export type Card = { id: string; version: number; hash: string; authorship: string; effects: any; caps: any; warnings: string[]; changes: string[]; text: string };
 
+/** Project names by slug (projects.list), so a Flow shows "Juniper" and not its id; where the list cannot be read the id stands. */
+export async function projectNames(): Promise<Record<string, string>> {
+  const r = await ask<{ projects?: { slug?: string; name?: string }[] } | { slug?: string; name?: string }[]>("projects.list", {}).catch(() => null);
+  const rows = Array.isArray(r) ? r : Array.isArray(r?.projects) ? r.projects : [];
+  return Object.fromEntries(rows.filter((p) => p && p.slug).map((p) => [String(p.slug), String(p.name || p.slug)]));
+}
+
 export async function listReal(): Promise<RealFlow[]> {
-  const rows = await ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown; level?: string; line?: string }[]>("flows.list");
+  const names = await projectNames();
+  const rows = await ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown; level?: string; line?: string; project?: string }[]>("flows.list");
   return Promise.all((Array.isArray(rows) ? rows : []).map(async (r) => {
     const g = await ask<Graph>("flows.graph", { id: r.id }).catch(() => null);
     // the Flow's own words, never its id: flows.list carries the label (the name is the code's)
-    return { id: r.id, name: rowName(r), status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "", level: r.level, line: r.line, sentence: g ? whenDo(g.trigger, (g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => String(n.label))) : undefined };
+    return { id: r.id, name: rowName(r), status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "", level: r.level, line: r.line, project: r.project ? names[r.project] || r.project : undefined, sentence: g ? whenDo(g.trigger, (g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => String(n.label))) : undefined };
   }));
 }
 

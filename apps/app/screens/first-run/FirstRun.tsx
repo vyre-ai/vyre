@@ -5,7 +5,7 @@ import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
   Avatar, FlowOver, Icon, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
+import { ANOTHER_COPY, AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, isAnother, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
@@ -13,21 +13,21 @@ import { HalftoneField, measureCalm } from "./HalftoneField";
 import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
-import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
-import { ACCOUNTS_COPY, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
+import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
 
-const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, { screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string }>)[key] : undefined);
+const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, any>)[key] as ({ screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string; [k: string]: any } | undefined) : undefined);
 
 /**
  * First run: Identity, then a space, then Ready. Every button calls a registry tool. One halftone field sits behind the whole flow, mounted here once so it lives through every
@@ -55,7 +55,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const router = useRouter();
   const { phone, color } = useUiTheme();
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
-  const path = one(params.path);
+  const path = one(params.path) || (shot?.another ? "create" : undefined);
   const shot = shotOf(one(params.shot) || "");
   const [stack, setStack] = useState<Screen[]>([shot?.screen || entryScreen(path)]);
   const [username, setUsername] = useState(shot?.username || "");
@@ -87,19 +87,27 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
-  const [asName, setAsName] = useState("");
-  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
+  const [asName, setAsName] = useState<string>(shot?.asName || "");
+  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(shot?.models || null);
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
-  const [first, setFirst] = useState("");
-  const [last, setLast] = useState("");
+  const [asDone, setAsDone] = useState<boolean>(Boolean(shot?.asDone));
+  const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean; why?: string }[] } | null>(shot?.copyable || null);
+  const [copyPick, setCopyPick] = useState<string[]>(shot?.copyPick || []);
+  const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(shot?.copyDone || null);
+  const [carried, setCarried] = useState<{ name: string; look: string } | null>(shot?.carried || null);
+  const [changing, setChanging] = useState(false);
+  const [asLookSeed, setAsLookSeed] = useState("");
+  const [signedIn, setSignedIn] = useState<boolean>(Boolean(shot?.another));
+  const [first, setFirst] = useState(shot?.first || "");
+  const [last, setLast] = useState(shot?.last || "");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
   const [expiresAt, setExpiresAt] = useState("");
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
-  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ provider: string; label: string; item?: string }[]>([]);
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -135,7 +143,9 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     void personStatus().then((r) => {
       if (!live || !r.ok || !r.exists) return;
       setUsername(r.username || "");
-      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path, skipAi: noDaemon })] : s));
+      setSignedIn(true);
+      // already signed in and adding a Space: no identity, no recovery key and no AI step before the Space (a server is what the AI signs in on, and this one is new): straight to the make or join screen
+      setStack((s) => (s[s.length - 1] === "id.create" ? [afterRecovery({ path, skipAi: noDaemon || isAnother(path, true) })] : s));
     });
     return () => { live = false; };
   }, [shot, screen, path]);
@@ -158,6 +168,29 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     }, 2500);
     return () => clearTimeout(t);
   }, [shot, screen, holdOpen, failure, spaces.length, router]);
+
+  // Adding another Space: the AI accounts of the Space already there, offered for copying (the sheet below says the count of confirmations first)
+  useEffect(() => {
+    if (shot || screen !== "id.ai" || !isAnother(path, signedIn) || copyable) return;
+    let live = true;
+    void listCopyable().then((r) => {
+      if (!live || !r.ok) return;
+      const list = Array.isArray(r.accounts) ? r.accounts : [];
+      setCopyable({ from: String(r.from || "your other Space"), accounts: list });
+    });
+    return () => { live = false; };
+  }, [shot, screen, path, signedIn, copyable]);
+
+  // Adding another Space: the Assistant of the Space already there comes along (its name and look), kept with one press or changed
+  useEffect(() => {
+    if (shot || screen !== "setup.assistant" || !isAnother(path, signedIn) || carried) return;
+    let live = true;
+    void currentAssistant().then((r) => {
+      if (!live || !r.ok || !r.assistant || !r.assistant.name) return;
+      setCarried({ name: String(r.assistant.name), look: String(r.assistant.look || "") });
+    });
+    return () => { live = false; };
+  }, [shot, screen, path, signedIn, carried]);
 
   useEffect(() => {
     if (shot || screen !== "setup.model") return;
@@ -356,7 +389,16 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Pick a username." lead="It's how people find and add you, in any Space."
+        failure={failure} primary={{ label: "Continue", disabled: !nameOk, onPress: () => go("id.password") }}>
+        <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "id.password") {
+    return (
+      <FlowStep steps={steps} onBack={back} title="Make your password." lead="It locks your account and your vault. Nobody can reset it for you, not even us, so pick one you'll remember."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
@@ -365,7 +407,6 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setUsername(r.username || usernameOf(username));
           go("id.recovery");
         }) }}>
-        <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
         <PasswordField label="Password" meter value={password} onChangeText={setPassword} />
         <PasswordField label="Confirm password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same password again." : undefined} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />
@@ -395,6 +436,37 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           if (!accounts.length) { setFailure(ACCOUNTS_COPY.empty); return; }
           onward();
         } }}>
+        {isAnother(path, signedIn) && copyable && copyable.accounts.length ? (() => {
+          const w = copyWords({ from: copyable.from, to: space || "this Space", count: copyPick.length });
+          return (
+            <View style={{ gap: 8, padding: 14, borderRadius: 16, backgroundColor: color["surface-2"] }} accessibilityLabel="Copy your AI accounts">
+              <Text strong>{w.title}</Text>
+              <Text tone="muted">{w.lead}</Text>
+              {copyable.accounts.map((a) => {
+                const on = copyPick.includes(a.id), done1 = copyDone?.find((x) => x.id === a.id);
+                return (
+                  <Pressable key={a.id} accessibilityRole="checkbox" accessibilityLabel={a.label} accessibilityState={{ checked: on, disabled: !a.copy }} disabled={!a.copy || Boolean(copyDone)}
+                    onPress={() => setCopyPick((p) => (p.includes(a.id) ? p.filter((x) => x !== a.id) : [...p, a.id]))} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6, opacity: a.copy ? 1 : 0.6 }}>
+                    <ProviderBadge provider={a.provider} size={20} />
+                    <Text>{a.label}</Text>
+                    <Text tone="muted" size="caption">{done1 ? (done1.ok ? "Copied" : done1.why || "Not copied") : !a.copy ? (a.why || w.again) : on ? "Selected" : ""}</Text>
+                  </Pressable>
+                );
+              })}
+              {copyPick.length && !copyDone ? <Text tone="muted" size="caption">{w.confirm}</Text> : null}
+              {!copyDone ? <Button kind="secondary" size="lg" label={w.button(copyPick.length)} loading={busy} disabled={!copyPick.length || busy} onPress={() => void run(async () => {
+                const r = await copyAccounts({ ids: copyPick, ...(keyPassword ? { password: keyPassword } : {}) });
+                setKeyPassword("");
+                if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
+                if (!r.ok) { setFailure(r.message); return; }
+                const list = Array.isArray(r.copied) ? r.copied : [];
+                setCopyDone(list);
+                setAccounts((x) => [...x, ...list.filter((c: { ok: boolean }) => c.ok).map((c: { label: string }) => ({ provider: "", label: c.label }))]);
+              })} /> : null}
+              {needPw && !copyDone ? <PasswordField label={ACCOUNTS_COPY.keyPassword} value={keyPassword} onChangeText={setKeyPassword} /> : null}
+            </View>
+          );
+        })() : null}
         <View style={{ gap: 8 }} accessibilityLabel="AI providers">
           {agents.map((a) => (
             <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`Add ${a.label}`} disabled={busy || Boolean(agentFlow)}
@@ -427,7 +499,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
                 if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
                 setApiKey("");
                 if (!r.ok) { setFailure(r.message); return; }
-                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim() }]);
+                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim(), ...(typeof r.item === "string" && r.item ? { item: r.item } : {}) }]);
                 setPick(""); setAcctLabel(""); setNeedPw(false);
               })} />
             </View>
@@ -458,7 +530,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             {accounts.map((x) => (
               <View key={x.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <ProviderBadge provider={x.provider} size={20} />
-                <Text>{`${x.label} is signed in`}</Text>
+                <Text>{x.item ? `${x.label} is added. Saved in your Vault as ${x.item}.` : `${x.label} is signed in`}</Text>
               </View>
             ))}
           </View>
@@ -480,7 +552,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   if (screen === "join.link") {
     return (
-      <FlowStep steps={steps} onBack={back} title={JOIN_COPY.title} lead={JOIN_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.joinTitle : JOIN_COPY.title} lead={isAnother(path, signedIn) ? ANOTHER_COPY.joinLead : JOIN_COPY.lead} failure={failure}
         primary={{ label: "Continue", disabled: paste.trim().length < 8, loading: busy, onPress: () => void run(async () => {
           const r = await readInvite(paste.trim());
           if (!r.ok) { setFailure(r.message); return; }
@@ -518,7 +590,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "create.kind") {
     const wanted = usernameOf(space);
     return (
-      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste the line into it. This screen waits until it is online." failure={failure}
+      <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.makeTitle : "Connect your server."} lead={isAnother(path, signedIn) ? ANOTHER_COPY.makeLead : "Name your space, say what the server runs, then paste the line into it. This screen waits until it is online."} failure={failure}
         primary={{ label: "Continue", disabled: !command || !waitId || busy, loading: busy, onPress: () => go("create.wait") }}>
         <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={wanted ? `Its address will be ${wanted}.vyre.run` : SPACE_NAME_SAY.required} />
         <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />
@@ -547,6 +619,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             })} />
           </>
         ) : null}
+        {online ? <Text tone="muted">Records keep setting up in the background, so you do not have to wait for them.</Text> : null}
         {online && noFingerprint ? <Text tone="muted">Approvals that need your fingerprint are not available on this Mac yet.</Text> : null}
         {online && paired ? (
           <>
@@ -583,24 +656,28 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   }
 
   if (screen === "setup.assistant") {
-    const name = asName.trim() || ASSISTANT_COPY.suggestion;
+    const name = (carried && !changing ? carried!.name : asName.trim()) || ASSISTANT_COPY.suggestion;
     // the character a look names: shape and colour from the picker, the parts from a hash of the name until a tap changes one (every part is always written, so a tap keeps the rest)
     const seed = asLook.seed || lookSeed(asLook.shape, asLook.color);
-    const full = withParts(seed, name.toLowerCase());
+    const keep = carried && !changing;
+    const full = keep && carried!.look ? carried!.look : withParts(seed, name.toLowerCase());
     const parts = partsOf(full);
     return (
       <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
-        primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
+        primary={{ label: busy ? "Saving..." : keep ? `Keep ${name}` : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
           const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
           setAsName(String(r.display || name));
+          setAsLookSeed(full); setAsDone(true);
           go("setup.model");
         }) }}>
         <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
+        {keep ? <Button kind="ghost" label="Change its name or look" onPress={() => { setAsName(carried!.name); if (carried!.look) { const lk = lookOf(carried!.look); if (lk) setAsLook({ shape: lk.shape, color: lk.color, seed: carried!.look }); } setChanging(true); }} /> : (<>
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
           onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
+        </>)}
       </FlowStep>
     );
   }
@@ -638,7 +715,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
     <FlowStep steps={steps} hero mark="done" title="You're all set."
-      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
+      lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : asDone ? `${asName.trim() || ASSISTANT_COPY.suggestion} and Engineer are waiting in Chats. Say hi.` : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
       primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
@@ -653,6 +730,12 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setCurrent(String(r.current || id));
           if (r.name) setSpace(String(r.name));
         })} />
+      ) : null}
+      {asDone && spaces.length <= 1 ? (
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 28 }} accessibilityLabel="Waiting in Chats">
+          <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", asName.trim() || ASSISTANT_COPY.suggestion, undefined, asLookSeed)} size={56} /><Text size="caption" tone="muted">{asName.trim() || ASSISTANT_COPY.suggestion}</Text></View>
+          <View style={{ alignItems: "center", gap: 6 }}><Avatar of={markRef("agent", "Engineer")} size={56} /><Text size="caption" tone="muted">Engineer</Text></View>
+        </View>
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
       <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your password.`}</Text>

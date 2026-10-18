@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PROVIDERS, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { PROVIDERS, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
 
 test("the providers are the ones the server can sign in to, from the one list", () => {
   assert.deepEqual([...PROVIDERS], ["claude", "codex", "grok"]);
@@ -40,4 +40,13 @@ test("a key's shape: 12 to 400 characters without spaces or control characters",
   assert.equal(keyShapeOk("short"), false);
   assert.equal(keyShapeOk("sk-ant-with space1234"), false);
   assert.equal(keyShapeOk("a".repeat(401)), false);
+});
+
+test("the copy sheet names where from and where to, and counts the confirmations up front: one read per key plus one for the set", () => {
+  const w = copyWords({ from: "Juniper Studio", to: "Ivy Labs", count: 3 });
+  assert.match(w.lead, /Juniper Studio to Ivy Labs/);
+  assert.equal(w.confirm, "You'll confirm 4 times: once to read each of the 3 keys from Juniper Studio, and once to add them to Ivy Labs.");
+  assert.match(copyWords({ from: "A", to: "B", count: 1 }).confirm, /confirm 2 times: once to read the key from A, and once to add it to B/);
+  assert.equal(copyWords({ from: "A", to: "B", count: 0 }).confirm, "Nothing to confirm.");
+  assert.equal(copyWords({ from: "A", to: "B", count: 1 }).button(1), "Copy 1 account");
 });
