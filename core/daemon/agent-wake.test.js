@@ -7,9 +7,9 @@ import assert from "node:assert/strict";
 import { createAgentWake, wakes } from "./agent-wake.js";
 
 const NOW = 1_000_000_000;
-const task = (/** @type {any} */ o = {}) => ({ id: "t1", title: "Refund R-9", state: "ready", source: "flow_step", doer: { kind: "agent", id: "juno" }, assigned_by: { kind: "person", id: "ana" }, output: { kind: "decision" }, form: { instructions: "Escalate to Dana" }, flow: "refund", created_at: NOW - 1000, ...o });
+const task = (/** @type {any} */ o = {}) => ({ id: "t1", title: "Refund R-9", state: "ready", source: "flow_step", doer: { kind: "agent", id: "juno" }, assigned_by: { kind: "person", id: "ana" }, output: { kind: "decision" }, labels: { trust: "member", red: "public", source_spaces: ["s"] }, form: { instructions: "Escalate to Dana" }, flow: "refund", created_at: NOW - 1000, ...o });
 
-function rig(/** @type {any[]} */ tasks) {
+function rig(/** @type {any[]} */ tasks, /** @type {any} */ mayUse = async () => true) {
   const woke = /** @type {any[]} */ ([]), edits = /** @type {any[]} */ ([]), logs = /** @type {string[]} */ ([]);
   const byId = new Map(tasks.map(t => [t.id, t]));
   const claimed = new Map();
@@ -21,7 +21,7 @@ function rig(/** @type {any[]} */ tasks) {
     claimed.set(input.task, `th-${input.task}`);
     return { thread: `th-${input.task}`, already: false };
   };
-  const onEvent = createAgentWake({ space: "s", gw, chain: () => ({}), callModule, log: m => logs.push(m), clock: () => NOW });
+  const onEvent = createAgentWake({ space: "s", gw, ...(mayUse ? { mayUse } : {}), chain: () => ({}), callModule, log: m => logs.push(m), clock: () => NOW });
   return { onEvent, woke, edits, logs, byId };
 }
 const created = (/** @type {string} */ id, type = "task.created") => ({ type, data: { task: { id } } });
@@ -325,4 +325,34 @@ test("a person's review is not a round: with a person in the reviewer slot no ag
   for (let i = 0; i < 8; i++) await onEvent({ type: "task.in-review", data: { task: { id: "t1" } } });
   assert.deepEqual(calls, [], "nothing is woken and no round is counted");
   assert.deepEqual(asked, [], "and no person is told of a cap");
+});
+
+// The task's own words are an instruction only on the kernel's facts (lib/prompt-band.js): a person who holds use of the agent now, on an untainted chain. Otherwise they are information inside the fence.
+test("the words of a task made by someone who does not hold use of the agent, or on a tainted chain, or with no way to ask the Gate, reach it as information and not as instructions", async () => {
+  const cases = /** @type {[string, any, any][]} */ ([
+    ["no use now", {}, async () => false],
+    ["the Gate does not answer", {}, async () => { throw new Error("down"); }],
+    ["an outside chain", { labels: { trust: "external", red: "public", source_spaces: ["s"] } }, async () => true],
+    ["no labels on the task", { labels: undefined }, async () => true],
+    ["no way to ask the Gate", {}, null],
+    ["an agent made it and no person is behind it", { assigned_by: { kind: "agent", id: "scout" } }, async () => true],
+  ]);
+  for (const [what, over, mayUse] of cases) {
+    const r = rig([task(over)], mayUse);
+    await r.onEvent(created("t1"));
+    assert.equal(r.woke.length, 1, what);
+    assert.equal(r.woke[0].instructions, undefined, `${what}: not an instruction`);
+    assert.equal(r.woke[0].info.from_requester, "Escalate to Dana", `${what}: kept as information`);
+  }
+});
+
+test("the Gate is asked about the person who made the task and the agent doing it, and the person an agent's task acts for counts", async () => {
+  const asked = /** @type {string[][]} */ ([]);
+  const mayUse = async (/** @type {string} */ person, /** @type {string} */ agent) => { asked.push([person, agent]); return person === "dana"; };
+  const r = rig([task({ id: "a", assigned_by: { kind: "agent", id: "scout" }, requested_for: "dana" }), task({ id: "b" })], mayUse);
+  await r.onEvent(created("a"));
+  await r.onEvent(created("b"));
+  assert.deepEqual(asked, [["dana", "juno"], ["ana", "juno"]]);
+  assert.equal(r.woke[0].instructions, "Escalate to Dana");
+  assert.equal(r.woke[1].instructions, undefined);
 });

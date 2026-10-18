@@ -5,6 +5,8 @@
 //   const onEvent = createAgentWake({ space, gw, chain, editChain, callModule, log });
 //   k.log.subscribe("agent-wake", {}, onEvent);
 
+import { bandOf } from "../../lib/prompt-band.js";
+
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TYPES = /^task\.(created|readied|unblocked)$/;
@@ -20,7 +22,7 @@ const AUTH = /oauth|expired|sign.?in|log.?in|authenticat|credential|401|unauthor
 const ENDS = /^task\.(completed|approved|rejected|skipped|voided|withdrawn)$/;
 
 /**
- * @param {{ space: string, gw: any, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, bind?: (task: any, thread: string) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
+ * @param {{ space: string, gw: any, mayUse?: (person: string, agent: string) => Promise<boolean>, chain: () => any, editChain?: (task: any) => any, lend?: (task: any) => Promise<any>, bind?: (task: any, thread: string) => Promise<any>, reclaim?: (taskId: string) => Promise<any>, agentChain?: (task: any) => any, callModule: (tool: string, input: any, space?: string) => Promise<any>, log?: (m: string) => void, clock?: () => number }} o
  * @returns {((e: any) => Promise<void>) & { threadEnded: (thread: string, reason?: string) => Promise<void> }}
  */
 export function createAgentWake(o) {
@@ -28,6 +30,18 @@ export function createAgentWake(o) {
   const clock = o.clock || Date.now;
   /** @type {Set<string>} tasks whose job already ended unstarted once: the second time the task is stuck, in words */
   const retried = new Set();
+  /**
+   * The band of a task's own words, from facts the kernel wrote: who made the task (the verified chain's first hop, `assigned_by`), whom it acts for (`requested_for`) and the chain's trust label. Whether that
+   * person holds use of the agent is asked of the Gate now (`mayUse`), not read from the task. No `mayUse`, or any doubt, is information. (The pinned approved Flow version is not a task fact yet: team/BACKLOG.md.)
+   * @param {any} t @returns {Promise<"instructions" | "information">}
+   */
+  async function bandOfTask(t) {
+    const by = t.assigned_by && typeof t.assigned_by === "object" ? t.assigned_by : null;
+    const person = by && by.kind === "person" ? String(by.id) : typeof t.requested_for === "string" ? t.requested_for : "";
+    let uses = false;
+    try { uses = person !== "" && typeof o.mayUse === "function" && (await o.mayUse(person, String(t.doer.id))) === true; } catch { uses = false; }
+    return bandOf({ tainted: !(t.labels && t.labels.trust === "member"), byAgent: Boolean(by && by.kind === "agent"), requesterUses: uses, actsForUses: uses });
+  }
   /**
    * A task the agent could not start or did not finish is never left open in silence: it is marked stuck, as the agent itself (the assigner on the chain, the one shape the kernel takes for the doer's own
    * flag), with what happened in plain words and what to do. It surfaces in Needs you for the assigner and approver, and the run shows it. The wake is marked failed so one retry may start it again.
@@ -177,10 +191,13 @@ export function createAgentWake(o) {
       if (typeof o.lend === "function") await o.lend(t);
       // a task an agent handed on has the person it began with (the kernel records it from the verified chain), so the woken agent works within that person's limits
       const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
-      const instructions = [t.form && typeof t.form.instructions === "string" ? t.form.instructions : "", t.note || ""].filter(Boolean).join("\n\n");
+      const said = [t.form && typeof t.form.instructions === "string" ? t.form.instructions : "", t.note || ""].filter(Boolean).join("\n\n");
+      // The task's own words are an instruction only when the kernel's facts say so (lib/prompt-band.js); otherwise they reach the agent as information, inside the fence, and it works from the title and details.
+      const asInstructions = said !== "" && (await bandOfTask(t)) === "instructions";
+      const instructions = asInstructions ? said : "";
       // What the person who asked added to the task (slot instructions, the doer's skills, details and outputs) goes to the agent as information, in its own section, never mixed into the instructions.
       const g = t.guides && typeof t.guides === "object" ? t.guides : null;
-      const info = { ...(g && g.instructions && g.instructions.doer ? { instructions: g.instructions.doer } : {}), ...(g && g.skills && Array.isArray(g.skills.doer) && g.skills.doer.length ? { skills: g.skills.doer.map((/** @type {any} */ k) => ({ name: k.name || k.id, checklist: k.checklist })) } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(Array.isArray(t.outputs) && t.outputs.length ? { outputs: t.outputs } : {}) };
+      const info = { ...(said && !asInstructions ? { from_requester: said } : {}), ...(g && g.instructions && g.instructions.doer ? { instructions: g.instructions.doer } : {}), ...(g && g.skills && Array.isArray(g.skills.doer) && g.skills.doer.length ? { skills: g.skills.doer.map((/** @type {any} */ k) => ({ name: k.name || k.id, checklist: k.checklist })) } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(Array.isArray(t.outputs) && t.outputs.length ? { outputs: t.outputs } : {}) };
       const project = typeof t.project === "string" && t.project ? t.project.split("/").pop() : undefined;
       const r = await o.callModule("agents.wake", { task: t.id, agent: t.doer.id, title: t.title, ...(instructions ? { instructions } : {}), ...(Object.keys(info).length ? { info } : {}), ...(t.record ? { record: t.record } : {}), ...(project ? { project } : {}), ...(approver ? { approver } : {}), ...(t.flow ? { flow: t.flow } : {}), ...(t.form && t.form.origin && typeof t.form.origin === "object" ? { origin: t.form.origin } : {}) }, o.space);
       // the lend of the task was made before the job existed; now that it has a thread, the lend is held to that thread (the old one ends in the same step the bound one begins)
