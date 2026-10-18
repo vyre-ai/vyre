@@ -12,22 +12,30 @@ export function draftIdOf(task) {
 }
 
 /**
- * The rows of the card, in words: what the person is about to make. Only what the draft names; "All projects" is said as such. @param {any} input the draft's agents.create input
- * @returns {{ name: string, look: string, rows: [string, string][] }}
+ * The rows of the card, in words: what the yes grants. The risky things are said plainly (a computer, personal memory, every project, a key of the owner's) and are never left out when set; the
+ * instructions show their first lines and their length. @param {any} input the draft's agents.create input
+ * @returns {{ name: string, look: string, grants: string[], rows: [string, string][] }}
  */
 export function cardOf(input) {
   const i = input && typeof input === "object" ? input : {};
   const a = i.auth && typeof i.auth === "object" ? i.auth : {};
+  /** @type {string[]} */ const grants = [];
+  if (i.projects === "*") grants.push("Can see every project");
+  if (i.computer === true) grants.push("Can use a computer of its own in Space's Cloud");
+  if (i.personal === true) grants.push("Can read your personal memory");
+  if (a.vault) grants.push(`Runs on your ${a.vault} key`);
+  if (a.fallback) grants.push(`Falls back to your ${a.fallback} key${typeof a.budget_usd === "number" ? `, up to $${a.budget_usd} a month` : ""}`);
   /** @type {[string, string][]} */ const rows = [];
-  if (i.instructions) rows.push(["Instructions", String(i.instructions).length > 280 ? `${String(i.instructions).slice(0, 279)}…` : String(i.instructions)]);
-  rows.push(["Projects", i.projects === "*" ? "All projects" : Array.isArray(i.projects) && i.projects.length ? i.projects.join(", ") : "None yet"]);
+  if (i.instructions) {
+    const text = String(i.instructions), first = text.split("\n").filter((l) => l.trim()).slice(0, 3).join("\n");
+    rows.push(["Instructions", `${first.length > 280 ? `${first.slice(0, 279)}\u2026` : first}${text.length > first.length ? `\n(${text.length} characters in all)` : ` (${text.length} characters)`}`]);
+  }
+  rows.push(["Projects", i.projects === "*" ? "Every project" : Array.isArray(i.projects) && i.projects.length ? i.projects.join(", ") : "None yet"]);
   if (Array.isArray(i.skills) && i.skills.length) rows.push(["Skills", i.skills.join(", ")]);
   if (a.vault || a.fallback) rows.push(["AI account", [a.vault ? String(a.vault) : "", a.fallback ? `then ${a.fallback}${typeof a.budget_usd === "number" ? ` (up to $${a.budget_usd} a month)` : ""}` : ""].filter(Boolean).join(", ")]);
   if (i.model) rows.push(["Model", String(i.model)]);
   if (i.effort) rows.push(["Effort", String(i.effort)]);
-  if (i.computer === true) rows.push(["Computer", "Its own, in Space's Cloud"]);
-  if (i.personal === true) rows.push(["Personal memory", "It may read yours"]);
-  return { name: String(i.name ?? ""), look: String(i.look ?? ""), rows };
+  return { name: String(i.name ?? ""), look: String(i.look ?? ""), grants, rows };
 }
 
 /** The words that ask the Engineer to change one thing in the proposal. @param {string} what @param {string} value */

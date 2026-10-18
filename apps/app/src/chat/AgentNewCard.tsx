@@ -39,6 +39,7 @@ export function AgentNewCard({ input, onSay }: { input: any; onSay?: (text: stri
         <Avatar of={markRef("agent", card.name, undefined, shown)} size={56} onPress={onSay ? () => setLooking(true) : undefined} />
         <View style={{ flex: 1 }}><Text size="title" medium>{card.name}</Text><Text tone="label" size="caption">{onSay ? "Tap it to change how it looks" : "A new agent"}</Text></View>
       </View>
+      {card.grants.length ? <Banner tone="warn">{`A yes lets it:\n${card.grants.map((g) => `\u2022 ${g}`).join("\n")}`}</Banner> : null}
       {card.rows.map(([k, val]) => <Row key={k} dense title={k} sub={val} />)}
       {onSay ? (
         <View style={{ gap: 6 }}>
