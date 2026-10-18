@@ -1,5 +1,5 @@
 // @ts-check
-// The list of a person's servers and teams (space-list.js) in the app. It is read twice and never in the background: once when the master password has just opened the personal vault (`opened`), and once when
+// The list of a person's servers and teams (space-list.js) in the app. It is read twice and never in the background: once when the password has just opened the personal vault (`opened`), and once when
 // Settings, Servers opens (`sync`). It is written with the yes the person already gave for the act itself: a server paired (`added`), a team joined (`added`), a server or team left (`left`). A vault that is
 // locked, or a list that could not be read, changes nothing; a leave made then is kept on this device and written at the next open. Each device keeps two small counters, never the list: the highest seq it has
 // seen (a lower one is a rollback) and the removals not yet written. Connecting a listed server uses its pinned box key through `pairByChain` (the server's admission of a chain device, lane 2) and no typed code.
@@ -91,7 +91,7 @@ export function makeListFlow(io) {
   return {
     /** Settings, Servers opens. */
     sync: () => quiet(),
-    /** The master password just opened the vault: read, then connect every pinned server this device lacks. */
+    /** The password just opened the vault: read, then connect every pinned server this device lacks. */
     async opened() {
       const r = await quiet();
       const out = await connectAll(r.found);

@@ -120,7 +120,7 @@ function spaceWorld(t) {
   return { ...d, fetch: fetchAll, svc, posts, rec };
 }
 
-test("sign in from another device: register the record at a space, then a new page with nothing on it signs in with the address, the username and the master password", { timeout: 240000 }, async (t) => {
+test("sign in from another device: register the record at a space, then a new page with nothing on it signs in with the address, the username and the password", { timeout: 240000 }, async (t) => {
   const w = spaceWorld(t);
   // Device one makes the identity at the production cost (the record's password key and the login key are one Argon2id of the password).
   const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
@@ -165,7 +165,7 @@ test("a hostile space that asks for cheap password settings is refused before an
   await assert.rejects(() => host.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "bad_kdf");
 });
 
-test("sign in with GitHub: the directory lists the spaces for a valid assertion, the master password is asked once, and the bundle opens on the device", { timeout: 240000 }, async (t) => {
+test("sign in with GitHub: the directory lists the spaces for a valid assertion, the password is asked once, and the bundle opens on the device", { timeout: 240000 }, async (t) => {
   const w = spaceWorld(t);
   const one = createHost({ store: memoryStore(), directory: w.base, fetch: w.fetch, now: w.now });
   const made = await one.call("onboard.person.create", { username: "alex", password: PASSWORD, confirm: PASSWORD });
@@ -177,7 +177,7 @@ test("sign in with GitHub: the directory lists the spaces for a valid assertion,
   const found = await two.call("onboard.signin.github");
   assert.equal(found.login, "alex");
   assert.deepEqual(found.spaces.map((x) => x.name), ["juniper"]);
-  assert.equal(await store.load(), null, "nothing is kept until the master password opens the bundle");
+  assert.equal(await store.load(), null, "nothing is kept until the password opens the bundle");
   await assert.rejects(() => two.call("onboard.signin.unlock", { password: "zebra quartz mango pillow staple" }), (e) => e.code === "bad_password");
   assert.equal(await store.load(), null);
   const opened = await two.call("onboard.signin.unlock", { password: PASSWORD });

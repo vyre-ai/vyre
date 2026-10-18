@@ -60,6 +60,9 @@ const CALLS = {
   // upgrading a Personal space to My Cloud: one approval, bound to the target and the plan hash the person was shown
   upgrade: (s, i) => ({ action: "space.upgrade", resource: urn(s, "space", "upgrade"), input: { to: i.to, plan_hash: i.plan_hash } }),
   inviteRevoke: (s, id) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { revoke: id } }),
+  // a member adds an AI key to their OWN vault (core/vault/member-service.js): one presence for the whole act. The proof covers the label and the HASH of the value, never the value or the password, and is signed
+  // as `grant.add_key` (opOf: the second part of the action), which the sealing process already accepts for a person's own device.
+  vaultAddKey: (s, i) => ({ action: "vault.add_key", resource: urn(s, "vault-me", "self"), input: { label: String(i && i.label), kind: "api-key", value_sha256: sha256(String(i && i.value)) } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 
@@ -82,7 +85,7 @@ export const proofNameOf = (call) => {
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
 /** Gateway paths whose proof request has another name (the wire says `grants.offers.lend`, the request is `lend`). */
-export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "grants.invites.revoke": "inviteRevoke", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend" });
+export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "grants.invites.revoke": "inviteRevoke", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend", "myvault.addkey": "vaultAddKey" });
 
 /**
  * What a surface shows and signs for one grants call: `{ op, space, fields, payload_hash }`. The signer signs `payload_hash` (and the rest of the PresenceProof

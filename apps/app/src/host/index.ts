@@ -2,6 +2,8 @@
 // which the first-run proof uses). Stage 2 adds the space steps (create a space with the one install line, wait for the server, show the paired server). The Mac and Windows windows join in the next stage. A page whose daemon answers (a box's own /app/, a phone paired to a server) never comes here.
 import { Platform } from "react-native";
 import { createHost } from "./host-core.js";
+import { kvGet, kvSet } from "../state/member-key-kv";
+import { deviceKeyStore } from "../state/member-key.js";
 import { hostStore } from "./host-store";
 import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
@@ -58,6 +60,6 @@ async function deviceId(): Promise<string> {
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
-  if (!host) host = createHost({ store: hostStore, directory: directory(), github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac" });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
   return host;
 }

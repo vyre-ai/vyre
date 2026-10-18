@@ -132,6 +132,34 @@ export async function signInAgent(input) {
   catch (e) { return fail(e); }
 }
 
+/** Name the Assistant and keep its look: made on the server this space is on. `person` is the name the person gave in the name step (the server shows it beside theirs). @param {{ name: string, look: string, person?: string }} input */
+export async function setAssistant(input) {
+  if (MOCK) return mock.setAssistant(input);
+  try { return done(await tool("onboard.assistant.set", input)); }
+  catch (e) { return fail(e); }
+}
+
+/** Add an AI account from an API key: the server checks it with the provider and keeps it in the owner's Vault; the key is never returned. @param {{ kind: string, key: string, label: string, base_url?: string }} input */
+export async function addAgentKey(input) {
+  if (MOCK) return mock.addAgentKey(input);
+  try { return done(await tool("onboard.agent.key", input)); }
+  catch (e) { return fail(e); }
+}
+
+/** What each connected AI account offers, for the model step. */
+export async function listAssistantModels() {
+  if (MOCK) return mock.listAssistantModels();
+  try { return done(await tool("onboard.assistant.models", {})); }
+  catch (e) { return fail(e); }
+}
+
+/** Keep the Assistant's default model. @param {string} model */
+export async function setAssistantModel(model) {
+  if (MOCK) return mock.setAssistantModel(model);
+  try { return done(await tool("onboard.assistant.model", { model })); }
+  catch (e) { return fail(e); }
+}
+
 export async function loadProgress() {
   if (MOCK) return mock.loadProgress();
   try { return done(await tool("onboard.first.progress", {})); }
@@ -145,14 +173,14 @@ export async function saveProgress(input) {
   catch (e) { return fail(e); }
 }
 
-/** Sign in from any device: a space's address, the username and the master password. The space gives the person's wrapped identity, the device opens it with the password, and the person is in every space they belong to. @param {{ space: string, username: string, password: string }} input */
+/** Sign in from any device: a space's address, the username and the password. The space gives the person's wrapped identity, the device opens it with the password, and the person is in every space they belong to. @param {{ space: string, username: string, password: string }} input */
 export async function signInPassword(input) {
   if (MOCK) return mock.signInPassword(input);
   try { return done(await tool("onboard.signin", input)); }
   catch (e) { return fail(e); }
 }
 
-/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The master password is asked once, next (unlockGithub). @param {string} [space] */
+/** Sign in with GitHub: it finds the spaces this person belongs to (or logs in to the one space address the person typed). The password is asked once, next (unlockGithub). @param {string} [space] */
 export async function signInGithub(space) {
   if (MOCK) return mock.signInGithub();
   try { return done(await tool("onboard.signin.github", space ? { space } : {})); }

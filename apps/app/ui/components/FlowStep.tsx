@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { ScrollView, View } from "react-native";
 import { Banner } from "./Banner";
 import { Button } from "./Button";
@@ -5,6 +6,9 @@ import { StageSteps } from "./StageSteps";
 import { Text } from "./Text";
 import { VyreMark, type MarkState } from "./VyreMark";
 import { Appear } from "../motion";
+
+/** True when something sits behind the step (the welcome flow's halftone field): the page is then left clear instead of painted. */
+export const FlowOver = createContext(false);
 
 type Action = { label: string; onPress: () => void; disabled?: boolean; loading?: boolean };
 
@@ -31,9 +35,10 @@ export function FlowStep({ mark = "static", hero, steps, title, lead, failure, o
   secondary?: Action;
   children?: React.ReactNode;
 }) {
+  const over = useContext(FlowOver);
   return (
-    <ScrollView className="flex-1 bg-bg" contentContainerClassName="grow items-center px-s4 py-s5" keyboardShouldPersistTaps="handled">
-      <View className="w-full max-w-read gap-s5">
+    <ScrollView className={over ? "flex-1" : "flex-1 bg-bg"} contentContainerClassName="grow items-center px-s4 py-s5" keyboardShouldPersistTaps="handled">
+      <View id="onboard-content" className="w-full max-w-read gap-s5">
         <View className="min-h-control flex-row items-center justify-between">
           {hero ? <View /> : <VyreMark lockup size="sm" state={mark} />}
           {onBack ? <Button kind="ghost" size="sm" icon="back" label="Back" onPress={onBack} /> : null}

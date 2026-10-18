@@ -48,8 +48,19 @@ async function signIn(w, person, label) {
   throw new Error("the sign-in did not finish");
 }
 
-test("the accounts a member reaches are five calls: sign-in, and a key kept in their own vault", () => {
-  assert.deepEqual(CALLS.accounts, ["list", "signin", "remove", "default", "add"]);
+test("the accounts a member reaches are six calls: sign-in, a key kept in their own vault, and a check of a key that keeps nothing", () => {
+  assert.deepEqual(CALLS.accounts, ["list", "signin", "remove", "default", "add", "check"]);
+});
+
+test("a member's key check is capped at ten a minute, and a member who is not in the Space is not found", { timeout: 60_000 }, async t => {
+  const w = await world(t);
+  // a member's check at an address of their own is refused before any request goes out (member-endpoints.js), so each attempt is refused in words and nothing leaves the box: the cap is what is asked about
+  const tries = [];
+  for (let i = 0; i < 12; i++) tries.push(await w.as(ANA, "check", { kind: "openai-compatible", key: "sk-0123456789abcdef", base_url: "https://evil.example/v1" }).then(() => "ok", (e) => String(e.code)));
+  assert.ok(tries.slice(0, 10).every((c) => c === "not_allowed"), tries.join());
+  assert.deepEqual(tries.slice(10), ["limit", "limit"], "the eleventh and twelfth are told to try again in a minute");
+  assert.equal(await w.as(BEN, "check", { kind: "openai-compatible", key: "sk-0123456789abcdef", base_url: "https://evil.example/v1" }).then(() => "ok", (e) => String(e.code)) !== "limit", true, "another member has their own count");
+  assert.equal(await w.as(ZED, "check", { kind: "openai-compatible", key: "sk-0123456789abcdef", base_url: "https://evil.example/v1" }).then(() => "ok", (e) => String(e.code)), "not_found");
 });
 
 test("a member signs in on their own account; it is theirs alone: not the owner's, not another member's, and no one else's turn resolves to it", { timeout: 90_000 }, async t => {
