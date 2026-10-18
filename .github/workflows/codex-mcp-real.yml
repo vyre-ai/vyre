@@ -21,6 +21,6 @@ jobs:
         with:
           node-version: 22
       - name: Install Codex CLI into a temp prefix
-        run: npm install --prefix "$RUNNER_TEMP/codex" @openai/codex@0.159.3
+        run: npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/codex" @openai/codex@0.159.3
       - name: Codex reads the servers Vyre wrote
         run: node scripts/codex-mcp-real-check.mjs "$RUNNER_TEMP/codex/node_modules/.bin/codex"
