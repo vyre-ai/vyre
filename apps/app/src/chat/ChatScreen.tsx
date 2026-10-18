@@ -311,7 +311,7 @@ export function ChatScreen(p: ChatScreenProps) {
             onForward: (_uuid: string, text: string) => setForward({ text }),
             onSay: (text: string) => { void sendRef.current?.(text); },
           }
-        : { onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid), onForward: (_uuid: string, text: string) => setForward({ text }), onSay: (text: string) => { void sendRef.current?.(text); } }),
+        : { ...(allowsMock() ? { onBranchFrom: async (uuid: string) => { if (forkAsThread.current) { const f = await agentThreads.fork(threadRef.current, uuid); if ("problem" in f) setNote(f.problem); else openThreadRef.current(f.thread); } } } : {}), onRewindTo: (uuid: string) => caps.api.rewindTo(uuid), onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid), onForward: (_uuid: string, text: string) => setForward({ text }), onSay: (text: string) => { void sendRef.current?.(text); } }),
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       // after a turn that used several of Vyre tools: ask for a Flow that repeats them (the assistant makes the draft with flows.from-chat and says what is left for the person to fill in)
