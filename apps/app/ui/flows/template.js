@@ -2,12 +2,12 @@
 // The pure half of the template composer: the {object.field} tokens in a message, the list a person inserts from, the preview and the text-message count.
 // A token is stored as written ("Hello {client.first_name}") and read when the step runs; the engine's own half is kernel/flows/expr.js, not touched here.
 import { flat } from "./tree.js";
-import { isRecordTrigger } from "./logic.js";
+import { isRecordTrigger, otherLaneSteps } from "./logic.js";
 
 /** @typedef {import("./logic.js").Draft} Draft */
 /** @typedef {import("./logic.js").Options} Options */
 /** @typedef {{ token: string, label: string, sealed?: boolean, known: boolean, alias: string, note?: string, address?: boolean, date?: boolean, dateKind?: string }} Item  `address`: the field holds an email address, so it suits To, From, CC and Reply-To */
-/** @typedef {{ title: string, items: Item[], object?: string, soon?: Item[] }} Group  `object`: the object's own label, shown before a field in a chip */
+/** @typedef {{ title: string, items: Item[], object?: string, soon?: Item[], maybe?: string }} Group  `object`: the object's own label, shown before a field in a chip */
 
 /** `{path}`, and for a date `{path - 1 day}`, `{path + 2 hours as date}`: a path, then an optional offset and an optional format (the engine's own grammar, logic.js). The path is group 1, the rest group 2. */
 export const TOKEN_RE = /(?<!\{)\{([a-z_][a-z0-9_]*(?:\.[a-z0-9_]+)*)((?: [+-] \d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?)\}(?!\})/gi;
@@ -73,19 +73,25 @@ export function insertList(d, stepId, o, opt = {}) {
   if (isRecordTrigger(t) && t.type) out.push({ object: labelOf(t.type), title: `${labelOf(t.type)} (the record that started the Flow)`, items: fieldItems(t.type, "after", "", 0, baseFor(t.type)) });
   else if (t.kind === "form" || t.kind === "signup") out.push({ title: "The form", items: ["name", "email", "phone", "message"].map((f) => item(`{${f}}`, `${f[0].toUpperCase()}${f.slice(1)}`, { name: f }, `{form.${f}}`)) });
   /** @type {Item[]} */ const steps = [];
+  const other = otherLaneSteps(d, stepId);
+  /** @type {Item[]} */ const maybeSteps = [];
+  /** @type {string[]} */ const maybeLanes = [];
   for (const s of flat(d.steps)) {
     if (s.id === stepId) break;
+    const lane = other.get(s.id);
+    if (lane && !maybeLanes.includes(lane)) maybeLanes.push(lane);
     if (s.kind === "create" || s.kind === "upsert") {
       const base = baseFor(s.type);
-      out.push({ object: labelOf(s.type), title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null, `{${base}.id}`), ...fieldItems(s.type, `steps.${s.id}.record.data`, "", 0, base)] });
+      out.push({ ...(lane ? { maybe: lane } : {}), object: labelOf(s.type), title: `${labelOf(s.type)} made by ${s.id}`, items: [item(`{steps.${s.id}.record.id}`, "The record itself", null, `{${base}.id}`), ...fieldItems(s.type, `steps.${s.id}.record.data`, "", 0, base)] });
     }
-    if (s.kind === "find") steps.push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null, `{${s.id}.rows}`));
-    if (s.kind === "formula") steps.push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null, `{${s.id}.value}`));
+    if (s.kind === "find") (lane ? maybeSteps : steps).push(item(`{steps.${s.id}.rows}`, `The records found by ${s.id}`, null, `{${s.id}.rows}`));
+    if (s.kind === "formula") (lane ? maybeSteps : steps).push(item(`{steps.${s.id}.value}`, `The value worked out by ${s.id}`, null, `{${s.id}.value}`));
     // a Documents step (a call of documents.generate, which the builder shows as an advanced step) files a document and answers its path: a value an email can attach
-    if (s.kind === "advanced" && s.raw && s.raw.kind === "call" && s.raw.action === "documents.generate") steps.push(item(`{steps.${s.id}.path}`, `The document made by ${s.summary || s.id}`, null, `{${s.id}.path}`));
-    if (s.kind === "classify") steps.push(item(`{steps.${s.id}.label}`, `The group picked by ${s.id}`, null, `{${s.id}.label}`));
+    if (s.kind === "advanced" && s.raw && s.raw.kind === "call" && s.raw.action === "documents.generate") (lane ? maybeSteps : steps).push(item(`{steps.${s.id}.path}`, `The document made by ${s.summary || s.id}`, null, `{${s.id}.path}`));
+    if (s.kind === "classify") (lane ? maybeSteps : steps).push(item(`{steps.${s.id}.label}`, `The group picked by ${s.id}`, null, `{${s.id}.label}`));
   }
   if (steps.length) out.push({ title: "Earlier steps", items: steps });
+  if (maybeSteps.length) out.push({ title: "Earlier steps, only if that path ran", maybe: maybeLanes.join(" or "), items: maybeSteps });
   const has = new Set(opt.engineHas || []);
   const help = HELPERS.map((h) => ({ token: h.token, alias: h.token, label: h.label, known: h.engine || has.has(h.token), ...(h.engine || has.has(h.token) ? {} : { note: "Not available yet" }) }));
   // helpers the engine cannot read yet are kept apart, so the panel does not show a wall of rows that do nothing

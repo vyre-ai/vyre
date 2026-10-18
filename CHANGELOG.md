@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2
 
+- feat(flows): the "Insert a value" list offers only values from steps that ran before on this step's path; values from the other lane of an If are listed apart as "only if that path ran", named for the path ("only on the Then path").
 - fix(flows): side-by-side lanes are 360 wide cards that fill their lane and scroll sideways when there are three or more, instead of squeezing.
 - feat(flows): the headline sentence of a Flow reads an If as its branches ("if the amount is more than 500, ask the Owner first, otherwise email them").
 - feat(flows): an If or a parallel step shows its lanes side by side on a wide screen; the run history has All, Failed and Waiting filters and a search; a run step's input and output can be shown raw.

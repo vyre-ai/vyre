@@ -15,7 +15,7 @@ export function ValueField({ label, name, value, onChange, placeholder, help, dr
 }) {
   const groups = useMemo(() => insertList(draft, stepId, options), [draft, stepId, options]);
   const table = useMemo(() => aliasTable(groups), [groups]);
-  const sources = groups.flatMap((g) => g.items.filter((i) => i.known).map((i) => ({ token: i.token, words: `${g.object ? `${g.object} \u00b7 ` : ""}${i.label}` })));
+  const sources = groups.flatMap((g) => g.items.filter((i) => i.known).map((i) => ({ token: i.token, words: `${g.object ? `${g.object} \u00b7 ` : ""}${i.label}${g.maybe ? ` (only on the ${g.maybe} path)` : ""}` })));
   return (
     <View className="gap-s1">
       <Field label={label} name={name} value={toAliasText(value, table)} onChangeText={(v) => onChange(toPathText(v, table))} placeholder={placeholder} help={help} multiline={multiline} lines={lines} />

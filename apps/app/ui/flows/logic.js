@@ -1037,3 +1037,36 @@ export function setFlowSetting(d, key, value) {
   else if (text.trim() && num > 0) rest.stuck_after_ms = Math.min(86_400_000, Math.max(10_000, num * 60_000)); else delete rest.stuck_after_ms;
   return { ...d, rest };
 }
+
+/** The steps whose values may be empty for this step, because they sit in a sibling lane of an If the step is inside of (or after): step id -> the label of the lane. Parallel lanes count only when the step is inside one (outside, the join has waited for all). @param {Draft} d @param {string} stepId @returns {Map<string, string>} */
+export function otherLaneSteps(d, stepId) {
+  /** @type {Map<string, string>} */ const other = new Map();
+  const has = (/** @type {DraftStep[]} */ list) => list.some((s) => s.id === stepId || lanesOf(s).some((l) => has(laneSteps(s, l.key))));
+  const walk = (/** @type {DraftStep[]} */ list) => {
+    for (const s of list) {
+      const ls = lanesOf(s).filter((l) => l.key !== "on_fail");
+      const mine = ls.find((l) => has(laneSteps(s, l.key)));
+      if (s.kind === "parallel" && !mine) continue;
+      for (const l of ls) {
+        if (l === mine) continue;
+        for (const x of flat(laneSteps(s, l.key))) other.set(x.id, l.label);
+      }
+      if (mine) walk(laneSteps(s, mine.key));
+    }
+  };
+  walk([...d.steps, ...(d.onFailure || [])]);
+  return other;
+}
+
+/** The values a step may read, split by whether they are certain on its path: those from steps that always ran before it, and those from steps in a sibling lane, which may be empty because that path did not run. @param {Draft} d @param {string} stepId @param {Options} o @returns {{ always: [string, string][], maybe: [string, string, string][] }} */
+export function valueSourcesByPath(d, stepId, o) {
+  const other = otherLaneSteps(d, stepId);
+  /** @type {[string, string][]} */ const always = [];
+  /** @type {[string, string, string][]} */ const maybe = [];
+  for (const [tok, words] of valueSources(d, stepId, o)) {
+    const m = /^\{steps\.([a-z0-9_]+)\./i.exec(tok);
+    const lane = m ? other.get(m[1]) : undefined;
+    if (lane) maybe.push([tok, words, lane]); else always.push([tok, words]);
+  }
+  return { always, maybe };
+}
