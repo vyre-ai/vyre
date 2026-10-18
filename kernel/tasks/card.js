@@ -8,7 +8,7 @@ const strip = (/** @type {string} */ s) => String(s ?? "").replace(/[\u0000-\u00
 /**
  * @param {any} task @param {any} body the canonical body the approval is bound to: `{ action, resource, payload, facts }` for a send (facts are the
  *   kernel's, resolved against the record and the vault, never the doer's), `{ op: "skip", ... }` for the kernel's own skip proposal
- * @param {{ doer_label?: string, action_label?: string, review_hash?: string | null }} [opts]
+ * @param {{ doer_label?: string, action_label?: string, review_hash?: string | null, sign_fields?: Record<string, any> }} [opts]
  */
 export function buildCard(task, body, opts = {}) {
   if (task.kernel) {
@@ -43,6 +43,8 @@ export function buildCard(task, body, opts = {}) {
     // details and references the doer gave. All of it is plain data to show, escaped by the screen.
     ...(task.guides ? { guides: Object.freeze({ untrusted: true, ...(task.guides.escalate ? { escalate: task.guides.escalate } : {}), instructions: Object.freeze(Object.fromEntries(Object.entries(task.guides.instructions || {}).map(([k, v]) => [k, strip(v)]))), skills: Object.freeze(Object.fromEntries(Object.entries(task.guides.skills || {}).map(([k, l]) => [k, (/** @type {any[]} */ (l)).map(x => ({ id: String(x.id), name: x.name || null, hash: String(x.hash), checklist: x.checklist }))]))) }) } : {}),
     ...(task.details !== undefined || task.outputs !== undefined ? { task_data: Object.freeze({ untrusted: true, details: task.details === undefined ? null : task.details, outputs: Array.isArray(task.outputs) ? task.outputs.map(o => strip(o)) : [] }) } : {}),
+    // What the approver's key signs, from the kernel itself, so no client rebuilds the hashing: the op and the fields the proof is checked against (the review hash included once the work was reviewed).
+    ...(opts.sign_fields ? { sign: Object.freeze({ op: "task.decide", fields: Object.freeze({ ...opts.sign_fields }) }) } : {}),
     trust: task.labels ? task.labels.trust : "member",
     buttons: Object.freeze(["approve", "reject"]),
     from_doer: Object.freeze({ label: opts.doer_label || `${task.doer.kind}:${task.doer.id}`, title: strip(task.title), note: strip(task.note), buttons: Object.freeze([]) }),

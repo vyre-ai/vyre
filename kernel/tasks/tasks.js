@@ -372,6 +372,8 @@ export function createTasks(cfg) {
     note(chain, "task.taken", n, { by: { kind: who.kind, id: who.id }, group: t.pool.role }, decision);
     return n;
   };
+  /** What the approver's key signs for this task: the task, the payload hash, the decision, and the review result's hash when it was reviewed. One place builds it, for the check in decide and for the card that tells a client what to sign. @param {any} t */
+  const decideFields = (t) => ({ task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, ...(reviewHashOf(t) ? { review_hash: reviewHashOf(t) } : {}) });
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
   const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
@@ -813,7 +815,7 @@ export function createTasks(cfg) {
       // The approval covers the canonical payload as the kernel stored it, recomputed now, never the doer's description.
       if (!t.payload || !body || sha256(canonical(body)) !== t.payload.payload_hash) throw new KernelError("needs_presence", "this task has no approvable payload");
       // One verifier: the sealing process's. The signed fields are the task, the canonical payload hash and the decision it is bound to.
-      const why = p ? await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, ...(reviewHashOf(t) ? { review_hash: reviewHashOf(t) } : {}) }, proof: p }) : "no_proof";
+      const why = p ? await cfg.presence.check({ chain, op: "task.decide", fields: decideFields(t), proof: p }) : "no_proof";
       if (why) throw needsPresence("approving needs your confirmation on this device, over exactly this", why);
       // Quorum "all" on a role: each holder's own yes, each with their own presence proof over this same payload, is kept; the last one completes the approval. A holder taken out of the role is no longer waited for.
       if (t.approver_quorum === "all") {
@@ -1058,7 +1060,7 @@ export function createTasks(cfg) {
       const t = await overlay(get_(id));
       if (cfg.mayReadTask && !(await cfg.mayReadTask(chain, t, checkersOf(get_(id))))) throw new KernelError("not_found", "no such task");
       const b = bodies.get(id);
-      return buildCard(t, b, { review_hash: reviewHashOf(get_(id)), action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
+      return buildCard(t, b, { review_hash: reviewHashOf(get_(id)), ...(t.state === "needs_check" && t.payload ? { sign_fields: decideFields(get_(id)) } : {}), action_label: b && b.action && cfg.authorizer.actions && cfg.authorizer.actions.get(b.action) ? cfg.authorizer.actions.get(b.action).label : undefined });
     },
 
     /**
