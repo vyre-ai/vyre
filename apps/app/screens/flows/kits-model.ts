@@ -104,3 +104,10 @@ export const versionLine = (d: KitDiff): string => (d.from == null ? `Not instal
 
 /** True when there is something to approve: newer, and the box found a difference. */
 export const hasChanges = (d: KitDiff): boolean => d.installed && d.newer && !!d.diff && (d.diff.added.length + d.diff.removed.length + d.diff.changed.length > 0 || d.diff.widenings.length > 0);
+
+/** What a dry run of a Kit said, as lines a person reads: the problems, or what each part would do. @param {{ ok: boolean, lines?: unknown[], errors?: { path?: string, message: string }[] }} r */
+export function checkLines(r: { ok: boolean; lines?: unknown[]; errors?: { path?: string; message: string }[] }): string[] {
+  if (!r.ok) return (r.errors ?? []).map((e) => (e.path ? `${e.path}: ${e.message}` : e.message)).slice(0, 8);
+  const lines = (r.lines ?? []).map((l) => (typeof l === "string" ? l : l && typeof l === "object" && typeof (l as { text?: unknown }).text === "string" ? String((l as { text: string }).text) : "")).filter(Boolean);
+  return lines.length ? lines.slice(0, 12) : ["Nothing went wrong in the dry run."];
+}

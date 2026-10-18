@@ -42,6 +42,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - feat(threads): a member's own AI key is lent to her own turn (lendKey, closing the 0.6.0 known issue). The daemon (core/daemon/lend-key.js, needs.daemon "lendKey") opens a 20-second kernel session of the asker alone (no agent hop, no chat), makes the one call vault.me.lend on it through Registry.callLend as module:threads, and ends the session in a finally; the token never leaves that function. The Switchboard settles who first (core/switchboard/lend-turn.js): the verified asker of the launch or the stored asker of a turn being handed over (two that differ, or none, are refused), still in the chat at lend time, and an account that is that same person's; the Vault's pair check stays the second lock. The two skipped lent-key tests run again
 
+## Polish
 ## Unreleased (polish: agents are persistent, each with many threads)
 
 - fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
@@ -78,6 +79,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.0
 
 - feat(app): the Vault groups its items into AI and apps, Logins, and Notes and other, and shows the breach banner only when one of your own items is breached (screens/vault/vault-groups.js).
+- feat(app): Home shows the agents as faces with a ring that pulses while one is working and turns violet when it waits on you; the summary counts who is working.
+- feat(app): a Kit's install card has "Check this kit", a read-only dry run (flows.kit.test) that lists what it would do or what is wrong.
+- feat(app): a Flow's Settings tab has Limits (whether Flows are running, the daily AI allowance with a save for an owner or an admin) and Connections used by that Flow.
+- feat(app): Needs you on the Flows list shows the runs that need a person (flows.attention) with Retry, Skip, Stop, and Move on (with a reason) for a stage gate (flows.settle).
+- feat(app): a Flow's headline shows what starts it and each step in the accent colour; the steps are cards with Runs beside them (Retry on a failed run, All runs opens the Runs tab); Try it is at the top right; the map is behind a switch in Settings; a Flow shows its project's name.
+- feat(app): a Flow's page is a plain-sentence headline, a meta line, the on switch, Change it in chat and Run now, then Steps, Runs and Settings tabs; the Flows list groups by project (Personal first); Back goes to Apps.
+- feat(app): the Flows list opens with one box, "What should happen on its own?", that hands the words to Engineer, and a Needs you section above the rest; a Flow's page has "Change it in chat"; the Flow's run threads have a source over work.flow.threads (empty until the box has the tool).
+- feat(app): Home opens with the date, a greeting by the person's local time and a one-line summary (home-model.js, HomeHeader).
+
+## 0.6.0
 
 - feat(flows): a Flow may name the project it runs in (`project`, the project's short name), set by flows.define, the text language and flows.patch, and flows.list takes `{ project }` to show that project's Flows only.
 - feat(projects): a project is made with how it runs (stages, client, ongoing or simple); a Stages project pins its stage names (a default list when none are named); New project asks the kind; client projects have Client and Emails tabs, Ongoing ones Board and Runs on its own; rows say what is next, who is on it, progress and when it last moved.
