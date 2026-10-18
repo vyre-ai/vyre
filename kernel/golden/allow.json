@@ -548,12 +548,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
  },
  {
+  "tool": "files.places",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the caller's own places: projects they are on and agents they own or were given, with the Drive folder of each; the kernel decides what they may open there"
+ },
+ {
   "tool": "files.receive",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns on or off whether the Mac takes in files the box delivers, the receive switch"
  },
  {
   "tool": "files.send",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
+ },
+ {
+  "tool": "files.space.mentions.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): Space Drive file paths matching a # query, only files the kernel lets the caller read"
  },
  {
   "tool": "flows.actions",
