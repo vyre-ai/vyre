@@ -23,6 +23,8 @@
       { "name": "records.history", "effect": "read", "reach": "person" },
       { "name": "records.history.undo", "effect": "write", "reach": "person" },
       { "name": "records.log", "effect": "write", "reach": "person" },
+      { "name": "records.share", "effect": "write", "reach": "person" },
+      { "name": "records.busy", "effect": "read", "reach": "person" },
       { "name": "records.rollup.add", "effect": "write", "reach": "person" },
       { "name": "records.layout.get", "effect": "read", "reach": "person" },
       { "name": "records.layout.set", "effect": "write", "reach": "person" },

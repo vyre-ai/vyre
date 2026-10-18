@@ -5,7 +5,7 @@
 import { onTypesChanged } from "../store/types-signal.js";
 import { roleAtLeast } from "../../lib/spaces/members.js";
 import { mayWrite, mayAttrs, OWNED_TYPES, isTrustedChain, judgeWriter, projectTeamOf } from "./ownership.js";
-import { createPrivateRows, createReadRules, visiblePage } from "./private-rows.js";
+import { createPrivateRows, createReadRules, visiblePage, OWN_ONLY } from "./private-rows.js";
 import { withInverses, linkFilter, swapLink, inversesOf } from "./links.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid, isUuid } from "../core/ids.js";
@@ -224,7 +224,9 @@ export function createRecords(cfg) {
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   // Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
   // people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
-  const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; } });
+  const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; },
+    // may this chain read the record a note is about: the grant for the record, then that record's own per-row rule
+    mayReadRef: async (/** @type {any} */ chain, /** @type {string} */ ref) => { const m = /^vyre:\/\/[^/]+\/([a-z][a-z0-9-]*)\/([0-9a-f-]{36})$/.exec(ref); if (!m || !(await allowed(chain, "records.read", ref))) return false; const row = await store.get(m[1], m[2]).catch(() => null); return row ? mayView(chain, m[1], { ...row, urn: ref }) : false; } });
   /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
   /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
@@ -234,7 +236,7 @@ export function createRecords(cfg) {
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
-    if (staffOfChain(chain)) return true;
+    if (staffOfChain(chain) && !OWN_ONLY.has(type)) return true;
     try {
       if (await rule(String(who.actor.id), rec, chain)) return true;
       // an explicit grant that names a row scope, given by an owner or an admin (never a delegation), is access to see: the authorizer already matched it to this very row

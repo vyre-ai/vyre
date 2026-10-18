@@ -3,6 +3,8 @@
 // records.history { urn } -> { items }, records.history.undo { id }, records.log { urn, kind, text }. Changes come from the signed event log the caller may read; calls and meetings are `communication` rows
 // and notes are `note` rows that link to the record. An undo is a change of its own (the old values written back, a made record removed, a removed one restored), so it shows in the history too.
 
+/** The type notes are kept in. The planner has a `note` type of its own, so this one has its own name. */
+export const NOTE = "record-note";
 export const LOG_KINDS = ["call", "meeting", "note"];
 const CHANGE = /^([a-z][a-z0-9-]*)\.(created|updated|removed|restored)$/;
 const NOT_RECORDS = /^(grant|member|actor|offer|invite|chat|rule|team|vault|task|team-member|flow|kit|goal|memory_fact|planner)/;
@@ -74,7 +76,7 @@ export function undoPlan(ev, now) {
 /** A logged row as a history item. @param {string} type @param {any} row @param {any} actor */
 export function loggedItem(type, row, actor) {
   const d = row.data || {};
-  if (type === "note") return { id: row.urn, kind: "note", actor, text: String(d.body || ""), at: Number(row.created_at || row.updated_at || 0), undo: true };
+  if (type === NOTE) return { id: row.urn, kind: "note", actor, text: String(d.body || ""), at: Number(row.created_at || row.updated_at || 0), undo: true };
   const kind = d.kind === "meeting" ? "meeting" : d.kind === "call" ? "call" : d.kind === "text" ? "chat" : "email";
   const at = Number.isFinite(Date.parse(String(d.at || ""))) ? Date.parse(String(d.at)) : Number(row.created_at || row.updated_at || 0);
   return { id: row.urn, kind, actor, text: String(d.excerpt || d.subject || ""), at, undo: d.source_key === undefined || d.source_key === null || d.source_key === "" };
@@ -107,7 +109,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
         const data = e.data || {};
         items.push({ id: String(e.seq), kind: e.acted_via === "assistant" ? "agent" : "edit", actor: actorOf(e, names), text: sentence(m[2], String(def.label || u.type), data.changed || [], data.before, data.after, label), at: Number(e.time), undo: true });
       }
-      for (const type of ["communication", "note"]) {
+      for (const type of ["communication", NOTE]) {
         let rows = [];
         try { rows = ((await d.gateway.records.linked(d.chain, String(i.urn), { type, field: "record", limit: 50 })) || {}).rows || []; } catch { rows = []; }
         for (const r of rows) {
@@ -125,7 +127,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       if (/^vyre:\/\//.test(id)) {
         // a logged call, meeting or note: undone by taking the row away (a synced message has no undo)
         const u = parseUrn(id);
-        if (u.type !== "communication" && u.type !== "note") throw refuse("Only a logged call, meeting or note is undone this way.", "bad_input");
+        if (u.type !== "communication" && u.type !== NOTE) throw refuse("Only a logged call, meeting or note is undone this way.", "bad_input");
         const row = await d.gateway.records.get(d.chain, u.type, u.id);
         if (!row) throw refuse("That entry is already gone.", "not_found");
         if (u.type === "communication" && row.data && row.data.source_key) throw refuse("A message that came in from outside cannot be undone here.", "bad_input");
@@ -156,7 +158,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       if (text.length > 5000) throw refuse("Keep it under 5,000 characters. Put the rest in a document and link it.", "bad_input");
       if (!(await d.gateway.records.get(d.chain, u.type, u.id))) throw refuse(`${i.urn} is not here, or you may not read it. Pick a record you can see in Records.`, "not_found");
       const link = { urn: String(i.urn) };
-      if (i.kind === "note") return { record: await d.gateway.records.create(d.chain, "note", { body: text, record: link, visibility: "private" }) };
+      if (i.kind === "note") return { record: await d.gateway.records.create(d.chain, NOTE, { body: text, record: link, visibility: "private" }) };
       const line = text.split("\n")[0];
       return { record: await d.gateway.records.create(d.chain, "communication", { kind: i.kind, direction: "internal", at: new Date().toISOString(), subject: line.slice(0, 120), excerpt: text.slice(0, 500), record: link }) };
     }, byUrn);

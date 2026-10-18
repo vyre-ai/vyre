@@ -81,6 +81,8 @@ export const EVENT = {
     f("rich_text", "notes", "Notes"),
     f("url", "url", "Link (the event on its calendar)"),
     text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
+    // an event from an outside calendar is read by its owner alone until shared with the Space; the others see Busy (core/records-tools/visibility.js)
+    choice("visibility", "Who can read it", ["private", "space"]),
     TAGS,
   ],  // A new Space opens Events as a calendar, Contacts and Organizations as lists; a person adds their own views next to these (the app's New view).
   views: [{ name: "events_calendar", type: "calendar", label: "Calendar", dateField: "starts_at", columns: ["title", "place"] }],
@@ -381,7 +383,7 @@ export const DEAL = {
 /** A note on a record (core/records-tools/history.js): private to its writer until shared. `visibility` is private, record (everyone who can read the record) or space. */
 export const NOTE_VISIBILITY = ["private", "record", "space"];
 export const NOTE = {
-  name: "note", label: "Note", icon: "IconNote",
+  name: "record-note", label: "Note", icon: "IconNote",
   fields: [
     f("rich_text", "body", "Note", { required: true }),
     f("link", "record", "About"),
