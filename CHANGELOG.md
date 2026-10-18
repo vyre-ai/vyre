@@ -8,6 +8,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(golden): flows.step.test has its line in FLOWS_NOTES (scripts/gen-allow.mjs), so the allow list can be generated again.
+
 - refactor(flows): the Flow runner sheds code to stay under its size cap: trying one step, what a step was given and retry from a step move to kernel/flows/step-test.js, and the small pure helpers to kernel/flows/runner-helpers.js, with no change in behaviour. flows.step.test, flows.runs and flows.retry descriptions are under 25 words, and no_such_step has a catalogue entry.
 
 - fix(modules): when a module's start() throws, or the registry refuses something it registers in start() (an undeclared tool, say), the registry calls the module's own stop() (or the handle a later step failed after), once and within the 5 s stop bound, so what the module opened before it threw is closed. A stop that throws or hangs changes nothing. Tests in core/modules/failed-start-stop.test.js.
