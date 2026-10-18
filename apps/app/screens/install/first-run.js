@@ -95,9 +95,9 @@ export const WAITING = { title: "Your Vyre has not answered yet", line: "Check t
 
 /** What is missing on this device, as the empty state's words (row 8b). One line, one fixing action. @type {Record<"phone"|"mac"|"web", EmptyCopy>} */
 export const GAP = {
-  phone: { title: "Not connected to a Vyre", line: "Sign in with your Vyre's address, your username and your master password.", action: "Sign in", route: FIRST_RUN.start },
-  mac: { title: "Nothing can approve yet", line: "No phone is signed in, so sends and new devices wait. On your phone, open Vyre and sign in with this Vyre's address, your username and your master password." },
-  web: { title: "Not connected", line: "This browser has no Vyre to talk to. Sign in with your Vyre's address, your username and your master password.", action: "Sign in", route: FIRST_RUN.start },
+  phone: { title: "Not connected to a Vyre", line: "Sign in with your Vyre's address, your username and your password.", action: "Sign in", route: FIRST_RUN.start },
+  mac: { title: "Nothing can approve yet", line: "No phone is signed in, so sends and new devices wait. On your phone, open Vyre and sign in with this Vyre's address, your username and your password." },
+  web: { title: "Not connected", line: "This browser has no Vyre to talk to. Sign in with your Vyre's address, your username and your password.", action: "Sign in", route: FIRST_RUN.start },
 };
 
 /**

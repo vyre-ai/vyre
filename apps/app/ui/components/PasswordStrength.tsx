@@ -6,7 +6,7 @@ import { Text } from "./Text";
 const FILL = ["bg-edge", "bg-err", "bg-warn", "bg-primary", "bg-ok"] as const;
 
 /**
- * How strong a master password is: four steps and the level in words ("Good"). Colour is never the only signal.
+ * How strong a password is: four steps and the level in words ("Good"). Colour is never the only signal.
  * The screen asks for Good or better before it continues. `passwordStrength` is the one scoring rule.
  */
 export function PasswordStrength({ value }: { value: string }) {

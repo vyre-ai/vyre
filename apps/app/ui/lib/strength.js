@@ -1,4 +1,4 @@
-// How strong a master password is, in words a person can act on. Four levels. The rule is length first, then variety, then the obvious.
+// How strong a password is, in words a person can act on. Four levels. The rule is length first, then variety, then the obvious.
 // It never rejects a password by itself: the screen asks for "Good" or better before it lets the person go on.
 
 const COMMON = ["password", "12345678", "qwertyui", "letmein", "iloveyou", "vyre"];

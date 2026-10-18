@@ -8,7 +8,7 @@ const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !
 
 /** The fields a create form asks for: hidden ones left out, required ones first, the rest in the type's order. @param {F[]} fields */
 export function formOrder(fields) {
-  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by);
+  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by && !(/** @type {any} */ (f)).read_only);
   return [...shown.filter((f) => f.required), ...shown.filter((f) => !f.required)];
 }
 

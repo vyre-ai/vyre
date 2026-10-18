@@ -40,8 +40,10 @@ test("MessageBar exposes rewind and second opinion actions", () => {
   const bar = fs.readFileSync(path.join(root, "MessageBar.tsx"), "utf8");
   assert.match(bar, /onRewindTo/);
   assert.match(bar, /onSecondOpinion/);
-  assert.match(bar, /Rewind to here/);
-  assert.match(bar, /Second opinion/);
+  const menu = fs.readFileSync(path.join(root, "message-menu-model.js"), "utf8"); // the labels live in the menu's model, which the bar draws
+  assert.match(bar, /messageMenu/);
+  assert.match(menu, /Rewind to here/);
+  assert.match(menu, /Second opinion/);
 });
 
 test("ChatCapabilityChrome uses design-library sheets and cards", () => {

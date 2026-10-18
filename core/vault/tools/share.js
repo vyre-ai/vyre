@@ -28,6 +28,13 @@ export function register({ ctx, vault, secretKey, ttlMs }) {
     run: () => share.people(),
   });
 
+  def("vault.person.of", {
+    callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
+    description: "The Vault person linked to a Space member: { name, verified }, or null when no one is linked or more than one is. verified is false until the safety words were checked. Never a secret.",
+    input: obj({ member: str }, ["member"]),
+    run: (input) => share.personOfMember(input),
+  });
+
   def("vault.person.add", {
     description: "Pin a person's Vyre card (trust on first use). A changed key blocks new passes until verified. From Claude it waits for a person.",
     input: obj({ card: str, name: str }, ["card"]),

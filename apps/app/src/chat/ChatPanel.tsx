@@ -10,7 +10,9 @@ import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
 import { ThreadsTab } from "./ThreadsTab";
-import { chatKind, groupView, panelTabs, tabOf, threadsTab } from "./threads-model.js";
+import { callT } from "../real/call-tool";
+import { sharedView } from "./person-shared-model.js";
+import { addPeopleLine, chatKind, groupView, panelTabs, tabOf, threadsTab } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -67,6 +69,9 @@ export function ChatPanel(p: ChatPanelProps) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [adding, setAdding] = useState(false);
+  // Adding someone to a thread with an agent says plainly what they and the agent get, before it is done.
+  const [confirm, setConfirm] = useState<{ name: string; id?: string; family: string } | null>(null);
+  const doAdd = async (a: { name: string; id?: string; family: string }) => { const r = await p.onAdd?.(a); if (r) setProblem(r); else setAdding(false); };
   const moving = useRef(false);
   const [running, setRunning] = useState<number | null>(null);
   useEffect(() => { setMode(p.state?.mode ?? null); setThinking(p.state?.thinking ?? null); setEffort(p.state?.effort ?? null); }, [p.state?.mode, p.state?.thinking, p.state?.effort]);
@@ -142,7 +147,7 @@ export function ChatPanel(p: ChatPanelProps) {
         <View style={{ gap: 4 }}>
           {p.addable.length ? p.addable.map((a) => (
             <Row key={a.id ?? a.name} dense lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Agent" : "Person"}
-              end={<Button size="sm" kind="secondary" label="Add" onPress={async () => { const r = await p.onAdd?.(a); if (r) setProblem(r); else setAdding(false); }} />} />
+              end={<Button size="sm" kind="secondary" label="Add" onPress={() => { if (a.family !== "assistant" && agents.length === 1 && others.length === 1) setConfirm(a); else void doAdd(a); }} />} />
           )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
         </View>
       ) : <Row dense title="Add people" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
@@ -253,6 +258,15 @@ export function ChatPanel(p: ChatPanelProps) {
       </View>
     );
   };
+  const [shared, setShared] = useState<ReturnType<typeof sharedView> | null>(null);
+  const openedPerson = view && view.level === "person" ? view.id : "";
+  useEffect(() => {
+    setShared(null);
+    if (!openedPerson) return;
+    let live = true;
+    void callT<any>("work.person.shared", { person: openedPerson.replace(/^person:/, "") }).then((r) => { if (live) setShared(sharedView(r.error ? null : r.data)); });
+    return () => { live = false; };
+  }, [openedPerson]);
   const personView = (id: string) => {
     const who = p.participants.find((x) => x.id === id);
     if (!who) return null;
@@ -263,6 +277,8 @@ export function ChatPanel(p: ChatPanelProps) {
         <View style={{ gap: 4 }}>
           <Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>{`You and ${who.name}`}</Text>
           {p.onOpenParticipant ? <Row dense lead={<Icon name="chat" size={20} />} title="Your chat" sub="Just the two of you" chevron onPress={() => p.onOpenParticipant?.(who.id)} /> : null}
+          {shared && shared.threads.length ? <><Text size="caption" tone="label" style={{ paddingHorizontal: 12, paddingTop: 8 }}>{`Threads you share${shared.count > shared.threads.length ? ` (${shared.count})` : ""}`}</Text>{shared.threads.map((t) => <Row key={t.id} dense lead={<Icon name="chat" size={20} />} title={t.title} chevron onPress={() => p.onSwitchThread?.(t.id)} />)}</> : null}
+          {shared && shared.projects.length ? <><Text size="caption" tone="label" style={{ paddingHorizontal: 12, paddingTop: 8 }}>Projects together</Text>{shared.projects.map((n) => <Row key={n} dense lead={<Icon name="projects" size={20} />} title={n} />)}</> : null}
         </View>
       </View>
     );
@@ -289,8 +305,20 @@ export function ChatPanel(p: ChatPanelProps) {
     </View>
   );
   const drilled = Boolean(view && view.level !== "first");
+  const sure = confirm ? (
+    <Sheet open onClose={() => setConfirm(null)} title={`Add ${confirm.name}`}>
+      <View style={{ gap: 16 }}>
+        <Text>{addPeopleLine([confirm.name], agents[0]?.name ?? "The agent")}</Text>
+        <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+          <Button kind="ghost" label="Cancel" onPress={() => setConfirm(null)} />
+          <Button kind="primary" label="Add" onPress={() => { const a = confirm; setConfirm(null); void doAdd(a); }} />
+        </View>
+      </View>
+    </Sheet>
+  ) : null;
   const root = (
     <View style={{ gap: 16 }}>
+      {sure}
       {drilled ? null : hero}
       {tabs.length > 1 ? <Tabs items={tabs} value={cur} onChange={setTab} /> : null}
       {body0}

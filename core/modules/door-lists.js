@@ -31,7 +31,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "mcp.repin",
   "connectors.catalog", "connectors.connect", "connectors.connect.cancel", "connectors.connect.finish", "connectors.disconnect", "connectors.list",
   "mcp.catalog", "mcp.mine.add", "mcp.mine.list", "mcp.mine.remove",
-  "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions",
+  "files.drive.address", "files.drive.space.list", "files.drive.space.read", "files.drive.unshare", "files.drive.versions", "files.places", "files.space.mentions.search",
   // Linked folders: a member links, lists and works her own, as her own source account (core/files/linked.js, member tests in core/files/linked.test.js and core/modules/door-linked.test.js).
   "files.linked.delete", "files.linked.link", "files.linked.list", "files.linked.ls", "files.linked.mentions.search", "files.linked.pick", "files.linked.providers", "files.linked.read", "files.linked.rename", "files.linked.search", "files.linked.status", "files.linked.sync", "files.linked.tree", "files.linked.unlink", "files.linked.versions", "files.linked.write",
   "flows.access.get", "flows.access.set", "flows.budget", "flows.cancel", "flows.card", "flows.cheatsheet", "flows.code", "flows.compile-text", "flows.connections", "flows.control", "flows.define", "flows.describe", "flows.diff", "flows.from-chat", "flows.get",
@@ -75,7 +75,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "views.list",
   "wink.install.complete", "wink.install.issue", "wink.install.status",
   "wink.server.adopt", "wink.server.pair.answer",
-  "work.agent.thread.new", "work.agent.threads", "work.chat.summary", "work.chat.thread.new", "work.chat.threads", "work.person.shared", "work.chat.add-people", "work.project.chat", "work.thread.add-people", "work.flow.threads", "work.thread.fork", "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
+  "work.agent.thread.new", "work.agent.threads", "work.chat.summary", "work.chat.thread.new", "work.chat.threads", "work.person.shared", "work.chat.add-people", "work.project.chat", "work.engineer.chat", "work.thread.add-people", "work.flow.threads", "work.thread.fork", "work.chat.change", "work.chat.create", "work.chat.get", "work.chat.link", "work.chat.list", "work.chat.move", "work.chat.persistent", "work.chat.pin", "work.chat.prefs",
   "work.chat.rename", "work.chat.span", "work.chat.upgrade-plan", "work.file.list", "work.file.share", "work.file.unshare", "work.know.answer", "work.know.search",
   "work.know.suggestions", "work.link.suggest", "work.project.level", "work.situation", "work.start-project", "work.team.context", "work.team.doing", "work.template.library", "work.timeline",
 ]));

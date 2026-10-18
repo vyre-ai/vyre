@@ -7,6 +7,7 @@ import { devSwitch } from "../../../kernel/devbuild.js";   // a development buil
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
+import { freeItemName, itemNameOf } from "../../../lib/vault-item-name.js";
 import { ConnectionTokens, revokeAllowed } from "../connection-token.js";
 import { normalize as normalizeApiCredential } from "../api-request.js";
 import { revokeAtVendor } from "../connection-revoke.js";
@@ -50,7 +51,7 @@ export const SHARED_ME_TOOLS = ["vault.me.mention.search", "vault.me.mention.res
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.lend", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.serve", "vault.me.lend", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -103,6 +104,61 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   // A member's own AI key or setup token, for the account row that names it. `has` answers only whether the named item is in that person's vault (the add-time check, never a value); it is for the sessions module.
   // `lend` takes the ACCOUNT only and works out the person from the verified chain of the turn the call is made in: it gives the one item that account names, to the Switchboard, for that member's own turn, and
   // only when the account row is theirs and their vault is unlocked. The value goes into the session's environment and nowhere else: never an event, a log line, an error or an audit row.
+  // The member door's own call (core/vault/member-service.js, wire.js CALLS.myvault): the person is the one the door's chain names. Only the daemon's door runs it, never a person's surface and never a model. It runs the same
+  // functions as the vault.me.* tools, for the five calls the first run needs, with the input cut to exactly what each takes. The password, the Secret Key and the value are used for that one call and are never logged or returned.
+  ctx.tool("vault.me.serve", {
+    internal: true,
+    description: "A team member's own Vault, as the member's own chain from the team's door: status, and addkey (make the vault if none, open it if locked, put one AI key under a free name). Only the daemon's own door runs it, after the member's presence proof was checked there.",
+    input: obj({ call: str, person: str, space: str, input: { type: "object" } }, ["call", "person", "space"]),
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:vyred") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const id = String(i.person);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id) || id === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const bad = (/** @type {string} */ m) => Object.assign(new Error(m), { code: "bad_input" });
+      const text = (/** @type {unknown} */ v, /** @type {number} */ max) => { const t = typeof v === "string" ? v : ""; if (!t || t.length > max) throw bad("that input is not valid"); return t; };
+      switch (String(i.call)) {
+        case "status": return people.status(id);
+        case "addkey": {
+          const label = text(input.label, 80);
+          if (/[\u0000-\u001f]/.test(label)) throw bad("a name is one line");
+          const value = text(input.value, 400);
+          if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value)) throw bad("that does not look like an API key");
+          const st = await people.status(id);
+          /** @type {string | undefined} */ let secretKey;
+          if (!st.account) {
+            // no vault yet: made with their password, opened at once with the Secret Key it returns (which goes back to their device, once, below)
+            const pw = typeof input.password === "string" && input.password ? text(input.password, 1024) : "";
+            if (!pw) throw bad("your password is needed to make your own vault");
+            const made = await people.create(id, { password: pw });
+            secretKey = made && typeof made.secretKey === "string" ? made.secretKey : undefined;
+            if (!secretKey) throw bad("your vault could not be made");
+            await people.unlock(id, { password: pw, secretKey });
+          } else if (!st.unlocked) {
+            await people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secret_key, 256) });
+          }
+          // The vault now exists: whatever goes wrong below, its Secret Key reaches the device (a vault made and never given its key could not be opened again). A failure after the vault was made is answered as a result with no item,
+          // the reason in plain words, and the Secret Key (the one field it ever travels in); a failure before that throws as usual.
+          const finish = async () => {
+            // the item's name: the label when free in THEIR vault, else with a number; a put on a name that exists replaces that item, so a list that cannot be read puts nothing
+            let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
+            if (!rows) throw bad("your vault could not be checked for that name");
+            const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+            // the Vault's names are letters, digits, dot, dash and underscore: the label is kept as itemNameOf makes it, with -2, -3 when taken
+            const item = freeItemName(itemNameOf(label), used);
+            if (!item) throw bad("that name is taken in your vault");
+            await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
+            return item;
+          };
+          let item = "", failed = "";
+          try { item = await finish(); } catch (e) { if (!secretKey) throw e; failed = String(/** @type {any} */ (e).message || "your key could not be put in your vault").slice(0, 200); }
+          const after = await people.status(id);
+          return { item, ...(failed ? { failed } : {}), ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
+        }
+        default: throw bad("call is status or addkey");
+      }
+    },
+  });
   ctx.tool("vault.me.has", {
     internal: true,
     description: "Whether a member's own vault holds an AI key or setup token by this name: { name } -> { has }. Only the sessions module asks, at the moment a member adds the account, and the person is the one on the call's verified chain, never the input (a `person` in the input is ignored). Never a value.",

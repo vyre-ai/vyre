@@ -91,16 +91,19 @@ export function RealSites() {
   );
 }
 
-type Tab = "pipeline" | "history" | "domain" | "secrets" | "jobs" | "logs";
+export type Tab = "pipeline" | "history" | "domain" | "secrets" | "jobs" | "logs";
 
-export function RealSite() {
+/** `embedded`: the site's own page inside Files (screens/drive/SitePage.tsx) draws one tab's body here without a frame of its own; the route draws the whole page. */
+export function RealSite({ embedded }: { embedded?: { name: string; tab: Tab } } = {}) {
   const { phone } = useUiTheme();
-  const { id, tab: tabParam, grant } = useLocalSearchParams<{ id: string; tab?: string; grant?: string }>();
+  const { id: routeId, tab: tabParam, grant } = useLocalSearchParams<{ id: string; tab?: string; grant?: string }>();
+  const id = embedded ? embedded.name : routeId;
   const router = useRouter();
   const [deps, setDeps] = useState<Dep[] | null>(null);
   const [st, setSt] = useState<Status | null>(null);
   const [err, setErr] = useState("");
   const [tab, setTab] = useState<Tab>((["pipeline", "history", "domain", "secrets", "jobs", "logs"] as string[]).includes(String(tabParam)) ? (tabParam as Tab) : "pipeline");
+  const shownTab: Tab = embedded ? embedded.tab : tab;
   const [held, setHeld] = useState<Held | null>(null);
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState("");
@@ -119,7 +122,7 @@ export function RealSite() {
   useEffect(() => { if (cur) statusOf(cur.id).then(setSt).catch(() => setSt(null)); }, [cur?.id, cur?.stage]);
   // History reads each version's own status for who approved it and when it went live
   const ids = site ? site.versions.map((v) => v.id).join(",") : "";
-  useEffect(() => { if (tab === "history" && ids) ids.split(",").forEach((vid) => statusOf(vid).then((x) => setHist((h) => ({ ...h, [vid]: x }))).catch(() => {})); }, [tab, ids, cur?.stage]);
+  useEffect(() => { if (shownTab === "history" && ids) ids.split(",").forEach((vid) => statusOf(vid).then((x) => setHist((h) => ({ ...h, [vid]: x }))).catch(() => {})); }, [shownTab, ids, cur?.stage]);
   const names = useDoor(deps);
   const offline = doorBanner(names, !!site?.live);
 
@@ -135,14 +138,14 @@ export function RealSite() {
     decide(decision(held, approve)).then((r) => { showToast(approve ? "Done." : "Declined."); setHeld(null); load(); void r; }).catch((e) => showToast(say(e))).finally(() => setBusy(false));
   };
 
-  if (err) return <Frame title="Sites" back="/u/sites"><ErrorState title="Publish did not load" reason={err} retry={load} /></Frame>;
-  if (deps === null) return <Frame title="Sites" back="/u/sites"><LoadingState rows={3} /></Frame>;
-  if (!site || !cur) return <Frame title="Sites" back="/u/sites"><EmptyState title="That site is not here" body="It may have been retired. Open Sites to see what is published." action={{ label: "Open Sites", onPress: () => router.push("/u/sites" as never) }} /></Frame>;
+  if (err) return embedded ? <ErrorState title="Publish did not load" reason={err} retry={load} /> : <Frame title="Sites" back="/u/sites"><ErrorState title="Publish did not load" reason={err} retry={load} /></Frame>;
+  if (deps === null) return embedded ? <LoadingState rows={3} /> : <Frame title="Sites" back="/u/sites"><LoadingState rows={3} /></Frame>;
+  if (!site || !cur) return embedded ? <EmptyState title="That site is not here" body="It may have been retired." /> : <Frame title="Sites" back="/u/sites"><EmptyState title="That site is not here" body="It may have been retired. Open Sites to see what is published." action={{ label: "Open Sites", onPress: () => router.push("/u/sites" as never) }} /></Frame>;
   const next = nextStep(st && st.id === cur.id ? st : cur);
   const hold = held ? planLines(held.plan) : null;
 
   const body =
-    tab === "pipeline" ? (
+    shownTab === "pipeline" ? (
       <View className="gap-s4">
         {offline ? <Banner tone="warn"><Text>{offline}</Text></Banner> : null}
         <Sec title={`Version ${cur.version} of ${site.name}`}><StageSteps stages={PIPE} current={Math.min(stepOf(cur), PIPE.length)} /></Sec>
@@ -156,13 +159,13 @@ export function RealSite() {
         ) : <Banner>{cur.stage === "Production" ? `Version ${cur.version} is live.` : `Nothing to do for version ${cur.version}.`}</Banner>}
         {site.live && cur.id !== site.live.id ? <Text size="caption" tone="label">{`Version ${site.live.version} stays live until this one goes live.`}</Text> : null}
       </View>
-    ) : tab === "history" ? (
+    ) : shownTab === "history" ? (
       <View className="gap-s2">
         <VersionTable rows={versionRows(site.versions, hist, (who) => approverName(actors, who, me))} phone={phone} />
         {site.live ? <View className="flex-row flex-wrap gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
         <Text size="caption" tone="label">Going back needs you, and takes effect at once. The version you leave stays in the history.</Text>
       </View>
-    ) : tab === "domain" ? (
+    ) : shownTab === "domain" ? (
       <View className="gap-s3">
         <Card flush>
           {cur.domains.length ? cur.domains.map((d, i) => (
@@ -176,9 +179,9 @@ export function RealSite() {
         <View className="self-start"><Button size="sm" label="Add" onPress={() => { const h = host.trim().toLowerCase(); if (!h) return; run(() => domainAdd(h, cur.id, canonicalInput(h, pick)).then((r) => { setSetup({ host: r.domain.host, challenge: r.challenge }); setHost(""); })); }} /></View>
         <DomainSheet setup={setup} onClose={() => setSetup(null)} onChanged={load} />
       </View>
-    ) : tab === "secrets" ? (
+    ) : shownTab === "secrets" ? (
       <Secrets dep={cur} st={st} run={run} reload={() => statusOf(cur.id).then(setSt).catch(() => {})} setHeld={setHeld} start={grant === "GITHUB_TOKEN" ? repoGrant({ kind: "repo", private: true }) : null} />
-    ) : tab === "jobs" ? (
+    ) : shownTab === "jobs" ? (
       <Jobs dep={site.live ?? cur} />
     ) : (
       <View className="gap-s3">
@@ -186,6 +189,7 @@ export function RealSite() {
       </View>
     );
 
+  if (embedded) return <View className="gap-s3">{body}</View>;
   return (
     <Frame back="/u/sites" title={site.name} sub={phone ? [site.status.label, site.live?.domains[0]?.host].filter(Boolean).join(" · ") : site.live?.domains[0]?.host ?? ""} actions={phone ? undefined : <Chip tone={site.status.tone}>{site.status.label}</Chip>}>
       <Tabs<Tab> value={tab} onChange={setTab} items={[["pipeline", "Publish"], ["history", "History"], ["domain", "Domain"], ["secrets", "Secrets"], ["jobs", "Jobs"], ["logs", "Logs"]]} />
@@ -362,7 +366,7 @@ function Jobs({ dep }: { dep: Dep }) {
 }
 
 /** Serving: start or stop the edge that answers for every live site (an owner's and admin's act). A box with no way to start containers says what to run by hand. */
-function Serving({ onNoDocker }: { onNoDocker: (words: string | null) => void }) {
+export function Serving({ onNoDocker }: { onNoDocker: (words: string | null) => void }) {
   const [busy, setBusy] = useState(false);
   const act2 = (up: boolean) => {
     setBusy(true);

@@ -35,7 +35,7 @@ export default function NewChatScreen() {
   const [me, setMe] = useState("");
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
-  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): ` : "");
+  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): `  : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [loadErr, setLoadErr] = useState("");

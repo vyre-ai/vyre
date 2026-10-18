@@ -12,19 +12,38 @@
 //   dashboard  { widgets: [{ kind: "sum"|"countBy"|"funnel"|"recent", field?, where? }] }
 //   titleField the field that names a record (its title on every card and row)
 //   plural     the plural of the label, for headings ("Contacts")
+//   gallery    cards with a face or logo, the title and one line (`subtitle`, a field name)
+//   open       the view the type opens in when nothing is chosen (list, gallery, board or calendar); the list when it is missing or the type lacks what that view needs
 //   holdsWork  the type appears under Projects and its record page has tasks, members, chats and files
 //   initials   draw a tile of the title's initials before it (people-like types)
 
 /** @typedef {{ kind: "sum"|"countBy"|"funnel"|"recent", field?: string, where?: string }} Widget */
-/** @typedef {{ plural: string, titleField: string, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string, sortDir?: "asc"|"desc", filter?: string }, board?: { groupBy: string, card: string[], filter?: string },
+/** @typedef {{ plural: string, titleField: string, open?: "list"|"gallery"|"board"|"calendar", gallery?: { subtitle?: string, filter?: string }, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string, sortDir?: "asc"|"desc", filter?: string }, board?: { groupBy: string, card: string[], filter?: string },
  *   calendar?: { date: string, filter?: string }, dashboard?: { widgets: Widget[] } }} ViewDefinition */
 
 /** @type {Record<string, ViewDefinition>} */
 export const viewDefs = {
   contact: {
-    plural: "Contacts", titleField: "name", initials: true,
+    plural: "People", titleField: "name", initials: true,
     list: { columns: ["role", "email", "phone", "rating"], sort: "name" },
     board: { groupBy: "role", card: ["email", "rating"] },
+  },
+  organization: {
+    plural: "Companies", titleField: "name",
+    list: { columns: ["domain", "phone", "website"], sort: "name" },
+    gallery: { subtitle: "domain" },
+    open: "gallery",
+  },
+  task: {
+    plural: "Tasks", titleField: "title",
+    list: { columns: ["status", "due", "project"], sort: "due" },
+    board: { groupBy: "status", card: ["title", "due", "priority"] },
+    calendar: { date: "due" },
+    open: "board",
+  },
+  memo: {
+    plural: "Notes", titleField: "name",
+    list: { columns: ["contact", "organization"], sort: "name" },
   },
   matter: {
     plural: "Matters", titleField: "title", holdsWork: true,

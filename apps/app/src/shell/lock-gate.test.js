@@ -27,7 +27,7 @@ function clock() {
   };
 }
 
-test("an identity that is made and locked asks for the master password; a legacy one asks for a new one", () => {
+test("an identity that is made and locked asks for the password; a legacy one asks for a new one", () => {
   assert.equal(lockView({ exists: true, unlocked: false }), "unlock");
   assert.equal(lockView({ exists: true, unlocked: true }), "none");
   assert.equal(lockView({ exists: false, unlocked: false, needsMigration: true }), "migrate");
@@ -56,7 +56,7 @@ test("a password and a recovery key go in different fields, and a recovery key i
 });
 
 test("a refusal gets plain words and a next step", () => {
-  assert.match(unlockRefusal("bad_password"), /master password.*recovery key/);
+  assert.match(unlockRefusal("bad_password"), /password.*recovery key/);
   assert.match(unlockRefusal("bad_recovery"), /recovery key/);
   assert.match(unlockRefusal("offline"), /not answering/);
   assert.equal(unlockRefusal("weird", "Words from the tool."), "Words from the tool.");

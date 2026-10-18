@@ -1,29 +1,59 @@
 import { useCallback, useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, passwordStrength,
+  Avatar, FlowOver, Icon, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
-import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
+import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
 import { checkName } from "../../src/real/install";
 import { takeJoin } from "../../src/shell/join-hold.js";
+import { HalftoneField, measureCalm } from "./HalftoneField";
+import { ripple, setWelcome } from "./field-state.js";
+import { Welcome } from "./Welcome";
+import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
+import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
+import { ACCOUNTS_COPY, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
 
 const shotOf = (key: string) => (MOCK ? (SHOT_TABLE as Record<string, { screen: Screen; username?: string; recovery?: string; link?: string; command?: string; space?: string }>)[key] : undefined);
 
-/** First run: Identity, then a space, then Ready. Every button calls a registry tool. */
+/**
+ * First run: Identity, then a space, then Ready. Every button calls a registry tool. One halftone field sits behind the whole flow, mounted here once so it lives through every
+ * step: full strength on the welcome screen, calmer on the forms, a faint ripple at each step change.
+ */
 export function FirstRun() {
+  const [screen, setScreen] = useState("");
+  const { phone } = useUiTheme();
+  useEffect(() => {
+    if (!screen) return;
+    setWelcome(screen === "id.choice");
+    const t = setTimeout(measureCalm, 60);
+    if (typeof document !== "undefined") { const c = document.getElementById("onboard-field"); if (c) ripple(c.clientWidth / 2, c.clientHeight * 0.48, 0.28); }
+    return () => clearTimeout(t);
+  }, [screen]);
+  return (
+    <View style={{ flex: 1 }}>
+      <HalftoneField phone={phone} />
+      <FlowOver.Provider value><FirstRunScreens onScreen={setScreen} /></FlowOver.Provider>
+    </View>
+  );
+}
+
+function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const router = useRouter();
+  const { phone, color } = useUiTheme();
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
   const path = one(params.path);
   const shot = shotOf(one(params.shot) || "");
@@ -37,7 +67,7 @@ export function FirstRun() {
   const [recovery, setRecovery] = useState(shot?.recovery || "");
   const [paste, setPaste] = useState("");
   const [review, setReview] = useState<Review | null>(shot?.screen === "join.review" ? { link: shot.link || "", role: "member", space: shot.space || "juniper" } : null);
-  const [kind, setKind] = useState<"linux" | "mac" | "">("");
+  const [kind, setKind] = useState<"linux" | "mac" | "">("linux");
   const [command, setCommand] = useState(shot?.command || "");
   const [waitId, setWaitId] = useState("");
   const [online, setOnline] = useState(false);
@@ -57,13 +87,26 @@ export function FirstRun() {
   const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
+  const [asName, setAsName] = useState("");
+  const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
+  const [modelPick, setModelPick] = useState("");
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
   const [expiresAt, setExpiresAt] = useState("");
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
-  const [signedAgents, setSignedAgents] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>([]);
+  const [pick, setPick] = useState("");
+  const [acctLabel, setAcctLabel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [keyPassword, setKeyPassword] = useState("");
+  const [needPw, setNeedPw] = useState(false);
   const screen = stack[stack.length - 1];
+  useEffect(() => { onScreen(screen); }, [screen, onScreen]);
   const go = (next: Screen) => {
     setFailure("");
     setStack((s) => {
@@ -107,6 +150,29 @@ export function FirstRun() {
     return () => { live = false; };
   }, [shot, screen]);
 
+  // "You're all set." is the last word: with one space and nothing the person is doing on it, the space opens by itself a moment after its list shows.
+  useEffect(() => {
+    if (shot || screen !== "ready" || holdOpen || failure || spaces.length !== 1) return;
+    const t = setTimeout(() => {
+      void finishFirstRun().then((r) => { if (r.ok) router.replace("/u/now" as never); else setFailure(r.message); });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [shot, screen, holdOpen, failure, spaces.length, router]);
+
+  useEffect(() => {
+    if (shot || screen !== "setup.model") return;
+    let live = true;
+    void listAssistantModels().then((r) => {
+      if (!live) return;
+      if (!r.ok) { setModels([]); return; }
+      const list = Array.isArray(r.accounts) ? r.accounts : [];
+      setModels(list);
+      const firstWith = list.find((a: { models: unknown[] }) => a.models.length);
+      if (firstWith) setModelPick((cur) => cur || `${firstWith.id}:${firstWith.models[0].id}`);
+    });
+    return () => { live = false; };
+  }, [shot, screen]);
+
   useEffect(() => {
     if (shot || (screen !== "ready" && screen !== "space.choice")) return;
     let live = true;
@@ -142,6 +208,35 @@ export function FirstRun() {
     })();
     return () => { live = false; };
   }, [screen, username, space, shot]);
+
+  // The install command follows the name and the Linux / macOS switch: a valid, free name issues one (a fresh one-time code) a moment after the person stops typing, and flipping the switch issues the other kind's.
+  useEffect(() => {
+    if (screen !== "create.kind" || shot) return;
+    const wanted = usernameOf(space);
+    setCommand(""); setWaitId("");
+    if (!wanted) return;
+    let live = true;
+    const t = setTimeout(() => {
+      void (async () => {
+        if (!MOCK && (await checkName(wanted)) === "taken") {
+          const alt = (await Promise.all(spaceNameSuggestions(username || wanted, 6).map(async (c) => ((await checkName(c)) === "free" ? c : "")))).find(Boolean) || "";
+          if (!live) return;
+          if (alt) setSuggest(alt);
+          setFailure(SPACE_NAME_SAY.taken(alt));
+          return;
+        }
+        const r = await openSpace({ kind: kind || "linux", name: wanted });
+        if (!live) return;
+        if (!r.ok) { setFailure(r.message); return; }
+        if (!commandOk(r.command)) { setFailure("The install command is not one this app can show."); return; }
+        setFailure("");
+        setCommand(String(r.command));
+        setWaitId(String(r.id || ""));
+        if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
+      })();
+    }, 700);
+    return () => { live = false; clearTimeout(t); };
+  }, [screen, space, kind, shot, username]);
 
   useEffect(() => {
     if (screen !== "create.wait" || !waitId || shot) return;
@@ -190,11 +285,28 @@ export function FirstRun() {
 
   if (screen === "id.choice") {
     return (
-      <FlowStep steps={steps} hero title={SIGNIN_COPY.choiceTitle} lead={SIGNIN_COPY.choiceLead}>
-        <ChoiceHero title="How do you want to start?" options={[
-          { value: "create", title: "Create an identity", sub: "A username and a master password. About a minute.", icon: "plus" },
-          { value: "signin", title: "Sign in", sub: "You already have one. Use a space address, or GitHub.", icon: "link" },
-        ]} onChange={(v) => go(v === "signin" ? "id.signin" : "id.create")} />
+      <Welcome phone={phone} failure={failure}
+        onSignIn={(sp) => { setSignSpace(`${sp}.vyre.run`); setFailure(""); go("id.signin"); }}
+        onStart={() => { setFailure(""); go("id.name"); }}
+        onGithub={() => void run(async () => {
+          const r = await signInGithub(undefined);
+          if (!r.ok) { setFailure(r.message); return; }
+          const list = Array.isArray(r.spaces) ? r.spaces : [];
+          if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
+          setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
+          setPassword("");
+          go("id.signin.spaces");
+        })} />
+    );
+  }
+
+  if (screen === "id.name") {
+    const person = displayNameOf(first, last);
+    return (
+      <FlowStep steps={steps} onBack={back} title={NAME_COPY.title} lead={NAME_COPY.lead}
+        primary={{ label: "Continue", disabled: !person, onPress: () => go("id.create") }}>
+        <Field label={NAME_COPY.first} value={first} onChangeText={setFirst} />
+        <Field label={NAME_COPY.last} value={last} onChangeText={setLast} error={(first || last) && !person ? NAME_COPY.bad : undefined} />
       </FlowStep>
     );
   }
@@ -208,11 +320,12 @@ export function FirstRun() {
           if (!r.ok) { setFailure(r.message); return; }
           setPassword("");
           setUsername(r.username || usernameOf(username));
+          if (addr) try { rememberSpace(typeof localStorage === "undefined" ? null : localStorage, addr.space); } catch { /* nothing remembered */ }
           go("ready");
         }) }}>
         <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="juniper.vyre.run" error={signSpace && !addr ? "Use the address of a space, like juniper.vyre.run." : undefined} />
         <Field label="Username" value={username} onChangeText={setUsername} />
-        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+        <PasswordField label="Password" value={password} onChangeText={setPassword} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
           const r = await signInGithub(addr ? addr.space : undefined);
           if (!r.ok) { setFailure(r.message); return; }
@@ -236,14 +349,14 @@ export function FirstRun() {
           go("ready");
         }) }}>
         {found.map((x) => <Text key={x.id || x.name}>{`${x.name}, ${x.role}`}</Text>)}
-        <PasswordField label="Master password" value={password} onChangeText={setPassword} />
+        <PasswordField label="Password" value={password} onChangeText={setPassword} />
       </FlowStep>
     );
   }
 
   if (screen === "id.create") {
     return (
-      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a master password, and an optional GitHub sign-in. The password unlocks your vault."
+      <FlowStep steps={steps} onBack={back} title="Create your identity" lead="A username, a password, and an optional GitHub sign-in. The password unlocks your vault."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
           const r = await createPerson({ username, password, confirm });
           if (!r.ok) { setFailure(r.message); return; }
@@ -253,8 +366,8 @@ export function FirstRun() {
           go("id.recovery");
         }) }}>
         <Field label="Username" value={username} onChangeText={setUsername} help={username && !nameOk ? "Use 3 to 20 lowercase letters, digits or hyphens." : usernameOf(username) ? `Your page is vyre.run/u/${usernameOf(username)}` : "This becomes vyre.run/u/your-name"} />
-        <PasswordField label="Master password" meter value={password} onChangeText={setPassword} />
-        <PasswordField label="Confirm master password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same master password again." : undefined} />
+        <PasswordField label="Password" meter value={password} onChangeText={setPassword} />
+        <PasswordField label="Confirm password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same password again." : undefined} />
         <ProviderSignInButton disabled={busy} onPress={() => void run(() => continueWithGithub(true))} />
       </FlowStep>
     );
@@ -270,28 +383,86 @@ export function FirstRun() {
   }
 
   if (screen === "id.ai") {
+    const onward = () => go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) }));
+    const taken = accounts.map((x) => x.label);
+    const labelOf = (id: string) => agents.find((x) => x.id === id)?.label || id;
+    const problem = pick ? labelProblem(acctLabel, taken) : "";
     return (
-      <FlowStep steps={steps} onBack={back} title={AI_SIGNIN_COPY.title} lead={AI_SIGNIN_COPY.lead} failure={failure}
-        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: () => go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })) }}
-        primary={{ label: agentFlow ? "Done" : "Continue", loading: busy, onPress: () => void run(async () => {
-          if (signedAgents.length === agents.length && agents.length) { go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
-          const pick = agents.find((a) => !signedAgents.includes(a.id));
-          // Nothing to sign in to is not "signed in": the person goes on only by choosing to skip, never by a Continue that did nothing.
-          if (!pick) { if (!agents.length) { setFailure("No AI sign-in is available here yet. Press Skip for now to go on, and add one later in Settings."); return; } go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
-          const r = await signInAgent({ provider: pick.id, label: pick.label, ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
-          if (!r.ok) { setFailure(r.message); return; }
-          if (r.flow && r.step !== "done") {
-            setAgentFlow(String(r.flow));
-            if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick.id}`, "width=520,height=720");
-            if (typeof r.url === "string") setAgentUrl(r.url);
-            if (typeof r.code === "string") setAgentCode(r.code);
-            return;
-          }
-          setSignedAgents((s) => [...s, pick.id]);
-          setAgentFlow(""); setAgentCode(""); setAgentUrl("");
-        }) }}>
-        {agents.map((a) => <Text key={a.id} tone={signedAgents.includes(a.id) ? "default" : "muted"}>{signedAgents.includes(a.id) ? `${a.label} is signed in` : a.label}</Text>)}
-        {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
+      <FlowStep steps={steps} onBack={back} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure}
+        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: onward }}
+        primary={{ label: "Continue", loading: busy, onPress: () => {
+          // Nothing added is not "connected": the person goes on only by choosing to skip, never by a Continue that did nothing.
+          if (!accounts.length) { setFailure(ACCOUNTS_COPY.empty); return; }
+          onward();
+        } }}>
+        <View style={{ gap: 8 }} accessibilityLabel="AI providers">
+          {agents.map((a) => (
+            <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`Add ${a.label}`} disabled={busy || Boolean(agentFlow)}
+              onPress={() => { setFailure(""); setPick(a.id); setAcctLabel(defaultLabel(a.label, taken)); }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: pick === a.id ? 2 : 0.5, borderColor: pick === a.id ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+              <ProviderBadge provider={a.id} size={28} />
+              <Text>{a.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Add ${ACCOUNTS_COPY.keyTile}`} disabled={busy || Boolean(agentFlow)}
+          onPress={() => { setFailure(""); setPick("key"); setApiKey(""); setKeyPassword(""); setNeedPw(false); setAcctLabel(""); }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: pick === "key" ? 2 : 0.5, borderColor: pick === "key" ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+          <Icon name="key" size={24} tone="text" />
+          <Text>{ACCOUNTS_COPY.keyTile}</Text>
+        </Pressable>
+        {pick === "key" ? (() => {
+          const seen = keyKindOf(apiKey);
+          const name = acctLabel || (seen ? defaultLabel(seen.label, taken) : "");
+          const prob = labelProblem(name, taken);
+          return (
+            <View style={{ gap: 12 }}>
+              <Field label={ACCOUNTS_COPY.keyLabel} kind="password" value={apiKey} onChangeText={setApiKey} help={seen ? `Looks like ${seen.label.replace(" key", "")}.` : ACCOUNTS_COPY.keyHelp} error={apiKey.trim() && !seen ? ACCOUNTS_COPY.keyUnknown : undefined} />
+              <Field label={ACCOUNTS_COPY.nameLabel} value={name} onChangeText={setAcctLabel} error={name && prob ? prob : undefined} />
+              {needPw ? <PasswordField label={ACCOUNTS_COPY.keyPassword} value={keyPassword} onChangeText={setKeyPassword} /> : null}
+              <Button kind="secondary" size="lg" label={ACCOUNTS_COPY.add} loading={busy} disabled={!seen || !keyShapeOk(apiKey) || Boolean(prob) || busy || (needPw && !keyPassword)} onPress={() => void run(async () => {
+                if (!seen) return;
+                const r = await addAgentKey({ kind: seen.kind, key: apiKey.trim(), label: name.trim(), ...(seen.base_url ? { base_url: seen.base_url } : {}), ...(needPw && keyPassword ? { password: keyPassword } : {}) });
+                setKeyPassword("");
+                if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
+                setApiKey("");
+                if (!r.ok) { setFailure(r.message); return; }
+                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim() }]);
+                setPick(""); setAcctLabel(""); setNeedPw(false);
+              })} />
+            </View>
+          );
+        })() : null}
+        {pick && pick !== "key" ? (
+          <View style={{ gap: 12 }}>
+            <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
+            {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
+            {agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
+            <Button kind="secondary" size="lg" label={agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy} disabled={Boolean(problem) || busy} onPress={() => void run(async () => {
+              const r = await signInAgent({ provider: pick, label: acctLabel.trim(), ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
+              if (!r.ok) { setFailure(r.message); return; }
+              if (r.flow && r.step !== "done") {
+                setAgentFlow(String(r.flow));
+                if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                if (typeof r.url === "string") setAgentUrl(r.url);
+                if (typeof r.code === "string") setAgentCode(r.code);
+                return;
+              }
+              setAccounts((x) => [...x, { provider: pick, label: acctLabel.trim() }]);
+              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl("");
+            })} />
+          </View>
+        ) : null}
+        {accounts.length ? (
+          <View style={{ gap: 6 }} accessibilityLabel="Your AI accounts">
+            {accounts.map((x) => (
+              <View key={x.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <ProviderBadge provider={x.provider} size={20} />
+                <Text>{`${x.label} is signed in`}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </FlowStep>
     );
   }
@@ -345,30 +516,13 @@ export function FirstRun() {
   }
 
   if (screen === "create.kind") {
+    const wanted = usernameOf(space);
     return (
-      <FlowStep steps={steps} onBack={back} title="Where should it run?" lead="One install command, then this screen waits until it is online." failure={failure}
-        primary={{ label: "Show the command", disabled: !kind || !usernameOf(space), loading: busy, onPress: () => void run(async () => {
-          const wanted = usernameOf(space);
-          if (!wanted) { setFailure(SPACE_NAME_SAY.required); return; }
-          if (!MOCK && (await checkName(wanted)) === "taken") {
-            const alt = (await Promise.all(spaceNameSuggestions(username || wanted, 6).map(async (c) => ((await checkName(c)) === "free" ? c : "")))).find(Boolean) || "";
-            if (alt) setSuggest(alt);
-            setFailure(SPACE_NAME_SAY.taken(alt));
-            return;
-          }
-          const r = await openSpace({ kind: kind || "linux", name: wanted });
-          if (!r.ok) { setFailure(r.message); return; }
-          if (!commandOk(r.command)) { setFailure("The install command is not one this app can show."); return; }
-          setCommand(String(r.command));
-          setWaitId(String(r.id || ""));
-          if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
-          go("create.wait");
-        }) }}>
-        <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={usernameOf(space) ? `Its address will be ${usernameOf(space)}.vyre.run` : SPACE_NAME_SAY.required} error={space && !usernameOf(space) ? SPACE_NAME_SAY.required : undefined} />
-        <ChoiceList label="Where it runs" value={kind} onChange={setKind} options={[
-          { value: "linux", title: "Linux server", sub: "A cloud machine or any computer that stays on.", icon: "server" },
-          { value: "mac", title: "Always-on Mac", sub: "A Mac that stays awake.", icon: "laptop" },
-        ]} />
+      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste the line into it. This screen waits until it is online." failure={failure}
+        primary={{ label: "Continue", disabled: !command || !waitId || busy, loading: busy, onPress: () => go("create.wait") }}>
+        <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={wanted ? `Its address will be ${wanted}.vyre.run` : SPACE_NAME_SAY.required} />
+        <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />
+        {wanted && command ? <CodeBlock code={command} lang="sh" /> : wanted ? <Text tone="muted">Making the command...</Text> : null}
       </FlowStep>
     );
   }
@@ -379,7 +533,7 @@ export function FirstRun() {
         lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
-        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("ready"); go("id.ai"); } else go("ready"); } }}>
+        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("setup.assistant"); go("id.ai"); } else go("setup.assistant"); } }}>
         {taken ? (
           <>
             <Field label="Space name" name="Space name" value={space} onChangeText={setSpace} help={suggest ? `${suggest} is free.` : undefined} />
@@ -428,18 +582,72 @@ export function FirstRun() {
     );
   }
 
+  if (screen === "setup.assistant") {
+    const name = asName.trim() || ASSISTANT_COPY.suggestion;
+    // the character a look names: shape and colour from the picker, the parts from a hash of the name until a tap changes one (every part is always written, so a tap keeps the rest)
+    const seed = asLook.seed || lookSeed(asLook.shape, asLook.color);
+    const full = withParts(seed, name.toLowerCase());
+    const parts = partsOf(full);
+    return (
+      <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
+        primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
+          const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
+          if (!r.ok) { setFailure(r.message); return; }
+          setAsName(String(r.display || name));
+          go("setup.model");
+        }) }}>
+        <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
+        <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
+        <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
+          onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
+          onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
+      </FlowStep>
+    );
+  }
+
+  if (screen === "setup.model") {
+    const who = asName.trim() || ASSISTANT_COPY.suggestion;
+    const picked = (models || []).flatMap((a) => a.models.map((m) => ({ key: `${a.id}:${m.id}`, model: m.id })));
+    const chosen = picked.find((p) => p.key === modelPick);
+    return (
+      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={models && !models.length ? MODEL_COPY.none : MODEL_COPY.lead} failure={failure}
+        secondary={{ label: "Keep the default", onPress: () => go("ready") }}
+        primary={{ label: "Continue", loading: busy, disabled: busy || (models !== null && models.length > 0 && !chosen), onPress: () => void run(async () => {
+          if (chosen) { const r = await setAssistantModel(chosen.model); if (!r.ok) { setFailure(r.message); return; } }
+          go("ready");
+        }) }}>
+        {models === null ? <Text tone="muted">Looking at your AI accounts...</Text> : null}
+        {(models || []).map((a) => (
+          <View key={a.id} style={{ gap: 6 }} accessibilityLabel={a.label}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><ProviderBadge provider={a.provider} size={20} /><Text tone="label">{a.label}</Text></View>
+            {a.models.map((m) => {
+              const k = `${a.id}:${m.id}`;
+              return (
+                <Pressable key={k} accessibilityRole="radio" accessibilityLabel={`${a.label}, ${m.label}`} accessibilityState={{ selected: modelPick === k }} onPress={() => setModelPick(k)}
+                  style={{ padding: 12, borderRadius: 12, borderWidth: modelPick === k ? 2 : 0.5, borderColor: modelPick === k ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+                  <Text>{m.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </FlowStep>
+    );
+  }
+
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
-    <FlowStep steps={steps} hero mark="done" title="You're in"
+    <FlowStep steps={steps} hero mark="done" title="You're all set."
       lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
-      primary={{ label: "Open Vyre", loading: busy, onPress: () => void run(async () => {
+      primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
         router.replace("/u/now" as never);
       }) }}
-      secondary={{ label: "Invite someone", onPress: () => go("invite.share") }}>
+      secondary={{ label: "Invite someone", onPress: () => { setHoldOpen(true); go("invite.share"); } }}>
       {spaces.length > 1 ? (
         <SpaceSwitcherTitle spaces={spaces.map((s) => ({ id: s.id, name: s.name }))} space={showing?.id || spaces[0].id} onSpace={(id) => void run(async () => {
+          setHoldOpen(true);
           const r = await chooseSpace(id);
           if (!r.ok) { setFailure(r.message); return; }
           setCurrent(String(r.current || id));
@@ -447,7 +655,7 @@ export function FirstRun() {
         })} />
       ) : null}
       {spaces.map((s) => <Text key={s.id}>{`${s.name}, ${s.role}`}</Text>)}
-      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your master password.`}</Text>
+      <Text tone="muted">{`On your phone or another computer, open Vyre and sign in with ${showing?.server ? String(showing.server).replace(/^https?:\/\//, "") : "your space address"}, your username and your password.`}</Text>
       <ChoiceList label="Also" onChange={(v) => { if (v === "join.link") { setPaste(""); setReview(null); } go(v); }} options={[
         { value: "join.link", title: "Join another space", sub: "Use another invite. Your identity stays the same.", icon: "link" },
         { value: "create.kind", title: "Create another space", sub: "A Linux server or an always-on Mac.", icon: "server" },

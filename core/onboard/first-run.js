@@ -196,8 +196,8 @@ export function registerFirstRun(ctx, io) {
       const { held, personId } = await heldOf(meta);
       const name = usernameOf(username);
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
-      if (!passwordOk(password)) throw bad("Use a master password of at least 12 characters, and not a common one.");
-      if (confirm !== undefined && confirm !== password) throw bad("Type the master password the same way twice.");
+      if (!passwordOk(password)) throw bad("Use a password of at least 12 characters, and not a common one.");
+      if (confirm !== undefined && confirm !== password) throw bad("Type the password the same way twice.");
       const existing = await identityNow(personCall);
       if (existing) {
         held.person = existing.username;

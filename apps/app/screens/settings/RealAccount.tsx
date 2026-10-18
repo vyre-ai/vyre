@@ -50,7 +50,7 @@ export function RealAccount() {
             </Card>
           </Group>
           <GithubCard />
-          <Group title="Lock" note="Locking forgets your unlocked keys on this device. The master password opens them again.">
+          <Group title="Lock" note="Locking forgets your unlocked keys on this device. The password opens them again.">
             <Card className="gap-s3">
               <Segmented label="Lock after" value={autoLock} onChange={chooseLock} options={LOCK_CHOICES as unknown as [string, string][]} />
               <View className="flex-row"><Button size="sm" icon="lock" label="Lock now" onPress={lockNow} /></View>

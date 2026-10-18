@@ -34,7 +34,12 @@ test("a member's chat tools go through the team door: only the five, and only fo
   assert.equal(memberChatWire("stream.reply-mode"), "chat.reply-mode");
   assert.equal(memberChatWire("stream.keep"), null, "keeping one answer of a fan-out is not a member call yet");
   assert.equal(memberChatWire("sessions.accounts.signin"), "accounts.signin");
-  assert.equal(memberChatWire("sessions.accounts.key"), null, "a key is not a member's call: it needs a Vault of their own");
+  assert.equal(memberChatWire("sessions.accounts.key"), "accounts.check", "a member's key is only ever CHECKED at the team's door (it keeps nothing); it is put in their own Vault by the one act below");
+  assert.equal(memberChatWire("vault.me.add-key"), "myvault.addkey");
+  assert.equal(memberChatWire("vault.me.account.status"), "myvault.status");
+  assert.equal(memberChatWire("vault.me.put"), null, "no separate put, create, unlock or list on the wire");
+  assert.equal(memberChatWire("vault.me.account.unlock"), null);
+  assert.equal(memberChatWire("sessions.accounts.add"), "accounts.add");
   assert.equal(memberChatWire("records.define"), null, "a call that needs her presence or an admin is not a member call");
   assert.equal(chatSpace({ space: B }, A), B);
   assert.equal(chatSpace({}, A), A);

@@ -33,6 +33,54 @@ async function service(t) {
   return { base: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, seen };
 }
 
+test("api key: a name for the Vault item is used when free, made free with a number when it is taken, and never replaces an item that exists", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+  const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
+  const s = await service(t);
+  const add = (name, extra = {}) => w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, label: name || "x", ...(name ? { name } : {}), ...extra });
+  const one = await add("Work OpenAI");
+  assert.equal(one.error, undefined, JSON.stringify(one));
+  const two = await add("Work OpenAI");
+  assert.equal(two.error, undefined, JSON.stringify(two));
+  const taken = await add("seed-item");
+  assert.equal(taken.error, undefined, JSON.stringify(taken));
+  const rows = (await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data;
+  assert.deepEqual(rows.map((r) => r.vault_item).sort(), ["Work-OpenAI", "Work-OpenAI-2", "seed-item-2"]);
+  const path = await add("../etc/x");
+  assert.equal(path.error, undefined, "a path-like name is made safe, not refused");
+  assert.ok((await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.some((r) => r.vault_item === "etc-x"), "no path survives in the item's name");
+  assert.equal((await w.tool("vault.list", {})).data.items.find((x) => x.name === "seed-item") !== undefined, true, "the seeded item is still there");
+});
+
+test("api key: when the Vault cannot be checked for the item's name, nothing is put and no account is made", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+  const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
+  const s = await service(t);
+  const real = w.d.registry.call.bind(w.d.registry);
+  const puts = [];
+  w.d.registry.call = async (name, ...rest) => { if (name === "vault.list") return { error: { code: "unavailable", message: "down" } }; if (name === "vault.put") puts.push(rest[0]); return real(name, ...rest); };
+  const r = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, label: "Gmail", name: "Gmail" });
+  w.d.registry.call = real;
+  assert.equal(r.error && r.error.code, "bad_input", JSON.stringify(r));
+  assert.match(r.error.message, /could not be checked/);
+  assert.deepEqual(puts, [], "nothing was put");
+  assert.equal((await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.length, 0, "no account was made");
+});
+
+test("api key: check_only checks the key with its provider and keeps nothing, for the owner and for a member alike, and a refused key is still refused", async t => {
+  process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+  const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
+  const s = await service(t);
+  const ok = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, check_only: true });
+  assert.equal(ok.error, undefined, JSON.stringify(ok));
+  assert.equal(ok.data.checked, true);
+  assert.ok(!JSON.stringify(ok).includes(GOOD));
+  assert.equal((await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.length, 0, "no account was made");
+  assert.equal((await w.tool("vault.list", {})).data.items.length, 1, "nothing was put in the Vault");
+  const refused = await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: "wrong-key-1234567890", base_url: `${s.base}/v1`, check_only: true });
+  assert.match(refused.error.message, /refused that key/);
+});
+
 test("api key: an OpenAI-compatible key is checked, vaulted, bound to its address, never returned, and a thread on it sends the key only there", async t => {
   process.env.VYRE_LEGACY_DIRECT_MODEL = "1";   // this harness has no inference door; the door path is lib/door-bridge.test.js
   const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
