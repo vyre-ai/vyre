@@ -6,7 +6,6 @@
   "core/spaces/index.js": 2595,
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2007,
-  "core/daemon/index.js": 1987,
   "core/vault/vault.js": 2054,
   "kernel/flows/runner.js": 2019
  }
