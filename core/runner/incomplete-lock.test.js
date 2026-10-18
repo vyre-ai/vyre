@@ -62,3 +62,27 @@ test("holdersOf finds a process whose working directory or open file is under th
   assert.ok(!found.includes(process.pid));
   assert.deepEqual(holdersOf(path.join(base, "nothing")), []);
 });
+
+const FSDIR = process.env.VYRE_FSCRYPT_DIR || "";
+test("a real fscrypt workspace: a plain lock answers locked, and a process holding a file open is stopped so the lock still completes", { skip: process.platform !== "linux" || !FSDIR, timeout: 60_000 }, async t => {
+  const { driverFor, fscryptSupported } = await import("./workspace.js");
+  if (!fscryptSupported(FSDIR)) return t.skip("no fscrypt here");
+  const { spawn } = await import("node:child_process");
+  const { randomBytes } = await import("node:crypto");
+  const base = fs.mkdtempSync(path.join(FSDIR, "lock-")); t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const drv = driverFor("linux", { prefer: "fscrypt", log: () => {} });
+  const dir = path.join(base, "w"), key = randomBytes(32);
+  await drv.create(dir, key);
+  const m = await drv.mount(dir, key);
+  await drv.unmount(dir);
+  assert.equal(drv.isMounted(dir), false, "nothing holds it: the first lock is complete");
+  await drv.mount(dir, key);
+  fs.writeFileSync(path.join(m, "f"), "x");
+  const kid = spawn("sh", ["-c", `cd ${m}; exec 3<f; sleep 60`], { stdio: "ignore" });
+  t.after(() => kid.kill("SIGKILL"));
+  await new Promise(r => setTimeout(r, 400));
+  const gone = new Promise(r => kid.once("exit", r));
+  await drv.unmount(dir);
+  await gone;
+  assert.equal(drv.isMounted(dir), false);
+});

@@ -319,7 +319,7 @@ function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr
       if (!fs.existsSync(enc(dir))) return;
       const base = fs.realpathSync(enc(dir));
       const r = await lockUntilComplete({ remove: () => helper("remove", enc(dir)), holders: () => holdersOf(base), log });
-      if (!r.locked) throw new Error("could not close the workspace: a process still holds a file open and would not stop" + ` [self ${process.pid}, holders ${holdersOf(base, { self: -1 }).map(p => p + ":" + (() => { try { return fs.readFileSync("/proc/" + p + "/comm", "utf8").trim(); } catch { return "?"; } })()).join(",")}]`);
+      if (!r.locked) throw new Error("could not close the workspace: a process still holds a file open and would not stop");
     },
     async destroy(dir) { fs.rmSync(dir, { recursive: true, force: true }); },
   };
