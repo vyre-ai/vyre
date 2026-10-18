@@ -153,7 +153,7 @@ test("describeKey says what a key request is for: plugin, server, the pinned com
   const r = rig();
   await r.hub.add(row({ auth: { type: "env", bound: bound({ approver: "an admin (per_ana)" }) } }));
   const d = r.hub.describeKey(r.watcher("p-notes-notes"));
-  assert.deepEqual([d.plugin, d.server, d.command, d.approver, d.var, d.label], ["notes", "p-notes-notes", "npx -y notes-mcp@1.2.3", "an admin (per_ana)", "NOTES_API_KEY", "Notes API key"]);
+  assert.deepEqual([d.plugin, d.server, d.argv, d.approver, d.var, d.label], ["notes", "p-notes-notes", ["npx", "-y", "notes-mcp@1.2.3"], "an admin (per_ana)", "NOTES_API_KEY", "Notes API key"]);
   assert.equal(r.hub.describeKey("p-notes-notes.NOTES_API_KEY"), null, "a watcher without the code hash is nobody's");
   assert.equal(r.hub.describeKey("p-other-other.X.00000000"), null);
   assert.ok(!JSON.stringify(d).includes(VALUE));

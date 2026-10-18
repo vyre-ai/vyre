@@ -32,6 +32,7 @@ import { envName } from "./cli-io.js";
 import { callerKind } from "../modules/index.js";
 import { isAsker } from "./asker.js";
 import { presence, quoted, list } from "./tools/presence.js";
+import { keyGrantWords } from "../../lib/skill-library.js";
 import * as account from "./tools/account.js";
 import * as meTools from "./tools/me.js";
 import * as sharingTools from "./tools/sharing.js";
@@ -322,7 +323,7 @@ export default {
           try {
             const r = await ctx.call("mcp.key.describe", { watcher: String(watcher) });
             const d = r && !r.error && r.data ? r.data.key : null;
-            if (d) return `Give ${d.plugin} (${d.command}, approved by ${d.approver}) the key ${quoted(name)} for ${d.var}${d.personal ? ". Only your own calls use it" : ". Everyone who can use this plugin acts with this key"}`;
+            if (d) return keyGrantWords(d, name);
           } catch { /* the plain words below */ }
         }
         return `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;

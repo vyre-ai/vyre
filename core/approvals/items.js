@@ -7,6 +7,7 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { agentClaim } from "../modules/index.js";
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
+import { quotedCommand } from "../../lib/skill-library.js";
 
 export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"]);
 const DEBOUNCE_MS = 200;
@@ -172,7 +173,7 @@ export const fromSignIn = rows => rows.filter(r => r && typeof r.id === "string"
 export const fromKeys = d => (d && Array.isArray(d.servers) ? d.servers : []).filter((/** @type {any} */ s) => s && typeof s.name === "string").flatMap((/** @type {any} */ s) =>
   (Array.isArray(s.waiting) ? s.waiting : []).filter((/** @type {any} */ w) => w && /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(String(w.var))).map((/** @type {any} */ w) => {
     const check = { tool: "mcp.test", input: { name: String(s.name) }, fill: /** @type {string[]} */ ([]) };
-    return { id: `mcp:${clean(s.name, 40)}:${w.var}`, kind: "access", title: `${clean(s.plugin, 40) || clean(s.name, 40)} needs a key: ${w.var}`, ...opt("detail", cap([clean(w.label, 60), w.item ? `item "${clean(w.item, 60)}"` : "no item chosen yet", s.command ? clean(s.command, 80) : "", s.approver ? `approved by ${clean(s.approver, 40)}` : ""].filter(Boolean).join(" · "), DETAIL_MAX)), at: 0, source: "mcp-keys",
+    return { id: `mcp:${clean(s.name, 40)}:${w.var}`, kind: "access", title: `${clean(s.plugin, 40) || clean(s.name, 40)} needs a key: ${w.var}`, ...opt("detail", cap([clean(w.label, 60), w.item ? `item "${clean(w.item, 60)}"` : "no item chosen yet", Array.isArray(s.argv) ? clean(quotedCommand(s.argv), 80) : "", s.approver ? `approved by ${clean(s.approver, 40)}` : ""].filter(Boolean).join(" · "), DETAIL_MAX)), at: 0, source: "mcp-keys",
       facts: { server: clean(s.name, 40), var: String(w.var), ...(typeof w.watcher === "string" ? { watcher: clean(w.watcher, 120) } : {}) },
       answer: check, answers: [{ label: "Give it a key", open: "/u/vault" }, { label: "Check again", ...check }] };
   }));

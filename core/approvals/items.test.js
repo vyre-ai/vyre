@@ -174,13 +174,13 @@ test("a document waiting for a signature is one quiet `signing` card naming the 
 test("a plugin server that waits for a key is one `access` card per missing variable: '<plugin> needs a key: <VAR>', with a way to open the Vault and a way to check again, and never a value", async () => {
   const { fromKeys, OWNERS } = await import("./items.js");
   const rows = fromKeys({ servers: [
-    { name: "p-notes-notes", plugin: "notes", level: "space", command: "npx -y notes-mcp@1.2.3", approver: "an admin (per_ana)", waiting: [{ var: "NOTES_API_KEY", label: "Notes API key", item: "notes-key", watcher: "p-notes-notes.NOTES_API_KEY.0a1b2c3d" }, { var: "NOTES_WORKSPACE", label: "Workspace id" }] },
+    { name: "p-notes-notes", plugin: "notes", level: "space", argv: ["npx", "-y", "notes-mcp@1.2.3"], approver: "an admin (per_ana)", waiting: [{ var: "NOTES_API_KEY", label: "Notes API key", item: "notes-key", watcher: "p-notes-notes.NOTES_API_KEY.0a1b2c3d" }, { var: "NOTES_WORKSPACE", label: "Workspace id" }] },
     { name: "p-other-x", plugin: "other", waiting: [{ var: "not a name!", label: "bad" }] },
     { plugin: "no name", waiting: [] },
   ]});
   assert.deepEqual(rows.map((/** @type {any} */ r) => [r.id, r.kind, r.title, r.detail]), [
-    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key · item \"notes-key\" · npx -y notes-mcp@1.2.3 · approved by an admin (per_ana)"],
-    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id · no item chosen yet · npx -y notes-mcp@1.2.3 · approved by an admin (per_ana)"],
+    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key · item \"notes-key\" · [\"npx\",\"-y\",\"notes-mcp@1.2.3\"] · approved by an admin (per_ana)"],
+    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id · no item chosen yet · [\"npx\",\"-y\",\"notes-mcp@1.2.3\"] · approved by an admin (per_ana)"],
   ]);
   assert.deepEqual(rows[0].answers.map((/** @type {any} */ a) => [a.label, a.open || a.tool]), [["Give it a key", "/u/vault"], ["Check again", "mcp.test"]]);
   assert.equal(rows[0].facts.watcher, "p-notes-notes.NOTES_API_KEY.0a1b2c3d", "the watcher the hub names, which follows the code");

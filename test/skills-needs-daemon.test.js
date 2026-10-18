@@ -97,8 +97,7 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   const w = waiting.servers[0].waiting.find((/** @type {any} */ x) => x.var === "NOTES_API_KEY");
   assert.match(w.watcher, new RegExp(`^${ROW}\\.NOTES_API_KEY\\.[0-9a-f]{8}$`));
   const summary = await /** @type {any} */ (d.registry).tools.get("vault.grant").presence.summary({ name: "notes-key-2", module: "mcp", watcher: w.watcher });
-  assert.match(summary, /^Give notes \(npx -y notes-mcp@1\.2\.3, approved by the owner \(per_/);
-  assert.match(summary, /"notes-key-2" for NOTES_API_KEY\. Only your own calls use it$/);
+  assert.match(summary, /^Give notes \(personal: only you, approved by the owner \(per_[^)]*\)\) the key "notes-key-2" for NOTES_API_KEY\. Only your own calls use it\. It runs: \["npx","-y","notes-mcp@1\.2\.3"\]$/);
   assert.ok(!summary.includes(VALUE));
   assert.doesNotMatch(await /** @type {any} */ (d.registry).tools.get("vault.grant").presence.summary({ name: "notes-key-2", module: "mcp", watcher: "nobody.NOTES_API_KEY.00000000" }), /^Give /, "a watcher no plugin has gets the plain words");
 });

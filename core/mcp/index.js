@@ -280,7 +280,7 @@ export default {
         const servers = [];
         for (const r of hub.rows()) {
           const waiting = await hub.missingKeys(r);
-          if (waiting.length) servers.push({ name: r.name, plugin: r.auth.bound.plugin, level: r.auth.bound.level, command: [r.command, ...(r.args || [])].join(" ").slice(0, 200), approver: r.auth.bound.approver || "a person",
+          if (waiting.length) servers.push({ name: r.name, plugin: r.auth.bound.plugin, level: r.auth.bound.level, argv: [r.command, ...(r.args || [])].map(String).slice(0, 40), approver: r.auth.bound.approver || "a person",
             waiting: waiting.map(w => { const ref = r.env[w.var]; const item = typeof ref === "string" ? ref : ref && ref.item; return { ...w, ...(item ? { item } : {}) }; }) });
         }
         return { servers };
@@ -290,7 +290,7 @@ export default {
     // The Vault asks, before it shows a person a request to grant a key to a plugin's server, what that server is. Names, a command line and a label; never a value. Only the vault module asks.
     ctx.tool("mcp.key.describe", {
       internal: true,
-      description: "What a key request for a plugin's server is: { watcher } -> { plugin, level, server, command, approver, var, label } or null. Only the vault module asks.",
+      description: "What a key request for a plugin's server is: { watcher } -> { key: { plugin, level, server, argv, approver, var, label } | null }. Only the vault module asks.",
       input: obj({ watcher: str }, ["watcher"]),
       run: async (input, meta) => {
         if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module asks what a key request is for"), { code: "denied" });

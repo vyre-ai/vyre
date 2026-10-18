@@ -110,7 +110,9 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
     const have = mcpRow ? await mcpRow(row) : null;
     if (!have || !have.exists) return;
     const hb = have.auth && have.auth.bound;
-    if (!hb || hb.plugin !== bound.plugin || hb.level !== bound.level || hb.person !== bound.person || Boolean(hb.owner) !== Boolean(bound.owner)) throw fail("conflict", "another plugin already uses that server name");
+    // a personal plugin is its person's; a Space, agent or project plugin is the plugin's whoever approved it (an admin may update another admin's): the row's name already carries the level and scope
+    const personal = bound.level === "personal";
+    if (!hb || hb.plugin !== bound.plugin || hb.level !== bound.level || (personal && (hb.person !== bound.person || Boolean(hb.owner) !== Boolean(bound.owner)))) throw fail("conflict", "another plugin already uses that server name");
   }
   /** Before a version is made the one in use: every keyed server of the plugin has a row that is free or its own, or the approval is refused and nothing changes. */
   async function checkKeyed(/** @type {any} */ rec, /** @type {any} */ as) {

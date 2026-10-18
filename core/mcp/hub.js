@@ -1105,7 +1105,7 @@ export class Hub {
       if (!r.auth.bound) continue;
       for (const n of r.auth.bound.needs) if (keyWatcher(r, n.var) === watcher) {
         const b = r.auth.bound;
-        return { plugin: b.plugin, level: b.level, server: r.name, command: cut([r.command, ...(r.args || [])].join(" "), 200), approver: b.approver || "a person", var: n.var, label: n.label, ...(b.level === "personal" ? { personal: true } : {}) };
+        return { plugin: b.plugin, level: b.level, server: r.name, argv: [r.command, ...(r.args || [])].map(String).slice(0, 40), approver: b.approver || "a person", var: n.var, label: n.label, ...(b.level === "personal" ? { personal: true } : {}) };
       }
     }
     return null;
