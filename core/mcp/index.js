@@ -51,7 +51,7 @@ export default {
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
 
     const creds = new Credentials({
-      fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
+      fetchItem: (item, field, watcher) => ctx.vault.fetch(item, { ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }),
       // A vendor that rotates its refresh token on every use: the connectors module made the item, so it saves the new one.
       save: async (item, fields) => { data(await ctx.call("connectors.persist", { item, fields })); },
     });
@@ -100,6 +100,8 @@ export default {
       cancel: async (id, reason) => { const r = await ctx.call("gate.reject", { id, reason }); if (r && r.error) throw new Error(r.error.message); return r.data; },
       // The vendor is told to drop the token too, where the connection names how; best effort, and the hub says when it was not.
       revokeConnection: async c => { const r = await ctx.call("vault.connection.revoke", c); if (r && r.error) throw new Error(r.error.message); if (r.data && r.data.revoked !== true) ctx.log(`mcp: the vendor was not told to drop the token (${r.data.why})`); return r.data; },
+      // A plugin's server that holds keys: is this item still granted to mcp for this one server and variable? (asked as this module, so it is about the grants made to `mcp/<server>.<VAR>`)
+      keyHeld: async (item, watcher) => { const r = await ctx.call("vault.granted", { name: item, watcher }); return Boolean(r && r.data && r.data.granted === true); },
       mayUseConnection: async c => { const r = await ctx.call("vault.connection.may", c); return Boolean(r && r.data && r.data.allow === true); },
       threadProject: async thread => {
         const t = await ctx.call("threads.get", { thread, limit: 1 });
@@ -254,11 +256,15 @@ export default {
     ctx.tool("mcp.sweep", {
       internal: true,
       description: "A share or grant on a person's connection ended: discard what its requesters, who no longer hold it, left waiting at the Gate. { owner, connection } -> { cancelled }. Only the vault module asks.",
-      input: obj({ owner: str, connection: str }, ["connection"]),
+      input: obj({ owner: str, connection: str, server: str, item: str }, []),
       run: async (input, meta) => {
         if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module reports that a connection was shared out or taken back"), { code: "denied" });
         let cancelled = 0;
-        for (const r of hub.rows()) if (r.owner && r.connection === String(input.connection) && (input.owner === undefined || r.owner === String(input.owner))) cancelled += await hub.sweep(r.name);
+        if (input.connection !== undefined) for (const r of hub.rows()) if (r.owner && r.connection === String(input.connection) && (input.owner === undefined || r.owner === String(input.owner))) cancelled += await hub.sweep(r.name);
+        // a plugin's server that holds keys: after an item was unshared, a grant revoked or an item removed (`item`), or for one server, it stops and waits if a key is no longer granted to it
+        if (input.server !== undefined || input.item !== undefined || input.connection === undefined) {
+          for (const r of hub.rows()) if (r.auth.bound && (input.server === undefined || r.name === String(input.server)) && (input.item === undefined || Object.values(r.env).some(v => (typeof v === "string" ? v : v && v.item) === String(input.item)))) await hub.sweep(r.name);
+        }
         return { cancelled };
       },
     });

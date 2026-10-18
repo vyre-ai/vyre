@@ -116,6 +116,7 @@ export default {
       agentOwner: async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.list", {}); const l = r && !r.error && Array.isArray(r.data) ? r.data : []; const a = l.find((/** @type {any} */ x) => x.name === name); return a && a.owner ? String(a.owner) : null; } catch { return null; } },
       projectOwner: async (/** @type {string} */ slug) => { try { const rows = (await ctx.kernel.records.query(ctx.kernel.serviceChain("skills"), "project", { filter: { field: "slug", op: "eq", value: slug }, page: { limit: 1 } })).rows; const o = rows[0] && rows[0].data.owner; return o && o.actor ? String(o.actor.id) : null; } catch { return null; } },
       mcpAdd: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.add", server); if (r.error) throw new Error(r.error.message); return r.data; },
+      mcpUpdate: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.update", server); if (r.error) throw new Error(r.error.message); return r.data; },
       log: (/** @type {string} */ m) => ctx.log(m),
     });
     const lib = createLibrary({ kernel: () => { if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel"); return ctx.kernel; }, ...libDeps() });
@@ -344,7 +345,7 @@ export default {
       } });
     ctx.tool("skills.approve", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Say yes to a draft: it becomes the version in use at its level and the one before is retired. Only the level's owner: you for a personal skill, an agent's owner, a project's owner, an owner or an admin for the Space. A plugin with code needs ack: the value skills.draft gave, which is the hash of exactly what it declares.",
-      input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "version"]),
+      input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" }, items: { type: "object", description: "a plugin's MCP servers that need keys: { \"<server>.<VAR>\": \"<Vault item name>\" }, names only; each item is granted to that one server and variable in the Vault" } }, ["name", "level", "version"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).approve(await need(meta), i) });
     ctx.tool("skills.rollback", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",

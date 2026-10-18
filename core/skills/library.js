@@ -14,9 +14,9 @@ const TYPE = "skill";
 const fail = (/** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ more = {}) => Object.assign(new Error(message), { code, ...more });
 
 /**
- * @param {{ kernel: () => any, agentOwner: (name: string) => Promise<string | null>, projectOwner: (slug: string) => Promise<string | null>, mcpAdd?: (server: any) => Promise<any>, log?: (m: string) => void }} o
+ * @param {{ kernel: () => any, agentOwner: (name: string) => Promise<string | null>, projectOwner: (slug: string) => Promise<string | null>, mcpAdd?: (server: any) => Promise<any>, mcpUpdate?: (server: any) => Promise<any>, log?: (m: string) => void }} o
  */
-export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = () => {} }) {
+export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpdate, log = () => {} }) {
   const svc = () => kernel().serviceChain("skills");
   const q = async (/** @type {any} */ filter) => (await kernel().records.query(svc(), TYPE, { ...(filter ? { filter } : {}), page: { limit: 500 } })).rows;
   const shape = (/** @type {any} */ r, withBody = false) => ({ id: `${r.data.level}${r.data.scope ? "/" + r.data.scope : ""}/${r.data.name}`, name: r.data.name, level: r.data.level, scope: r.data.scope || "", version: r.data.version, state: r.data.state, kind: r.data.kind, owner: r.data.owner || null, proposer: r.data.proposer || null, ...(r.data.note ? { note: r.data.note } : {}), hash: r.data.hash, ...(withBody ? { body: r.data.body } : {}) });
@@ -77,8 +77,28 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     return { ...shape(rec), ...(p && hasCode(p) ? { declares: declared(p), ack: ackOf(p) } : {}) };
   }
 
+  /**
+   * A plugin's server that needs keys becomes a hub row bound to this plugin: it names the Vault ITEM chosen for each variable (`items["<server>.<VAR>"]`, a name and never a value), and the row waits until the
+   * person has granted each item to that one server and variable. A new version that changes the needs, the command or the pin is a new approval with a new choice (the ack covers what it declares); an existing
+   * row of the same server is updated, so the old choice never carries over to different code.
+   * @param {string} row @param {any} p @param {any} m @param {any} rec @param {any} as @param {Record<string, unknown> | undefined} items
+   */
+  async function addKeyed(row, p, m, rec, as, items) {
+    const chosen = items && typeof items === "object" ? items : {};
+    /** @type {Record<string, string>} */ const env = {};
+    for (const n of m.needs) { const v = chosen[`${m.name}.${n.var}`]; if (typeof v === "string" && v) env[n.var] = v; }
+    const owner = await isOwner(as);
+    const server = { name: row, transport: "stdio", command: m.command, args: m.args || [], env, auth: { type: "env", bound: { plugin: p.name, level: rec.data.level, person: rec.data.level === "personal" && rec.data.scope ? String(rec.data.scope) : String(as.id), ...(owner ? { owner: true } : {}), needs: m.needs.map((/** @type {any} */ n) => ({ var: n.var, label: n.label })) } } };
+    try { await mcpAdd?.(server); }
+    catch (e) {
+      if (!mcpUpdate || !/already a server/.test(String(/** @type {Error} */ (e).message))) throw e;
+      await mcpUpdate(server);
+    }
+  }
+  const isOwner = async (/** @type {any} */ person) => { const m = kernel().membership ? await kernel().membership(person.id).catch(() => null) : null; return Boolean(m && m.role === "owner"); };
+
   /** Make a version the one in use, retiring the one before. `as` is the approving person. @param {any} rec @param {any} as */
-  async function make(rec, as, note) {
+  async function make(rec, as, note, items) {
     const same = await history(rec.data.name, rec.data.level, rec.data.scope || "");
     for (const r of same.filter((/** @type {any} */ x) => x.data.state === "approved" && x.id !== rec.id)) await kernel().records.update(svc(), TYPE, r.id, { state: "retired" }, r.version);
     const done = await kernel().records.update(svc(), TYPE, rec.id, { state: "approved", ...(note ? { note } : {}) }, rec.version);
@@ -87,9 +107,11 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
       const p = JSON.parse(String(done.data.body));
       for (const m of p.mcp || []) {
         try {
+          const row = `p-${p.name}-${m.name}`.slice(0, 32);
+          if (m.needs && m.needs.length) { await addKeyed(row, p, m, rec, as, items); connections.push(row); continue; }
           const auth = m.connection ? { type: "bearer", item: `conn-${m.connection}` } : { type: "none" };
-          await mcpAdd({ name: `p-${p.name}-${m.name}`.slice(0, 32), transport: m.transport, auth, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) });
-          connections.push(`p-${p.name}-${m.name}`.slice(0, 32));
+          await mcpAdd({ name: row, transport: m.transport, auth, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) });
+          connections.push(row);
         }
         catch (e) { log(`skills: could not add the Connection for ${p.name}/${m.name}: ${/** @type {Error} */ (e).message}`); }
       }
@@ -115,7 +137,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
       const p = JSON.parse(String(rec.data.body));
       if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: it declares ${JSON.stringify(declared(p))}. Approve with ack: "${ackOf(p)}" to say yes to exactly that`, { declares: declared(p), ack: ackOf(p) });
     }
-    return make(rec, person);
+    return make(rec, person, undefined, i.items);
   }
 
   /** An earlier version written again as a new approved one. @param {any} chain @param {{ name: string, level: string, scope?: string, to: number, ack?: string }} i */
@@ -129,7 +151,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     if (!(await mayApprove(person, old.data.level, scope, old.data.owner || null))) throw fail("not_allowed", "only the owner rolls a skill back");
     if (old.data.kind === "plugin") { const p = JSON.parse(String(old.data.body)); if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: approve with ack: "${ackOf(p)}"`, { declares: declared(p), ack: ackOf(p) }); }
     const rec = await kernel().records.create(svc(), TYPE, { name: old.data.name, level: old.data.level, scope, version: have[0].data.version + 1, state: "draft", kind: old.data.kind, body: old.data.body, hash: old.data.hash, owner: old.data.owner || "", proposer: `person:${person.id}`, note: `rolled back to version ${i.to}` });
-    return make(rec, person, `rolled back to version ${i.to}`);
+    return make(rec, person, `rolled back to version ${i.to}`, i.items);
   }
 
   /** Every version of the library, or of one skill; the drafts waiting are state draft. @param {{ name?: string, level?: string, scope?: string, state?: string }} [f] */
