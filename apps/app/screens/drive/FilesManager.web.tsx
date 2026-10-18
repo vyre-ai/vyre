@@ -12,7 +12,7 @@ import { SharedLinks } from "./SharedLinks";
 import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
-import { type Place, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
+import { type Place, placeId, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
 import { linkedNames, loader } from "./files-real";
 import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
@@ -22,7 +22,7 @@ import { canDrop, carriesFiles, dropTarget, dropWords, plan, progressLine } from
 import { Thumb } from "./Thumb";
 import { warm } from "./preload";
 import { FileContextMenu } from "./FileContextMenu";
-import { actOn, boxSelect, copyName, editCalls, fileMenu } from "./file-menu-model.js";
+import { actOn, boxSelect, copyName, dragMoveTarget, editCalls, fileMenu, pickerView } from "./file-menu-model.js";
 import { create as createSite } from "../sites/real";
 import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
 import { useFilesNav } from "./files-nav";
@@ -132,6 +132,28 @@ function Manager({ wide }: { wide: boolean }) {
   const click = (r: FileRow, i: number, e: React.MouseEvent) => {
     setFocus(i);
     setSel(e.shiftKey ? selectRange(sel, keys, r.key) : e.metaKey || e.ctrlKey ? selectToggle(sel, r.key) : selectOnly(r.key));
+  };
+
+  const ROWS_TYPE = "application/x-vyre-files";
+  const dragStart = (r: FileRow, e: React.DragEvent) => {
+    const keysNow = sel.set.has(r.key) ? [...sel.set] : [r.key];
+    e.dataTransfer.setData(ROWS_TYPE, JSON.stringify(keysNow)); e.dataTransfer.effectAllowed = "move";
+    if (!sel.set.has(r.key)) setSel(selectOnly(r.key));
+  };
+  const draggedKeys = (dt: DataTransfer): string[] | null => { try { return dt.types && Array.prototype.includes.call(dt.types, ROWS_TYPE) ? (JSON.parse(dt.getData(ROWS_TYPE) || "null") as string[] | null) : null; } catch { return null; } };
+  const isRowDrag = (dt: DataTransfer) => Boolean(dt.types && Array.prototype.includes.call(dt.types, ROWS_TYPE));
+  /** Move rows into a folder row, one at a time, with an Undo for what moved. */
+  const moveInto = async (rs: FileRow[], folder: FileRow) => {
+    const plans = rs.map((r) => editCalls("move", { root: r.root, path: r.path, name: r.name, link: r.link }, folder.path));
+    if (plans.some((x) => !x)) { showToast("A box share is read-only, so it cannot be moved from here."); return; }
+    const done = [];
+    try { for (const p of plans) { await tool(p!.call.tool, p!.call.input); done.push(p!); } }
+    catch (e) { showToast(say(e)); }
+    if (done.length) {
+      invalidate();
+      const undos = done.map((d) => d.undo).filter((u): u is NonNullable<typeof u> => Boolean(u));
+      showToast(`Moved ${done.length === 1 ? "1 item" : `${done.length} items`} into ${folder.name}.`, undos.length ? { label: "Undo", run: () => { void Promise.all(undos.map((u) => tool(u.tool, u.input))).then(() => { showToast("Put back."); invalidate(); }).catch((e) => showToast(say(e))); } } : undefined);
+    }
   };
 
   /** A right-click: the menu at the pointer, acting on the whole selection when the row is in it, else on that row. */
@@ -251,7 +273,7 @@ function Manager({ wide }: { wide: boolean }) {
     return (
       <div key={r.key} style={style}>
         <MenuRow items={menuFor(r)}>{(menu) => (
-          <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} onDragOver={() => setOverRow(r.dir ? r.key : null)} onContextMenu={(e) => rightClick(r, i, e)} ref={(el) => { rowEls.current[r.key] = el; }}
+          <div role="row" aria-selected={on} onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} draggable onDragStart={(e) => dragStart(r, e)} onDragOver={() => setOverRow(r.dir ? r.key : null)} onContextMenu={(e) => rightClick(r, i, e)} ref={(el) => { rowEls.current[r.key] = el; }}
             style={{ display: "grid", gridTemplateColumns: GRID_COLS, alignItems: "center", columnGap: 12, height: ROW_H, boxSizing: "border-box", padding: "0 12px", cursor: "pointer", background: on ? "var(--surface-3)" : "transparent", outline: i === focus ? "1px solid var(--edge-strong)" : "none", outlineOffset: -1 }}>
             <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}><Icon name={ICON[r.kind] as never} tone="text-2" size={18} /><div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text strong={r.dir} numberOfLines={1}>{r.name}</Text></div></div>
             {showDetail ? null : <div style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><Text size="caption" tone="muted" numberOfLines={1}>{KIND_WORD[r.kind]}</Text></div>}
@@ -283,7 +305,7 @@ function Manager({ wide }: { wide: boolean }) {
     : view === "grid" ? (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
         {shown.map((r, i) => (
-          <div key={r.key} data-tile onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} onDragOver={() => setOverRow(r.dir ? r.key : null)} onContextMenu={(e) => rightClick(r, i, e)} ref={(el) => { rowEls.current[r.key] = el; }} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
+          <div key={r.key} data-tile onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} draggable onDragStart={(e) => dragStart(r, e)} onDragOver={() => setOverRow(r.dir ? r.key : null)} onContextMenu={(e) => rightClick(r, i, e)} ref={(el) => { rowEls.current[r.key] = el; }} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", background: sel.set.has(r.key) ? "var(--surface-3)" : "var(--surface-2)" }}>
             <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Thumb row={r} fallback={ICON[r.kind]} /></div>
             <div style={{ marginTop: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong>{r.name}</Text></div>
             <Text size="caption" tone="faint">{r.dir ? when(r.modified) : [sizeWord(r.size), when(r.modified)].filter(Boolean).join(", ")}</Text>
@@ -309,8 +331,8 @@ function Manager({ wide }: { wide: boolean }) {
   return (
     <Frame title="Files">
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
-        <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (carriesFiles(e.dataTransfer) && targetNow()) { e.preventDefault(); setDropping(true); } }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropping(false); setOverRow(null); } }}
-          onDrop={(e) => { if (!carriesFiles(e.dataTransfer)) return; const t = targetNow(); setDropping(false); setOverRow(null); if (t) { e.preventDefault(); void uploadTo(t as unknown as Place, Array.from(e.dataTransfer.files), t.place === place ? rows : null); } }}>
+        <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (isRowDrag(e.dataTransfer)) { if (overRow && shown.find((r) => r.key === overRow)?.dir) e.preventDefault(); return; } if (carriesFiles(e.dataTransfer) && targetNow()) { e.preventDefault(); setDropping(true); } }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropping(false); setOverRow(null); } }}
+          onDrop={(e) => { if (isRowDrag(e.dataTransfer)) { const ks = draggedKeys(e.dataTransfer); const tgt = ks && overRow ? dragMoveTarget(ks, overRow, shown) : null; setOverRow(null); if (tgt && ks) { e.preventDefault(); void moveInto(shown.filter((r) => ks.includes(r.key)), tgt); } return; } if (!carriesFiles(e.dataTransfer)) return; const t = targetNow(); setDropping(false); setOverRow(null); if (t) { e.preventDefault(); void uploadTo(t as unknown as Place, Array.from(e.dataTransfer.files), t.place === place ? rows : null); } }}>
           <View className="gap-s3">
             <View className="flex-row items-center gap-s3">
               <View className="min-w-0 flex-1"><Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} /></View>
@@ -430,7 +452,7 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
       <View className="gap-s3">
         {dialog.kind === "rename" ? <Field label="New name" value={to} onChangeText={setTo} />
           : dialog.kind === "move"
-          ? <Field label="Move into this folder" value={to} onChangeText={setTo} placeholder="Folder path, empty for the top" />
+          ? <FolderPicker rows={dialog.rows} value={to} onChange={setTo} />
           : <Text>{dialog.rows.some((r) => r.root === "space") ? "Deleted files stay in the Drive as a version: Version history brings one back. Folders delete the files inside them." : "It is deleted at the source, which keeps it in its own trash where it has one. Nothing else changes."}</Text>}
         {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
         <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : dialog.kind === "rename" ? "Rename" : dialog.kind === "move" ? "Move" : "Delete"} onPress={busy ? () => {} : run} /><Button kind="ghost" size="sm" label="Cancel" onPress={onClose} /></View>
@@ -461,5 +483,34 @@ function QuickLookSheet({ row, shown, onClose }: { row: FileRow | null; shown: F
         {source ? <FileViewer key={row.key} name={row.path} source={source} /> : <Card><Text tone="muted">There is no preview for this source yet.</Text></Card>}
       </View>
     </Sheet>
+  );
+}
+
+/** "Move to...": the folders of the source the items are in, one level at a time (the same listing the page uses), with the way up; picking sets the destination. */
+function FolderPicker({ rows, value, onChange }: { rows: FileRow[]; value: string; onChange: (path: string) => void }) {
+  const first = rows[0];
+  const [listed, setListed] = useState<FileRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const here = value;
+  useEffect(() => {
+    let live = true;
+    setListed(null); setFailed(false);
+    loader.rows(placeId({ root: first.root as Place["root"], path: here, ...(first.link ? { link: first.link } : {}) })).then((r) => { if (live) setListed(r); }).catch(() => { if (live) { setListed([]); setFailed(true); } });
+    return () => { live = false; };
+  }, [here, first.root, first.link]); // eslint-disable-line react-hooks/exhaustive-deps
+  const v = pickerView((listed ?? []).map((x) => ({ dir: x.dir, path: x.path, name: x.name })), rows.map((x) => ({ path: x.path, dir: x.dir })), here);
+  return (
+    <View className="gap-s2">
+      <View className="flex-row items-center gap-s2">
+        {v.up !== null ? <Button kind="ghost" size="sm" icon="back" label="Up" onPress={() => onChange(v.up!)} /> : null}
+        <Text strong numberOfLines={1}>{here ? `Into ${here}` : "Into the top folder"}</Text>
+      </View>
+      <Card flush>
+        {listed === null ? <LoadingState rows={3} /> : failed ? <View className="p-s3"><Text tone="muted">This folder did not open.</Text></View>
+          : v.folders.length ? v.folders.map((f, i) => <View key={f.path}>{i ? <Divider /> : null}<Row dense title={f.name} lead={<Icon name={"folder" as never} size={16 as never} tone="text-2" />} end={<Text tone="label" size="caption">Open</Text>} onPress={() => onChange(f.path)} /></View>)
+          : <View className="p-s3"><Text tone="muted">No folders here.</Text></View>}
+      </Card>
+      {!v.hereOk ? <Text size="caption" tone="label">These items are already here, or this is inside what you are moving. Pick another folder.</Text> : null}
+    </View>
   );
 }
