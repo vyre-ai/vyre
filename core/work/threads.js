@@ -91,7 +91,7 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
 
 /**
  * The chat list as one summary: the pinned Assistant, people, groups, agents (one row per agent, with its thread count and its latest or live thread) and Flows. Read through the caller's own chats only.
- * @param {{ ctx: any, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, pinnedOf: (person: string) => Map<string, string>, flowRows?: (chain: any, extra: any) => Promise<any[]> }} d
+ * @param {{ ctx: any, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, pinnedOf: (person: string) => Map<string, string> }} d
  */
 export async function summarize(d, extra) {
   const chain = await d.chainOf(extra);
@@ -132,7 +132,33 @@ export async function summarize(d, extra) {
   }
   const newest = (/** @type {any} */ a, /** @type {any} */ b) => String((b.latest && b.latest.last_active) || b.last_active || "").localeCompare(String((a.latest && a.latest.last_active) || a.last_active || ""));
   pinned.sort(newest); agentRows.sort(newest); people.sort(newest); groups.sort(newest);
-  return { pinned, people, groups, agents: agentRows, flows: d.flowRows ? await d.flowRows(chain, extra) : [] };
+  return { pinned, people, groups, agents: agentRows, flows: await flowRows(d.ctx) };
+}
+
+/** A run's state in a thread's words: running or waiting is live, paused or failed needs the person, the rest is idle. @param {string} state */
+const runState = state => (state === "running" || state === "waiting" ? "live" : state === "paused" || state === "failed" ? "needs_you" : "idle");
+
+/** One Flow run as a thread of that Flow. @param {any} r a row of flows.runs */
+export function runThread(r) {
+  return { kind: "run", id: String(r.id), flow: String(r.flow), state: runState(String(r.state)), started: r.started_at || null, finished: r.finished_at || null, summary: r.label ? String(r.label) : null, error: r.error && r.error.message ? String(r.error.message).slice(0, 200) : null };
+}
+
+/**
+ * A Flow's runs as its threads, newest first, read through the caller's own relayed call: flows.runs already shows a member only the Flows she made or that are shared with her.
+ * @param {any} ctx @param {string | null} flow
+ */
+async function runsOf(ctx, flow) {
+  const r = await ctx.call("flows.runs", { ...(flow ? { id: flow } : {}), limit: 200 }, { relay: true }).catch(() => null);
+  const rows = r && Array.isArray(r.data) ? r.data : [];
+  return rows.map(runThread).sort((a, b) => String(b.started || "").localeCompare(String(a.started || "")));
+}
+
+/** The Flow rows of the chat list: one per Flow that has runs, with its run count and latest or live run. @param {any} ctx */
+export async function flowRows(ctx) {
+  const byFlow = new Map();
+  for (const t of await runsOf(ctx, null)) byFlow.set(t.flow, [...(byFlow.get(t.flow) || []), t]);
+  return [...byFlow].map(([flow, runs]) => ({ kind: "flow", flow, name: flow, runs: runs.length, latest: runs[0], live: runs.find(t => t.state === "needs_you") || runs.find(t => t.state === "live") || null, needs_you: runs.some(t => t.state === "needs_you") }))
+    .sort((a, b) => String(b.latest.started || "").localeCompare(String(a.latest.started || "")));
 }
 
 /** The table that remembers where a fork starts: the new thread, the engine run and transcript message to fork from. Written only by work.thread.fork, read only by the stream when the fork first runs. @param {any} db */
@@ -143,7 +169,7 @@ function forksTable(db) {
 
 /**
  * Register the thread tools that read and start. `chatTool` is the work module's own (it keeps the member door's copy), `createChat` the very function work.chat.create runs.
- * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, pinnedOf: (person: string) => Map<string, string>, flowRows?: (chain: any, extra: any) => Promise<any[]> }} d
+ * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, pinnedOf: (person: string) => Map<string, string> }} d
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
@@ -164,6 +190,17 @@ export function registerThreads(d) {
     description: "Your chat list in sections: pinned Assistant, people, groups, agents (one row each: thread count, latest and live thread) and Flows.",
     input: obj({}),
     run: async (/** @type {any} */ _input, /** @type {any} */ extra) => summarize(d, extra),
+  });
+  d.chatTool("work.flow.threads", {
+    description: "A Flow's runs as its threads, newest first: id, state (live, needs_you, idle), started, finished, error. You see the Flows you made or that are shared with you.",
+    input: obj({ flow: { type: "string", description: "the Flow's id" } }, ["flow"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const chain = await d.chainOf(extra);
+      const hop = chain && chain.hops && chain.hops[0];
+      if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "a Flow's runs are read from a person's own session");
+      const threads = await runsOf(d.ctx, String(input.flow));
+      return { flow: String(input.flow), threads, count: threads.length };
+    },
   });
   d.chatTool("work.thread.fork", {
     description: "Fork a thread from one of the agent's replies: a new thread that keeps everything up to and including that reply. The original is unchanged. Returns { thread, forked_from }.",

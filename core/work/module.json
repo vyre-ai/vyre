@@ -202,6 +202,12 @@
         "effect": "read"
       },
       {
+        "name": "work.flow.threads",
+        "summary": "a Flow's runs as its threads, newest first",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.thread.fork",
         "summary": "fork a thread from one of the agent's replies into a new thread; the original stays",
         "reach": "anyone",

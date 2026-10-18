@@ -87,3 +87,29 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   assert.equal(bens.people[0].person, OWNER);
   assert.ok((await d.registry.call("work.chat.summary", {}, "mcp", {})).error, "a call with no person has no list");
 });
+
+test("a Flow's runs are its threads, and the chat list has one row per Flow with runs", { timeout: 240_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const K = d.kernel;
+  const cli = () => ({ kernelFacts: callerFacts("cli", {}, {}, K, false, null, { inside: false, outside: true }) });
+  const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli", cli()); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
+  assert.deepEqual((await ok("work.chat.summary")).flows, [], "no Flow has run");
+  assert.deepEqual((await ok("work.flow.threads", { flow: "nothing" })).threads, [], "a Flow with no runs has no threads");
+  const flow = { format: 1, name: "census_flow", label: "Census", authorship: "human", trigger: { on: "manual" }, steps: [] };
+  const def = await ok("flows.define", { flow });
+  await ok("flows.approve", { id: def.id, version: def.version, hash: def.hash });
+  const started = await ok("flows.start", { id: def.id });
+  const runId = started.run || started.id;
+  assert.ok(runId, JSON.stringify(started));
+  await new Promise(r => setTimeout(r, 1500));
+  const threads = (await ok("work.flow.threads", { flow: def.id })).threads;
+  assert.equal(threads.length, 1);
+  assert.deepEqual([threads[0].kind, threads[0].id, threads[0].flow], ["run", runId, def.id]);
+  assert.ok(["live", "idle", "needs_you"].includes(threads[0].state));
+  const rows = (await ok("work.chat.summary")).flows;
+  assert.deepEqual(rows.map((/** @type {any} */ r) => [r.kind, r.flow, r.runs]), [["flow", def.id, 1]]);
+  assert.equal(rows[0].latest.id, runId);
+  assert.ok((await d.registry.call("work.flow.threads", { flow: def.id }, "mcp", {})).error, "a call with no person reads none");
+});
