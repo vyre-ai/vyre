@@ -9,7 +9,7 @@ const [url, token, container] = process.argv.slice(2);
 const cdp = new Cdp({ cdpUrl: url.replace(/\/+$/, "") + "/cdp", token });
 let failed = 0;
 // Known failures in 0.6.1, by name: the download-folder checks. They are still run and still printed (KNOWN-FAIL, or KNOWN-PASS when one starts passing), they do not fail the run, and the summary at the end names them.
-// file:// and chrome:// stay required.
+// file:// and chrome:// stay required. The download-folder fix is a 0.6.2 item (see docs/known-gaps.md).
 const KNOWN = new Set(["download landed in", "the agent uid can read the downloaded file"]);
 const known = [];
 const say = (ok, name, evidence) => {
@@ -78,5 +78,5 @@ say(!inHome, "download did NOT land in /home/agent/Downloads (by design, see ent
 const asAgent = sh("1000:1000", `cat ${dl}/csproof.txt`);
 say(asAgent.includes("harlow legal proof download"), "the agent uid can read the downloaded file", asAgent);
 sh("1002:1002", `rm -f ${dl}/csproof.txt`);
-console.log(`known failures (0.6.1): ${known.length ? known.join("; ") : "none ran"}`);
+console.log(`known failures (0.6.1, to fix in 0.6.2): ${known.length ? known.join("; ") : "none ran"}`);
 process.exit(failed);
