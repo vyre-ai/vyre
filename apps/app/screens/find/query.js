@@ -10,11 +10,13 @@ const TYPE_WORDS = new Map([["chat", "chat"], ["thread", "chat"], ["message", "m
 /**
  * Split a line into the words to search and the filters it carries. A filter is `from:x`, `in:x` or `type:x`; a value with spaces is quoted ("in:'Park Lane'" or in:"Park Lane"). An unknown type or a
  * from with nothing after it stays in the text as typed, so a colon in an ordinary search ("note: call back") is never swallowed.
- * @param {string} raw @returns {{ text: string, scope: string | null, type: string | null, from: string | null, within: string | null }}
+ * @param {string} raw @returns {{ text: string, scope: string | null, type: string | null, from: string | null, within: string | null, keys: boolean }}
  */
 export function parseQuery(raw) {
-  let scope = null, type = null, from = null, within = null;
-  const text = String(raw || "").replace(/(^|\s)(from|in|type):(?:"([^"]+)"|'([^']+)'|(\S+))/gi, (whole, lead, key, a, b, c) => {
+  let scope = null, type = null, from = null, within = null, keys = false;
+  // `set:` at the start asks for the individual settings (every key the server offers), not just the Settings pages.
+  const start = String(raw || "").replace(/^\s*set:\s*/i, () => { keys = true; scope = "settings"; return ""; });
+  const text = start.replace(/(^|\s)(from|in|type):(?:"([^"]+)"|'([^']+)'|(\S+))/gi, (whole, lead, key, a, b, c) => {
     const value = String(a ?? b ?? c ?? "").trim();
     const k = String(key).toLowerCase();
     if (!value) return whole;
@@ -24,7 +26,7 @@ export function parseQuery(raw) {
     if (s) scope = s; else within = value;
     return lead;
   }).replace(/\s+/g, " ").trim();
-  return { text, scope, type, from, within };
+  return { text, scope, type, from, within, keys };
 }
 
 /** How well a row's title matches the words: exact 100, starts with 80, a word starts with 60, contains 40, otherwise 20. @param {string} title @param {string[]} ws */

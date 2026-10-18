@@ -258,3 +258,16 @@ test("messages: found in the chats this app has opened, in their own group, open
   assert.deepEqual(sections(b, "lease", "chats", {}).map((x) => x.key).filter((k) => k === "messages"), [], "nothing until the index has something");
   assert.deepEqual(sections(b, "lease", "files", { messages: found }).map((x) => x.key).filter((k) => k === "messages"), [], "only in the Everything and Chats scopes");
 });
+
+test("skills: the skills that fit, in their own group in Everything, opening the library at their level; settings keys only after set: or in the Settings scope", { skip: !strip }, async () => {
+  const { sectionsPlain: sections, skillHits } = await import("./model.ts");
+  const b = { ...(await base()), settings: [{ title: "Appearance", sub: "Theme", href: "/u/appearance" }], settingKeys: [{ title: "Recall index interval", sub: "Memory", href: "/u/settings/all" }] };
+  const d = { skills: [{ id: "personal/house-style", name: "house-style", level: "personal", description: "How we write" }, { nope: 1 }] };
+  assert.deepEqual(skillHits(d).map((r) => [r.title, r.href]), [["house-style", "/u/skills?level=personal"]]);
+  assert.deepEqual(sections(b, "house", "all", { skills: d }).map((x) => x.key).filter((k) => k === "skills"), ["skills"]);
+  assert.deepEqual(sections(b, "house", "all", {}).map((x) => x.key).filter((k) => k === "skills"), [], "nothing until the tool answers");
+  assert.deepEqual(sections(b, "recall", "all", {}).map((x) => x.key).filter((k) => k === "settings"), [], "a setting's own name is not searched in Everything");
+  assert.deepEqual(sections(b, "set: recall", "all", {}).map((x) => x.key).filter((k) => k === "settings"), ["settings"]);
+  assert.deepEqual(sections(b, "recall", "settings", {}).map((x) => x.key), ["settings"]);
+  assert.deepEqual(sections(b, "appear", "all", {}).map((x) => x.key).filter((k) => k === "settings"), ["settings"], "the Settings pages are in Everything");
+});

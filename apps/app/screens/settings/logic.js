@@ -95,7 +95,7 @@ function all(/** @type {string} */ space) {
       ["Your AI keys", "Name a key for each AI tool that acts as you", "/u/settings/mcp", "key"],
       ["Backups", "Choose which Spaces are backed up", "/u/settings/backups", "storage"],
       ["Access", "See who and what can reach this Space: people, agents, Kits and Flows", "/u/access", "access"],
-      ["This computer", "What runs on this computer, its history and shares", "/u/settings/system", "laptop"],
+      ["This computer", "What runs on this computer: its hooks, history and shares", "/u/settings/system", "laptop"],
       ["All settings", "Every setting this server offers; find one with the main search", "/u/settings/all", "settings"],
       ["About", "Version, who made Vyre, and where to star it", "/u/about", "info"],
     ] },

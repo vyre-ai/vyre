@@ -4,10 +4,10 @@ import assert from "node:assert/strict";
 import { parseQuery, score, bestMatch, actionHits, filterRows, SCOPE_LIST } from "./query.js";
 
 test("filters are taken out of the line and the rest is what is searched", () => {
-  assert.deepEqual(parseQuery("lease from:dana in:chats type:chat"), { text: "lease", scope: "chats", type: "chat", from: "dana", within: null });
-  assert.deepEqual(parseQuery('budget in:"Park Lane" from:me'), { text: "budget", scope: null, type: null, from: "me", within: "Park Lane" });
-  assert.deepEqual(parseQuery("in:settings"), { text: "", scope: "settings", type: null, from: null, within: null });
-  assert.deepEqual(parseQuery("in:Everything"), { text: "", scope: "all", type: null, from: null, within: null });
+  assert.deepEqual(parseQuery("lease from:dana in:chats type:chat"), { text: "lease", scope: "chats", type: "chat", from: "dana", within: null, keys: false });
+  assert.deepEqual(parseQuery('budget in:"Park Lane" from:me'), { text: "budget", scope: null, type: null, from: "me", within: "Park Lane", keys: false });
+  assert.deepEqual(parseQuery("in:settings"), { text: "", scope: "settings", type: null, from: null, within: null, keys: false });
+  assert.deepEqual(parseQuery("in:Everything"), { text: "", scope: "all", type: null, from: null, within: null, keys: false });
 });
 
 test("a colon in an ordinary search is not a filter: an unknown type, an empty value, or no filter name", () => {
@@ -15,6 +15,12 @@ test("a colon in an ordinary search is not a filter: an unknown type, an empty v
   assert.equal(parseQuery("type:banana tax").text, "type:banana tax");
   assert.equal(parseQuery("from: dana").text, "from: dana");
   assert.equal(parseQuery("ratio 3:1").text, "ratio 3:1");
+});
+
+test("set: asks for the individual settings and narrows to Settings", () => {
+  assert.deepEqual(parseQuery("set: theme"), { text: "theme", scope: "settings", type: null, from: null, within: null, keys: true });
+  assert.equal(parseQuery("set:font").text, "font");
+  assert.equal(parseQuery("preset: x").keys, false, "only at the start of the line");
 });
 
 test("the scopes are Everything, Chats, People, Records, Projects, Files and Settings", () => {

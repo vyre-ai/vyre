@@ -13,7 +13,7 @@ import { loadRecents, saveRecents } from "./recents";
 import { messageIndex } from "../../src/chat/message-index.js";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
-const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", message: "chat", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
+const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", message: "chat", skill: "kits", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
 
 export default function FindPanel({ onDone, initial = "", initialScope = "all" }: { onDone?: () => void; initial?: string; initialScope?: Scope }) {
   const findTag = usePlaceText("home");   // the search is over her own computer
@@ -43,7 +43,7 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
   const places = useMemo(() => [...NAV.items, ...(NAV.more ?? []), ...(NAV.bottom ?? [])].filter((i) => i.id !== "search").map((i) => ({ id: i.id, label: i.label, href: i.href })), []);
   const records = useMemo(() => (world ? recordRows(world.types, world.byType) : []), [world]);
   const settings = useMemo(() => settingsGroups("this Space").flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), []);
-  const all: Base = useMemo(() => ({ ...base, records, places, settings: [...settings, ...base.settings] }), [base, records, places, settings]);
+  const all: Base = useMemo(() => ({ ...base, records, places, settings }), [base, records, places, settings]);
 
   // A query asks the three tools, 150 ms after typing stops; an answer for an old query is dropped.
   useEffect(() => {
@@ -56,9 +56,9 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
       const sq = /^[ptu]\s+/i.test(line) ? line.replace(/^[ptu]\s+/i, "") : line;
       const got = (key: keyof Fetched, label: string) => (r: { data?: unknown; error?: { code: string; message: string } }) => {
         if (n !== seq.current) return;
-        if (r.error) setErrs((e) => ({ ...e, [key]: label })); else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
+        if (r.error) { setErrs((e) => ({ ...e, [key]: label })); if (!label) setFetched((f) => ({ ...f, [key]: [] })); } else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), drive: got("drive", "") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), skills: got("skills", ""), drive: got("drive", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
@@ -141,7 +141,7 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
       state={r.right} end={findTag ? <SpaceTag text={findTag} /> : undefined} onPress={() => pick(r)} />
   );
-  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
+  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive", "skills"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
       <PlaceTag of="home" />

@@ -13,18 +13,19 @@ export function findSource(call: Call, surface: string) {
     async load() {
       const [al, cat, th, pl, sc] = await Promise.all([call("agents.list"), call("projects.catalog", { limit: 300 }), call("threads.list", { all: true }), call("projects.list"), call("settings.schema")]);
       const agents = pickAgents(al.data);
-      // Every setting the server offers is a row too, opening All settings: the one search finds a setting by its name (the box in All settings is gone).
+      // Every setting the server offers is a row too, opening All settings; the search offers them in the Settings scope or after `set:` (the box in All settings is gone).
       let settings: { title: string; sub: string; href: string }[] = [];
       try { const sch = sc.error ? null : schemaOf(sc.data); if (sch) settings = sch.keys.filter((k) => !k.levels || k.levels.includes("account")).map((k) => ({ title: k.label, sub: sch.groups.find((g) => g.id === k.group)?.label ?? "", href: "/u/settings/all" })); } catch { settings = []; }
-      return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data), settings };
+      return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data), settingKeys: settings };
     },
     /** The searches for a query; each answers on its own so the screen draws as they come. */
-    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void; drive: (r: Result<unknown>) => void }) {
+    search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void; drive: (r: Result<unknown>) => void; skills?: (r: Result<unknown>) => void }) {
       if (q.length < MIN) return;
       void call("recall.search", { q, limit: 20 }).then(on.recall);
       void call("files.search", { q, limit: 20 }).then(on.files);
       void call("memory.relevant", { text: q, limit: 5 }).then(on.memory);
       void call("mentions.search", { q, limit: 8 }).then(on.mentions);
+      if (on.skills) void call("skills.find", { query: q, limit: 8 }).then(on.skills);
       // the server has no files.drive.space.search (only .list and .read): until it does, the Space's Drive names are not searched and the panel shows no Drive hits instead of an error
       on.drive({ data: { results: [] } });
     },

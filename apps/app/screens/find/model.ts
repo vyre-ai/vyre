@@ -32,8 +32,10 @@ export type Base = {
   places: { id: string; label: string; href: string }[];
   /** The Settings pages, one row each (title, the line under it, where it opens). */
   settings: { title: string; sub: string; href: string }[];
+  /** Every individual setting the server offers; searched only with `set:` or in the Settings scope. */
+  settingKeys: { title: string; sub: string; href: string }[];
 };
-export const emptyBase = (): Base => ({ assistant: null, agents: [], sessions: [], projects: [], records: [], places: [], settings: [] });
+export const emptyBase = (): Base => ({ assistant: null, agents: [], sessions: [], projects: [], records: [], places: [], settings: [], settingKeys: [] });
 
 export function pickAgents(d: unknown): Base["agents"] {
   const list = Array.isArray(d) ? d : (d as { agents?: unknown } | null)?.agents;
@@ -70,7 +72,7 @@ export function recordRows(types: any[], byType: Record<string, any[]>): Base["r
 export type Row = { key: string; where?: string; from?: string; title: string; sub?: string; snippet?: string; right?: string; kind: string; href?: string; session?: string; file?: FileHit; fact?: boolean };
 export type FileHit = { name: string; path: string; kind: string; source: string };
 export type Section = { key: string; label: string; rows: Row[]; notes?: string[] };
-export type Fetched = { messages?: { chat: string; id: string; who: string; snippet: string }[]; recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
+export type Fetched = { skills?: unknown; messages?: { chat: string; id: string; who: string; snippet: string }[]; recall?: unknown; files?: unknown; memory?: unknown; mentions?: unknown; drive?: unknown };
 
 const where = (base: Base, slug: string | null, cwd?: string | null): string => (slug ? base.projects.find((p) => p.slug === slug)?.name ?? slug : String(cwd || "").split("/").filter(Boolean).pop() || "");
 
@@ -92,6 +94,8 @@ export function sessionHits(base: Base, q: string, recall: unknown): Row[] {
 /** Messages found in the chats this app has opened (the on-device index): the chat's name, the words around the match, who wrote it. Opens the chat. */
 export const messageHits = (base: Base, found: { chat: string; id: string; who: string; snippet: string }[] | undefined): Row[] =>
   (found ?? []).map((m) => { const r = base.sessions.find((x: any) => x.id === m.chat); return { key: `msg:${m.chat}:${m.id}`, kind: "message", title: r ? sessionTitle(r) : "Chat", snippet: m.snippet, sub: m.who, from: m.who, where: r ? where(base, r.project, r.cwd) : "", session: m.chat }; });
+/** skills.find: the skills the caller may use (personal, the Space's, and the agents' they can see) that fit the words, opening the library at their level. */
+export const skillHits = (d: unknown): Row[] => arr((d as { skills?: unknown } | null)?.skills).filter((x) => typeof x.name === "string").map((x): Row => ({ key: `k:${str(x.id) || x.name}`, kind: "skill", title: str(x.name), sub: [str(x.level), str(x.description)].filter(Boolean).join(", "), href: `/u/skills?level=${encodeURIComponent(str(x.level) || "space")}` }));
 export const projectHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.projects.filter((p) => hasAll(`${p.name} ${p.slug}`, ws)).map((p) => ({ key: `p:${p.slug}`, kind: "project", title: p.name, href: `/u/project/${encodeURIComponent(p.slug)}` })); };
 export function peopleHits(base: Base, q: string): Row[] {
   const ws = words(q);
@@ -100,7 +104,7 @@ export function peopleHits(base: Base, q: string): Row[] {
   return [...agents, ...people];
 }
 export const recordHits = (base: Base, q: string): Row[] => { const ws = words(q); return base.records.filter((r) => !r.person && hasAll(`${r.title} ${r.sub}`, ws)).map((r) => ({ key: `r:${r.id}`, kind: "record", title: r.title, sub: r.typeLabel, href: `/u/record/${r.id}` })); };
-export const settingsHits = (base: Base, q: string): Row[] => { const ws = words(q); return (base.settings || []).filter((x) => hasAll(`${x.title} ${x.sub}`, ws)).map((x) => ({ key: `st:${x.href}`, kind: "setting", title: x.title, sub: x.sub, href: x.href })); };
+export const settingsHits = (base: Base, q: string, keys = false): Row[] => { const ws = words(q); return [...(base.settings || []), ...(keys ? base.settingKeys || [] : [])].filter((x) => hasAll(`${x.title} ${x.sub}`, ws)).map((x) => ({ key: `st:${x.href}`, kind: "setting", title: x.title, sub: x.sub, href: x.href })); };
 export const placeHits = (base: Base, q: string): Row[] => { const lc = q.toLowerCase(); return base.places.filter((p) => p.label.toLowerCase().includes(lc)).map((p) => ({ key: `g:${p.id}`, kind: "place", title: p.label, sub: "Go to", href: p.href })); };
 
 /** files.search: the results, and a note for each machine that did not answer. The box never searches the Mac's files itself, so that is said unless the Mac answered. */
@@ -153,15 +157,15 @@ export function ago(ms: number, now = Date.now()): string {
 }
 
 /** The scope and words a typed line asks for: a p, t or u prefix narrows it; in:, from: and type: filter it (query.js); the words left are what is searched. */
-export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string; type: string | null; from: string | null; within: string | null } {
+export function queryOf(raw: string, scope: Scope): { scope: Scope; q: string; type: string | null; from: string | null; within: string | null; keys: boolean } {
   const p = parsePrefix(raw) as { scope: Scope; rest: string } | null;
   const f = parseQuery(p ? p.rest : raw);
-  return { scope: (f.scope as Scope | null) ?? (p ? p.scope : scope), q: f.text, type: f.type, from: f.from, within: f.within };
+  return { scope: (f.scope as Scope | null) ?? (p ? p.scope : scope), q: f.text, type: f.type, from: f.from, within: f.within, keys: f.keys };
 }
 
 /** The sections for a query, in the fixed order: Best match, Actions, Go to, Chats, Projects, People, Records, Files, Settings, From memory. A search tool that has not answered yet adds nothing; `missing` says which never will. */
 export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched, opts: { best?: boolean } = {}): Section[] {
-  const { scope: sc, q, type, from, within } = queryOf(raw, scope);
+  const { scope: sc, q, type, from, within, keys } = queryOf(raw, scope);
   const filtered = Boolean(type || from || within);
   if (q.length < 1 && !filtered) return [];
   const want = (s: Scope) => sc === "all" || sc === s;
@@ -172,11 +176,12 @@ export function sections(base: Base, raw: string, scope: Scope, fetched: Fetched
   if (want("chats")) add("chats", "Chats", sessionHits(base, q, q.length >= MIN ? fetched.recall : undefined));
   if (want("chats") && q.length >= MIN) add("messages", "Messages", messageHits(base, fetched.messages));
   if (want("projects")) add("projects", "Projects", projectHits(base, q));
+  if (sc === "all" && q.length >= MIN && fetched.skills !== undefined) add("skills", "Skills", skillHits(fetched.skills));
   if (want("people")) add("people", "People", peopleHits(base, q));
   if (want("records")) add("records", "Records", recordHits(base, q));
   if (want("files") && q.length >= MIN) { const f = fileHits(fetched.files); if (fetched.files !== undefined) add("files", "Files", f.rows, f.rows.length ? f.notes : []); }
   if (want("files") && q.length >= MIN && fetched.drive !== undefined) add("drive", "Files", driveHits(fetched.drive));
-  if (want("settings") && q) add("settings", "Settings", settingsHits(base, q));
+  if (want("settings") && q) add("settings", "Settings", settingsHits(base, q, keys || sc === "settings"));
   if (sc === "all" && q.length >= MIN) add("memory", "From memory", factHits(fetched.memory));
   if (sc === "all" && q.length >= MIN && fetched.mentions !== undefined) for (const m of mentionSections(fetched.mentions).sections) out.push(m);
   if (filtered) out = out.map((s) => ({ ...s, rows: filterRows(s.rows, { type, from, within }) })).filter((s) => s.rows.length > 0);
