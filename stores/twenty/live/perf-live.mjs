@@ -60,3 +60,4 @@ console.log("\nOPERATION | p50 ms | p95 ms | budget");
 for (const [k2, v] of Object.entries(results)) console.log(`${k2} | ${v.p50} | ${v.p95} | ${budget[k2] ?? "-"}${budget[k2] && v.p95 > budget[k2] ? "  OVER" : ""}`);
 execFileSync("docker", ["compose", "-p", n.project, "down", "-v"], { stdio: "ignore", timeout: 120000 });
 fs.rmSync(home, { recursive: true, force: true });
+// run 14:36
