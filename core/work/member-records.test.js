@@ -236,8 +236,9 @@ test("a private note and an outside calendar's event are private on every kernel
   // sharing a note: only its writer, through the planner
   const item = (await call(BEN, "planner.add", { kind: "note", title: "Shared later", record: contact.urn })).data;
   assert.ok(item && item.id, JSON.stringify(item));
-  assert.ok((await call(ANA, "planner.update", { item: item.id, visibility: "space" })).error, "another member cannot share it");
+  { const r = await call(ANA, "planner.update", { item: item.id, visibility: "space" }); assert.ok(r.error, `another member cannot share it`); }
   assert.ok((await call(ZED, "planner.update", { item: item.id, visibility: "space" })).error, "an admin cannot share it");
-  assert.ok(!(await call(BEN, "planner.update", { item: item.id, visibility: "space" })).error, "its writer can");
+  { const mine = await call(BEN, "planner.update", { item: item.id, visibility: "space" }); assert.ok(!mine.error, `its writer can: ${JSON.stringify(mine.error)}`); }
+  const ana = await call(ANA, "planner.update", { item: item.id, title: "hijack" }); assert.ok(ana.error, "another member cannot edit it either");
   assert.ok(note.urn);
 });
