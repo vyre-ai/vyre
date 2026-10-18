@@ -545,6 +545,10 @@
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
+  "flows.step.test": {
+   "module": "flows",
+   "reason": "read-only: it runs under the caller's own chain and never the module's, so it reads only what that caller may read; reads run for real, nothing is created, changed, sent or emitted, and a past run is shown only through the named Flow's own run and only as far as the caller may see it (the module works out the hiding from the caller's chain and drops any hide_for the caller sends)"
+  },
   "flows.start": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"

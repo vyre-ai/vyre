@@ -8,6 +8,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(reach): flows.step.test has its reason in test/reach-anyone.json.
+
 - refactor(modules): the registry's input check (checkInput) moves to core/modules/check-input.js and is re-exported from core/modules/index.js, so index.js is under its size cap again (2007 lines). No change in behaviour.
 
 - fix(golden): flows.step.test has its line in FLOWS_NOTES (scripts/gen-allow.mjs), so the allow list can be generated again.
