@@ -43,7 +43,7 @@ export default function AgentPage() {
           <Tabs items={TABS} value={tab} onChange={setTab} />
           {tab === "threads" ? <AgentThreads name={a.name} /> : null}
           {tab === "overview" ? <><Instructions name={a.name} /><Context name={a.name} /><AgentMemory name={a.name} /><Used name={a.name} /><Sharing name={a.name} /></> : null}
-          {tab === "skills" ? <RealSkills initialLevel="agent" /> : null}
+          {tab === "skills" ? <RealSkills initialLevel="agent" scope={a.name} /> : null}
           {tab === "ai" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
           {tab === "computer" ? <><ComputerCard a={a} onChange={load} /><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /></> : null}
         </>
