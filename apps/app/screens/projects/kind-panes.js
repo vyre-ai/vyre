@@ -33,3 +33,16 @@ export function automationsOf(snapshot) {
     return (Array.isArray(j && j.automations) ? j.automations : []).filter((/** @type {any} */ a) => a && typeof a.flow === "string" && typeof a.when === "string").map((/** @type {any} */ a) => ({ flow: a.flow, when: a.when, ...(a.note ? { note: String(a.note) } : {}) }));
   } catch { return []; }
 }
+
+/**
+ * What the "Runs on its own" tab lists: the Flows that name this project (flows.list with its short name), then the playbook's automations that no listed Flow already covers. Each says in a line when it runs.
+ * @param {{ id: string, name?: string, label?: string, line?: string, active?: boolean }[]} rows @param {{ flow: string, when: string, note?: string }[]} automations
+ * @returns {{ key: string, title: string, sub: string, id?: string }[]}
+ */
+export function flowsHere(rows, automations) {
+  const nice = (/** @type {string} */ s) => s.replace(/_/g, " ");
+  const out = rows.map((r) => ({ key: r.id, id: r.id, title: String(r.label || r.name || r.id), sub: r.active === false ? "Off" : String(r.line || "Runs here") }));
+  const seen = new Set(rows.flatMap((r) => [r.id, r.name].filter(Boolean)));
+  for (const a of automations) if (!seen.has(a.flow)) out.push({ key: `${a.flow}:${a.when}`, id: a.flow, title: nice(a.flow), sub: a.when === "start" ? "Runs when the project starts" : `Runs in ${a.when}${a.note ? `, ${a.note}` : ""}` });
+  return out;
+}

@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { kindTabs, emailQuery, boardColumns, automationsOf } from "./kind-panes.js";
+import { kindTabs, emailQuery, boardColumns, automationsOf, flowsHere } from "./kind-panes.js";
 
 test("a client project adds Client and Emails, an Ongoing one adds Board and Flows, and Stages, Simple and Personal add none", () => {
   assert.deepEqual(kindTabs({ kind: "client" }), ["client", "emails"]);
@@ -30,4 +30,14 @@ test("the Flows a project turns on come from its pinned stages; an unreadable sn
   assert.deepEqual(automationsOf(snap), [{ flow: "new_lead_followup", when: "Launch", note: "turns on here" }, { flow: "welcome", when: "start" }]);
   assert.deepEqual(automationsOf("{not json"), []);
   assert.deepEqual(automationsOf(undefined), []);
+});
+
+test("the Runs-on-its-own list is the Flows that name the project, then the playbook's automations they do not already cover", () => {
+  const rows = [{ id: "flw_1", name: "new_lead_followup", label: "Follow up new leads", line: "Ran 2 hours ago", active: true }, { id: "flw_2", name: "weekly_digest", active: false }];
+  const autos = [{ flow: "new_lead_followup", when: "Launch" }, { flow: "welcome", when: "start" }, { flow: "wrap_up_email", when: "Wrap up", note: "sends the summary" }];
+  assert.deepEqual(flowsHere(rows, autos).map((r) => [r.title, r.sub]), [
+    ["Follow up new leads", "Ran 2 hours ago"], ["weekly_digest", "Off"], ["welcome", "Runs when the project starts"], ["wrap up email", "Runs in Wrap up, sends the summary"],
+  ]);
+  assert.deepEqual(flowsHere([], []), []);
+  assert.equal(flowsHere([{ id: "x" }], [])[0].sub, "Runs here");
 });

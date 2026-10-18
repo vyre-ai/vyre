@@ -79,7 +79,7 @@ export default function ProjectScreen() {
     if (at === "client") return <ClientPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
     if (at === "emails") return <EmailsPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
     if (at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
-    if (at === "flows") return <FlowsPane snapshot={String(data?.template_snapshot ?? "")} />;
+    if (at === "flows") return <FlowsPane slug={slug} snapshot={String(data?.template_snapshot ?? "")} />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
     if (at === "overview") return (
       <View className="flex-row items-start gap-s6">
