@@ -498,7 +498,10 @@ try {
       await drv.shot("24-owner-review");
       if (!t.includes(words2)) throw new Error(`the owner is shown other words than the asker's (${words2})`);
       await drv.click("Approve");
-      await until(async () => !/asks to join/.test(await drv.text()), 60_000, "the ask leaving the owner's list once approved");
+      await until(async () => !/asks to join/.test(await drv.text()), 60_000, "the ask leaving the owner's list once approved").catch(async (e) => {
+        await drv.shot("fail-owner-approve");
+        throw new Error(`${e.message} | the owner's screen: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 500)}`);
+      });
     }, { needs: READY });
     await run.step(S("group: the second person is let in and lands in the Space"), async () => {
       await two.waitFor("You are invited", 120_000);
