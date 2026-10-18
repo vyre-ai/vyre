@@ -13,8 +13,9 @@ net.Server.prototype.listen = function (...a) { servers.push([this, new Error().
 test("diag: what is open after stop", async t => {
   const root = fs.realpathSync(tempHome(t));
   fs.writeFileSync(`${root}/config.json`, JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
-  const d = await start({ root, log: () => {}, presence: present, kernel: true });
+  const d = await start({ root, log: (m) => { if (/appmods|failed|waiting|did not stop|warn/i.test(String(m))) console.log("DIAG-LOG " + String(m).slice(0, 300)); }, presence: present, kernel: true });
   asOwner(d, root);
+  console.log("DIAG-STATES " + JSON.stringify([...d.registry.modules].filter(([n, r]) => r.state !== "running").map(([n, r]) => [n, r.state, String(r.error || "").slice(0, 160)])));
   await d.stop();
   await new Promise(r => setTimeout(r, 1500));
   const lines = [];
