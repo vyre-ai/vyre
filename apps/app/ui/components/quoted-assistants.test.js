@@ -44,3 +44,17 @@ test("a Kit with assistants cannot be approved until the texts are read, and a l
   for (const id of ["approve", "send", "yes"]) { assert.equal(gatedOff(kit, id, false), true, id); assert.equal(gatedOff(kit, id, true), false); assert.equal(gatedOff(plain, id, false), false, "no assistants, nothing to read"); }
   assert.equal(gatedOff(kit, "open", false), false, "opening is never gated");
 });
+
+test("reading one Kit task does not count for another: the read mark names its task, and the page is keyed by task", async () => {
+  const { gatedOff, isRead } = await import("./quoted-assistants-model.js");
+  const fs = await import("node:fs");
+  const kit = (id) => ({ id, form: { kind: "kit_install", card: { adds: { teammates: [{ name: "a", instructions_quoted: '"x"' }] } } } });
+  const a = kit("t1"), b = kit("t2");
+  let readId = null;
+  assert.equal(gatedOff(a, "approve", isRead(readId, a)), true);
+  readId = a.id;
+  assert.equal(gatedOff(a, "approve", isRead(readId, a)), false, "read on the first");
+  assert.equal(gatedOff(b, "approve", isRead(readId, b)), true, "the second starts unread");
+  assert.match(fs.readFileSync(new URL("../tasks/TaskDetail.tsx", import.meta.url), "utf8"), /isRead\(readId, task\)/);
+  assert.match(fs.readFileSync(new URL("../../screens/now/TaskScreen.tsx", import.meta.url), "utf8"), /<TaskDetail key=\{task\.id\}/);
+});

@@ -28,6 +28,8 @@ export const QUOTE_NOTE_TEXT = "Each assistant is made with this Kit's instructi
 
 /** Whether a kit_install task has assistants whose texts a person must have read before approving. @param {any} task */
 export const needsRead = (task) => kitTaskBoxes(task).boxes.length > 0;
+/** Whether the texts of THIS task have been read: the read mark names the task it was made on, so opening another Kit task never inherits it. @param {string | null} readId @param {any} task */
+export const isRead = (readId, task) => !!task && readId === task.id;
 /** The ids of the buttons that approve or send; they stay off for a task whose assistants have not been read. */
 export const APPROVING = ["approve", "send", "yes"];
 /** Whether one button is off until the boxes are read. @param {any} task @param {string} id @param {boolean} read */
