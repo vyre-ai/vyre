@@ -118,9 +118,10 @@ export function createHost(o) {
       if (st && st.account && !st.unlocked && !deviceKey) throw bad("This device does not hold your Vault's Secret Key. Open Vyre on a device that does and approve this one.", "no_device_key");
       // ONE act, covered by ONE presence proof over the label and the key's hash: the vault is made or opened, the item gets a free name in THEIR vault, the key is put there. The Secret Key of a vault just made comes back once.
       const added = await ask("vault.me.add-key", { label: i.label, value: i.key, ...(!open && i.password ? { password: i.password } : {}), ...(deviceKey ? { secret_key: deviceKey } : {}) });
+      // a vault just made hands over its Secret Key even when a later step failed: keep it first, so the next try can open the vault
       if (added && typeof added.secret_key === "string" && added.acct) await o.memberKeys.put(String(added.acct), added.secret_key);
       const item = String(added && added.item || "");
-      if (!item) throw bad("Your key could not be put in your Vault.", "failed");
+      if (!item) throw bad(added && added.failed ? String(added.failed) : "Your key could not be put in your Vault.", "failed");
       const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item, ...(i.base_url ? { base_url: i.base_url } : {}) });
       return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true };
     } catch (e) {

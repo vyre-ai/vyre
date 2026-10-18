@@ -136,16 +136,23 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
           } else if (!st.unlocked) {
             await people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secret_key, 256) });
           }
-          // the item's name: the label when free in THEIR vault, else with a number; a put on a name that exists replaces that item, so a list that cannot be read puts nothing
-          let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
-          if (!rows) throw bad("your vault could not be checked for that name");
-          const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
-          let item = label, n = 2;
-          while (used.has(item.toLowerCase()) && n < 100) item = `${label} ${n++}`;
-          if (used.has(item.toLowerCase())) throw bad("that name is taken in your vault");
-          await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
+          // The vault now exists: whatever goes wrong below, its Secret Key reaches the device (a vault made and never given its key could not be opened again). A failure after the vault was made is answered as a result with no item,
+          // the reason in plain words, and the Secret Key (the one field it ever travels in); a failure before that throws as usual.
+          const finish = async () => {
+            // the item's name: the label when free in THEIR vault, else with a number; a put on a name that exists replaces that item, so a list that cannot be read puts nothing
+            let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
+            if (!rows) throw bad("your vault could not be checked for that name");
+            const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
+            let item = label, n = 2;
+            while (used.has(item.toLowerCase()) && n < 100) item = `${label} ${n++}`;
+            if (used.has(item.toLowerCase())) throw bad("that name is taken in your vault");
+            await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
+            return item;
+          };
+          let item = "", failed = "";
+          try { item = await finish(); } catch (e) { if (!secretKey) throw e; failed = String(/** @type {any} */ (e).message || "your key could not be put in your vault").slice(0, 200); }
           const after = await people.status(id);
-          return { item, ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
+          return { item, ...(failed ? { failed } : {}), ...(after.acct ? { acct: after.acct } : {}), ...(secretKey ? { secret_key: secretKey } : {}) };
         }
         default: throw bad("call is status or addkey");
       }

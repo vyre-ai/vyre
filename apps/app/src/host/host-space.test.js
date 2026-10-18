@@ -514,7 +514,7 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
   const first = pp.call;
   const calls = [];
-  let vault = { account: false, unlocked: false }, fail = "", badKey = false;
+  let vault = { account: false, unlocked: false }, fail = "", badKey = false, halfDone = false;
   pp.call = async (name, input, box) => {
     if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
     const copy = JSON.parse(JSON.stringify(input || {})); const space = copy.space; delete copy.space;
@@ -522,6 +522,7 @@ test("a joining member's key goes to their own Vault in one act: checked with it
     if (name === "sessions.accounts.key") { if (badKey) throw new Error(`the service refused that key ${input.key}`); return { checked: true, host: "api.anthropic.com" }; }
     if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
     if (name === "vault.me.add-key") {
+      if (halfDone) { vault = { account: true, unlocked: true }; return { item: "", failed: "your vault could not be checked for that name", acct: "a2", secret_key: "SECRET-KEY-HALF" }; }
       if (fail) throw new Error(`${fail}: ${input.value} / ${input.password}`);
       const made = !vault.account; vault = { account: true, unlocked: true };
       return { item: input.label, acct: "a1", ...(made ? { secret_key: "SECRET-KEY-OF-VAULT" } : {}) };
@@ -579,6 +580,11 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   assert.equal(calls.find((c) => c.name === "sessions.accounts.add").input.base_url, "https://api.x.ai/v1");
   const orr = await host.call("onboard.agent.key", { kind: "openrouter", key: "sk-or-0123456789abc", label: "Router" });
   assert.equal(orr.provider, "openrouter");
+  // a vault just made whose later step failed still hands over its Secret Key, and the device keeps it before the failure is said
+  halfDone = true; vault = { account: false, unlocked: false };
+  await assert.rejects(() => ask({ label: "Seventh", password: PW }), (e) => /could not be checked/.test(e.message));
+  assert.equal(keys.get("a2"), "SECRET-KEY-HALF", "the Secret Key was kept even though the key was not put");
+  halfDone = false;
   // a kind this tool does not know is said plainly, with nothing sent
   calls.length = 0;
   await assert.rejects(() => host.call("onboard.agent.key", { kind: "mystery", key: KEY, label: "x" }), (e) => e.code === "bad_kind");

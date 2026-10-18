@@ -430,6 +430,25 @@ test("a reset rotates the lend key: the old sealed key opens nothing and the new
   assert.equal(rd(openConnectionKey(sealRoot, BOB, "lend")).fields.password, "PW-BANK-0001-abcdefghij");
 });
 
+test("vault.me.serve: a vault just made hands over its Secret Key even when the list or the put fails after, and the vault then opens with it", async t => {
+  const { reg, call: asBob, people } = rig(t);
+  const add = (/** @type {any} */ input) => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", call: "addkey", person: BOB, input }, { caller: "module:vyred" }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
+  const KEY = "sk-ant-0123456789abcdef";
+  const list = people.list.bind(people);
+  people.list = async () => { throw new Error("the list is down"); };
+  const first = await add({ label: "My Claude", value: KEY, password: PW });
+  assert.equal(first.error, undefined, "the answer is a result, not a throw, so the Secret Key is not lost");
+  assert.ok(first.data.secret_key && first.data.acct, "the Secret Key still comes back");
+  assert.equal(first.data.item, "");
+  assert.match(first.data.failed, /could not be checked/);
+  assert.ok(!JSON.stringify(first.data).includes(KEY) && !JSON.stringify(first.data).includes(PW));
+  people.list = list;
+  assert.ok((await asBob("vault.me.account.lock", {}, BOB)).data !== undefined);
+  const again = await add({ label: "My Claude", value: KEY, password: PW, secret_key: first.data.secret_key });
+  assert.equal(again.data?.item, "My Claude", JSON.stringify(again.error?.message));
+  assert.equal(again.data.secret_key, undefined, "no second Secret Key");
+});
+
 test("vault.me.serve: only the daemon's door runs it, never as the owner; addkey makes or opens the member's own vault, picks a free name, puts one AI key, and returns no value or password", async t => {
   const { reg, call: asBob } = rig(t);
   const run = (/** @type {any} */ i, caller = "module:vyred") => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", ...i }, { caller }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
