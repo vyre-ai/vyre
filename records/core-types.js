@@ -128,6 +128,20 @@ export const ORGANIZATION = {
   views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "ref", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
+/** How two records relate: any record to any other (a person to a person, a person to a company, a deal to a project). `from_record` and `to_record` hold record addresses (not `from` and `to`: reserved words in a database); `kind` reads from `from` to `to` ("from is a Parent of to"). The kinds are the choice's options: the Space edits that list. */
+export const RELATIONSHIP_KINDS = ["Spouse", "Parent", "Child", "Sibling", "Partner", "Colleague", "Employee", "Employer", "Referrer", "Referral", "Other"];
+export const RELATIONSHIP = {
+  name: "relationship", label: "Relationship", icon: "IconLink",
+  fields: [
+    text("from_record", "From", { required: true }),
+    text("to_record", "To", { required: true }),
+    choice("kind", "Kind", RELATIONSHIP_KINDS, { required: true }),
+    f("date", "since", "Since"),
+    f("date", "until", "Until"),
+    text("note", "Note"),
+  ],
+};
+
 export const POINT_KINDS = ["email", "phone"];
 
 /**
@@ -334,4 +348,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP].map((t) => Object.freeze(t)));

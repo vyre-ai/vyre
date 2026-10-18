@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(records): relationships. A core `relationship` type (from_record, to_record, kind, since, until, note) relates any record to any other; records.relationship.add and .list (both directions in one list), .kinds and .kinds.set (the kinds are the options of the type's kind choice, so a Space edits the list).
 - feat(records): pipelines for any type. records.pipeline.set takes a plain stage list (a stage can require fields, a lost stage requires a reason) and writes the type's stages and entry conditions; records.move moves a record and answers `needs: [fields]`, writing nothing, when the stage's required fields are empty.
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
 - perf(records): the store asks Twenty for one throwaway list as soon as Records is ready, so the first list a person opens is not the cold one (about 316 ms against 41 ms warm in the perf run).
