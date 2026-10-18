@@ -257,7 +257,7 @@ test("(c) a send in the Flow's own failure path, or in a lane of a parallel step
   assert.deepEqual(sent, []);
   // 2. a lane of a parallel step: the lane is a run of its own
   w.clock.t += 1000;
-  const f2 = await install(w, { ...flowOf([fn("a"), { id: "p", kind: "parallel", steps: [{ id: "l1", kind: "branch", steps: [mail("laneMail")] }] }, fn("c")]), name: "lanes", trigger: { on: "event", event: "lane.go" } });
+  const f2 = await install(w, { ...flowOf([fn("a"), { id: "p", kind: "parallel", steps: [{ id: "l1", kind: "branch", steps: [mail("laneMail")] }, { id: "l2", kind: "branch", steps: [fn("laneFn")] }] }, fn("c")]), name: "lanes", trigger: { on: "event", event: "lane.go" } });
   w.kernel.inbound("lane.go", { n: 1 }); await settle(w);
   const parent = (await w.runner.listRuns({ flow: f2.id }))[0];
   const p = await w.store.getRun(parent.id);
@@ -297,7 +297,7 @@ test("flows.step.test reads a past run only through a named Flow's own run, and 
   const sb = sandbox();
   const w = await world({ ports: { sandbox: sb.port } });
   const { SPACE } = await import("./testing/fixtures.js");
-  const mailTo = { id: "mail", kind: "call", action: "email.draft", resource: `vyre://${SPACE}/mail/*`, input: { to: { expr: "steps.a.n" } } };
+  const mailTo = { id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: { expr: "steps.a.n" } } };
   const f = await install(w, flowOf([fn("a"), mailTo]));
   const run = await fire(w);
   const t = toolsOf(w).tools["flows.step.test"];

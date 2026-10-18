@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(flows): an expression's depth limit counts real nesting (a call in a call, a bracket in a bracket), not the grammar's precedence levels, so `text(coalesce(steps.a.b, "x"))` inside a sum parses (the old count allowed two levels of call); flows.step.test shows a call step's `input` as what it is given (the action and resource are in the effects); the editor-backend tests use two lanes for a parallel step and an action the test world grants.
 - refactor(modules): the registry's input check (checkInput) moves to core/modules/check-input.js and is re-exported from core/modules/index.js, so index.js is under its size cap again (2007 lines). No change in behaviour.
 
 - fix(golden): flows.step.test has its line in FLOWS_NOTES (scripts/gen-allow.mjs), so the allow list can be generated again.
