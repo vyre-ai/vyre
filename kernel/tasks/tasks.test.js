@@ -980,3 +980,22 @@ test("a resubmitted task drops the old review, and the changes note is text the 
   assert.equal(again.review, undefined, "no stale result on the task");
   assert.equal((await r.tasks.get(owner(), t.id)).review_note, undefined);
 });
+
+test("an approval after a review is bound to the review: a proof made without its hash, or with another, is refused", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask({ checker: actor("person", ALICE), reviewer: actor("person", BOB) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  const n = await r.tasks.review(bob(), t.id, { result: "pass", checklist: [{ skill: "s1", item: "tone", ok: true }], note: "reads well" });
+  const card = await r.tasks.card(alice(), t.id);
+  assert.equal(card.review.result, "pass");
+  assert.equal(card.review.type, "person");
+  assert.ok(card.review_hash, "the card carries the hash the proof must cover");
+  const sign = (extra) => r.sign(alice(), ALICE, "task.decide", { task: t.id, payload_hash: n.payload.payload_hash, decision: n.payload.decision, ...extra });
+  // a proof over the payload alone (what an approval without the review would sign) is refused
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({}) }), { code: "needs_presence" });
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({ review_hash: "0".repeat(64) }) }), { code: "needs_presence" });
+  const done = await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: sign({ review_hash: card.review_hash }) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, 1);
+});
