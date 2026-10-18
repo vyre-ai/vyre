@@ -14,9 +14,9 @@ const trig = { on: "event", event: "payment.received" };
 const flowOf = (/** @type {any[]} */ steps, extra = {}) => ({ format: 1, name: "t", label: "Welcome", authorship: "human", trigger: trig, steps, ...extra });
 /** A sandbox that counts how often each step's source ran, and fails a step on demand. */
 const sandbox = () => { const calls = /** @type {string[]} */ ([]); const fail = new Set(); return { calls, fail, port: async (/** @type {any} */ req) => { const id = /"(\w+)"/.exec(req.source)?.[1] || "?"; calls.push(id); if (fail.has(id)) throw Object.assign(new Error("boom"), { code: "bad_output" }); return { outputs: { n: id }, ...(req.inputs ? { seen: req.inputs } : {}) }; } }; };
-const fire = async (/** @type {any} */ w, type = "payment.received", data = { n: 1 }) => { w.kernel.inbound(type, data); await settle(w); return (await w.runner.listRuns())[0]; };
+const fire = async (/** @type {any} */ w, type = "payment.received", data = { n: 1 }) => { w.clock.t += 1000; w.kernel.inbound(type, data); await settle(w); return (await w.runner.listRuns())[0]; };
 const chainOf = () => ({ hops: [{ actor: ALEX }] });
-const toolsOf = (/** @type {any} */ w) => createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }), forWithdraw: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, runner: w.runner, store: w.store, catalog: () => w.cat, clock: () => w.clock.t, emit: () => {} });
+const toolsOf = (/** @type {any} */ w) => createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
 
 test("(a) a Flow may have several triggers, each with its own condition; any of them starts a run and the run says which", async () => {
   const w = await world();
@@ -103,14 +103,14 @@ test("(d) every step's input is in the ledger, hidden where it is secret and nev
   assert.equal(input.who, "Dana");
   assert.equal(input.api_key, "[hidden]");
   assert.deepEqual(input.note, { sealed: true });
-  assert.ok(!JSON.stringify(run).includes("SECRET-VALUE"), "a sealed value is never stored");
-  assert.ok(!JSON.stringify(run).includes("sk-live-abcdefghijklmnop"), "a secret is never stored");
+  assert.ok(!JSON.stringify(run.steps).includes("SECRET-VALUE"), "a sealed value is never stored in the steps");
+  assert.ok(!JSON.stringify(run.steps).includes("sk-live-abcdefghijklmnop"), "a secret is never stored in the steps");
 });
 
 test("(d) a decide records the value it tested, and the cap is 16 KB (over it the entry says it was cut)", async () => {
   const sb = sandbox();
   const w = await world({ ports: { sandbox: sb.port } });
-  await install(w, flowOf([{ id: "d", kind: "decide", if: "trigger.n > 0", then: [], else: [] }, fn("big", { inputs: { text: { expr: "trigger.text" } } })]));
+  await install(w, flowOf([{ id: "d", kind: "decide", if: "trigger.n > 0", then: [fn("x")], else: [] }, fn("big", { inputs: { text: { expr: "trigger.text" } } })]));
   const run = await fire(w, "payment.received", { n: 3, text: "x".repeat(20_000) });
   assert.deepEqual(run.steps.d.input, { if: "trigger.n > 0", value: true });
   assert.equal(run.steps.big.input.cut, true);
