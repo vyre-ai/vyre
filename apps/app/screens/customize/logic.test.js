@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KINDS, TEMPLATES, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, templateBlurb, typeLine } from "./logic.js";
+import { KINDS, TEMPLATES, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, kitStarters, templateBlurb, typeLine } from "./logic.js";
 
 const matter = { id: "matter", label: "Matter", plural: "Matters", spaces: ["juniper"], work: true, kit: "Estate planning matter", fields: [{ key: "title", label: "Title", kind: "text", required: true }], stages: ["Intake", "Drafting", "Closed"] };
 
@@ -80,4 +80,13 @@ test("every new type starts with its first field and an ID after it; Blank is a 
   assert.deepEqual(deal.fields.slice(0, 3).map((f) => f.key), ["title", "ref", "contact"], "after the first field, before the rest");
   assert.equal(templateBlurb("deal"), "Fields: Title, Contact, Value and Close date. Stages: Lead, Meeting, Proposal, Won and Lost.", "the blurb does not list the ID");
   assert.equal(buildType("deal", "Deal", false, "mine").fields.filter((f) => f.key === "ref").length, 1, "one ID, not two");
+});
+
+test("Kits on offer become starting points that name the types they add; an installed one is left out", () => {
+  const lib = [{ id: "base", name: "Base", description: "People, companies and tasks.", adds: { types: ["contact", "organization"] } }, { id: "law-firm", adds: { types: ["matter"] } }, { id: "empty" }];
+  const s = kitStarters(lib, ["base"]);
+  assert.deepEqual(s.map((x) => x.id), ["kit:law-firm", "kit:empty"]);
+  assert.deepEqual(s[0], { id: "kit:law-firm", label: "law-firm", blurb: "Adds matter.", fields: ["Matter"], from: "law-firm" });
+  assert.equal(s[1].blurb, "A ready-made set.");
+  assert.equal(kitStarters(lib)[0].blurb, "People, companies and tasks.");
 });

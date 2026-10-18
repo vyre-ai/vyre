@@ -5,6 +5,8 @@ import { RecordScreen } from "./RecordScreen";
 import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
+import { AddTypeSheet } from "../customize/AddTypeSheet";
+import { useKernelTypes } from "../customize/kernel-types";
 import { useEffectiveList } from "./views-actions";
 import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
@@ -40,6 +42,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
+  const [addingType, setAddingType] = useState(false);
+  const createType = useKernelTypes((k) => k.create);
+  const settingUp = Object.keys(useKernelTypes((k) => k.busy)).length;
   const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<any[]>([]);
@@ -65,6 +70,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       .then((r) => { if (r.error) console.warn(`records: the IDs of ${type} were not filled in (${r.error.code}: ${r.error.message})`); else reload(); })   // nothing is shown to the person: the next visit asks again
       .catch((e) => console.warn(`records: the IDs of ${type} were not filled in (${e instanceof Error ? e.message : String(e)})`));
   }, [world, type, canShare, reload]);
+  // A new type finishes setting up in the background: when the last one is done, the tabs read it in.
+  const wasSettingUp = useRef(0);
+  useEffect(() => { if (wasSettingUp.current > 0 && settingUp === 0) reload(); wasSettingUp.current = settingUp; }, [settingUp, reload]);
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
@@ -128,6 +136,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
             <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               { label: "New view", onPress: () => setMaking(true) },
+              { label: "New type", onPress: () => setAddingType(true) },
               { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
               { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
             ]} />
@@ -136,6 +145,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
+        <Button kind="ghost" size={phone ? "md" : "sm"} icon="plus" label="New type" onPress={() => setAddingType(true)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
           </>
@@ -158,6 +168,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
+      <AddTypeSheet open={addingType} onClose={() => setAddingType(false)} space={space} taken={world.types.map((t) => t.name)} onAdd={(t, plural) => { createType(t); showToast(`${plural} is being set up. This can take a minute.`); }} />
       <ImportSheet open={importing} onClose={() => setImporting(false)} def={def} noun={vd.plural.toLowerCase()} onDone={reload} />
       <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />

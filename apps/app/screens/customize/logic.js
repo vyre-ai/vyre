@@ -45,6 +45,14 @@ export function templateBlurb(/** @type {string} */ id) {
   return `Fields: ${list(f)}.${t.stages.length ? ` Stages: ${list(t.stages)}.` : ""}`;
 }
 
+/** The Kits the box offers as starting points in Add a type: each adds types, so its row lists them by name (a Kit installs through a yes in Now, nothing is made here). */
+export function kitStarters(/** @type {{ id: string, name?: string, description?: string, adds?: { types?: unknown[] } }[]} */ lib, /** @type {string[]} */ installed = []) {
+  return lib.filter((k) => !installed.includes(k.id)).map((k) => {
+    const types = (k.adds?.types ?? []).map(String);
+    return { id: `kit:${k.id}`, label: k.name || k.id, blurb: k.description || (types.length ? `Adds ${list(types)}.` : "A ready-made set."), fields: types.map((t) => t[0].toUpperCase() + t.slice(1)), from: k.id };
+  });
+}
+
 export const templateName = (/** @type {string} */ id) => TPL[id]?.name ?? "Item";
 
 /** "Order" > "Orders", "Property" > "Properties", "Case" > "Cases". Good enough for a default the person can change. */
