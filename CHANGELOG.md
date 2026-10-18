@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2 (join by address)
 
+- fix(join): Approve made the invite for the Space's display name ("proof's Cloud") and the directory could not verify it; it now uses the Space's address label.
+
 - test(join): the first-run proof gives its browsers a software yes (apps/app/src/real/proof-yes.ts) so the group walk can approve an ask and join: the page's own person key signs the proof body a phone would sign. It exists only in a build made with EXPO_PUBLIC_VYRE_PROOF_YES=1 (the first-run proof export); in every other build it is compiled out, the app workflow fails if a release web export holds its marker or flag name, and the proof export must show the marker. A development-kind server takes the software key; a release-kind one refuses it (kernel/seal/seal.test.js SW-2). A real browser yes (a passkey) is in team/BACKLOG.md.
 
 - fix(join): the 15-second refresh of the asks cleared the reason an Approve or Decline had just failed, so a refused approval showed nothing. The refresh now keeps its own message apart.
