@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, EmptyState, ErrorState, LoadingState, Row, StepCard, Tabs, Text, showToast, useWork } from "@vyre/ui";
 import { SlotsSheet } from "./SlotsSheet";
-import { setSlot } from "./edit";
+import { setSlot, setTask } from "./edit";
 import { Frame } from "../places/Frame";
 import { StartSheet, type StartExtras } from "../projects/StartSheet";
 import { useMembers } from "../spaces/state";
@@ -100,7 +100,7 @@ export default function PlaybookScreen() {
                         {t.brief ? <Text size="caption" tone="muted">{t.brief}</Text> : null}
                         <Text size="caption" tone="label">{[`Assigned: ${t.doer}`, t.reviewer ? `Reviewer: ${t.reviewer}` : "", t.approver ? `Approver: ${t.approver}` : "", t.optional ? "Optional" : ""].filter(Boolean).join(" · ")}</Text>
                         {t.late ? <Text size="caption" tone="label">{t.late}</Text> : null}
-                        {mayMake ? <View className="self-start"><Button kind="ghost" size="sm" label="Review and approval" onPress={() => setSlotsAt({ si: c.index, ti: n })} /></View> : null}
+                        {mayMake ? <View className="self-start"><Button kind="ghost" size="sm" label="Who does it, reviews and approves" onPress={() => setSlotsAt({ si: c.index, ti: n })} /></View> : null}
                       </View>
                     ))}
                     {c.flows.map((f) => <View key={`${f.flow}:${f.when}`} className="flex-row items-center gap-s2"><Chip>Flow</Chip><Text className="min-w-0 flex-1">{`Turns on ${f.when === "start" ? "when the project starts" : "here"}: ${f.label}${f.note ? `. ${f.note}` : ""}`}</Text></View>)}
@@ -142,7 +142,7 @@ export default function PlaybookScreen() {
         </>
       ) : null}
       {body ? <SlotsSheet open={!!slotsAt} task={slotsAt ? body.stages[slotsAt.si]?.tasks?.[slotsAt.ti] ?? null : null} body={body} people={people} agents={agents} busy={busy === "slots"} onClose={() => setSlotsAt(null)}
-        onSave={(r, a) => slotsAt && void act("slots", async () => { let next = setSlot(body, slotsAt.si, slotsAt.ti, "reviewer", r); next = setSlot(next, slotsAt.si, slotsAt.ti, "approver", a); const made = await templates.define(next, template, "changed who reviews and approves a to-do"); setSlotsAt(null); showToast(`Saved as draft version ${made.version}. Go live when it is ready.`); load(); })} /> : null}
+        onSave={(d, r, a) => slotsAt && void act("slots", async () => { let next = setTask(body, slotsAt.si, slotsAt.ti, { doer: d }); next = setSlot(next, slotsAt.si, slotsAt.ti, "reviewer", r); next = setSlot(next, slotsAt.si, slotsAt.ti, "approver", a); const made = await templates.define(next, template, "changed who does, reviews and approves a to-do"); setSlotsAt(null); showToast(`Saved as draft version ${made.version}. Go live when it is ready.`); load(); })} /> : null}
       <StartSheet noun={noun} playbook={body?.name} open={startOpen} busy={starting} onClose={() => setStartOpen(false)} onStart={(n, x) => void start(n, x)} />
     </Frame>
   );

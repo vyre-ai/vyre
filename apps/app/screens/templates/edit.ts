@@ -166,6 +166,13 @@ const spanWords = (ms: number): string => { const d = ms / 86_400_000; if (Numbe
 export function lateWords(t: Task, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
   return [["Reviewer", t.reviewer], ["Approver", approverOf(t)]].flatMap(([label, s]) => { const slot = s as Slot | null; return slot && slot.due !== undefined && slot.escalate_to ? [`${label} passes to ${assigneeWords(slot.escalate_to, people, agents).replace(/^The /, "the ")} after ${spanWords(slot.due)}`] : []; }).join(". ");
 }
+/** Who a to-do can be assigned to: a role, the project lead, a person, an agent, or whoever on a team takes it first (`group:<role>`: the to-do belongs to the team until one member starts it). */
+export const doerPickChoices = (b: Body, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): [string, string][] => {
+  const base = assigneeChoices(b, people, agents);
+  const groups = [...(b.roles || []).map((r) => r.role), ...((b.roles || []).some((r) => r.role === "owner") ? [] : ["owner"])].map((r): [string, string] => [`group:${r}`, `Whoever on the ${r} team takes it first`]);
+  const i = base.findIndex(([v]) => v === "lead");
+  return [...base.slice(0, i + 1), ...groups, ...base.slice(i + 1)];
+};
 export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
 /** The doer in words, even when the person or agent is not in the lists. */
 export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
