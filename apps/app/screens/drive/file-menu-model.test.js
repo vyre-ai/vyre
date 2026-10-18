@@ -2,7 +2,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { actOn, boxSelect, caps, copyName, fileMenu } from "./file-menu-model.js";
+import { actOn, boxSelect, caps, copyName, editCalls, fileMenu } from "./file-menu-model.js";
 
 const ids = (/** @type {any[][]} */ g) => g.map((x) => x.map((i) => i.id));
 
@@ -49,4 +49,17 @@ test("a box dragged on empty space picks the rows it touches, whichever corner i
   assert.deepEqual(boxSelect({ x1: 10, y1: 30, x2: 50, y2: 50 }, rects), ["a", "b"]);
   assert.deepEqual(boxSelect({ x1: 50, y1: 100, x2: 10, y2: 60 }, rects), ["b", "c"]);
   assert.deepEqual(boxSelect({ x1: 200, y1: 0, x2: 300, y2: 50 }, rects), []);
+});
+
+test("a move, a rename and a delete are the right tool for the source, with the call that undoes them", () => {
+  const sp = { root: "space", path: "Clients/A/brief.pdf", name: "brief.pdf" };
+  assert.deepEqual(editCalls("move", sp, "/Archive/"), { call: { tool: "files.drive.space.move", input: { from: "Clients/A/brief.pdf", to: "Archive/brief.pdf" } }, undo: { tool: "files.drive.space.move", input: { from: "Archive/brief.pdf", to: "Clients/A/brief.pdf" } } });
+  assert.equal(editCalls("move", sp, "")?.call.input.to, "brief.pdf", "an empty folder is the top");
+  assert.deepEqual(editCalls("rename", sp, "final.pdf"), { call: { tool: "files.drive.space.rename", input: { path: "Clients/A/brief.pdf", name: "final.pdf" } }, undo: { tool: "files.drive.space.rename", input: { path: "Clients/A/final.pdf", name: "brief.pdf" } } });
+  assert.deepEqual(editCalls("delete", sp, ""), { call: { tool: "files.drive.space.delete", input: { path: "Clients/A/brief.pdf" } }, undo: null });
+  const ln = { root: "linked", link: "l1", path: "a/x.txt", name: "x.txt" };
+  assert.deepEqual(editCalls("move", ln, "b"), { call: { tool: "files.linked.rename", input: { id: "l1", path: "a/x.txt", to: "b/x.txt" } }, undo: { tool: "files.linked.rename", input: { id: "l1", path: "b/x.txt", to: "a/x.txt" } } });
+  assert.deepEqual(editCalls("delete", ln, "")?.call, { tool: "files.linked.delete", input: { id: "l1", path: "a/x.txt" } });
+  assert.equal(editCalls("move", { root: "box", path: "x", name: "x" }, "y"), null, "a box share is read-only");
+  assert.equal(editCalls("delete", { root: "linked", path: "x", name: "x" }, ""), null, "a linked row with no link id does nothing");
 });

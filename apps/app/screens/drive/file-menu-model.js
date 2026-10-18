@@ -58,3 +58,27 @@ export function boxSelect(box, rects) {
   const l = Math.min(box.x1, box.x2), r = Math.max(box.x1, box.x2), t = Math.min(box.y1, box.y2), b = Math.max(box.y1, box.y2);
   return Object.entries(rects).filter(([, q]) => q.left < r && q.right > l && q.top < b && q.bottom > t).map(([k]) => k);
 }
+
+/**
+ * The calls one move, rename or delete makes for a row, and the calls that undo it. `kind` is move (into a folder), rename (a new last part) or delete. Space rows use files.drive.space.*; linked rows use
+ * the linked-folder tools. A delete of a Space row is undone by putting the version before the delete back; a linked delete is the source's own trash and has no undo here.
+ * @param {"move" | "rename" | "delete"} kind @param {{ root: string, path: string, name: string, link?: string }} r @param {string} to the folder (move) or the new name (rename)
+ * @returns {{ call: { tool: string, input: Record<string, unknown> }, undo: { tool: string, input: Record<string, unknown> } | null } | null}
+ */
+export function editCalls(kind, r, to) {
+  const clean = to.trim().replace(/^\/+|\/+$/g, "");
+  const up = r.path.includes("/") ? r.path.slice(0, r.path.lastIndexOf("/") + 1) : "";
+  if (r.root === "space") {
+    if (kind === "delete") return { call: { tool: "files.drive.space.delete", input: { path: r.path } }, undo: null };
+    if (kind === "rename") return { call: { tool: "files.drive.space.rename", input: { path: r.path, name: clean } }, undo: { tool: "files.drive.space.rename", input: { path: `${up}${clean}`, name: r.name } } };
+    const dest = clean ? `${clean}/${r.name}` : r.name;
+    return { call: { tool: "files.drive.space.move", input: { from: r.path, to: dest } }, undo: { tool: "files.drive.space.move", input: { from: dest, to: r.path } } };
+  }
+  if (r.root === "linked" && r.link) {
+    if (kind === "delete") return { call: { tool: "files.linked.delete", input: { id: r.link, path: r.path } }, undo: null };
+    if (kind === "rename") return { call: { tool: "files.linked.rename", input: { id: r.link, path: r.path, to: `${up}${clean}` } }, undo: { tool: "files.linked.rename", input: { id: r.link, path: `${up}${clean}`, to: r.path } } };
+    const dest = clean ? `${clean}/${r.name}` : r.name;
+    return { call: { tool: "files.linked.rename", input: { id: r.link, path: r.path, to: dest } }, undo: { tool: "files.linked.rename", input: { id: r.link, path: dest, to: r.path } } };
+  }
+  return null;
+}
