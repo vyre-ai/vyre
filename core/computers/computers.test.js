@@ -112,7 +112,7 @@ test("computers: without the agents module, a checkout is refused with a readabl
 test("computers: an agent's hands get their own computer; only the assistant may name another's", async t => {
   const s = await boot(t);
   const own = await s.kit("computers.checkout", {});
-  assert.deepEqual(own.data, { agent: "kit", screen: 1, thread: null });
+  assert.deepEqual(own.data, { agent: "kit", screen: 1, thread: null, model: "desktop" });
   assert.match((await s.kit("computers.checkout", { agent: "pax" })).error.message, /kit can only use its own computer, not pax's/);
   assert.match((await s.kit("computers.pause", { agent: "pax" })).error.message, /own computer/);
   assert.equal((await s.juno("computers.get", { agent: "kit" })).data.screen, 1);
