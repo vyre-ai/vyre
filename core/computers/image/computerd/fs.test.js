@@ -240,3 +240,34 @@ test("fs: Chrome downloads are listed read-only under home/Downloads (Glass File
   const denied = await fetch(`${url}/fs/write?path=Downloads/x&size=1&overwrite=0`, { method: "PUT", body: "x" });
   assert.equal(denied.status, 403);
 });
+
+test("fs: downloads in the browser's own folder (outside the home) are listed and read as home/Downloads, read-only, and nothing leads out of them", async t => {
+  const homeDir = home(t);
+  const dl = fs.mkdtempSync(path.join(path.dirname(homeDir), "dl-"));
+  t.after(() => fs.rmSync(dl, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dl, "report.pdf"), "%PDF-1.4");
+  fs.symlinkSync("/etc/passwd", path.join(dl, "out"));
+  const prev = process.env.AGENT_DOWNLOADS;
+  process.env.AGENT_DOWNLOADS = dl;
+  t.after(() => { if (prev === undefined) delete process.env.AGENT_DOWNLOADS; else process.env.AGENT_DOWNLOADS = prev; });
+  const handle = createFs({ root: homeDir });
+  const server = http.createServer((req, res) => { handle(req, res, new URL(req.url || "/", "http://computerd")); });
+  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); }));
+  const url = `http://127.0.0.1:${/** @type {net.AddressInfo} */ (server.address()).port}`;
+  const top = await fetch(`${url}/fs/list?path=`).then(r => r.json());
+  assert.equal(top.entries.find((/** @type {any} */ e) => e.name === "Downloads").kind, "dir", "the home lists Downloads");
+  const list = await fetch(`${url}/fs/list?path=Downloads`).then(r => r.json());
+  assert.equal(list.entries.find((/** @type {any} */ e) => e.name === "report.pdf").kind, "file");
+  assert.equal(await fetch(`${url}/fs/read?path=Downloads/report.pdf`).then(r => r.text()), "%PDF-1.4");
+  const viaLink = await fetch(`${url}/fs/read?path=Downloads/out`);
+  assert.notEqual(viaLink.status, 200, "a link inside the folder is not followed out of it");
+  const put = await fetch(`${url}/fs/write?path=Downloads/x&size=1&overwrite=0`, { method: "PUT", body: "x" });
+  assert.equal(put.status, 403, "write");
+  for (const [route, body] of [["trash", { path: "Downloads/report.pdf" }], ["mkdir", { path: "Downloads/d" }], ["move", { from: "Downloads/report.pdf", to: "a.pdf" }], ["move", { from: "a", to: "Downloads/a" }]]) {
+    const r = await fetch(`${url}/fs/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal(r.status, 403, `${route} ${JSON.stringify(body)}`);
+  }
+  assert.equal(fs.existsSync(path.join(dl, "report.pdf")), true);
+  assert.equal(fs.existsSync(path.join(dl, "x")), false);
+});

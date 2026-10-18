@@ -112,7 +112,7 @@ test("computers: without the agents module, a checkout is refused with a readabl
 test("computers: an agent's hands get their own computer; only the assistant may name another's", async t => {
   const s = await boot(t);
   const own = await s.kit("computers.checkout", {});
-  assert.deepEqual(own.data, { agent: "kit", screen: 1, thread: null });
+  assert.deepEqual(own.data, { agent: "kit", screen: 1, thread: null, model: "desktop" });
   assert.match((await s.kit("computers.checkout", { agent: "pax" })).error.message, /kit can only use its own computer, not pax's/);
   assert.match((await s.kit("computers.pause", { agent: "pax" })).error.message, /own computer/);
   assert.equal((await s.juno("computers.get", { agent: "kit" })).data.screen, 1);
@@ -524,4 +524,25 @@ test("computers: the person renames an agent's computer, it shows in the list an
   assert.deepEqual(seen, [{ kind: "computer", id: "kit", name: "Kit's desk" }]);
   assert.equal((await s.cli("computers.rename", { computer: "kit", name: "" })).data.name, null, "an empty name goes back to the default");
   assert.ok((await s.cli("computers.rename", { computer: "Bad Name", name: "x" })).error, "not an agent name");
+});
+
+test("computers: with the default config an agent's endpoint, checkout and helper never create or join browser-shared, and agentd is not used (fail closed until 0.6.2)", async t => {
+  // no browse and no agentUsers: the shipped default
+  const s = await boot(t, { computers: { driver: "fake", sweepMs: 0, waitMs: 100 } });
+  const { browseMode } = await import("../../lib/browser-access.js");
+  assert.equal(browseMode(undefined), "desktop");
+  assert.equal(browseMode({}), "desktop");
+  assert.equal(browseMode({ docker: "http://proxy" }), "desktop");
+  assert.equal(browseMode({ browse: "something-else" }), "desktop");
+  assert.equal(browseMode({ browse: "browser" }), "browser", "only on purpose");
+  /** @type {string[]} */ const execs = [];
+  const drv = /** @type {any} */ (s.h.pool.driver);
+  if (drv) drv.execIn = async (/** @type {any} */ ...a) => { execs.push(String(a[1] || a[0])); throw new Error("agentd must not be used"); };
+  const e = await s.module("computers.endpoint", { agent: "kit", thread: s.kitThread });
+  assert.equal(e.data.helper.url, "http://fake-kit:7000", "the agent's own computer");
+  assert.equal((await s.module("computers.helper", { agent: "kit" })).data.url, "http://fake-kit:7000");
+  const list = (await s.cli("computers.list", {})).data;
+  assert.ok(!JSON.stringify(list).includes("browser-shared"), "no shared browser exists: " + JSON.stringify(list).slice(0, 200));
+  assert.ok(!s.h.pool.row("browser-shared"), "no browser-shared row");
+  assert.deepEqual(execs, [], "agentd was never reached");
 });

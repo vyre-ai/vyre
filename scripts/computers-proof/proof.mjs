@@ -50,7 +50,8 @@ fs.writeFileSync(path.join(VHOME, "config.json"), JSON.stringify({
   network: { tailscale: false },
   // Off on purpose: nothing here dials out. The computers, agents, chrome and desktop hands are what is under test.
   modules: { disable: ["names", "network", "hooks", "apps", "relay", "releases", "link", "sync", "push", "github", "google", "mail", "import", "sessions", "chat", "sight"] },
-  computers: { docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
+  // browse: "desktop" is the per-agent desktop mode (one container per agent, a screen to watch and take over): this proof checks that mode. The default mode, the space's one computer with a Linux user per agent, is agents.mjs.
+  computers: { browse: "desktop", docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
     cpus: 2, memoryMb: 2048, screens: 2, sweepMs: 0, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, handbackIdleMin: 15 },
 }, null, 2));
 
@@ -83,6 +84,9 @@ try {
   check(!r.error, "4a computers.checkout kit", r.error ? r.error : { state: r.data.state, screen: r.data.screen, host: r.data.host ? "(container address)" : null });
   const ps = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Names}}|{{.Status}}|{{.Image}}"]);
   check(ps.startsWith(CONTAINER + "|Up"), "4a docker ps shows the container up", ps);
+  // With the default config the agent has its own computer and nothing is shared: no browser-shared container exists (the shared browser is off until 0.6.2).
+  const shared = shOk(["ps", "-a", "--filter", `name=${PREFIX}-computer-browser-shared`, "--format", "{{.Names}}"]);
+  check(shared === "", `4a docker ps shows no ${PREFIX}-computer-browser-shared`, shared || "(none)");
   const labels = JSON.parse(sh(["inspect", "-f", "{{json .Config.Labels}}", CONTAINER]));
   check(labels[`${PREFIX}.managed`] === "true" && labels[`${PREFIX}.computer`] === AGENT && labels["run.vyre"] === "1", "4a labels", labels);
   const hc = JSON.parse(sh(["inspect", "-f", "{{json .HostConfig}}", CONTAINER]));
@@ -272,7 +276,7 @@ try {
   console.log((iso.stdout || "").split("\n").filter(l => /^(not )?ok /.test(l)).map(l => "  " + l.slice(0, 170)).join("\n"));
   check(iso.status === 0 && line("fail") === "0" && line("skipped") === "0", "3 isolation.test.js on the pool's container", { pass: line("pass"), fail: line("fail"), skipped: line("skipped") });
   const bc = spawnSync("node", ["scripts/computers-proof/browser-checks.mjs", ep.data.url, ep.data.token, CONTAINER], { cwd: here, env, encoding: "utf8", timeout: 240_000 });
-  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
+  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL|KNOWN-FAIL|KNOWN-PASS|known failures|---|total|[-d][rwxs-]{9})/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
 
   // ---- 4g. one computer cannot reach another's ports (the matrix's J7 step 7.4) ----------------
@@ -368,6 +372,7 @@ PY`).split("\n").pop();
   exitCode = 1;
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
   console.log("--- last vyred log lines\n" + logs.slice(-15).join("\n"));
+  console.log("--- every csproof container\n" + shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}|{{.Status}}"]));
   // What the computer itself says, for a failure seen on a runner that cannot be reached by hand.
   console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-6000));
   console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -30"]).slice(-3000));

@@ -292,21 +292,26 @@ async function readJson(req) {
  */
 export function createFs(opts = {}) {
   const root = opts.root || process.env.COMPUTERD_FS_ROOT || "/home/agent";
-  // Chrome saves into $AGENT_HOME/Downloads (AGENT_DOWNLOADS); Glass Files lists it under home/Downloads.
+  // Chrome saves into AGENT_DOWNLOADS, a folder the BROWSER uid owns (group: the agent's, setgid, 2750), outside every folder the agent owns, so the agent can read a download and cannot place or swap
+  // anything in it (e2e review MEDIUM 3: a Downloads folder inside the agent's home could be replaced with a symlink into the browser's profile, and Chrome would write through it).
+  // Glass Files shows it as home/Downloads, read-only: list and read only, and the folder is its own root, so no path (and no link) leads out of it.
+  const rootNoSlash = root.replace(/\/+$/, "");
   const downloadsDir = (process.env.AGENT_DOWNLOADS || "").replace(/\/+$/, "");
-  const homeDownloads = downloadsDir && downloadsDir.startsWith(root.replace(/\/+$/, ""))
-    ? downloadsDir.slice(root.replace(/\/+$/, "").length).replace(/^\//, "").split("/")
+  const downloadsOutside = Boolean(downloadsDir) && !downloadsDir.startsWith(rootNoSlash + "/");
+  const homeDownloads = downloadsDir && !downloadsOutside
+    ? downloadsDir.slice(rootNoSlash.length).replace(/^\//, "").split("/")
     : ["Downloads"];
 
   /** @param {string} rel @returns {{ root: string, segments: string[] }} */
   function pickRoot(rel) {
     const segments = checkRel(rel);
+    if (downloadsOutside && segments[0] === "Downloads") return { root: downloadsDir, segments: Object.assign(segments.slice(1), { downloads: true }) };
     return { root, segments };
   }
 
   const innerRel = (segments) => (segments.length ? segments.join("/") : "");
 
-  const isDownloadsPath = (segments) => segments.length >= homeDownloads.length
+  const isDownloadsPath = (segments) => /** @type {any} */ (segments).downloads === true || segments.length >= homeDownloads.length
     && homeDownloads.every((s, i) => segments[i] === s);
 
   const refuseDownloadsWrite = (segments) => {
@@ -363,6 +368,7 @@ export function createFs(opts = {}) {
           const kind = kindOf(st);
           entries.push({ name: d.name, kind, size: kind === "file" ? st.size : null, mtime: st.mtimeMs });
         }
+        if (downloadsOutside && picked.root === root && segments.length === 0 && !entries.some(e => e.name === "Downloads")) entries.push({ name: "Downloads", kind: "dir", size: null, mtime: null });
         entries.sort((a, b) => Number(b.kind === "dir" || b.to === "dir") - Number(a.kind === "dir" || a.to === "dir") || a.name.localeCompare(b.name));
         return { entries, truncated, root: picked.fsRoot };
       } finally { if (ownFd) fs.closeSync(dirFd); }

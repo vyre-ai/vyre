@@ -272,11 +272,13 @@ export default {
     // For Needs you: the plugin servers that wait for a key, one entry each with the variables not in place. Names and labels; never a value.
     ctx.tool("mcp.keys.waiting", {
       effect: "read",
-      description: "Plugin MCP servers waiting for a key: { servers: [{ name, plugin, level, waiting: [{ var, label }] }] }. For Needs you.",
+      internal: true,
+      description: "Plugin MCP servers waiting for a key: { servers: [{ name, plugin, level, waiting: [{ var, label }] }] }. Only the approvals queue asks, for Needs you.",
       input: obj({}),
-      callers: [...PEOPLE, "module"],
+      callers: ["module"],
       run: async (_input, meta) => {
-        refuseNonPerson(meta, "lists the servers that wait for a key");
+        // the person's Needs-you list is built by the approvals module; no agent, session or surface reads it directly
+        if (String(meta && meta.caller) !== "module:approvals") throw Object.assign(new Error("only the approvals queue lists the servers that wait for a key"), { code: "denied" });
         const servers = [];
         for (const r of hub.rows()) {
           const waiting = await hub.missingKeys(r);

@@ -24,8 +24,9 @@ const sh = (args, opts = {}) => execFileSync("docker", args, { encoding: "utf8",
 const shOk = args => { try { return sh(args, { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { return `ERR ${String(e.stdout || "").trim()} ${String(e.stderr || e.message).trim()}`.trim(); } };
 function check(ok, name, evidence) {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`);
-  if (!ok) throw new Error(`step failed: ${name}`);
+  if (!ok) { if (process.env.PROOF_CONTINUE === "1") { failedChecks.push(name); return; } throw new Error(`step failed: ${name}`); }
 }
+const failedChecks = [];
 setTimeout(() => { console.log("FAIL watchdog: the agent proof ran over 10 minutes\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-4000)); process.exit(3); }, 10 * 60_000).unref();
 
 const d = new DockerDriver({ url: PROXY, bearer: fs.readFileSync(BEARER, "utf8").trim(), labelPrefix: PREFIX, network: "csproof-net" });
@@ -43,9 +44,22 @@ const [A, B] = [U(0), U(1)];
 
 try {
   // agentd answers once the entrypoint has started it
-  let up = false;
-  for (let i = 0; i < 60 && !up; i++) { try { await ctl.createUser(A); up = true; } catch { await sleep(2000); } }
-  check(up, "agentd answers through the one allowed exec");
+  let up = false, lastErr = "";
+  for (let i = 0; i < 60 && !up; i++) { try { await ctl.createUser(A); up = true; } catch (e) { lastErr = String(e && e.message || e); await sleep(2000); } }
+  if (!up) {
+    console.log("agentd last error: " + lastErr);
+    console.log("--- processes in the computer\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -40"]));
+    console.log("--- agentd dir\n" + shOk(["exec", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/agentd /opt/agentd 2>&1 | head -40"]));
+    console.log("--- agentd status\n" + shOk(["exec", CONTAINER, "sh", "-c", "grep -E '^(Name|Uid|CapEff|CapBnd|NoNewPrivs)' /proc/$(pgrep -f agentd-main | head -1)/status 2>&1"]));
+    console.log("--- agentctl\n" + shOk(["exec", CONTAINER, "sh", "-c", "getent passwd agentctl; ls -la /opt/agentd/client; cat /opt/agentd/client"]));
+    console.log("--- container log (full)\n" + shOk(["logs", CONTAINER]).slice(-6000));
+    console.log("--- proxy log\n" + (() => { try { return fs.readFileSync(path.join(DIR, "run", "proxy.log"), "utf8").slice(-4000); } catch (e) { return String(e.message); } })());
+  }
+  check(up, "agentd answers through the one allowed exec", up ? undefined : lastErr);
+  // the process itself: agentctl's uid, no new privileges, and a bounding set of setuid and setgid only (the entrypoint cannot set securebits: that needs CAP_SETPCAP, which no computer has)
+  const apid = shOk(["exec", CONTAINER, "sh", "-c", "pgrep -u agentctl -f agentd-main | head -1"]);
+  const ast = shOk(["exec", CONTAINER, "grep", "-E", "^(Uid|CapEff|CapBnd|CapAmb|NoNewPrivs):", `/proc/${apid}/status`]);
+  check(/^Uid:\s*1004\b/m.test(ast) && /^NoNewPrivs:\s*1$/m.test(ast) && /^CapBnd:\s*0*c0$/m.test(ast) && /^CapAmb:\s*0*c0$/m.test(ast) && /^CapEff:\s*0*c0$/m.test(ast), "agentd runs as agentctl with no new privileges and only setuid and setgid in its bounding set", ast.replace(/\n/g, " | "));
   await ctl.createUser(B);
   for (const u of [A, B]) await ctl.startScreen(u);
   // vyred's address is pinned by computerd and written for the relay, as the pool does before it opens a screen
@@ -77,23 +91,48 @@ try {
   // Chrome takes a while to start; the holder's socket appears with it
   let a = null;
   for (let i = 0; i < 30 && !a; i++) { try { a = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
+  if (a === null) {
+    console.log("--- processes of agent A's screen\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -E 'agb2|ag2|Xvnc|fluxbox|chromium|agentd' | grep -v grep | cut -c1-220 | head -30"]));
+    console.log("--- agent A's browser folder\n" + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/browsers/agb21000 /var/lib/vyre/x/ag20000 2>&1 | head -30"]));
+    const PRE = "setpriv --reuid=21000 --regid=21000 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs --";
+    for (const [label, lim] of [["with the agentd limits (--as 3 GiB, 512 procs)", "prlimit --as=3221225472 --nproc=512 --nofile=4096 --fsize=4294967296"], ["without --as", "prlimit --nproc=512 --nofile=4096 --fsize=4294967296"]]) {
+      console.log(`--- agentd-chrome.py as agentd starts it, ${label} (10 s)\n` + shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", `timeout 10 ${PRE} ${lim} /usr/bin/nice -n 5 /usr/bin/env -i HOME=/var/lib/vyre/browsers/agb21000 PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 /usr/bin/python3 -I /opt/agentd/agentd-chrome.py 2>&1 | grep -v 'dbus\\|DBus' | head -12; echo "exit $?"; pgrep -u 21000 -c chromium`]));
+    }
+    console.log("--- id and limits of the browser uid\n" + shOk(["exec", "-u", "21000", CONTAINER, "sh", "-c", "id; ulimit -a | head -20; df -h /dev/shm | tail -1; ls -ld /var/lib/vyre/browsers/agb21000 /var/lib/vyre/browsers/agb21000/profile 2>&1"]));
+  }
   check(a !== null, "agent A's Chrome answers over its debugging pipe");
-  await a.send("Network.setCookie", { name: "proof_login", value: "signed-in-1", url: "https://example.com/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true });
-  const before = (await a.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => c.name);
+  // the link is the browser target, which has no Network domain: cookies are read and written through Storage
+  const cookiesOf = async c => (await c.send("Storage.getCookies", {})).cookies.filter(x => x.domain.replace(/^\./, "") === "example.com");
+  await a.send("Storage.setCookies", { cookies: [{ name: "proof_login", value: "signed-in-1", domain: "example.com", path: "/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true }] });
+  const before = (await cookiesOf(a)).map(c => c.name);
   check(before.includes("proof_login"), "a persistent cookie is set in A's Chrome", before);
   await a.close(); adapter.drop("a");
+  // Chrome commits cookies to disk in batches every 30 s (a login is that old by the time a screen has been idle for 5 minutes); a cookie set a second ago is not on disk yet, whatever the shutdown does.
+  await sleep(35_000);
+  // where the cookie lives on disk (printed for the log; the check is the cookie after waking)
+  const cookieDb = when => console.log(`--- cookie files ${when}\n` + shOk(["exec", "-u", "21000", CONTAINER, "python3", "-c",
+    "import sqlite3,glob,os\nfor f in glob.glob('/var/lib/vyre/browsers/agb21000/profile/**/Cookies', recursive=True):\n    print(f, os.path.getsize(f))\n    try:\n        c=sqlite3.connect('file:'+f+'?mode=ro', uri=True)\n        print(c.execute('select host_key,name,length(value),length(encrypted_value),expires_utc,is_persistent from cookies').fetchall())\n    except Exception as e:\n        print('sqlite', e)"]));
+  cookieDb("before sleeping");
+  // a login made in the last seconds before the computer sleeps: only a clean close of Chrome (Browser.close from the holder) writes it
+  adapter.drop("a");
+  const a3 = await connect("a");
+  await a3.send("Storage.setCookies", { cookies: [{ name: "proof_fresh", value: "just-now", domain: "example.com", path: "/", expires: Math.floor(Date.now() / 1000) + 86400, secure: true }] });
+  await a3.close(); adapter.drop("a");
 
   await ctl.stopScreen(A); await sleep(8000);   // Chrome ends on SIGTERM and writes its profile
   check(!/chromium/.test(shOk(["exec", CONTAINER, "sh", "-c", "ps -u 21000 -o args= || true"])), "A's Chrome is gone after sleep");
+  cookieDb("after sleeping");
   await ctl.startScreen(A);
   let a2 = null;
   for (let i = 0; i < 30 && !a2; i++) { try { a2 = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
   check(a2 !== null, "A's Chrome answers again after waking");
-  const after = (await a2.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => `${c.name}=${c.value}`);
+  const after = (await cookiesOf(a2)).map(c => `${c.name}=${c.value}`);
+  if (!after.includes("proof_login=signed-in-1")) { cookieDb("after waking"); console.log("all cookies: " + JSON.stringify((await a2.send("Storage.getCookies", {})).cookies.map(c => c.domain + " " + c.name))); }
   check(after.includes("proof_login=signed-in-1"), "the login survived the computer sleeping and waking", after);
+  check(after.includes("proof_fresh=just-now"), "a login made seconds before the computer slept survived too (Chrome closed cleanly and wrote its profile)", after);
 
   const b = await connect("b");
-  const bCookies = (await b.send("Network.getCookies", { urls: ["https://example.com/"] })).cookies.map(c => c.name);
+  const bCookies = (await cookiesOf(b)).map(c => c.name);
   check(!bCookies.includes("proof_login"), "agent B's Chrome does not have A's login", bCookies);
 
   // (3) strangers and the other agent
@@ -125,8 +164,11 @@ try {
   const vsock = shOk(["exec", "-u", "20000", CONTAINER, "python3", "-c", "import socket;s=socket.socket(socket.AF_UNIX);s.connect('/var/lib/vyre/browsers/agb21000/vnc.sock')"]);
   check(denied(vsock), "the agent cannot open the screen's VNC socket", vsock.slice(-80));
   const xenv = ["-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
-  const info = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo | grep -c SECURITY"]);
-  check(/^[1-9]/.test(info), "the agent's untrusted cookie works and the X SECURITY extension is on", info);
+  // The cookie works (the agent's X clients connect), and the extension that makes it untrusted is on: the owner sees SECURITY in the server's extension list, the untrusted client is not shown it.
+  const info = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "xdpyinfo 2>&1 | head -1"]);
+  check(/name of display:\s+:20/.test(info), "the agent's untrusted cookie works: its X clients connect to its own screen", info);
+  const ownerExt = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "xdpyinfo | grep -c SECURITY"]);
+  check(/^[1-9]/.test(ownerExt), "the X SECURITY extension is on in the agent's screen (the owner lists it)", ownerExt);
   const grab = shOk(["exec", "-u", "20000", ...xenv, CONTAINER, "sh", "-c", "import -window root /tmp/agent-grab.png >/dev/null 2>&1; echo $?"]);
   const ownGrab = shOk(["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth", CONTAINER, "sh", "-c", "import -window root /tmp/browser-grab.png >/dev/null 2>&1; echo $?"]);
   check(ownGrab === "0", "the screen's owner can capture its own screen", ownGrab);
@@ -135,7 +177,30 @@ try {
   // defaults of the X SECURITY extension have changed between server versions and a test that cannot fail proves nothing.
   const asOwner = ["exec", "-u", "21000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/browsers/agb21000/xauth"];
   const asUntrusted = ["exec", "-u", "20000", "-e", "DISPLAY=:20", "-e", "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth"];
-  const recordPy = "import ctypes\\nx=ctypes.CDLL('libX11.so.6');t=ctypes.CDLL('libXtst.so.6')\\nx.XOpenDisplay.restype=ctypes.c_void_p\\nd=x.XOpenDisplay(None)\\nerrs=[]\\nH=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p)\\ncb=H(lambda a,b:(errs.append(1),0)[1])\\nx.XSetErrorHandler(cb)\\nt.XRecordAllocRange.restype=ctypes.c_void_p\\nr=t.XRecordAllocRange()\\nc=ctypes.c_ulong(3)\\nrs=(ctypes.c_void_p*1)(r)\\nt.XRecordCreateContext.restype=ctypes.c_ulong\\nt.XRecordCreateContext(ctypes.c_void_p(d),0,ctypes.byref(c),1,rs,1)\\nx.XSync(ctypes.c_void_p(d),0)\\nprint('refused' if errs else 'allowed')";
+  // RECORD is the X extension that reports every key typed on the screen. libXtst's calls return 0 without a word when the server does not offer the extension to this client (an untrusted client is not shown it),
+  // so the probe asks for the version first and creates a context only when it is there. "allowed" means the client could record; "refused" means the extension is absent or the request errored.
+  const recordPy = [
+    "import ctypes",
+    "x=ctypes.CDLL('libX11.so.6');t=ctypes.CDLL('libXtst.so.6')",
+    "x.XOpenDisplay.restype=ctypes.c_void_p",
+    "d=x.XOpenDisplay(None)",
+    "errs=[]",
+    "H=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p)",
+    "cb=H(lambda a,b:(errs.append(1),0)[1])",
+    "x.XSetErrorHandler(cb)",
+    "t.XRecordQueryVersion.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_int),ctypes.POINTER(ctypes.c_int)]",
+    "ma=ctypes.c_int();mi=ctypes.c_int()",
+    "ok=t.XRecordQueryVersion(ctypes.c_void_p(d),ctypes.byref(ma),ctypes.byref(mi))",
+    "if ok:",
+    "    t.XRecordAllocRange.restype=ctypes.c_void_p",
+    "    r=t.XRecordAllocRange()",
+    "    c=ctypes.c_ulong(3)",
+    "    rs=(ctypes.c_void_p*1)(r)",
+    "    t.XRecordCreateContext.restype=ctypes.c_ulong",
+    "    t.XRecordCreateContext(ctypes.c_void_p(d),0,ctypes.byref(c),1,rs,1)",
+    "    x.XSync(ctypes.c_void_p(d),0)",
+    "print('refused' if (not ok or errs) else 'allowed')",
+  ].join("\n");
   const ownerRecord = shOk([...asOwner, CONTAINER, "python3", "-c", recordPy]);
   check(ownerRecord === "allowed", "XRecord works for the screen's owner (the control)", ownerRecord);
   const agentRecord = shOk([...asUntrusted, CONTAINER, "python3", "-c", recordPy]);
@@ -167,8 +232,8 @@ try {
   check(Number(ownerHeard) >= 1, "the owner's own listener does hear it (the control)", ownerHeard);
   const dl = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", "ls /var/lib/vyre/downloads/ag20000 && ! touch /var/lib/vyre/downloads/ag20000/x 2>/dev/null && echo readable-not-writable"]);
   check(/readable-not-writable/.test(dl), "the agent can read its downloads folder and not write to it", dl.slice(-80));
-  const prefs = shOk(["exec", "-u", "0", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
-  check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", "ok");
+  const prefs = shOk(["exec", "-u", "21000", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/profile/Default/Preferences"]);
+  check(/"password_manager_enabled":\s*false/.test(prefs) && /"credentials_enable_service":\s*false/.test(prefs), "the profile has the password manager off", prefs.slice(0, 120));
   // (4) a streaming run: it runs as the agent's uid in a good folder, and a link in the home that leads out of it (to /etc, to another agent's home) is refused by the helper's realpath check
   const run = (cwd, argv = ["/usr/bin/id", "-u"]) => new Promise(async (resolve, reject) => {
     const ticket = crypto.randomBytes(24).toString("base64url");
@@ -188,6 +253,21 @@ try {
   shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `ln -sfn /etc ${AH}/to-etc && ln -sfn /var/lib/vyre/agents/ag20001/home ${AH}/to-other && mkdir -p ${AH}/work`]);
   const good = await run(`${AH}/work`);
   check(good.exit && good.exit.code === 0 && good.stdout.trim() === "20000", "a run starts as the agent's uid in a folder of its home", good);
+  // sec53: what a process started THROUGH agentd holds. The agent's shell and the agent's Chrome have no capability at all and cannot gain one; this is the guard that does not depend on securebits.
+  const zero = "0000000000000000";
+  const capsOf = txt => Object.fromEntries(["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"].map(k => [k, ((new RegExp(`^${k}:\\s*(\\S+)`, "m")).exec(txt) || [])[1]]));
+  const agentProc = await run(`${AH}/work`, ["/usr/bin/grep", "-E", "^(Cap|NoNewPrivs)", "/proc/self/status"]);
+  const agentCaps = capsOf(agentProc.stdout || "");
+  // The bounding set cannot be emptied here (dropping from it needs CAP_SETPCAP, which no computer has), so it stays at the computer's own two bits at most; with nothing permitted, inheritable or ambient and no-new-privileges it grants nothing.
+  const boundOk = v => /^0*[0-9a-f]{0,2}$/.test(String(v)) && (parseInt(v, 16) & ~0xc0) === 0;
+  check(["CapInh", "CapPrm", "CapEff", "CapAmb"].every(k => agentCaps[k] === zero) && boundOk(agentCaps.CapBnd) && /^NoNewPrivs:\s*1$/m.test(agentProc.stdout || ""), "a process agentd starts for the agent holds no capability (inheritable, permitted, effective, ambient; bounding at most the computer's own two) and has no-new-privileges", { ...agentCaps, out: (agentProc.stdout || "").replace(/\n/g, " | ").slice(-200) });
+  const cpid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 21000 -x chromium | head -1"]);
+  const chromeStatus = shOk(["exec", "-u", "0", CONTAINER, "grep", "-E", "^(Cap|NoNewPrivs)", `/proc/${cpid}/status`]);
+  check(["CapInh", "CapPrm", "CapEff", "CapAmb"].every(k => capsOf(chromeStatus)[k] === zero) && boundOk(capsOf(chromeStatus).CapBnd) && /^NoNewPrivs:\s*1$/m.test(chromeStatus), "the agent's Chrome (the browser uid, started through agentd) holds no capability and has no-new-privileges", chromeStatus.replace(/\n/g, " | ").slice(-200));
+  // sec53: what uid 0 would own if agentd ever became it (no securebits). Root-owned files nobody else may read, on the state volume and the homes; none may hold a token, key or password.
+  const rootOwned = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "find /var/lib/vyre /home -xdev -user 0 ! -perm -004 2>/dev/null | head -100"]);
+  console.log("--- root-owned files with no world read (state volume and homes)\n" + (rootOwned || "(none)"));
+  check(!/token|key|pass|secret|\.boot|xauth|cookie|\.pem|cred/i.test(rootOwned), "no root-owned, not world-readable file on the state volume or in the homes is a token, key or password", rootOwned ? rootOwned.split("\n").length + " files, none such" : "none");
   for (const link of ["to-etc", "to-other"]) {
     const bad = await run(`${AH}/${link}`);
     check(bad.registered && bad.exit && bad.exit.error && /inside the agent's home/.test(bad.exit.error) && bad.stdout === "", `a run through a link out of the home (${link}) is refused by the helper and prints nothing`, bad);
@@ -198,10 +278,13 @@ try {
   check(denied(asOther), "another agent cannot list this agent's home", asOther.slice(-80));
   await b.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");
+  if (failedChecks.length) throw new Error(`${failedChecks.length} checks failed: ${failedChecks.join("; ")}`);
   console.log("agent computer proof: all checks passed");
 } catch (e) {
   console.log(`FAIL ${e.message}\n--- container log (tail)\n${shOk(["logs", "--tail", "60", CONTAINER]).slice(-4000)}`);
   process.exitCode = 1;
 } finally {
-  try { await d.stop(id); } catch {}
+  // After a FAIL the CDP sockets the steps opened would keep the process alive until the 10-minute watchdog: stop the computer (bounded), then leave at once with the proof's own exit code.
+  try { await Promise.race([d.stop(id), sleep(30_000)]); } catch {}
+  process.exit(process.exitCode || 0);
 }
