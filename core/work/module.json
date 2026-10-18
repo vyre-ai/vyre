@@ -196,6 +196,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.summary",
+        "summary": "your chat list in sections: pinned, people, groups, agents with their threads, Flows",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.thread.fork",
         "summary": "fork a thread from one of the agent's replies into a new thread; the original stays",
         "reach": "anyone",

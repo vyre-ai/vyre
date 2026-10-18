@@ -67,4 +67,23 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   assert.deepEqual((await ok(BEN, "work.agent.threads", { agent: "juno" })).threads.map((/** @type {any} */ x) => x.title), [], "a member sees only her own");
   // a call that is no person's own is refused
   assert.ok((await d.registry.call("work.agent.threads", { agent: "juno" }, "mcp", {})).error, "a call with no person has no threads");
+
+  // the chat list as one summary: one row per agent with its thread count, the group and the person chat apart
+  await ok(OWNER, "work.chat.create", { title: "ben dm", people: [BEN], ...ring() });
+  const sum = await ok(OWNER, "work.chat.summary");
+  assert.deepEqual(sum.agents.map((/** @type {any} */ r) => [r.name, r.threads]).sort(), [["juno", 2], ["kit", 1]], "one row per agent, with its thread count");
+  const juno = sum.agents.find((/** @type {any} */ r) => r.name === "juno");
+  assert.equal(juno.kind, "agent");
+  assert.equal(juno.latest.title, "second thread", "the latest thread");
+  assert.equal(juno.live, null, "no thread is live");
+  assert.equal(juno.needs_you, false);
+  assert.equal(sum.groups.length, 1, "the chat with Ben and juno is a group");
+  assert.equal(sum.groups[0].people, 2); assert.equal(sum.groups[0].agents, 1);
+  assert.deepEqual(sum.people.map((/** @type {any} */ r) => [r.kind, r.person, r.title]), [["person", BEN, "ben dm"]], "a chat of two people with no agent is a person's");
+  assert.deepEqual([sum.pinned, sum.flows], [[], []]);
+  // Ben's summary has only what he is in: the group and the dm, and none of the owner's agent threads
+  const bens = await ok(BEN, "work.chat.summary");
+  assert.deepEqual([bens.agents.length, bens.groups.length, bens.people.length], [0, 1, 1], "a member's list is her own chats");
+  assert.equal(bens.people[0].person, OWNER);
+  assert.ok((await d.registry.call("work.chat.summary", {}, "mcp", {})).error, "a call with no person has no list");
 });

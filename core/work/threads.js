@@ -89,6 +89,52 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   return { agent, threads: after.slice(0, Math.min(Math.max(Number(limit) || 50, 1), 200)), count: out.length };
 }
 
+/**
+ * The chat list as one summary: the pinned Assistant, people, groups, agents (one row per agent, with its thread count and its latest or live thread) and Flows. Read through the caller's own chats only.
+ * @param {{ ctx: any, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, pinnedOf: (person: string) => Map<string, string>, flowRows?: (chain: any, extra: any) => Promise<any[]> }} d
+ */
+export async function summarize(d, extra) {
+  const chain = await d.chainOf(extra);
+  const k = d.kernelOf();
+  const hop = chain && chain.hops && chain.hops[0];
+  if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "the chat list is a person's own: ask from your own session");
+  const me = String(hop.actor.id);
+  const db = d.ctx.store && d.ctx.store.db;
+  const names = new Map();
+  const known = await d.ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
+  for (const a of Array.isArray(known) ? known : []) if (a && a.name) { names.set(String(a.name), String(a.name)); if (a.uid) names.set(String(a.uid), String(a.name)); }
+  const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
+  const pins = d.pinnedOf(me);
+  const rows = (await d.chatRows(chain, { page: { limit: 500 } })).filter((/** @type {any} */ r) => mine.has(r.data.chat));
+  /** @type {any[]} */ const people = [], groups = [];
+  /** @type {Map<string, any[]>} */ const byAgent = new Map();
+  for (const r of rows) {
+    let c; try { c = k.chats.read(chain, r.data.chat); } catch { continue; }
+    const ppl = [...c.people], agents = [...c.assistants];
+    const base = { chat: String(r.data.chat), title: String(r.data.title || "") || "New chat", last_active: r.data.last_active || r.data.started || null, unread: unreadOf(db, me, r.data.chat) };
+    if (ppl.length === 1 && agents.length === 1) {
+      const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
+      const list = byAgent.get(String(agents[0])) || [];
+      list.push({ ...threadRow({ ...r.data, agents }, runs, base.unread), pinned: pins.get(String(r.data.chat)) || null });
+      byAgent.set(String(agents[0]), list);
+    } else if (ppl.length === 2 && agents.length === 0) {
+      people.push({ kind: "person", person: ppl.find((/** @type {string} */ p) => p !== me) || null, ...base });
+    } else {
+      groups.push({ kind: "group", people: ppl.length, agents: agents.length, ...base });
+    }
+  }
+  /** @type {any[]} */ const pinned = [], agentRows = [];
+  for (const [agent, threads] of byAgent) {
+    threads.sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
+    const live = threads.find(t => t.state === "needs_you") || threads.find(t => t.state === "live") || null;
+    const row = { kind: "agent", agent, name: names.get(agent) || agent, threads: threads.length, latest: threads[0], live, needs_you: threads.some(t => t.state === "needs_you"), unread: threads.reduce((n, t) => n + (Number(t.unread) || 0), 0) };
+    if (threads.some(t => t.pinned === "assistant")) pinned.push(row); else agentRows.push(row);
+  }
+  const newest = (/** @type {any} */ a, /** @type {any} */ b) => String((b.latest && b.latest.last_active) || b.last_active || "").localeCompare(String((a.latest && a.latest.last_active) || a.last_active || ""));
+  pinned.sort(newest); agentRows.sort(newest); people.sort(newest); groups.sort(newest);
+  return { pinned, people, groups, agents: agentRows, flows: d.flowRows ? await d.flowRows(chain, extra) : [] };
+}
+
 /** The table that remembers where a fork starts: the new thread, the engine run and transcript message to fork from. Written only by work.thread.fork, read only by the stream when the fork first runs. @param {any} db */
 function forksTable(db) {
   db.exec("CREATE TABLE IF NOT EXISTS work_thread_forks (chat TEXT PRIMARY KEY, source_run TEXT NOT NULL, resume_at TEXT NOT NULL, origin TEXT NOT NULL, message TEXT NOT NULL, at INTEGER NOT NULL)");
@@ -97,7 +143,7 @@ function forksTable(db) {
 
 /**
  * Register the thread tools that read and start. `chatTool` is the work module's own (it keeps the member door's copy), `createChat` the very function work.chat.create runs.
- * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any }} d
+ * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, pinnedOf: (person: string) => Map<string, string>, flowRows?: (chain: any, extra: any) => Promise<any[]> }} d
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
@@ -113,6 +159,11 @@ export function registerThreads(d) {
       const made = await d.createChat({ agents: [agent], ...(input.title ? { title: String(input.title) } : {}), ...(input.project ? { project: String(input.project) } : {}), ...(input.id ? { id: String(input.id) } : {}), ...(input.ring ? { ring: input.ring } : {}) }, extra);
       return { thread: made.chat, agent: (made.agents && made.agents[0]) || agent };
     },
+  });
+  d.chatTool("work.chat.summary", {
+    description: "Your chat list in sections: pinned Assistant, people, groups, agents (one row each: thread count, latest and live thread) and Flows.",
+    input: obj({}),
+    run: async (/** @type {any} */ _input, /** @type {any} */ extra) => summarize(d, extra),
   });
   d.chatTool("work.thread.fork", {
     description: "Fork a thread from one of the agent's replies: a new thread that keeps everything up to and including that reply. The original is unchanged. Returns { thread, forked_from }.",
