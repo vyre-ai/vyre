@@ -226,3 +226,35 @@ test("relay: an unreachable upstream says nothing specific; unknown passes write
   assert.equal(Number(x.o.db.prepare("SELECT COUNT(*) AS n FROM vault_audit").get()?.n) - Number(before), 3);
   assert.deepEqual(rows.map(r => r.who).sort(), ["pass:unknown:?", "pass:unknown:p_nobody", "pass:unknown:p_other"]);
 });
+
+test("a Vault person is linked to a Space member: a linked row answers its name, an unlinked row answers nothing, and a member can only be linked from the person's own surface", async t => {
+  const o = mk(t, "owner-box");
+  const dana = newIdentity(), ben = newIdentity();
+  const card = (who, id) => relay.encodeCard({ name: who, sign: id.sign.public, box: id.box.public, relay: "" }, id.sign.private);
+  // linked: the Settings door adds Dana for her Space member id
+  await o.v.share.addPerson({ card: card("dana", dana), name: "dana", member: "per_dana" }, "cli");
+  // unlinked: Ben is pinned with no member id
+  await o.v.share.addPerson({ card: card("ben", ben), name: "ben" }, "cli");
+  assert.deepEqual(o.v.share.personOfMember({ member: "per_dana" }), { name: "dana" }, "a linked row answers its name");
+  assert.equal(o.v.share.personOfMember({ member: "per_ben" }), null, "an unlinked row answers nothing: no guessing by name");
+  assert.equal(o.v.share.personOfMember({ member: "per_nobody" }), null, "an unknown member answers nothing");
+  // a model cannot set or change the link
+  const m = newIdentity();
+  await assert.rejects(o.v.share.addPerson({ card: card("mo", m), name: "mo", member: "per_mo" }, "mcp"), /denied|not allowed|only/i, "a model cannot link a member");
+  assert.equal(o.v.share.personOfMember({ member: "per_mo" }), null, "the refused link was not stored");
+});
+
+test("a member linked to two Vault rows answers nothing, so offboarding never picks one; a changed card under the same name blocks rather than making a second row", async t => {
+  const o = mk(t, "owner-box");
+  const dana = newIdentity(), other = newIdentity();
+  const card = (who, id) => relay.encodeCard({ name: who, sign: id.sign.public, box: id.box.public, relay: "" }, id.sign.private);
+  await o.v.share.addPerson({ card: card("dana", dana), name: "dana", member: "per_dana" }, "cli");
+  // a second row for the same member (another name): ambiguous, so no answer
+  await o.v.share.addPerson({ card: card("dana-two", other), name: "dana-two", member: "per_dana" }, "cli");
+  assert.equal(o.v.share.personOfMember({ member: "per_dana" }), null, "two rows for one member: no answer");
+  // the same name with another card is a changed key, not a second row (name is the key)
+  const again = newIdentity();
+  const r = await o.v.share.addPerson({ card: card("dana", again), name: "dana" }, "cli");
+  assert.equal(r.changed, true, "the same name with a new card is a changed key");
+  assert.equal(o.db.prepare("SELECT COUNT(*) AS n FROM vault_people WHERE name = ?").get("dana").n, 1, "still one row named dana");
+});
