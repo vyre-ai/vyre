@@ -17,7 +17,7 @@ import { newPrefixedId } from "../../lib/id.js";
  * @typedef {{ id: string, name: string, space: string, versions: { version: number, hash: string, flow: any, authorship: string, at: number, by: ActorRef }[], approvals: Approval[], active: number|null, status: 'active'|'paused'|'disabled', paused?: { reason: string, since: number } }} FlowRow
  * @typedef {{
  *   id: string, flow: string, version: number, hash: string, space: string,
- *   trigger: { kind: string, key: string, source?: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string },
+ *   trigger: { kind: string, key: string, index?: number, source?: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string },
  *   tainted: boolean, source_spaces: string[], depth: number,
  *   state: 'running'|'waiting'|'paused'|'queued'|'done'|'failed'|'cancelled',
  *   started_at: number, updated_at: number, finished_at?: number,

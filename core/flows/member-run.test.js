@@ -51,3 +51,29 @@ test("a member defines, approves and starts her own Flow; the run is found by it
   const org = (await gw.records.query(ownerChain, "organization", { page: { limit: 50 } })).rows.find((/** @type {any} */ r) => r.data.name === "MADE-BY-ZEDS-FLOW");
   assert.equal(((await gw.records.linked(chainOf(ANA), org.urn)).rows || []).filter((/** @type {any} */ r) => r.type === "flow-run").length, 0, "a link read gives another member no run");
 });
+
+test("retry from a step on a finished run: the starter may, another member may not, and the same version runs again", { timeout: 150_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const OWNER = d.kernel.id.owner;
+  const firm = await d.kernel.spaces.host({ owner: OWNER, name: "Harlow Legal" });
+  const K = firm.kernel, gw = firm.gateway;
+  const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  for (const person of [ZED, ANA]) await gw.grants.setRole(ownerChain, { person, role: "member" }, { presence: proof() });
+  const have = new Set(((await gw.definitions(ownerChain)).types || []).map((/** @type {any} */ x) => x.name));
+  if (!have.has(CORE.ORGANIZATION.name)) await gw.records.define(ownerChain, { add_types: [CORE.ORGANIZATION] });
+  const chainOf = (/** @type {string} */ p) => K.chains.fromFacts({ kind: "device", device_key_id: `d-${p.slice(4, 8)}`, person: p, path: "relay" });
+  const door = createMemberTools({ space: firm.space, kernel: K, registry: d.registry });
+  const flow = { format: 1, name: "zed_retry", label: "Zed's retry", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "mk", kind: "create", type: "organization", set: { name: "RETRY-ORG" } }] };
+  const defined = await door.flows.define(chainOf(ZED), { flow });
+  await door.flows.approve(chainOf(ZED), { id: defined.id, version: defined.version, hash: defined.hash });
+  const started = await door.flows.start(chainOf(ZED), { id: defined.id });
+  const runId = started.run || started.id;
+  const state = async () => (((await door.flows.run(chainOf(ZED), { run: runId })) || {}).run || {}).state;
+  await until(async () => (await state()) === "done", "the first run to finish");
+  await assert.rejects(() => door.flows.retry(chainOf(ANA), { run: runId, from: "mk" }), "a member who did not start the run cannot take it back to a step");
+  await door.flows.retry(chainOf(ZED), { run: runId, from: "mk" });
+  await until(async () => (await state()) === "done", "the run to finish again");
+  const run = (await door.flows.run(chainOf(ZED), { run: runId })).run;
+  assert.equal(run.version, defined.version, "the pinned version ran again");
+});
