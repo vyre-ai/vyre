@@ -179,3 +179,11 @@ Notes are the planner's Note type. A person who joined a team Space reaches the 
 What to do: write a note that the team should read in the team's own Records on the server, or in a chat. The Notes tab says plainly that a joined member is looking at her home notes.
 
 Owner: flow6b with sec53. Planned for 0.6.3: planner.serve, the member door's notes calls.
+
+## An agent's Chrome runs without Chrome's own renderer sandbox
+
+Docker's default seccomp profile refuses the namespaces Chrome's sandbox needs, so the computer's Chrome and each agent's Chrome start with `--no-sandbox`. A Chrome renderer exploit therefore runs as that agent's browser user with no renderer sandbox. It reaches that agent's profile and its debugging pipe. It does not reach another agent's files, the computer's own user or its secrets, because each agent has its own users, processes run with no capability and no new privileges, and the folders are private.
+
+What to do: keep the Chrome in the computer image current (the image carries its version). The fix is a seccomp profile that allows user namespaces, planned for 0.7.
+
+Owner: comp6 with sec53.
