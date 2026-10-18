@@ -226,7 +226,7 @@ export function ChatPanel(p: ChatPanelProps) {
   const faceOf = (x: (typeof p.participants)[number]) => (
     <Pressable key={x.id} accessibilityRole="button" accessibilityLabel={x.id === p.viewer ? "You" : `Open ${x.name}`} disabled={x.id === p.viewer}
       onPress={() => setTab(x.family === "assistant" ? `agent:${x.name}` : `person:${x.id}`)} style={{ alignItems: "center", gap: 4, width: 72 }}>
-      <Face name={x.name} family={fam(x.family)} size={48} id={x.id} />
+      <Face name={x.name} family={fam(x.family)} size={44} id={x.id} />
       <Text size="caption" numberOfLines={1}>{x.id === p.viewer ? "You" : x.name}</Text>
     </Pressable>
   );
