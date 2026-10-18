@@ -17,7 +17,11 @@ import { linkedNames, loader } from "./files-real";
 import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
+import { ComputerPage } from "./ComputerPage";
+import { create as createSite } from "../sites/real";
+import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
 import { useFilesNav } from "./files-nav";
+import { tool } from "../../src/real/box";
 import { linked, spaceRead, spaceRestore, spaceUpload, spaceVersions, statusReal, linkCreate } from "./real";
 import { bytesOf, sizeWord, textOf } from "./real-model";
 import { driveRefusal } from "./real-model";
@@ -51,6 +55,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
   const [look, setLook] = useState<{ open: string | null }>({ open: null });
   // the search box looks in this folder (the default) or in all the files of the Space
+  const [publishing, setPublishing] = useState<{ row: FileRow; name: string } | null>(null);
   const [scopeAll, setScopeAll] = useState(false);
   const [found, setFound] = useState<FileRow[] | null>(null);
 
@@ -131,6 +136,8 @@ function Manager({ wide }: { wide: boolean }) {
     const items: { label: string; onPress: () => void; danger?: boolean }[] = [{ label: r.dir ? "Open" : "Details", onPress: () => { setSel(selectOnly(r.key)); if (r.dir) go(r.place); } }];
     if (!r.dir && a.download && (r.root === "space" || r.root === "linked")) items.push({ label: "Download", onPress: () => { download(r).catch((e) => showToast(say(e))); } });
     if (!r.dir && a.share && r.root === "space") items.push({ label: "Share a link", onPress: () => { linkCreate(undefined, r.path).then(() => showToast("Link made. It is under Shared.")).catch((e) => showToast(say(e))); } });
+    if (r.dir && r.root === "space") items.push({ label: "Publish as a site", onPress: () => setPublishing({ row: r, name: r.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) }) });
+    if (!r.dir && r.root === "box" && r.share) items.push({ label: "Send to another computer", onPress: () => { tool<{ devices?: { id: string; name: string; ready?: boolean }[] }>("files.drop.targets", {}).then((t) => { const d = (t?.devices ?? []).find((x) => x.ready); if (!d) { showToast("No other computer is set up to receive. Turn receiving on there first."); return; } return tool("files.deliver", { path: r.path, device: d.id }).then(() => showToast(`Sent to ${d.name}. It arrives when that computer is on.`)); }).catch((e) => showToast(say(e))); } });
     if (a.edit && r.root === "linked") items.push({ label: "Rename", onPress: () => setDialog({ kind: "rename", rows: [r] }) });
     if (a.move) items.push({ label: "Move", onPress: () => setDialog({ kind: "move", rows: [r] }) });
     if (a.remove && r.root === "linked") items.push({ label: "Delete", danger: true, onPress: () => setDialog({ kind: "delete", rows: [r] }) });
@@ -202,7 +209,7 @@ function Manager({ wide }: { wide: boolean }) {
 
   const main = place.startsWith("site:") ? <SitePage name={place.slice(5)} onBack={() => go("space")} />
     : root === "shared" ? <View className="gap-s3"><SharedLinks refresh={0} /></View>
-    : root === "computer" ? <Card>{status ? <View className="gap-s2"><Text strong>{status.enabled ? "Sharing to your computer is on" : "Sharing to your computer is off"}</Text>{status.why ? <Text tone="muted">{status.why}</Text> : null}{status.fix ? <Text tone="label">{status.fix}</Text> : null}</View> : <LoadingState rows={2} />}</Card>
+    : root === "computer" ? <ComputerPage status={status} reload={loadRoots} />
     : err ? <Card flush><ErrorState title="This folder did not open" reason={err} retry={() => load(place)} /></Card>
     : rows === null ? <LoadingState rows={4} />
     : !shown.length ? emptyState
@@ -256,6 +263,19 @@ function Manager({ wide }: { wide: boolean }) {
         </div>
         {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
       </div>
+      <Sheet open={publishing !== null} onClose={() => setPublishing(null)} title="Publish this folder as a site">
+        {publishing ? (
+          <View className="gap-s3">
+            <Text tone="muted">{`Builds a draft from ${publishing.row.name}. Nothing is public until you publish it from the site's page.`}</Text>
+            <Field label="Site name" value={publishing.name} onChangeText={(name: string) => setPublishing({ ...publishing, name })} placeholder="spring-landing" />
+            <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Make the draft" onPress={() => {
+              const b = buildSite({ ...BLANK, name: publishing.name, kind: "drive", ref: publishing.row.path });
+              if ("error" in b) { showToast(b.error); return; }
+              createSite(b.input).then(() => { showToast("Draft made."); setPublishing(null); invalidate(); go(`site:${b.input.name}`); }).catch((e) => showToast(publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
+            }} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setPublishing(null)} /></View>
+          </View>
+        ) : null}
+      </Sheet>
       <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} onClose={() => setLook({ open: null })} />
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); invalidate(); }} />
     </Frame>

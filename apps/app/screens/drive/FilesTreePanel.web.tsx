@@ -23,12 +23,12 @@ const ROOT_ICON: Record<string, string> = { space: "drive", shared: "share", lin
 /** The places above the folder tree: All files, Recent, Shared with me, and the Sites section (published sites, drafts and New site). Picking one opens it in the page (files-nav.ts). */
 function Places() {
   const router = useRouter();
-  const { place, go } = useFilesNav();
+  const { place, go, tick } = useFilesNav();
   const [sites, setSites] = useState<{ id: string; name: string; live?: boolean }[]>([]);
   const [folders, setFolders] = useState<{ projects: { name: string; path: string }[]; agents: { name: string; path: string }[] }>({ projects: [], agents: [] });
   // the projects and agents this person can see, each with the Drive folder it opens (files.places, under their own chain)
   useEffect(() => { tool<{ projects?: { name: string; path: string }[]; agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => setFolders({ projects: r?.projects ?? [], agents: r?.agents ?? [] })).catch(() => setFolders({ projects: [], agents: [] })); }, []);
-  useEffect(() => { listDeployments().then((d) => setSites(siteList(d).map((s) => ({ id: s.name, name: s.name, live: Boolean(s.live) })))).catch(() => setSites([])); }, []);
+  useEffect(() => { listDeployments().then((d) => setSites(siteList(d).map((s) => ({ id: s.name, name: s.name, live: Boolean(s.live) })))).catch(() => setSites([])); }, [tick]);
   const groups = placeGroups({ sites, projects: folders.projects, agents: folders.agents });
   const target = (id: string) => (id === "all" ? "space" : id === "shared-links" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
   return (
