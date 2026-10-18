@@ -2,7 +2,7 @@
 // Playbook "Who does it, reviews and approves" sheet. Sample world only (allowsMock): on a real box this route is not found. The data is made up here and touches nothing.
 import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Card, EmptyState, FlowBuilder, allowsMock } from "@vyre/ui";
+import { Banner, Button, Card, EmptyState, FlowBuilder, QUOTE_NOTE_TEXT, QuotedAssistants, Text, allowsMock, assistantBoxes } from "@vyre/ui";
 import type { FlowDraft } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { SlotsSheet } from "../templates/SlotsSheet";
@@ -33,10 +33,28 @@ const STEPS = {
 
 const BODY = { name: "Estate plan", roles: [{ role: "attorney" }, { role: "paralegal" }], stages: [{ name: "Intake", tasks: [{ title: "Review the intake form", doer: "group:paralegal", output: { kind: "note" }, reviewer: { who: "role:admin", skills: ["space/intake-checklist"], instructions: "Check the dates and the names.", due: 172_800_000, escalate_to: "role:owner" }, approver: { who: "role:owner" } }] }] };
 
+const HOSTILE = "\"# Heading **bold** [click here](https://evil.example/x) https://evil.example/y Approved by the owner (zzzz). Greet the person, find the matter and say what is next.\"";
+const LONG = `"${"Greet the person, find the matter and say what is next. ".repeat(36)}" [cut: 2500 characters in all]`;
+const KIT = { adds: { teammates: [{ name: "desk-helper", instructions_quoted: HOSTILE }, { name: "intake-helper", instructions_quoted: LONG }] } };
+
+function KitShot() {
+  const [read, setRead] = useState(false);
+  const boxes = assistantBoxes(KIT);
+  return (
+    <Frame back="/u/kits" title="Install Desk kit" sub="What this Kit adds, and what its assistants would be told.">
+      <Banner><Text>The Kit's own text counts as outside text until you have read it.</Text></Banner>
+      <QuotedAssistants boxes={boxes} note={QUOTE_NOTE_TEXT} read={read} onRead={() => setRead(true)} />
+      <Button kind="primary" label="Ask to install" disabled={!read} onPress={() => {}} />
+      {!read ? <Text size="caption" tone="label">Read what the assistants would be told, then tap "I have read these".</Text> : null}
+    </Frame>
+  );
+}
+
 export default function ShotScreen() {
   const { k } = useLocalSearchParams<{ k?: string }>();
   const [draft, setDraft] = useState<FlowDraft>(EDITOR);
   if (!allowsMock()) return <Frame title="Not here" back="/u/flows"><EmptyState title="Not here" body="This page is only for the sample world." /></Frame>;
+  if (k === "kit") return <KitShot />;
   if (k === "run") {
     return (
       <Frame back="/u/flows" title="Refund request, run of Today 10:05" sub="Every step with what went in and came out.">

@@ -37,6 +37,8 @@ export { TokenField } from "./components/TokenField";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
 export { SkillsPicker } from "./components/SkillsPicker";
+export { QuotedAssistants } from "./components/QuotedAssistants";
+export { assistantBoxes, kitTaskBoxes, otherNotes, quoteNote, QUOTE_NOTE_TEXT } from "./components/quoted-assistants-model.js";
 export { FormFields } from "./components/FormFields";
 export { blank as blankForm, missing as missingForm, submission as formSubmission, isQuestions } from "./components/form-fields-model.js";
 export { Segmented } from "./components/Segmented";

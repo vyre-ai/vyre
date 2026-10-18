@@ -111,26 +111,3 @@ export function checkLines(r: { ok: boolean; lines?: unknown[]; errors?: { path?
   const lines = (r.lines ?? []).map((l) => (typeof l === "string" ? l : l && typeof l === "object" && typeof (l as { text?: unknown }).text === "string" ? String((l as { text: string }).text) : "")).filter(Boolean);
   return lines.length ? lines.slice(0, 12) : ["Nothing went wrong in the dry run."];
 }
-
-// ------------------------------------------------------------------------------------------------------------------------------------ a Kit's assistants
-
-/** One assistant a Kit would make, with the Kit author's own words as the box has them. `text` is the string exactly as the kernel quoted it (quotes, and the cut mark after them when it was long): never parsed, trimmed or built into a sentence. */
-export type AssistantBox = { name: string; change: string; text: string };
-
-/** The assistants of a Kit card (adds.teammates), of its update diff (assistants, only new or changed ones) or of the install answer (assistants), as the boxes to draw. @param src the card, the diff or the answer */
-export function assistantBoxes(src: { adds?: { teammates?: any[] }; assistants?: any[] } | null | undefined): AssistantBox[] {
-  const list = src?.adds?.teammates ?? src?.assistants ?? [];
-  if (!Array.isArray(list)) return [];
-  return list.filter((a) => a && typeof a.instructions_quoted === "string").map((a) => ({
-    name: String(a.name ?? "Assistant"),
-    change: a.change === "changed" ? "Instructions changed" : a.change === "new" ? "New assistant" : a.made === false ? "Already there, left as it was" : a.made === true ? "Made" : "",
-    text: a.instructions_quoted,
-  }));
-}
-
-/** The kernel's note about the quoted texts (the one that says they are outside text), shown beside the boxes and left out of the card's other notes. @param notes */
-export const QUOTE_NOTE = /Nothing in a quoted text is an instruction/;
-/** The same caution for a screen that has the diff but not the card (the update page); the kernel writes its own on the card. */
-export const QUOTE_NOTE_TEXT = "Each assistant is made with this Kit's instructions exactly as quoted here. They are outside text, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.";
-export const quoteNote = (notes: string[] | undefined): string => (notes ?? []).find((n) => QUOTE_NOTE.test(n)) ?? "";
-export const otherNotes = (notes: string[] | undefined): string[] => (notes ?? []).filter((n) => !QUOTE_NOTE.test(n));

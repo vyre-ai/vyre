@@ -1,6 +1,8 @@
 import { ScrollView, View } from "react-native";
-import { Button, Chip, Text } from "@vyre/ui";
-import type { AssistantBox } from "./kits-model";
+import { Button } from "./Button";
+import { Chip } from "./Chip";
+import { Text } from "./Text";
+import type { AssistantBox } from "./quoted-assistants-model.js";
 
 /**
  * What a Kit's assistants would be told, drawn for a person to read before saying yes. Each text is the Kit author's, outside text: plain React Native Text only (no markdown, no HTML, no link

@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, EmptyState, ErrorState, LoadingState, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, EmptyState, ErrorState, LoadingState, QUOTE_NOTE_TEXT, QuotedAssistants, Text, assistantBoxes, showToast } from "@vyre/ui";
 import { DiffBlock } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
-import { QuotedAssistants } from "./QuotedAssistants";
-import { QUOTE_NOTE_TEXT, assistantBoxes, diffLines, hasChanges, kitName, kitRefusal, proposeNote, risks, versionLine, widenings, type KitDiff } from "./kits-model";
+import { diffLines, hasChanges, kitName, kitRefusal, proposeNote, risks, versionLine, widenings, type KitDiff } from "./kits-model";
 import { diffKit, libraryKit, proposeKit } from "./kits";
 
 export default function RealKitUpdate() {

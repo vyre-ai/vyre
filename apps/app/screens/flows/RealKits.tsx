@@ -2,12 +2,11 @@
 // (flows.kit.library, when the box has it): read the install card, then ask to install, which lands as a card in Now for a person to approve.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { QuotedAssistants, assistantBoxes, otherNotes, quoteNote, Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { useRouter } from "expo-router";
-import { QuotedAssistants } from "./QuotedAssistants";
-import { assistantBoxes, otherNotes, quoteNote, checkLines, addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
+import { checkLines, addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
 import { checkKit, kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
 
 const say = (e: unknown) => kitRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
