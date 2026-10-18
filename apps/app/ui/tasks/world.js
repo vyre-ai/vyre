@@ -19,7 +19,7 @@ export async function loadWorld(store, clock = Date.now) {
   return { me, actors, spaces, types: new Map(types.map((t) => [t.name, t])), tasks, events, calendar, records, now: clock() };
 }
 
-/** Every record of a type that holds work (Matters, Projects, Trips), with its definition. @param {import("./model.js").World} w @param {import("../../src/store-core/contracts.js").Store} store */
+/** Every record of a type that holds work (Campaigns, Projects, Trips), with its definition. @param {import("./model.js").World} w @param {import("../../src/store-core/contracts.js").Store} store */
 export async function loadWork(w, store) {
   const work = [...w.types.values()].filter((t) => viewDefOf(t).holdsWork);
   const lists = await Promise.all(work.map(async (def) => ({ def, rows: await store.list(def.name) })));

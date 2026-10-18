@@ -666,6 +666,17 @@
               ]
             },
             {
+              "name": "kind",
+              "kind": "choice",
+              "label": "How it runs",
+              "options": [
+                "stages",
+                "client",
+                "ongoing",
+                "simple"
+              ]
+            },
+            {
               "name": "client",
               "kind": "link",
               "label": "Client",

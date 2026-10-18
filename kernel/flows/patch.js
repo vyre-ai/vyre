@@ -8,7 +8,7 @@
 //   { op: "remove", step }
 //   { op: "move", step, by }                        within its list, by an offset
 //   { op: "trigger", trigger }
-//   { op: "meta", key, value }                      name, label, description, concurrency, lock, stuck_after_ms, group, sends, returns
+//   { op: "meta", key, value }                      name, label, description, concurrency, lock, stuck_after_ms, group, project, sends, returns
 //
 // A step is named by its id. An unknown id says which ids there are and which is close.
 
@@ -17,7 +17,7 @@ import { parseLines } from "./lines.js";
 import { nearest } from "./places.js";
 import { walkSteps } from "./schema.js";
 
-export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms", "group", "sends", "returns"];
+export const META_KEYS = ["name", "label", "description", "concurrency", "lock", "stuck_after_ms", "group", "project", "sends", "returns"];
 const BAD = new Set(["__proto__", "constructor", "prototype"]);
 
 export class PatchError extends Error {
