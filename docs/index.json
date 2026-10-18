@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":360,"tool":1923,"event":543,"config":311,"env":298,"screen":0,"concept":39},
+  "counts": {"command":360,"tool":1925,"event":543,"config":311,"env":298,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -91,7 +91,9 @@
     {"kind":"tool","name":"appmods.screens","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsscreens","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.signed.link","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssignedlink","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.signed.revoke","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssignedrevoke","module":"appmods","mentions":[]},
+    {"kind":"tool","name":"appmods.signing.audit","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssigningaudit","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.signing.request","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssigningrequest","module":"appmods","mentions":[{"page":"architecture/features/documents-and-signing.md","line":31,"anchor":"how-it-works"}]},
+    {"kind":"tool","name":"appmods.signing.status","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssigningstatus","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.signing.waiting","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodssigningwaiting","module":"appmods","mentions":[]},
     {"kind":"tool","name":"appmods.start","definedIn":"core/appmods/index.js","page":"reference/tools.md#appmodsstart","module":"appmods","mentions":[]},
     {"kind":"event","name":"appmods.started","definedIn":"core/appmods/index.js","page":"reference/events.md#appmods","module":"appmods","mentions":[]},
