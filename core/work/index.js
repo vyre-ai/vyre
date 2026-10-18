@@ -784,18 +784,20 @@ export default {
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
     });
-    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, hubOf, pinnedOf: (/** @type {string} */ person) => persistentOf().pinnedOf(person), createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
-    ctx.tool("work.chat.change", {
-      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
-      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },
-        ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
-      run: async (input, extra) => {
+    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, hubOf, changeChat: (/** @type {any} */ i, /** @type {any} */ e) => changeChat(i, e), pinnedOf: (/** @type {string} */ person) => persistentOf().pinnedOf(person), createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
+    // Add or remove people and agents in a chat: the kernel's own change, by the person acting directly. Named so the thread tools run the very same code.
+    const changeChat = async (/** @type {any} */ input, /** @type {any} */ extra) => {
         const chain = await chainOf(extra);
         // A chat with more than one person always runs on the server: a chat running on a computer moves there first (one line in the chat, no question); nothing is added if it cannot move.
         await moveBeforeJoin({ kernel: kernelOf(), chain, members: () => ctx.call("spaces.members.list", {}, { relay: true }), move: i => ctx.call("runner.group-move", i), chat: String(input.chat), add: input.add_people });
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
-      },
+    };
+    ctx.tool("work.chat.change", {
+      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
+      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },
+        ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
+      run: (input, extra) => changeChat(input, extra),
     });
     // A chat's key, lent to this server by a participant's own device for the chat's files to open (kernel/gateway/chat-keys.js). The server never makes or keeps a key: the device opens the ring with its own key and
     // answers the request with the keys wrapped to a one-use key, which live in this process's memory and nowhere else.

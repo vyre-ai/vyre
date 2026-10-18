@@ -6,8 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start, callerFacts } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { holdersOf, createRing } from "../../lib/chat-keys.js";
-import { newDeviceKey } from "../../lib/keywrap.js";
+import { holdersOf, createRing, addHolders } from "../../lib/chat-keys.js";
+import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
 import { toB64u, fromB64u } from "../../lib/databox.js";
 import { threadRow } from "./threads.js";
 
@@ -40,7 +40,8 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   for (const name of ["juno", "kit"]) await ok(OWNER, "agents.create", { name, kind: "agent" });
   const dev = newDeviceKey(), agree = toB64u(Uint8Array.from([4, ...fromB64u(dev.publicJwk.x), ...fromB64u(dev.publicJwk.y)]));
   let n = 0;
-  const ring = () => { const id = `chat_00000000-0000-4000-8000-0000000000${String(++n).padStart(2, "0")}`; return { id, ring: createRing(id, holdersOf([{ device: "dev_a", agree }])).doc }; };
+  /** @type {Map<string, any>} */ const made = new Map();
+  const ring = () => { const id = `chat_00000000-0000-4000-8000-0000000000${String(++n).padStart(2, "0")}`; const r = createRing(id, holdersOf([{ device: "dev_a", agree }])); made.set(id, r); return { id, ring: r.doc }; };
   const newThread = (/** @type {string} */ agent, /** @type {string} */ title) => ok(OWNER, "work.agent.thread.new", { agent, title, ...ring() });
 
   assert.deepEqual((await ok(OWNER, "work.agent.threads", { agent: "juno" })).threads, [], "no threads yet");
@@ -118,6 +119,22 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   const ownerList = (await ok(OWNER, "work.chat.list")).chats;
   assert.ok(ownerList.every((/** @type {any} */ r, /** @type {number} */ i, /** @type {any[]} */ all) => i === 0 || String(all[i - 1].last_active) >= String(r.last_active)), "newest first");
   assert.deepEqual(ownerList.filter((/** @type {any} */ r) => r.place === "personal").map((/** @type {any} */ r) => r.title).sort(), ["first thread", "kit's thread", "second thread"]);
+
+  // adding Ben to my thread with juno moves it into the chat of exactly me and Ben, and juno comes along
+  const bd = newDeviceKey();
+  const grown = addHolders(made.get(first.thread).doc, made.get(first.thread).keys, { add: { [fingerprint(bd.publicJwk)]: bd.publicJwk } });
+  const moved = await ok(OWNER, "work.thread.add-people", { thread: first.thread, people: [BEN], ring: grown });
+  assert.equal(moved.thread, first.thread, "the thread is the same one");
+  assert.equal(moved.chat, dm.chat, "now in the chat of exactly me and Ben");
+  assert.equal(moved.place, "space");
+  assert.equal((await ok(OWNER, "work.chat.threads", { people: [BEN] })).count, 3, "that chat has three threads now");
+  assert.deepEqual((await ok(OWNER, "work.agent.threads", { agent: "juno" })).threads.map((/** @type {any} */ x) => x.title), ["second thread"], "it is no longer one of my own threads with juno");
+  assert.ok((await ok(BEN, "work.chat.threads", { chat: first.thread })).threads.some((/** @type {any} */ x) => x.title === "first thread"), "and Ben is in it");
+  // a thread of other people is not moved this way; adding yourself or no one is refused
+  assert.equal((await as(OWNER, "work.thread.add-people", { thread: g1.thread, people: [BEN] })).error?.code, "not_found");
+  assert.equal((await as(OWNER, "work.thread.add-people", { thread: second.thread, people: [] })).error?.code, "bad_input");
+  assert.equal((await as(OWNER, "work.thread.add-people", { thread: second.thread, people: [OWNER] })).error?.code, "bad_input");
+  assert.equal((await as(BEN, "work.thread.add-people", { thread: second.thread, people: [CY] })).error?.code, "not_found", "Ben cannot add people to a thread of mine");
 });
 
 test("a Flow's runs are its threads, and the chat list has one row per Flow with runs", { timeout: 240_000 }, async t => {

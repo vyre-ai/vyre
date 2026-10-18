@@ -214,6 +214,12 @@
         "effect": "read"
       },
       {
+        "name": "work.thread.add-people",
+        "summary": "add people to your thread with an agent; it moves into the chat of exactly those people",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.thread.new",
         "summary": "start a new thread in the chat of you and these people",
         "reach": "anyone",

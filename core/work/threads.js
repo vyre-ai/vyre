@@ -248,7 +248,7 @@ function forksTable(db) {
 
 /**
  * Register the thread tools that read and start. `chatTool` is the work module's own (it keeps the member door's copy), `createChat` the very function work.chat.create runs.
- * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, pinnedOf: (person: string) => Map<string, string> }} d
+ * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, changeChat: (input: any, extra: any) => Promise<any>, pinnedOf: (person: string) => Map<string, string> }} d
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
@@ -285,6 +285,23 @@ export function registerThreads(d) {
     description: "A chat's threads, newest first, found by a thread in it or by its people, with who is in it.",
     input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" }, description: "the other people in the chat, when no chat is named" }, limit: { type: "integer" }, before: { type: "string" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => chatThreads(d, extra, { chat: input.chat ? String(input.chat) : undefined, people: Array.isArray(input.people) ? input.people : [], limit: input.limit, before: input.before ? String(input.before) : null }),
+  });
+  d.chatTool("work.thread.add-people", {
+    description: "Add people to your thread with an agent: it moves into the chat of exactly you and them, and the agent comes along. Needs the key ring your device made.",
+    input: obj({ thread: { type: "string" }, people: { type: "array", items: { type: "string" } }, ring: { type: "object", description: "the chat's key ring with the new people's devices added (addHolders), made on your device" } }, ["thread", "people"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const chain = await d.chainOf(extra), k = d.kernelOf();
+      const thread = String(input.thread);
+      const people = Array.isArray(input.people) ? input.people.map(String).filter(Boolean) : [];
+      if (!people.length) throw fail("bad_input", "name the people to add");
+      // only a thread of you and one agent moves; in a chat of other people, a new thread there is made with work.chat.thread.new, and adding to a group is the group's own change
+      const solo = soloAgent(k, chain, thread);
+      if (!solo) throw fail("not_found", "no such thread of yours with an agent (work.agent.threads lists them); to add people to a chat of people, start a thread in the chat of exactly those people with work.chat.thread.new");
+      if (people.includes(solo.person)) throw fail("bad_input", "you are already in it");
+      await d.changeChat({ chat: thread, add_people: people, ...(input.ring ? { ring: input.ring } : {}) }, extra);
+      const where = await chatThreads(d, extra, { chat: thread, limit: 1 });
+      return { thread, chat: where.chat, place: where.place, people: where.people };
+    },
   });
   d.chatTool("work.chat.thread.new", {
     description: "Start a new thread in the chat of you and these people, with an agent if named. Returns { thread, chat }.",
