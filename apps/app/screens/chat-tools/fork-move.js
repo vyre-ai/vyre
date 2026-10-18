@@ -22,6 +22,7 @@ export async function forkAndMove(box, thread, to) {
   const f = await box.fork(thread);
   if (!f.ok) return f;
   const place = to === "server" ? "Space's Cloud" : "My Computer";
+  /** @param {string} w */
   const at = (w) => (w === "mac" ? "on My Computer" : "in Space's Cloud");
   try {
     const p = await box.move(f.thread, to);

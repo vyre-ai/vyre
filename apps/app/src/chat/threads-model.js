@@ -46,7 +46,7 @@ export function tabOf(tabs, want) { return tabs.some(([id]) => id === want) ? wa
  * @returns {{ id: string, title: string, at: number, live: boolean, needs: boolean }[]}
  */
 export function threadRows(raw) {
-  const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray(/** @type {any} */ (raw).threads) ? /** @type {any} */ (raw).threads : [];
+  /** @type {any[]} */ const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray(/** @type {any} */ (raw).threads) ? /** @type {any} */ (raw).threads : [];
   return list
     .filter((t) => t && typeof t === "object" && typeof t.id === "string" && t.id)
     .map((t) => ({ id: String(t.id), title: String(t.title || "New thread"), at: Number(t.at) || 0, live: t.live === true, needs: t.needs === true }))

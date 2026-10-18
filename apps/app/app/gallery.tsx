@@ -329,7 +329,7 @@ function ComposerCompare() {
 function PanelSample({ phone, page: first = "root" }: { phone: boolean; page?: PanelPage }) {
   const { color } = useUiTheme();
   const [page, setPage] = useState<PanelPage>(first);
-  const [tab, setTab] = useState<"details" | "library" | "computer">("details");
+  const [tab, setTab] = useState<string>("details");
   const [cur, setCur] = useState<{ slug: string; name: string } | null>(null);
   const projects = [{ slug: "northwind", name: "Northwind Bakery" }, { slug: "juniper", name: "Juniper Studio intake" }, { slug: "okafor", name: "Okafor estate" }];
   const part = [{ id: "person:alex", name: "alex", family: "person" as const, role: "" }, { id: "assistant:juno", name: "juno", family: "assistant" as const, role: "" }];

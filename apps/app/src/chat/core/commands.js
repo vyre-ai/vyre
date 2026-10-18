@@ -150,6 +150,6 @@ export function normalizeCommands(list) {
   }
   for (const c of COMMANDS) if (c.local && !out.has(c.name)) out.set(c.name, c);
   // the agent's thread commands lead the list, /new first and /threads second, whatever the session lists
-  const first = THREAD_FIRST.map(n => out.get(n)).filter(Boolean);
+  const first = THREAD_FIRST.flatMap(n => { const c = out.get(n); return c ? [c] : []; });
   return [...first, ...[...out.values()].filter(c => !THREAD_FIRST.includes(c.name))];
 }

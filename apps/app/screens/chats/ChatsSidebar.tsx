@@ -110,7 +110,7 @@ export function ChatsSidebar() {
     // one View, so the closed sheets are not seven children of a parent that spaces its children
     <View>
       {sheets}
-      <ConversationTypes type={f.type} onType={(type) => f.set({ type })} />
+      <ConversationTypes type={f.type} onType={(type: string) => f.set({ type })} />
       <NewAgentFlow open={f.newAgent} onClose={() => f.set({ newAgent: false })} />
       {!found.length ? <Text tone="label" style={{ paddingHorizontal: 16, paddingTop: 8 }}>{f.q.trim() || f.type !== "all" || f.project !== "all" || f.tag ? "Nothing matches." : "No chats yet. Tap + to start one."}</Text> : null}
       <ConversationList items={found} onOpen={open} whenOf={(c) => (c.last ? ageOf(c.last, now) : "")} menuOf={(c) => (c.chat && c.kind !== "flow" ? menu(c.chat) : [])} currentChat={openChatOf(path)} />
