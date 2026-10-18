@@ -357,7 +357,7 @@ export const QUICK_FIELD = {
     text("options", "Options (JSON)"), choice("state", "State", ["bag", "promoting", "real"], { required: true }),
   ],
 };
-/** A deal: something being sold, on the Sales pipeline. A stage can ask for fields before a deal enters it (core/records-tools/pipeline.js moves it and says what is missing); Lost asks for the reason. `weighted_value` is amount x probability / 100, kept by the tools. */
+/** A deal: something being sold, on the Sales pipeline (day-one snapshot). A stage can ask for fields before a deal enters it (core/records-tools/pipeline.js moves it and says what is missing); Lost asks for the reason. `weighted_value` is amount x probability / 100, kept by the tools. */
 export const DEAL_STAGES = ["Lead", "Qualified", "Proposal", "Won", "Lost"];
 export const DEAL = {
   name: "deal", label: "Deal", icon: "IconCurrencyDollar",
