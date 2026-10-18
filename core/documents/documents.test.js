@@ -34,7 +34,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
   const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
   const store = { migrate: (/** @type {string[]} */ ms) => { for (const m of ms) db.exec(m); }, db };
   const ctx = { store, config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
-    kernel: { space: SPACE, owner: "per_alex", membership: async (/** @type {string} */ p) => ({ role: p === "per_alex" ? "owner" : p === "per_admin" ? "admin" : "member" }), for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
+    kernel: { space: SPACE, owner: "per_alex", membership: async (/** @type {string} */ p) => ({ member: p !== "per_removed", role: p === "per_alex" ? "owner" : p === "per_admin" || p === "per_removed" ? "admin" : "member" }), for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
   return { run, files, made, tools, emitted, db };
@@ -438,4 +438,13 @@ test("an admin sees the requests the owner may see; a plain member with no recor
   assert.equal((await admin.run("documents.signing.status", { submission: 52 }, { caller: "cli" })).status.submission, 52, "an admin opens any request");
   const plain = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_pat", space: SPACE } }] }, call, made, db: sender.db });
   assert.equal((await code(plain.run("documents.signing.status", { submission: 52 }, { caller: "cli" })))?.code, "not_found", "a plain member does not");
+});
+
+test("a removed admin is refused: the kernel says she is no longer a member, so her old admin role does not open other people's requests", async () => {
+  const made = /** @type {any[]} */ ([]);
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => tool === "appmods.signing.status" ? { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } } : {};
+  const sender = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_mia", space: SPACE } }] }, call, made });
+  await sender.db.prepare("INSERT INTO documents_requests (submission, sender, template, at) VALUES (?, ?, ?, ?)").run(61, "per_mia", "3", 1);
+  const removed = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_removed", space: SPACE } }] }, call, made, db: sender.db });
+  assert.equal((await code(removed.run("documents.signing.status", { submission: 61 }, { caller: "cli" })))?.code, "not_found", "a removed admin is refused");
 });

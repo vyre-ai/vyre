@@ -358,8 +358,8 @@ export function registerDocuments(ctx) {
     if (!person) return false;
     if (ctx.kernel && ctx.kernel.owner && String(ctx.kernel.owner) === person) return true;
     try {
-      const m = ctx.kernel && typeof ctx.kernel.membership === "function" ? await ctx.kernel.membership(person) : null;
-      return Boolean(m && (m.role === "owner" || m.role === "admin"));
+      const m = ctx.kernel && typeof ctx.kernel.membership === "function" ? await ctx.kernel.membership(person, ctx.kernel.space) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
     } catch { return false; }
   };
 
