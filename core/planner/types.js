@@ -48,6 +48,7 @@ export const NOTE = {
   name: "note", label: "Note", icon: "IconNote", protected: true,
   fields: [
     text("title", "Title", { required: true }),
+    text("ref", "ID", { unique: true, read_only: true }),   // NOT-0001: made with the record, never changed (core/records-tools/ref.js)
     { name: "state", kind: "choice", label: "State", options: ITEM_STATES, required: true },
     { name: "body", kind: "rich_text", label: "Note" },
     ...FILING, ...MADE,

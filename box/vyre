@@ -1528,6 +1528,7 @@ sp_golden() {
   img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
   printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || { GOLDENWHY="root has not recorded this image"; return 1; }
   if [ "$(cat "$gd/image-id" 2>/dev/null || true)" != "$img" ] || [ ! -s "$gd/golden.dump" ]; then
+    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
     mkdir -p "$gd" && chmod 755 "$gd" && rm -f "$gd/image-id" "$gd/golden.dump" || { GOLDENWHY="the saved-database folder could not be made"; return 1; }
     # shellcheck disable=SC2016 # the script is node's, not the shell's
     p=$(timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
@@ -1539,6 +1540,7 @@ sp_golden() {
     timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; cprc=$?
     timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker rm -f "$cid" >/dev/null 2>&1 || true
     if [ "$cprc" != 0 ] || [ ! -s "$gd/golden.dump.new" ]; then rm -f "$gd/golden.dump.new"; GOLDENWHY="the saved database could not be copied out of the image"; return 1; fi
+    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
     chmod 444 "$gd/golden.dump.new" && mv -f "$gd/golden.dump.new" "$gd/golden.dump" && printf '%s\n' "$img" >"$gd/image-id" || { GOLDENWHY="the saved database could not be kept"; return 1; }
   fi
   pw=$(sp_rnd)

@@ -128,20 +128,6 @@ export const ORGANIZATION = {
   views: [{ name: "organizations_list", type: "list", label: "All organizations", columns: ["name", "ref", "domain", "phone"], sort: { field: "name", dir: "asc" } }],
 };
 
-/** A note: a title and some words, about a person or a company. One of the four types a new Space starts with (People, Companies, Tasks, Notes). */
-export const MEMO = {
-  name: "memo", label: "Note", icon: "IconNote",   // not "note": Twenty has a standard object of that name
-  fields: [
-    text("name", "Title", { required: true }),
-    text("ref", "ID", { unique: true, read_only: true }),   // NOT-0001: made with the record, never changed (core/records-tools/ref.js)
-    f("rich_text", "body", "Note"),
-    f("link", "contact", "Person", { to: "contact", inverse: { name: "linked_notes", label: "Linked notes" } }),
-    f("link", "organization", "Company", { to: "organization", inverse: { name: "linked_notes", label: "Linked notes" } }),
-    TAGS,
-  ],
-  views: [{ name: "memos_list", type: "list", label: "All notes", columns: ["name", "ref", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
-};
-
 export const POINT_KINDS = ["email", "phone"];
 
 /**
@@ -245,6 +231,8 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived", "moved"]),
+    // how the project runs, chosen when it starts: stages (a playbook's stage track), client (tied to a company or person), ongoing (a board plus Flows) or simple. None reads as simple. The Personal project has none: it is pinned and private.
+    choice("kind", "How it runs", ["stages", "client", "ongoing", "simple"]),
     // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
     f("link", "client", "Client", { to: "contact", inverse: { name: "projects", label: "Projects" } }),
     f("actor", "owner", "Owner"),
@@ -346,4 +334,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, MEMO].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK].map((t) => Object.freeze(t)));

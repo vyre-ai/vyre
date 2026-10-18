@@ -6,7 +6,7 @@ import { parse as parseTags } from "../../../../lib/tags.js";
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
 
-/** @typedef {{ pinned?: "" | "assistant" | "engineer", place?: string, id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, tags?: string[] }} ChatRow */
+/** @typedef {{ pinned?: "" | "assistant" | "engineer", place?: string, id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, tags?: string[], engineer?: boolean }} ChatRow */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 /** A list the box sends as an array, or (work.chat.list) as one comma-joined string. */
@@ -34,7 +34,7 @@ export function chatsFrom(data) {
     out.push({
       id, place: str(d.place), title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
       tags: parseTags(d.tags), providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
-      pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
+      pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, engineer: d.engineer_chat === true, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });
   }
   return out;

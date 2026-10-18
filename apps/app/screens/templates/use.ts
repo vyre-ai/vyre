@@ -5,7 +5,7 @@ import { templateNoun } from "../../ui/tasks/template-stage.js";
 
 export type Choice = { label: string; template: string | null };
 
-/** The "New" menu: each live template by what its projects are called ("New matter"), then a blank project. A template that does not say is called by its own name. */
+/** The "New" menu: each live template by what its projects are called ("New campaign"), then a blank project. A template that does not say is called by its own name. */
 export function newChoices(rows: Row[]): Choice[] {
   const live = rows.filter((r) => r.live !== null && !r.archived).map((r): Choice => ({ label: `New ${(r.noun?.one || r.name).toLowerCase()}`, template: r.template }));
   return [...live, { label: "New blank project", template: null }];

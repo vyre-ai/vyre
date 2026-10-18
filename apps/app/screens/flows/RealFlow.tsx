@@ -6,11 +6,15 @@ import { useSpaces } from "../shell/state";
 import { tool } from "../../src/real/box";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Switch, Tabs, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
+import { sentenceParts } from "./sentence.js";
+import { usePhone } from "../places/Page";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
+import { FlowLimits } from "./FlowLimits";
+import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
@@ -18,7 +22,7 @@ import { cancelReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
-import { listReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { listReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
 import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
@@ -51,6 +55,11 @@ export function RealFlow({ id }: { id: string }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [n, setN] = useState(0);
+  const [mapOn, setMapOn] = useState(false);
+  const [tryOpen, setTryOpen] = useState(false);
+  const phone = usePhone();
+  const [tab, setTab] = useState<"steps" | "runs" | "settings">("steps");
+  const [row, setRow] = useState<RealFlowRow | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -59,7 +68,7 @@ export function RealFlow({ id }: { id: string }) {
         const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
         if (!live) return;
         setHealth(hl);
-        setG(graph); setDef(m.flow ?? null); listReal().then((rows) => { const r = rows.find((x) => x.id === id); if (r) setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); }).catch(() => {}); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        setG(graph); setDef(m.flow ?? null); listReal().then((rows) => { const r = rows.find((x) => x.id === id); if (r) setRow(r); if (r) setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); }).catch(() => {}); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
       } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
     })();
@@ -114,11 +123,19 @@ export function RealFlow({ id }: { id: string }) {
   const hb = healthBanner(health);
 
   return (
-    <Frame back="/u/flows" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
+    <Frame back="/u/apps" title={meta.title} sub={`${g.trigger} · v${meta.version}`}>
+      <View className="gap-s2 pb-s3">
+        <Text size="page" strong>{sentenceParts(g.trigger, (g.nodes || []).filter((x: any) => x.kind !== "trigger").map((x: any) => String(x.label))).map((p, i) => <Text key={i} size="page" strong tone={p.token ? "accent" : "default"}>{p.text}</Text>)}</Text>
+        <Text size="caption" tone="label">{[meta.title, row?.project ? `in ${row.project}` : "Personal", `version ${meta.version}`].join(" · ")}</Text>
+        <View className="flex-row flex-wrap items-center gap-s3">
+          <Switch label={row?.paused ? "Off" : "On"} on={!row?.paused} onChange={async (on) => { try { await setPausedReal(id, !on); setN((x) => x + 1); } catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); } }} />
+          <Button kind="secondary" size="sm" icon="chat" label="Change it in chat" onPress={() => openEngineer(router, { source: "flow", ref: id, words: "" })} />
+          {def ? <Button kind={tryOpen ? "secondary" : "ghost"} size="sm" icon="play" label="Try it" onPress={() => setTryOpen(!tryOpen)} /> : null}
+          {!waiting ? <Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /> : null}
+        </View>
+      </View>
+      {tryOpen ? <View className="pb-s3">{def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}</View> : null}
       {hb && hb.tone !== "quiet" ? <Banner tone={hb.tone}><Text>{hb.text}</Text></Banner> : null}
-      {def ? <Sec title="Steps"><StoredFlowEditor id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></Sec> : null}
-      <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
-      {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
       {shownWarnings(g.warnings).length ? <Banner tone="warn"><View className="gap-s1">{shownWarnings(g.warnings).map((w, i) => <Text key={i}>{w}</Text>)}</View></Banner> : null}
       {waiting && card ? (
         <Sec title="Waiting for your approval">
@@ -129,24 +146,27 @@ export function RealFlow({ id }: { id: string }) {
         </Sec>
       ) : null}
       {hb && hb.tone === "quiet" ? <Text tone="muted">{hb.text}</Text> : null}
-      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
-      {painted && picked_run ? (
-        <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
-          <ExplainCard text={explain} />
-          <Card flush>
-            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
-          </Card>
-          <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
-          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
-          {canStop(picked_run.state) ? (confirmStop === picked_run.id ? (
-            <View className="flex-row gap-s2 pt-s2"><Button kind="primary" size="sm" label={busy ? "Stopping" : "Stop it"} disabled={busy} onPress={async () => { await stop(picked_run.id); setConfirmStop(null); }} /><Button kind="ghost" size="sm" label="Keep it" onPress={() => setConfirmStop(null)} /></View>
-          ) : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Stop this run" onPress={() => setConfirmStop(picked_run.id)} /></View>) : null}
-        </Sec>
+      <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ["settings", "Settings"]]} value={tab} onChange={setTab} />
+      {tab === "steps" ? (
+        <View className={phone ? "gap-s4 pt-s3" : "flex-row items-start gap-s5 pt-s3"}>
+          <View className="min-w-0 flex-1 gap-s4">
+      {def ? <Sec title="Steps"><StoredFlowEditor id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></Sec> : null}
+          </View>
+          <View className={phone ? "" : "w-72"}>
+      <View style={{ gap: 12 }}>
+        <Text strong>Runs</Text>
+        {runs.slice(0, 5).map((r) => (
+          <Row key={r.id} dense title={`Run of ${when(r.started_at)}`} sub={r.error?.message || (STATE[r.state]?.note ?? r.state)} onPress={() => { setRunId(r.id); setTab("runs"); }}
+            end={canRetry(r.state) ? <Button kind="ghost" size="sm" label="Retry" disabled={busy} onPress={() => retry(r.id)} /> : undefined} />
+        ))}
+        {!runs.length ? <Text tone="muted">Not run yet.</Text> : null}
+        <View className="self-start"><Button kind="ghost" size="sm" label="All runs" onPress={() => setTab("runs")} /></View>
+      </View>
+          </View>
+        </View>
       ) : null}
-      <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
-      {def ? <TryIt id={id} flow={def} steps={(g.nodes || []).filter((n: any) => n.kind !== "trigger").map((n: any) => ({ id: String(n.id), label: String(n.label) }))} /> : null}
-      <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
-      <FlowTests id={id} runId={picked_run?.id} />
+      {tab === "runs" ? (
+        <View className="gap-s4 pt-s3">
       <Sec title="Run history">
         {runs.length ? (
           <Card flush>
@@ -161,7 +181,35 @@ export function RealFlow({ id }: { id: string }) {
           </Card>
         ) : <Card><EmptyState title="Not run yet" body="It runs the next time what starts it happens." /></Card>}
       </Sec>
-      <View className="self-start"><Button kind="ghost" size="sm" label="Back to Flows" onPress={() => router.push("/u/flows" as never)} /></View>
+      {painted && picked_run ? (
+        <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
+          <ExplainCard text={explain} />
+          <Card flush>
+            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
+          </Card>
+          <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
+          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
+          {canStop(picked_run.state) ? (confirmStop === picked_run.id ? (
+            <View className="flex-row gap-s2 pt-s2"><Button kind="primary" size="sm" label={busy ? "Stopping" : "Stop it"} disabled={busy} onPress={async () => { await stop(picked_run.id); setConfirmStop(null); }} /><Button kind="ghost" size="sm" label="Keep it" onPress={() => setConfirmStop(null)} /></View>
+          ) : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Stop this run" onPress={() => setConfirmStop(picked_run.id)} /></View>) : null}
+        </Sec>
+      ) : null}
+        </View>
+      ) : null}
+      {tab === "settings" ? (
+        <View className="gap-s4 pt-s3">
+        <FlowLimits id={id} />
+        <Switch label="Show the map of this Flow" on={mapOn} onChange={setMapOn} />
+        {mapOn ? <View className="gap-s3">
+      <Card flush><FlowCanvas nodes={nodes} edges={g.edges} selected={picked} onSelect={(x) => setPicked(x === picked ? undefined : x)} /></Card>
+      {node ? <Card title={node.kind === "trigger" ? "How it starts" : "This step"}><View className="gap-s1"><Text strong>{node.label}</Text>{node.note ? <Text tone="muted">{node.note}</Text> : null}</View></Card> : null}
+        </View> : null}
+      <FlowHistory id={id} versions={nver.versions} active={nver.active} onChanged={() => setN((x) => x + 1)} />
+      <FlowTests id={id} runId={picked_run?.id} />
+      <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />
+        </View>
+      ) : null}
+      <View className="self-start"><Button kind="ghost" size="sm" label="Back to Flows" onPress={() => router.push("/u/apps" as never)} /></View>
     </Frame>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { Button, Card, EmptyState, LoadingState } from "@vyre/ui";
+import { Button, Card, EmptyState, LoadingState, allowsMock } from "@vyre/ui";
+import { startEngineerThread } from "../../src/chat/engineer-chat";
 import { Page } from "../places/Frame";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { boxStream } from "../../src/chat/box-stream";
@@ -23,7 +24,11 @@ export function EngineerEntry() {
   useEffect(() => {
     let live = true;
     void (async () => {
-      const opened = await ensurePersistent("engineer");
+      // The Engineer is one Space chat for everyone who may use it: each conversation is a new thread there. A person who has no such chat falls back to their own.
+      const started = allowsMock() ? null : await startEngineerThread();
+      if (!live) return;
+      if (started && "say" in started) { setSay(started.say); return; }
+      const opened = started ? { chat: started.thread } : await ensurePersistent("engineer");
       if (!live) return;
       if ("say" in opened) { setSay(opened.say); return; }
       const h = takeHandoff();

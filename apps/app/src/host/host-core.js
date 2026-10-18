@@ -123,7 +123,7 @@ export function createHost(o) {
       const item = String(added && added.item || "");
       if (!item) throw bad(added && added.failed ? String(added.failed) : "Your key could not be put in your Vault.", "failed");
       const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item, ...(i.base_url ? { base_url: i.base_url } : {}) });
-      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true };
+      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true, item };
     } catch (e) {
       throw /** @type {any} */ (e).code === "need_password" ? e : redact(e);
     }
@@ -602,7 +602,7 @@ export function createHost(o) {
         const said = String((e && /** @type {any} */ (e).message) || "That key could not be added.").split(key).join("[key]").slice(0, 200);
         throw bad(said, code);
       }
-      return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked) };
+      return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked), ...(r && typeof r.item === "string" && r.item ? { item: r.item.slice(0, 128) } : {}) };
     },
 
     // The model step: what each connected AI account offers, and the Assistant's default among them. Reads the accounts the person just signed in (sessions.accounts.list) and what each offers
