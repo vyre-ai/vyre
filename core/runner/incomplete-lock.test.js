@@ -36,7 +36,7 @@ test("an incomplete removal stops the holders (term, then kill) and removes agai
   const said = /** @type {string[]} */ ([]);
   assert.deepEqual(await lockUntilComplete({ ...f.d, log: m => said.push(m) }), { locked: true, rounds: 4 });
   assert.deepEqual(f.killed.map(k => k[1]), ["SIGTERM", "SIGTERM", "SIGTERM", "SIGTERM", "SIGKILL", "SIGKILL"]);
-  assert.equal(said.length, 3);
+  assert.equal(said.length, 4, "three incomplete lines and the one count line");
 });
 
 test("a holder that never goes is never reported as locked: the answer is locked:false after the bounded tries", async () => {
