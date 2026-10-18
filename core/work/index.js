@@ -34,7 +34,7 @@ import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
-import { registerThreads, placeOf, facesOf, PROJECT_CHAT } from "./threads.js";
+import { registerThreads, placeOf, facesOf, PROJECT_CHAT, ENGINEER_CHAT } from "./threads.js";
 import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -741,6 +741,7 @@ export default {
         if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
         const chain = await chainOf(extra);
         // the chat_pj_ ids are a project's group chat alone (work.project.chat): taken first by someone else, they would give that person its ring and its people
+        if (input.id && String(input.id).startsWith("chat_eng_") && !(extra && extra.engineerChat === ENGINEER_CHAT)) throw Object.assign(new Error("that id is reserved for the Space's Engineer chat (work.engineer.chat makes it); choose an id like chat_<uuid>"), { code: "bad_input" });
         if (input.id && String(input.id).startsWith("chat_pj_") && !(extra && extra.projectChat === PROJECT_CHAT)) throw Object.assign(new Error("that id is reserved for a project's group chat (work.project.chat makes it); choose an id like chat_<uuid>"), { code: "bad_input" });
         // a chat is filed only under a project she owns or is on (before anything is made): being in a project's chat is a way onto its memory, so the chat is not a way onto the project
         if (input.project) await hubOf().mayFileChat(chain, String(input.project));

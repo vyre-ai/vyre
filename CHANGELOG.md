@@ -18,6 +18,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(work): work.person.shared also lists the files of the chats you and that person are both in (name, size, time, which thread), read through your own chain, so a chat you are not in shows none.
 - feat(work): a Flow drafted from a chat (flows.from-chat with chat) remembers the chat, and work.flow.threads returns it as a "How it was made" thread ({ kind: "made" }) to a person who is in that chat. The flows module keeps it through work.flow.origin as the person who made the draft; a chat they are not in is not kept.
 - feat(work): a thread waiting on the Gate needs you: an item held for the person, filed under one of the thread's runs, counts as an open question (work asks gate.held as the person). Every Flow has its row in the chat list, with or without runs, when the person may inspect it (flows.runs applies the rule); a member sees no row, name or run of a Flow she cannot inspect.
+- feat(work): the Engineer is one Space chat. work.engineer.chat finds or makes it on first use for everyone who may use the Engineer (the Space's owners and admins), with a fixed id (chat_eng_ is reserved to it on every other create path), the device's ring required, and the gap (missing, extra) for a device to apply with work.chat.change. A member without access gets nothing.
 
 ## 0.6.0-rc.1
 ## 0.6.0
