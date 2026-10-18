@@ -56,6 +56,17 @@ export class AgentFrames {
       if (typing || shielded) { out.withheld = typing ? "typing" : "shielded"; return out; }
     }
     const shot = state === "live" ? await this.capture(agent) : this.cache.get(agent) || null;
+    if (state === "live") {
+      // A take-over or shield may have begun while the capture ran: that picture straddles it, so it is neither served nor kept.
+      const typing = this.typing(agent), shielded = this.shielded(agent);
+      if (typing || shielded) {
+        this.cache.delete(agent);
+        out.held_by = typing ? "taken-over" : (this.watching(agent) ? "watching" : undefined);
+        if (out.held_by === undefined) delete out.held_by;
+        out.withheld = typing ? "typing" : "shielded";
+        return out;
+      }
+    }
     if (shot) Object.assign(out, { thumbnail: `data:${shot.mime};base64,${shot.jpeg}`, width: shot.width, height: shot.height, at: shot.at });
     return out;
   }

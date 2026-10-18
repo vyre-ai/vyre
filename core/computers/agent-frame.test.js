@@ -69,6 +69,29 @@ test("while a person types into the screen, or a sign-in or fill shields it, the
   assert.equal(w.shots(), 1, "nothing was captured while it was withheld");
 });
 
+test("a capture in flight when the shield turns on returns withheld and leaves nothing in the cache", async t => {
+  const db = open(path.join(tempHome(t), "t.db"));
+  t.after(() => db.close());
+  migrate(db, "computers", MIGRATIONS);
+  const flags = { typing: false, shielded: false };
+  /** @type {() => void} */ let release = () => {};
+  const gate = new Promise(r => { release = () => r(null); });
+  const ctl = { createUser: async () => {}, removeUser: async () => {}, startScreen: async () => {}, stopScreen: async () => {}, wipeAgentHome: async () => {},
+    shot: async () => { await gate; return { mime: "image/jpeg", width: 480, height: 300, jpeg: Buffer.from("late").toString("base64") }; } };
+  const users = new AgentUsers({ db, ctl, now: () => 10_000 });
+  const frames = new AgentFrames({ users, now: () => 10_000, typing: () => flags.typing, shielded: () => flags.shielded, watching: () => false });
+  await users.add("ads", "ads"); await users.wake("ads");
+  const pending = frames.view("ads");
+  flags.shielded = true;
+  release();
+  const v = await pending;
+  assert.equal(v.thumbnail, undefined);
+  assert.equal(v.withheld, "shielded");
+  assert.equal(frames.cache.has("ads"), false, "nothing of that picture is kept");
+  flags.shielded = false;
+  assert.equal((await frames.view("ads")).thumbnail !== undefined, true, "a later look captures afresh");
+});
+
 test("an asleep agent shows the latest picture it had; a reset, a removal and a stopped computer drop it; an agent with no place shows none", async t => {
   const w = world(t);
   assert.deepEqual(await w.frames.view("ghost"), { agent: "ghost", state: "none", lastActive: 0 });
