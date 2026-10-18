@@ -489,6 +489,7 @@ test("the API key tool sends the key once to the server's key tool and never let
   // an error that echoes the key is thrown without it
   mode = "echo";
   await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" }), (e) => { assert.ok(!String(e.message).includes(KEY), "the thrown words carry no key"); assert.equal(e.code, "bad_input"); return true; });
+  mode = "ok";
   // other addresses, kinds, keys and names are refused with nothing sent
   sent.length = 0;
   for (const bad of [{ kind: "anthropic-compatible", base_url: "https://evil.example/v1" }, { kind: "openai-compatible", base_url: "https://evil.example/v1" }, { kind: "openrouter", base_url: "https://api.x.ai/v1" }, { kind: "mystery" }, { kind: "openrouter", key: "short" }, { kind: "openrouter", label: "" }]) {

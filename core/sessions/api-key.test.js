@@ -45,9 +45,10 @@ test("api key: a name for the Vault item is used when free, made free with a num
   const taken = await add("seed-item");
   assert.equal(taken.error, undefined, JSON.stringify(taken));
   const rows = (await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data;
-  assert.deepEqual(rows.map((r) => r.vault_item).sort(), ["Work OpenAI", "Work OpenAI 2", "seed-item 2"]);
-  const bad = await add("../etc/x");
-  assert.equal(bad.error.code, "bad_input");
+  assert.deepEqual(rows.map((r) => r.vault_item).sort(), ["Work-OpenAI", "Work-OpenAI-2", "seed-item-2"]);
+  const path = await add("../etc/x");
+  assert.equal(path.error, undefined, "a path-like name is made safe, not refused");
+  assert.ok((await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.some((r) => r.vault_item === "etc-x"), "no path survives in the item's name");
   assert.equal((await w.tool("vault.list", {})).data.items.find((x) => x.name === "seed-item") !== undefined, true, "the seeded item is still there");
 });
 

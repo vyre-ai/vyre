@@ -7,6 +7,7 @@ import { devSwitch } from "../../../kernel/devbuild.js";   // a development buil
 import { refuseNonPerson } from "../../../lib/person-body.js";
 import { PERSON_SURFACES as THE_SURFACES } from "../../../lib/person-surfaces.js";
 import { presence } from "./presence.js";
+import { freeItemName, itemNameOf } from "../../../lib/vault-item-name.js";
 import { ConnectionTokens, revokeAllowed } from "../connection-token.js";
 import { normalize as normalizeApiCredential } from "../api-request.js";
 import { revokeAtVendor } from "../connection-revoke.js";
@@ -119,8 +120,8 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       switch (String(i.call)) {
         case "status": return people.status(id);
         case "addkey": {
-          const label = text(input.label, 60);
-          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(label)) throw bad("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -");
+          const label = text(input.label, 80);
+          if (/[\u0000-\u001f]/.test(label)) throw bad("a name is one line");
           const value = text(input.value, 400);
           if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value)) throw bad("that does not look like an API key");
           const st = await people.status(id);
@@ -143,9 +144,9 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
             let rows; try { const l = await people.list(id, {}); rows = Array.isArray(l) ? l : l && Array.isArray(l.items) ? l.items : null; } catch { rows = null; }
             if (!rows) throw bad("your vault could not be checked for that name");
             const used = new Set(rows.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
-            let item = label, n = 2;
-            while (used.has(item.toLowerCase()) && n < 100) item = `${label} ${n++}`;
-            if (used.has(item.toLowerCase())) throw bad("that name is taken in your vault");
+            // the Vault's names are letters, digits, dot, dash and underscore: the label is kept as itemNameOf makes it, with -2, -3 when taken
+            const item = freeItemName(itemNameOf(label), used);
+            if (!item) throw bad("that name is taken in your vault");
             await people.put(id, { name: item, kind: "api-key", description: "", fields: { value } });
             return item;
           };

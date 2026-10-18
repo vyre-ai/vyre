@@ -54,6 +54,7 @@ import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
 import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 import { createAccountsService } from "./accounts-service.js";
 import { memberAccountBases, memberBaseOk, memberBases } from "./member-endpoints.js";
+import { freeItemName, itemNameOf } from "../../lib/vault-item-name.js";
 
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
@@ -524,7 +525,7 @@ export default {
       } finally { clearTimeout(timer); }
     };
     tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
-      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it). Taken as it is when free, else with a number after it; never an existing item. Default ai-key-<provider>-<id>." } } },
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it), kept as letters, digits, dot, dash and underscore (\"Work Claude\" is \"Work-Claude\"). Taken as it is when free, else with -2, -3 after it; never an existing item. Default ai-key-<provider>-<id>." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
@@ -542,16 +543,15 @@ export default {
         const id = crypto.randomBytes(6).toString("hex");
         let item = `ai-key-${k.provider}-${id}`;
         if (i.name !== undefined && String(i.name).trim()) {
-          const asked = String(i.name).trim();
-          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(asked)) throw Object.assign(new Error("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -"), { code: "bad_input" });
+          // the Vault's names are letters, digits, dot, dash and underscore: the name asked for is kept as itemNameOf makes it ("Work Claude" is "Work-Claude")
+          const asked = itemNameOf(String(i.name));
           // never an existing item (a put on an existing name replaces it): the name is made free with a number after it
           const have = await ctx.call("vault.list", {});
           // fail closed: if the Vault cannot be read, nothing is put (a put on an existing name replaces that item)
           if (!have || have.error || !have.data || !Array.isArray(have.data.items)) throw Object.assign(new Error("the Vault could not be checked for that name"), { code: "bad_input" });
           const names = new Set(have.data.items.map((/** @type {any} */ x) => String(x && x.name || "").toLowerCase()));
-          let cand = asked, n = 2;
-          while (names.has(cand.toLowerCase()) && n < 100) cand = `${asked} ${n++}`;
-          if (names.has(cand.toLowerCase())) throw Object.assign(new Error("that name is taken in the Vault"), { code: "bad_input" });
+          const cand = freeItemName(asked, names);
+          if (!cand) throw Object.assign(new Error("that name is taken in the Vault"), { code: "bad_input" });
           item = cand;
         }
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });

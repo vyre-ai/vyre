@@ -221,9 +221,9 @@ test("accounts: a job a member asked for may name that member's own login, and n
 
 test("accounts: a member's own api-key account is stored under that member with its key in their own Vault, serves only them, and is never the owner's", async () => {
   const a = fresh();
-  const mine = await a.add({ provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude", person: "per_member", own_vault: true });
+  const mine = await a.add({ provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My-Claude", person: "per_member", own_vault: true });
   const row = a.row(mine.id);
-  assert.deepEqual([row.person, row.own_vault, row.kind, row.vault_item, row.provider], ["per_member", true, "api-key", "My Claude", "claude"]);
+  assert.deepEqual([row.person, row.own_vault, row.kind, row.vault_item, row.provider], ["per_member", true, "api-key", "My-Claude", "claude"]);
   assert.equal(a.serves(row, "per_member"), true);
   assert.equal(a.serves(row, "per_owner"), false, "the owner is not served by a member's account");
   assert.equal(a.serves(row, "per_other"), false, "nor is another member");
