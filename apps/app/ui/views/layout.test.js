@@ -7,7 +7,8 @@ import { applyLayout, hasLayout, holdsCondition, layoutRows, toggleName, moveNam
 import { listColumns, viewDefOf } from "./logic.js";
 import { tableFromRecords } from "./records-table.js";
 
-const def = { name: "deal", label: "Deal", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "value", kind: "money", label: "Value" }, { name: "owner", kind: "text", label: "Owner" }, { name: "close", kind: "date", label: "Close" }] };
+// a type name that has no entry in view-defs.js, so the test follows its own fields and not a shipped type's columns
+const def = { name: "widget", label: "Widget", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "value", kind: "money", label: "Value" }, { name: "owner", kind: "text", label: "Owner" }, { name: "close", kind: "date", label: "Close" }] };
 
 test("a layout lies over the view: its columns and sort replace the view's, the rest stays", () => {
   const vd = { plural: "Deals", titleField: "name", list: { columns: ["owner"], sort: "name" }, board: { groupBy: "stage", card: [] } };
