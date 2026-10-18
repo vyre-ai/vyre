@@ -29,8 +29,9 @@ function rig({ granted = new Set(["notes-key|p-notes-notes.NOTES_API_KEY"]), key
   const hub = new Hub({ db, creds, connect, emit: (type, payload) => events.push({ type, payload }), keyHeld: async (item, watcher) => granted.has(`${item}|${watcher}`), ...(keyCheckMs ? { keyCheckMs } : {}) });
   return { hub, db, events, opened, granted };
 }
+const listed = async (/** @type {any} */ hub) => { const v = await hub.servers(person); return Array.isArray(v) ? v : v.servers || []; };
 const person = { person: true, agent: null, thread: null, me: () => "" };
-const everywhere = (/** @type {any} */ r) => JSON.stringify([r.hub.rows(), r.hub.servers(person), r.events, [...r.db.prepare("SELECT * FROM mcp_servers").all()]]);
+const everywhere = async (/** @type {any} */ r) => JSON.stringify([r.hub.rows(), await listed(r.hub), r.events, [...r.db.prepare("SELECT * FROM mcp_servers").all()]]);
 
 test("normalize: a bound row names items and variables only, for a stdio server, and refuses what does not fit", () => {
   const ok = normalize(row());
@@ -48,7 +49,7 @@ test("a server with no item chosen, or whose item is not granted to it, waits an
   const r = rig({ granted: new Set() });
   const view = await r.hub.add(row({ env: {} }));
   assert.equal(r.opened.length, 0);
-  assert.equal(r.hub.servers(person).find((/** @type {any} */ s) => s.name === "p-notes-notes").state, "needs_key");
+  assert.equal((await listed(r.hub)).find((/** @type {any} */ s) => s.name === "p-notes-notes").state, "needs_key");
   await assert.rejects(r.hub.call({ server: "p-notes-notes", tool: "list_notes" }, person), (/** @type {any} */ e) => e.code === "needs_key");
   assert.ok(r.events.some(e => e.type === "mcp.needs-key"), "said once as an event");
   // an item is named but nobody granted it to this server and variable
@@ -66,7 +67,7 @@ test("with the grant the child gets the value in its environment and nowhere els
   assert.equal(r.opened.length, 1);
   assert.equal(r.opened[0].opts.env.NOTES_API_KEY, VALUE, "the child's environment holds it");
   assert.ok(!JSON.stringify(r.opened[0].spec).includes(VALUE), "not in the command or arguments");
-  assert.ok(!everywhere(r).includes(VALUE), "not in a row, the stored table, a listing or an event");
+  assert.ok(!(await everywhere(r)).includes(VALUE), "not in a row, the stored table, a listing or an event");
 });
 
 test("a grant taken back stops the server: on the next call, at a sweep, and by the timer; a grant given again starts it", async () => {
@@ -77,7 +78,7 @@ test("a grant taken back stops the server: on the next call, at a sweep, and by 
   r.granted.delete("notes-key|p-notes-notes.NOTES_API_KEY");
   await assert.rejects(r.hub.call({ server: "p-notes-notes", tool: "list_notes" }, person), (/** @type {any} */ e) => e.code === "needs_key");
   assert.equal(c1.closed, true, "the running child was stopped");
-  assert.equal(r.hub.servers(person).find((/** @type {any} */ s) => s.name === "p-notes-notes").state, "needs_key");
+  assert.equal((await listed(r.hub)).find((/** @type {any} */ s) => s.name === "p-notes-notes").state, "needs_key");
   r.granted.add("notes-key|p-notes-notes.NOTES_API_KEY");
   await r.hub.call({ server: "p-notes-notes", tool: "list_notes" }, person);
   assert.equal(r.opened.length, 2, "started again once the key is granted");

@@ -40,7 +40,7 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   // a pinned npx, and a pinned container, are accepted
   const dr = await draft(plugin());
   assert.deepEqual(dr.declares.mcp[0].needs, [{ var: "NOTES_API_KEY", label: "Notes API key" }]);
-  assert.ok((await draft(plugin({ name: "box", command: "docker", args: ["run", "--rm", "-i", "-e", "NOTES_API_KEY", "ghcr.io/example/notes-mcp@sha256:" + "b".repeat(64)] }), "box-notes")).ack);
+  assert.ok((await draft({ ...plugin({ command: "docker", args: ["run", "--rm", "-i", "-e", "NOTES_API_KEY", "ghcr.io/example/notes-mcp@sha256:" + "b".repeat(64)] }), name: "box-notes" }, "box-notes")).ack);
 
   // the item exists in the Vault; its value must appear nowhere below
   await call("vault.put", { name: "notes-key", kind: "secret", value: VALUE });
