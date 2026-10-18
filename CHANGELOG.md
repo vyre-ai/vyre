@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Polish
+
+- feat(app): Home opens with the date, a greeting by the person's local time and a one-line summary (home-model.js, HomeHeader).
+
 ## 0.6.0
 
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).
