@@ -22,6 +22,8 @@ export const EXEMPT = /** @type {[string, string][]} */ ([
   ["src/terminal/palettes.ts", "terminal colour palettes are colours by nature"],
   ["app/shots-", "the picture routes: sample worlds for the screenshots"],
   ["app/keycheck.tsx", "a diagnostic route, not a screen"],
+  ["screens/first-run/HalftoneField.web.tsx", "a canvas: it mixes the theme's text and accent colours per dot, so the rgba() is arithmetic on tokens, not a colour of its own"],
+  ["screens/first-run/Welcome.tsx", "the welcome hero is the owner's prototype (polish-proposal/onboarding.html): a 64 pt display line and its tight tracking are outside the type scale"],
 ]);
 
 export const RULES = /** @type {{ id: string, test: (line: string) => boolean }[]} */ ([
