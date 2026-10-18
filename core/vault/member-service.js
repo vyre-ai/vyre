@@ -70,7 +70,9 @@ export function createMemberVaultService(o) {
       const i = input && typeof input === "object" && !Array.isArray(input) ? input : {};
       const items = Array.isArray(i.items) ? i.items : [];
       if (!items.length || items.length > 12 || items.some((/** @type {any} */ x) => !x || typeof x.label !== "string" || typeof x.value !== "string" || !x.label || !x.value)) throw new KernelError("bad_input", "that input is not valid");
-      await proven(chain, "vaultAddKeys", { items }, opts);
+      // the same label twice in one call is refused before any proof is looked at (the set would be ambiguous), and the proof is checked against the items this call will write, before any vault step
+      if (new Set(items.map((/** @type {any} */ x) => x.label.toLowerCase())).size !== items.length) throw new KernelError("bad_input", "each key in a set has its own name");
+      await proven(chain, "vaultAddKeys", { items: items.map((/** @type {any} */ x) => ({ label: x.label, value: x.value })) }, opts);
       return serve("addkeys", person, { items: items.map((/** @type {any} */ x) => ({ label: x.label, value: x.value })), ...(typeof i.password === "string" ? { password: i.password } : {}), ...(typeof i.secret_key === "string" ? { secret_key: i.secret_key } : {}) });
     },
   };

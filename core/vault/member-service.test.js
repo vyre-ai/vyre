@@ -113,6 +113,17 @@ test("a set of keys is covered by ONE proof over the sorted set: none, a dropped
   assert.equal(await code(svc.addkeys(chainOf(), { items: SET }, good({ nonce: "set" }))), "needs_presence", "the proof is single use");
 });
 
+test("the same name twice in one set is refused before the proof is looked at, and twelve keys stand under one proof", async () => {
+  const { svc, calls } = setRig();
+  assert.equal(await code(svc.addkeys(chainOf(), { items: [{ label: "Work", value: KEY }, { label: "work", value: KEY2 }] }, good())), "bad_input");
+  assert.deepEqual(calls, []);
+  const twelve = Array.from({ length: 12 }, (_, n) => ({ label: `k${n}`, value: `${KEY}${n}` }));
+  let t = 1000; const reg = []; const { createMemberVaultService: make } = await import("./member-service.js");
+  const svc12 = make({ space: SPACE, clock: () => t, registry: { call: async (tool, i) => { reg.push(i.call); return { data: { added: [] } }; } }, kernel: { gateway: { members: { roleOf: () => "member" } }, presence: { check: async (i) => (i.fields.input.items.length === 12 ? null : "wrong_payload") } } });
+  await svc12.addkeys(chainOf(), { items: twelve }, good());
+  assert.deepEqual(reg, ["addkeys"]);
+});
+
 test("a set is one to twelve keys of strings, and a member who is not in the Space is not found", async () => {
   const { svc } = setRig();
   for (const bad of [[], Array.from({ length: 13 }, (_, n) => ({ label: `k${n}`, value: KEY })), [{ label: "x" }], [null], "nope"]) assert.equal(await code(svc.addkeys(chainOf(), { items: bad }, good())), "bad_input", JSON.stringify(bad).slice(0, 30));
