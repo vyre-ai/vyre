@@ -30,7 +30,11 @@ test("a reviewer or approver agent holds one task for a round through the minted
   const lend = (/** @type {any} */ task, /** @type {string} */ slot, /** @type {string | undefined} */ thread) => sh.mint.make({ subject: { kind: "actor", actor: rev }, actions: slot === "approver" ? ["tasks.read", "tasks.work", "tasks.decide"] : ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${task.id}` }, conditions: { when: { expires: Date.now() + 3600_000 }, ...(thread ? { where: { sessions: [thread] } } : {}) }, source: `flows:task:${task.id}:${slot}`, reason: "test" });
   const agentChain = (/** @type {string} */ thread) => K.chains.fromFacts({ kind: "agent_session", agent: "rev", session: thread, thread, person: OWNER, vouched: true });
   const given = (/** @type {any} */ over) => ask.request(ownerChain, { title: "Write it", doer: { kind: "person", id: ANA, space }, output: { kind: "note" }, ...over });
-  const handIn = async (/** @type {string} */ id) => { await ask.start(anaChain, id); return ask.complete(anaChain, id, { note: "done", sources: ["https://example.test/a"] }); };
+  // The daemon wakes an agent that holds a slot as soon as the task enters it (agent-wake.js), and with no model to run here that wake ends and takes its hold back. The test waits for that to settle, then mints the
+  // round's grant itself, so what it proves does not depend on the race.
+  const held = async (/** @type {string} */ id) => (await K.gateway.grants.list(ownerChain)).filter((/** @type {any} */ g) => g.status === "active" && String(g.source || "").startsWith(`flows:task:${id}:`));
+  const settle = async (/** @type {string} */ id) => { for (let i = 0; i < 100 && (await held(id)).length; i++) await new Promise(r => setTimeout(r, 100)); };
+  const handIn = async (/** @type {string} */ id) => { await ask.start(anaChain, id); const done = await ask.complete(anaChain, id, { note: "done", sources: ["https://example.test/a"] }); await new Promise(r => setTimeout(r, 300)); await settle(id); return done; };
 
   // reviewer: before the grant it can do nothing; with it, it reviews this task, not another
   const a = await given({ reviewer: rev });
