@@ -46,7 +46,9 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project }: {
+export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project, sub }: {
+  /** A quiet word after the name: an agent chat's current thread. */
+  sub?: string;
   /** The project the chat is in; its name follows the title on the same line. */
   project?: { slug: string; name: string } | null;
   title: string;
@@ -78,7 +80,7 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
           {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
           <Text numberOfLines={1} style={{ flexShrink: 1 }}>
             <Text medium>{title}</Text>
-            {project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
+            {sub ? <Text tone="label">{`  ${sub}`}</Text> : project ? <Text tone="label">{`  ${project.name}`}</Text> : null}
           </Text>
         </Pressable>
       </View>

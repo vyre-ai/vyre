@@ -21,18 +21,26 @@ import { scoreFields, compareScores } from "./match.js";
 /**
  * source: "session" (built in), "project", "user", "plugin", "skill", "vyre". local: the composer
  * does it itself, nothing is sent.
- * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move"|"skills" }} Command
+ * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal"|"move"|"skills"|"new"|"threads"|"fork"|"flow"|"agent"|"fresh"|"where"|"rename" }} Command
  */
 
 /** @type {readonly Command[]} */
 export const COMMANDS = Object.freeze([
+  // the agent's own threads: /new and /threads come first, then the rest of the calm set
+  { name: "new", description: "Start a new thread with this agent", source: "vyre", local: "new" },
+  { name: "threads", description: "Show every thread with this agent", source: "vyre", local: "threads" },
+  { name: "fork", description: "Start a new thread from an earlier message", hint: "[message]", source: "vyre", local: "fork" },
+  { name: "flow", description: "Build a Flow in a chat with the Engineer", hint: "[what it should do]", source: "vyre", local: "flow" },
+  { name: "agent", description: "Set up a new agent in a chat with the Assistant", hint: "[what it is for]", source: "vyre", local: "agent" },
+  { name: "fresh", description: "Start fresh and keep a summary", source: "vyre", local: "fresh" },
+  { name: "where", description: "Where this runs: My Computer or the Space's Cloud", source: "vyre", local: "where" },
   { name: "compact", description: "Summarise the conversation so far to free up context", hint: "[what to keep]", source: "session" },
   { name: "context", description: "Show how much of the context window is in use", source: "session" },
   { name: "cost", description: "Show what this session has cost so far", source: "session" },
-  { name: "clear", description: "Start the conversation over", aliases: ["reset", "new"], source: "session" },
+  { name: "clear", description: "Start the conversation over", aliases: ["reset"], source: "session" },
   { name: "init", description: "Write a project guide for this folder", source: "session" },
   { name: "review", description: "Review a pull request", hint: "[pr]", source: "session" },
-  { name: "rename", description: "Rename this session", hint: "<name>", source: "session" },
+  { name: "rename", description: "Rename this thread", hint: "<name>", source: "session", local: "rename" },
   { name: "model", description: "Switch the model for this session", hint: "[model]", source: "session", local: "model" },
   { name: "rewind", description: "Go back to an earlier message", source: "session", local: "rewind" },
   { name: "undo", description: "Take this session's changes back", source: "session", local: "undo" },
@@ -56,6 +64,9 @@ export const COMMANDS = Object.freeze([
   { name: "effort", description: "Reasoning effort for this session", hint: "[low|medium|high|max]", source: "session" },
   { name: "roll", description: "Roll the context window now", source: "session" },
 ]);
+
+/** The commands that lead the picker. */
+const THREAD_FIRST = ["new", "threads", "fork", "flow", "agent", "fresh", "where"];
 
 /** @typedef {{ start: number, end: number, query: string }} CommandRange */
 
@@ -138,5 +149,7 @@ export function normalizeCommands(list) {
     out.set(name, cmd);
   }
   for (const c of COMMANDS) if (c.local && !out.has(c.name)) out.set(c.name, c);
-  return [...out.values()];
+  // the agent's thread commands lead the list, /new first and /threads second, whatever the session lists
+  const first = THREAD_FIRST.flatMap(n => { const c = out.get(n); return c ? [c] : []; });
+  return [...first, ...[...out.values()].filter(c => !THREAD_FIRST.includes(c.name))];
 }
