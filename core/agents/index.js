@@ -55,8 +55,6 @@ const MIGRATIONS = [
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
   // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
   `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
-  // The model to run on when a launch falls back to the API-key account; empty uses `model`.
-  `ALTER TABLE agents_agents ADD COLUMN fallback_model TEXT`,
   // Built in by Vyre (the Engineer): listed like any agent, but it cannot be deleted, renamed, given projects, credentials or a computer.
   `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
   // The person granted this agent their PERSONAL memory and every project's sessions to read ("Claude Code on <this computer>"): reads only, never writes, never the person. Appended last, like every step.
@@ -89,6 +87,8 @@ const MIGRATIONS = [
   `ALTER TABLE agents_agents ADD COLUMN look TEXT`,
   // A new agent the Engineer proposes (flows.propose { what: "agent.new", input }): the whole agents.create input waits here until an owner or an admin says yes; the card carries only its id and hash.
   `CREATE TABLE agents_newdrafts (id TEXT PRIMARY KEY, name TEXT NOT NULL, input TEXT NOT NULL, hash TEXT NOT NULL, proposer TEXT NOT NULL, by TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL)`,
+  // The model to run on when a launch falls back to the API-key account; empty uses `model`.
+  `ALTER TABLE agents_agents ADD COLUMN fallback_model TEXT`,
 ];
 /** The most jobs one agent runs at once and starts in an hour (agents.wake_max_concurrent and agents.wake_max_hourly settle it per Space): a runaway Flow cannot start an agent without end. */
 export const WAKE_CAPS = Object.freeze({ concurrent: 5, hourly: 40 });
@@ -678,7 +678,7 @@ export default {
         guard(meta.caller, "read a proposed agent");
         const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
         const mine = d && (await chainPerson(meta)) === String(d.proposer);
-        if (!d || !((await seesFull(meta)) || mine)) throw Object.assign(new Error("no such proposed agent"), { code: "not_found" });
+        if (!d || !((await seesFull(meta)) || mine)) throw Object.assign(new Error("no such proposed agent: ask the Engineer to propose the agent again"), { code: "not_found" });
         return { id: String(d.id), name: String(d.name), state: String(d.state), input: JSON.parse(String(d.input)), proposer: String(d.proposer) };
       },
     });
