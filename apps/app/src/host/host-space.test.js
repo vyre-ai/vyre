@@ -514,11 +514,12 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
   const first = pp.call;
   const calls = [];
-  let vault = { account: false, unlocked: false }, fail = "", listFails = false;
+  let vault = { account: false, unlocked: false }, fail = "", listFails = false, badKey = false;
   const mine = new Set(["Gmail"]);
   pp.call = async (name, input, box) => {
     if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
     calls.push({ name, input: JSON.parse(JSON.stringify(input || {})), box });
+    if (name === "sessions.accounts.key") { if (badKey) throw new Error(`the service refused that key ${input.key}`); return { checked: true, host: "api.anthropic.com" }; }
     if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
     if (name === "vault.me.account.create") { vault = { account: true, unlocked: false }; return { secretKey: "SECRET-KEY-OF-VAULT", acct: "a1" }; }
     if (name === "vault.me.account.unlock") { vault = { account: true, unlocked: true }; return { unlocked: true }; }
@@ -530,12 +531,13 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   const ask = (extra = {}) => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "My Claude", ...extra });
   // no vault yet and no password: it asks for the password and sends nothing but the status question
   await assert.rejects(() => ask(), (e) => e.code === "need_password" && !String(e.message).includes(KEY));
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status"]);
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status"], "the key is checked with its provider first, then the vault is asked about");
+  assert.equal(calls[0].input.check_only, true);
   // with the password: made, opened, the key into THEIR vault, then the account names the item; the owner's key tool is never used
   calls.length = 0;
   const r = await ask({ password: PW });
-  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: false });
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
+  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: true });
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
   assert.ok(calls.every((c) => c.box === "boxA"));
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.account.create,vault.me.account.unlock", "the password goes to the two vault calls only");
   assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "vault.me.put", "the key goes to the vault put only");
@@ -546,12 +548,12 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   calls.length = 0;
   const r2 = await ask({ label: "Second" });
   assert.equal(r2.account, "ac_m1");
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.list", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.list", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
   // locked: it asks, then opens with the key the device holds
   vault = { account: true, unlocked: false }; calls.length = 0;
   await assert.rejects(() => ask({ label: "Third" }), (e) => e.code === "need_password");
   await ask({ label: "Third", password: PW });
-  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key", "vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.list", "vault.me.put", "sessions.accounts.add"]);
   // an item of the same name in THEIR vault is never replaced: the account's item takes a number, and the account names that item
   calls.length = 0;
   const g = await ask({ label: "Gmail" });
@@ -567,9 +569,22 @@ test("a joining member's key goes to their own Vault: the password is asked for 
   // an error that echoes the key and the password is thrown without either
   fail = "the vault refused"; vault = { account: true, unlocked: true };
   await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });
-  // a provider a member cannot add a key for here is said plainly, with nothing sent
+  // a key the provider refuses is caught at once, before a password or the vault, and the message does not carry the key
+  badKey = true; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Sixth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY)); assert.match(e.message, /refused that key/); return true; });
+  assert.deepEqual(calls.map((c) => c.name), ["sessions.accounts.key"], "nothing else was asked or put");
+  badKey = false;
+  // every kind the owner can add: an OpenAI-style key at xAI's one address makes an openai-compatible account at that address, in their own vault
+  vault = { account: true, unlocked: true }; calls.length = 0;
+  const xai = await host.call("onboard.agent.key", { kind: "openai-compatible", key: "xai-0123456789abcdef", label: "Grok", base_url: "https://api.x.ai/v1" });
+  assert.equal(xai.provider, "openai-compatible");
+  assert.equal(calls[0].input.base_url, "https://api.x.ai/v1");
+  assert.equal(calls.find((c) => c.name === "sessions.accounts.add").input.base_url, "https://api.x.ai/v1");
+  const orr = await host.call("onboard.agent.key", { kind: "openrouter", key: "sk-or-0123456789abc", label: "Router" });
+  assert.equal(orr.provider, "openrouter");
+  // a kind this tool does not know is said plainly, with nothing sent
   calls.length = 0;
-  await assert.rejects(() => host.call("onboard.agent.key", { kind: "openai-compatible", key: KEY, label: "x" }), (e) => e.code === "bad_kind");
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "mystery", key: KEY, label: "x" }), (e) => e.code === "bad_kind");
   assert.deepEqual(calls, []);
 });
 

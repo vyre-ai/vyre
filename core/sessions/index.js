@@ -450,7 +450,7 @@ export default {
     };
     tool("sessions.accounts.add", "Add a provider account: label, kind, and for an api-key or setup-token the vault item that holds its credential. Never touches the value.",
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: { type: "string", description: "The vault item that already holds the credential (add it in the Vault first and grant it to threads). None for kind login: the provider's own sign-in fills the account." },
-        scope: { type: "object", description: "{ projects: \"*\"|[slugs], agents: \"*\"|[names] }. Default \"*\": every project and agent may use it until bound narrower.", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean", description: "Makes it the provider's pick when nothing else resolves." } } },
+        base_url: { type: "string", description: "The address an api-key account's key is sent to (an OpenAI-compatible endpoint). Only for kind api-key." }, scope: { type: "object", description: "{ projects: \"*\"|[slugs], agents: \"*\"|[names] }. Default \"*\": every project and agent may use it until bound narrower.", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean", description: "Makes it the provider's pick when nothing else resolves." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an account", { assistant: true });
         // Not a person's surface: the account covers only the project the request came from, never every project, and is pending
@@ -513,18 +513,19 @@ export default {
       } finally { clearTimeout(timer); }
     };
     tool("sessions.accounts.key", "Add an AI account from an API key. The key is checked, stored in the Vault, never returned, and sent only to that host.",
-      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it). Taken as it is when free, else with a number after it; never an existing item. Default ai-key-<provider>-<id>." } } },
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str, check_only: { type: "boolean", description: "Only check the key with its provider and keep nothing: { checked: true }. A member uses it before putting the key in their own Vault." }, name: { type: "string", description: "The name of the Vault item that holds the key (findable there by it). Taken as it is when free, else with a number after it; never an existing item. Default ai-key-<provider>-<id>." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
         const k = KEY_KINDS[String(i.kind)];
         if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
         // The convenience stores the key in the home's own vault. A member keeps theirs in their own: they put it in their Vault, then add the account naming that item (sessions.accounts.add).
-        if (await ownerOfAccount(meta)) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
+        if (!i.check_only && (await ownerOfAccount(meta))) throw Object.assign(new Error("put the key in your own Vault, then add the account naming that item: this shortcut keeps keys in the owner's Vault"), { code: "denied" });
         const key = String(i.key || "").trim();
         if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
         const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
         if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
         await checkKey(String(i.kind), base, key);
+        if (i.check_only === true) return { checked: true, host: new URL(base).host };
         const id = crypto.randomBytes(6).toString("hex");
         let item = `ai-key-${k.provider}-${id}`;
         if (i.name !== undefined && String(i.name).trim()) {

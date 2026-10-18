@@ -92,11 +92,12 @@ export function createHost(o) {
   /**
    * A joining member's own key: it goes to THEIR OWN Vault (never the space owner's), then the account names it. Their vault is made, or opened, with their password only when it must be (none yet, or locked):
    * the password is used for those two calls and nowhere else, kept by no one here, and never in anything this throws. The key is sent once over the same peer wire as every other vault.me call.
-   * @param {any} ports @param {string} box @param {{ kind: string, key: string, label: string, password: string }} i
+   * @param {any} ports @param {string} box @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
    */
   const memberKey = async (ports, box, i) => {
-    const provider = { "anthropic-compatible": "claude", openrouter: "openrouter" }[/** @type {"anthropic-compatible" | "openrouter"} */ (i.kind)];
-    if (!provider) throw bad("A key for that provider is added by the space's owner for now.", "bad_kind");
+    // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
+    const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
+    if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
     if (!o.memberKeys) throw unsupported();
     /** @type {(tool: string, input?: any) => Promise<any>} */
     const ask = (tool, input) => ports.call(tool, input || {}, box);
@@ -106,6 +107,8 @@ export function createHost(o) {
       return bad(said.slice(0, 200), e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
     };
     try {
+      // the key is checked with its provider first (the server's own check, nothing kept), so a bad key is caught before a password is asked for or anything is put anywhere
+      await ask("sessions.accounts.key", { kind: i.kind, key: i.key, check_only: true, ...(i.base_url ? { base_url: i.base_url } : {}) });
       const st = await ask("vault.me.account.status");
       if (!st || !st.account) {
         if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
@@ -124,8 +127,8 @@ export function createHost(o) {
       while (used.has(item.toLowerCase()) && n < 100) item = `${i.label} ${n++}`;
       if (used.has(item.toLowerCase())) throw bad("That name is taken in your Vault.", "name_taken");
       await ask("vault.me.put", { name: item, kind: "api-key", fields: { value: i.key } });
-      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item });
-      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: false };
+      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: item, ...(i.base_url ? { base_url: i.base_url } : {}) });
+      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: true };
     } catch (e) {
       throw /** @type {any} */ (e).code === "need_password" ? e : redact(e);
     }
@@ -596,7 +599,7 @@ export function createHost(o) {
       if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
       const ports = await o.space.load();
       /** @type {any} */ let r;
-      if (role && role !== "owner") return memberKey(ports, box, { kind, key, label, password: input && input.password ? String(input.password) : "" });
+      if (role && role !== "owner") return memberKey(ports, box, { kind, key, label, password: input && input.password ? String(input.password) : "", ...(base ? { base_url: base } : {}) });
       try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
       catch (e) {
         // whatever the server or the provider said, the key is never in what is thrown here
