@@ -197,3 +197,47 @@ test("an admin cannot read a member's private note through the raw route; the me
   assert.equal(got.data.record, null, "and cannot open the private one");
   assert.ok(shared.urn);
 });
+
+
+test("a private note and an outside calendar's event are private on every kernel route, to an admin and the owner too, and only the writer changes who reads a note", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const { PLANNER_TYPES } = await import("../planner/types.js");
+  const { EVENT } = await import("../../records/core-types.js");
+  const gw = w.d.kernel.gateway;
+  await gw.records.define(w.ownerChain, { add_types: [...PLANNER_TYPES.filter((x) => x.name === "note").map((x) => JSON.parse(JSON.stringify(x))), JSON.parse(JSON.stringify(EVENT))] });
+  await gw.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
+  const call = async (/** @type {string} */ p, /** @type {string} */ tool, /** @type {any} */ input) => w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(p), {})).token });
+  const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  // BEN's private note about a contact, and BEN's event from his outside calendar
+  const note = await gw.records.create(gw.serviceChain("planner"), "note", { title: "Dentist secret", state: "open", person: BEN, visibility: "private", record: contact.urn }, { on_behalf: w.chainOf(BEN) });
+  const ev = (await call(BEN, "records.create", { type: "event", data: { title: "Dentist visit", starts_at: "2026-10-20T09:00:00.000Z", source: "google", record: { urn: contact.urn } } })).data.record;
+  assert.ok(ev && ev.urn, "BEN made his event");
+  for (const [who, name] of [[ZED, "an admin"], [w.OWNER, "the owner"]]) {
+    const chain = w.chainOf(who);
+    for (const [type, text] of [["note", "Dentist secret"], ["event", "Dentist visit"]]) {
+      assert.equal(await code(gw.records.aggregate(chain, type, { group_by: ["title"], measures: [{ fn: "count" }] })), "not_allowed", `${name}: a total over ${type} is refused`);
+      const found = await gw.records.search(chain, { text: text.split(" ")[0], types: [type], page: { limit: 20 } });
+      assert.equal(found.rows.length, 0, `${name}: search finds no ${type}`);
+      const listed = await gw.records.query(chain, type, { page: { limit: 50 } });
+      assert.equal(listed.rows.length, 0, `${name}: list shows no ${type}`);
+    }
+    const linked = await gw.records.linked(chain, contact.urn, {});
+    assert.ok(!JSON.stringify(linked).includes("Dentist"), `${name}: linked lists neither`);
+    const audit = await call(who, "records.audit", {});
+    assert.ok(!JSON.stringify(audit).includes("Dentist"), `${name}: the audit lists neither`);
+    const events = await call(who, "records.events", {});
+    assert.ok(!JSON.stringify(events).includes("Dentist"), `${name}: the event log lists neither`);
+    assert.equal((await call(who, "records.history", { urn: ev.urn })).error.code, "not_found", `${name}: history of the event is not found`);
+    assert.equal((await call(who, "records.log", { urn: ev.urn, kind: "call", text: "x" })).error.code, "not_found", `${name}: logging on the event is not found`);
+  }
+  // BEN reads both, and the Space's own events are not touched
+  assert.equal((await gw.records.query(w.chainOf(BEN), "note", { page: { limit: 50 } })).rows.length, 1);
+  assert.equal((await gw.records.query(w.chainOf(BEN), "event", { page: { limit: 50 } })).rows.length, 1);
+  // sharing a note: only its writer, through the planner
+  const item = (await call(BEN, "planner.add", { kind: "note", title: "Shared later", record: contact.urn })).data;
+  assert.ok(item && item.id, JSON.stringify(item));
+  assert.ok((await call(ANA, "planner.update", { item: item.id, visibility: "space" })).error, "another member cannot share it");
+  assert.ok((await call(ZED, "planner.update", { item: item.id, visibility: "space" })).error, "an admin cannot share it");
+  assert.ok(!(await call(BEN, "planner.update", { item: item.id, visibility: "space" })).error, "its writer can");
+  assert.ok(note.urn);
+});

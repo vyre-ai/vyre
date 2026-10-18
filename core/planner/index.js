@@ -561,6 +561,10 @@ export default {
       owns(item, w);
       if (item.kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       await mayChangeTodo(item, w);
+      if (item.kind === "note") {
+        if (!(await seen(item, w, await viewerOf(w)))) throw fail("no such item", "not_found");
+        if ((i.visibility !== undefined || i.record !== undefined) && callerPerson(w.chain) !== item.by) throw fail("Only the person who wrote a note changes who can read it.", "denied");
+      }
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
       // checked at add time - letting an agent redirect it afterward with planner.update would be
