@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(runner): the lease key the lent-rig test sealer issues is different in every rig. It was one fixed hash of the member and the computer, so test files running side by side on one fscrypt volume shared an fscrypt key and the first to close its workspace removed the key from under the others ("key did not take", ENOENT under enc/).
+
 - test(runner,cli): the first-chat nudge test waits until the lender's nudge is held at the home (lent home `waiting(device)`) before it times the start, so a loaded shard's late first wait is not read as a slow start; needs.test waits, after the threads are stopped, until nothing more is written to them before the daemon closes.
 - test(modules): member-read-scope stops every thread in the store and lets the loop settle before the daemon closes, so a late write cannot land on a closed database under load.
 - fix(appmods): baseHost is declared before the start-up guard that closes the front, so install and the other tools that name an app's address find it (the guard had put it in a block they cannot see).
