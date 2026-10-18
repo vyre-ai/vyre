@@ -17,7 +17,7 @@ process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; proc
 
 /** What this walk cannot do in a bare daemon, and why. */
 export const SKIPPED = Object.freeze({
-  "a real device signature": "the daemon here verifies proofs with a stand-in that checks the signed operation and fields (and one use per proof), not a Secure Enclave or phone key: the card's own sign_fields are what is signed",
+  "a real device signature": "the daemon here verifies proofs with a stand-in that checks the signed operation and fields (and one use per proof), not a Secure Enclave or phone key: the card's own sign fields are what is signed",
   "a file in Drive": "there is no Drive gateway in a bare daemon, so the file and the draft are handed in as relative Drive paths, whose form is all the kernel checks (kernel/tasks/facts.js); a hand-in that names a record is read on the doer's own chain and is covered by test/prod-wiring-daemon.test.js",
   "a running agent session": "the agent's hand-in is made on the agent's own chain; no model runs",
   "an outward send held at the Gate": "no sender is configured in a bare daemon",
@@ -89,10 +89,10 @@ test("1. a stage's tasks: the agent hands in a draft, the manager passes it, the
   assert.equal(passed.state, "needs_check", "after the review it waits for the owner's approval");
   // the owner signs exactly what the card says to sign; a proof over anything else is refused
   const card = await ask.card(ownerChain, draft.id);
-  assert.ok(card.sign_fields && card.sign_fields.payload_hash, "the card carries the fields to sign");
+  assert.ok(card.sign && card.sign.op === "task.decide" && card.sign.fields && card.sign.fields.payload_hash, `the card carries what to sign: ${JSON.stringify(card).slice(0, 300)}`);
   const sign = (/** @type {any} */ fields) => ({ op: "task.decide", fields, n: Math.random(), key_id: "k_owner" });
-  await assert.rejects(() => ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign({ ...card.sign_fields, payload_hash: "other" }) }), { code: "needs_presence" });
-  const done = await ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign(card.sign_fields) });
+  await assert.rejects(() => ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign({ ...card.sign.fields, payload_hash: "other" }) }), { code: "needs_presence" });
+  const done = await ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign(card.sign.fields) });
   assert.equal(done.state, "done");
   // the second task is the owner's own: a file, handed in as a relative Drive path (the kernel checks its form only; the file itself is the doer's claim)
   await ask.start(ownerChain, idFile.id);
