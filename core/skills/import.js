@@ -16,7 +16,7 @@ import { SKILL_HOMES } from "../../lib/skill-homes.js";
 export const IMPORT_LIMITS = Object.freeze({ zip: 2 * 1024 * 1024, inflated: 6 * 1024 * 1024, entries: 400, file: LIMITS.body });
 // Grok MCP: written as a Claude-layout .mcp.json (docs.x.ai says Grok reads Claude Code plugins and MCPs); Grok documents no MCP table of its own. Not yet run.
 const bad = (/** @type {string} */ message) => Object.assign(new Error(message), { code: "bad_input" });
-const KNOWN_TOP = new Set(["skills", "commands", "agents", "hooks", ".mcp.json", ".claude-plugin", "README.md", "LICENSE", "LICENSE.md", "LICENSE.txt", "CHANGELOG.md"]);
+const KNOWN_TOP = new Set(["skills", "commands", "agents", "hooks", ".mcp.json", PLUGIN_LAYOUT.manifest.split("/")[0], "README.md", "LICENSE", "LICENSE.md", "LICENSE.txt", "CHANGELOG.md"]);
 const text = (/** @type {Buffer} */ b, /** @type {string} */ what) => { if (b.length > IMPORT_LIMITS.file) throw bad(`${what} is larger than ${IMPORT_LIMITS.file / 1024} KB`); if (b.includes(0)) throw bad(`${what} is not text`); return b.toString("utf8"); };
 
 /**
@@ -66,7 +66,7 @@ export function parseUpload({ file, filename = "" }) {
   const manifest = f.get(PLUGIN_LAYOUT.manifest);
   if (!manifest) {
     const sk = f.get("SKILL.md");
-    if (!sk) throw bad("this zip is neither a skill (SKILL.md at its top) nor a plugin (.claude-plugin/plugin.json)");
+    if (!sk) throw bad(`this zip is neither a skill (SKILL.md at its top) nor a plugin (${PLUGIN_LAYOUT.manifest})`);
     const { name, body } = skillFrom(text(sk, "SKILL.md"), "");
     const extra = [...f.keys()].filter(k => k !== "SKILL.md");
     return { kind: "skill", name, body, worksWith: worksWith({ skills: 1, commands: 0, hooks: 0, mcp: 0 }), leftOut: extra.length ? [`${extra.length} other file(s) in the skill folder (a skill is its SKILL.md; point to a document for the rest)`] : [], code: false };
