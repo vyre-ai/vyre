@@ -114,8 +114,8 @@ export function cardModel(i) {
   return { reason, title, why, lead, tags, actions, inline };
 }
 
-/** The card model of a task for the person in the world. @param {World} w @param {any} task @param {{ showSpace?: boolean }} [o] */
-export function cardFor(w, task, o = /** @type {{ showSpace?: boolean, page?: boolean }} */ ({})) {
+/** The card model of a task for the person in the world. @param {World} w @param {any} task @param {{ showSpace?: boolean, page?: boolean }} [o] `page`: the task's own page, where Approve is offered for a Kit that makes assistants */
+export function cardFor(w, task, o = {}) {
   const rec = w.records.get(task.record);
   const tpl = task.template ? w.records.get(task.template) : null;
   const def = rec ? w.types.get(rec.type) : null;
