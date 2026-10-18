@@ -26,7 +26,7 @@ export const STATES = TASK_STATES;
 
 /** The words the Deck shows for a state. */
 export const STATE_LABEL = /** @type {Record<TaskState, string>} */ ({
-  waiting: "Waiting", ready: "Ready", working: "Working", needs_check: "Needs a check", stuck: "Stuck", done: "Done", skipped: "Skipped",
+  waiting: "Waiting", ready: "Ready", working: "Working", in_review: "In review", changes_requested: "Changes requested", needs_check: "Needs a check", declined: "Declined", stuck: "Stuck", done: "Done", skipped: "Skipped",
 });
 
 /** What each output kind is, and what done means for it (DESIGN-tasks.md, idea 3). The keys are the kernel's TASK_OUTPUT_KINDS. */
