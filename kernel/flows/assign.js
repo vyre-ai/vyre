@@ -42,6 +42,7 @@ export async function slotsOf(s, who) {
   const rv = s.reviewer && typeof s.reviewer === "object" ? s.reviewer : null, ap = s.approver && typeof s.approver === "object" ? s.approver : null;
   const per = (/** @type {string} */ k) => ({ ...(rv && rv[k] ? { reviewer: rv[k] } : {}), ...(ap && ap[k] ? { approver: ap[k] } : {}) });
   return {
+    ...(typeof s.to === "string" && s.to.startsWith("group:") ? { doer: undefined, pool: { role: s.to.slice(6) } } : {}),
     ...(rv ? { reviewer: await who(rv.who) } : {}), ...(ap ? { approver: await who(ap.who) } : {}),
     ...(rv && rv.quorum === "all" ? { reviewer_quorum: "all" } : {}), ...(ap && ap.quorum === "all" ? { quorum: "all" } : {}),
     ...((rv && rv.due) || (ap && ap.due) ? { escalation: { ...(rv && rv.due ? { reviewer: { due_ms: rv.due, to: { role: String(rv.escalate_to).slice(5) } } } : {}), ...(ap && ap.due ? { approver: { due_ms: ap.due, to: { role: String(ap.escalate_to).slice(5) } } } : {}) } } : {}),

@@ -185,3 +185,15 @@ test("the hold on an unmade gated task survives a restart: the module that takes
   assert.equal(await stageOfProject(), "Opening", "the restarted module does not move the record on");
   assert.ok(events.some(e => e.type === "stage.blocked" && /approval step could not be made.*Needs a check/.test(e.data.why)), JSON.stringify(events.map(e => e.type)));
 });
+
+test("a template task may be given to a group: the task is made for the group and the first holder to start it takes it", { timeout: 60_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [{ title: "Anyone", doer: "group:attorney", output: { kind: "note" } }];
+  assert.deepEqual(problems(t), []);
+  const w = await mk();
+  await start(w, {}, t);
+  const task = await by(w, "Anyone");
+  assert.equal(task.pool.role, "attorney");
+  assert.equal(task.doer.kind, "service");
+  const taken = await w.kernel.tasksApi.start(w.kernel.as(BOB), task.id);
+  assert.equal(taken.doer.id, BOB.id);
+});
