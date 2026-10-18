@@ -45,6 +45,8 @@ test("a reviewer or approver agent holds one task for a round through the minted
   await lend(a, "reviewer", "job-1");
   await assert.rejects(ask.review(agentChain("job-2"), a.id, { result: "pass" }), "the grant is held to the job's thread");
   await assert.rejects(ask.review(agentChain("job-1"), other.id, { result: "pass" }), "another task is out of reach");
+  // the round's grant is for reviewing, not for acting as the doer: with it in force the agent cannot work, hand in, flag or change the task
+  for (const act of [() => ask.start(agentChain("job-1"), a.id), () => ask.complete(agentChain("job-1"), a.id, { note: "x", sources: ["https://example.test/b"] }), () => ask.stuck(agentChain("job-1"), a.id, { reason: "x" }), () => ask.update(agentChain("job-1"), a.id, { note: "x" }), () => ask.decline(agentChain("job-1"), a.id, "x")]) await assert.rejects(act(), e => ["not_allowed", "not_found", "bad_state"].includes(e.code));
   assert.equal((await ask.review(agentChain("job-1"), a.id, { result: "pass" })).state, "done", "the reviewer agent passes the task it was asked to review");
 
   // approver: internal work, with tasks.decide lent; the reviewer's grant could not decide
@@ -54,6 +56,7 @@ test("a reviewer or approver agent holds one task for a round through the minted
   await assert.rejects(ask.decide(agentChain("job-3"), b.id, { outcome: "approved" }), "a grant to review is not a grant to decide");
   await sh.mint.end({ source: `flows:task:${b.id}:reviewer`, reason: "test" });
   await lend(b, "approver", "job-4");
+  for (const act of [() => ask.start(agentChain("job-4"), b.id), () => ask.complete(agentChain("job-4"), b.id, { note: "x", sources: ["https://example.test/b"] }), () => ask.update(agentChain("job-4"), b.id, { note: "x" }), () => ask.review(agentChain("job-4"), b.id, { result: "pass" })]) await assert.rejects(act(), e => ["not_allowed", "not_found", "bad_state"].includes(e.code));
   assert.equal((await ask.decide(agentChain("job-4"), b.id, { outcome: "approved" })).state, "done", "the approver agent decides internal work");
 
   // the round's end takes the hold back

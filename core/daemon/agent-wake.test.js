@@ -317,3 +317,12 @@ test("an agent doer and an agent reviewer that go round five times are stopped: 
   assert.equal(asked[0].spec.doer.id, "ana");
   assert.equal(asked[0].o.idem, "review-cap:t1", "told once, however often the events come");
 });
+
+test("a person's review is not a round: with a person in the reviewer slot no agent is woken, the rounds are not asked for, and the cap is never tripped", async () => {
+  const calls = /** @type {string[]} */ ([]), asked = /** @type {any[]} */ ([]);
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => task({ state: "in_review", reviewer: { kind: "person", id: "ana" } }), edit: async () => {}, request: async (_c, spec) => { asked.push(spec); return {}; } } }, chain: () => ({}), clock: () => NOW, log: () => {},
+    lendSlot: async () => {}, callModule: async tool => { calls.push(tool); return { rounds: 99 }; } });
+  for (let i = 0; i < 8; i++) await onEvent({ type: "task.in-review", data: { task: { id: "t1" } } });
+  assert.deepEqual(calls, [], "nothing is woken and no round is counted");
+  assert.deepEqual(asked, [], "and no person is told of a cap");
+});
