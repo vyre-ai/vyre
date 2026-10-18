@@ -443,6 +443,12 @@ test("isolation (static): agentd starts with no new privileges and a bounding se
   assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
 });
 
+test("isolation (static): an agent's Chrome is started the way the computer's own Chrome is: --no-sandbox in a container whose seccomp refuses Chrome's namespaces", () => {
+  const holder = fs.readFileSync(path.join(HERE_DIR, "agentd-chrome.py"), "utf8");
+  assert.match(holder, /"--no-sandbox"/, "without it Chrome exits 'No usable sandbox!' and the holder ends with it");
+  assert.match(ENTRYPOINT, /--no-sandbox --test-type --disable-gpu/, "the computer's own Chrome is started the same way");
+});
+
 test("isolation (static): no setpriv flag in the entrypoint needs a capability the container lacks", () => {
   // The container has exactly REQUIRED_CAPS. --securebits (CAP_SETPCAP) and a raised bounding set or inheritable set beyond them fail at start, and a background start fails silently.
   const lines = ENTRYPOINT.split("\n").filter(l => /^[^#]*\bsetpriv /.test(l));

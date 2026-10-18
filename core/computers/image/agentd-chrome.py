@@ -65,7 +65,9 @@ def into_place():
 
 chrome = subprocess.Popen(
     ["/usr/bin/chromium", "--user-data-dir=" + PROFILE, "--no-first-run", "--restore-last-session", "--disk-cache-dir=" + BASE + "/cache",
-     "--password-store=basic", "--disable-sync", "--disable-extensions", "--no-default-browser-check", "--remote-debugging-pipe"],
+     "--password-store=basic", "--disable-sync", "--disable-extensions", "--no-default-browser-check", "--remote-debugging-pipe",
+     # the computer is the sandbox: Docker's default seccomp refuses the namespaces Chrome's own sandbox needs ("No usable sandbox!"), exactly as for the computer's Chrome in entrypoint.sh
+     "--no-sandbox", "--test-type", "--disable-gpu"],
     env=ENV, preexec_fn=into_place, pass_fds=(3, 4), close_fds=True)
 os.close(to_chrome_r)
 os.close(from_chrome_w)
