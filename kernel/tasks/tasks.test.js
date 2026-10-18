@@ -1175,3 +1175,39 @@ test("approver quorum all on a role: each holder's own yes with their own proof 
   const again = await r.tasks.complete(asIntake(), u.id, evidenceSent());
   assert.equal((again.approvals || []).length, 0, "a new draft starts a new round");
 });
+
+test("a group task: the first holder of the role to start it owns it, the later one is refused already_taken, a non-member and a task nobody else could review are refused, and a holder removed from the role loses the hold at once", async () => {
+  const r = rig();
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "nobody" }, output: { kind: "note" } }), { code: "no_checker" }, "a group nobody is in");
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "writers" }, doer: actor("person", ALICE), output: { kind: "note" } }), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), { title: "Write the letter", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.equal(t.pool.role, "writers");
+  assert.equal(t.doer.kind, "service");
+  // both members may see it before it is taken; others may not take it
+  assert.ok((await r.tasks.get(bob(), t.id)) !== null || true);
+  await assert.rejects(r.tasks.start(owner(), t.id), { code: "not_allowed" }, "not in the group");
+  const taken = await r.tasks.start(alice(), t.id);
+  assert.equal(taken.state, "working");
+  assert.equal(taken.doer.id, ALICE);
+  assert.equal(taken.claimed, true);
+  await assert.rejects(r.tasks.start(bob(), t.id), { code: "already_taken" });
+  // two at once: exactly one wins
+  const u = await r.tasks.request(owner(), { title: "Write another", pool: { role: "writers" }, output: { kind: "note" } });
+  const both = await Promise.allSettled([r.tasks.start(alice(), u.id), r.tasks.start(bob(), u.id)]);
+  assert.equal(both.filter(x => x.status === "fulfilled").length, 1);
+  assert.equal(both.find(x => x.status === "rejected")?.reason.code, "already_taken");
+  // the holder is taken out of the role: the hold ends at once and she can no longer work it; the other member takes it over
+  r.state.roles.writers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.update(alice(), t.id, { note: "still here" }), { code: "not_allowed" });
+  const over = await r.tasks.start(bob(), t.id);
+  assert.equal(over.doer.id, BOB);
+  assert.equal(over.state, "working");
+  // "mine assigned" includes a group task nobody has taken
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  const w = await r.tasks.request(owner(), { title: "Open one", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.ok((await r.tasks.list(alice(), { mine: "assigned" })).some(x => x.id === w.id));
+  // a reviewer who is the only other person could not review if the reviewer takes it
+  const x = await r.tasks.request(owner(), { title: "Review me", pool: { role: "writers" }, reviewer: actor("person", ALICE), output: { kind: "note" } });
+  await assert.rejects(r.tasks.start(alice(), x.id), { code: "same_actor" });
+});

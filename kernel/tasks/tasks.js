@@ -29,7 +29,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills", "space_skills", "reviewer_quorum"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills", "space_skills", "reviewer_quorum", "pool"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -275,7 +275,12 @@ export function createTasks(cfg) {
     if (!r) throw new KernelError("not_allowed", `${to} is not ${by}'s to do`);
     return r;
   }
+  /** Who may take a group task (a role): the people and agents who hold the role now. Nobody once it is taken. @param {any} t */
+  const poolHolders = (t) => (t.pool && !t.claimed ? roleHolders(t.pool.role).filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent")) : []);
+  /** A group task whose taker no longer holds the group's role: its hold ended at once. @param {any} t */
+  const lostHolder = (t) => Boolean(t.pool && t.claimed && !roleHolders(t.pool.role).some((/** @type {any} */ a) => same(a, t.doer)));
   const isDoer = (/** @type {any} */ chain, /** @type {any} */ t) => {
+    if (lostHolder(t)) return false;
     // The person, or their default assistant acting AS them (chain.via === "assistant"): a to-do the assistant made for the person is the person's own act. A space or project agent is neither.
     if (t.doer.kind === "person") return actsAsPerson(chain) && same(chain.hops[0].actor, t.doer);
     const a = acting(chain);
@@ -306,7 +311,7 @@ export function createTasks(cfg) {
     return out.filter((/** @type {any} */ a) => !same(a, t.doer) && !(t.helpers || []).some((/** @type {any} */ h) => same(h, a)));
   };
   /** Everyone who may read a task because of a slot they hold: its checkers and its reviewers. */
-  const holdersOf = (/** @type {any} */ t) => [...checkersOf(t), ...reviewersOf(t)];
+  const holdersOf = (/** @type {any} */ t) => [...checkersOf(t), ...reviewersOf(t), ...poolHolders(t)];
   /**
    * What an approval after a review also covers (DESIGN-tasks-v2 rule 7): the review result, its checklist and its note by hash. Null when the task was not reviewed. The approver's proof is over this
    * as well, so a review that changed after the card was shown, or no review where one was passed, does not match what was signed.
@@ -328,6 +333,27 @@ export function createTasks(cfg) {
       const now = cfg.skills ? await cfg.skills.pin(k.id, chain) : null;
       if (!now || now.hash !== k.hash) throw new KernelError("bad_state", `skill ${k.id.slice(0, 80)} changed since this task was made, or you may not use it`);
     }
+  };
+  /**
+   * Taking a group task (tasks v2): the first holder of the group's role to start it owns it. The check and the write run with nothing awaited between them, so two takers cannot both win; the later one is
+   * refused already_taken. Membership is read now, so a person taken out of the role cannot take it and a holder removed later loses the hold at once (isDoer) and another may take it. An agent takes it only when
+   * it is itself a member of the role. Nobody takes a task they would then review or approve, or one nobody else could.
+   * @param {any} chain @param {string} id @param {any} decision
+   */
+  const claimPool = async (chain, id, decision) => {
+    const who = acting(chain);
+    if (who.kind === "person" ? !actsAsPerson(chain) : who.kind !== "agent") throw new KernelError("not_allowed", "only a person or an assistant of the group takes this task");
+    await pinsHold(chain, get_(id), "doer");
+    const t = get_(id);
+    if (t.claimed && !lostHolder(t)) throw new KernelError("already_taken", "someone else has taken this task");
+    if (!roleHolders(t.pool.role).some((/** @type {any} */ a) => same(a, who))) throw new KernelError("not_allowed", "you are not in the group this task is for");
+    if (!(t.claimed ? ["working", "changes_requested"] : ["ready"]).includes(t.state)) throw new KernelError("bad_state", `a task that is ${t.state} cannot be taken`);
+    const probe = { ...t, doer: freeze({ kind: who.kind, id: who.id, space: cfg.space }) };
+    if ((t.checker && !checkersOf(probe).length) || (t.reviewer && !reviewersOf(probe).length)) throw new KernelError("same_actor", "you cannot take a task nobody else could review or approve");
+    if (!t.claimed) rule(t, "working", "doer");
+    const n = put(t, { state: "working", doer: probe.doer, claimed: true, taken_by: freeze({ kind: who.kind, id: who.id }), activity: moreActivity(t, who, "took it") });
+    note(chain, "task.taken", n, { by: { kind: who.kind, id: who.id }, group: t.pool.role }, decision);
+    return n;
   };
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
@@ -407,9 +433,14 @@ export function createTasks(cfg) {
       if (typeof spec.title !== "string" || !spec.title.trim()) throw new KernelError("bad_input", "a task needs a title");
       if (!spec.output || !OUTPUTS.has(spec.output.kind)) throw new KernelError("bad_input", "a task needs a declared output");
       if (spec.source !== undefined && !SOURCES.has(spec.source) && !(SERVICE_SOURCES.has(spec.source) && chain.hops[chain.hops.length - 1].actor.kind === "service")) throw new KernelError("bad_input", "that source is the kernel's");
+      if (spec.pool !== undefined) {
+        if (spec.doer !== undefined || !spec.pool || typeof spec.pool.role !== "string" || !spec.pool.role || Object.keys(spec.pool).length !== 1) throw new KernelError("bad_input", "a group task names its role as pool: { role } and no doer");
+        if (!roleHolders(spec.pool.role).some((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent"))) throw new KernelError("no_checker", "nobody holds that role to take the task");
+        spec = { ...spec, doer: { kind: "service", id: "pool", space: cfg.space } };
+      }
       const doer = spec.doer;
       if (!doer || !ACTOR_KINDS.includes(doer.kind) || typeof doer.id !== "string" || doer.space !== cfg.space) throw new KernelError("bad_input", "a task needs one doer in this space");
-      if (!cfg.members.has(doer)) throw new KernelError("not_a_member", "the doer is not a member of this space");
+      if (!spec.pool && !cfg.members.has(doer)) throw new KernelError("not_a_member", "the doer is not a member of this space");
       if (spec.approver !== undefined && spec.checker !== undefined) throw new KernelError("bad_input", "a task has one approver: give approver, or checker (the old name), not both");
       let checker = spec.approver !== undefined ? spec.approver : spec.checker;
       if (spec.quorum !== undefined && (!["any", "all"].includes(spec.quorum) || (spec.quorum === "all" && !(checker && checker.role)))) throw new KernelError("bad_input", "quorum is any, or all for an approver that is a role");
@@ -474,7 +505,7 @@ export function createTasks(cfg) {
       const t = freeze({
         id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
         source: spec.source || "manual", doer: freeze({ ...doer }), ...(spec.helpers ? { helpers: freeze([...spec.helpers]) } : {}),
-        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(spec.quorum === "all" ? { approver_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
+        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.pool ? { pool: freeze({ role: spec.pool.role }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(spec.quorum === "all" ? { approver_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
@@ -518,7 +549,7 @@ export function createTasks(cfg) {
       const holds = (/** @type {any} */ slot) => Boolean(slot) && (slot.role ? roleHolders(slot.role).some(isMe) : isMe(slot));
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
-        if (q.mine === "assigned" && !holds(t.doer)) continue;
+        if (q.mine === "assigned" && !holds(t.doer) && !poolHolders(t).some(isMe)) continue;
         if (q.mine === "reviewing" && !reviewersOf(t).some(isMe)) continue;
         if (q.mine === "approving" && !checkersOf(t).some(isMe)) continue;
         if (q.project !== undefined || q.parent !== undefined) {
@@ -539,8 +570,9 @@ export function createTasks(cfg) {
     },
 
     async start(/** @type {any} */ chain, /** @type {string} */ id) {
-      await gate(chain, "tasks.work", urnOf(cfg.space, id));
+      const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
+      if (t.pool && (!t.claimed || lostHolder(t))) return claimPool(chain, id, d);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer starts a task");
       await pinsHold(chain, t, "doer");
       rule(t, "working", "doer");
@@ -983,7 +1015,7 @@ export function createTasks(cfg) {
         (t.state === "needs_check" && checkersOf(t).some((/** @type {any} */ c) => same(c, person)))
         || (t.state === "in_review" && reviewersOf(t).some((/** @type {any} */ c) => same(c, person)))
         || (t.state === "changes_requested" && same(t.doer, person))
-        || (t.state === "ready" && same(t.doer, person))
+        || (t.state === "ready" && same(t.doer, person)) || (t.state === "ready" && poolHolders(t).some((/** @type {any} */ h) => same(h, person)))
         || (t.state === "stuck" && (same(t.doer, person) || (cfg.responsible ? cfg.responsible(person, t.doer) : false)))).sort((a, b) => (a.id < b.id ? -1 : 1));
       return Promise.all(mine.map(t => overlay(t)));
     },
