@@ -206,6 +206,8 @@ export function registerDocuments(ctx) {
         .catch((/** @type {any} */ e) => { throw e && e.code === "not_found" ? refuse("Documents is not running on this server: install or start it from Apps, then send again", "unavailable") : e; });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
+      // The request is filed under the sender's own chain, so she (and only she, and the owner) can open it later (sec53's ownership check, 18 Oct).
+      await filed(d, { name: `Signature request ${asked.submission}`, status: "Sent", template: `Template ${i.template_id}`, signer_email: email, submission: asked.submission }).catch(() => null);
       return { ...asked, sent };
     },
   });
@@ -222,8 +224,11 @@ export function registerDocuments(ctx) {
     input: obj({ space: str }),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      if (!(meta && meta.caller === "module:approvals")) await door.open(i || {}, meta);
-      return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+      if (meta && meta.caller === "module:approvals") return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+      const d = await door.open(i || {}, meta);
+      const mine = [];
+      for (const q of await waitingRequests()) if (await mayOpenRequest(d, q.submission)) mine.push(q);
+      return { requests: mine.map(({ slug: _s, url: _u, ...open }) => open) };
     },
   });
 
@@ -233,7 +238,8 @@ export function registerDocuments(ctx) {
     input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      await door.open(i || {}, meta);
+      const d = await door.open(i || {}, meta);
+      if (!(await mayOpenRequest(d, i.submission))) throw refuse(NO_REQUEST, "not_found");
       const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
       const st = (r && r.data && r.data.status) || null;
@@ -253,6 +259,7 @@ export function registerDocuments(ctx) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(i || {}, meta);
       if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
+      if (!(await mayOpenRequest(d, i.submission))) throw refuse(NO_REQUEST, "not_found");
       // Two clicks on one request queue here (an in-process lock per submission): the second finds the file the first saved. A second Download
       // does not write again; the file already in Files > Signed is returned (the ruling, 18 Oct). A cross-process race can add one more
       // version of identical bytes, which is harmless (BACKLOG: create-only drive put).
@@ -322,6 +329,24 @@ export function registerDocuments(ctx) {
   });
 
   /** The Document record, when the Space has that type; null when it does not (the file is filed all the same). */
+  /** The person on a chain (the first person hop), or null. */
+  const personOf = (/** @type {any} */ c) => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
+  /** The one answer for a request the caller may not see, whether it does not exist, is someone else's, or she cannot read it (sec53: no difference to tell apart). */
+  const NO_REQUEST = "no such request: check the number, or ask the person who sent it";
+  /**
+   * May this caller open a signature request (documents.signing.status, audit, waiting)? Yes when a document record filed under her own chain carries the submission
+   * (the record is written at send time, from the verified chain, so the sender is who may see it). The owner also sees requests from before that record existed. Anyone else: no.
+   * @param {any} d @param {any} submission
+   */
+  const mayOpenRequest = async (/** @type {any} */ d, /** @type {any} */ submission) => {
+    const n = Number(submission);
+    try {
+      const rows = (await d.gateway.records.query(d.chain, "document", { filter: { field: "submission", op: "eq", value: n }, page: { limit: 1 } })).rows || [];
+      if (rows.length) return true;
+    } catch { /* not readable under this chain: the same as no record */ }
+    return Boolean(ctx.kernel && ctx.kernel.owner) && personOf(d.chain) === String(ctx.kernel.owner);
+  };
+
   async function filed(/** @type {any} */ d, /** @type {Record<string, any>} */ data) {
     let defs;
     try { defs = (await d.gateway.definitions(d.chain)) || []; } catch { return null; }
