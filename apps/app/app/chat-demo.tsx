@@ -37,6 +37,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
   return (
     <ThemeProvider>
       <ChatScreen
+        sampleGroup={group}
         sessionId={sample ?? "demo"}
         onBack={() => router.back()}
         title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : sample === "demo-ads" ? "ads" : sample === "demo-group" ? "Spring campaign" : group ? "Northwind supply contract, before the 3 pm call" : activity ? "Chase the overdue invoices" : "Fix the intake date check"}

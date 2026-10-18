@@ -95,6 +95,8 @@ export type ChatScreenProps = {
   initialTab?: string;
   /** A Flow is one chat whose runs are its threads. */
   flow?: boolean;
+  /** The sample world only: show a group (two people and two agents) for the design preview. */
+  sampleGroup?: boolean;
   /** Force the sealed note on or off (shots); by default it shows once per chat. */
   showSealedNote?: boolean;
   /** The project this chat is in, for the header (a name, never an id). */
@@ -353,7 +355,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const group = store.group;
   const found = group.participants();
   // Before the stream says who is here: a real chat asks the box (work.chat.get); only the sample world shows its sample people.
-  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const },
+    ...(p.sampleGroup ? [{ id: "per_sam", name: "Sam Reyes", family: "person" as const }, { id: "assistant:scout", name: "scout", family: "assistant" as const }] : [])];
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
