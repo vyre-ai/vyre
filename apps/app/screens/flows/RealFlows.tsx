@@ -7,15 +7,8 @@ import { Button, Menu, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Sw
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
-import { healthRow, listWaits } from "./real-model.js";
+import { groupFlows, healthRow, listWaits } from "./real-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
-
-/** Flows grouped by the project they belong to; the ones with none are Personal and come first. */
-export function groupFlows(flows: RealFlow[]): { name: string; rows: RealFlow[] }[] {
-  const by = new Map<string, RealFlow[]>();
-  for (const f of flows) { const k = f.project || "Personal"; by.set(k, [...(by.get(k) ?? []), f]); }
-  return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
-}
 
 export function RealFlows() {
   const router = useRouter();
