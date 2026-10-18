@@ -241,7 +241,7 @@ try {
     await drv.open();
     const t = await drv.waitFor("Get started", 60_000);
     if (!t.includes("Sign in to") || !t.includes("New here? Get started") || !t.includes("Sign in with GitHub")) throw new Error(`the first screen does not offer sign-in, get started and GitHub: ${t.slice(0, 300)}`);
-    if (!/Privacy/.test(t) || !/Match this device/.test(t)) throw new Error(`the first screen lacks its corners (theme switch, Privacy and Terms): ${t.slice(0, 300)}`);
+    if (!/A product of Clearfield Labs/.test(t) || !/Privacy/.test(t) || !/Match this device/.test(t)) throw new Error(`the first screen lacks its corners (theme switch, Privacy and Terms): ${t.slice(0, 300)}`);
     const native = await drv.ed25519();
     if (NO_ED25519 && native) throw new Error("the old-browser case did not remove Ed25519 from WebCrypto, so it proves nothing");
     if (!NO_ED25519 && !native) throw new Error("this browser has no Ed25519 WebCrypto (Chromium before 137): use a newer pinned Playwright, or run the old-browser case with --no-ed25519");

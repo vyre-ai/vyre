@@ -10,6 +10,11 @@ test("the words are the owner's, and the password is never called a master passw
   for (const v of Object.values(WELCOME_COPY)) assert.doesNotMatch(String(v), /master password/i);
 });
 
+test("the footer names the product's maker and links to its site", () => {
+  assert.equal(WELCOME_COPY.footer, "A product of Clearfield Labs");
+  assert.equal(WELCOME_COPY.footerUrl, "https://clearfieldlabs.com");
+});
+
 test("the theme choices are Light, Match this device and Dark, with the device in the middle", () => {
   assert.deepEqual(THEME_CHOICES.map((c) => c[1]), ["Light", "Match this device", "Dark"]);
   assert.deepEqual(THEME_CHOICES.map((c) => c[0]), ["paper", "system", "dark"]);

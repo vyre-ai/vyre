@@ -87,6 +87,9 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
         <Pressable accessibilityRole="link" onPress={() => open(WELCOME_COPY.privacyUrl)}><RNText style={{ color: faint, fontSize: 12 }}>{WELCOME_COPY.privacy}</RNText></Pressable>
         <Pressable accessibilityRole="link" onPress={() => open(WELCOME_COPY.termsUrl)}><RNText style={{ color: faint, fontSize: 12 }}>{WELCOME_COPY.terms}</RNText></Pressable>
       </View>
+      <Pressable accessibilityRole="link" onPress={() => open(WELCOME_COPY.footerUrl)} style={{ position: "absolute", bottom: 24, alignSelf: "center" }}>
+        <RNText style={{ color: text, opacity: 0.85, fontSize: 12, letterSpacing: 0.25 }}>{WELCOME_COPY.footer}</RNText>
+      </Pressable>
     </View>
   );
 }

@@ -13,6 +13,8 @@ export const WELCOME_COPY = Object.freeze({
   privacyUrl: "https://vyre.run/privacy",
   terms: "Terms",
   termsUrl: "https://vyre.run/terms",
+  footer: "A product of Clearfield Labs",
+  footerUrl: "https://clearfieldlabs.com",
   badSpace: "Use the name of a space, like juniper.",
 });
 
