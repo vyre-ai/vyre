@@ -141,3 +141,14 @@ test("the Space's service: the asker is the chain's one person, a member's admin
   await svc.decide(chain(OWNER), { id: "req_1", approve: false });
   for (const bad of [chain(ASKER, { space: OTHER }), chain(ASKER, { viewer: true }), chain(ASKER, { delegated: true }), { space: SPACE, hops: [] }, { space: SPACE, hops: [{ actor: { kind: "agent", id: "kit" } }] }]) await assert.rejects(() => svc.ask(bad, {}), (e) => e.code === "not_found");
 });
+
+test("requests.attention lists what waits and what was refused, never the note", async () => {
+  const w = await world();
+  await w.tool("requests.accept", { space: SPACE, accepting: true });
+  await ask(w, ASKER, { name: "ada.vyre.run", note: "SECRET-NOTE" });
+  const a = (await w.tool("requests.attention", {})).data;
+  assert.equal(a.requests.length, 1);
+  assert.deepEqual([a.requests[0].name, a.requests[0].entry, a.requests[0].space], ["ada.vyre.run", ENTRY, SPACE]);
+  assert.ok(!JSON.stringify(a).includes("SECRET-NOTE"));
+  assert.deepEqual(a.refusing, []);
+});

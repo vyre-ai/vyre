@@ -8,6 +8,7 @@
     "reads": ["requests.accepting"],
     "tools": [
       { "name": "requests.accepting", "reach": "person", "effect": "read" },
+      { "name": "requests.attention", "reach": "person", "effect": "read" },
       { "name": "requests.accept", "reach": "person", "effect": "write" },
       { "name": "requests.list", "reach": "person", "effect": "read" },
       { "name": "requests.decide", "reach": "person", "effect": "write" },

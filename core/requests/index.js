@@ -105,6 +105,17 @@ export default {
       input: { type: "object", required: ["space"], properties: { space: str } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => { personOnly(meta); return doList(spaceOk(i.space)); },
     });
+    ctx.tool("requests.attention", {
+      effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
+      description: "The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const t = now();
+        const rows = /** @type {any[]} */ (db.prepare("SELECT id, space, identity, entry, name, created FROM join_requests WHERE state = 'open' AND created > ? ORDER BY created").all(t - LIMITS.ttlMs));
+        const full = /** @type {any[]} */ (db.prepare("SELECT space, refused FROM join_settings WHERE accepting = 1 AND refused > 0").all());
+        return { requests: rows.map(r => ({ id: r.id, space: r.space, identity: r.identity, entry: r.entry, name: r.name, at: r.created })), refusing: full.map(f => ({ space: f.space, refused: Number(f.refused), waiting: rows.filter(r => r.space === f.space).length })) };
+      },
+    });
     ctx.tool("requests.decide", {
       effect: "write", callers: ["cli", "local", "deck", "capsule", "tailnet", "device"],
       description: "Answer a request: approve it by naming the invite just made for that person (the invite itself needs the approver's own presence), or decline it.",

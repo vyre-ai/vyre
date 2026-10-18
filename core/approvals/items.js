@@ -90,6 +90,29 @@ export const fromVault = (/** @type {any} */ p) => {
 };
 
 /**
+ * requests.attention: a person asks to join a Space (0.6.2). One `access` card each, in FIXED words: who asked is the username the directory confirmed (escaped like any name) or "Someone", and the card tells the
+ * owner to check the device's fingerprint words with the person before approving. The note the stranger wrote never rides on a card (it is shown only on the opened request, as plain text) and so can never reach a
+ * model or read as an instruction. Approving is made in the app (the invite is the approver's own act with their own presence, then requests.decide links it); Decline is requests.decide. When the open cap is full,
+ * ONE card says how many asks were refused, with Clear all, so a flood of fresh identities cannot hide a real ask.
+ */
+export const fromRequests = (/** @type {any} */ d) => {
+  const rows = d && Array.isArray(d.requests) ? d.requests : [];
+  const refusing = d && Array.isArray(d.refusing) ? d.refusing : [];
+  const asks = rows.filter((/** @type {any} */ r) => r && typeof r.id === "string" && /^req_[0-9a-f]{16}$/.test(r.id) && typeof r.space === "string").map((/** @type {any} */ r) => {
+    const who = typeof r.name === "string" && /^[a-z0-9.-]{3,253}$/.test(r.name) ? clean(r.name, 80) : "Someone";
+    return { id: `requests:${r.id}`, kind: "access", title: `${who} asks to join`, detail: "Check their fingerprint words with them before you approve.", at: at(r.at), source: "requests",
+      facts: { space: String(r.space), request: r.id, ...(typeof r.entry === "string" ? { entry: r.entry } : {}) },
+      answer: { tool: "requests.decide", input: { space: String(r.space), id: r.id, approve: false }, fill: /** @type {string[]} */ ([]) },
+      answers: [{ label: "Review", open: `/u/settings/people/requests/${r.id}` }, { label: "Decline", tool: "requests.decide", input: { space: String(r.space), id: r.id, approve: false }, fill: /** @type {string[]} */ ([]) }] };
+  });
+  const flood = refusing.filter((/** @type {any} */ f) => f && typeof f.space === "string" && Number(f.refused) > 0).map((/** @type {any} */ f) => ({ id: `requests:full:${f.space}`, kind: "access",
+    title: `Requests are being refused: ${Math.min(99999, Number(f.waiting) || 0)} waiting`, detail: "The Space's list of asks is full.", at: 0, source: "requests",
+    answer: { tool: "requests.decide", input: { space: String(f.space), id: "*", clear: true }, fill: /** @type {string[]} */ ([]) },
+    answers: [{ label: "Clear all", tool: "requests.decide", input: { space: String(f.space), id: "*", clear: true }, fill: /** @type {string[]} */ ([]) }] }));
+  return [...flood, ...asks];
+};
+
+/**
  * flows.attention rows (f3): a run that stopped, is stuck, or a stage held back. Retry, Skip and Stop are one answer (`flows.settle`), a gate's is to move it on (`advance`, with a reason). Plain words only:
  * the reason is the run's own message, already redacted by the owner; no step data. A quiet row (a person simply has not answered yet) is marked so a surface does not push for it.
  */
@@ -191,6 +214,8 @@ export const OWNERS = [
     ["connectors.*", (t, p) => (p && p.id && t === "connectors.connection-checked" ? [`connectors:${p.id}`, p.light === "green" ? "signed in" : "checked"] : null)]] },
   { name: "publish-jobs", tool: "publish.job.attention", map: d => fromJobs(d && Array.isArray(d.jobs) ? d.jobs : []), quiet: true, watch: [
     ["deployment.*", (t, p) => (t === "deployment.job-ran" && p && p.deployment ? [`publish:${p.deployment}`, p.ok ? "ran again" : "failed"] : null)]] },
+  { name: "requests", tool: "requests.attention", map: fromRequests, watch: [
+    ["requests.*", (t, p) => (t === "requests.decided" && p && p.request ? [p.request === "*" ? `requests:full:${p.space}` : `requests:${p.request}`, p.approved ? "approved" : "declined"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
   { name: "space-vault", tool: "vault.space.attention", map: fromSpaceVault, quiet: true, watch: [] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
