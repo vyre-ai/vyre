@@ -10,7 +10,7 @@ import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const B = { user: "ag20001", uid: 20001, display: 21 };
 const flat = steps => steps.map(s => s.join(" "));
-const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=(?:\d+|unlimited) --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
+const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit (?:--as|--data)=\d+ --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
 
 test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
@@ -117,9 +117,11 @@ test("Chrome alone has no address-space cap (it dies at start under RLIMIT_AS); 
   const steps = planStartScreen(U).map(s => s.join(" "));
   const chrome = steps.filter(s => s.includes("agentd-chrome.py"));
   assert.equal(chrome.length, 1);
-  assert.match(chrome[0], /prlimit --as=unlimited --nproc=512 /, "no address-space cap, the process cap stays");
+  assert.match(chrome[0], /prlimit --data=3221225472 --nproc=512 /, "no address-space cap, a 3 GiB cap on committed memory instead, the process cap stays");
   assert.ok(steps.filter(s => !s.includes("agentd-chrome.py")).every(s => /prlimit --as=3221225472 /.test(s)), "the screen, the window manager and the helpers keep 3 GiB");
-  assert.match(asAgent(U, { memoryMb: 0 }).join(" "), /--as=unlimited/);
+  assert.doesNotMatch(asAgent(U, { memoryMb: 0 }).join(" "), /unlimited|--data/, "a zero from config is never read as no cap");
+  assert.match(asAgent(U, { noAddressCap: true }).join(" "), /--data=/, "the option exists only for the Chrome holder's call: nothing else in agentd.js sets it");
+  assert.equal((fs.readFileSync(new URL("./agentd.js", import.meta.url), "utf8").match(/noAddressCap: true/g) || []).length, 1);
 });
 
 test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
