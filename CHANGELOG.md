@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.0
 
+- feat(app): the Vault groups its items into AI and apps, Logins, and Notes and other, and shows the breach banner only when one of your own items is breached (screens/vault/vault-groups.js).
+
 - ci: golden-refresh.yml uses the same lane rule as the other workflows (sec53's note on ci-lanes): a [golden-update] push or a dispatch from a polish branch runs on a hosted runner, not on the self-hosted fleet.
 - ci: the 24 self-hosted runners are the release lane. node.yml, app.yml, box-image.yml and design-pictures.yml use them only for a tag, main, integrate/**, release/**, a train (.../train) or work/lead-*; every other ref (a polish branch, a pull request, a dispatch from either) runs on GitHub's hosted runners, which are free for this public repository, so ten teams pushing cannot queue ahead of a release. Checked by scripts/ci-lanes.test.js.
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).

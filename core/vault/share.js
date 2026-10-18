@@ -54,9 +54,20 @@ export const SHARE_MIGRATIONS = [
      id TEXT PRIMARY KEY, kind TEXT NOT NULL, subject TEXT NOT NULL, payload TEXT NOT NULL,
      by TEXT NOT NULL, at INTEGER NOT NULL
    );`,
+  // The Space member a person is linked to (their identity id). Set only from the person's own surface; never a model's.
+  `ALTER TABLE vault_people ADD COLUMN member TEXT;
+   CREATE INDEX vault_people_member ON vault_people (member);`,
 ];
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const MEMBER = /^[A-Za-z0-9_-]{1,80}$/;
+/** A Space member's id, from the person's own surface only. A model may not link a Vault person to a member: it throws denied. */
+function memberOf(member, caller) {
+  if (member === undefined || member === null || member === "") return null;
+  if (isAsker(caller)) throw Object.assign(new Error("a model cannot link a Vault person to a Space member"), { code: "denied" });
+  if (!MEMBER.test(String(member))) throw new Error("a member id is letters, digits, dash and underscore, up to 80");
+  return String(member);
+}
 const now = () => Date.now();
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
@@ -145,6 +156,14 @@ export class Share {
   /** @param {string} name */
   row(name) { return /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name = ?").get(String(name))); }
 
+  /** The Vault person linked to a Space member: { name } when exactly one row is linked to that member, else null (two rows, or none, is no answer). */
+  personOfMember({ member } = {}) {
+    const id = String(member || "");
+    if (!MEMBER.test(id)) return null;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT name FROM vault_people WHERE member = ?").all(id));
+    return rows.length === 1 ? { name: rows[0].name } : null;
+  }
+
   /** A row's fingerprint; rows pinned before v2 have none stored, so it is computed. */
   fp(r) { return r.fingerprint || fingerprint({ sign: r.sign, box: r.box }); }
 
@@ -173,9 +192,10 @@ export class Share {
    * table waits for a person.
    * @param {{ card: string, name?: string }} input @param {string} caller
    */
-  async addPerson({ card, name }, caller) {
+  async addPerson({ card, name, member }, caller) {
     const c = relay.decodeCard(card);
     const who = String(name || c.name);
+    const link = memberOf(member, caller);
     if (!/^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/.test(who)) throw new Error("a person's name is letters, digits, space, dot, dash, underscore and @, up to 64");
     const fp = fingerprint(c);
     const old = this.row(who);
@@ -192,8 +212,8 @@ export class Share {
       this.vault.emit("vault.card-changed", { name: who, fingerprint: fp, was: this.fp(old) });
       return { person: this.personOut(this.row(who)), changed: true };
     }
-    this.db.prepare("INSERT INTO vault_people (name, sign, box, relay, login, card, version, fingerprint, verified, first_seen, added) VALUES (?,?,?,?,?,?,?,?,0,?,?)")
-      .run(who, c.sign, c.box, c.relay || null, c.login || null, String(card).trim(), c.v, fp, t, t);
+    this.db.prepare("INSERT INTO vault_people (name, sign, box, relay, login, card, version, fingerprint, verified, first_seen, added, member) VALUES (?,?,?,?,?,?,?,?,0,?,?,?)")
+      .run(who, c.sign, c.box, c.relay || null, c.login || null, String(card).trim(), c.v, fp, t, t, link);
     this.vault.audit("person-add", null, caller, true, `${who}: ${fp}`);
     return { person: this.personOut(this.row(who)), pinned: true };
   }
