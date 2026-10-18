@@ -22,9 +22,10 @@ process.env.VYRE_KERNEL ??= "1";
 
 test("a fork keeps the conversation up to and including the chosen reply, starts its own run from there, and leaves the original thread and its transcript alone", { timeout: 240_000 }, async t => {
   const root = tempHome(t);
-  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
   const transcripts = path.join(root, "transcripts");
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  const launchLog = path.join(root, "launches.log");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts, FAKE_CLAUDE_LOG: launchLog });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
@@ -46,7 +47,9 @@ test("a fork keeps the conversation up to and including the chosen reply, starts
   const first = await call("threads.start", { cwd: work, prompt: "first question", surface: "deck", chat: thread, asker: OWNER }, "module:stream", {});
   assert.ok(first.data, JSON.stringify(first.error));
   const run = first.data.id;
-  const lines = () => fs.readdirSync(transcripts).filter(f => f.endsWith(".jsonl")).map(f => ({ f, text: fs.readFileSync(path.join(transcripts, f), "utf8") }));
+  // the fake writes <transcripts>/<the folder's name>/<session>.jsonl, as Claude Code does
+  const lines = () => fs.readdirSync(transcripts).flatMap(dir => { const p = path.join(transcripts, dir); return fs.statSync(p).isDirectory() ? fs.readdirSync(p).filter(f => f.endsWith(".jsonl")).map(f => ({ f: path.join(dir, f), text: fs.readFileSync(path.join(p, f), "utf8") })) : []; });
+  const launches = () => (fs.existsSync(launchLog) ? fs.readFileSync(launchLog, "utf8").split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return {}; } }) : []);
   const assistantLines = (/** @type {string} */ text) => text.split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(j => j.type === "assistant");
   await until(() => lines().some(x => assistantLines(x.text).length >= 1), "the first reply is in the transcript", 30000);
   await until(async () => ((await call("threads.get", { thread: run, limit: 5 })).data.thread || {}).status !== "starting", "the run is up", 30000);
@@ -84,9 +87,12 @@ test("a fork keeps the conversation up to and including the chosen reply, starts
   assert.equal((await call("threads.of-chat", { chat: forked.thread }, "module:work", {})).data.runs.length, 1, "one run, in the fork's chat");
   assert.equal((await call("work.chat.fork-source", { chat: forked.thread }, "module:stream", {})).data, null, "once it has a run it is an ordinary thread");
   await until(() => lines().some(x => x.f !== original.f && assistantLines(x.text).length >= 2), "the fork's transcript has its own reply", 30000);
+  // the provider was told to fork the original and to resume at the first reply's own line: that is the cut (the provider drops what comes after it)
+  const launch = launches().find(l => l.argv && l.argv.includes("--fork-session") && l.argv.includes("--resume-session-at"));
+  assert.ok(launch, "the fork's run was started as a fork with a cut");
+  assert.equal(launch.argv[launch.argv.indexOf("--resume-session-at") + 1], String(firstReply.uuid), "the cut is the chosen reply, included");
   const forkText = lines().find(x => x.f !== original.f && assistantLines(x.text).length >= 2)?.text || "";
   assert.ok(forkText.includes(String(firstReply.uuid)), "the fork carries the conversation up to the reply");
-  assert.ok(!forkText.includes(String(replies[1].uuid)), "and not the original's second reply");
 
   // the original is unchanged: its transcript is byte for byte what it was, and it still has its one run
   assert.equal(fs.readFileSync(path.join(transcripts, original.f), "utf8"), before, "the original transcript is untouched");
