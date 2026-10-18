@@ -81,6 +81,8 @@ export const EVENT = {
     f("rich_text", "notes", "Notes"),
     f("url", "url", "Link (the event on its calendar)"),
     text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
+    // an event from an outside calendar is read by its owner alone until shared with the Space; the others see Busy (core/records-tools/visibility.js)
+    choice("visibility", "Who can read it", ["private", "space"]),
     TAGS,
   ],  // A new Space opens Events as a calendar, Contacts and Organizations as lists; a person adds their own views next to these (the app's New view).
   views: [{ name: "events_calendar", type: "calendar", label: "Calendar", dateField: "starts_at", columns: ["title", "place"] }],
@@ -378,6 +380,17 @@ export const DEAL = {
   views: [{ name: "deals_board", type: "board", label: "Sales pipeline", groupBy: "stage", columns: ["name", "amount", "close_date"] }, { name: "deals_list", type: "list", label: "All deals", columns: ["name", "ref", "stage", "amount", "close_date"], sort: { field: "name", dir: "asc" } }],
 };
 
+/** A note on a record (core/records-tools/history.js): private to its writer until shared. `visibility` is private, record (everyone who can read the record) or space. */
+export const NOTE_VISIBILITY = ["private", "record", "space"];
+export const NOTE = {
+  name: "record-note", label: "Note", icon: "IconNote",
+  fields: [
+    f("rich_text", "body", "Note", { required: true }),
+    f("link", "record", "About"),
+    choice("visibility", "Who can read it", NOTE_VISIBILITY, { required: true }),
+  ],
+};
+
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
   name: "record-layout", label: "Layout", icon: "IconLayout",
@@ -386,4 +399,4 @@ export const RECORD_LAYOUT = {
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
 const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, NOTE].map(withBag).map((t) => Object.freeze(t)));
