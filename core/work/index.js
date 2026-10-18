@@ -34,6 +34,7 @@ import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 import { createChatService } from "./chat-service.js";
 import { createMemberTools } from "./member-tools.js";
+import { registerThreads, placeOf, facesOf } from "./threads.js";
 import { SLUG_RE, isProjectRecordId } from "../../lib/project-id.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -579,9 +580,16 @@ export default {
         const projects = new Map(projRows.map((/** @type {any} */ p) => [p.urn, p.data.name]));
         // Personal is private: a chat filed in somebody else's Personal project is not listed (R031-03)
         const others = new Set(projRows.filter((/** @type {any} */ p) => p.data.personal_of && p.data.personal_of !== personId).map((/** @type {any} */ p) => p.urn));
-        rows = rows.filter((/** @type {any} */ r) => !(r.data.project && others.has(r.data.project.urn)));
+        // Personal is private to its person; a chat that others are in with her is hers to see, whatever project it is filed under
+        rows = rows.filter((/** @type {any} */ r) => mine.has(r.data.chat) || !(r.data.project && others.has(r.data.project.urn)));
+        const faces = await facesOf(ctx, k);
+        const pinfo = new Map(projRows.map((/** @type {any} */ p) => [p.urn, { urn: p.urn, name: p.data.name, slug: p.data.slug, personal_of: p.data.personal_of }]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
-          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
+          const proj = r.data.project && r.data.project.urn ? pinfo.get(r.data.project.urn) || null : null;
+          const kc = (() => { try { return k.chats.read(chain, r.data.chat); } catch { return null; } })();
+          const ppl = kc ? [...kc.people] : String(r.data.people || "").split(",").map((/** @type {string} */ x) => x.trim()).filter(Boolean), ags = kc ? [...kc.assistants] : [];
+          const place = placeOf(proj, ppl.length);
+          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null, place, project: place === "project" && proj ? { urn: proj.urn, name: proj.name } : null, faces: { people: faces.people(ppl), agents: faces.agents(ags) } };
           if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
@@ -776,17 +784,20 @@ export default {
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
     });
-    ctx.tool("work.chat.change", {
-      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
-      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },
-        ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
-      run: async (input, extra) => {
+    registerThreads({ ctx, chatTool, kernelOf, chainOf, chatRows, hubOf, changeChat: (/** @type {any} */ i, /** @type {any} */ e) => changeChat(i, e), pinnedOf: (/** @type {string} */ person) => persistentOf().pinnedOf(person), createChat: (/** @type {any} */ i, /** @type {any} */ e) => /** @type {any} */ (memberRuns.get("work.chat.create"))(i, e) });
+    // Add or remove people and agents in a chat: the kernel's own change, by the person acting directly. Named so the thread tools run the very same code.
+    const changeChat = async (/** @type {any} */ input, /** @type {any} */ extra) => {
         const chain = await chainOf(extra);
         // A chat with more than one person always runs on the server: a chat running on a computer moves there first (one line in the chat, no question); nothing is added if it cannot move.
         await moveBeforeJoin({ kernel: kernelOf(), chain, members: () => ctx.call("spaces.members.list", {}, { relay: true }), move: i => ctx.call("runner.group-move", i), chat: String(input.chat), add: input.add_people });
         const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents, ...(input.ring ? { ring: input.ring } : {}) });
         return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
-      },
+    };
+    ctx.tool("work.chat.change", {
+      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
+      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } },
+        ring: { type: "object", description: "on a chat with a key ring: the ring the change made on a participant's device (addHolders for someone added, removeHolders for someone removed, which rotates the key); required when people are added or removed" } }, ["chat"]),
+      run: (input, extra) => changeChat(input, extra),
     });
     // A chat's key, lent to this server by a participant's own device for the chat's files to open (kernel/gateway/chat-keys.js). The server never makes or keeps a key: the device opens the ring with its own key and
     // answers the request with the keys wrapped to a one-use key, which live in this process's memory and nowhere else.

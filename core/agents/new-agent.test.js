@@ -17,7 +17,7 @@ async function boot(/** @type {any} */ t, kernel = false) {
   t.after(() => d.stop());
   return { d, c: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ as = "local") => d.registry.call(tool, input, as) };
 }
-const NEW = { name: "scout", instructions: "Find three photographers.", projects: [], skills: ["research"], effort: "high", look: "s2~c4~e1~m2~t3~b1~h5", auth: { vault: "claude-setup-token", fallback: "anthropic-api-key", budget_usd: 20 } };
+const NEW = { name: "scout", instructions: "Find three photographers.", projects: [], skills: ["research"], model: "sonnet", fallback_model: "haiku", effort: "high", look: "s2~c4~e1~m2~t3~b1~h5", auth: { vault: "claude-setup-token", fallback: "anthropic-api-key", budget_usd: 20 } };
 
 test("a draft keeps the whole input, answers its id, hash and title, and the same input is the same draft", async t => {
   const { c } = await boot(t);
@@ -50,6 +50,7 @@ test("only what agents.create takes, in range, is stored; the assistant, a taken
     [{ ...NEW, auth: { budget_usd: -1 } }, /auth/],
     [{ ...NEW, auth: { secret: "x" } }, /auth/],
     [{ ...NEW, computer: "yes" }, /computer/],
+    [{ ...NEW, fallback_model: "not a model!" }, /model/],
     [null, /a new agent is/],
   ];
   for (const [input, why] of bad) { const r = await c("agents.new.draft", { input, proposer: "per_a" }, "module:vyred"); assert.match(String(r.error?.message), /** @type {RegExp} */ (why), JSON.stringify(input)); }

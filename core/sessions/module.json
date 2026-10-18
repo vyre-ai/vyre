@@ -140,6 +140,11 @@
         "reach": "anyone"
       },
       {
+        "name": "sessions.accounts.models",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "sessions.accounts.add",
         "reach": "anyone",
         "effect": "write"
