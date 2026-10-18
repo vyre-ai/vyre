@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(mcp): mcp.keys.waiting is internal and for the approvals queue alone (reach modules, module:approvals only). It was reach "anyone" with a person-only body, which let an agent's chain in by the golden's measure and stopped the golden refresh; no agent, session, surface or other module reads the Needs-you list of waiting keys directly. The tool also leaves the door lists and the reach-anyone allow file.
 - feat(planner): planner.list takes scope space (notes shared with the whole Space), and an event the planner makes for a person carries that person as its `owner`, so Mine, Team and Everyone find it.
 - chore(kernel): the trusted-base cap goes from 9673 to 9705 by the owner's ruling of 19 Oct 2026, for private notes and events (kernel/gateway/records.js) and role holders and task facts (kernel/index.js). The measured base is 9690; any later growth needs its own ruling.
 - fix(records): a note is about a record, never another note: a note address in a record link is refused when the note is written and when it is read, and the read check is bounded to three levels. The kernel's comments on the layout guard and the note rule are kept in full.
