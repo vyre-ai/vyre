@@ -146,7 +146,7 @@ async function loadMine(d, extra) {
     const project = place === "project" && proj ? { urn: proj.urn, name: proj.name } : null;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
     const thread = { ...threadRow({ ...r.data, agents }, runs, unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned: pins.get(String(r.data.chat)) || null };
-    items.push({ ppl, agents, place, project, thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
+    items.push({ ppl, agents, place, project, projectChat: Boolean(r.data.project_chat), thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
   }
   return { me, k, faces, items };
 }
@@ -314,6 +314,31 @@ export function registerThreads(d) {
     description: "A chat's threads, newest first, found by a thread in it or by its people, with who is in it.",
     input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" }, description: "the other people in the chat, when no chat is named" }, limit: { type: "integer" }, before: { type: "string" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => chatThreads(d, extra, { chat: input.chat ? String(input.chat) : undefined, people: Array.isArray(input.people) ? input.people : [], limit: input.limit, before: input.before ? String(input.before) : null }),
+  });
+  d.chatTool("work.chat.add-people", {
+    description: "Add people to a chat of several people: every thread in it takes them. Give each thread's ring; returns the threads still missing one.",
+    input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" } }, rings: { type: "object", description: "thread id -> that thread's key ring with the new people's devices added (addHolders), made on your device" } }, ["chat", "people"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const { me, faces, items } = await loadMine(d, extra);
+      const named = String(input.chat || "");
+      const hit = items.find(it => it.thread.thread === named) || items.find(it => it.key === named);
+      if (!hit) throw fail("not_found", "no such chat (work.chat.summary lists yours)");
+      if (hit.ppl.length === 1) throw fail("bad_input", "this is a thread with an agent: work.thread.add-people adds people to it");
+      const group = items.filter(it => it.key === hit.key);
+      if (group.some(it => it.projectChat)) throw fail("bad_input", "a project's chat has the project's team in it: change the team (work.project.level) and the chat follows");
+      const add = [...new Set((Array.isArray(input.people) ? input.people : []).map(String))].filter(p => !hit.ppl.includes(p));
+      if (!add.length) throw fail("bad_input", "name people who are not in the chat yet");
+      const rings = input.rings && typeof input.rings === "object" ? input.rings : {};
+      /** @type {string[]} */ const changed = [], missingRing = [];
+      /** @type {{ thread: string, error: string }[]} */ const failed = [];
+      for (const it of group) {
+        const thread = String(it.thread.thread);
+        if (!rings[thread]) { missingRing.push(thread); continue; }
+        try { await d.changeChat({ chat: thread, add_people: add, ring: rings[thread] }, extra); changed.push(thread); }
+        catch (e) { failed.push({ thread, error: String(e && /** @type {any} */ (e).message || e).slice(0, 200) }); }
+      }
+      return { chat: chatKey([...hit.ppl, ...add]), people: faces.people([...hit.ppl, ...add]), added: add, changed, missing_rings: missingRing, failed, done: !missingRing.length && !failed.length };
+    },
   });
   d.chatTool("work.project.chat", {
     description: "A project's group chat, made on first use for its team: { chat, people, missing, extra }. A member's device applies the gap with work.chat.change.",

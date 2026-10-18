@@ -208,6 +208,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.add-people",
+        "summary": "add people to a chat of several people: every thread in it takes them",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.project.chat",
         "summary": "a project's group chat, made on first use, with who is missing from it",
         "reach": "anyone",
