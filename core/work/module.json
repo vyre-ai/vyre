@@ -208,6 +208,12 @@
         "effect": "read"
       },
       {
+        "name": "work.project.chat",
+        "summary": "a project's group chat, made on first use, with who is missing from it",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.threads",
         "summary": "the threads of one chat (a set of people), newest first",
         "reach": "anyone",
@@ -818,6 +824,11 @@
               "name": "forked_from",
               "kind": "text",
               "label": "Forked from (the thread and the reply it was forked at)"
+            },
+            {
+              "name": "project_chat",
+              "kind": "boolean",
+              "label": "This is the project's group chat"
             },
             {
               "name": "tags",

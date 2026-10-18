@@ -113,6 +113,9 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   return { agent, threads: after.slice(0, Math.min(Math.max(Number(limit) || 50, 1), 200)), count: out.length };
 }
 
+/** The id of a project's group chat: fixed by the project, so a project has one. @param {string} projectUrn */
+export const projectChatId = projectUrn => `chat_pj_${crypto.createHash("sha256").update(String(projectUrn)).digest("hex").slice(0, 20)}`;
+
 /** The key of a chat: the set of people (and, for a project's chat, the project). A hash of sorted ids, so the same people are always the same chat. @param {string[]} people @param {string | null} project */
 export function chatKey(people, project = null) {
   const h = crypto.createHash("sha256").update(`${project || ""}|${[...new Set(people)].sort().join(",")}`).digest("hex").slice(0, 20);
@@ -143,7 +146,7 @@ async function loadMine(d, extra) {
     const project = place === "project" && proj ? { urn: proj.urn, name: proj.name } : null;
     const runs = ((await d.ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
     const thread = { ...threadRow({ ...r.data, agents }, runs, unreadOf(db, me, r.data.chat)), place, project, faces: { people: faces.people(ppl), agents: faces.agents(agents) }, pinned: pins.get(String(r.data.chat)) || null };
-    items.push({ ppl, agents, place, project, thread, key: chatKey(ppl, project ? project.urn : null) });
+    items.push({ ppl, agents, place, project, thread, key: r.data.project_chat ? String(r.data.chat) : chatKey(ppl, project ? project.urn : null) });
   }
   return { me, k, faces, items };
 }
@@ -312,13 +315,44 @@ export function registerThreads(d) {
     input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" }, description: "the other people in the chat, when no chat is named" }, limit: { type: "integer" }, before: { type: "string" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => chatThreads(d, extra, { chat: input.chat ? String(input.chat) : undefined, people: Array.isArray(input.people) ? input.people : [], limit: input.limit, before: input.before ? String(input.before) : null }),
   });
+  d.chatTool("work.project.chat", {
+    description: "A project's group chat, made on first use for its team: { chat, people, missing, extra }. A member's device applies the gap with work.chat.change.",
+    input: obj({ project: { type: "string", description: "the project's short name, record id or address" }, ring: { type: "object", description: "on first use: the chat's key ring, made on your device for the id the project fixes (projectChatId); left out, the server makes it for devices it knows" } }, ["project"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const chain = await d.chainOf(extra), k = d.kernelOf(), hop = chain && chain.hops && chain.hops[0];
+      if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.viewer === true) throw fail("denied", "a project's chat is a person's own: ask from your own session");
+      const me = String(hop.actor.id);
+      const rec = await d.hubOf().projectOf(String(input.project || ""));
+      if (!rec || !(await k.records.get(chain, "project", rec.id).catch(() => null))) throw fail("not_found", "no such project (projects.list shows them)");
+      const team = await d.hubOf().teamOf(rec.id);
+      if (!team) throw fail("not_found", "no such project (projects.list shows them)");
+      if (team.personal_of) throw fail("bad_input", "a Personal project is yours alone: it has no group chat. Chat there with an agent instead.");
+      const writers = team.people.filter(p => p.level !== "viewer").map(p => p.id), readers = team.people.filter(p => p.level === "viewer").map(p => p.id);
+      const id = projectChatId(team.urn);
+      const readIt = () => { try { return k.chats.read(chain, id); } catch { return null; } };
+      let c = readIt();
+      if (!c && !(await d.hubOf().chatRecord(id))) {
+        if (!writers.includes(me)) return { chat: null, id, pending: true, people: [], missing: writers, extra: [], readonly: readers, readonly_for_you: readers.includes(me) };
+        const made = await d.createChat({ title: team.name, project: team.slug, people: writers.filter(p => p !== me), id, ...(input.ring ? { ring: input.ring } : {}) }, extra);
+        const recd = await d.hubOf().chatRecord(String(made.chat));
+        if (recd) await d.hubOf().setChatFields(recd, { project_chat: true });
+        c = readIt();
+      } else if (c) {
+        const recd = await d.hubOf().chatRecord(id);
+        if (recd && !recd.data.project_chat) await d.hubOf().setChatFields(recd, { project_chat: true });
+      }
+      if (!c) return { chat: id, id, member: false, people: [], missing: [], extra: [], readonly: readers, readonly_for_you: readers.includes(me), waiting: writers.includes(me) };
+      const people = [...c.people];
+      return { chat: id, id, member: true, people, missing: writers.filter(p => !people.includes(p)), extra: people.filter(p => !writers.includes(p)), readonly: readers, readonly_for_you: readers.includes(me) };
+    },
+  });
   d.chatTool("work.person.shared", {
     description: "What you and one person share: your chat with them, the threads you are both in, and the projects you are both on.",
     input: obj({ person: { type: "string", description: "the person's id" } }, ["person"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => personShared(d, extra, String(input.person)),
   });
   d.chatTool("work.thread.add-people", {
-    description: "Add people to your thread with an agent: it moves into the chat of exactly you and them, and the agent comes along. Needs the key ring your device made.",
+    description: "Add people to your thread with an agent. They read its earlier messages; the agent keeps its context. Needs your device's key ring.",
     input: obj({ thread: { type: "string" }, people: { type: "array", items: { type: "string" } }, ring: { type: "object", description: "the chat's key ring with the new people's devices added (addHolders), made on your device" } }, ["thread", "people"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf();

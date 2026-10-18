@@ -6,6 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start, callerFacts } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
+import { projectChatId } from "./threads.js";
 import { holdersOf, createRing, addHolders } from "../../lib/chat-keys.js";
 import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
 import { toB64u, fromB64u } from "../../lib/databox.js";
@@ -29,8 +30,11 @@ test("a project's group chat is made once for its team, its gap is reported, a n
   const seat = (/** @type {string} */ id, /** @type {string} */ level) => K.gateway.records.create(ownerChain, "team-member", { name: id.slice(4, 8), actor: link(id), kind: "person", level, project: { urn: proj.urn } });
   await seat(BEN, "contributor"); await seat(CY, "viewer");
 
-  const first = await ok(OWNER, "work.project.chat", { project: "acme" });
-  assert.match(first.chat, /^chat_pj_/, "the project's chat has an id the project fixes");
+  const dev = newDeviceKey(), agree = toB64u(Uint8Array.from([4, ...fromB64u(dev.publicJwk.x), ...fromB64u(dev.publicJwk.y)]));
+  const id = projectChatId(proj.urn), made = createRing(id, holdersOf([{ device: "dev_a", agree }]));
+  const first = await ok(OWNER, "work.project.chat", { project: "acme", ring: made.doc });
+  assert.equal(first.chat, id, "the project's chat has an id the project fixes");
+  assert.match(first.chat, /^chat_pj_/);
   assert.deepEqual([...first.people].sort(), [BEN, OWNER].sort(), "everyone on the team who writes: the owner and Ben, not the viewer");
   assert.deepEqual([first.missing, first.extra], [[], []]);
   assert.deepEqual(first.readonly, [CY], "the viewer reads and does not write, so is not in the chat");
@@ -43,11 +47,17 @@ test("a project's group chat is made once for its team, its gap is reported, a n
   await seat(DEE, "contributor");
   const gap = await ok(BEN, "work.project.chat", { project: "acme" });
   assert.deepEqual([gap.missing, gap.extra], [[DEE], []]);
-  const dev = newDeviceKey(), agree = toB64u(Uint8Array.from([4, ...fromB64u(dev.publicJwk.x), ...fromB64u(dev.publicJwk.y)]));
-  const ringed = (await ok(OWNER, "work.chat.get", { chat: first.chat })).chat;
-  assert.ok(ringed, "the owner reads the chat");
   assert.equal((await as(DEE, "work.chat.get", { chat: first.chat })).error ? "refused" : "read", "refused", "until added, Dee cannot read it");
-  void agree; void createRing; void holdersOf; void addHolders; void fingerprint;
+  // a member's device applies the gap: the kernel's own change with the grown ring, then the gap is gone
+  const dd = newDeviceKey();
+  const grown = addHolders(made.doc, made.keys, { add: { [fingerprint(dd.publicJwk)]: dd.publicJwk } });
+  await ok(BEN, "work.chat.change", { chat: first.chat, add_people: gap.missing, ring: grown });
+  const healed = await ok(OWNER, "work.project.chat", { project: "acme" });
+  assert.deepEqual([healed.missing, healed.extra, healed.people.includes(DEE)], [[], [], true]);
+  assert.ok(!(await as(DEE, "work.chat.get", { chat: first.chat })).error, "Dee reads it now");
+  // a person made a viewer is in the chat without writing there, and is reported as extra
+  await ok(OWNER, "work.project.level", { project: "acme", person: DEE, level: "viewer" });
+  assert.deepEqual((await ok(OWNER, "work.project.chat", { project: "acme" })).extra, [DEE]);
   // someone off the team who cannot read the project is told it is not found
   const cyRead = await as(CY, "work.project.chat", { project: "acme" });
   assert.ok(!cyRead.error, "a viewer may open the project's chat entry");

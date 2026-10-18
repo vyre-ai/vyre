@@ -2009,6 +2009,10 @@
    "module": "work",
    "reason": "starts another thread in a chat the caller is already in, as themselves; the kernel authorizes the create and the ring comes from the device"
   },
+  "work.project.chat": {
+   "module": "work",
+   "reason": "the caller must read the project; it finds or makes the project's one chat (a fixed id) for the team as the caller acting directly, the kernel authorizes the create, and a viewer is never put in it; it changes no one's membership, it only reports the gap"
+  },
   "work.chat.threads": {
    "module": "work",
    "reason": "read-only: the threads of one chat the caller may read"
