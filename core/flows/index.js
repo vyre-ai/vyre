@@ -57,7 +57,7 @@ const WHAT = {
   "flows.run": "One run: its trigger, its steps, what it did.",
   "flows.budget": "The Space's daily AI allowance for Flow steps and today's use, and the context budget for record context. Reading is anyone's; setting it is flows.budget.set.",
   "flows.budget.set": "Set the Space's daily AI allowance: { tokens_per_day?, context_tokens? }. An owner or an admin, in their own name; an assistant is refused.",
-  "flows.retry": "Retry a failed or paused run. from: a step id reruns from that step; skip: true skips the step; version: \"latest\" uses the active version. Refused once something was sent.",
+  "flows.retry": "Retry a failed or paused run. from: step id to rerun from (refused if something was sent); skip: true skips it; version: latest.",
   "flows.cancel": "Stop a failed, paused or waiting run for good. Its record stays, marked cancelled. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
   "flows.kit.propose": "Propose a Kit (types, templates, roles, Flows) for approval. The person is asked; nothing installs until they say yes.",
