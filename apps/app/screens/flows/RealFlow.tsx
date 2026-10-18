@@ -18,12 +18,12 @@ import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
-import { cancelReal, retryReal, startReal } from "./run";
+import { cancelReal, retryFromReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
 import { listReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
-import { filterRuns, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -193,7 +193,7 @@ export function RealFlow({ id }: { id: string }) {
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
           <ExplainCard text={explain} />
           <Card flush>
-            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
+            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps onFrom={picked_run ? { refusal: (id) => retryFromRefusal(def, ledger, id), go: async (id) => { setBusy(true); try { await retryFromReal(picked_run.id, id); showToast("Retrying from that step."); setN((x) => x + 1); } catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); } finally { setBusy(false); } } } : undefined} painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
           </Card>
           <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}

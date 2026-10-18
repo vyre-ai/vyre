@@ -13,6 +13,8 @@ export function runSource(call: Call) {
     startReal: (id: string, key: string, input: Record<string, unknown> = {}) => ask<{ id?: string; run?: string }>("flows.start", { id, input, key }),
     /** Retry from the stopped step. `version: "latest"` runs the rest on the Flow's active version (the owner's choice; flows.retry takes it over MCP too). */
     retryReal: (run: string, opts: { version?: "latest" } = {}) => ask<{ ok: boolean }>("flows.retry", { run, ...opts }),
+    /** Retry from one step: it and every step after it run again; the steps before keep what they made. The engine refuses it when something already went out. */
+    retryFromReal: (run: string, from: string) => ask<{ ok: boolean }>("flows.retry", { run, from }),
     /** Stop a run that is paused, failed, waiting or held: it is kept, marked stopped, and what it waits on is withdrawn. */
     cancelReal: (run: string) => ask<{ ok: boolean; state?: string | null }>("flows.cancel", { run }),
   };

@@ -26,7 +26,7 @@ test("a step in the Otherwise lane sees the Then lane's values only as 'may be e
 
 test("after the If, both lanes' values are 'may be empty' and the earlier ones are certain", () => {
   const v = valueSourcesByPath(flow(), "email5", options);
-  assert.deepEqual([...new Set(v.maybe.map((x) => x[2]))].sort(), ["Else", "Then"]);
+  assert.deepEqual([...new Set(v.maybe.map((x) => x[2]))].sort(), ["Otherwise", "Then"]);
   assert.ok(v.always.some(([t]) => t.includes("find1")));
 });
 

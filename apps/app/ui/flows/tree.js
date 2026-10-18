@@ -8,7 +8,7 @@
 /** The lanes a step holds, in the order they are drawn. @param {Step} s @returns {{ key: string, label: string }[]} */
 export function lanesOf(s) {
   /** @type {{ key: string, label: string }[]} */ let own = [];
-  if (s.kind === "decide") own = [{ key: "then", label: "Then" }, { key: "else", label: "Else" }];
+  if (s.kind === "decide") own = [{ key: "then", label: "Then" }, { key: "else", label: "Otherwise" }];
   else if (s.kind === "repeat") own = [{ key: "steps", label: "For each" }];
   else if (s.kind === "parallel") own = (s.lanes || []).map((/** @type {any} */ _l, /** @type {number} */ i) => ({ key: `lane:${i}`, label: `Side ${i + 1}` }));
   return s.on_fail ? [...own, { key: "on_fail", label: "If this fails" }] : own;
