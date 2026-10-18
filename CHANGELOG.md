@@ -61,6 +61,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Polish
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(appmods): a start that fails after the apps' front began listening (a tool its manifest does not declare) closes the front, so the module leaves nothing open. That open port was why daemon tests passed and then never exited
+
 - feat(skills): an approved plugin's MCP servers now reach each AI: a .mcp.json in the plugin folder for Claude and Grok, and [mcp_servers] tables in the Codex home's config.toml (stdio and http; rebuilt from checked fields, never copied; no env, no headers; sse is not placed for Codex). Needs the owner's ack as any plugin with code
 
 - feat(skills): skills.import uploads a SKILL.md, a .md, or a .zip of a skill folder or a plugin (.claude-plugin/plugin.json). It becomes a draft through the same path as skills.draft (the level's owner approves; nothing runs on upload). The file is checked strictly (2 MB zip, 6 MB inflated, no link, no path out or absolute, only skills, commands, agents, hooks and .mcp.json, library name rules, no keys); MCP env and headers are dropped, agents and Claude shell hooks are left out, and each is said. The answer carries worksWith per part for Claude, Codex and Grok (Grok is from its docs and not yet run; Codex has no plugin commands or hooks) and leftOut
