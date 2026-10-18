@@ -196,7 +196,7 @@ export const COMMUNICATION = {
 
 
 
-export const TASK_STATUS = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
+export const TASK_STATUS = ["waiting", "ready", "working", "in_review", "changes_requested", "needs_check", "declined", "stuck", "done", "skipped"];
 export const TASK_SOURCES = ["gate_hold", "grant_request", "pairing", "kit_install", "reveal_request", "continue_in_space", "flow_step", "assistant_request", "memory_proposal", "manual"];
 
 /**

@@ -1,0 +1,26 @@
+# The MCP servers Vyre writes into Codex's config.toml (mcpToml), read by the REAL Codex CLI: `codex mcp list` and `codex mcp get` in a throwaway CODEX_HOME. No account, no key, no model call.
+name: codex-mcp-real
+on:
+  workflow_dispatch:
+  push:
+    paths: ["core/sessions/drivers/codex.js", "scripts/codex-mcp-real-check.mjs", ".github/workflows/codex-mcp-real.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: codex-mcp-real-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  codex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Codex CLI into a temp prefix
+        run: npm install --ignore-scripts --no-audit --no-fund --prefix "$RUNNER_TEMP/codex" @openai/codex@0.159.3
+      - name: Codex reads the servers Vyre wrote
+        run: node scripts/codex-mcp-real-check.mjs "$RUNNER_TEMP/codex/node_modules/.bin/codex"

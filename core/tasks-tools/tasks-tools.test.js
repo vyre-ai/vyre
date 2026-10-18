@@ -25,6 +25,10 @@ test("tasks.*: the owner's device requests, lists, starts and submits a task und
   assert.equal((await ok("tasks.get", { id: "00000000-0000-4000-8000-000000000000" })).task, null);
   const started = (await ok("tasks.move", { id: made.id, to: "working" })).task;
   assert.equal(started.state, "working");
+  // what the doer gave rides on the task for the approver's card, marked as the doer's words
+  const upd = (await ok("tasks.update", { id: made.id, details: { client: "Jane" }, outputs: ["vyre://x/file/1"], note: "calling now" })).task;
+  assert.deepEqual(upd.card_extras.task_data, { untrusted: true, details: { client: "Jane" }, outputs: ["vyre://x/file/1"] });
+  assert.deepEqual((await ok("tasks.get", { id: made.id })).task.card_extras.task_data.details, { client: "Jane" });
   const done = (await ok("tasks.submit", { id: made.id, evidence: { note: { text: "Spoke to Jane", sources: ["call"] } } })).task;
   assert.ok(["done", "needs_check"].includes(done.state), done.state);
   // the kernel's own refusals come through with its codes

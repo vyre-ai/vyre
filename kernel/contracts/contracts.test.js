@@ -40,7 +40,7 @@ test("a checked or outward task can never be skipped or completed by its doer al
 
 test("a task ends at its Flow's due time only by flow_deadline, to skipped, from every open state", () => {
   const rows = c.TASK_TRANSITIONS.filter(r => r.by === "flow_deadline");
-  assert.deepEqual(rows.map(r => `${r.from}>${r.to}`).sort(), ["needs_check>skipped", "ready>skipped", "stuck>skipped", "working>skipped"]);
+  assert.deepEqual(rows.map(r => `${r.from}>${r.to}`).sort(), ["changes_requested>skipped", "in_review>skipped", "needs_check>skipped", "ready>skipped", "stuck>skipped", "working>skipped"]);
   assert.ok(rows.every(r => r.guarded === undefined), "a withdrawal is not a guarded skip: a person's yes is not asked for what the Flow ends itself");
 });
 
