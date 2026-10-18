@@ -1,6 +1,7 @@
 // @ts-check
 // The AI accounts step: which providers can be added, what an account is called, and which provider an API key belongs to. An account is a name and a provider; a person may have several of one kind. Pure.
 import { AIS } from "../../../../lib/ai-ids.js";
+import { anthropicKind } from "../../src/store-core/credential-shapes.js";
 
 /** The words of the step. */
 export const ACCOUNTS_COPY = Object.freeze({
@@ -46,7 +47,7 @@ export function labelProblem(label, taken) {
  */
 export function keyKindOf(key) {
   const k = String(key || "").trim();
-  if (/^sk-ant-/i.test(k)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
+  if (anthropicKind(`${k.toLowerCase()}${"a".repeat(24)}`)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
   if (/^sk-or-/i.test(k)) return { kind: "openrouter", provider: "openrouter", label: "OpenRouter key" };
   if (/^xai-/i.test(k)) return { kind: "openai-compatible", provider: "grok", label: "Grok key", base_url: "https://api.x.ai/v1" };
   if (/^sk-/i.test(k)) return { kind: "openai-compatible", provider: "codex", label: "OpenAI key" };

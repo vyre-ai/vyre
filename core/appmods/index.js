@@ -669,14 +669,14 @@ export default {
         if (!sres || !sres.ok) throw refuse(`${name} would not say how request ${n} is doing`, "app_refused");
         const status = readStatus(await sres.json().catch(() => null));
         const url = status && auditAllowed(r.origin, status.audit_url);
-        if (!url) throw refuse("there is no audit file for this request on the app's own origin", "not_found");
+        if (!url) throw refuse("there is no audit file for this request on the app's own origin: ask the person to open the request in the signing app", "not_found");
         const ares = await fetch(url, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(20_000), redirect: "manual" }).catch(() => null);
         if (!ares || !ares.ok || ares.status >= 300) throw refuse("the audit file could not be fetched", "app_refused");
         const len = Number(ares.headers.get("content-length"));
         const cap = 8 * 1024 * 1024;
-        if (!auditBodyWithin(len, cap)) throw refuse("the audit file is larger than 8 MB, or its size is unknown", "too_large");
+        if (!auditBodyWithin(len, cap)) throw refuse("the audit file is larger than 8 MB, or its size is unknown: ask the person to open it in the signing app", "too_large");
         const bytes = Buffer.from(await ares.arrayBuffer());
-        if (!auditBodyWithin(bytes.length, cap)) throw refuse("the audit file is larger than 8 MB", "too_large");
+        if (!auditBodyWithin(bytes.length, cap)) throw refuse("the audit file is larger than 8 MB: ask the person to open it in the signing app", "too_large");
         return { bytes: bytes.toString("base64") };
       },
     });
