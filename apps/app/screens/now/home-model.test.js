@@ -29,3 +29,12 @@ test("the agent row puts the assistant first, then live agents, and counts who i
   assert.equal(workingCount(cards), 2);
   assert.deepEqual(agentCards(undefined), []);
 });
+
+import { todayStrip } from "./home-model.js";
+
+test("the Today strip is in time order, marks what has passed and finds the next", () => {
+  const s = todayStrip([{ id: "c", at: 300, title: "C" }, { id: "a", at: 100, title: "A" }, { id: "b", at: 200, title: "B" }, { id: "d", at: 400, title: "D" }], 150, 3);
+  assert.deepEqual(s.rows.map((r) => [r.id, r.past]), [["a", true], ["b", false], ["c", false]]);
+  assert.deepEqual([s.nextId, s.more], ["b", 1]);
+  assert.deepEqual(todayStrip(undefined, 0), { rows: [], nextId: null, more: 0 });
+});
