@@ -260,6 +260,7 @@
   "threads.watch",
   "threads.work-transcript",
   "work.chat.fork-source",
+  "work.flow.origin",
   "work.chat.prefs.muted",
   "work.chat.change",
   "work.chat.folder",

@@ -146,7 +146,10 @@ export default {
             // A chain whose first hop is not a person skips this: that is the host's own service and agent chains only. A member's MCP key chain always starts with the person.
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
-          return f.flows.tools[INNER(name)](chain, rest);
+          const out = await f.flows.tools[INNER(name)](chain, rest);
+          // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow
+          if (name === "flows.from-chat" && out && out.ok && out.id && typeof rest.chat === "string" && rest.chat) await ctx.call("work.flow.origin", { flow: String(out.id), chat: rest.chat }, { relay: true }).catch(() => null);
+          return out;
         },
       });
     }

@@ -10,6 +10,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(work): work.chat.add-people adds people to a chat of several people: every thread in it takes them, with the ring each thread's device made. A thread without its ring is left as it is and returned, so the call can be repeated. It refuses a project's chat (its team decides) and a thread with an agent (work.thread.add-people). A person added is lent nobody's AI key.
 - fix(work): a Flow run held at a gate or stuck is needs_you in the chat list and a Flow's threads (it was shown as live), with the reason; a Flow row has the Flow's own name, not its id. Only the runs and Flows the person may inspect are used; the work module may ask flows.list and flows.attention as that person.
 - feat(work): work.person.shared also lists the files of the chats you and that person are both in (name, size, time, which thread), read through your own chain, so a chat you are not in shows none.
+- feat(work): a Flow drafted from a chat (flows.from-chat with chat) remembers the chat, and work.flow.threads returns it as a "How it was made" thread ({ kind: "made" }) to a person who is in that chat. The flows module keeps it through work.flow.origin as the person who made the draft; a chat they are not in is not kept.
 
 ## 0.6.0-rc.1
 ## 0.6.0

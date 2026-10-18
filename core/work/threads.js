@@ -294,6 +294,12 @@ function forksTable(db) {
   return db;
 }
 
+/** The table that remembers which chat a Flow was drafted from (flows.from-chat with a chat). Written only by work.flow.origin, read only for a person in that chat. @param {any} db */
+function originsTable(db) {
+  db.exec("CREATE TABLE IF NOT EXISTS work_flow_origins (flow TEXT PRIMARY KEY, chat TEXT NOT NULL, person TEXT NOT NULL, at INTEGER NOT NULL)");
+  return db;
+}
+
 /**
  * Register the thread tools that read and start. `chatTool` is the work module's own (it keeps the member door's copy), `createChat` the very function work.chat.create runs.
  * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any, changeChat: (input: any, extra: any) => Promise<any>, pinnedOf: (person: string) => Map<string, string> }} d
@@ -326,7 +332,11 @@ export function registerThreads(d) {
       const hop = chain && chain.hops && chain.hops[0];
       if (!hop || !hop.actor || hop.actor.kind !== "person") throw fail("denied", "a Flow's runs are read from a person's own session");
       const threads = await runsOf(d.ctx, String(input.flow));
-      return { flow: String(input.flow), threads, count: threads.length };
+      // "How it was made": the chat the Flow was drafted from, shown only to a person who is in that chat
+      const made = /** @type {any} */ (originsTable(d.ctx.store.db).prepare("SELECT chat, at FROM work_flow_origins WHERE flow = ?").get(String(input.flow)));
+      let origin = null;
+      if (made) { try { d.kernelOf().chats.read(chain, String(made.chat)); origin = { kind: "made", id: "made", chat: String(made.chat), title: "How it was made", state: "idle", started: new Date(Number(made.at)).toISOString() }; } catch { origin = null; } }
+      return { flow: String(input.flow), threads, ...(origin ? { made: origin } : {}), count: threads.length };
     },
   });
   d.chatTool("work.chat.threads", {
@@ -446,6 +456,20 @@ export function registerThreads(d) {
       const link = { thread: origin, message };
       if (mine) await d.hubOf().setChatFields(mine, { forked_from: JSON.stringify(link) });
       return { thread: made.chat, forked_from: link };
+    },
+  });
+  // flows.from-chat tells which chat a draft Flow came from (the assistant names the chat it works in). Only the flows module asks, as the person who made the draft, and only a chat that person is in is kept.
+  d.ctx.tool("work.flow.origin", {
+    internal: true,
+    description: "Keep the chat a draft Flow was made from: { flow, chat }. Only the flows module asks, as the person who made it.",
+    input: obj({ flow: { type: "string" }, chat: { type: "string" } }, ["flow", "chat"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      if (String(extra && extra.caller) !== "module:flows") throw fail("denied", "only the flows module keeps where a Flow was made");
+      const chain = await d.chainOf(extra);
+      try { d.kernelOf().chats.read(chain, String(input.chat)); } catch { return { kept: false }; }
+      const hop = chain.hops[0];
+      originsTable(d.ctx.store.db).prepare("INSERT OR IGNORE INTO work_flow_origins (flow, chat, person, at) VALUES (?,?,?,?)").run(String(input.flow), String(input.chat), String(hop.actor.id), Date.now());
+      return { kept: true };
     },
   });
   // The stream asks this when a thread is first answered: a fork has not run yet and starts from the point it was forked at. Nothing else asks, and a thread that already has a run is not forked again.
