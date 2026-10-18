@@ -3,7 +3,7 @@
 // filled in when the record is made, so Mine / Team / Everyone are three filters: { field: "owner", op: "eq", value: "$me" }, a filter on owner "ne" "$me", and none.
 
 export const ME = "$me";
-export const OWNED = new Set(["record-note", "communication", "event"]);
+export const OWNED = new Set(["communication", "event"]);
 
 /** The filter with "$me" replaced by the caller. @param {any} filter @param {string} person the person's id */
 export function withMe(filter, person) {

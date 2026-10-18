@@ -136,7 +136,7 @@ export default {
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
       try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
-      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["record-note", "communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
+      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();

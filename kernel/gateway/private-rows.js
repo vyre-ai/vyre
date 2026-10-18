@@ -114,12 +114,12 @@ export async function visiblePage(spec, getPage, ok) {
 /**
  * Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
  * people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
- * A record-note (a note on a record) is read by its writer, by whoever may read the record it is about when it is shared with the record, and by everyone when it is shared with the Space. An event that came from an outside
- * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). These two bind an owner and an admin too (OWN_ONLY).
- * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any, mayReadRef?: (chain: any, ref: string) => Promise<boolean> }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
+ * An event that came from an outside
+ * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (core/planner/note-share.js).
+ * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
  */
 /** Types whose read rule binds an owner and an admin as well: private means private. */
-export const OWN_ONLY = Object.freeze(new Set(["record-note", "event"]));
+export const OWN_ONLY = Object.freeze(new Set(["event"]));
 
 export function createReadRules(d) {
   const { store, urn, attrsOf } = d;
@@ -128,13 +128,6 @@ export function createReadRules(d) {
   const taskFacts = async (/** @type {string} */ tid) => { if (d.tasks && typeof d.tasks.facts === "function") return d.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; };
   const writer = (/** @type {string} */ me, /** @type {any} */ rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}`; };
   return {
-    "record-note": async (me, rec, chain) => {
-      if (writer(me, rec)) return true;
-      const v = rec.data && rec.data.visibility;
-      if (v === "space") return true;
-      const ref = v === "record" && rec.data.record && (rec.data.record.urn || (typeof rec.data.record === "string" ? rec.data.record : null));
-      return Boolean(ref && d.mayReadRef && await d.mayReadRef(chain, String(ref)));
-    },
     event: async (me, rec) => !(rec.data && rec.data.source === "google") || (rec.data && rec.data.visibility === "space") || writer(me, rec),
     communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
     "team-member": (me, rec) => onProject(me, rec.data && rec.data.project),

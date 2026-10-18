@@ -1,12 +1,11 @@
 // @ts-check
-// Who sees a note and a synced event. A note starts private to its writer and can be shared with the record it is about or with the Space; an event that came from an outside calendar starts private to the
+// Who sees a synced event. (A note is the planner's Note type and is shared with planner.update { item, visibility, record }; see core/planner/note-share.js.) An event that came from an outside calendar starts private to the
 // person whose calendar it is, and the others see a Busy block. The kernel decides every read (kernel/gateway/private-rows.js: the `note` and `event` rules, which bind an owner and an admin too);
 // these tools change the setting and answer the Busy blocks.
 // records.share { urn, visibility } changes it (the writer only). records.busy { from, to } lists the blocks of time that other people's private events take up, with nothing else of them.
 
 export const SHARE_LEVELS = ["private", "record", "space"];
-const NOTE = "record-note";
-const SHAREABLE = new Set([NOTE, "event"]);
+const SHAREABLE = new Set(["event"]);
 const DAY = 86_400_000;
 
 /** The level a type allows: an event has no "record" level (it belongs to a calendar, not a record). @param {string} type @param {string} level */
@@ -38,10 +37,10 @@ export function windowOf(i, now = Date.now()) {
 /** @param {{ tool: Function, obj: Function, str: any, refuse: Function, parseUrn: Function }} h */
 export function registerVisibility({ tool, obj, str, refuse, parseUrn }) {
   const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
-  tool("records.share", "Change who can read a note or a synced event: { urn, visibility: private|record|space }. private is the writer only; record is everyone who can read the record the note is about; space is every member. Only the writer changes it.",
+  tool("records.share", "Change who can read an event from an outside calendar: { urn, visibility: private|space }. private is its owner only; space is every member. Only its owner changes it. A note is shared with planner.update.",
     obj({ space: str, urn: str, visibility: str }, ["urn", "visibility"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
-      if (!SHAREABLE.has(u.type)) throw refuse("Only a note or an event from an outside calendar is shared this way.", "bad_input");
+      if (!SHAREABLE.has(u.type)) throw refuse("Only an event from an outside calendar is shared this way. A note is shared with planner.update.", "bad_input");
       const bad = levelProblem(u.type, String(i.visibility));
       if (bad) throw refuse(bad, "bad_input");
       const row = await d.gateway.records.get(d.chain, u.type, u.id);

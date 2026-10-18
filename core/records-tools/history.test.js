@@ -45,7 +45,7 @@ test("a made record is removed, a removed one comes back, and a sealed value is 
 
 test("logged calls, meetings and notes become history items; a synced message has no undo", () => {
   const who = { kind: "person", id: "per_a", name: "Dana" };
-  const note = loggedItem("record-note", { urn: "vyre://s/note/1", created_at: 5, data: { body: "Waiting on the contract" } }, who);
+  const note = loggedItem("note", { urn: "vyre://s/note/1", data: { body: "Waiting on the contract", created: 5 } }, who);
   assert.deepEqual(note, { id: "vyre://s/note/1", kind: "note", actor: who, text: "Waiting on the contract", at: 5, undo: true });
   const call = loggedItem("communication", { urn: "vyre://s/communication/2", data: { kind: "call", at: "2026-10-18T10:00:00.000Z", excerpt: "Warmer blue" } }, who);
   assert.equal(call.kind, "call"); assert.equal(call.at, Date.parse("2026-10-18T10:00:00.000Z")); assert.equal(call.undo, true);

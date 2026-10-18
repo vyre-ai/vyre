@@ -9,9 +9,9 @@ const NOW = Date.parse("2026-10-19T00:00:00Z");
 
 test("a level is one of three, and an event has no record level", () => {
   assert.deepEqual(SHARE_LEVELS, ["private", "record", "space"]);
-  assert.equal(levelProblem("record-note", "record"), "");
+  assert.equal(levelProblem("event", "private"), "");
   assert.match(levelProblem("event", "record"), /private or space/);
-  assert.match(levelProblem("record-note", "everyone"), /Pick one of/);
+  assert.match(levelProblem("event", "everyone"), /Pick one of/);
 });
 
 test("a Busy block is the time and nothing else", () => {
@@ -30,18 +30,9 @@ test("the busy window defaults to two weeks and is bounded", () => {
   assert.throws(() => windowOf({ from: "nope" }, NOW), /dates/);
 });
 
-test("the kernel's read rules: a note is its writer's until shared, a synced event is its owner's until shared; both bind staff", async () => {
-  assert.ok(OWN_ONLY.has("record-note") && OWN_ONLY.has("event"));
-  const attrs = { "u/n": { created_for: "person:ana" }, "u/e": { created_for: "person:ana" } };
-  const rules = createReadRules({ store: {}, urn: (t, i) => `u/${i}`, attrsOf: (u) => attrs[u], tasks: null, mayReadRef: async (_c, ref) => ref === "vyre://s/contact/readable" });
-  const note = (visibility, record) => ({ urn: "u/n", data: { visibility, ...(record ? { record: { urn: record } } : {}) } });
-  const rule = rules["record-note"];
-  assert.equal(await rule("ana", note("private"), {}), true, "the writer");
-  assert.equal(await rule("ben", note("private"), {}), false, "private is the writer's alone");
-  assert.equal(await rule("ben", note("space"), {}), true);
-  assert.equal(await rule("ben", note("record", "vyre://s/contact/readable"), {}), true, "shared with a record someone can read");
-  assert.equal(await rule("ben", note("record", "vyre://s/contact/hidden"), {}), false, "not a record they can read");
-  assert.equal(await rule("ben", note("record"), {}), false);
+test("the kernel's read rule: a synced event is its owner's until shared, and it binds staff", async () => {
+  assert.ok(OWN_ONLY.has("event"));
+  const rules = createReadRules({ store: {}, urn: (t, i) => `u/${i}`, attrsOf: () => ({ created_for: "person:ana" }), tasks: null });
   const ev = (data) => ({ urn: "u/e", data });
   assert.equal(await rules.event("ben", ev({ source: "vyre" })), true, "the Space's own events are everyone's");
   assert.equal(await rules.event("ben", ev({ source: "google" })), false, "a synced event is private");
