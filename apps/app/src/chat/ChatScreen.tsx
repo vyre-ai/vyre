@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Chip, Icon, Text, allowsMock, showToast, useUiTheme } from "@vyre/ui";
 import { Transcript } from "../session/Transcript";
 import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
@@ -165,6 +165,8 @@ export function ChatScreen(p: ChatScreenProps) {
   // One panel for everything about the chat; `panelPage` is the page it is on ("project" is what /move opens).
   const [panel, setPanel] = useState<PanelPage | null>(p.initialAbout ? "root" : null);
   const [forward, setForward] = useState<{ text: string } | null>(null);
+  // A thread forked from another says so, and where the earlier part lives.
+  const [forkedFrom, setForkedFrom] = useState<{ thread: string; title: string } | null>(null);
   const forkAsThread = useRef(false);
   const threadRef = useRef("");
   const openThreadRef = useRef<(t: string) => void>(() => {});
@@ -377,6 +379,20 @@ export function ChatScreen(p: ChatScreenProps) {
   const agentNames = others.filter((f) => f.family === "assistant").map((f) => f.name);
   const kind = chatKind({ others, flow: p.flow });
   forkAsThread.current = kind === "agent"; threadRef.current = here.thread ?? p.sessionId;
+  const agentForNote = kind === "agent" ? agentNames[0] : "";
+  const thisThread = here.thread ?? p.sessionId;
+  useEffect(() => {
+    setForkedFrom(null);
+    if (!agentForNote || allowsMock()) return;
+    let live = true;
+    void agentThreads.list(agentForNote).then((r) => {
+      if (!live || !("rows" in r)) return;
+      const me = r.rows.find((t) => t.id === thisThread);
+      const from = me?.forkedFrom;
+      if (from) setForkedFrom({ thread: from.thread, title: r.rows.find((t) => t.id === from.thread)?.title ?? "the original thread" });
+    });
+    return () => { live = false; };
+  }, [agentForNote, thisThread]);
   const togglePanel = () => { if (panel !== null) setPanel(null); else setPanel("root"); };
   const panelNow = useRef({ panel, toggle: togglePanel });
   panelNow.current = { panel, toggle: togglePanel };
@@ -455,6 +471,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <FileViewerSheet path={phone ? viewing : null} onClose={() => setViewing(null)} onOpenInFiles={() => { setViewing(null); router.push("/u/files" as never); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       {p.belowHeader}
+      {forkedFrom ? <View style={{ paddingHorizontal: phone ? 12 : 24, paddingBottom: 6 }}><Banner><View style={{ gap: 4, alignItems: "flex-start" }}><Text>{`Forked from ${forkedFrom.title}. Everything up to that point is in the original.`}</Text><Button kind="ghost" size="sm" label="Open the original" onPress={() => openThread(forkedFrom.thread)} /></View></Banner></View> : null}
 
       <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
       <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>

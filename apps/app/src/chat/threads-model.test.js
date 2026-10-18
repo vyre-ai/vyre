@@ -64,3 +64,8 @@ test("before people join a thread with an agent, one line says what they and the
   assert.equal(addPeopleLine(["Dana", "Sam"], "Juno"), "Dana and Sam will see this thread's earlier messages. Juno keeps what it knows from this thread.");
   assert.equal(addPeopleLine(["Dana"], "Juno"), "Dana will see this thread's earlier messages. Juno keeps what it knows from this thread.");
 });
+
+test("a thread row says where it was forked from", () => {
+  const r = threadRows({ threads: [{ thread: "f1", title: "Plan (fork)", last_active: 3, state: "idle", forked_from: { thread: "o1", message: "m7" } }, { thread: "o1", title: "Plan", last_active: 2 }] });
+  assert.deepEqual(r.map((x) => x.forkedFrom), [{ thread: "o1", message: "m7" }, null]);
+});
