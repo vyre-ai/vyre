@@ -60,7 +60,7 @@ export function parseUpload({ file, filename = "" }) {
   // one wrapping folder (what "zip this folder" makes) is looked through
   const tops = new Set([...files.keys()].map(k => k.split("/")[0]));
   let strip = "";
-  if (tops.size === 1 && ![...files.keys()].some(k => !k.includes("/"))) strip = [...tops][0] + "/";
+  if (tops.size === 1 && ![...files.keys()].some(k => !k.includes("/")) && !KNOWN_TOP.has([...tops][0])) strip = [...tops][0] + "/";
   /** @type {Map<string, Buffer>} */ const f = new Map([...files].map(([k, v]) => [k.slice(strip.length), v]));
   const manifest = f.get(PLUGIN_LAYOUT.manifest);
   if (!manifest) {
