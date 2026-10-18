@@ -5,7 +5,6 @@
 // listed but not readable still refuses.
 import { createDoor } from "../../lib/gateway-door.js";
 import { projectFiles, whereIs } from "../../lib/files/layout.js";
-import { personCallOpts } from "../../lib/person-relay.js";
 
 const READ_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device", "mcp"];
 
@@ -53,17 +52,14 @@ export function registerPlaces(ctx) {
         catch (e) { const c = /** @type {any} */ (e).code; if (c === "not_found" || c === "unknown_type" || c === "bad_input") return []; throw e; }   // a Space that has no such type has none of them
       };
       const [p, a] = await Promise.all([rows("project"), rows("agent")]);
-      // the agents this person is on (agents.level, asked as them): a call that is not a person's own surface has none
-      const opts = personCallOpts(String((meta && meta.caller) || ""), meta);
+      // the agents this person is on: agents.level asked as them (the relay: it judges the relayed person and refuses a caller that is not a person's own surface, so a model's call lists none)
       const levels = new Map();
-      if (opts) {
-        await Promise.all(a.map(async (/** @type {any} */ r) => {
-          const name = r && r.data && typeof r.data.name === "string" ? r.data.name : "";
-          if (!name) return;
-          try { const x = /** @type {any} */ (await ctx.call("agents.level", { agent: name }, opts)); const v = x && x.data !== undefined ? x.data : x; levels.set(name, v && !v.error ? String(v.level) : "none"); }
-          catch { levels.set(name, "none"); }
-        }));
-      }
+      await Promise.all(a.map(async (/** @type {any} */ r) => {
+        const name = r && r.data && typeof r.data.name === "string" ? r.data.name : "";
+        if (!name) return;
+        try { const x = /** @type {any} */ (await ctx.call("agents.level", { agent: name }, { relay: true })); const v = x && x.data !== undefined ? x.data : x; levels.set(name, v && !v.error ? String(v.level) : "none"); }
+        catch { levels.set(name, "none"); }
+      }));
       return placesOf(p, a, levels);
     },
   });

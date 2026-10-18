@@ -13,14 +13,14 @@ const agent = (/** @type {string} */ uid, /** @type {string} */ name) => ({ id: 
 /** The kernel's own filter, stood in: each person reads only the rows listed for them. */
 function rig(/** @type {Record<string, { project?: any[], agent?: any[] }>} */ visible, { chain = true, levels = /** @type {Record<string, Record<string, string>>} */ ({}) } = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
-  let current = "";
+  let current = "", currentCaller = "";
   const ctx = {
-    tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => (t === "agents.level" ? { data: { agent: i.agent, level: (levels[current] || {})[i.agent] || "none" } } : {}),
+    tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i, /** @type {any} */ o) => (t === "agents.level" ? (o && o.relay === true && currentCaller !== "mcp" ? { data: { agent: i.agent, level: (levels[current] || {})[i.agent] || "none" } } : { error: { code: "denied", message: "only a person" } }) : {}),
     kernel: { space: SPACE, owner: "per_ana", for: async () => ({ gateway: { records: { query: async (/** @type {any} */ c, /** @type {string} */ type) => ({ rows: ((visible[c.hops[0].actor.id] || {}))[/** @type {"project"} */ (type)] || [] }) } }, surfaces: {} }),
       chainIn: async (/** @type {string} */ _space, /** @type {any} */ meta) => { if (!chain || !meta.who) throw Object.assign(new Error("no person"), { code: "denied" }); return chainOf(meta.who); } },
   };
   registerPlaces(ctx);
-  return { run: (/** @type {any} */ i, /** @type {any} */ meta) => { current = meta.who; return tools.get("files.places").run(i, { caller: "deck", ...meta }); }, tool: tools.get("files.places") };
+  return { run: (/** @type {any} */ i, /** @type {any} */ meta) => { current = meta.who; currentCaller = meta.caller || "deck"; return tools.get("files.places").run(i, { caller: "deck", ...meta }); }, tool: tools.get("files.places") };
 }
 
 test("the places are the person's own, their projects with the Drive folder to open, and their agents with theirs, by name", () => {
