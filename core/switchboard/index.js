@@ -674,6 +674,29 @@ export class Switchboard {
     });
   }
 
+  /**
+   * Where a thread forks: the run of this chat that holds the agent's message `message` (the id the chat's frames carry, which is the provider's message id, or a transcript line's own uuid), and the uuid
+   * of that message's LAST transcript line, which is the cut: the fork keeps everything up to and including it. Newest run first (a rolled-over chat has several). Throws, in plain words, when no run
+   * holds it or the provider cannot fork.
+   * @param {string} chat @param {string} message @returns {{ run: string, uuid: string }}
+   */
+  forkPoint(chat, message) {
+    const runs = this.ofChat(String(chat)).reverse();
+    if (!runs.length) throw Object.assign(new Error("this thread has no conversation yet, so there is nothing to fork from"), { code: "not_found" });
+    const want = String(message);
+    for (const r of runs) {
+      const t = findSession(this.deps.transcripts || [], this.nativeOf(r.thread));
+      if (!t) continue;
+      let hit = null;
+      for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
+        if (!l.includes(want)) continue;
+        try { const j = JSON.parse(l); if (j.type === "assistant" && j.uuid && (j.uuid === want || (j.message && j.message.id === want))) hit = j; } catch { /* a line that is not json */ }
+      }
+      if (hit) { this.needCap(r.thread, "fork", "fork a thread"); return { run: r.thread, uuid: String(hit.uuid) }; }
+    }
+    throw Object.assign(new Error("that is not one of the agent's replies in this thread: fork from a reply"), { code: "not_found" });
+  }
+
   /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
   terminalsOf(chat) {
     return /** @type {any[]} */ (this.db.prepare("SELECT session FROM threads_terminal_chats WHERE chat = ? ORDER BY rowid").all(String(chat))).map(r => String(r.session));
@@ -4837,6 +4860,9 @@ export default {
     tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
       { type: "object", required: ["chat"], properties: { chat: str } },
       async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat), terminals: sb.terminalsOf(i.chat) }; }, ["module"]);
+    tool("threads.fork-point", "Where a thread forks: the run and the transcript message that hold an agent's reply, for the work module's fork. Only the work module asks.",
+      { type: "object", required: ["chat", "message"], properties: { chat: str, message: str } },
+      async (i, meta) => { if (String(meta.caller) !== "module:work") throw Object.assign(new Error("only the work module asks where a thread forks"), { code: "denied" }); return sb.forkPoint(i.chat, i.message); }, ["module"]);
     // The runs of a chat are reached by their slot: `agent:<id>` or `model:<provider>/<model>#<thread prefix>`, as work.chat.get names them. The person must be in the chat (the gate above, on the run).
     const slotRun = async (/** @type {string} */ chat, /** @type {string} */ slot, /** @type {any} */ meta) => {
       const runs = sb.ofChat(String(chat));

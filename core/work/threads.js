@@ -25,6 +25,13 @@ function unreadOf(db, who, chat) {
   } catch { return 0; }
 }
 
+/** The display link a fork keeps to its origin: { thread, message } from the record's text, or null. @param {any} v */
+function forkedOf(v) {
+  let o = v;
+  if (typeof v === "string") { try { o = JSON.parse(v); } catch { return null; } }
+  return o && typeof o === "object" && typeof o.thread === "string" && o.thread ? { thread: o.thread, message: String(o.message || "") } : null;
+}
+
 /**
  * One thread as a screen reads it.
  * @param {any} rec the chat record (data) @param {any[]} runs the chat's engine runs (threads.of-chat) @param {number} unread
@@ -43,8 +50,17 @@ export function threadRow(rec, runs, unread) {
     last_line: line ? line.last_line : null,
     unread,
     project: data.project && data.project.urn ? String(data.project.urn) : null,
-    forked_from: data.forked_from && data.forked_from.thread ? { thread: String(data.forked_from.thread), message: String(data.forked_from.message || "") } : null,
+    forked_from: forkedOf(data.forked_from),
   };
+}
+
+/** The person and, when the chat is theirs alone with one agent, that agent's id; null for a chat that is not a thread. @param {any} k @param {any} chain @param {string} chat */
+export function soloAgent(k, chain, chat) {
+  const hop = chain && chain.hops && chain.hops[0];
+  if (!hop || !hop.actor || hop.actor.kind !== "person") return null;
+  let c; try { c = k.chats.read(chain, chat); } catch { return null; }
+  const people = [...c.people], agents = [...c.assistants];
+  return people.length === 1 && people[0] === String(hop.actor.id) && agents.length === 1 ? { person: String(hop.actor.id), agent: String(agents[0]) } : null;
 }
 
 /**
@@ -73,9 +89,15 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   return { agent, threads: after.slice(0, Math.min(Math.max(Number(limit) || 50, 1), 200)), count: out.length };
 }
 
+/** The table that remembers where a fork starts: the new thread, the engine run and transcript message to fork from. Written only by work.thread.fork, read only by the stream when the fork first runs. @param {any} db */
+function forksTable(db) {
+  db.exec("CREATE TABLE IF NOT EXISTS work_thread_forks (chat TEXT PRIMARY KEY, source_run TEXT NOT NULL, resume_at TEXT NOT NULL, origin TEXT NOT NULL, message TEXT NOT NULL, at INTEGER NOT NULL)");
+  return db;
+}
+
 /**
  * Register the thread tools that read and start. `chatTool` is the work module's own (it keeps the member door's copy), `createChat` the very function work.chat.create runs.
- * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any> }} d
+ * @param {{ ctx: any, chatTool: (name: string, def: any) => void, kernelOf: () => any, chainOf: (extra: any) => Promise<any>, chatRows: (chain: any, spec: any) => Promise<any[]>, createChat: (input: any, extra: any) => Promise<any>, hubOf: () => any }} d
  */
 export function registerThreads(d) {
   d.chatTool("work.agent.threads", {
@@ -92,4 +114,39 @@ export function registerThreads(d) {
       return { thread: made.chat, agent: (made.agents && made.agents[0]) || agent };
     },
   });
+  d.chatTool("work.thread.fork", {
+    description: "Fork a thread from one of the agent's replies: a new thread that keeps everything up to and including that reply. The original is unchanged. Returns { thread, forked_from }.",
+    input: obj({ thread: { type: "string", description: "the thread to fork" }, message: { type: "string", description: "the id of the agent's reply, as its frames carry it" }, title: { type: "string" }, id: { type: "string", description: "the new thread's id (chat_<uuid>), chosen by the device that made its key ring" }, ring: { type: "object", description: "the new chat's key ring, made on your device" } }, ["thread", "message"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const chain = await d.chainOf(extra), k = d.kernelOf();
+      const origin = String(input.thread), message = String(input.message);
+      const solo = soloAgent(k, chain, origin);
+      if (!solo) throw fail("not_found", "no such thread (work.agent.threads lists yours); only a thread of you and one agent can be forked");
+      const point = await d.ctx.call("threads.fork-point", { chat: origin, message });
+      if (point.error) throw fail(point.error.code || "failed", point.error.message);
+      const rec = await d.hubOf().chatRecord(origin);
+      const title = String(input.title || "") || `${(rec && rec.data.title) || "Thread"} (fork)`;
+      const project = rec && rec.data.project && rec.data.project.urn ? String(rec.data.project.urn) : null;
+      const made = await d.createChat({ agents: [solo.agent], title, ...(project ? { project } : {}), ...(input.id ? { id: String(input.id) } : {}), ...(input.ring ? { ring: input.ring } : {}) }, extra);
+      forksTable(d.ctx.store.db).prepare("INSERT OR REPLACE INTO work_thread_forks (chat, source_run, resume_at, origin, message, at) VALUES (?,?,?,?,?,?)").run(String(made.chat), String(point.data.run), String(point.data.uuid), origin, message, Date.now());
+      const mine = await d.hubOf().chatRecord(String(made.chat));
+      const link = { thread: origin, message };
+      if (mine) await d.hubOf().setChatFields(mine, { forked_from: JSON.stringify(link) });
+      return { thread: made.chat, forked_from: link };
+    },
+  });
+  // The stream asks this when a thread is first answered: a fork has not run yet and starts from the point it was forked at. Nothing else asks, and a thread that already has a run is not forked again.
+  d.ctx.tool("work.chat.fork-source", {
+    internal: true,
+    description: "Where a forked thread starts, for the stream's first answer in it: { run, resume_at }, or null. Only the stream asks.",
+    input: obj({ chat: { type: "string" } }, ["chat"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      if (String(extra && extra.caller) !== "module:stream") throw fail("denied", "only the stream asks where a forked thread starts");
+      const row = /** @type {any} */ (forksTable(d.ctx.store.db).prepare("SELECT source_run, resume_at FROM work_thread_forks WHERE chat = ?").get(String(input.chat)));
+      if (!row) return null;
+      const runs = ((await d.ctx.call("threads.of-chat", { chat: String(input.chat) }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
+      return runs.length ? null : { run: String(row.source_run), resume_at: String(row.resume_at) };
+    },
+  });
 }
+

@@ -196,6 +196,17 @@
         "effect": "read"
       },
       {
+        "name": "work.thread.fork",
+        "summary": "fork a thread from one of the agent's replies into a new thread; the original stays",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.fork-source",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.agent.thread.new",
         "summary": "start a new thread with an agent; the old ones stay",
         "reach": "anyone",
@@ -682,6 +693,11 @@
               "name": "tags",
               "kind": "text",
               "label": "Tags"
+            },
+            {
+              "name": "forked_from",
+              "kind": "text",
+              "label": "Forked from (the thread and the reply it was forked at)"
             }
           ]
         },
