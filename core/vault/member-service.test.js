@@ -119,7 +119,7 @@ test("the same name twice in one set is refused before the proof is looked at, a
   assert.deepEqual(calls, []);
   const twelve = Array.from({ length: 12 }, (_, n) => ({ label: `k${n}`, value: `${KEY}${n}` }));
   let t = 1000; const reg = []; const { createMemberVaultService: make } = await import("./member-service.js");
-  const svc12 = make({ space: SPACE, clock: () => t, registry: { call: async (tool, i) => { reg.push(i.call); return { data: { added: [] } }; } }, kernel: { gateway: { members: { roleOf: () => "member" } }, presence: { check: async (i) => (i.fields.input.items.length === 12 ? null : "wrong_payload") } } });
+  const svc12 = make({ space: SPACE, clock: () => t, registry: { call: async (tool, i) => { reg.push(i.call); return { data: { added: [] } }; } }, kernel: { gateway: { members: { roleOf: () => "member" } }, presence: { check: async (i) => (JSON.stringify(i.fields) === JSON.stringify(proofRequest(SPACE, "vaultAddKeys", { items: twelve }).fields) ? null : "wrong_payload") } } });
   await svc12.addkeys(chainOf(), { items: twelve }, good());
   assert.deepEqual(reg, ["addkeys"]);
 });
