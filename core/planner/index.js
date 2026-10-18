@@ -450,7 +450,7 @@ export default {
     /** May the caller read this record (the kernel decides, on their own chain). */
     const mayReadRecord = (w) => async (/** @type {string} */ urn) => { const p = urn.split("/"); try { return Boolean(K && await K.records.get(w.chain, p[3], p[4])); } catch { return false; } };
     /** Does the caller see this item: a note by its sharing (an owner or an admin too), anything else by hiddenFrom. */
-    const seen = async (r, w, me) => (r && r.kind === "note" ? seesNote(r, callerPerson(w && w.chain), mayReadRecord(w)) : !hiddenFrom(r, me));
+    const seen = async (r, w, me) => (r && r.kind === "note" && r.by ? seesNote(r, callerPerson(w && w.chain), mayReadRecord(w)) : !hiddenFrom(r, me));
 
     const add = async (i, w) => {
       const t = now();

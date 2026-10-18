@@ -133,6 +133,8 @@ export function createReadRules(d) {
     note: async (me, rec, chain) => {
       const n = rec.data || {};
       if (!("visibility" in n) && !("person" in n)) return true;
+      // a note carried over from the old planner has no writer on it: it reads as it always did (the planner shows it to the owner)
+      if (!n.person) return true;
       if (writer(me, rec) || String(n.person || "") === me) return true;
       if (n.visibility === "space") return true;
       const ref = n.visibility === "record" && typeof n.record === "string" ? n.record : null;
