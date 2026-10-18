@@ -1800,7 +1800,12 @@ export class FlowRunner {
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
+      // The task's slots (tasks v2): a reviewer, an approver, and per-slot instructions and Space skills, as the author wrote them. The kernel pins the skills and refuses what the Flow's person may not use.
+      const slots = {
+        ...(s.reviewer ? { reviewer: await this.#checker(ctx, s.reviewer) } : {}), ...(s.approver ? { approver: await this.#checker(ctx, s.approver) } : {}),
+        ...(s.instructions && typeof s.instructions === "object" && s.kind !== "agent" ? { instructions: s.instructions } : {}), ...(s.skills && !Array.isArray(s.skills) ? { skills: s.skills } : {}),
+      };
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...slots, flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
