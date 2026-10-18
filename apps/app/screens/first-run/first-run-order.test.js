@@ -15,7 +15,7 @@ test("FirstRunScreens reads no constant before the line that makes it", () => {
   body.forEach((l, i) => { const m = /^  const (\w+) = /.exec(l); if (m && !declared.has(m[1])) declared.set(m[1], i); });
   const bad = [];
   body.forEach((l, i) => {
-    for (const [name, at] of declared) if (at > i && new RegExp(`(?<![\\w.])${name}(?![\\w]|\\?:)`).test(l.replace(/^\s*\/\/.*$/, "")) && !new RegExp(`^  const ${name} = `).test(l)) bad.push(`${name} is read on line ${i + 1} of the body, before its line ${at + 1}`);
+    for (const [name, at] of declared) if (at > i && new RegExp(`(?<![\\w.])${name}(?![\\w]|\\?:)`).test(l.replace(/^\s*\/\/.*$/, "").replace(/\s\/\/.*$/, "")) && !new RegExp(`^  const ${name} = `).test(l)) bad.push(`${name} is read on line ${i + 1} of the body, before its line ${at + 1}`);
   });
   assert.deepEqual(bad, []);
 });

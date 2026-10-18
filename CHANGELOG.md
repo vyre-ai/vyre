@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2 (join by address)
 
+- test: the first-run order guard reads code, not trailing comments (a comment naming `path` on the `shot` line failed it); the space-tool count is 53, naming the eleven records tools the records backend added.
+
 - fix(join): the app's typecheck: the ask screens' links and words are strings where the model may answer none, resolveSpace is given null for no pin, and the merge with the train had left the catalogue's `partial` entry twice.
 
 - test(join): the group walk's last step expected "You're all set" straight after Join; a member goes on to "Connect your AI" first, so the walk skips it and then expects the last screen.
