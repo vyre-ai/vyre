@@ -106,14 +106,20 @@ try {
   const before = (await cookiesOf(a)).map(c => c.name);
   check(before.includes("proof_login"), "a persistent cookie is set in A's Chrome", before);
   await a.close(); adapter.drop("a");
+  // where the cookie lives on disk (printed for the log; the check is the cookie after waking)
+  const cookieDb = when => console.log(`--- cookie files ${when}\n` + shOk(["exec", "-u", "21000", CONTAINER, "python3", "-c",
+    "import sqlite3,glob,os\nfor f in glob.glob('/var/lib/vyre/browsers/agb21000/profile/**/Cookies', recursive=True):\n    print(f, os.path.getsize(f))\n    try:\n        c=sqlite3.connect('file:'+f+'?mode=ro', uri=True)\n        print(c.execute('select host_key,name,length(value),length(encrypted_value),expires_utc,is_persistent from cookies').fetchall())\n    except Exception as e:\n        print('sqlite', e)"]));
+  cookieDb("before sleeping");
 
   await ctl.stopScreen(A); await sleep(8000);   // Chrome ends on SIGTERM and writes its profile
   check(!/chromium/.test(shOk(["exec", CONTAINER, "sh", "-c", "ps -u 21000 -o args= || true"])), "A's Chrome is gone after sleep");
+  cookieDb("after sleeping");
   await ctl.startScreen(A);
   let a2 = null;
   for (let i = 0; i < 30 && !a2; i++) { try { a2 = await connect("a"); } catch { adapter.drop("a"); await sleep(2000); } }
   check(a2 !== null, "A's Chrome answers again after waking");
   const after = (await cookiesOf(a2)).map(c => `${c.name}=${c.value}`);
+  if (!after.includes("proof_login=signed-in-1")) { cookieDb("after waking"); console.log("all cookies: " + JSON.stringify((await a2.send("Storage.getCookies", {})).cookies.map(c => c.domain + " " + c.name))); }
   check(after.includes("proof_login=signed-in-1"), "the login survived the computer sleeping and waking", after);
 
   const b = await connect("b");
