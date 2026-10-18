@@ -562,7 +562,7 @@ export function createTasks(cfg) {
       // The kernel checks the declared output before anything moves: an assistant cannot mark a task done while the check fails.
       const to = t.reviewer ? "in_review" : needsCheck(t) ? "needs_check" : "done";
       rule(t, to, "kernel_after_output_check");
-      const check = await checkOutput(t, evidence, typeof cfg.facts === "function" ? cfg.facts(chain) : cfg.facts || {});
+      const check = await checkOutput(t, evidence, typeof cfg.facts === "function" ? cfg.facts(chain, t) : cfg.facts || {});
       if (!check.ok) throw new KernelError("output_check_failed", check.why || "the output is not there yet");
       if (to === "done") {
         const answer = answerOf(t, evidence);

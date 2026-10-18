@@ -67,5 +67,27 @@ test("1b. the hand-in lookup runs on the doer's own chain: a record the doer may
 });
 
 
+test("1c. an agent handing in a draft of the record its task is about is not refused for lack of access to that record; any other record it cannot read still is", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const { ask, ownerChain, space, K, d } = w;
+  const token = (await K.surfaces.open(ownerChain, {})).token;
+  const made = await d.registry.call("agents.create", { name: "scribe", kind: "agent", projects: "*" }, "cli", { token });
+  assert.equal(made.error, undefined, JSON.stringify(made.error));
+  const agent = { kind: "agent", id: "scribe", space };
+  await K.gateway.grants.addActor(ownerChain, agent, {});
+  const needs = JSON.parse((await import("node:fs")).readFileSync(new URL("../core/flows/module.json", import.meta.url), "utf8")).needs;
+  const sh = K.kernelFor({ name: "flows", needs });
+  const mine = await K.gateway.records.create(ownerChain, "project", { name: "Rivera", slug: "rivera-c", status: "active" });
+  const other = await K.gateway.records.create(ownerChain, "project", { name: "Other", slug: "other-c", status: "active" });
+  const urn = `vyre://${space}/project/${mine.id}`, otherUrn = `vyre://${space}/project/${other.id}`;
+  const given = await ask.request(ownerChain, { title: "Draft the Rivera letter", doer: agent, output: { kind: "draft" }, record: urn });
+  await sh.mint.make({ subject: { kind: "actor", actor: agent }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${given.id}` }, conditions: { when: { expires: Date.now() + 3600_000 } }, source: `flows:task:${given.id}`, reason: "test" });
+  const agentChain = K.chains.fromFacts({ kind: "agent_session", agent: "scribe", session: "job-c", thread: "job-c", person: w.OWNER, vouched: true });
+  assert.equal(await K.gateway.records.get(agentChain, "project", mine.id).then(r => r || null, () => null), null, "the agent really cannot read the project on its own chain");
+  await ask.start(agentChain, given.id);
+  await assert.rejects(ask.complete(agentChain, given.id, { draft: otherUrn }), { code: "output_check_failed" }, "a record that is not the task's subject, which it cannot read, is still refused");
+  assert.equal((await ask.complete(agentChain, given.id, { draft: urn })).state, "done", "the draft of the very record the task is about is accepted");
+});
+
 // Items 3 (the person responsible for an agent) and 4 (a Kit's teammate) are not proved here: both need an agent running under a lent grant, or a Kit install through its approval, which a bare daemon test cannot set up.
 // Read from code: with no responsible port the maker of an agent unblocks its stuck task with a fresh proof like anyone else, and a Kit teammate part is skipped because the Flows host provides no teammates port.
