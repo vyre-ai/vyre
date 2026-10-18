@@ -678,7 +678,7 @@ export default {
         guard(meta.caller, "read a proposed agent");
         const d = db.prepare("SELECT * FROM agents_newdrafts WHERE id = ?").get(String(i.id));
         const mine = d && (await chainPerson(meta)) === String(d.proposer);
-        if (!d || !((await seesFull(meta)) || mine)) throw Object.assign(new Error("no such proposed agent: ask the Engineer to propose it again (agents.new.draft makes the card)"), { code: "not_found" });
+        if (!d || !((await seesFull(meta)) || mine)) throw Object.assign(new Error("no such proposed agent: ask the Engineer to propose the agent again"), { code: "not_found" });
         return { id: String(d.id), name: String(d.name), state: String(d.state), input: JSON.parse(String(d.input)), proposer: String(d.proposer) };
       },
     });
