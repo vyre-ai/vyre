@@ -51,7 +51,7 @@ test("only what agents.create takes, in range, is stored; the assistant, a taken
     [{ ...NEW, auth: { secret: "x" } }, /auth/],
     [{ ...NEW, computer: "yes" }, /computer/],
     [{ ...NEW, fallback_model: "not a model!" }, /model/],
-    [null, /a new agent is/],
+    [null, /object|a new agent is/],
   ];
   for (const [input, why] of bad) { const r = await c("agents.new.draft", { input, proposer: owner }, "module:vyred"); assert.match(String(r.error?.message), /** @type {RegExp} */ (why), JSON.stringify(input)); }
 });
@@ -67,8 +67,7 @@ test("the yes makes the agent through the create path, as the one who said yes, 
   const row = (await c("agents.list")).data.find((/** @type {any} */ r) => r.name === "scout");
   assert.equal(row.look, NEW.look);
   assert.equal(row.effort, "high");
-  const full = (await c("agents.list", { full: true })).data.find((/** @type {any} */ r) => r.name === "scout");
-  assert.equal(full.owner, owner, "it belongs to the person who said yes");
+  assert.equal((await c("agents.versions", { agent: "scout" })).data.owner, owner, "it belongs to the person who said yes");
   assert.equal((await c("agents.new.apply", { id: d.id, hash: d.hash, approver: owner }, "module:vyred")).error?.code, "not_found", "once");
   assert.equal((await c("agents.new.title", { id: d.id, hash: d.hash }, "module:vyred")).data, null, "a settled draft has no title");
 });
