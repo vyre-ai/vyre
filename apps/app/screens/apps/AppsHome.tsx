@@ -10,10 +10,17 @@ type Tile = { id: string; label: string; sub: string; route?: string; waiting?: 
 /** An app's own web screen, as appmods.screens lists it for a running app. Opening it asks appmods.open for a one-time address on the app's own origin. */
 type AppScreen = { module: string; id: string; label: string; path: string; icon?: string };
 
-/** Built-in tiles: the Documents app, its PDF converter, and the Flows and Playbooks screens (flow6 and rec6b build those screens; these tiles only open them). */
+/**
+ * Vyre-native screens, drawn with the Vyre UI library. Where an app has one, the Apps place opens it; the app's own origin is only the fallback
+ * for screens that have no Vyre version (appmods.open, labelled "Opens in <app>'s own editor").
+ */
+const NATIVE: Record<string, string> = { documents: "/u/documents" };
+
+/** Built-in tiles: the Documents app's three tabs (Vyre-native), and the Flows and Playbooks screens (flow6 and rec6b build those; these tiles only open them). */
 const BUILT: Tile[] = [
-  { id: "documents", label: "Documents", sub: "Drafting, signing and templates", route: "/u/documents" },
-  { id: "pdf", label: "PDF converter", sub: "Used by Documents", route: "/u/documents?tab=templates" },
+  { id: "drafting", label: "Drafting", sub: "Documents made from Word templates", route: "/u/documents?tab=made" },
+  { id: "signing", label: "Signing", sub: "Requests, reminders and the signed copies", route: "/u/documents?tab=waiting" },
+  { id: "templates", label: "Templates", sub: "Word and signing templates and what each asks for", route: "/u/documents?tab=templates" },
   { id: "flows", label: "Flows", sub: "Steps that run for you", route: "/u/flows" },
   { id: "playbooks", label: "Playbooks", sub: "Repeatable ways of working", route: "/u/playbooks" },
 ];
@@ -46,6 +53,8 @@ export function AppsHome() {
       .catch(() => {});
   };
   const stateOf = (name: string) => installed?.find((a) => a.name === name)?.state;
+  /** A screen is Vyre-native when its app has one, and opens there; otherwise it is the app's own origin, and the tile says so. */
+  const nativeOf = (sc: AppScreen) => NATIVE[sc.module];
   return (
     <Page title="Apps" top sub={undefined}>
       <View className="gap-3">
@@ -79,13 +88,16 @@ export function AppsHome() {
         </View>
         {screens.length ? (
           <View className="flex-row flex-wrap gap-3">
-            {screens.map((sc) => (
-              <Card key={`${sc.module}:${sc.id}`}>
-                <Text strong>{sc.label}</Text>
-                <Text size="caption" tone="muted">{sc.module}</Text>
-                <Button kind="secondary" label="Open" onPress={() => openScreen(sc)} />
-              </Card>
-            ))}
+            {screens.map((sc) => {
+              const native = nativeOf(sc);
+              return (
+                <Card key={`${sc.module}:${sc.id}`}>
+                  <Text strong>{sc.label}</Text>
+                  <Text size="caption" tone="muted">{native ? "Vyre screen" : `Opens in ${sc.label}'s own editor`}</Text>
+                  <Button kind="secondary" label="Open" onPress={() => (native ? router.push(native as any) : openScreen(sc))} />
+                </Card>
+              );
+            })}
           </View>
         ) : null}
         {browse ? (
