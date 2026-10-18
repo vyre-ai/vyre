@@ -41,9 +41,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
-| [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
+| [`documents`](#documents) | `core/documents` | `box` | 13 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 67 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 70 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 51 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
@@ -107,7 +107,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 220 | 63 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 222 | 63 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -406,7 +406,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Folder: `core/documents`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [11](tools.md#documents)
+- Tools: [13](tools.md#documents)
 - Emits: [4 events](events.md#documents)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`
@@ -429,7 +429,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [67](tools.md#files), 1 of them only for other modules
+- Tools: [70](tools.md#files), 1 of them only for other modules
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Needs vault: `dropbox`
@@ -1167,7 +1167,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [220](tools.md#vault), 36 of them only for other modules
+- Tools: [222](tools.md#vault), 37 of them only for other modules
 - Emits: [63 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.fill","vault.totp","vault.read","vault.call","vault.reveal","vault.edit","vault.rotate"]}]}`
