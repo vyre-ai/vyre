@@ -257,7 +257,7 @@ export function registerThreads(d) {
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => threadsOf(d, String(input.agent), extra, { limit: input.limit, before: input.before ? String(input.before) : null }),
   });
   d.chatTool("work.agent.thread.new", {
-    description: "Start a new thread with an agent: a new chat of you and it. Old threads stay as they are and can be continued. Returns { thread, agent }.",
+    description: "Start a new thread with an agent. Old threads stay and can be continued. Returns { thread, agent }.",
     input: obj({ agent: { type: "string", description: "the agent's name or id" }, title: { type: "string" }, project: { type: "string" }, id: { type: "string", description: "the thread's id (chat_<uuid>), chosen by the device that made its key ring" }, ring: { type: "object", description: "the chat's key ring, made on your device (as work.chat.create takes it)" } }, ["agent"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const agent = String(input.agent);
@@ -282,12 +282,12 @@ export function registerThreads(d) {
     },
   });
   d.chatTool("work.chat.threads", {
-    description: "The threads of one chat (a set of people), newest first: by a thread in it, or by the people. Also says who is in it and where it lives.",
+    description: "A chat's threads, newest first, found by a thread in it or by its people, with who is in it.",
     input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" }, description: "the other people in the chat, when no chat is named" }, limit: { type: "integer" }, before: { type: "string" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => chatThreads(d, extra, { chat: input.chat ? String(input.chat) : undefined, people: Array.isArray(input.people) ? input.people : [], limit: input.limit, before: input.before ? String(input.before) : null }),
   });
   d.chatTool("work.chat.thread.new", {
-    description: "Start a new thread in the chat of you and these people (none: your own), with an agent if you name one. Returns { thread, chat }.",
+    description: "Start a new thread in the chat of you and these people, with an agent if named. Returns { thread, chat }.",
     input: obj({ people: { type: "array", items: { type: "string" }, description: "the other people; none for your own chat" }, agent: { type: "string" }, title: { type: "string" }, project: { type: "string" }, id: { type: "string", description: "the thread's id (chat_<uuid>), chosen by the device that made its key ring" }, ring: { type: "object", description: "the new chat's key ring, made on your device" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const people = Array.isArray(input.people) ? input.people.map(String) : [];
@@ -297,7 +297,7 @@ export function registerThreads(d) {
     },
   });
   d.chatTool("work.thread.fork", {
-    description: "Fork a thread from one of the agent's replies: a new thread that keeps everything up to and including that reply. The original is unchanged. Returns { thread, forked_from }.",
+    description: "Fork a thread at one of the agent's replies: a new thread keeping everything up to it. The original is unchanged. Returns { thread, forked_from }.",
     input: obj({ thread: { type: "string", description: "the thread to fork" }, message: { type: "string", description: "the id of the agent's reply, as its frames carry it" }, title: { type: "string" }, id: { type: "string", description: "the new thread's id (chat_<uuid>), chosen by the device that made its key ring" }, ring: { type: "object", description: "the new chat's key ring, made on your device" } }, ["thread", "message"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf();
