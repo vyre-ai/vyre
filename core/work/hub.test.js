@@ -196,3 +196,13 @@ test("mayUseProject: a name that matches no project is no; an error reading the 
   await assert.rejects(() => hub2.mayUseProject("per_x", "owners-matter"), /store down/, "a read error throws, so the caller counts it as no");
   void made;
 });
+
+test("a project is made with how it runs: stages, client, ongoing or simple; none is kept as none, and any other word is refused before anything is made", async () => {
+  const { kernel, rows } = fake();
+  const hub = createHub({ kernel });
+  for (const kind of ["stages", "client", "ongoing", "simple"]) assert.equal((await hub.createProject({ who: "p" }, { name: `P ${kind}`, kind })).data.kind, kind);
+  assert.equal((await hub.createProject({ who: "p" }, { name: "Plain" })).data.kind, undefined, "left out stays left out; the app reads it as simple");
+  const before = rows.size;
+  await assert.rejects(() => hub.createProject({ who: "p" }, { name: "Odd", kind: "matter" }), /stages, client, ongoing, simple/);
+  assert.equal(rows.size, before, "nothing was made");
+});
