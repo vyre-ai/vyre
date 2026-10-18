@@ -7,6 +7,9 @@ import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
 import { useTypeLayout } from "./layout-state";
 import { LayoutControls } from "./LayoutControls";
+import { TableControls } from "./TableControls";
+import { useRoleChips } from "./useRoleChips";
+import { useTablePrefs } from "../../src/state/record-prefs";
 import { FirstVisit } from "./FirstVisit";
 import { isDayOne, sampleCount } from "./first-visit.js";
 import { isStageGroup } from "./move-rule.js";
@@ -57,6 +60,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const sf = scopeFilter(scope);
   const { data: world, loading, error, reload } = useRecordsWorld(sf ? { [type]: sf } : undefined);
   const { phone } = useUiTheme();
+  const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length));
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
   const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);
@@ -64,6 +68,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
+  const [colsOpen, setColsOpen] = useState(false);
+  const prefs = useTablePrefs();
   const [addingType, setAddingType] = useState(false);
   const [pane, setPane] = useState("records");
   useEffect(() => setPane("records"), [type]);
@@ -143,7 +149,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
   const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
-  const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
+  const table = tableFromRecords(drawn, rows, { roles: roleChips, view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
   const tagged = { ...table, content: { ...table.content, rows: table.content.rows.map((r: any) => ({ ...r, tag: tagFor(cards, spaceOfUrn(r.urn) || showing, showing) })) } };
   // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
@@ -155,7 +161,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
     showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
   };
-  const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
+  const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.id !== "_roles" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
   const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
@@ -195,7 +201,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         {shown === "list" ? addColumn(false) : null}
-        <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} />
+        <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} sheetOpen={colsOpen} onSheet={setColsOpen} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
@@ -224,6 +230,12 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {scopes.length ? <Segmented<string> label="Show" value={scope} onChange={setScopePicked} options={scopes} /> : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
+      {shown === "list" && !phone ? (
+        <TableControls columns={tableColumns.length + 1} onColumns={() => setColsOpen(true)}
+          fields={def.fields.filter((f: any) => ["choice", "stage", "link", "actor", "boolean"].includes(f.kind) && tableColumns.includes(f.name)).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))}
+          groupBy={lay.layout?.group_by} onGroup={(n) => void lay.save("group_by", n)}
+          density={prefs.density} onDensity={prefs.setDensity} freeze={prefs.freezeFirst} onFreeze={prefs.setFreezeFirst} scope={lay.scope} mine={lay.mine} />
+      ) : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : switcher}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardWithStats def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}

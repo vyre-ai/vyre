@@ -32,3 +32,20 @@ export function summaryChips(rows) {
   const chip = (/** @type {any} */ r) => ({ key: String(r && (r.urn || r.id) || `${r && r.role}:${r && r.stage}`), label: [String(r && (r.label || r.role) || "Role"), r && r.stage ? String(r.stage) : ""].filter(Boolean).join(" · "), urn: String(r && r.urn || ""), ended: !(r && r.current), tone: toneOfColour(r && r.color) });
   return [...list.filter((r) => r && r.current).map(chip), ...list.filter((r) => r && !r.current).map(chip)];
 }
+
+/**
+ * The role chips of every holder on a table: `kinds` is records.roles.summary with no urn ({ role, label, color }), `byRole` the rows of records.holders for each role ({ holder, stage, current }). A map from the holder's
+ * urn to its chips, current roles first. A holder with no role has no entry.
+ * @param {any[]} kinds @param {Record<string, any[]>} byRole @returns {Record<string, { label: string, tone: string, ended: boolean }[]>}
+ */
+export function chipsByHolder(kinds, byRole) {
+  /** @type {Record<string, { label: string, tone: string, ended: boolean }[]>} */ const out = {};
+  for (const k of Array.isArray(kinds) ? kinds : []) {
+    for (const r of (byRole && byRole[k.role]) || []) {
+      if (!r || !r.holder) continue;
+      (out[r.holder] = out[r.holder] || []).push({ label: [String(k.label || k.role), r.stage ? String(r.stage) : ""].filter(Boolean).join(" · "), tone: toneOfColour(k.color), ended: !r.current });
+    }
+  }
+  for (const h of Object.keys(out)) out[h].sort((a, b) => Number(a.ended) - Number(b.ended));
+  return out;
+}

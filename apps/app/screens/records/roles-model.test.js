@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { roleChips, roleLabel, summaryChips, toneOfColour } from "./roles-model.js";
+import { roleChips, roleLabel, summaryChips, toneOfColour, chipsByHolder } from "./roles-model.js";
 
 test("a role with a stage reads Role then the stage", () => {
   assert.equal(roleLabel({ role: "lead", stage: "Talking" }), "Lead · Talking");
@@ -30,4 +30,17 @@ test("the summary gives each role its label, stage and colour, ended ones last",
   assert.deepEqual(chips.map((c) => [c.label, c.ended, c.tone]), [["Client \u00B7 Active", false, "ok"], ["Lead \u00B7 Won", true, "plain"]]);
   assert.equal(toneOfColour("red"), "err");
   assert.equal(toneOfColour("#ff0000"), "plain");
+});
+
+test("every holder's chips are worked out from the role kinds and who holds each", () => {
+  const kinds = [{ role: "role-lead", label: "Lead", color: "yellow" }, { role: "role-client", label: "Client", color: "green" }];
+  const byRole = {
+    "role-lead": [{ holder: "a", stage: "Won", current: false }, { holder: "b", stage: "Talking", current: true }],
+    "role-client": [{ holder: "a", stage: "Active", current: true }],
+  };
+  const m = chipsByHolder(kinds, byRole);
+  assert.deepEqual(m.a, [{ label: "Client \u00B7 Active", tone: "ok", ended: false }, { label: "Lead \u00B7 Won", tone: "warn", ended: true }]);
+  assert.deepEqual(m.b, [{ label: "Lead \u00B7 Talking", tone: "warn", ended: false }]);
+  assert.equal(m.c, undefined);
+  assert.deepEqual(chipsByHolder(undefined, undefined), {});
 });
