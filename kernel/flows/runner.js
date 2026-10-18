@@ -31,7 +31,7 @@ import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
-import { chooseDoer } from "./assign.js";
+import { chooseDoer, slotsOf } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
@@ -202,7 +202,7 @@ export class FlowRunner {
     /** @type {Run} */
     const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
       state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
-      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks } };
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks, unmade: g.unmade || [] } };
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
     for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
     await this.store.putRun(run);
@@ -1761,7 +1761,7 @@ export class FlowRunner {
         this.#emit("step.timeout", { run: run.id, step: key, task: led.task }, run, `vyre://${run.space}/flow-run/${run.id}`);
         throw new StepFail("timeout", `nobody finished step ${s.id} in time`);
       }
-      const t = res.task || {};
+      const t = res.task || {}; if (t.state === "declined") throw new StepFail("refused", `step ${s.id} was declined by the person it was given to`);   // the task was declined: the step fails at once and its on_fail path runs
       // An ask with a form hands the Flow what was filled in as `values`: only once the answer was a yes, and only if the form allows it (a required question left empty fails the step).
       let values;
       if (s.kind === "ask" && Array.isArray(s.form) && t.outcome === "approved") {
@@ -1800,7 +1800,7 @@ export class FlowRunner {
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...(await slotsOf(s, (/** @type {string} */ r) => this.#checker(ctx, r))), flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
@@ -2012,7 +2012,7 @@ const SERVICE_BODY_CAP = 64 * 1024;
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
 /** What a run prints when the host cannot find a name: never nothing ("Approved by ."), always words that read in a sentence. */
 const NAME_FALLBACK = Object.freeze({ person: "a team member", space: "this Space" });
-const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
+const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped", "task.declined"]);
 
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }
 

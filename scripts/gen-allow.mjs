@@ -79,6 +79,8 @@ export const OPEN_NOTES = Object.freeze({
   "tasks.request": "asks for a task under the caller's own chain; the kernel decides who may",
   "tasks.move": "starts, flags or skips a task; the kernel decides by the caller's role",
   "tasks.submit": "hands in a doer's work for a check; the kernel decides",
+  "tasks.update": "the doer or a helper adds details, a progress note or outputs while the task is theirs to work; the kernel rechecks the hold on every write",
+  "tasks.review": "the reviewer slot's holder passes the work or asks for changes; never the doer, a helper or anyone under the doer; a pass never frees an outward output",
   "vault.provider.status": "returns which provider tokens are stored and when each was added, never a value; the person's own assistant chains only, and guests, anonymous, plain mcp and named agents without the grant stay refused",
   "artifacts.activity.log": "records that an interactive artifact navigated away, a log line for the Deck",
   "artifacts.mention.search": "the # picker's artifact titles, names and ids only",

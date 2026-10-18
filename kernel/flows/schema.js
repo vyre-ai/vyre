@@ -77,13 +77,39 @@ function checkPeople(s, p, out) {
   if (s.brief !== undefined && (typeof s.brief !== "string" || s.brief.length > 4000)) out.push({ path: `${p}.brief`, message: "a brief is a text of at most 4000 characters" });
 }
 
+/**
+ * The task slots on an assign or ask step (tasks v2), nested so they mirror the task: reviewer { who, skills, instructions } and approver { who, skills, instructions, quorum }.
+ * `who` is person:<id>, role:<name> or teammate:<agent>; skills are up to 10 different Space skill ids; instructions are text of at most 2000 characters. The old `checker` reads as approver.who.
+ * `skills` and `brief` on the step itself keep meaning the doer's. Due and escalate_to arrive with the kernel's escalation.
+ * @param {any} s @param {string} p @param {Problem[]} out
+ */
+export function checkSlots(s, p, out) {
+  const who = (/** @type {any} */ v) => typeof v === "string" && /^(?:person|role|teammate):[A-Za-z0-9._:-]{1,80}$/.test(v);
+  for (const slot of ["reviewer", "approver"]) {
+    const v = s[slot];
+    if (v === undefined) continue;
+    const at = `${p}.${slot}`;
+    if (!isObj(v)) { out.push({ path: at, message: `${slot} is { who, skills?, instructions?, quorum?, due?, escalate_to? }` }); continue; }
+    onlyKeys(v, ["who", "skills", "instructions", "quorum", "due", "escalate_to"], at, out);
+    if (!who(v.who)) out.push({ path: `${at}.who`, message: `${slot === "approver" ? "an approver" : "a reviewer"} is person:<id>, role:<name> or teammate:<agent>${slot === "approver" ? " (a teammate approves internal work only)" : ""}` });
+    if (v.skills !== undefined && !(Array.isArray(v.skills) && v.skills.length <= 10 && new Set(v.skills).size === v.skills.length && v.skills.every((/** @type {any} */ i) => typeof i === "string" && i.length > 0 && i.length <= 80))) out.push({ path: `${at}.skills`, message: "skills are up to 10 different Space skill ids" });
+    if (v.instructions !== undefined && !(typeof v.instructions === "string" && v.instructions.length <= 2000)) out.push({ path: `${at}.instructions`, message: "instructions are a text of at most 2000 characters" });
+    if ((v.due === undefined) !== (v.escalate_to === undefined)) out.push({ path: `${at}.due`, message: "due and escalate_to come together: how long the step may take, and the role it passes to when late" });
+    if (v.quorum === "all" && v.escalate_to !== undefined) out.push({ path: `${at}.escalate_to`, message: "a step that needs everyone cannot also pass to a role when it runs late: use quorum any, or no escalate_to" });
+    if (v.due !== undefined && !(Number.isInteger(v.due) && v.due >= 60_000 && v.due <= 90 * 86_400_000)) out.push({ path: `${at}.due`, message: "due is a whole number of milliseconds, from a minute to 90 days" });
+    if (v.escalate_to !== undefined && !(typeof v.escalate_to === "string" && /^role:[A-Za-z0-9._:-]{1,80}$/.test(v.escalate_to))) out.push({ path: `${at}.escalate_to`, message: "escalate_to is role:<name>" });
+    if (v.quorum !== undefined && !(v.quorum === "any" || (v.quorum === "all" && typeof v.who === "string" && v.who.startsWith("role:")))) out.push({ path: `${at}.quorum`, message: "quorum is any (one yes is enough), or all for a role: every holder says yes" });
+  }
+  if (s.approver !== undefined && s.checker !== undefined) out.push({ path: `${p}.approver`, message: "give approver, or checker (the old name), not both" });
+}
+
 /** Keys each step kind may carry (beyond id, kind, label). */
 export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set", "update"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "offset_ms", "event", "where", "timeout_ms", "on_timeout"],
-  ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills", "followers", "notes", "brief"],
+  ask: ["to", "title", "form", "record", "reviewer", "approver"], assign: ["to", "title", "record", "output", "how", "template", "checker", "reviewer", "approver", "await", "skills", "followers", "notes", "brief"],
   call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels"], extract: ["input", "fields"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input", "approve"],
@@ -183,10 +209,12 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("to", v => typeof v === "string" && /^(?:person|role):/.test(v), "ask a person or a role: person:<id> or role:<name>");
         need("title", () => true, "give the question"); value("title");
         if (s.form !== undefined) checkForm(s.form, `${p}.form`, out);
+        checkSlots(s, p, out);
         break;
       case "assign":
         need("to", v => typeof v === "string" && /^(?:person|teammate|role|pool):/.test(v), "assign to person:<id>, teammate:<name>, role:<name> or pool:<name>");
         if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
+        checkSlots(s, p, out);
         need("title", () => true, "give the title"); value("title");
         checkOutput(s.output, `${p}.output`, out);
         if (s.how !== undefined && !["template", "tailor", "assistant", "person"].includes(s.how)) out.push({ path: `${p}.how`, message: "how is template, tailor, assistant or person" });
