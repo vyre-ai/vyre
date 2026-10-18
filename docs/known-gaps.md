@@ -173,3 +173,11 @@ Docker's default seccomp profile refuses the namespaces Chrome's sandbox needs, 
 What to do: keep the Chrome in the computer image current (the image carries its version). The fix is a seccomp profile that allows user namespaces, planned for 0.7.
 
 Owner: comp6 with sec53.
+
+## An agent's Chrome has no address-space cap
+
+Chrome reserves far more virtual memory than it uses and does not start under a cap on address space, so an agent's Chrome is held by a cap on committed memory (3 GiB per process), the computer's own memory limit and its process count instead. Every other agent process keeps the address-space cap.
+
+What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
+
+Owner: comp6 with sec53.
