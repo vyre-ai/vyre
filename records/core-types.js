@@ -132,8 +132,8 @@ export const MEMO = {
   fields: [
     text("name", "Title", { required: true }),
     f("rich_text", "body", "Note"),
-    f("link", "contact", "Person", { to: "contact", inverse: { name: "note_records", label: "Notes" } }),
-    f("link", "organization", "Company", { to: "organization", inverse: { name: "company_notes", label: "Notes" } }),
+    f("link", "contact", "Person", { to: "contact", inverse: { name: "linked_notes", label: "Linked notes" } }),
+    f("link", "organization", "Company", { to: "organization", inverse: { name: "linked_notes", label: "Linked notes" } }),
     TAGS,
   ],
   views: [{ name: "memos_list", type: "list", label: "All notes", columns: ["name", "contact", "organization"], sort: { field: "name", dir: "asc" } }],
