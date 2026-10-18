@@ -570,7 +570,7 @@ export default {
         if (d.hash !== hashOf({ agent: a.name, patch: JSON.parse(String(d.patch)), base: hashOf(snapOf(a)) })) throw Object.assign(new Error(`${a.name} changed since this was drafted: ask again`), { code: "conflict" });
         db.prepare("UPDATE agents_drafts SET state = 'applied' WHERE id = ?").run(d.id);
         const version = writeVersion(a, JSON.parse(String(d.patch)), { by: d.by || d.proposer, approved_by: String(i.approver) });
-        await mirror.schedule();
+        await mirror.soon();
         return { agent: a.name, version };
       },
     });
@@ -653,7 +653,7 @@ export default {
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         if (i.look) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look, i.name);
-        await mirror.schedule();
+        await mirror.soon();
         const note = kind === "assistant" ? null : await becomeActor(i.name, meta);
         return note ? { ...get(i.name), note } : get(i.name);
       },
@@ -706,7 +706,7 @@ export default {
         }
         const person = await personOf(meta);
         writeVersion(a, after, { by: person, approved_by: person, note });
-        await mirror.schedule();
+        await mirror.soon();
         return get(a.name);
       },
     });
@@ -1087,7 +1087,7 @@ export default {
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
         if (config) await config.clearShared(a).catch(() => {});
         for (const t of ["agents_context_links", "agents_vault_items"]) db.prepare(`DELETE FROM ${t} WHERE agent = ?`).run(a.name);
-        await mirror.schedule();
+        await mirror.soon();
         return { agent: a.name, deleted: true };
       },
     });

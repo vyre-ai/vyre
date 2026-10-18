@@ -29,7 +29,7 @@ export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a
 
 /**
  * @param {{ kernel: () => any, rows: () => any[] | Promise<any[]>, log?: (m: string) => void, retryMs?: number }} o
- * @returns {{ schedule: () => Promise<any>, reconcile: () => Promise<{ created: number, updated: number, removed: number }> }}
+ * @returns {{ schedule: () => Promise<any>, soon: (ms?: number) => Promise<any>, reconcile: () => Promise<{ created: number, updated: number, removed: number }> }}
  */
 export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) {
   /** @type {Promise<any> | null} */ let pending = null, again = false;
@@ -58,7 +58,7 @@ export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) 
     pending = (async () => {
       try { do { again = false; await reconcile(); } while (again); waits = 0; }
       catch (e) {
-        const away = Boolean(e) && (/** @type {any} */ (e).code === "unavailable" || /not available yet|still starting/.test(String(/** @type {any} */ (e).message)));
+        const away = Boolean(e) && (/** @type {any} */ (e).code === "unavailable" || /not available yet|still starting|setting up/.test(String(/** @type {any} */ (e).message)));
         if (!away || waits === 0) log(`agents: the agent records did not follow the roster (${/** @type {Error} */ (e).message})`);
         if (away) { const pause = Math.min(retryMs * 2 ** waits, 12 * retryMs); waits++; const t = setTimeout(() => { void schedule(); }, pause); if (typeof t.unref === "function") t.unref(); }
       }
@@ -66,5 +66,9 @@ export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) 
     })();
     return pending;
   }
-  return { schedule, reconcile };
+  /** Schedule a reconcile and wait for it, but not for long: a record store still setting up (minutes, on a first start) must not hold up the agent a person just made. The mirror follows in the background (the pause-and-retry above). @param {number} [ms] */
+  function soon(ms = 2_000) {
+    return new Promise(res => { const t = setTimeout(() => res(undefined), ms); if (typeof t.unref === "function") t.unref(); schedule().then(() => { clearTimeout(t); res(undefined); }, () => { clearTimeout(t); res(undefined); }); });
+  }
+  return { schedule, reconcile, soon };
 }

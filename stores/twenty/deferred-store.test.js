@@ -274,3 +274,11 @@ test("a hanging define that seals a field keeps the store unattached, and nothin
   assert.equal(d.attached(), true);
   assert.deepEqual(applied, ["vault", "vault", "note"], "the abandoned call finished first, then the retry played the queue from the start");
 });
+
+test("a store that is still setting up answers unavailable with the plain words within a few seconds, not after a minute", async () => {
+  const d = createDeferredStore({ reason: () => "Records is setting up, this takes a few minutes: getting ready (1 second so far)", waits: () => true });
+  d.bootDone();
+  const t0 = Date.now();
+  await assert.rejects(() => d.types(), e => /** @type {any} */ (e).code === "unavailable" && /Records is setting up, this takes a few minutes/.test(/** @type {Error} */ (e).message));
+  assert.ok(Date.now() - t0 < 10_000, `it answered in ${Date.now() - t0} ms: a call is not held for the minute a first start takes`);
+});
