@@ -137,3 +137,29 @@ test("a template that names a skill the stage cannot pin for everyone is refused
   assert.equal(await by(w, "Draft it"), undefined, "the task that names the skill is not made");
   assert.ok(await by(w, "Plain one"), "the stage's other task is made");
 });
+
+test("a gated template task that could not be made holds the stage: the other tasks finishing does not move the record on, and the event says why; with the cause fixed the stage advances", { timeout: 90_000 }, async () => {
+  const stageOfProject = async (/** @type {any} */ w, /** @type {any} */ r) => (await w.kernel.records.get(w.kernel.sysChain(), "project", r.id)).data.template_stage;
+  const gated = (/** @type {any} */ skills) => { const t = tpl(); t.stages[0].tasks = [
+    { title: "Plain one", doer: "teammate:research", output: { kind: "note" } },
+    { title: "Needs a check", doer: "teammate:research", output: { kind: "note" }, approver: { who: "person:per_alex", ...(skills ? { skills } : {}) } },
+  ]; return t; };
+  const w = await mk();
+  const r = await start(w, {}, gated(["personal/mine"]));
+  assert.equal(await by(w, "Needs a check"), undefined, "the gated task could not be made");
+  const plain = await by(w, "Plain one");
+  await w.kernel.completeTask(plain.id, {});
+  await settle(w);
+  assert.equal(await stageOfProject(w, r), "Opening", "the stage did not settle on the task that was made");
+  assert.ok(w.stageEvents.some((/** @type {any} */ e) => e.type === "stage.blocked" && /approval step could not be made.*Needs a check/.test(e.data.why)), JSON.stringify(w.stageEvents.map((/** @type {any} */ e) => e.type)));
+  // the same template without the unusable skill: both tasks are made, and the stage moves on only when the approval is done
+  const w2 = await mk();
+  const r2 = await start(w2, {}, gated(null));
+  assert.ok(await by(w2, "Needs a check"));
+  await w2.kernel.completeTask((await by(w2, "Plain one")).id, {});
+  await settle(w2);
+  assert.equal(await stageOfProject(w2, r2), "Opening", "the check is still waiting");
+  await w2.kernel.completeTask((await by(w2, "Needs a check")).id, {});
+  await settle(w2);
+  assert.equal(await stageOfProject(w2, r2), "Done");
+});

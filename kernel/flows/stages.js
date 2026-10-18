@@ -143,7 +143,9 @@ export function createStages(o) {
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
-    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false };
+    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]) };
+    // A task with a checker, an approver or a reviewer that could not be made holds the stage: the stage never settles on the tasks that were made while the check that was meant to stand in front of it is missing.
+    const held = (/** @type {any} */ t, /** @type {string} */ why) => { if (t.checker || t.approver || t.reviewer) ent.unmade.push({ title: t.title, why }); };
     entries.set(key, ent);
     latest.set(`${e.urn}|${e.stage}`, key);
     if (o.startFlow) await automate(e, key);
@@ -156,7 +158,7 @@ export function createStages(o) {
     /** @type {{ task: string, why: string }[]} */ const skipped = [];
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
-      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); continue; }
+      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: t.doer === "lead" ? "nobody holds the Lead seat on this project and it has no owner" : `nobody can do ${t.doer}` }); held(t, `nobody can do ${t.doer}`); continue; }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
@@ -180,6 +182,7 @@ export function createStages(o) {
       catch (err) {
         emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` });
         skipped.push({ task: t.title, why: err && /** @type {any} */ (err).code === "not_a_member" ? `${doer.id} is not in this space yet` : `it could not be made: ${err instanceof Error ? err.message : String(err)}` });
+        held(t, err instanceof Error ? err.message : String(err));
         continue;
       }
       made.set(t.title, task.id);
@@ -204,7 +207,7 @@ export function createStages(o) {
 
   /** The gate for this entry on the runner. A gate is a record of what happened, so a fault in it never stops the stage. @param {any} ent @param {string | null} owner */
   async function openGate(ent, owner) {
-    if (!o.gates || !ent.tasks.length) return;
+    if (!o.gates || (!ent.tasks.length && !ent.unmade.length)) return;
     try {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
@@ -221,6 +224,13 @@ export function createStages(o) {
   /** Is the entry's stage done? If so, move the record on, once. @param {string} key */
   async function settle(key) {
     const ent = entries.get(key);
+    if (ent && !ent.advanced && ent.unmade && ent.unmade.length) {
+      // A gated task was not made: nothing moves the record on until a person fixes the template or the people and the record enters the stage again, or moves it on by hand.
+      const why = ent.unmade.map((/** @type {any} */ u) => `${u.title}: ${u.why}`).join("; ");
+      if (!ent.heldNoted) { ent.heldNoted = true; emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `the approval step could not be made: ${why}; fix the template or the people, then enter the stage again` }); }
+      await mark(ent, "tasks", { status: "waiting", output: { unmade: ent.unmade } });
+      return;
+    }
     if (!ent || ent.advanced || !ent.tasks.length) return;
     const chain = o.chain();
     const rows = [];
