@@ -42,7 +42,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
   // Documents: reading a template and making a document from one. The handlers run on HER chain (lib/gateway-door.js), so the Drive and every record named are judged by what she may read and write; a
   // record she cannot read is refused by name (documents.members.test.js). Sending for signature, the waiting list and reminders stay owner-only: they send as the Space's mail and list everyone's requests.
-  "documents.generate", "documents.template.get", "documents.template.list",
+  // A signature request's timeline, its audit download and the waiting list: a member gets only the requests she sent (the module's own request table; the owner and admins get all; a request with no row is staff only).
+  "documents.generate", "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.get", "documents.template.list",
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
@@ -83,8 +84,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  // Download audit writes a signed request's audit file into the person's own Files: a person's own act, kept to the owner
-  "documents.signing.audit",
   "agents.draft.get", "agents.new.apply", "agents.new.draft", "agents.new.title",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -124,7 +123,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.status", "documents.signing.waiting", "documents.template.add",
+  "documents.signing.remind", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
