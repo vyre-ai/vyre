@@ -13,13 +13,13 @@ import { HalftoneField, measureCalm } from "./HalftoneField";
 import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
-import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
+import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ACCOUNTS_COPY, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, currentAssistant, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
@@ -92,6 +92,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
   const [asDone, setAsDone] = useState(false);
+  const [carried, setCarried] = useState<{ name: string; look: string } | null>(null);
+  const [changing, setChanging] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
   const [signedIn, setSignedIn] = useState(false);
   const [first, setFirst] = useState("");
@@ -163,6 +165,17 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     }, 2500);
     return () => clearTimeout(t);
   }, [shot, screen, holdOpen, failure, spaces.length, router]);
+
+  // Adding another Space: the Assistant of the Space already there comes along (its name and look), kept with one press or changed
+  useEffect(() => {
+    if (shot || screen !== "setup.assistant" || !isAnother(path, signedIn) || carried) return;
+    let live = true;
+    void currentAssistant().then((r) => {
+      if (!live || !r.ok || !r.assistant || !r.assistant.name) return;
+      setCarried({ name: String(r.assistant.name), look: String(r.assistant.look || "") });
+    });
+    return () => { live = false; };
+  }, [shot, screen, path, signedIn, carried]);
 
   useEffect(() => {
     if (shot || screen !== "setup.model") return;
@@ -597,14 +610,15 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   }
 
   if (screen === "setup.assistant") {
-    const name = asName.trim() || ASSISTANT_COPY.suggestion;
+    const name = (carried && !changing ? carried!.name : asName.trim()) || ASSISTANT_COPY.suggestion;
     // the character a look names: shape and colour from the picker, the parts from a hash of the name until a tap changes one (every part is always written, so a tap keeps the rest)
     const seed = asLook.seed || lookSeed(asLook.shape, asLook.color);
-    const full = withParts(seed, name.toLowerCase());
+    const keep = carried && !changing;
+    const full = keep && carried!.look ? carried!.look : withParts(seed, name.toLowerCase());
     const parts = partsOf(full);
     return (
       <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
-        primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
+        primary={{ label: busy ? "Saving..." : keep ? `Keep ${name}` : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
           const r = await setAssistant({ name, look: full, person: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
           setAsName(String(r.display || name));
@@ -612,10 +626,12 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           go("setup.model");
         }) }}>
         <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
+        {keep ? <Button kind="ghost" label="Change its name or look" onPress={() => { setAsName(carried!.name); if (carried!.look) { const lk = lookOf(carried!.look); if (lk) setAsLook({ shape: lk.shape, color: lk.color, seed: carried!.look }); } setChanging(true); }} /> : (<>
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
           onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
+        </>)}
       </FlowStep>
     );
   }

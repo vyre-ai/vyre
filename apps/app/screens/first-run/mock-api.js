@@ -107,6 +107,10 @@ export async function addAgentKey(input) {
   return { ok: true, account: "ac_key", provider: "claude", label: input.label, checked: true };
 }
 
+export async function currentAssistant() {
+  return { ok: true, assistant: { name: "Juno", look: "s2~c3~e1~m0~t1~b0~h2" } };
+}
+
 export async function listAssistantModels() {
   return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] }] };
 }

@@ -146,6 +146,13 @@ export async function addAgentKey(input) {
   catch (e) { return fail(e); }
 }
 
+/** The Assistant of the person's other server, for adding another Space: its name and look, or none. */
+export async function currentAssistant() {
+  if (MOCK) return mock.currentAssistant();
+  try { return done(await tool("onboard.assistant.current", {})); }
+  catch (e) { return fail(e); }
+}
+
 /** What each connected AI account offers, for the model step. */
 export async function listAssistantModels() {
   if (MOCK) return mock.listAssistantModels();

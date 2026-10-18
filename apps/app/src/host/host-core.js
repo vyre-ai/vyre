@@ -607,6 +607,22 @@ export function createHost(o) {
 
     // The model step: what each connected AI account offers, and the Assistant's default among them. Reads the accounts the person just signed in (sessions.accounts.list) and what each offers
     // (sessions.accounts.models, else the provider's own list), and keeps the pick with agents.update. Only ids, labels and names come back: never a credential.
+    // Adding another Space: the Assistant of the person's OTHER server (the current Space's, else the only other one), read only, so the new Space's Assistant can keep its name and look. Names and a look seed come back, nothing else.
+    "onboard.assistant.current": async () => {
+      if (!o.space) throw unsupported();
+      const k = await o.store.load();
+      if (!k) throw bad("Make your username first.", "no_identity");
+      const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box && s.paired.box !== madeHere));
+      const there = paired.find((s) => s.id === k.current) || paired[0];
+      if (!there) return { assistant: null };
+      const ports = await o.space.load();
+      /** @type {any} */ let l;
+      try { l = await ports.call("agents.list", {}, there.paired.box); } catch { return { assistant: null }; }
+      const a = (Array.isArray(l) ? l : l && Array.isArray(l.agents) ? l.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant");
+      if (!a) return { assistant: null };
+      const look = typeof a.look === "string" && lookOf(a.look) ? a.look : "";
+      return { assistant: { name: String(a.display || a.name || "").slice(0, 40), look } };
+    },
     "onboard.assistant.models": async () => {
       if (!o.space) throw unsupported();
       const { box } = await serverOfThisRun("Pick a model once your space is online.", true);

@@ -592,6 +592,18 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   assert.deepEqual(calls, []);
 });
 
+test("adding another Space: the Assistant of the person's other server is read (name and look only), and nothing when there is no other server", async (t) => {
+  const { pp, host, store } = await ready(t);
+  assert.deepEqual(await host.call("onboard.assistant.current", {}), { assistant: null }, "no other server");
+  { const k = await store.load(); await store.save({ ...k, current: "spc_aaaaaaaaaaaa", spaces: [{ id: "spc_aaaaaaaaaaaa", name: "first", role: "owner", server: null, paired: { box: "boxFIRST", route: "r", relay: "x" } }] }); }
+  const first = pp.call;
+  pp.call = async (name, input, box) => name === "agents.list" ? [{ name: "kit", kind: "agent", look: "s0~c0" }, { name: "juno", display: "Juno", kind: "assistant", look: "s3~c5~e1~m2~t4~b1~h0", token: "SECRET" }] : first(name, input, box);
+  const r = await host.call("onboard.assistant.current", {});
+  assert.deepEqual(r, { assistant: { name: "Juno", look: "s3~c5~e1~m2~t4~b1~h0" } });
+  pp.call = async (name, input, box) => name === "agents.list" ? [{ name: "juno", kind: "assistant", look: "<script>" }] : first(name, input, box);
+  assert.equal((await host.call("onboard.assistant.current", {})).assistant.look, "", "a look that is not one is dropped");
+});
+
 test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {
   const { pp, host } = await ready(t);
   await assert.rejects(() => host.call("onboard.assistant.models", {}), (e) => e.code === "no_server");
