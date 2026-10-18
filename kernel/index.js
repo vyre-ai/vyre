@@ -88,10 +88,10 @@ export async function createKernel(cfg) {
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   /** @type {((agentId: string) => Promise<string | null> | string | null) | null} */ let agentMakerFn = null;
-  /** The skill pin (tasks v2): set once by the daemon at startup and held here, never replaceable and never reachable from a module. A task pins a Space skill through it as the chain asking; no callback means no skill can be pinned. @type {((id: string, chain: any) => Promise<{ hash: string, checklist: string[], name?: string } | null>) | null} */ let skillPinFn = null;
+  /** The skill pin (tasks v2): set once by the daemon at startup and held here, never replaceable and never reachable from a module. A task pins a Space skill through it as the chain asking; no callback means no skill can be pinned. @type {((id: string, chain: any, spaceOnly?: boolean) => Promise<{ hash: string, checklist: string[], name?: string } | null>) | null} */ let skillPinFn = null;
   const tasks = createTasks({
     agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
-    skills: { pin: async (/** @type {string} */ id, /** @type {any} */ chain) => (skillPinFn ? skillPinFn(id, chain) : null) },
+    skills: { pin: async (/** @type {string} */ id, /** @type {any} */ chain, /** @type {boolean} */ spaceOnly = false) => (skillPinFn ? skillPinFn(id, chain, spaceOnly) : null) },
     canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null), ...(members && typeof members.people === "function" ? { people: () => members.people() } : {}) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },

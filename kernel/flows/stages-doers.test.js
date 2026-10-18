@@ -129,3 +129,11 @@ test("a template task may carry a reviewer and an approver, each { who, skills?,
   assert.equal(t.checker.id, "per_alex");
   assert.equal(t.state, "ready");
 });
+
+test("a template that names a skill the stage cannot pin for everyone is refused in plain words for that task, and nothing half-made is left", { timeout: 60_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", skills: ["personal/mine"] } }, { title: "Plain one", doer: "teammate:research", output: { kind: "note" } }];
+  const w = await mk();
+  await start(w, {}, t);
+  assert.equal(await by(w, "Draft it"), undefined, "the task that names the skill is not made");
+  assert.ok(await by(w, "Plain one"), "the stage's other task is made");
+});

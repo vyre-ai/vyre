@@ -29,7 +29,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills", "space_skills"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -87,7 +87,7 @@ export async function checkOutput(task, evidence, facts) {
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
  *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string, record?: string } | null> },
- *   skills?: { pin(id: string, chain: any): Promise<{ hash: string, checklist: string[] } | null> },   // a Space skill by id: its content hash and checklist now, for a slot to pin
+ *   skills?: { pin(id: string, chain: any, spaceOnly?: boolean): Promise<{ hash: string, checklist: string[] } | null> },   // a Space skill by id: its content hash and checklist now, for a slot to pin
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -441,7 +441,7 @@ export function createTasks(cfg) {
           if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80) || new Set(ids).size !== ids.length) throw new KernelError("bad_input", "skills are up to 10 different Space skill ids, for a slot the task has");
           pinned[k] = [];
           for (const i of ids) {
-            const found = cfg.skills ? await cfg.skills.pin(i, chain) : null;
+            const found = cfg.skills ? await cfg.skills.pin(i, chain, spec.space_skills === true) : null;
             if (!found || typeof found.hash !== "string" || !Array.isArray(found.checklist) || found.checklist.length > 60) throw new KernelError("bad_input", `skill ${i} is not one of this Space's skills`);
             pinned[k].push(freeze({ id: i, ...(typeof found.name === "string" && found.name ? { name: found.name.slice(0, 80) } : {}), hash: found.hash, checklist: freeze(found.checklist.map((/** @type {any} */ c) => String(c).slice(0, 200))) }));
           }

@@ -441,13 +441,15 @@ export default {
     };
     // A task pins a skill by id: the hash of the whole SKILL.md (so any edit changes it) and its checklist. Only the daemon's kernel-held pin callback runs it, with the chain of whoever is asking; the skill must be one that
     // person may use, and one that is not (or is not there) answers exactly alike. An assistant acting for a person is judged as that person.
-    ctx.tool("skills.pin", { effect: "read", internal: true, callers: ["module"], description: "A skill's content hash and checklist for a task to pin, as the person asking. Only the kernel's pin callback runs it.", input: obj({ id: { type: "string", minLength: 3, maxLength: 200 } }, ["id"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+    ctx.tool("skills.pin", { effect: "read", internal: true, callers: ["module"], description: "A skill's content hash and checklist for a task to pin, as the person asking. Only the kernel's pin callback runs it.", input: obj({ id: { type: "string", minLength: 3, maxLength: 200 }, space_only: { type: "boolean" } }, ["id"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
       const none = () => err("not_found", `skill ${String(i.id).slice(0, 80)} is not one of this Space's skills`);
       if (!extra || !extra.in_space_chain || !extra.in_space || !kernelOk() || String(extra.in_space) !== String(ctx.kernel.space || "")) throw none();
       const h = extra.in_space_chain.hops && extra.in_space_chain.hops[0];
       if (!h || h.actor.kind !== "person") throw none();
       let s;
       try { s = await /** @type {any} */ (memberOps).get(String(h.actor.id), extra.in_space_chain, { id: String(i.id) }); } catch { throw none(); }
+      // "Space skills only" (a template's stage pins for everyone who works its tasks): only Vyre's own and the Space's, never a personal, agent or project skill that some members could not read
+      if (i.space_only === true && s.level !== "space" && s.level !== "vyre") throw none();
       return { hash: createHash("sha256").update(String(s.text)).digest("hex"), name: String(s.name || "").slice(0, 80), checklist: checklistOf(s.text) };
     } });
     ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["browse", "list", "get", "versions"]), run: serve(["browse", "list", "get", "versions"]) });

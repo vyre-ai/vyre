@@ -164,7 +164,7 @@ export function createStages(o) {
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
-        ...(t.reviewer || t.approver ? await slotsOf(t, async (/** @type {string} */ ref) => (ref.startsWith("teammate:") ? { kind: "agent", id: ref.slice(9), space } : checkerFor(ref, space))) : {}),
+        ...(t.reviewer || t.approver ? { space_skills: true } : {}), ...(t.reviewer || t.approver ? await slotsOf(t, async (/** @type {string} */ ref) => (ref.startsWith("teammate:") ? { kind: "agent", id: ref.slice(9), space } : checkerFor(ref, space))) : {}),
         ...(noteOf(t, data) ? { note: noteOf(t, data) } : {}),
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),

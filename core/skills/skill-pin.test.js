@@ -46,6 +46,13 @@ test("skills.pin: hash and checklist for a skill the person may use; the same an
   await make("empty-list", "\n## Checklist\n\n## Next\nx\n");
   assert.equal((await pin(ANA, "personal/empty-list")).error.code, "bad_input");
 
+  // "Space skills only" (a template's stage pins for everyone who works its tasks): Vyre's own skill passes, a personal one answers exactly like a skill that is not there
+  const pinOnly = (/** @type {string} */ person, /** @type {string} */ id) => d.registry.callInSpace({ name: "vyred" }, space, { gateway: d.kernel.gateway }, "skills.pin", { id, space_only: true }, chainOf(person));
+  assert.ok(!(await pinOnly(ANA, "vyre/use-the-vault")).error, "a Vyre skill is a Space skill");
+  const own = await pinOnly(ANA, "personal/ana-check"), nope = await pinOnly(ANA, "personal/ana-check-nope");
+  assert.equal(own.error.code, "not_found");
+  assert.equal(own.error.message.replace("ana-check", "X"), nope.error.message.replace("ana-check-nope", "X"));
+
   // only the kernel's path runs it: a plain registry call carries no proven chain
   const bare = await d.registry.call("skills.pin", { id: "personal/ana-check" }, "module:vyred");
   assert.equal(bare.error.code, "not_found");
