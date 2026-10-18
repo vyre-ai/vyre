@@ -10,8 +10,7 @@
 // A module that fails to start is disabled and reported. It never takes the daemon down: one
 // broken watcher runtime should not cost someone their search.
 
-import { startWithCleanup } from "./start-cleanup.js";
-import { RELAY_ALLOWED } from "./relay-allowed.js";
+import { startWithCleanup } from "./start-cleanup.js"; import { RELAY_ALLOWED } from "./relay-allowed.js";
 import { aliasOf } from "../../lib/tool-names.js";
 import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
