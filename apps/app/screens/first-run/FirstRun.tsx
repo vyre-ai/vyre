@@ -3,7 +3,7 @@ import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  Avatar, FlowOver, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
+  Avatar, FlowOver, Icon, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
 import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
@@ -14,12 +14,12 @@ import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
-import { ACCOUNTS_COPY, defaultLabel, labelProblem } from "./ai-accounts-model.js";
+import { ACCOUNTS_COPY, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
@@ -102,6 +102,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>([]);
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const screen = stack[stack.length - 1];
   useEffect(() => { onScreen(screen); }, [screen, onScreen]);
   const go = (next: Screen) => {
@@ -373,7 +374,32 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             </Pressable>
           ))}
         </View>
-        {pick ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`Add ${ACCOUNTS_COPY.keyTile}`} disabled={busy || Boolean(agentFlow)}
+          onPress={() => { setFailure(""); setPick("key"); setApiKey(""); setAcctLabel(""); }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: pick === "key" ? 2 : 0.5, borderColor: pick === "key" ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+          <Icon name="key" size={24} tone="text" />
+          <Text>{ACCOUNTS_COPY.keyTile}</Text>
+        </Pressable>
+        {pick === "key" ? (() => {
+          const seen = keyKindOf(apiKey);
+          const name = acctLabel || (seen ? defaultLabel(seen.label, taken) : "");
+          const prob = labelProblem(name, taken);
+          return (
+            <View style={{ gap: 12 }}>
+              <Field label={ACCOUNTS_COPY.keyLabel} kind="password" value={apiKey} onChangeText={setApiKey} help={seen ? `Looks like ${seen.label.replace(" key", "")}.` : ACCOUNTS_COPY.keyHelp} error={apiKey.trim() && !seen ? ACCOUNTS_COPY.keyUnknown : undefined} />
+              <Field label={ACCOUNTS_COPY.nameLabel} value={name} onChangeText={setAcctLabel} error={name && prob ? prob : undefined} />
+              <Button kind="secondary" size="lg" label={ACCOUNTS_COPY.add} loading={busy} disabled={!seen || !keyShapeOk(apiKey) || Boolean(prob) || busy} onPress={() => void run(async () => {
+                if (!seen) return;
+                const r = await addAgentKey({ kind: seen.kind, key: apiKey.trim(), label: name.trim(), ...(seen.base_url ? { base_url: seen.base_url } : {}) });
+                setApiKey("");
+                if (!r.ok) { setFailure(r.message); return; }
+                setAccounts((x) => [...x, { provider: seen.provider, label: name.trim() }]);
+                setPick(""); setAcctLabel("");
+              })} />
+            </View>
+          );
+        })() : null}
+        {pick && pick !== "key" ? (
           <View style={{ gap: 12 }}>
             <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
             {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}

@@ -95,7 +95,7 @@ export function createHost(o) {
     const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
     const here = paired.find((s) => s.paired.box === madeHere) || (strict ? null : paired.find((s) => s.id === k.current)) || (paired.length === 1 ? paired[0] : null);
     if (!here) throw bad(`Your server is not set up yet. ${none}`, "no_server");
-    return { box: String(here.paired.box), k };
+    return { box: String(here.paired.box), k, role: String(here.role || "") };
   };
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
@@ -537,6 +537,24 @@ export function createHost(o) {
       if (!a || !a.made || !a.name) throw bad(a && a.why ? String(a.why) : "Your Assistant could not be made yet. Try again in a moment.", "assistant_not_made");
       if (look) await ports.call("agents.update", { name: String(a.name), look }, box);
       return { name: String(a.name), display: String(a.display || display), look: look || null };
+    },
+
+    // An API key as an AI account (the owner's own): sent once to the server's own key tool, which checks it with the provider and keeps it in the Vault. The key is never logged, kept or returned: only the account's id, provider and name come back.
+    "onboard.agent.key": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box, role } = await serverOfThisRun("Add an AI account once your space is online.", true);
+      if (role && role !== "owner") throw bad("Only the owner of a space adds an API key here.", "not_owner");
+      const kind = String((input && input.kind) || "");
+      if (!["anthropic-compatible", "openai-compatible", "openrouter"].includes(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
+      const key = String((input && input.key) || "").trim();
+      if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw bad("That does not look like an API key.", "bad_key");
+      const label = String((input && input.label) || "").trim();
+      if (!label || label.length > 80 || /[\u0000-\u001f]/.test(label)) throw bad("An account's name is one line of up to 80 characters.", "bad_name");
+      const base = input && input.base_url ? String(input.base_url) : "";
+      if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
+      const ports = await o.space.load();
+      const r = /** @type {any} */ (await ports.call("sessions.accounts.key", { kind, key, label, ...(base ? { base_url: base } : {}) }, box));
+      return { account: String((r && r.account) || ""), provider: String((r && r.provider) || ""), label: String((r && r.label) || label), checked: Boolean(r && r.checked) };
     },
 
     // The model step: what each connected AI account offers, and the Assistant's default among them. Reads the accounts the person just signed in (sessions.accounts.list) and what each offers

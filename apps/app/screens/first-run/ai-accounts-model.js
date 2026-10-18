@@ -12,6 +12,10 @@ export const ACCOUNTS_COPY = Object.freeze({
   signing: "Finish signing in in the window that opened, then press the button.",
   empty: "Add an AI account, or press Skip for now.",
   tooLong: "Use up to 80 characters.",
+  keyTile: "API key",
+  keyLabel: "API key",
+  keyHelp: "Checked with the provider, kept in your Vault, and never shown again.",
+  keyUnknown: "That does not look like a key we know. Check it, or add a Claude, Codex or Grok account by signing in.",
 });
 
 /** The provider ids the first run can sign in to, in the order shown. */
@@ -34,11 +38,19 @@ export function labelProblem(label, taken) {
   return "";
 }
 
-/** Which provider an API key belongs to, from its prefix: Anthropic keys start sk-ant-, OpenAI keys sk- (sk-proj-), xAI keys xai-. Null when the prefix says nothing. @param {string} key */
-export function providerOfKey(key) {
+/**
+ * What an API key is, from its prefix: the kind the server's key tool takes (sessions.accounts.key), the provider mark to show, a name to offer, and for xAI the one address it is sent to. Anthropic keys start
+ * sk-ant-, OpenRouter keys sk-or-, xAI keys xai-, other OpenAI-style keys sk-. Null when the prefix says nothing.
+ * @param {string} key @returns {{ kind: "anthropic-compatible" | "openai-compatible" | "openrouter", provider: string, label: string, base_url?: string } | null}
+ */
+export function keyKindOf(key) {
   const k = String(key || "").trim();
-  if (/^sk-ant-/i.test(k)) return "claude";
-  if (/^xai-/i.test(k)) return "grok";
-  if (/^sk-/i.test(k)) return "codex";
+  if (/^sk-ant-/i.test(k)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
+  if (/^sk-or-/i.test(k)) return { kind: "openrouter", provider: "openrouter", label: "OpenRouter key" };
+  if (/^xai-/i.test(k)) return { kind: "openai-compatible", provider: "grok", label: "Grok key", base_url: "https://api.x.ai/v1" };
+  if (/^sk-/i.test(k)) return { kind: "openai-compatible", provider: "codex", label: "OpenAI key" };
   return null;
 }
+
+/** Whether a typed key could be a key at all (the server's own bounds): 12 to 400 characters, no spaces. @param {string} key */
+export const keyShapeOk = (key) => { const k = String(key || "").trim(); return k.length >= 12 && k.length <= 400 && !/[\s\u0000-\u001f\u007f]/.test(k); };

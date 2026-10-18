@@ -139,6 +139,13 @@ export async function setAssistant(input) {
   catch (e) { return fail(e); }
 }
 
+/** Add an AI account from an API key: the server checks it with the provider and keeps it in the owner's Vault; the key is never returned. @param {{ kind: string, key: string, label: string, base_url?: string }} input */
+export async function addAgentKey(input) {
+  if (MOCK) return mock.addAgentKey(input);
+  try { return done(await tool("onboard.agent.key", input)); }
+  catch (e) { return fail(e); }
+}
+
 /** What each connected AI account offers, for the model step. */
 export async function listAssistantModels() {
   if (MOCK) return mock.listAssistantModels();

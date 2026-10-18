@@ -102,6 +102,11 @@ export async function setAssistant(input) {
   return { ok: true, name: String(input.name || "").toLowerCase(), display: input.name, look: input.look };
 }
 
+/** @param {{ kind: string, label: string }} input */
+export async function addAgentKey(input) {
+  return { ok: true, account: "ac_key", provider: "claude", label: input.label, checked: true };
+}
+
 export async function listAssistantModels() {
   return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] }] };
 }
