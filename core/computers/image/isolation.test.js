@@ -432,7 +432,7 @@ test("isolation (static): no environment variable can redirect agentd or its cli
 
 test("isolation (static): agentd starts with no new privileges and a bounding set of setuid and setgid, and its code is root's and not writable", () => {
   const entry = fs.readFileSync(path.join(HERE_DIR, "entrypoint.sh"), "utf8");
-  const line = entry.split("\n").find(l => l.includes("--reuid=1004"));
+  const line = entry.split("\n").find(l => l.includes("--reuid=1004") && l.includes("--bounding-set"));
   assert.ok(line, "the agentd start line");
   assert.doesNotMatch(line, /--securebits/, "securebits need CAP_SETPCAP, which no computer has: setpriv failed and agentd never started");
   assert.match(line, /--no-new-privs/);
@@ -445,8 +445,10 @@ test("isolation (static): agentd starts with no new privileges and a bounding se
 
 test("isolation (static): no setpriv flag in the entrypoint needs a capability the container lacks", () => {
   // The container has exactly REQUIRED_CAPS. --securebits (CAP_SETPCAP) and a raised bounding set or inheritable set beyond them fail at start, and a background start fails silently.
-  const lines = ENTRYPOINT.split("\n").filter(l => /^\s*setpriv /.test(l));
+  const lines = ENTRYPOINT.split("\n").filter(l => /^[^#]*\bsetpriv /.test(l));
   assert.ok(lines.length >= 5, "the entrypoint's setpriv lines were found");
+  // and root cannot look inside agentd's 0700 folder (no DAC_OVERRIDE), so the token test has to run as agentctl or agentd never starts
+  assert.match(ENTRYPOINT, /if setpriv --reuid=1004 --regid=1004 [^\n]*-- test -f "\$\{AGENTD_DIR\}\/token"; then/, "the token test runs as agentctl");
   const have = new Set(REQUIRED_CAPS.map(c => c.toLowerCase()));
   for (const l of lines) {
     if (/--securebits/.test(l)) assert.ok(have.has("setpcap"), `needs CAP_SETPCAP: ${l.trim().slice(0, 120)}`);

@@ -359,7 +359,8 @@ exec 9> >(freezer)
 # No --securebits here: setting them needs CAP_SETPCAP, which the container does not have (the driver adds SETUID and SETGID only), so setpriv failed and agentd never started (security-live 18 Oct).
 # --no-new-privs and the bounding set carry the limit instead: an exec by agentd gains nothing, and it holds no capability beyond SETUID and SETGID.
 AGENTD_DIR="${VYRE_HOME}/agentd"
-if [ -f "${AGENTD_DIR}/token" ]; then
+# The test runs as agentctl: the folder is its own, 0700, and this script (root, no DAC_OVERRIDE) cannot even look inside it, so a plain [ -f ] was always false and agentd never started.
+if setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- test -f "${AGENTD_DIR}/token"; then
   log "starting agentd"
   setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --no-new-privs -- \
     env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
