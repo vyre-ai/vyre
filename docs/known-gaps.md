@@ -131,3 +131,11 @@ What to do today: use the fan-out for answers, and read plans and diffs as they 
 What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.
+
+## A team member's uploaded skill is untrusted text
+
+A skill a member uploads is text from outside, read strictly and kept as a draft of her own personal skill. Only she approves it, and only she uses it; it is never loaded for anyone else. The upload counters (ten an hour, thirty a day) are kept in memory and start again when the server restarts, so a restart gives her a fresh count. The fifty-skill and fifty-draft limits are counted from the library and do not reset.
+
+What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
+
+Owner: comp6 with sec53.
