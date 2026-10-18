@@ -56,7 +56,7 @@ const WHAT = {
   "flows.run": "One run: its trigger, its steps, what it did.",
   "flows.budget": "The Space's daily AI allowance for Flow steps and today's use, and the context budget for record context. Reading is anyone's; setting it is flows.budget.set.",
   "flows.budget.set": "Set the Space's daily AI allowance: { tokens_per_day?, context_tokens? }. An owner or an admin, in their own name; an assistant is refused.",
-  "flows.retry": "Retry a failed or paused run from the stopped step. from: a step id runs that step and every step after it again, keeping the recorded outputs before it (a finished run works too). The pinned version runs, and steps that make tasks or asks make them again. An outward send already made is not sent twice. skip: true skips it (value: its replacement output); version: \"latest\" uses the active version.",
+  "flows.retry": "Retry a failed or paused run from the stopped step. from: a step id runs that step and every step after it again, keeping the recorded outputs before it (a finished run works too). The pinned version runs, and steps that make tasks or asks make them again. A run that already sent, posted, paid or published at or after that step is refused: start a new run to send again. skip: true skips it (value: its replacement output); version: \"latest\" uses the active version.",
   "flows.cancel": "Stop a failed, paused or waiting run for good. Its record stays, marked cancelled. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
   "flows.kit.propose": "Propose a Kit (types, templates, roles, Flows) for approval. The person is asked; nothing installs until they say yes.",

@@ -898,8 +898,8 @@ export class FlowRunner {
    *   skip     do not run the failed step: it is recorded as skipped. If a later step reads its output (`steps.<id>`), a `value` to use instead is required: typed by the person or accepted from an
    *            agent's proposal, and recorded on the step with who supplied it (`by`). With no value the skip is refused, naming the step.
    *   version  "latest" re-pins the run to the Flow's active version, only if every step already done is still there with the same id and kind; otherwise it is refused, naming the first that is not.
-   *   from     a step id: that step and every step after it run again, and the steps before it keep their recorded outputs. A failed, paused or finished run can be taken back to a step this way. An outward act that
-   *            already went out is not sent twice (its idempotency key is unchanged); to send again, start a new run.
+   *   from     a step id: that step and every step after it run again, and the steps before it keep their recorded outputs. A failed, paused or finished run can be taken back to a step this way, unless a step
+   *            that would run again sent, posted, paid or published (done, or begun and not known to have failed): then it is refused ("that run already sent something; start a new run to send again").
    * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest', from?: string }} [opts]
    */
   async retry(runId, opts = {}) {
@@ -919,6 +919,14 @@ export class FlowRunner {
         const at = order.indexOf(String(opts.from));
         if (at < 0) throw fail("no_such_step", `${String(opts.from)} is not a step this run can start again from (steps inside a parallel lane are not listed; start from the parallel step)`);
         const again = new Set(order.slice(at));
+        // Fail closed: a step that sends, posts, pays or publishes is not run again from here if the run shows it was done or begun and not known to have failed. Whether the other side would drop a repeat is not
+        // something this runner can know, so it does not ask it to.
+        const outward = new Set(compileFlow(def.flow, /** @type {any} */ (await this.catalogFn())).effects.outward.map((/** @type {any} */ o) => o.step));
+        for (const [k, l] of Object.entries(run.steps)) {
+          const id = k.replace(/[@!?].*$/, "");
+          if (!again.has(id) || !outward.has(id) || k.includes("?") || !l) continue;
+          if (l.status === "done" || l.status === "started" || l.status === "waiting" || l.sent_at) throw fail("already_sent", "that run already sent something; start a new run to send again");
+        }
         for (const k of Object.keys(run.steps)) if (k.includes("!") || again.has(k.replace(/[@!?].*$/, ""))) delete run.steps[k];
         run.result = undefined; run.waiting = undefined; run.queued = undefined; run.cancelled = undefined; run.finished_at = undefined;
       }

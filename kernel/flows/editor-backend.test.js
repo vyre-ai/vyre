@@ -156,7 +156,30 @@ test("(d) a viewer who may not see a step's output may not see its input either,
   assert.ok(!JSON.stringify(viaTool).includes("Dana"), "the timeline's step detail hides it too");
 });
 
-test("(c) a retry from a step runs the version the run started on, not a newer one, and an outward act keeps the same idempotency key", async () => {
+test("(c) a retry from before a step that already sent is refused and sends nothing; from after it, or over a send that failed, it works", async () => {
+  const sb = sandbox();
+  const sent = /** @type {string[]} */ ([]);
+  const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ a) => { sent.push(a); return { ok: true }; } } });
+  const { SPACE } = await import("./testing/fixtures.js");
+  const f = await install(w, flowOf([fn("a"), { id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com" } }, fn("c")]));
+  const first = await fire(w);
+  // the run as it stands once the email went out and the last step then failed
+  const stage = async (/** @type {any} */ mail) => { const r = await w.store.getRun(first.id); r.state = "failed"; r.waiting = undefined; r.error = { step: "c", code: "boom", message: "boom" }; r.steps = { a: { status: "done", output: { n: "a" } }, mail, c: { status: "failed", error: { code: "boom" } } }; await w.store.putRun(r); };
+  await stage({ status: "done", output: { ok: true }, sent_at: w.clock.t });
+  await assert.rejects(() => w.runner.retry(first.id, { from: "a" }), (/** @type {any} */ e) => e.code === "already_sent" && /start a new run to send again/.test(e.message));
+  await assert.rejects(() => w.runner.retry(first.id, { from: "mail" }), (/** @type {any} */ e) => e.code === "already_sent");
+  assert.deepEqual(sent, [], "nothing was sent");
+  sb.calls.length = 0;
+  await w.runner.retry(first.id, { from: "c" }); await settle(w);
+  assert.deepEqual(sb.calls, ["c"], "from after the send it works, and the send is not touched");
+  assert.equal((await w.store.getRun(first.id)).steps.mail.status, "done");
+  // a send that failed and is not known to have gone out may be tried again from before it
+  await stage({ status: "failed", error: { code: "unavailable" } });
+  await assert.doesNotReject(() => w.runner.retry(first.id, { from: "a" }));
+  assert.ok(f.id);
+});
+
+test("(c) a retry from a step runs the version the run started on, not a newer one, and a draft keeps the same idempotency key", async () => {
   const sb = sandbox();
   const idems = /** @type {string[]} */ ([]);
   const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ _a, /** @type {string} */ _r, /** @type {any} */ _i, /** @type {any} */ o) => { idems.push(o.idem); return { ok: true }; } } });
