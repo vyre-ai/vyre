@@ -225,6 +225,19 @@ export function registerDocuments(ctx) {
     },
   });
 
+  // One request's timeline (18 Oct ruling): what was sent, opened, signed or declined, read from the signing app through its own module.
+  ctx.tool("documents.signing.status", {
+    description: "One signature request's timeline: { submission } -> { status: { submission, status, signers: [{ name, email, sent, opened, signed, declined }], audit_url } | null }. Times are milliseconds.",
+    input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
+    callers: CALLERS, effect: "read",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
+      if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
+      return { status: (r && r.data && r.data.status) || null };
+    },
+  });
+
   ctx.tool("documents.signing.remind", {
     description: "Email the signer their signing link again: { submission }. One yes, like any send.",
     input: obj({ space: str, submission: { type: "integer" }, note: str }, ["submission"]),
