@@ -180,6 +180,8 @@ export const PERSON_ONLY = new Map([
   ["records.share", "changes who can read a note or a synced event: the writer's own act, an assistant does not widen what a person kept private"],
   ["records.type.update", "changes how a type is presented (colour, hidden from Records, option colours): the person's own act, like records.define"],
   ["records.link.add", "adds a link field, and its inverse on the other type, to a Space's type: the person's own act, like records.define"],
+  ["records.sample.add", "fills the Space with made-up records: the person's own act, never an assistant's"],
+  ["records.sample.remove", "takes the sample records away (to the bin): the person's own act"],
   ["records.pipeline.set", "changes the stages of a Space's type: the person's own act, like records.define"],
   ["records.relationship.kinds.set", "changes the Space's list of relationship kinds: the person's own act, like records.define"],
   ["records.field.add", "adds a field to a Space's type: the person's own act, like records.define"],

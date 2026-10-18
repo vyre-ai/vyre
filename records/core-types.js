@@ -419,6 +419,12 @@ export const ROLE_TYPES = Object.freeze([
   roleType("role-org-partner", "Partner", "organization", "purple"),
 ]);
 
+/** The addresses of the sample data records.sample.add made, so records.sample.remove takes away those and nothing else (core/records-tools/sample.js). */
+export const SAMPLE_LEDGER = {
+  name: "sample-ledger", label: "Sample data ledger", icon: "IconList", hidden_in_records: true,
+  fields: [text("urns", "Addresses (JSON)", { required: true })],
+};
+
 /** How a type is shown (core/records-tools/layout.js): one row per type for the Space, and one per person who changed it for themselves. */
 export const RECORD_LAYOUT = {
   hidden_in_records: true, name: "record-layout", label: "Layout", icon: "IconLayout",
@@ -427,4 +433,4 @@ export const RECORD_LAYOUT = {
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
 const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, NOTE, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, NOTE, SAMPLE_LEDGER, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));
