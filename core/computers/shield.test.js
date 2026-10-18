@@ -102,7 +102,8 @@ test("computers.shield: refuses reads and input, tells computerd, and ends with 
 
   // The take-over ends: the shield comes down with it, and computerd hears so.
   await s.cli("computers.giveback", { agent: "kit", surface: "capsule:mac" });
-  await new Promise(r => setTimeout(r, 50));
+  // computerd hears the unshield a moment after the give-back: wait for it (up to 10 s on a loaded runner), not a fixed 50 ms
+  for (let n = 0; n < 200 && cd.told.length < 2; n++) await new Promise(r => setTimeout(r, 50));
   assert.deepEqual((await s.mod("computers.may-act", { agent: "kit", tool: "chrome.click" })).data, { ok: true });
   assert.deepEqual(cd.told.map(x => x.body.on), [true, false]);
   const types = s.events().map(e => e.type).filter(x => /shield|handed/.test(x));
