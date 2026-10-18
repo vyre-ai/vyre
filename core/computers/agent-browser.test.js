@@ -46,3 +46,36 @@ test("AgentBrowser: checkout in browser mode holds without a screen", async t =>
   assert.equal(out.screen, null);
   assert.equal(out.thread, "th-1");
 });
+
+test("AgentBrowser: with computers.browse unset an agent is never put on the shared browser: its Chrome is its own on the Space's computer, or the call fails loudly", async t => {
+  const { pool, shared } = setup(t);
+  const lines = [];
+  const ab = new AgentBrowser({ pool, shared, cfg: () => ({}) });
+  ab.log = m => lines.push(m);
+  let sharedUsed = 0;
+  const realEndpoint = shared.endpoint.bind(shared);
+  shared.endpoint = async a => { sharedUsed += 1; return realEndpoint(a); };
+  // no Space computer wired: a plain refusal, not the shared browser
+  await assert.rejects(ab.endpoint("kit", { why: "hands" }), /computers\.browse is "browser"/);
+  await assert.rejects(ab.helper("kit"), /computers\.browse is "browser"/);
+  await assert.rejects(ab.checkout("kit", {}), /computers\.browse is "browser"/);
+  assert.equal(sharedUsed, 0, "the shared browser served nobody");
+  // the Space computer wired: it answers, and the model in use is said and returned
+  ab.space = { endpoint: async a => ({ url: `http://space/${a}`, token: "t" }) };
+  const ep = await ab.endpoint("kit", { why: "hands" });
+  assert.equal(ep.mode, "computer");
+  assert.equal(ep.helper.url, "http://space/kit");
+  assert.equal((await ab.checkout("kit", {})).model, "computer");
+  assert.equal(sharedUsed, 0);
+  assert.equal(lines.filter(l => /own Linux user on the Space's computer/.test(l)).length, 1, "said once");
+});
+
+test("AgentBrowser: computers.browse \"browser\" on purpose is the one way onto the shared browser, and the model is said", async t => {
+  const { pool, shared } = setup(t);
+  const lines = [];
+  const ab = new AgentBrowser({ pool, shared, cfg: () => ({ browse: "browser" }) });
+  ab.log = m => lines.push(m);
+  ab.space = { endpoint: async () => { throw new Error("the Space's computer must not be asked"); } };
+  assert.equal((await ab.checkout("kit", {})).model, "browser");
+  assert.ok(lines.some(l => /shared browser \(computers\.browse is "browser" on purpose\)/.test(l)));
+});
