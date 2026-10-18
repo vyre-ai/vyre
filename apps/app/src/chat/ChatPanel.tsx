@@ -223,7 +223,7 @@ export function ChatPanel(p: ChatPanelProps) {
       {others.length === 1
         ? <Avatar of={markRef(others[0].family === "assistant" ? "agent" : "person", others[0].name, others[0].id)} size={56} />
         : others.length ? <AvatarStack of={others.map((x) => markRef(x.family === "assistant" ? "agent" : "person", x.name, x.id))} size={40} max={4} /> : null}
-      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{p.title}</Text>
+      <Text size="title" medium numberOfLines={2} style={{ textAlign: "center" }}>{kind === "agent" && agents[0] ? agents[0].name : p.title}</Text>
       <ChatTags chat={p.chat} thread={p.thread} />
       {/* the four quick actions under the name: Pinned, Find, Threads (when this chat has them), Mute */}
       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 4 }}>

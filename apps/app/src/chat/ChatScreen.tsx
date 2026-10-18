@@ -416,7 +416,7 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={head.title} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader title={kind === "agent" && agentNames[0] ? agentNames[0] : head.title} sub={kind === "agent" && agentNames[0] ? head.title : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
           { label: "Library", onPress: () => { setPanelTab("library"); setPanel("root"); } },
