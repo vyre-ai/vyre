@@ -13,7 +13,7 @@ export const KINDS = Object.freeze([
 
 /** "Brief, Draft, Review" -> ["Brief", "Draft", "Review"]: trimmed, blanks and repeats dropped (a person typing a list). @param {string} text */
 export function parseStages(text) {
-  const out = [];
+  /** @type {string[]} */ const out = [];
   for (const raw of String(text || "").split(/[,\n]/)) { const s = raw.trim(); if (s && !out.includes(s)) out.push(s); }
   return out;
 }
