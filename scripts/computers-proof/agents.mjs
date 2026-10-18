@@ -50,6 +50,11 @@ try {
     console.log("--- processes in the computer\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -40"]));
     console.log("--- agentd dir\n" + shOk(["exec", CONTAINER, "sh", "-c", "ls -la /var/lib/vyre/agentd /opt/agentd 2>&1 | head -40"]));
     console.log("--- agentd status\n" + shOk(["exec", CONTAINER, "sh", "-c", "grep -E '^(Name|Uid|CapEff|CapBnd|NoNewPrivs)' /proc/$(pgrep -f agentd-main | head -1)/status 2>&1"]));
+    const SP = "setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid";
+    for (const [label, extra] of [["entrypoint's exact flags", "--securebits=+noroot,+noroot_locked --no-new-privs"], ["no securebits", "--no-new-privs"], ["neither", ""]]) {
+      console.log(`--- setpriv as root in the computer, ${label}\n` + shOk(["exec", CONTAINER, "sh", "-c", `${SP} ${extra} -- id 2>&1; echo "exit $?"; grep CapBnd /proc/self/status`]));
+    }
+    console.log("--- agentctl\n" + shOk(["exec", CONTAINER, "sh", "-c", "getent passwd agentctl; ls -la /opt/agentd/client; cat /opt/agentd/client"]));
     console.log("--- container log (full)\n" + shOk(["logs", CONTAINER]).slice(-6000));
     console.log("--- proxy log\n" + (() => { try { return fs.readFileSync(path.join(DIR, "run", "proxy.log"), "utf8").slice(-4000); } catch (e) { return String(e.message); } })());
   }
