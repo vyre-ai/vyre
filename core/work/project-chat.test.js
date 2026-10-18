@@ -29,9 +29,18 @@ test("a project's group chat is made once for its team, its gap is reported, a n
   const proj = await K.gateway.records.create(ownerChain, "project", { name: "Acme", slug: "acme", status: "active", memory_scope: "project:acme", owner: link(OWNER) });
   const seat = (/** @type {string} */ id, /** @type {string} */ level) => K.gateway.records.create(ownerChain, "team-member", { name: id.slice(4, 8), actor: link(id), kind: "person", level, project: { urn: proj.urn } });
   await seat(BEN, "contributor"); await seat(CY, "viewer");
+  await ok(OWNER, "agents.create", { name: "juno", kind: "agent" });
 
   const dev = newDeviceKey(), agree = toB64u(Uint8Array.from([4, ...fromB64u(dev.publicJwk.x), ...fromB64u(dev.publicJwk.y)]));
   const id = projectChatId(proj.urn), made = createRing(id, holdersOf([{ device: "dev_a", agree }]));
+  // end to end: with no ring from a device nothing is made, and the answer names the id to make the ring for
+  const need = await ok(OWNER, "work.project.chat", { project: "acme" });
+  assert.deepEqual([need.chat, need.needs_ring, need.id], [null, true, id]);
+  // the chat_pj_ ids are the project chat's alone: no create path takes one from a caller
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["work.chat.create", { title: "x" }], ["work.chat.thread.new", { people: [BEN], title: "x" }], ["work.agent.thread.new", { agent: "juno", title: "x" }], ["work.thread.fork", { thread: "chat_nothing", message: "m1", title: "x" }]])) {
+    const r = await as(OWNER, tool, { ...input, id, ring: made.doc });
+    assert.equal(r.error?.code, "bad_input", `${tool} refuses a reserved id: ${JSON.stringify(r.error)}`);
+  }
   const first = await ok(OWNER, "work.project.chat", { project: "acme", ring: made.doc });
   assert.equal(first.chat, id, "the project's chat has an id the project fixes");
   assert.match(first.chat, /^chat_pj_/);

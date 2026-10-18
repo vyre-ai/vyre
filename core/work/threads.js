@@ -113,6 +113,9 @@ export async function threadsOf(d, agent, extra, { limit = 50, before = null } =
   return { agent, threads: after.slice(0, Math.min(Math.max(Number(limit) || 50, 1), 200)), count: out.length };
 }
 
+/** Proof that a create comes from work.project.chat: the chat_pj_ ids are reserved to it, so nobody else can take a project's chat first. */
+export const PROJECT_CHAT = Symbol("project-chat");
+
 /** The id of a project's group chat: fixed by the project, so a project has one. @param {string} projectUrn */
 export const projectChatId = projectUrn => `chat_pj_${crypto.createHash("sha256").update(String(projectUrn)).digest("hex").slice(0, 20)}`;
 
@@ -342,7 +345,7 @@ export function registerThreads(d) {
   });
   d.chatTool("work.project.chat", {
     description: "A project's group chat, made on first use for its team: { chat, people, missing, extra }. A member's device applies the gap with work.chat.change.",
-    input: obj({ project: { type: "string", description: "the project's short name, record id or address" }, ring: { type: "object", description: "on first use: the chat's key ring, made on your device for the id the project fixes (projectChatId); left out, the server makes it for devices it knows" } }, ["project"]),
+    input: obj({ project: { type: "string", description: "the project's short name, record id or address" }, ring: { type: "object", description: "on first use: the chat's key ring, made on your device for the id returned with needs_ring; the server never makes it" } }, ["project"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf(), hop = chain && chain.hops && chain.hops[0];
       if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.viewer === true) throw fail("denied", "a project's chat is a person's own: ask from your own session");
@@ -358,7 +361,9 @@ export function registerThreads(d) {
       let c = readIt();
       if (!c && !(await d.hubOf().chatRecord(id))) {
         if (!writers.includes(me)) return { chat: null, id, pending: true, people: [], missing: writers, extra: [], readonly: readers, readonly_for_you: readers.includes(me) };
-        const made = await d.createChat({ title: team.name, project: team.slug, people: writers.filter(p => p !== me), id, ...(input.ring ? { ring: input.ring } : {}) }, extra);
+        // End to end: the first chat needs the ring a device made; the server never makes or holds a project chat's key.
+        if (!input.ring) return { chat: null, id, needs_ring: true, people: writers, missing: [], extra: [], readonly: readers, readonly_for_you: readers.includes(me) };
+        const made = await d.createChat({ title: team.name, project: team.slug, people: writers.filter(p => p !== me), id, ring: input.ring }, { ...extra, projectChat: PROJECT_CHAT });
         const recd = await d.hubOf().chatRecord(String(made.chat));
         if (recd) await d.hubOf().setChatFields(recd, { project_chat: true });
         c = readIt();
@@ -409,6 +414,7 @@ export function registerThreads(d) {
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf();
       const origin = String(input.thread), message = String(input.message);
+      if (input.id && String(input.id).startsWith("chat_pj_")) throw fail("bad_input", "that id is reserved for a project's group chat; choose an id like chat_<uuid>");
       const solo = soloAgent(k, chain, origin);
       if (!solo) throw fail("not_found", "no such thread (work.agent.threads lists yours); only a thread of you and one agent can be forked");
       // a fork is a NEW chat: an id that already names a chat (this thread's own, or any other) is refused before anything is made, and a repeat id can never rewrite another thread's fork origin
