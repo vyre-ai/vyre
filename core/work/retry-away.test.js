@@ -1,7 +1,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { retryWhileAway, storeAway } from "./retry-away.js";
+import { retryWhileAway, storeAway, whenStoreJoins } from "./retry-away.js";
 
 // (the pauses are unref'd timers, as on a server where other work keeps the process alive: the tests hold it open themselves)
 const hold = () => { const t = setInterval(() => {}, 20); return () => clearInterval(t); };
@@ -25,4 +25,19 @@ test("any other failure is not retried, and a stop ends the waiting", async () =
   assert.equal(storeAway(away()), true);
   assert.equal(storeAway(new Error("boom")), false);
   assert.equal(storeAway(undefined), false);
+});
+
+test("whenStoreJoins runs the work the moment a store that is still starting joins, once, and does nothing for one already attached", () => {
+  const ready = /** @type {Array<() => void>} */ ([]);
+  let attached = false, ran = 0;
+  const store = { attached: () => attached, whenReady: (/** @type {() => void} */ f) => ready.push(f) };
+  whenStoreJoins(store, () => { ran++; });
+  assert.equal(ran, 0, "not before the store joins");
+  attached = true; for (const f of ready) f();
+  assert.equal(ran, 1, "once, when it joins");
+  whenStoreJoins(store, () => { ran++; });
+  assert.equal(ran, 1, "an attached store: the caller's own first try covers it");
+  whenStoreJoins({}, () => { ran++; }); whenStoreJoins(null, () => { ran++; });
+  assert.equal(ran, 1, "a store without the hooks is left alone");
+  whenStoreJoins({ attached: () => false, whenReady: (/** @type {() => void} */ f) => f() }, () => { throw new Error("boom"); });
 });

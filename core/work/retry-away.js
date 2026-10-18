@@ -6,6 +6,15 @@
 export const storeAway = e => Boolean(e) && (e.code === "unavailable" || /not available yet|still starting/.test(String(e.message)));
 
 /**
+ * Run `f` the moment the Space's record store joins (a store still starting has `attached()` false and takes `whenReady` callbacks), so start-up work that retried on a pause does not wait out the pause once Records is
+ * ready. Does nothing for a store that is already attached (the caller's own first try covers that) or that has no such hooks. Safe to run beside retryWhileAway: what it runs is idempotent.
+ * @param {any} store @param {() => any} f
+ */
+export function whenStoreJoins(store, f) {
+  if (store && typeof store.attached === "function" && !store.attached() && typeof store.whenReady === "function") store.whenReady(() => { try { const r = f(); if (r && typeof r.catch === "function") r.catch(() => {}); } catch { /* the pause-and-retry covers it */ } });
+}
+
+/**
  * Run `f` now; when the store is away, run it again after a growing pause until it gets through, then resolve with its answer. Rejects with any other error at once, and with the last one if `stop()` says so.
  * @template T @param {() => Promise<T>} f @param {{ firstMs?: number, maxMs?: number, stop?: () => boolean }} [o] @returns {Promise<T>}
  */
