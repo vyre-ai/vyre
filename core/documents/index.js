@@ -40,7 +40,14 @@ function pathsUnder(alias, asked) {
  * Register the Documents tools. Exported for the tests, which hand in a ctx with a stand-in kernel.
  * @param {any} ctx
  */
+/** The module's own table: which person sent each signature request. Written by documents.send from the verified chain only; no tool edits it (sec53). */
+export const MIGRATIONS = [
+  `CREATE TABLE documents_requests (submission INTEGER PRIMARY KEY, sender TEXT NOT NULL, template TEXT NOT NULL, at INTEGER NOT NULL);`,
+];
+
 export function registerDocuments(ctx) {
+  if (ctx.store && typeof ctx.store.migrate === "function") ctx.store.migrate(MIGRATIONS);
+  const requests = ctx.store && ctx.store.db ? ctx.store.db : null;
   const door = createDoor(ctx);
   const cfg = (/** @type {any} */ () => (ctx.config && ctx.config.documents) || {});
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any) => Promise<any>} fn @param {any} [more] */
@@ -206,6 +213,9 @@ export function registerDocuments(ctx) {
         .catch((/** @type {any} */ e) => { throw e && e.code === "not_found" ? refuse("Documents is not running on this server: install or start it from Apps, then send again", "unavailable") : e; });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
+      // The sender is the person on the verified chain (never input): the row lets her, and staff, open the request later (sec53's ownership check).
+      const sender = personOf(d.chain);
+      if (requests && sender) requests.prepare("INSERT OR IGNORE INTO documents_requests (submission, sender, template, at) VALUES (?, ?, ?, ?)").run(Number(asked.submission), sender, String(i.template_id), Date.now());
       return { ...asked, sent };
     },
   });
@@ -222,8 +232,11 @@ export function registerDocuments(ctx) {
     input: obj({ space: str }),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      if (!(meta && meta.caller === "module:approvals")) await door.open(i || {}, meta);
-      return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+      if (meta && meta.caller === "module:approvals") return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+      const d = await door.open(i || {}, meta);
+      const mine = [];
+      for (const q of await waitingRequests()) if (await mayOpenRequest(d, q.submission)) mine.push(q);
+      return { requests: mine.map(({ slug: _s, url: _u, ...open }) => open) };
     },
   });
 
@@ -233,7 +246,8 @@ export function registerDocuments(ctx) {
     input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      await door.open(i || {}, meta);
+      const d = await door.open(i || {}, meta);
+      if (!(await mayOpenRequest(d, i.submission))) throw refuse(NO_REQUEST, "not_found");
       const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
       const st = (r && r.data && r.data.status) || null;
@@ -253,6 +267,7 @@ export function registerDocuments(ctx) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(i || {}, meta);
       if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
+      if (!(await mayOpenRequest(d, i.submission))) throw refuse(NO_REQUEST, "not_found");
       // Two clicks on one request queue here (an in-process lock per submission): the second finds the file the first saved. A second Download
       // does not write again; the file already in Files > Signed is returned (the ruling, 18 Oct). A cross-process race can add one more
       // version of identical bytes, which is harmless (BACKLOG: create-only drive put).
@@ -322,6 +337,32 @@ export function registerDocuments(ctx) {
   });
 
   /** The Document record, when the Space has that type; null when it does not (the file is filed all the same). */
+  /** The person on a chain (the first person hop), or null. */
+  const personOf = (/** @type {any} */ c) => { const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; };
+  /** The one answer for a request the caller may not see, whether it does not exist, is someone else's, or she cannot read it (sec53: no difference to tell apart). */
+  const NO_REQUEST = "no such request: check the number, or ask the person who sent it";
+  /**
+   * May this caller open a signature request (documents.signing.status, audit, waiting)? The owner and admins (the kernel's membership role) may open any request.
+   * Otherwise only the person who sent it, as the module's own table records it. A request with no row (sent before the table, or never recorded) is staff only.
+   * @param {any} d @param {any} submission
+   */
+  const mayOpenRequest = async (/** @type {any} */ d, /** @type {any} */ submission) => {
+    const person = personOf(d.chain);
+    if (!person) return false;
+    if (await isStaff(person)) return true;
+    const row = requests ? requests.prepare("SELECT sender FROM documents_requests WHERE submission = ?").get(Number(submission)) : null;
+    return Boolean(row) && String(row.sender) === person;
+  };
+  /** The Space's owner or an admin, by the kernel's membership role (the same test core/work/hub.js uses for staff). */
+  const isStaff = async (/** @type {string | null} */ person) => {
+    if (!person) return false;
+    if (ctx.kernel && ctx.kernel.owner && String(ctx.kernel.owner) === person) return true;
+    try {
+      const m = ctx.kernel && typeof ctx.kernel.membership === "function" ? await ctx.kernel.membership(person, ctx.kernel.space) : null;
+      return Boolean(m && m.member === true && (m.role === "owner" || m.role === "admin"));
+    } catch { return false; }
+  };
+
   async function filed(/** @type {any} */ d, /** @type {Record<string, any>} */ data) {
     let defs;
     try { defs = (await d.gateway.definitions(d.chain)) || []; } catch { return null; }

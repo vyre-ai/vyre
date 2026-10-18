@@ -27,7 +27,7 @@ import { fit } from "../../lib/harness-caps.js";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
-import { createMemberOps } from "./member-ops.js";
+import { createMemberOps, uploadRoute } from "./member-ops.js";
 import { identityKernel, personalSkillsOnHome } from "./home-kernel.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 import { resolveApproved } from "../../lib/skill-resolve.js";
@@ -116,6 +116,8 @@ export default {
       agentOwner: async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.list", {}); const l = r && !r.error && Array.isArray(r.data) ? r.data : []; const a = l.find((/** @type {any} */ x) => x.name === name); return a && a.owner ? String(a.owner) : null; } catch { return null; } },
       projectOwner: async (/** @type {string} */ slug) => { try { const rows = (await ctx.kernel.records.query(ctx.kernel.serviceChain("skills"), "project", { filter: { field: "slug", op: "eq", value: slug }, page: { limit: 1 } })).rows; const o = rows[0] && rows[0].data.owner; return o && o.actor ? String(o.actor.id) : null; } catch { return null; } },
       mcpAdd: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.add", server); if (r.error) throw new Error(r.error.message); return r.data; },
+      mcpRow: async (/** @type {string} */ name) => { const r = await ctx.call("mcp.key.row", { name }); return r && !r.error && r.data ? { exists: r.data.exists === true, auth: { bound: r.data.bound } } : null; },
+      mcpUpdate: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.update", server); if (r.error) throw new Error(r.error.message); return r.data; },
       log: (/** @type {string} */ m) => ctx.log(m),
     });
     const lib = createLibrary({ kernel: () => { if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel"); return ctx.kernel; }, ...libDeps() });
@@ -325,6 +327,12 @@ export default {
       input: obj({ ...common, file: { type: "string", description: "the file's bytes, base64" }, filename: { type: "string" } }, ["level", "file"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const c = await need(meta);
+        // Who reaches which path is read from the kernel and fails closed: an owner or an admin takes the owner path below, a member takes her own op (one skill, personal, hers), and everyone else, or a lookup that
+        // fails or answers nothing, is refused.
+        const who = personIdOf(c), mem = who ? await membershipOf(who) : null, role = mem && typeof mem.role === "string" ? mem.role : "";
+        const route = uploadRoute(role);
+        if (route === "member") return /** @type {any} */ (memberOps).import(who, c, i);
+        if (route !== "owner") throw err("not_allowed", "Only the owner, an admin or a team member uploads a skill file here.");
         const raw = String(i.file || "");
         if (raw.length > Math.ceil(IMPORT_LIMITS.zip * 4 / 3) + 8 || !/^[A-Za-z0-9+/=\s]*$/.test(raw)) throw err("bad_input", `the file is not base64, or is larger than ${IMPORT_LIMITS.zip / 1024 / 1024} MB`);
         const up = parseUpload({ file: Buffer.from(raw, "base64"), filename: typeof i.filename === "string" ? i.filename.slice(0, 200) : "" });
@@ -344,7 +352,7 @@ export default {
       } });
     ctx.tool("skills.approve", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Say yes to a draft: it becomes the version in use at its level and the one before is retired. Only the level's owner: you for a personal skill, an agent's owner, a project's owner, an owner or an admin for the Space. A plugin with code needs ack: the value skills.draft gave, which is the hash of exactly what it declares.",
-      input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "version"]),
+      input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" }, items: { type: "object", description: "a plugin's MCP servers that need keys: { \"<server>.<VAR>\": \"<Vault item name>\" }, names only; each item is granted to that one server and variable in the Vault" } }, ["name", "level", "version"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).approve(await need(meta), i) });
     ctx.tool("skills.rollback", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",
@@ -408,6 +416,7 @@ export default {
     // A team member's own skills on the team's server: the member door's rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); the home Space's library only.
     const memberLibrary = { ...lib, approved: mergedApproved, draft: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).draft(c, i), approve: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).approve(c, i), decline: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).decline(c, i), rollback: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).rollback(c, i), versions: (/** @type {any} */ f) => libraryFor(f.level).versions(f) };
     const memberOps = createMemberOps({
+      log: (/** @type {string} */ m) => ctx.log(m),
       library: memberLibrary, entriesOf, shown,
       vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre"),
       browse: async (/** @type {string} */ person, /** @type {any} */ chain, /** @type {any} */ input) => browsePack(input, { caller: "module", kernelFacts: chain }, { member: true, person }),
@@ -422,8 +431,38 @@ export default {
       return /** @type {any} */ (memberOps)[i.call](String(h.actor.id), chain, i.input && typeof i.input === "object" ? i.input : {});
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
+    // The checklist of a skill: the "- [ ]" lines under its "## Checklist" heading, read the same way every time. A skill with no such heading has none; a heading with anything but items under it, or no items, is
+    // refused rather than guessed at. @param {string} text
+    const checklistOf = (text) => {
+      const lines = String(text).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").split(/\r?\n/);
+      const at = lines.findIndex((l) => /^##\s+Checklist\s*$/i.test(l));
+      if (at < 0) return [];
+      const items = [];
+      for (const l of lines.slice(at + 1)) {
+        if (/^#{1,6}\s/.test(l)) break;
+        if (!l.trim()) continue;
+        const m = /^\s*[-*]\s+\[ \]\s+(\S.*?)\s*$/.exec(l);
+        if (!m || m[1].length > 200) throw err("bad_input", "this skill's Checklist is not a list of \"- [ ] item\" lines of at most 200 characters");
+        items.push(m[1]);
+      }
+      if (!items.length || items.length > 60) throw err("bad_input", "this skill's Checklist has between 1 and 60 \"- [ ] item\" lines");
+      return items;
+    };
+    // A task pins a skill by id: the hash of the whole SKILL.md (so any edit changes it) and its checklist. Only the daemon's kernel-held pin callback runs it, with the chain of whoever is asking; the skill must be one that
+    // person may use, and one that is not (or is not there) answers exactly alike. An assistant acting for a person is judged as that person.
+    ctx.tool("skills.pin", { effect: "read", internal: true, callers: ["module"], description: "A skill's content hash and checklist for a task to pin, as the person asking. Only the kernel's pin callback runs it.", input: obj({ id: { type: "string", minLength: 3, maxLength: 200 }, space_only: { type: "boolean" } }, ["id"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      const none = () => err("not_found", `skill ${String(i.id).slice(0, 80)} is not one of this Space's skills`);
+      if (!extra || !extra.in_space_chain || !extra.in_space || !kernelOk() || String(extra.in_space) !== String(ctx.kernel.space || "")) throw none();
+      const h = extra.in_space_chain.hops && extra.in_space_chain.hops[0];
+      if (!h || h.actor.kind !== "person") throw none();
+      let s;
+      try { s = await /** @type {any} */ (memberOps).get(String(h.actor.id), extra.in_space_chain, { id: String(i.id) }); } catch { throw none(); }
+      // "Space skills only" (a template's stage pins for everyone who works its tasks): only Vyre's own and the Space's, never a personal, agent or project skill that some members could not read
+      if (i.space_only === true && s.level !== "space" && s.level !== "vyre") throw none();
+      return { hash: createHash("sha256").update(String(s.text)).digest("hex"), name: String(s.name || "").slice(0, 80), checklist: checklistOf(s.text) };
+    } });
     ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["browse", "list", "get", "versions"]), run: serve(["browse", "list", "get", "versions"]) });
-    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve", "decline", "rollback"]), run: serve(["draft", "approve", "decline", "rollback"]) });
+    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, import (a skill file), approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "import", "approve", "decline", "rollback"]), run: serve(["draft", "import", "approve", "decline", "rollback"]) });
     return { async stop() {} };
   },
 };

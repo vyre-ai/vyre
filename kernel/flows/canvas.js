@@ -7,7 +7,7 @@ import { printFlow, parseFlowText, normalizeFlow } from "./text.js";
 import { printLines, parseLines } from "./lines.js";
 import { checkFlow } from "./schema.js";
 import { compileFlow } from "./compile.js";
-import { describeTrigger, kindOf, whyRan } from "./triggers.js";
+import { describeTrigger, describeTriggers, triggersOf, kindOf, whyRan } from "./triggers.js";
 import { describeSchedule } from "./schedule-words.js";
 export { describeTrigger };
 import { canonical, flowHash, walkSteps, BLOCK_KINDS } from "./schema.js";
@@ -69,7 +69,7 @@ export function graph(flow, cat, view = {}) {
   const compiled = compileFlow(flow, cat);
   const risky = new Set(compiled.effects.outward.map(o => o.step));
   const sealed = new Set(compiled.effects.sealed_uses.map(u => u.path.replace(/\.[^.]*$/, "")));
-  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", trigger_kind: (kindOf(flow.trigger) || {}).kind, label: view.now !== undefined ? describeSchedule(flow.trigger, { space: /** @type {any} */ (cat).tz, person: view.person, now: view.now }) : describeTrigger(flow.trigger), icon: (kindOf(flow.trigger) || {}).icon || "bolt", x: 0, y: 0, lane: 0 }];
+  /** @type {any[]} */ const nodes = [{ id: "trigger", kind: "trigger", trigger_kind: (kindOf(triggersOf(flow)[0]) || {}).kind, label: view.now !== undefined ? describeSchedule(triggersOf(flow)[0], { space: /** @type {any} */ (cat).tz, person: view.person, now: view.now }) : describeTriggers(flow), icon: (kindOf(triggersOf(flow)[0]) || {}).icon || "bolt", x: 0, y: 0, lane: 0 }];
   /** @type {any[]} */ const edges = [];
   let row = 1;
   /** @param {any[]} steps @param {number} lane @param {string} from @param {string} edgeKind @returns {string} the last node id in this lane */
@@ -93,7 +93,7 @@ export function graph(flow, cat, view = {}) {
     return prev;
   };
   lay(flow.steps, 0, "trigger", "next");
-  return { nodes, edges, trigger: describeTrigger(flow.trigger), warnings: compiled.warnings, ok: compiled.ok };
+  return { nodes, edges, trigger: describeTriggers(flow), warnings: compiled.warnings, ok: compiled.ok };
 }
 
 /**
@@ -160,7 +160,7 @@ export function fromCode(text, stored, cat, format = "ts") {
  */
 export function flowChanges(a, b, cat) {
   /** @type {string[]} */ const out = [];
-  if (canonical(a.trigger) !== canonical(b.trigger)) out.push(`The trigger changes: ${describeTrigger(a.trigger)} becomes ${describeTrigger(b.trigger)}.`);
+  if (canonical(triggersOf(a)) !== canonical(triggersOf(b))) out.push(`The trigger changes: ${describeTriggers(a)} becomes ${describeTriggers(b)}.`);
   if (a.authorship !== b.authorship) out.push(`Who made it changes from ${a.authorship} to ${b.authorship}.`);
   if ((a.label || a.name) !== (b.label || b.name)) out.push(`It is renamed to ${b.label || b.name}.`);
   if (canonical(a.caps || null) !== canonical(b.caps || null)) out.push("Its declared powers change.");
@@ -237,5 +237,7 @@ export const ops = Object.freeze({
     return f;
   },
   /** @param {any} flow @param {any} trigger */
-  setTrigger(flow, trigger) { return { ...structuredClone(flow), trigger }; },
+  setTrigger(flow, trigger) { const { triggers: _l, ...rest } = structuredClone(flow); return { ...rest, trigger }; },
+  /** The Flow starts on any of these (1 to 8); the single `trigger` goes. */
+  setTriggers(flow, triggers) { const { trigger: _t, ...rest } = structuredClone(flow); return { ...rest, triggers }; },
 });

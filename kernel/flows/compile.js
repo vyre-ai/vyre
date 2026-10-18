@@ -5,7 +5,7 @@
 
 import { opFor } from "./safe-write.js";
 import { parseCron as parseCronShared, nextCron } from "../../lib/cron.js";
-import { triggerScopeNames } from "./triggers.js";
+import { triggerScopeNames, triggersOf } from "./triggers.js";
 import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
@@ -161,15 +161,18 @@ function compileRaw(flow, cat) {
   const sealedNames = new Set(Object.values(cat.types).flatMap(t => (t.fields || []).filter(f => f.kind === "sealed").map(f => f.name)));
 
   // Trigger
-  const tr = flow.trigger;
-  if (tr.on === "stage") {
-    const t = type(tr.type, "trigger.type");
-    if (t && !(t.stages || []).some(st => st.name === tr.stage)) errors.push({ path: "trigger.stage", message: `${tr.type} has no stage ${tr.stage}`, bad: tr.stage, choices: (t.stages || []).map(st => st.name) });
-  }
-  if (tr.on === "time" && tr.cron !== undefined) { const c = parseCron(tr.cron); if (!c.ok) errors.push({ path: "trigger.cron", message: c.message }); }
+  const trs = triggersOf(flow), multi = Array.isArray(flow.triggers);
+  trs.forEach((tr, ti) => {
+    const at = multi ? `triggers[${ti}]` : "trigger";
+    if (tr.on === "stage") {
+      const t = type(tr.type, `${at}.type`);
+      if (t && !(t.stages || []).some(st => st.name === tr.stage)) errors.push({ path: `${at}.stage`, message: `${tr.type} has no stage ${tr.stage}`, bad: tr.stage, choices: (t.stages || []).map(st => st.name) });
+    }
+    if (tr.on === "time" && tr.cron !== undefined) { const c = parseCron(tr.cron); if (!c.ok) errors.push({ path: `${at}.cron`, message: c.message }); }
+  });
 
   /** scope names an expression may read at a given point */
-  const triggerScope = triggerScopeNames(tr);
+  const triggerScope = [...new Set(trs.flatMap(t => triggerScopeNames(t)))];
   const baseScope = new Set([...triggerScope, "steps", "run", "now", "tz"]);
 
   /** @param {string|undefined} src @param {string} path @param {Set<string>} scope @param {Set<string>} done */
@@ -263,6 +266,8 @@ function compileRaw(flow, cat) {
         ex(s.if, "if");
         visit(s.then || [], `${p}.then`, scope, new Set(done));
         if (s.else) visit(s.else, `${p}.else`, scope, new Set(done));
+        // after the rejoin a step may read what either branch made: the branch that did not run gives nothing (null), which `coalesce` turns into a fallback ("if empty, use")
+        walkSteps([...(s.then || []), ...(s.else || [])], (/** @type {any} */ x) => done.add(x.id));
       } else if (s.kind === "repeat") {
         ex(s.over, "over");
         visit(s.steps || [], `${p}.steps`, new Set([...scope, s.as]), new Set(done));
@@ -291,7 +296,7 @@ function compileRaw(flow, cat) {
   if (Array.isArray(flow.on_failure)) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); visit(flow.on_failure, "on_failure", new Set([...baseScope, "error"]), all); }
   if (flow.returns !== undefined) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); checkValueNames(flow.returns, "returns", new Set(baseScope), all); }
   if (typeof flow.lock === "string") checkExprNames(flow.lock, "lock", new Set(triggerScope), new Set());
-  if ((tr.on === "event" || tr.on === "watcher") && tr.where) checkExprNames(tr.where, "trigger.where", new Set(triggerScope), new Set());
+  trs.forEach((tr, ti) => { if ((tr.on === "event" || tr.on === "watcher") && tr.where) checkExprNames(tr.where, `${multi ? `triggers[${ti}]` : "trigger"}.where`, new Set(triggerScopeNames(tr)), new Set()); });
 
   // caps
   const derived = deriveCaps(flow, cat);

@@ -224,7 +224,7 @@ export class TwentyStore {
   /**
    * A row whose updatedAt does not match what we recorded for its version was changed inside Twenty (or
    * was created there). Give it the next version, in order, and report it. Returns the row to use.
-   * @param {import("./plan.js").TypePlan} p @param {any} row @param {{ kind?: string }} [o]
+   * @param {import("./plan.js").TypePlan} p @param {any} row @param {{ kind?: string, depth?: number }} [o]
    */
   async #settle(p, row, o = {}) {
     const snap = this.snaps.get(p.vyre, row.id);
@@ -234,7 +234,9 @@ export class TwentyStore {
     if (!external || this.self.has(key)) { if (!snap) this.#snap(p, row); return row; }
     const next = (v ?? 0) + 1;
     const bumped = await this.#cas(p, row.id, [{ updatedAt: { eq: row.updatedAt } }, ...(v === null ? [] : [{ [VERSION_FIELD]: { eq: v } }])], { [VERSION_FIELD]: next });
-    const use = bumped ?? row;
+    // The guard no longer held: the webhook or another read settled this same edit first (or Twenty changed the row again). That one reports it; read the row as it is now and settle that, so one edit is never reported twice.
+    if (!bumped) { const now = (o.depth ?? 0) < 3 ? await this.#row(p, row.id, row.deletedAt ? "any" : "live") : null; return now ? this.#settle(p, now, { ...o, depth: (o.depth ?? 0) + 1 }) : row; }
+    const use = bumped;
     const before = snap?.data ?? null;
     const rec = this.#snap(p, use);
     this.seen.add(key);

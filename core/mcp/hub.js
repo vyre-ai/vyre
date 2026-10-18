@@ -329,6 +329,32 @@ export function normalize(i, opts = {}) {
   return out;
 }
 
+/**
+ * The watcher a key of a plugin's server is granted to: the row, the variable, and a hash of the code the row runs (command, arguments, the needs). A server whose code changed is a different watcher, so a
+ * grant made for the old code does not serve the new: the person grants again, with presence. @param {any} r the row @param {string} v the variable
+ */
+export function keyWatcher(r, v) {
+  const needs = (r.auth && r.auth.bound ? r.auth.bound.needs : []).map((/** @type {any} */ n) => [n.var, n.label]).sort();
+  const h = crypto.createHash("sha256").update([r.command || "", JSON.stringify(r.args || []), JSON.stringify(needs)].join("\0")).digest("hex").slice(0, 8);
+  return `${r.name}.${v}.${h}`;
+}
+
+/**
+ * A plugin's server that needs keys (Vault-backed env): which plugin and level it came from, whose it is, and the variables it needs. `out.env` holds only the NAME of the Vault item chosen for each variable (a value is
+ * never here); a variable with no item yet is a server waiting for its key. Each variable's item is read with the grant made to this one server and variable (`<row>.<VAR>`), nothing broader.
+ * @param {any} b @param {any} out
+ */
+function normalizeBound(b, out) {
+  if (!isObj(b) || typeof b.plugin !== "string" || !b.plugin || b.plugin.length > 64 || !["space", "personal", "agent", "project"].includes(b.level) || typeof b.person !== "string" || !b.person || b.person.length > 80) throw bad("auth.bound is { plugin, level, person, owner?, needs }");
+  if (!Array.isArray(b.needs) || !b.needs.length || b.needs.length > 5) throw bad("auth.bound.needs is 1 to 5 { var, label }");
+  const needs = b.needs.map((/** @type {any} */ n) => {
+    if (!isObj(n) || !ENV_NAME.test(String(n.var)) || /^VYRE_/.test(String(n.var)) || typeof n.label !== "string" || n.label.length > 60) throw bad("auth.bound.needs is { var, label }");
+    return { var: String(n.var), label: n.label };
+  });
+  for (const k of Object.keys(out.env)) if (!needs.some((/** @type {any} */ n) => n.var === k)) throw bad(`${k.slice(0, 40)} is not one of the variables this server needs`);
+  return { plugin: b.plugin, level: b.level, person: b.person, ...(b.owner ? { owner: true } : {}), ...(typeof b.approver === "string" && b.approver ? { approver: b.approver.slice(0, 80) } : {}), needs };
+}
+
 function normalizeAuth(a, out, own = false) {
   const stdio = out.transport === "stdio";
   const envRefs = Object.keys(out.env).length > 0;
@@ -337,6 +363,7 @@ function normalizeAuth(a, out, own = false) {
   if (a.type === "none") { if (envRefs) throw bad("env names vault items, so auth is { type: \"env\" }"); return { type: "none" }; }
   if (a.type === "env") {
     if (!stdio) throw bad("env auth is for stdio servers; an http server takes bearer, oauth or service-account");
+    if (a.bound !== undefined) return { type: "env", bound: normalizeBound(a.bound, out) };
     if (a.item !== undefined) {
       if (!ENV_NAME.test(String(a.var || ""))) throw bad("auth { type: \"env\", item } needs var: the env var name to set");
       out.env[a.var] = checkRef(a.field ? { item: a.item, field: a.field } : a.item, "auth.item");
@@ -442,6 +469,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
  *   threadProject?: (thread: string) => Promise<string|null>,
  *   heldOf?: (via: string) => Promise<{ id: string, requester?: string | null }[]>, cancel?: (id: string, reason: string) => Promise<any>, revokeConnection?: (c: { owner: string, connection: string }) => Promise<any>,
  *   connectionToken?: (c: { owner: string, connection: string, write: boolean, as?: string }) => Promise<{ access_token: string, token_type?: string }>,
+ *   keyHeld?: (item: string, watcher: string) => Promise<boolean>, keyCheckMs?: number,
  *   mayUseConnection?: (c: { owner: string, connection: string, level: "read"|"call"|"own", as?: string }, who: Who | null) => Promise<boolean>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
@@ -517,7 +545,7 @@ export class Hub {
     const s = this.live.get(r.name);
     const base = { name: r.name, transport: r.transport, state: s ? s.state : "stopped", tools: r.cache ? this.visibleTools(r).length : null,
       ...(s && s.error ? { error: s.error } : {}), lastUsed: r.lastUsed || null,
-      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope,
+      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}), ...(r.auth.bound ? { bound: { plugin: r.auth.bound.plugin, level: r.auth.bound.level, person: r.auth.bound.person, ...(r.auth.bound.owner ? { owner: true } : {}) } } : {}) }, scope: r.scope,
       ...(r.owner ? { owner: r.owner, label: r.label || r.name } : {}),
       ...(r.pinSeen ? { held: "tools_changed" } : {}) };
     if (!full) return base;
@@ -641,6 +669,8 @@ export class Hub {
   /** After a share or grant on a person's connection ended: whoever asked for something held there and no longer holds the connection has it discarded. @param {string} name @returns {Promise<number>} */
   async sweep(name) {
     const r = this.row(name);
+    // a plugin's server that holds keys stops, and waits, when one of them is no longer granted to it (an unshare, a revoked grant, a removed item)
+    if (r && r.auth.bound) { if (!(await this.keysHeld(r))) await this.waitForKey(name, `${name} is waiting for a key: give it one in the Vault`); return 0; }
     if (!r || !r.owner) return 0;
     const memo = new Map();
     return this.cancelHeld(r, async who => { if (!memo.has(who)) memo.set(who, !(await this.mayUse(r, null, "call", who))); return memo.get(who); }, "the connection was taken away from the person who asked");
@@ -696,6 +726,12 @@ export class Hub {
    * @param {any} r @param {Who} who @param {{ agentProjects?: any, project?: any }} memo
    */
   async inScope(r, who, memo) {
+    // A personal plugin's server answers only the calls made on that person's chain (the owner's own: a call with no member named); a lookup that fails is no.
+    const b = r.auth && r.auth.bound;
+    if (b && b.level === "personal") {
+      const me = await Promise.resolve(typeof who.me === "function" ? who.me() : "").catch(() => null);
+      if (me === null || !(b.owner ? me === "" : me === b.person)) return false;
+    }
     // A person's connection has no scope list: whoever may use it is whoever the Vault says holds its item (a grant), the person who made it included. Neither the person shortcut nor a #tag reaches it.
     // Rows with no owner are the Space owner's older ones and keep the scope rule below. No new row may be made without an owner once members connect: add() takes the owner from the verified caller, never from input.
     if (r.owner) return this.mayUse(r, who, "read");
@@ -935,6 +971,9 @@ export class Hub {
   async ensure(name, o = {}) {
     if (this.stopping) throw fail("closed", "the MCP hub is stopping");
     const s = this.state(name);
+    // A plugin's server that holds keys is asked again before every use: a grant taken away stops it and it waits (not an error to the model).
+    const row = this.row(name);
+    if (row && row.auth.bound && !(await this.keysHeld(row))) { const why = `${name} is waiting for a key: give it one in the Vault`; await this.waitForKey(name, why); throw fail("needs_key", why); }
     if (s.client) return s.client;
     if (s.starting) return s.starting;
     if (!o.force && s.state === "failed") {
@@ -969,6 +1008,7 @@ export class Hub {
         }
       }
       s.client = client; s.state = "running"; s.error = null;
+      if (this.must(name).auth.bound) this.watchKeys();
       this.deps.emit("mcp.started", { name, transport: r.transport, tools: (this.must(name).cache || []).length, ms: this.now() - t0 });
       this.arm(name);
       return client;
@@ -977,9 +1017,12 @@ export class Hub {
       this.markReconnect(name, e);
       // a connection the vendor no longer honours waits for its person to sign in again; it is not a server that failed to start
       const waiting = /** @type {any} */ (e)?.code === "needs_reconnect";
-      s.state = waiting ? "needs_reconnect" : "failed";
-      s.error = waiting ? "sign in again to use this connection" : cut(this.lastLine(s.lastClient) || err.message, 300);
-      if (budget) s.crashes.push(this.now());
+      // a plugin's server whose key is not given (or not granted to it) is waiting for it; that is not a crash and spends no restart
+      const keyless = /** @type {any} */ (e)?.code === "needs_key" || /** @type {any} */ (e)?.code === "not_granted";
+      s.state = waiting ? "needs_reconnect" : keyless ? "needs_key" : "failed";
+      s.error = waiting ? "sign in again to use this connection" : keyless ? cut(err.message, 300) : cut(this.lastLine(s.lastClient) || err.message, 300);
+      if (keyless) this.deps.emit("mcp.needs-key", { name });
+      if (budget && !keyless) s.crashes.push(this.now());
       this.deps.emit("mcp.failed", { name, error: cut(s.error, 200) });
       this.deps.log?.(`${name} failed to start: ${cut(err.message, 200)}`);
       throw err;
@@ -1019,13 +1062,70 @@ export class Hub {
   }
 
   /** Connect with the credential built for this server only: env for its child, a header per request. */
+  /** The variables a plugin's server needs, each with its item and the watcher its grant is made to. A variable with no item chosen waits. @param {any} r */
+  async boundEnv(r) {
+    /** @type {Record<string, any>} */ const spec = {};
+    for (const n of r.auth.bound.needs) {
+      const ref = r.env[n.var];
+      if (!ref) throw fail("needs_key", `${r.name} is waiting for a key: ${n.label}`);
+      spec[n.var] = { ...(typeof ref === "string" ? { item: ref } : ref), watcher: keyWatcher(r, n.var) };
+    }
+    return spec;
+  }
+
+  /** Whether every key of a plugin's server is still granted to it (a row that needs none is always held). Fails closed. @param {any} r */
+  async keysHeld(r) {
+    if (!r.auth || !r.auth.bound) return true;
+    if (typeof this.deps.keyHeld !== "function") return false;
+    try {
+      for (const n of r.auth.bound.needs) {
+        const ref = r.env[n.var], item = typeof ref === "string" ? ref : ref && ref.item;
+        if (!item || (await this.deps.keyHeld(item, keyWatcher(r, n.var))) !== true) return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+
+  /** The keys of a plugin's server that are not in place: no item chosen, or the item is not granted to this one server and variable. Names and labels only. @param {any} r @returns {Promise<{ var: string, label: string, watcher: string }[]>} */
+  async missingKeys(r) {
+    if (!r.auth || !r.auth.bound) return [];
+    /** @type {{ var: string, label: string, watcher: string }[]} */ const out = [];
+    for (const n of r.auth.bound.needs) {
+      const ref = r.env[n.var], item = typeof ref === "string" ? ref : ref && ref.item;
+      let held = false;
+      try { held = Boolean(item) && typeof this.deps.keyHeld === "function" && (await this.deps.keyHeld(item, keyWatcher(r, n.var))) === true; } catch { held = false; }
+      if (!held) out.push({ var: n.var, label: n.label, watcher: keyWatcher(r, n.var) });
+    }
+    return out;
+  }
+
+  /** What a person is shown before they grant a key to a watcher: the plugin, the server, the pinned command line, who approved it, the variable and its label. Null when no row of a plugin has that watcher. @param {string} watcher */
+  describeKey(watcher) {
+    for (const r of this.rows()) {
+      if (!r.auth.bound) continue;
+      for (const n of r.auth.bound.needs) if (keyWatcher(r, n.var) === watcher) {
+        const b = r.auth.bound;
+        return { plugin: b.plugin, level: b.level, server: r.name, argv: [r.command, ...(r.args || [])].map(String).slice(0, 40), approver: b.approver || "a person", var: n.var, label: n.label, ...(b.level === "personal" ? { personal: true } : {}) };
+      }
+    }
+    return null;
+  }
+
+  /** The server cannot run until a person gives it its key: stopped if it was running, marked, and said once. @param {string} name @param {string} why */
+  async waitForKey(name, why) {
+    const s = this.state(name);
+    await this.stopServer(name, "key withdrawn").catch(() => {});
+    s.state = "needs_key"; s.error = cut(why, 300);
+    this.deps.emit("mcp.needs-key", { name });
+  }
+
   async open(r, s) {
     /** @type {any} */
     let client = null;
     const onExit = (code, signal) => { if (client && s.client === client) this.crashed(r.name, client, new McpError("exited", `exited (${signal || `code ${code}`})`)); };
     const opts = { onExit, ...(this.deps.timeout ? { timeout: this.deps.timeout } : {}) };
     if (r.transport === "stdio") {
-      const env = { ...r.vars, ...(await this.creds.env(r.env)) };
+      const env = { ...r.vars, ...(await this.creds.env(r.auth.bound ? await this.boundEnv(r) : r.env)) };
       client = await this.deps.connect({ transport: "stdio", command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) }, { ...opts, env });
     } else {
       const headers = async () => ({ ...r.headers, ...(r.owner ? await this.connectionHeaders(r) : await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
@@ -1129,8 +1229,26 @@ export class Hub {
     this.deps.emit("mcp.stopped", { name, reason });
   }
 
+  /** While a plugin's server that holds keys is running, its grants are looked at every so often, so a key taken back stops it without waiting for the next call. */
+  watchKeys() {
+    if (this.keyTimer) return;
+    this.keyTimer = setInterval(async () => {
+      let any = false;
+      for (const [name, s] of this.live) {
+        if (!s.client) continue;
+        const r = this.row(name);
+        if (!r || !r.auth.bound) continue;
+        any = true;
+        if (!(await this.keysHeld(r))) await this.waitForKey(name, `${name} is waiting for a key: give it one in the Vault`);
+      }
+      if (!any && this.keyTimer) { clearInterval(this.keyTimer); this.keyTimer = null; }
+    }, this.deps.keyCheckMs ?? 30_000);
+    this.keyTimer.unref?.();
+  }
+
   async stop() {
     this.stopping = true;
+    if (this.keyTimer) { clearInterval(this.keyTimer); this.keyTimer = null; }
     await Promise.all([...this.live.keys()].map(n => this.stopServer(n, "shutdown")));
   }
 

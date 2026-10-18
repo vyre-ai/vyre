@@ -114,6 +114,24 @@ You can hand one message to several models and see each answer in its own block,
 
 What to do today: use the fan-out for answers, and read plans and diffs as they come.
 
+### A skill edited and put back during a task's review
+
+A task pins the skills of its slots when it is made, and the person or assistant holding a slot is checked against them at the act: starting, updating, handing in, reviewing, approving. A skill that is edited and then put back exactly between a holder reading it and that final act is not noticed, because the check is at the act and not at the read. Only someone who may edit the Space's skills can do this.
+
+What to do today: keep who may edit Space skills short, and read the review result on the card, which shows the checklist it was judged against.
+
+### A kept yes when a signing key is revoked
+
+When a role must all say yes to approve something, each person's yes is kept as they give it. The last yes does not check the earlier ones again. If one person's signing key is revoked after their yes and before the last yes, their yes still counts. A person taken out of the role is no longer waited for.
+
+What to do today: if a key is revoked while a quorum approval is open, reject the task so the round starts again.
+
+### A group task whose taker leaves while it is waiting
+
+A task taken from a group can be taken over by another member only while it is being worked on or waiting for changes. If the person who took it is removed from the group while the work is in review or waiting for a check, it stays where it is until it moves.
+
+What to do today: ask the reviewer or approver to send it back, then another member takes it.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
@@ -131,3 +149,11 @@ What to do today: use the fan-out for answers, and read plans and diffs as they 
 What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.
+
+## A team member's uploaded skill is untrusted text
+
+A skill a member uploads is text from outside, read strictly and kept as a draft of her own personal skill. Only she approves it, and only she uses it; it is never loaded for anyone else. The upload counters (ten an hour, thirty a day) are kept in memory and start again when the server restarts, so a restart gives her a fresh count. The fifty-skill and fifty-draft limits are counted from the library and do not reset.
+
+What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
+
+Owner: comp6 with sec53.

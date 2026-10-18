@@ -112,6 +112,7 @@ export function createRunner(o) {
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
   /** @type {{ swap: boolean, hibernation: boolean, line: string }} */ let swap = { swap: false, hibernation: false, line: "" };
   let winPrep = null;   // what prepare() touched on Windows, for cleanup at revoke
+  /** @type {Promise<void>|null} */ let locking = null;   // the lease-end closing that is under way: a contact waits for it before it looks at the mount
   let pending = null;   // a retry timer while the workspace could not be closed yet
   let chaseId = 0;      // which closing the chase belongs to: a newer opening or a lease taken again ends the old chase, whether or not its timer has fired
   const workOf = m => path.join(m, "work");
@@ -160,12 +161,19 @@ export function createRunner(o) {
     vault: o.vault, space: o.space, device: o.device, retryMs: o.retryMs, setTimer: o.setTimer, clearTimer: o.clearTimer, now,
     onArm: at => { try { fs.mkdirSync(path.dirname(deadlineFile), { recursive: true, mode: 0o700 }); fs.writeFileSync(deadlineFile, JSON.stringify({ gen, at }), { mode: 0o600 }); } catch {} },
     async onLock(why) {
-      // The key is going: hand each session to the space's server first, from its last whole turn, so it carries on there (an expired lease, a Mac that slept, the person locking the workspace). Access ended
-      // (revoked) hands nothing over: the work is not this computer's to give. Then stop every session and close the workspace; the data stays encrypted on disk.
-      const reason = why === "expired" ? "lease-expired" : why === "slept" ? "asleep" : why === "released" ? "you" : null;
-      if (reason && o.requestServer) for (const s of [...live.keys()]) { try { await moveToServer(s, reason); } catch { /* the server takes it after the lapse */ } }
-      for (const s of [...live.keys()]) await stop(s, { why: "teardown" });
-      if (await lockHard()) { emit({ type: "locked", why }); } else { emit({ type: "lock-pending", why }); chase(why === "revoked" ? "revoked" : why); }
+      const run = (async () => {
+        // The key is going: hand each session to the space's server first, from its last whole turn, so it carries on there (an expired lease, a Mac that slept, the person locking the workspace). Access ended
+        // (revoked) hands nothing over: the work is not this computer's to give. Then stop every session and close the workspace; the data stays encrypted on disk.
+        const reason = why === "expired" ? "lease-expired" : why === "slept" ? "asleep" : why === "released" ? "you" : null;
+        if (reason && o.requestServer) for (const s of [...live.keys()]) { try { await moveToServer(s, reason); } catch { /* the server takes it after the lapse */ } }
+        for (const s of [...live.keys()]) await stop(s, { why: "teardown" });
+        // The lease state turns "locked" before this runs, so a computer that is back in contact while the sessions above were stopping holds the key again: the workspace it just opened is not ours to close.
+        // Only for an end that can be undone by the person coming back: a revoked end always closes hard and deletes.
+        if (why !== "revoked" && lease.state === "open" && lease.key()) return;
+        if (await lockHard()) { emit({ type: "locked", why }); } else { emit({ type: "lock-pending", why }); chase(why === "revoked" ? "revoked" : why); }
+      })();
+      locking = run;
+      try { await run; } finally { if (locking === run) locking = null; }
     },
     async onRevoke() {
       if (!driver.isMounted(dir) && !pending) await destroyHard();   // lock-pending case: chase() deletes once it is closed
@@ -420,7 +428,7 @@ export function createRunner(o) {
     /** Access ended: lock and delete. Called when the kernel withdraws an offer or removes the member, not by a tool. */
     async revoke() { await lease.revoke(); },
     /** Ask the vault again. If access ended while this computer was locked or offline, the workspace is deleted now. */
-    async contact() { const r = await lease.acquire(); if (r.ok) { stopChase(); if (!mnt) await open(); } return r; },   // the lease is held again: a background closing of the old one is over
+    async contact() { const r = await lease.acquire(); if (r.ok) { stopChase(); try { await locking; } catch { /* its own failure is the lock handler's */ } if (!mnt || !driver.isMounted(dir)) await open(); } return r; },   // the lease is held again: a background closing of the old one is over
     moveToServer,
     /** The sessions running here, with what each uses now. */
     /**

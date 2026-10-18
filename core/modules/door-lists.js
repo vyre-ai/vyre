@@ -42,7 +42,8 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "memory.retrieve", "memory.space.recall", "memory.stats", "memory.today", "memory.why",
   // Documents: reading a template and making a document from one. The handlers run on HER chain (lib/gateway-door.js), so the Drive and every record named are judged by what she may read and write; a
   // record she cannot read is refused by name (documents.members.test.js). Sending for signature, the waiting list and reminders stay owner-only: they send as the Space's mail and list everyone's requests.
-  "documents.generate", "documents.template.get", "documents.template.list",
+  // A signature request's timeline, its audit download and the waiting list: a member gets only the requests she sent (the module's own request table; the owner and admins get all; a request with no row is staff only).
+  "documents.generate", "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.get", "documents.template.list",
   "identity.vault.install",
   "mentions.kinds",
   "models.get", "models.list", "models.status",
@@ -63,11 +64,11 @@ export const MEMBER_MAY = Object.freeze(new Set([
   "rules.get", "rules.list", "rules.test",
   "runner.move",
   "sessions.accounts.add", "sessions.accounts.bind", "sessions.accounts.list", "sessions.accounts.models", "sessions.accounts.signin",
-  "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.list",
+  "skills.browse", "skills.draft", "skills.find", "skills.get", "skills.import", "skills.list",
   "spaces.groups.list", "spaces.list", "spaces.members.list", "spaces.pair.install",
   "stream.catchup", "stream.keep", "stream.mark-read", "stream.open", "stream.pin", "stream.react", "stream.read", "stream.reply-mode", "stream.second-opinion",
   "stream.send", "stream.typing",
-  "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
+  "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.review", "tasks.submit", "tasks.update",
   "team.ask", "team.notes",
   "threads.archive", "threads.asks", "threads.chat-stop", "threads.commands", "threads.slash", "threads.delete", "threads.edit", "threads.edit-retry", "threads.effort", "threads.get",
   "threads.interrupt", "threads.items", "threads.kill-task", "threads.list", "threads.model", "threads.queue", "threads.rename", "threads.retry", "threads.rewind",
@@ -84,8 +85,6 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
-  // Download audit writes a signed request's audit file into the person's own Files: a person's own act, kept to the owner
-  "documents.signing.audit",
   "agents.draft.get", "agents.new.apply", "agents.new.draft", "agents.new.title",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
@@ -125,7 +124,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "design.screen.remove", "design.screens", "design.validate",
   "docs.find", "docs.read",
   "documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow",
-  "documents.signing.remind", "documents.signing.status", "documents.signing.waiting", "documents.template.add",
+  "documents.signing.remind", "documents.template.add",
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
@@ -135,7 +134,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
   "files.linked.mentions.resolve",
   "flows.advance", "flows.approve", "flows.attention", "flows.budget.set", "flows.kit.remove", "flows.pause", "flows.resume",
-  "flows.rollback", "flows.run", "flows.settle", "flows.test.remove",
+  "flows.rollback", "flows.run", "flows.settle", "flows.step.test", "flows.test.remove",
   "gate.request", "gate.said.add", "gate.said.list", "gate.said.revoke", "gate.senders",
   "gate.settle",
   "github.accounts", "github.connect", "github.connect.cancel", "github.mcp.sync", "github.mentions.resolve", "github.mentions.search", "github.owners", "github.project",
@@ -160,7 +159,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "link.macs", "link.pair.approve", "link.pair.deny", "link.pair.poll", "link.pair.request", "link.peers", "link.pending", "link.rename", "link.reply", "link.serve",
   "link.status", "link.unpair",
   "mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "mail.test",
-  "mcp.add", "mcp.call", "mcp.remove", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
+  "mcp.add", "mcp.call", "mcp.keys.waiting", "mcp.remove", "mcp.restart", "mcp.servers", "mcp.test", "mcp.tools", "mcp.update",
   "memory.backup.restore", "memory.backup.run", "memory.backup.status", "memory.contradictions", "memory.correct", "memory.corrections", "memory.curate", "memory.device",
   "memory.follow", "memory.heard", "memory.identity.enroll", "memory.identity.grant", "memory.identity.lock", "memory.identity.move", "memory.identity.revoke",
   "memory.identity.status", "memory.identity.unlock.begin", "memory.identity.unlock.finish", "memory.markers", "memory.me", "memory.merge", "memory.mute",
@@ -209,7 +208,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "sidebar.edit", "sidebar.get", "sidebar.pin", "sidebar.stored", "sidebar.team", "sidebar.unpin",
   "sight.frame", "sight.now", "sight.steps", "sight.targets", "sight.watch",
   "signin.answer", "signin.ask", "signin.dev", "signin.end", "signin.pending", "signin.status",
-  "skills.approve", "skills.decline", "skills.import", "skills.rollback", "skills.versions",
+  "skills.approve", "skills.decline", "skills.rollback", "skills.versions",
   "spaces.assess-computer", "spaces.bundle.enrol", "spaces.bundle.export", "spaces.bundle.status", "spaces.cancel", "spaces.code.submit", "spaces.compute.accept",
   "spaces.compute.allow", "spaces.compute.status", "spaces.create", "spaces.devices.enrol", "spaces.devices.lend", "spaces.devices.lend.status", "spaces.devices.list",
   "spaces.devices.remove", "spaces.devices.restore", "spaces.devices.set", "spaces.devices.spaces", "spaces.get", "spaces.host-here", "spaces.identity.alias",
@@ -330,7 +329,7 @@ export const TOOL_GROUPS = Object.freeze({
   mail: Object.freeze(["mail.accounts", "mail.compose", "mail.find", "mail.map", "mail.read", "mail.search", "mail.send", "google.mail.draft", "google.mail.read", "google.mail.search", "google.mail.send", "microsoft.mail.send"]),
   calendar: Object.freeze(["google.calendar.create", "google.calendar.list", "google.calendar.next", "google.calendar.search", "google.calendar.today", "google.calendar.update", "microsoft.calendar.create", "connectors.calendar.today"]),
   documents: Object.freeze(["documents.send", "documents.send-signed", "documents.signed-link", "documents.signed-link.revoke", "documents.signing.flow", "documents.signing.remind",
-    "documents.signing.audit", "documents.signing.status", "documents.signing.waiting", "documents.template.add"]),
+    "documents.template.add"]),
   files: Object.freeze(["files.deliver", "files.dirs", "files.drive.link.create", "files.drive.link.list", "files.drive.link.revoke", "files.drive.list", "files.drive.read", "files.drive.search", "files.drive.share",
     "files.drive.status", "files.drive.upload", "files.fetch", "files.mentions.search", "files.preview", "files.recent", "files.search", "files.stat"]),
   publish: Object.freeze(["publish.create", "publish.flow", "publish.go", "publish.list", "publish.plan", "publish.preview", "publish.publish", "publish.quick", "publish.status"]),

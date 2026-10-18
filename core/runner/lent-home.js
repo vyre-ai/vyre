@@ -485,6 +485,8 @@ export function createLentHome(o) {
         return { where: "mac", device, epoch: row.epoch };
       });
     },
+    /** Whether this computer's nudge is being held at the home right now (a chat that starts now is told at once). For tests and health. @param {string} device */
+    waiting: device => waiters.has(String(device)),
     /**
      * The nudge: held up to `wait_ms` until the home has something for this computer to do (a chat to start), so a ready computer is told at once and not at its next heartbeat. The same directives the heartbeat carries.
      * @param {any} chain @param {{ wait_ms?: number }} [i]

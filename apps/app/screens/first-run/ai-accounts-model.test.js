@@ -50,3 +50,20 @@ test("the copy sheet names where from and where to, and counts the confirmations
   assert.equal(copyWords({ from: "A", to: "B", count: 0 }).confirm, "Nothing to confirm.");
   assert.equal(copyWords({ from: "A", to: "B", count: 1 }).button(1), "Copy 1 account");
 });
+
+// Fake keys are built from parts so no literal in this file looks like a real key to the secret scan.
+test("an Anthropic prefix is never an OpenAI-style key, whatever follows it", () => {
+  const a = "sk-" + "ant-", tail = "x".repeat(30);
+  const claude = { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
+  assert.deepEqual(keyKindOf(a + "api03-" + tail + "."), claude, "a trailing odd character");
+  assert.deepEqual(keyKindOf(a.toUpperCase() + "API03-" + tail), claude, "upper case");
+  assert.deepEqual(keyKindOf(a + "oat01-" + tail), claude, "a setup token");
+  assert.equal(keyKindOf("sk-" + "proj-" + tail).provider, "codex");
+  assert.equal(keyKindOf("sk-" + "or-v1-" + tail).kind, "openrouter");
+  const x = keyKindOf("xai-" + tail);
+  assert.deepEqual([x.provider, x.base_url], ["grok", "https://api.x.ai/v1"]);
+  for (const rest of ["", "a", "-", "_", ".", " x", "é", "0", "oat01-", "api03-" + tail + "\n", tail + "!"]) {
+    const k = keyKindOf(a + rest);
+    assert.ok(k && k.kind === "anthropic-compatible", JSON.stringify(rest));
+  }
+});
