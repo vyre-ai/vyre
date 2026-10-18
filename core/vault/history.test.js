@@ -102,3 +102,16 @@ test("history tools: vault.history is names only for Claude, revert and old-vers
   assert.equal((await run("vault.reveal", { name: "site-login", version: 1 })).value, p1);
   assert.equal((await run("vault.revert", { name: "site-login", version: 1 })).version, 3);
 });
+
+test("a viewer of a shared item cannot revert it: vault.revert is callable only from the person's own surfaces, never from a member, agent, model or device that only reads or uses a shared item", async t => {
+  // The registry refuses a call whose surface is not in a tool's callers list before the tool runs. The list is the gate here: a member who
+  // holds only use or read on a shared item reaches the Vault from these surfaces, and none of them may revert.
+  const { tools } = await recorded(t);
+  const callers = tools.get("vault.revert").callers;
+  assert.ok(Array.isArray(callers) && callers.length, "vault.revert names its callers");
+  for (const viewer of ["mcp", "agent", "chat", "member", "phone", "device", "tailnet", "space", "module"]) {
+    assert.ok(!callers.includes(viewer), `${viewer} (a viewer's surface) must not be able to call vault.revert`);
+  }
+  assert.ok(callers.includes("cli") && callers.includes("deck"), "the person's own surfaces still revert");
+  assert.ok(tools.get("vault.revert").presence, "and a revert asks for presence");
+});
