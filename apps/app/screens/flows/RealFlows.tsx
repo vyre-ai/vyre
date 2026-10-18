@@ -10,6 +10,13 @@ import { listReal, setPausedReal, type RealFlow } from "./real";
 import { healthRow, listWaits } from "./real-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
+/** Flows grouped by the project they belong to; the ones with none are Personal and come first. */
+export function groupFlows(flows: RealFlow[]): { name: string; rows: RealFlow[] }[] {
+  const by = new Map<string, RealFlow[]>();
+  for (const f of flows) { const k = f.project || "Personal"; by.set(k, [...(by.get(k) ?? []), f]); }
+  return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
+}
+
 export function RealFlows() {
   const router = useRouter();
   const phone = usePhone();
@@ -34,11 +41,14 @@ export function RealFlows() {
           <Card flush>{needsYou.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}<Row dense title={f.sentence || f.name} sub={listWaits(f) ? "Waiting for you" : healthRow(f).chip || ""} chevron onPress={() => router.push(`/u/flows/${f.id}` as never)} /></View>)}</Card>
         </View>
       ) : null}
-      <Card flush>
-        {err ? <ErrorState title="Flows did not load" reason={err} retry={load} /> : null}
-        {!err && flows === null ? <LoadingState rows={3} /> : null}
-        {!err && flows && !flows.length ? <EmptyState title="No Flows yet" body="Flows live in a space. Ask @Engineer to write one, or install a Kit." /> : null}
-        {(flows ?? []).map((f, i) => {
+      {err ? <Card flush><ErrorState title="Flows did not load" reason={err} retry={load} /></Card> : null}
+      {!err && flows === null ? <Card flush><LoadingState rows={3} /></Card> : null}
+      {!err && flows && !flows.length ? <Card flush><EmptyState title="No Flows yet" body="Flows live in a space. Ask @Engineer to write one, or install a Kit." /></Card> : null}
+      {groupFlows(flows ?? []).map((group) => (
+        <View key={group.name} className="gap-s2 pb-s3">
+          {groupFlows(flows ?? []).length > 1 ? <Text size="caption" strong tone="label">{group.name}</Text> : null}
+          <Card flush>
+        {group.rows.map((f, i) => {
           const waiting = listWaits(f);
           const health = healthRow(f);
           return (
@@ -53,7 +63,9 @@ export function RealFlows() {
             </View>
           );
         })}
-      </Card>
+          </Card>
+        </View>
+      ))}
       <View className="flex-row pt-s4">
         <Menu align="start" trigger={<Button kind="primary" size="lg" icon="plus" label="New flow" />} items={[{ label: "Build it here", onPress: () => router.push("/u/flows/new" as never) }, { label: "Ask @Engineer to write it", onPress: () => openEngineer(router, { source: "flow" }) }]} />
       </View>
