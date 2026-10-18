@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(computers): fail closed. browseMode() is "desktop" unless computers.browse is "browser" (an unset or unknown setting, a docker address or a missing driver no longer turns the shared browser on), and agentdReady() is false unless computers.agentUsers is true as well as the space's computer being up, so a default box never creates or joins browser-shared and never uses agentd. Known gap added: the shared browser and a user for each agent are off until 0.6.2.
 - test(runner,cli): the first-chat nudge test waits until the lender's nudge is held at the home (lent home `waiting(device)`) before it times the start, so a loaded shard's late first wait is not read as a slow start; needs.test waits, after the threads are stopped, until nothing more is written to them before the daemon closes.
 - test(modules): member-read-scope stops every thread in the store and lets the loop settle before the daemon closes, so a late write cannot land on a closed database under load.
 - fix(appmods): baseHost is declared before the start-up guard that closes the front, so install and the other tools that name an app's address find it (the guard had put it in a block they cannot see).
