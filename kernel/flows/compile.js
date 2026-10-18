@@ -266,6 +266,8 @@ function compileRaw(flow, cat) {
         ex(s.if, "if");
         visit(s.then || [], `${p}.then`, scope, new Set(done));
         if (s.else) visit(s.else, `${p}.else`, scope, new Set(done));
+        // after the rejoin a step may read what either branch made: the branch that did not run gives nothing (null), which `coalesce` turns into a fallback ("if empty, use")
+        walkSteps([...(s.then || []), ...(s.else || [])], (/** @type {any} */ x) => done.add(x.id));
       } else if (s.kind === "repeat") {
         ex(s.over, "over");
         visit(s.steps || [], `${p}.steps`, new Set([...scope, s.as]), new Set(done));

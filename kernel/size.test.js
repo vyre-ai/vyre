@@ -47,7 +47,7 @@ const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
 const BASE_FILES = [
   "gateway/records.js", "gateway/sealing.js", "gateway/index.js",
   "seal/client.js", "seal/uses.js", "seal/wire.js", "seal/classes.js",
-  "store/sqlite.js", "store/sqlite-log.js", "store/values.js", "store/query.js",
+  "store/sqlite.js", "store/sqlite-log.js", "store/values.js",
   "index.js", "boot.js", "home.js", "keys.js", "devbuild.js",
 ];
 /** Not base, single files. */
@@ -56,6 +56,10 @@ const NOT_BASE_FILES = {
   "audit/verify.js": "checks over public data that no kernel path calls yet (a device verifying a Space-key endorsement or revocation, two devices comparing checkpoints): it decides no grant and reads no secret, so it needs no kernel authority; kept for the device side that may still come",
   "gateway/definition-checks.js": "validates a type definition (kinds, roles, computed fields, names, shape) and refuses in words: it decides no grant and reads no record; records.js calls it and the gateway gates the define itself",
   "tasks/scrub.js": "forgets stored task words when a value is sealed or a record is erased (TR-1): it decides no grant, approves nothing and reads only the text it removes; tasks.js hands it the stores",
+  "store/query.js": "filter, sort, paging and totals over rows the gateway has already authorized and cut; the gateway re-checks every row (records.js check) and guards sealed and hidden fields before it, so this decides no grant (sec53, 19 Oct 2026)",
+  "tasks/card.js": "formats what the approver is shown, built from the task and its canonical body: it decides no grant and approves nothing; the fields that are signed come from decideFields in tasks.js and the check is in decide against the kernel's stored body, so a wrong card can mislead a person but cannot make the kernel accept an act; its tests, which show the doer's words are stripped and labelled, are in test/must-run.json (sec53, 19 Oct 2026)",
+  "tasks/output-check.js": "the pure format check of a task's evidence by its declared output kind: it takes the task, the evidence and the facts, reads no record itself, decides no grant, and does not choose whether a task is guarded (needsCheck and the transition table stay in tasks.js, which also builds the facts) (sec53, 19 Oct 2026)",
+  "modules/probe.js": "runs inside the sandbox it probes, like modules/child.js, and decides nothing; the supervisor's verdict on its output is what is base (sec53, 19 Oct 2026)",
   "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
 };
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */

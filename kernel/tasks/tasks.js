@@ -11,6 +11,7 @@ import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
 import { buildCard } from "./card.js";
+import { checkOutput } from "./output-check.js";
 import { createScrub } from "./scrub.js";
 import { createIdem } from "../core/idem.js";
 import { TASK } from "../../records/core-types.js";
@@ -57,30 +58,6 @@ const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" &&
 const opaque = (/** @type {any} */ v) => { const s = JSON.stringify(v); if (s === undefined || s.length > 8192) throw new KernelError("bad_input", "a form is plain data of at most 8 KB"); return deepFreeze(JSON.parse(s)); };
 const SYSTEM = freeze({ kind: "service", id: "kernel" });
 const APPROVAL_MAX_AGE = 24 * 3600_000;
-
-/**
- * The kernel's output check: the declared kind decides what evidence is enough (contract 9.4 table). These are format
- * checks, not truth: a task that gates a stage, a send or a payment needs a human checker (R6-5).
- * @param {any} task @param {any} evidence @param {{ record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> }} facts
- */
-export async function checkOutput(task, evidence, facts) {
-  const e = evidence && typeof evidence === "object" ? evidence : {};
-  switch (task.output.kind) {
-    case "fields": {
-      const names = [].concat(task.output.target || []);
-      const rec = task.record && facts.record ? await facts.record(task.record) : null;
-      if (!rec || !names.length) return { ok: false, why: "the record or the fields to fill are missing" };
-      const empty = names.filter(n => rec.data[n] === undefined || rec.data[n] === null || rec.data[n] === "");
-      return empty.length ? { ok: false, why: `not filled: ${empty.join(", ")}` } : { ok: true };
-    }
-    case "note": return Array.isArray(e.sources) && e.sources.length >= 1 && typeof e.note === "string" && e.note.trim() ? { ok: true } : { ok: false, why: "a note needs text and at least one source" };
-    case "draft": return typeof e.draft === "string" && facts.exists && (await facts.exists(e.draft)) ? { ok: true } : { ok: false, why: "no draft exists to check" };
-    case "sent": return e.payload && typeof e.payload === "object" && typeof e.action === "string" && typeof e.resource === "string" ? { ok: true } : { ok: false, why: "a send needs its canonical payload, action and resource" };
-    case "decision": return (e.answer === "yes" || e.answer === "no") && typeof e.reason === "string" && e.reason.trim() ? { ok: true } : { ok: false, why: "a decision needs yes or no and a reason" };
-    case "file": return typeof e.file === "string" && facts.exists && (await facts.exists(e.file)) ? { ok: true } : { ok: false, why: "no file was produced" };
-    default: return { ok: false, why: "unknown output kind" };
-  }
-}
 
 /**
  * @param {{ enforce?: (chain: any, d: any) => void, space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
@@ -289,74 +266,45 @@ export function createTasks(cfg) {
     if (t.doer.kind === "agent") return chain.hops.length >= 2 && same(chain.hops[0].actor, t.assigned_by);
     return true;
   };
-  // A role is resolved to the PEOPLE who hold it. A checker named directly is a person or, for an internal check only, an agent (rc1-d, 13 Oct): never the doer, and never for a send or a stage hold (see request).
-  /**
-   * A slot that has run past its due time passes to the role the author named (tasks v2 escalation): the role's holders, read live, join the slot's own for as long as the task is in that step. The due time starts
-   * when the task enters the step; the role and the due time are in the pinned guides the approval covers. Nobody the doer chain could reach holds it (the callers filter the doer and helpers as for any holder).
-   * @param {any} t @param {"reviewer" | "approver"} slot @returns {{ role: string, due_at: number } | null}
-   */
+  // A role is resolved to the PEOPLE who hold it, read live. A slot named directly is a person or, for an internal check only, an agent (rc1-d, 13 Oct): never the doer, and never for a send or a stage hold (see request).
+  /** The role a slot passed to once it ran past its due time (tasks v2 escalation), while the task is in that step. The declaration is in the pinned guides the approval covers; the clock starts on entering the step. @param {any} t @param {"reviewer" | "approver"} slot @returns {{ role: string, due_at: number } | null} */
   const escalatedTo = (t, slot) => {
-    const e = t.guides && t.guides.escalate && t.guides.escalate[slot];
-    const at = slot === "reviewer" ? t.review_due_at : t.approve_due_at;
-    if (!e || typeof at !== "number" || clock() <= at || t.state !== (slot === "reviewer" ? "in_review" : "needs_check")) return null;
-    return { role: e.role, due_at: at };
+    const e = t.guides && t.guides.escalate && t.guides.escalate[slot], at = slot === "reviewer" ? t.review_due_at : t.approve_due_at;
+    return e && typeof at === "number" && clock() > at && t.state === (slot === "reviewer" ? "in_review" : "needs_check") ? { role: e.role, due_at: at } : null;
   };
   /** The due time a slot gets on entering its step, from the escalation the task declared. @param {any} t @param {"reviewer" | "approver"} slot */
   const dueOn = (t, slot) => { const e = t.guides && t.guides.escalate && t.guides.escalate[slot]; return e ? { [slot === "reviewer" ? "review_due_at" : "approve_due_at"]: clock() + e.due_ms } : {}; };
-  const checkersOf = (/** @type {any} */ t) => {
-    const c = t.checker;
-    if (!c) return [];
-    const up = escalatedTo(t, "approver");
-    const extra = up ? roleHolders(up.role).filter((/** @type {any} */ a) => a && a.kind === "person") : [];
-    const own = c.role ? roleHolders(c.role).filter((/** @type {any} */ a) => a && a.kind === "person") : [c].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent"));
-    return [...own, ...extra].filter((/** @type {any} */ a, /** @type {number} */ i, /** @type {any[]} */ l) => !same(a, t.doer) && l.findIndex((/** @type {any} */ b) => same(a, b)) === i);
+  const personsOf = (/** @type {string} */ role) => roleHolders(role).filter((/** @type {any} */ a) => a && a.kind === "person");
+  /** Who holds a slot now: the one named or the role's people, plus the role a late slot passed to; never the doer. @param {any} t @param {"reviewer" | "approver"} slot @param {any} ref */
+  const slotHolders = (t, slot, ref) => {
+    const up = escalatedTo(t, slot), own = ref.role ? personsOf(ref.role) : [ref].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent"));
+    return [...own, ...(up ? personsOf(up.role) : [])].filter((/** @type {any} */ a, /** @type {number} */ i, /** @type {any[]} */ l) => !same(a, t.doer) && l.findIndex((/** @type {any} */ b) => same(a, b)) === i);
   };
+  const checkersOf = (/** @type {any} */ t) => (t.checker ? slotHolders(t, "approver", t.checker) : []);
   /** One line of a task's activity: who did what and when; a progress note rides as text (kept in the task store, hashed in the log). Capped at 100 lines. */
   const ACTIVITY_MAX = 100;
   const moreActivity = (/** @type {any} */ t, /** @type {any} */ who, /** @type {string} */ what, /** @type {string | undefined} */ text) =>
     deepFreeze([...(t.activity || []), { who: { kind: who.kind, id: who.id }, what, at: clock(), ...(text ? { note: text } : {}) }].slice(-ACTIVITY_MAX));
-  /**
-   * The reviewer slot (tasks v2): a person, an agent or a role, resolved to who may review NOW. Never the doer or a helper; a role is read live each time, so a person removed from it stops being a reviewer
-   * at once. Whether the call itself comes through the doer is the chain check in `review`.
-   */
-  const reviewersOf = (/** @type {any} */ t) => {
-    const r = t.reviewer;
-    if (!r) return [];
-    const up = escalatedTo(t, "reviewer");
-    const own = r.role ? roleHolders(r.role).filter((/** @type {any} */ a) => a && a.kind === "person") : [r].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent"));
-    const out = [...own, ...(up ? roleHolders(up.role).filter((/** @type {any} */ a) => a && a.kind === "person") : [])].filter((/** @type {any} */ a, /** @type {number} */ i, /** @type {any[]} */ l) => l.findIndex((/** @type {any} */ b) => same(a, b)) === i);
-    return out.filter((/** @type {any} */ a) => !same(a, t.doer) && !(t.helpers || []).some((/** @type {any} */ h) => same(h, a)));
-  };
+  /** The reviewer slot (tasks v2): who may review NOW, never the doer or a helper; whether the call comes through the doer is the chain check in `review`. */
+  const reviewersOf = (/** @type {any} */ t) => (t.reviewer ? slotHolders(t, "reviewer", t.reviewer).filter((/** @type {any} */ a) => !(t.helpers || []).some((/** @type {any} */ h) => same(h, a))) : []);
   /** Everyone who may read a task because of a slot they hold: its checkers and its reviewers. */
   const holdersOf = (/** @type {any} */ t) => [...checkersOf(t), ...reviewersOf(t), ...poolHolders(t)];
-  /**
-   * What an approval after a review also covers (DESIGN-tasks-v2 rule 7): the review result, its checklist and its note by hash. Null when the task was not reviewed. The approver's proof is over this
-   * as well, so a review that changed after the card was shown, or no review where one was passed, does not match what was signed.
-   */
+  /** What an approval after a review also covers (DESIGN-tasks-v2 rule 7): the review result, its checklist and its note by hash, or null when the task was not reviewed; the approver's proof is over it. */
   const reviewHashOf = (/** @type {any} */ t) => (t.review ? sha256(canonical({ review: t.review, note: t.review_note !== undefined ? sha256(canonical(t.review_note)) : null })) : null);
-  /** The slots' instructions and pinned skills (id, content hash, checklist) by hash, for the body an approval covers; nothing when the task has none. They cannot change after the request, so no later edit can undo what was signed. @param {any} t */
+  /** The slots' instructions and pinned skills (with escalation) by hash, for the body an approval covers; they cannot change after the request. @param {any} t */
   const guideHash = (t) => (t.guides !== undefined ? { guide_hash: sha256(canonical(t.guides)) } : {});
-  /** The reviewer's pinned checklist as the items a pass must answer, and the hash of what it was judged against. @param {any} t */
+  /** The reviewer's pinned checklist as the items a pass must answer. @param {any} t */
   const pinnedItems = (t) => ((t.guides && t.guides.skills && t.guides.skills.reviewer) || []).flatMap((/** @type {any} */ k) => k.checklist.map((/** @type {string} */ item) => ({ skill: k.id, item })));
-  /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
+  /** The details and outputs the doer gave, by hash, for the approval's body (nothing when there are none). @param {any} t */
   const taskDataHash = (t) => (t.details !== undefined || t.outputs !== undefined ? { task_data_hash: sha256(canonical({ details: t.details ?? null, outputs: t.outputs ?? [] })) } : {});
-  /**
-   * The skills a slot is held to are the ones pinned when the task was made. Before the holder works, reviews or approves, each is asked for again as the holder's own chain: a skill that changed since, or that the
-   * holder may not read, stops the step (the holder would follow text the hash does not cover). One refusal for both, so it says nothing about what the holder cannot read.
-   * @param {any} chain @param {any} t @param {"doer" | "reviewer" | "approver"} slot
-   */
+  /** A slot is held to the skills pinned at the request: before the holder works, reviews or approves, each is asked for again as the holder's own chain, and a changed or unreadable one stops the step (one refusal for both). @param {any} chain @param {any} t @param {"doer" | "reviewer" | "approver"} slot */
   const pinsHold = async (chain, t, slot) => {
     for (const k of (t.guides && t.guides.skills && t.guides.skills[slot]) || []) {
       const now = cfg.skills ? await cfg.skills.pin(k.id, chain) : null;
       if (!now || now.hash !== k.hash) throw new KernelError("bad_state", `skill ${k.id.slice(0, 80)} changed since this task was made, or you may not use it`);
     }
   };
-  /**
-   * Taking a group task (tasks v2): the first holder of the group's role to start it owns it. The check and the write run with nothing awaited between them, so two takers cannot both win; the later one is
-   * refused already_taken. Membership is read now, so a person taken out of the role cannot take it and a holder removed later loses the hold at once (isDoer) and another may take it. An agent takes it only when
-   * it is itself a member of the role. Nobody takes a task they would then review or approve, or one nobody else could.
-   * @param {any} chain @param {string} id @param {any} decision
-   */
+  /** Taking a group task: the first holder of the role to start it owns it. Check and write have no await between them, so of two takers one wins (the later gets already_taken); membership is read now, a holder removed later loses the hold at once (isDoer), and nobody takes a task they would then review or approve. @param {any} chain @param {string} id @param {any} decision */
   const claimPool = async (chain, id, decision) => {
     const who = acting(chain);
     if (who.kind === "person" ? !actsAsPerson(chain) : who.kind !== "agent") throw new KernelError("not_allowed", "only a person or an assistant of the group takes this task");
@@ -372,7 +320,7 @@ export function createTasks(cfg) {
     note(chain, "task.taken", n, { by: { kind: who.kind, id: who.id }, group: t.pool.role }, decision);
     return n;
   };
-  /** What the approver's key signs for this task: the task, the payload hash, the decision, and the review result's hash when it was reviewed. One place builds it, for the check in decide and for the card that tells a client what to sign. @param {any} t */
+  /** What the approver's key signs: the task, the payload hash, the decision and, once reviewed, the review hash; one place builds it for decide's check and for the card. @param {any} t */
   const decideFields = (t) => ({ task: t.id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, ...(reviewHashOf(t) ? { review_hash: reviewHashOf(t) } : {}) });
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
@@ -479,17 +427,18 @@ export function createTasks(cfg) {
           else throw new KernelError(reviewer.role ? "no_checker" : "same_actor", reviewer.role ? "no person other than the doer holds that role" : "the reviewer must be someone other than the doer");
         }
       }
-      // Per-slot instructions (plain text, at most 2000 characters each) and Space skills (up to 10 ids), pinned now by content hash with their checklists: a later edit to a skill does not change this task.
+      // Per-slot instructions (text, at most 2000 characters each) and Space skills (up to 10 ids, pinned now by content hash with their checklists, so a later edit to a skill does not change this task), and the role a slot that
+      // runs late passes to (only an owner or an admin names one, so a role never hands the task to people who could not have read it). All in the guides the approval covers.
       let guides;
       if (spec.instructions !== undefined || spec.skills !== undefined || spec.escalation !== undefined) {
-        const SLOTS = ["doer", "reviewer", "approver"];
-        const ins = spec.instructions === undefined ? {} : spec.instructions, sk = spec.skills === undefined ? {} : spec.skills;
-        const plain = (/** @type {any} */ o) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every(k => SLOTS.includes(k));
-        if (!plain(ins) || !plain(sk)) throw new KernelError("bad_input", "instructions and skills are given per slot: doer, reviewer or approver");
-        if (Object.entries(ins).some(([k, v]) => typeof v !== "string" || v.length > 2000 || (k === "reviewer" && !reviewer) || (k === "approver" && !checker))) throw new KernelError("bad_input", "an instruction is text of at most 2000 characters, for a slot the task has");
+        const SLOTS = ["doer", "reviewer", "approver"], has = (/** @type {string} */ k) => k === "doer" || Boolean(k === "reviewer" ? reviewer : checker);
+        const ins = spec.instructions === undefined ? {} : spec.instructions, sk = spec.skills === undefined ? {} : spec.skills, esc = spec.escalation === undefined ? {} : spec.escalation;
+        const plain = (/** @type {any} */ o, /** @type {string[]} */ ks) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every(k => ks.includes(k));
+        if (!plain(ins, SLOTS) || !plain(sk, SLOTS)) throw new KernelError("bad_input", "instructions and skills are given per slot: doer, reviewer or approver");
+        if (Object.entries(ins).some(([k, v]) => typeof v !== "string" || v.length > 2000 || !has(k))) throw new KernelError("bad_input", "an instruction is text of at most 2000 characters, for a slot the task has");
         const pinned = /** @type {any} */ ({});
         for (const [k, ids] of Object.entries(sk)) {
-          if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80) || new Set(ids).size !== ids.length) throw new KernelError("bad_input", "skills are up to 10 different Space skill ids, for a slot the task has");
+          if (!has(k) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80) || new Set(ids).size !== ids.length) throw new KernelError("bad_input", "skills are up to 10 different Space skill ids, for a slot the task has");
           pinned[k] = [];
           for (const i of ids) {
             const found = cfg.skills ? await cfg.skills.pin(i, chain, spec.space_skills === true) : null;
@@ -498,17 +447,15 @@ export function createTasks(cfg) {
           }
           pinned[k] = freeze(pinned[k]);
         }
-        // a review answers every pinned item, and a review holds at most 60 answers: more than that could never be reviewed
-        if (((pinned.reviewer || []).reduce((n, k) => n + k.checklist.length, 0)) > 60) throw new KernelError("bad_input", "the reviewer's skills together have more than 60 checklist items: use fewer or shorter checklists");
-        // A slot that runs late passes to a role (escalation): the author's declaration, in the guides the approval covers. Only an owner or an admin names one, so a role never hands the task to people who could not have read it.
-        const esc = spec.escalation === undefined ? {} : spec.escalation;
-        if (!esc || typeof esc !== "object" || Array.isArray(esc) || Object.keys(esc).some(k => k !== "reviewer" && k !== "approver")) throw new KernelError("bad_input", "escalation is { reviewer?, approver? }, each { due_ms, to: { role } }");
+        // a review answers every pinned item and holds at most 60 answers: more than that could never be reviewed
+        if ((pinned.reviewer || []).reduce((n, k) => n + k.checklist.length, 0) > 60) throw new KernelError("bad_input", "the reviewer's skills together have more than 60 checklist items: use fewer or shorter checklists");
+        if (!plain(esc, SLOTS.slice(1))) throw new KernelError("bad_input", "escalation is { reviewer?, approver? }, each { due_ms, to: { role } }");
         const escalate = /** @type {any} */ ({});
         for (const [k, e] of Object.entries(esc)) {
-          if ((k === "reviewer" && spec.reviewer_quorum === "all") || (k === "approver" && spec.quorum === "all")) throw new KernelError("bad_input", "a slot that needs everyone cannot also pass to a role when it runs late: use quorum any, or no escalation");
-          if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !e || typeof e !== "object" || !Number.isInteger(e.due_ms) || e.due_ms < 60_000 || e.due_ms > 90 * 86_400_000 || !e.to || typeof e.to.role !== "string" || !e.to.role || Object.keys(e.to).length !== 1) throw new KernelError("bad_input", "an escalation is { due_ms (a minute to 90 days), to: { role } } for a slot the task has");
+          if (k === "reviewer" ? spec.reviewer_quorum === "all" : spec.quorum === "all") throw new KernelError("bad_input", "a slot that needs everyone cannot also pass to a role when it runs late: use quorum any, or no escalation");
+          if (!has(k) || !e || typeof e !== "object" || !Number.isInteger(e.due_ms) || e.due_ms < 60_000 || e.due_ms > 90 * 86_400_000 || !e.to || typeof e.to.role !== "string" || !e.to.role || Object.keys(e.to).length !== 1) throw new KernelError("bad_input", "an escalation is { due_ms (a minute to 90 days), to: { role } } for a slot the task has");
           if (!chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person" && isStaffRole(cfg.members.roleOf ? cfg.members.roleOf(h.actor) : null))) throw new KernelError("not_allowed", "only an owner or an admin names the role a late slot passes to");
-          if (!roleHolders(e.to.role).some((/** @type {any} */ a) => a && a.kind === "person")) throw new KernelError("no_checker", "nobody holds the role a late slot passes to");
+          if (!personsOf(e.to.role).length) throw new KernelError("no_checker", "nobody holds the role a late slot passes to");
           escalate[k] = freeze({ due_ms: e.due_ms, role: e.to.role });
         }
         guides = deepFreeze({ instructions: structuredClone(ins), skills: pinned, ...(Object.keys(escalate).length ? { escalate } : {}) });
@@ -564,16 +511,12 @@ export function createTasks(cfg) {
       return !cfg.mayReadTask || await cfg.mayReadTask(chain, v, holdersOf(t)) ? v : null;
     },
 
-    /**
-     * The tasks this chain may read, filtered: by record, doer id, checker id (a named checker or one of the persons a role resolves to) and state. Each task goes through the same `tasks.read`
-     * gate `get` uses, so a task the chain may not read is absent, never marked. Oldest first.
-     * @param {any} chain @param {{ record?: string, doer?: string, checker?: string, approver?: string, reviewer?: string, mine?: string, state?: string[] }} [q]
-     */
+    /** The tasks this chain may read, filtered by record, doer, checker, reviewer, mine (the caller's own slots) and state; each goes through the `tasks.read` gate `get` uses, so one the chain may not read is absent. Oldest first. @param {any} chain @param {{ record?: string, doer?: string, checker?: string, approver?: string, reviewer?: string, mine?: string, state?: string[] }} [q] */
     async list(chain, q = {}) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       const out = [];
       if (q.mine !== undefined && !["assigned", "reviewing", "approving"].includes(q.mine)) throw new KernelError("bad_input", "mine is assigned, reviewing or approving");
-      // "mine" is the caller's own slots, read from the chain and never from input: the person, the assistant acting now, and every role either holds (read live).
+      // "mine" is the caller's own slots, from the chain and never from input: the person, the assistant acting now, and every role either holds (read live).
       const me = q.mine ? [chain.hops[0].actor, acting(chain)].filter((/** @type {any} */ a, /** @type {number} */ i, /** @type {any[]} */ l) => a && l.findIndex((/** @type {any} */ b) => same(a, b)) === i) : [];
       const isMe = (/** @type {any} */ a) => me.some((/** @type {any} */ m) => same(m, a));
       const holds = (/** @type {any} */ slot) => Boolean(slot) && (slot.role ? roleHolders(slot.role).some(isMe) : isMe(slot));
@@ -660,11 +603,7 @@ export function createTasks(cfg) {
       return n;
     },
 
-    /**
-     * The doer's (or a helper's) work in progress, for an agent or a person: details (plain data), a progress note and references to what was made (tasks v2). Only while the task is ready, working
-     * or changes_requested, so nothing changes under a reviewer or an approver; every call adds a line to the activity. Rechecked against the caller's hold on every write.
-     * @param {any} chain @param {string} id @param {{ details?: any, note?: string, outputs?: string[] }} a
-     */
+    /** The doer's (or a helper's) work in progress: details (plain data), a progress note and references to what was made; only while the task is ready, working or has changes requested; every call adds a line to the activity. @param {any} chain @param {string} id @param {{ details?: any, note?: string, outputs?: string[] }} a */
     async update(chain, id, a) {
       const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
@@ -690,11 +629,7 @@ export function createTasks(cfg) {
       return n;
     },
 
-    /**
-     * The reviewer's pass or request for changes (tasks v2). Only the reviewer slot's holder, only while the task is In review, never the doer, a helper or anyone reached through the doer's chain. A pass never
-     * frees an outward output and never satisfies the approval: it moves the task to the approver, or to done when the task has none and nothing leaves. The result is stored on the task and bound by hash.
-     * @param {any} chain @param {string} id @param {{ result: "pass" | "changes", checklist?: { skill: string, item: string, ok: boolean }[], note?: string }} a
-     */
+    /** The reviewer's pass or request for changes: only the reviewer slot's holder, only while In review, never the doer, a helper or anyone reached through the doer's chain. A pass never frees an outward output or satisfies the approval. @param {any} chain @param {string} id @param {{ result: "pass" | "changes", checklist?: { skill: string, item: string, ok: boolean }[], note?: string }} a */
     async review(chain, id, a) {
       const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
@@ -737,18 +672,18 @@ export function createTasks(cfg) {
         }
         reviewOut = freeze({ ...review, also: freeze(passes.filter((/** @type {any} */ p) => !same(p.by, who)).map((/** @type {any} */ p) => p.review)) });
       }
-      const to = needsCheck(t) ? "needs_check" : "done";
+      const to = needsCheck(t) ? "needs_check" : "done", by = { kind: who.kind, id: who.id };
+      const kept = { review: reviewOut, review_passes: freeze([]), ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass") };
       rule(t, to, "reviewer_pass");
-      if (to === "done") {
-        const body = bodies.get(id);
-        const answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
-        const n = put(t, { state: "done", review: reviewOut, review_passes: freeze([]), ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass"), ...(answer !== undefined ? { answer } : {}) });
-        note(chain, "task.completed", n, { reviewed_by: { kind: who.kind, id: who.id }, output: t.output.kind, ...(answer !== undefined ? { answer } : {}) }, d.decision);
-        promote(chain);
+      if (to === "needs_check") {
+        const n = put(t, { state: to, ...dueOn(t, "approver"), ...kept });
+        note(chain, "task.review-passed", n, { by, note: text, checklist: review.checklist.length }, d.decision);
         return n;
       }
-      const n = put(t, { state: "needs_check", ...dueOn(t, "approver"), review: reviewOut, review_passes: freeze([]), ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass") });
-      note(chain, "task.review-passed", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
+      const body = bodies.get(id), answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
+      const n = put(t, { state: "done", ...kept, ...(answer !== undefined ? { answer } : {}) });
+      note(chain, "task.completed", n, { reviewed_by: by, output: t.output.kind, ...(answer !== undefined ? { answer } : {}) }, d.decision);
+      promote(chain);
       return n;
     },
 
@@ -786,22 +721,14 @@ export function createTasks(cfg) {
       // The checker is resolved to people when the task is made and again now; an assistant that holds the role is filtered out.
       if (!checkersOf(t).some((/** @type {any} */ c) => same(c, person)) || same(person, t.doer)) throw new KernelError("not_allowed", "you are not this task's checker");
       if (a.outcome === "approved") await pinsHold(chain, t, "approver");
-      if (a.outcome === "rejected") {
-        if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
-        rule(t, "ready", "checker");
-        const { payload: _p, approvals: _aps, ...rest } = t;
-        stage(id, freeze({ ...rest, state: "ready", outcome: "rejected", updated_at: clock() }));
-        note(chain, "task.rejected", tasks.get(id), { reason: a.reason.slice(0, 400) }, d.decision);
-        bodies.delete(id);
-        return tasks.get(id);
-      }
-      if (a.outcome === "declined") {
-        const text = String(a.reason ?? "").slice(0, FIX_CAP);
-        if (!text.trim()) throw new KernelError("bad_input", "declining a task needs a reason");
-        rule(t, "declined", "checker");
-        const { payload: _p, approvals: _aps, ...rest } = t;
-        stage(id, freeze({ ...rest, state: "declined", declined_reason: text, declined_by: freeze({ kind: "person", id: person.id }), updated_at: clock() }));
-        note(chain, "task.declined", tasks.get(id), { by: { kind: "person", id: person.id }, reason: text }, d.decision);
+      if (a.outcome === "rejected" || a.outcome === "declined") {
+        // a rejection sends the draft back to its doer; a decline ends that task (Declined): both need a reason, drop the payload and the kept yeses, and release nothing
+        const dec = a.outcome === "declined", given = typeof a.reason === "string" && a.reason.trim(), text = given ? a.reason.slice(0, FIX_CAP) : "";
+        if (!given) throw new KernelError("bad_input", `${dec ? "declining a task" : "a rejection"} needs a reason`);
+        rule(t, dec ? "declined" : "ready", "checker");
+        const { payload: _p, approvals: _aps, ...rest } = t, by = freeze({ kind: "person", id: person.id });
+        stage(id, freeze({ ...rest, ...(dec ? { state: "declined", declined_reason: text, declined_by: by } : { state: "ready", outcome: "rejected" }), updated_at: clock() }));
+        note(chain, dec ? "task.declined" : "task.rejected", tasks.get(id), { ...(dec ? { by } : {}), reason: text }, d.decision);
         bodies.delete(id);
         return tasks.get(id);
       }
