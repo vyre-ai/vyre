@@ -103,6 +103,8 @@ jobs:
       - run: rm -rf dist && npx expo export -p web --output-dir dist --clear
       - name: Every file name is one the release manifest accepts
         run: node scripts/check-export-names.mjs dist
+      - name: No demo, gallery, proof or screenshot page in the release export (metro.config.js leaves them out of a real build; scripts/sample-routes.js lists them)
+        run: node scripts/check-release-routes.mjs dist
       - name: Playwright (outside the repo), for the render check
         run: |
           echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"

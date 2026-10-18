@@ -30,18 +30,17 @@ test("every demo, gallery, proof and screenshot page is in the list, and no real
 });
 
 test("no real screen links to a blocked page", () => {
-  const names = [...MOCK_ONLY, ...PROOF_OR_MOCK].filter((n) => !n.includes("["));
-  const dirs = ["screens", "ui", "src", "modules"].map((d) => path.join(app, d));
+  const alt = [...MOCK_ONLY, ...PROOF_OR_MOCK].join("|");
+  const link = new RegExp(`["'\`]/(${alt})[?"'\`/]`);
   /** @type {string[]} */ const hits = [];
   const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const f = path.join(dir, e.name);
     if (e.isDirectory()) { if (e.name !== "node_modules") walk(f); continue; }
     if (!/\.(tsx?|js|mjs)$/.test(e.name) || /\.test\.|\.generated\./.test(e.name)) continue;
-    const text = fs.readFileSync(f, "utf8");
-    for (const n of names) if (new RegExp(`(router\\.(push|replace)|href=|navigate|go)\\(?[^\\n]{0,40}["'\`]/(u/)?${n.replace(/^u\//, "")}\\b`).test(text) || new RegExp(`["'\`]/${n}["'?\`]`).test(text) && !/^\s*(\/\/|\*)/m.test(text.split("\n").find((l) => l.includes(`/${n}`)) ?? "")) hits.push(`${path.relative(app, f)} -> ${n}`);
+    fs.readFileSync(f, "utf8").split("\n").forEach((line, n) => { if (!/^\s*(\/\/|\*)/.test(line) && link.test(line)) hits.push(`${path.relative(app, f)}:${n + 1}`); });
   } };
-  for (const d of dirs) if (fs.existsSync(d)) walk(d);
-  assert.deepEqual(hits.filter((h) => !/mock-stream|setup-gate|lock-gate/.test(h)), [], "a link to a page a release does not have");
+  for (const d of ["screens", "ui", "src", "modules"]) if (fs.existsSync(path.join(app, d))) walk(path.join(app, d));
+  assert.deepEqual(hits, [], "a link to a page a release does not have");
 });
 
 test("the release export check finds a blocked page by its chunk or by the router's file map, and passes a clean export", () => {
