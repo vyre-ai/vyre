@@ -3,7 +3,7 @@
 // makes a record (records.create) mints it for a type that has a `ref` field and refuses a change to it (records.update).
 
 /** The prefix of each starting type; any other type uses its first three letters. */
-export const REF_PREFIX = Object.freeze({ contact: "PER", organization: "ORG", task: "TSK", memo: "NOT" });
+export const REF_PREFIX = Object.freeze({ contact: "PER", organization: "ORG", task: "TSK", note: "NOT" });
 
 /** @param {string} type */
 export const refPrefix = (type) => /** @type {Record<string, string>} */ (REF_PREFIX)[type] || (String(type).replace(/[^a-z0-9]/gi, "").slice(0, 3).toUpperCase() || "REC");

@@ -348,6 +348,13 @@
               "required": true
             },
             {
+              "name": "ref",
+              "kind": "text",
+              "label": "ID",
+              "unique": true,
+              "read_only": true
+            },
+            {
               "name": "state",
               "kind": "choice",
               "label": "State",
