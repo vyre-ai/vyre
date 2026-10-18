@@ -10,6 +10,7 @@ import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { KIND_LOGIC, normalizeKind } from "../fields/logic.js";
+import { parseAsk } from "./ask-filter.js";
 import { CREATED, DATE_PRESETS, chipWords, datePreset, filterableFields } from "./listfilter.js";
 import type { Chip as FilterChip } from "./listfilter.js";
 import { isTagsField, tagChip } from "../tags/model.js";
@@ -22,13 +23,24 @@ export type ListCtx = { /** Every tag the records carry: the tag filter offers t
  * a press removes, and "Save as view". A filter is built from the type's own fields (grouped as the type groups them): the field, how (that kind's own operators), and a value
  * picked, not typed, where the field has choices, people or links. Nothing here knows a record type.
  */
-export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions }: {
+export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch, chips, onChips, def, ctx, onSave, saveNote, onImport, onExport, actions, askBar }: {
+  /** Given, a "Say what you want to see" bar sits under the toolbar: the sentence becomes filters and a search (ask-filter.js). */ askBar?: boolean;
   title: React.ReactNode; noun: string; shown: number; total: number; query: string; onQuery: (q: string) => void; chips: FilterChip[]; onChips: (c: FilterChip[]) => void; def: any; ctx: ListCtx;
   /** Given, the page has no search box of its own: a search icon opens the main search on this page's scope. */ onSearch?: () => void; /** Given, "Save as view" shows when there are filters. */ onSave?: () => void; /** Why some filters will not be kept by a saved view. */ saveNote?: string; /** Given, an Import button sits beside Filter. */ onImport?: () => void; /** Given, an Export CSV button sits beside Import (web only: the caller leaves it out elsewhere). */ onExport?: () => void; /** Buttons at the end of the search row (New agent, New lead). */ actions?: React.ReactNode;
 }) {
   const { phone } = useUiTheme();
   const ref = useRef<TextInput>(null);
   const [adding, setAdding] = useState(false);
+  const [sentence, setSentence] = useState("");
+  const [heard, setHeard] = useState("");
+  const ask = () => {
+    const r = parseAsk(sentence, def, { me: ctx.me, now: ctx.now });
+    if (!r.chips.length && !r.query) { setHeard(""); return; }
+    onChips([...chips, ...r.chips]);
+    if (r.query) onQuery([query, r.query].filter(Boolean).join(" "));
+    setSentence("");
+    setHeard([r.said.length ? `Showing ${r.said.join(", ")}` : "", r.query ? `searching for ${r.query}` : "", r.unused.length ? `could not use ${r.unused.join(", ")}` : ""].filter(Boolean).join("; "));
+  };
   // "/" jumps to the search, as in most tools a person uses all day (web only; a phone has no keyboard shortcut).
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -57,6 +69,12 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch
         {actions}
         {chips.length && onSave ? <Button kind="ghost" size="sm" icon="pin" label="Save as view" onPress={onSave} /> : null}
       </View>
+      {askBar ? (
+        <View className="gap-s1">
+          <Field name="Say what you want to see" value={sentence} onChangeText={setSentence} placeholder="Say what you want to see, like 'clients with no meeting this month'" onSubmit={ask} />
+          {heard ? <Text size="caption" tone="label">{heard}</Text> : null}
+        </View>
+      ) : null}
       {chips.length || query ? (
         <View className="flex-row flex-wrap items-center gap-s2">
           {chips.map((c, i) => <Chip key={i} icon="x" onPress={() => onChips(chips.filter((_, k) => k !== i))}>{chipWords(def, c, ctx)}</Chip>)}
