@@ -7,6 +7,8 @@ import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
 import { useTypeLayout } from "./layout-state";
 import { LayoutControls } from "./LayoutControls";
+import { FirstVisit } from "./FirstVisit";
+import { isDayOne, sampleCount } from "./first-visit.js";
 import { isStageGroup } from "./move-rule.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
@@ -170,6 +172,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </>
         )}
       </View>
+      <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one. */}
       <View className="flex-row items-center gap-s2">
         <View className="min-w-0 flex-1">
