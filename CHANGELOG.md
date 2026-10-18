@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the copy sheet for one key reads "once to read the key from A", not "each of the key" (ai-accounts-model test).
 - fix(runner): a computer that comes back in contact while its sessions are still being stopped after a lease end opens the workspace again, and the late closing leaves it alone. Before, the lock chain could finish after the new lease and the workspace stayed closed with the key held (the lease-ends test timed out waiting for the remount).
 - refactor(skills): the zip reader, the skill homes table and the plugin layout table moved to lib/ (zip.js, skill-homes.js, plugin-layout.js), so core/skills no longer imports the vault or the session drivers (boundaries test).
 - fix(app): the first-run key screen asks the credential table, not a prefix of its own, whether a typed key is an Anthropic key (credential-shapes-single test).

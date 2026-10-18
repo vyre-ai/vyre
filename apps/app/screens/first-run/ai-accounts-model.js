@@ -66,7 +66,7 @@ export function copyWords({ from, to, count }) {
   return {
     title: "Use your AI accounts here too?",
     lead: `Copy keys from ${from} to ${to}. ${to} keeps each key in your own Vault.`,
-    confirm: count === 0 ? "Nothing to confirm." : `You'll confirm ${asks} times: once to read each of ${count === 1 ? "the key" : `the ${count} keys`} from ${from}, and once to add ${count === 1 ? "it" : "them"} to ${to}.`,
+    confirm: count === 0 ? "Nothing to confirm." : `You'll confirm ${asks} times: once to read ${count === 1 ? "the key" : `each of the ${count} keys`} from ${from}, and once to add ${count === 1 ? "it" : "them"} to ${to}.`,
     again: "Sign in again on the new Space",
     button: (/** @type {number} */ n) => (n === 1 ? "Copy 1 account" : `Copy ${n} accounts`),
   };
