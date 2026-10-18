@@ -313,7 +313,9 @@ export function createFlows(o) {
     "flows.step.test": async (chain, i) => {
       const flow = i.flow || (await view(need(i, "id", "the Flow's id (flows.list), or flow: an unsaved Flow"), [i.version])).flow;
       const approver = personOf({ hops: [chain.hops[0]] });
-      return runner.testStep(flow, String(need(i, "step", "the step's id")), { approver, ...(i.run !== undefined ? { run: i.run } : {}), ...(i.sample !== undefined ? { sample: i.sample } : {}), ...(typeof i.id === "string" && i.id ? { flowId: i.id } : {}) });
+      // a past run's recorded data is read only for a run of a Flow that is named (id; `flow` may then be an unsaved version of that same Flow), and with the same hiding flows.run applies for this viewer
+      if (i.run !== undefined && !(typeof i.id === "string" && i.id)) throw Object.assign(new Error("to try a step on a past run, name the Flow the run belongs to (id); flow may then be an unsaved version of it"), { code: "bad_input" });
+      return runner.testStep(flow, String(need(i, "step", "the step's id")), { approver, ...(i.run !== undefined ? { run: i.run } : {}), ...(i.sample !== undefined ? { sample: i.sample } : {}), ...(typeof i.id === "string" && i.id ? { flowId: i.id } : {}), ...(typeof i.hide_for === "string" && i.hide_for ? { hideFor: i.hide_for } : {}) });
     },
     "flows.simulate": async (chain, i) => {
       const c = await cat();

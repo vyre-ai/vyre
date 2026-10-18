@@ -147,6 +147,15 @@ export default {
             // A chain whose first hop is not a person skips this: that is the host's own service and agent chains only. A member's MCP key chain always starts with the person.
             if (me && role !== "owner" && role !== "admin") return inspectAsMember(f, name, rest, chain, me, role);
           }
+          if (name === "flows.step.test") {
+            // the hiding is the same flows.run applies for this viewer, worked out here and never taken from the caller
+            const { hide_for: _ignored, ...own } = rest;
+            const first = chain.hops && chain.hops[0] ? chain.hops[0].actor : null, me = first && first.kind === "person" ? String(first.id) : "";
+            const role = me && f.roleOf ? f.roleOf(me) : "";
+            const run = own.run && f.flows.store.getRun ? await f.flows.store.getRun(String(own.run)).catch(() => null) : null;
+            const hf = run ? hideFor(run, me, role === "owner" || role === "admin") : null;
+            return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
+          }
           const out = await f.flows.tools[INNER(name)](chain, rest);
           // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow
           if (name === "flows.from-chat" && out && out.ok && out.id && typeof rest.chat === "string" && rest.chat) await ctx.call("work.flow.origin", { flow: String(out.id), chat: rest.chat }, { relay: true }).catch(() => null);
