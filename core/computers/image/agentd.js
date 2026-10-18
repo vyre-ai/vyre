@@ -70,7 +70,7 @@ function asUid(uid, user, home, lim, env) {
   const vars = { HOME: home, USER: user, LOGNAME: user, PATH: PATH_SAFE, LANG: "C.UTF-8", ...env };
   const u = { uid };
   return ["/usr/bin/setpriv", `--reuid=${u.uid}`, `--regid=${u.uid}`, "--clear-groups", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--no-new-privs",
-    "--", "/usr/bin/prlimit", `--as=${(lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
+    "--", "/usr/bin/prlimit", `--as=${lim.memoryMb === 0 ? "unlimited" : (lim.memoryMb ?? 3072) * 1024 * 1024}`, `--nproc=${lim.procs ?? 512}`, `--nofile=${lim.nofile ?? 4096}`, `--fsize=${(lim.fsizeMb ?? 4096) * 1024 * 1024}`,
     ...(lim.cpuSeconds ? [`--cpu=${lim.cpuSeconds}`] : []), "/usr/bin/nice", "-n", "5",
     "/usr/bin/env", "-i", ...Object.entries(vars).map(([k, v]) => `${k}=${v}`)];
 }
@@ -120,7 +120,8 @@ export function planStartScreen(u, lim = {}) {
     [...bs(), "/usr/bin/chmod", "0640", b.xauth],
     longRunning([...bs(onScreen), "/usr/bin/fluxbox"]),
     // Chrome is started by a holder that keeps Chrome's debugging pipe (no TCP debug port): agentd-chrome.py, with no argument. The profile, the pipe's socket and the memory are the browser uid's too. The profile survives sleep.
-    longRunning([...bs(), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
+    // No address-space cap on Chrome (memoryMb 0): it reserves far more virtual memory than it uses, and under RLIMIT_AS it dies at start (security-live 18 Oct). Its memory is held by the computer's own limit and its process count by --nproc.
+    longRunning([...asBrowser(u, { ...lim, memoryMb: 0 }), "/usr/bin/python3", "-I", "/opt/agentd/agentd-chrome.py"]),
   ];
 }
 

@@ -10,7 +10,7 @@ import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const B = { user: "ag20001", uid: 20001, display: 21 };
 const flat = steps => steps.map(s => s.join(" "));
-const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=\d+ --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
+const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=(?:\d+|unlimited) --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
 
 test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
@@ -107,6 +107,15 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
   await execute(planWipeHome(U), run, { tolerate: tolerant });
   assert.equal(ran.length, planWipeHome(U).length, "every step ran: the stops that fail are tolerated");
   await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv.includes("/usr/bin/find")) throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
+});
+
+test("Chrome alone has no address-space cap (it dies at start under RLIMIT_AS); every other agent process keeps the finite one", () => {
+  const steps = planStartScreen(U).map(s => s.join(" "));
+  const chrome = steps.filter(s => s.includes("agentd-chrome.py"));
+  assert.equal(chrome.length, 1);
+  assert.match(chrome[0], /prlimit --as=unlimited --nproc=512 /, "no address-space cap, the process cap stays");
+  assert.ok(steps.filter(s => !s.includes("agentd-chrome.py")).every(s => /prlimit --as=3221225472 /.test(s)), "the screen, the window manager and the helpers keep 3 GiB");
+  assert.match(asAgent(U, { memoryMb: 0 }).join(" "), /--as=unlimited/);
 });
 
 test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
