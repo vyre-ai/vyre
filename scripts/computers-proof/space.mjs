@@ -75,6 +75,10 @@ try {
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
   console.log("--- last vyred log lines\n" + logs.slice(-25).join("\n"));
   console.log("--- every csproof container\n" + shOk(["ps", "-a", "--filter", `name=${PREFIX}-`, "--format", "{{.Names}}|{{.Status}}"]));
-  console.log("--- container log\n" + shOk(["logs", "--tail", "40", SHARED]));
+  const both = cmd => { try { return execFileSync("sh", ["-c", cmd], { encoding: "utf8", timeout: 60_000 }).trim(); } catch (e) { return String(e.stdout || e.message); } };
+  console.log("--- container log (both streams)\n" + both(`docker logs --tail 80 ${SHARED} 2>&1`).slice(-6000));
+  console.log("--- processes\n" + shOk(["exec", "-u", "0", SHARED, "sh", "-c", "ps -eo user,pid,args | grep -E 'agb2|ag2|agentd|python3' | grep -v grep | cut -c1-200 | head -30"]));
+  console.log("--- agent status\n" + JSON.stringify((await person("computers.agent.status", { agent: AGENT })).data || null));
+  console.log("--- the holder by hand as the agent's browser uid (8 s)\n" + both(`docker exec -u 21000 ${SHARED} sh -c 'timeout 8 python3 -I /opt/agentd/agentd-chrome.py 2>&1 | grep -v -i dbus | head -15'`));
 }
 process.exit(code);
