@@ -132,6 +132,12 @@ A task taken from a group can be taken over by another member only while it is b
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
 
+### The approval card is trusted to match its hash
+
+When you approve a task from the app, the app checks that the hash it signs matches the fields it shows, but it cannot rebuild that hash from the draft you read. The box is trusted to show the same thing it hashed.
+
+What to do today: read the card on the box you trust, and reject anything that looks different from what you were told to expect.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
