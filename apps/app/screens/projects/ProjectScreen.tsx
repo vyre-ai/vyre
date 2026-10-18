@@ -9,6 +9,9 @@ import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
 import { PAGE_LABEL, RAIL_LABEL, WIDE, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
+// @ts-ignore a plain .js module
+import { kindTabs } from "./kind-panes.js";
+import { BoardPane, ClientPane, EmailsPane, FlowsPane } from "./KindPanes";
 import { callT } from "../../src/real/call-tool";
 import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
 import { projectFolder } from "../folderdocs/project";
@@ -73,6 +76,10 @@ export default function ProjectScreen() {
   const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]} defaultOpen={r === "instructions"}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
   const pageBody = (): React.ReactNode => {
     if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
+    if (at === "client") return <ClientPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
+    if (at === "emails") return <EmailsPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
+    if (at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
+    if (at === "flows") return <FlowsPane snapshot={String(data?.template_snapshot ?? "")} />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
     if (at === "overview") return (
       <View className="flex-row items-start gap-s6">
@@ -97,8 +104,8 @@ export default function ProjectScreen() {
               <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
               <RecordTags rec={q.data.found.row as never} onChanged={q.reload} />
               {wide
-                ? <Segmented label="Project" value={at === "timeline" || at === "team" ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ["timeline", "Timeline"], ["team", "Team"]]} />
-                : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs()} />}
+                ? <Segmented label="Project" value={at === "timeline" || at === "team" || kindTabs(data).includes(at as never) ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ...kindTabs(data).map((p: string): [string, string] => [p, PAGE_LABEL[p as PageTab]]), ["timeline", "Timeline"], ["team", "Team"]]} />
+                : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs(data)} />}
               {pageBody()}
             </>
           )}
