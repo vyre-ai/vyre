@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -30,7 +30,7 @@ const pick = (list: { name: string; label: string }[]): [string, string][] => li
  * Refunds agent."), under it the trigger ("When") and the steps in order ("Then"), each a closed card that says what it does and opens to its settings, and "Add a step" with the palette of
  * what a Flow can do. It edits a draft; `toDefinition` writes the stored Flow. A step the engine cannot do yet is shown and marked Coming. See docs/design/system/components/flow-builder.md.
  */
-export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: { draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
+export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep }: { /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
@@ -39,7 +39,7 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
     set({ steps: mapStep(draft.steps, id, f), ...(draft.onFailure ? { onFailure: mapStep(draft.onFailure, id, f) } : {}) });
   };
   const { phone } = useUiTheme();
-  const ctx: Ctx = { docked: !phone, draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
+  const ctx: Ctx = { onTestStep, docked: !phone, draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
   const docked = !phone;
   const openStep = open && open !== "trigger" ? flat([...draft.steps, ...(draft.onFailure ?? [])]).find((x) => x.id === open) ?? null : null;
   const openRoot: Root = openStep && flat(draft.steps).some((x) => x.id === openStep.id) ? "steps" : "onFailure";
@@ -95,6 +95,21 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
   );
 }
 
+/** What a step test said: the input it was given, what it would give back, and what it would send or do, with a line that nothing happened. */
+function TestResult({ r }: { r: TestShown }) {
+  if ("problem" in r) return <Text size="caption" tone="warn">{r.problem}</Text>;
+  const rows = (label: string, list: [string, string][]) => (list.length ? <View className="gap-s1"><Text size="caption" tone="label">{label}</Text>{list.map(([k, v]) => <View key={k} className="flex-row gap-s2"><Text size="secondary" tone="muted" className="w-[110px]">{k}</Text><Text size="secondary" className="min-w-0 flex-1">{v}</Text></View>)}</View> : null);
+  return (
+    <View className="gap-s2">
+      {r.error ? <Text size="secondary" tone="err">{r.error}</Text> : null}
+      {rows("Went in", r.input)}
+      {rows("Would come out", r.output)}
+      {r.effects.length ? <View className="gap-s1"><Text size="caption" tone="label">Would do</Text>{r.effects.map((e, i) => <Text key={i} size="secondary">{e}</Text>)}</View> : null}
+      <Text size="caption" tone="label">{r.note}</Text>
+    </View>
+  );
+}
+
 /** The open step's settings, docked beside the steps so the Flow stays in view while it is edited. */
 function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root; inHandler?: boolean }) {
   const { draft, options, readOnly, change, setStep, setOpen } = ctx;
@@ -102,6 +117,9 @@ function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: 
   const all = flat([...draft.steps, ...(draft.onFailure ?? [])]);
   const mv = canMove(mine, s.id);
   const c = choiceOf(s.kind);
+  const [tried, setTried] = useState<TestShown | null>(null);
+  const [trying, setTrying] = useState(false);
+  useEffect(() => { setTried(null); }, [s.id]);
   return (
     <View className="w-[380px] flex-none gap-s3 rounded-card border border-edge-strong bg-surface-2 p-s4">
       <View className="flex-row items-center gap-s2">
@@ -109,6 +127,12 @@ function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: 
         <Button kind="ghost" size="sm" icon="x" label="Close" onPress={() => setOpen(null)} />
       </View>
       <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
+      {ctx.onTestStep ? (
+        <View className="gap-s2 border-t border-edge pt-s3">
+          <View className="self-start"><Button kind="secondary" size="sm" icon="play" label={trying ? "Trying" : "Test this step"} disabled={trying} onPress={async () => { setTrying(true); try { setTried(await ctx.onTestStep!(s.id, draft)); } finally { setTrying(false); } }} /></View>
+          {tried ? <TestResult r={tried} /> : null}
+        </View>
+      ) : null}
       {readOnly ? null : (
         <View className="flex-row flex-wrap items-center gap-s2 border-t border-edge pt-s3">
           {mv.up ? <Button kind="ghost" size="sm" icon="chevron-up" label="Move up" onPress={() => change(root, moveDeep(mine, s.id, -1))} /> : null}
@@ -122,7 +146,8 @@ function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: 
 }
 
 type Root = "steps" | "onFailure";
-type Ctx = { docked?: boolean; draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
+export type TestShown = { ok: boolean; error: string; input: [string, string][]; output: [string, string][]; effects: string[]; note: string } | { problem: string };
+type Ctx = { onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; docked?: boolean; draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
 
 const laneKey = (root: Root, l: LaneRef) => `${root}/${l.parent ?? "top"}/${l.key}`;
 const rootSteps = (d: Draft, root: Root) => (root === "steps" ? d.steps : d.onFailure ?? []);
