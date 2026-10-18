@@ -1345,7 +1345,7 @@ export class Registry {
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "turnRecordTags", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, n === "kernelSession" ? (/** @type {any} */ q) => this.deps.kernelSession(q) : this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "turnRecordTags", "lendKey", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, n === "kernelSession" ? (/** @type {any} */ q) => this.deps.kernelSession(q) : this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1387,6 +1387,15 @@ export class Registry {
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
+  }
+
+  /**
+   * The Switchboard's one way to a member's own AI key (needs.daemon "lendKey", core/daemon/lend-key.js): vault.me.lend and nothing else, as module:threads, on `token`, a one-turn session of that one person
+   * which the daemon opened and ends. Nothing a tool or a client sends can reach this: only the daemon's lendKey holds the registry. @param {{ account: string }} input @param {{ token: string }} o
+   */
+  async callLend(input, o) {
+    if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a member's key is lent on that member's own session" } };
+    return this.call("vault.me.lend", { account: String(input && input.account || "") }, "module:threads", { origin: "deck", token: o.token });
   }
 
   /**

@@ -439,6 +439,7 @@
     "daemon": [
       "kernelSession",
       "turnRecordTags",
+      "lendKey",
       "chatFor",
       "sandbox",
       "credentials",

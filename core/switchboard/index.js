@@ -43,6 +43,7 @@ import { recordTags } from "../../lib/record-tags.js"; import { memberVaultTags 
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { lentSpawnFor, lentOf, carryOn, lentYield, lentDrain, lentReturn, lentOfferedFor, lentSteadyFor, lentBlocks, lentHolder, lentControl, modelForAsker, hopPersonOf, personOfMeta, personOfChain, lentRowFor, takeBackFor } from "../../lib/lent-placement.js";
 import { memberKey } from "./member-key.js";
+import { lendTurn } from "./lend-turn.js";
 import { modelNames, keyOfAccount, MODEL_LISTING_PROVIDERS } from "../../lib/model-names.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
@@ -994,7 +995,7 @@ export class Switchboard {
     let acct = null; o = await memberAccount(this, rec, o, id);
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
-      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
+      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? await lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
@@ -4028,13 +4029,13 @@ export default {
     };
     // An account's credential from the vault (the item must be granted to this module), as the
     // environment variable its provider's CLI reads. A "login" account has none: its HOME does.
-    const accountEnv = async (/** @type {any} */ a) => {
+    const accountEnv = async (/** @type {any} */ a, /** @type {{ asker: string, space?: string | null } | undefined} */ turn) => {
       if (a.kind === "login") return { auth: "subscription", env: {} };
       const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
       // The two provider sign-in items come through the credentials port; any other account's own item is still a grant to this module.
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
-      let v = a.person ? await memberKey(ctx, a) : launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;   // a person's key is lent from their own vault for this turn, never read from the home's (member-key.js)
+      let v = a.person ? await memberKey(ctx, a, turn) : launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;   // a person's key is lent from their own vault for this turn, never read from the home's (member-key.js)
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was checked when the account was made (https, or this machine), and it is the account's, not the thread's.

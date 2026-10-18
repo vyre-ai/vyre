@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.1
+
+- feat(threads): a member's own AI key is lent to her own turn (lendKey, closing the 0.6.0 known issue). The daemon (core/daemon/lend-key.js, needs.daemon "lendKey") opens a 20-second kernel session of the asker alone (no agent hop, no chat), makes the one call vault.me.lend on it through Registry.callLend as module:threads, and ends the session in a finally; the token never leaves that function. The Switchboard settles who first (core/switchboard/lend-turn.js): the verified asker of the launch or the stored asker of a turn being handed over (two that differ, or none, are refused), still in the chat at lend time, and an account that is that same person's; the Vault's pair check stays the second lock. The two skipped lent-key tests run again
+
 ## 0.6.0
 
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).

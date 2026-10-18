@@ -24,6 +24,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { createKernel } from "../../kernel/index.js";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { createKernelSessions } from "../../lib/kernel-session.js";
+import { lendKey } from "../daemon/lend-key.js";
 import { connect, wsDuplex } from "./client.js";
 import { FAKE } from "../sessions/testing/boot.js";
 
@@ -68,7 +69,7 @@ async function world(t, opts = {}) {
   /** Start the stream the way the daemon does: the Registry is handed the seam as deps.kernelThreads, over a createKernelSessions that has the kernel's chats and the durable turns. */
   // The bus is the kernel's log, which outlives a restart: every boot in this test shares one.
   const bus = new Events();
-  async function boot(/** @type {{ personChainFor?: (p: string) => Promise<any>, timeoutMs?: number }} */ o = {}) {
+  async function boot(/** @type {{ personChainFor?: (p: string) => Promise<any>, timeoutMs?: number, lend?: boolean }} */ o = {}) {
     // the kernel's chats as the seam holds them, with the turn-begin counted: a turn must begin exactly once, when its session opens
     const kc = /** @type {any} */ (k.kernelFor({ name: "kernel-sessions" })).chats;
     const ks = createKernelSessions({ kernel: k, turns, chats: Object.freeze({ ...kc, beginTurn: async (/** @type {string} */ tok) => { seamCalls.push("BEGIN"); return kc.beginTurn(tok); } }) });
@@ -86,6 +87,8 @@ async function world(t, opts = {}) {
     });
     // vyred's side of a person's send, as the daemon composes it (core/daemon/index.js): the Switchboard asks deps.kernelSession for each turn and gets the asker's own session in the chat.
     // Nothing here wraps a call: the Switchboard itself carries chat and asker (it honours them from module:stream alone).
+    // a member's own AI key for her own turn: the daemon's lendKey (core/daemon/lend-key.js) over this kernel, with the registry's callLend; `lend: false` is a daemon that has none (fail closed)
+    if (o.lend !== false) reg.deps.lendKey = lendKey({ kernel: k, personChainFor, callLend: (/** @type {any} */ i, /** @type {any} */ x) => reg.callLend(i, x) });
     reg.deps.sandbox = { off: true }; // the daemon's own development switch (VYRE_SESSION_SANDBOX_OFF=1): the sandbox has its own tests
     reg.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
       const person = k.chains.fromFacts({ kind: "session_person", person: q.asker || OWNER, session: `thread:${q.thread}`, vouched: true });
@@ -125,7 +128,7 @@ const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "c
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
 
 
-async function world0(w, t) { const b = await w.boot(); t.after(() => b.stop().catch(() => {})); return b; }
+async function world0(w, t, o = {}) { const b = await w.boot(o); t.after(() => b.stop().catch(() => {})); return b; }
 
 /** A stand-in `codex-acp` first on PATH: the fake ACP agent, signed in as a login account. */
 function withCodex(t, root) {
@@ -485,17 +488,15 @@ test("review D: an asker who left the chat while their message waited gets no tu
 // ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
 // The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
 // vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
-/** The two lent-key tests that follow assert lendKey, which does not exist yet (0.6 polish item 3, BACKLOG); this build fails closed, and the test after them keeps that property asserted today. */
-const LENDKEY_SKIP = "a member's own AI key is not lent to her turns yet: lendKey (BACKLOG, 0.6 polish item 3, sec53's six conditions) brings these two back; until then the fail-closed test after them holds the isolation property";
 const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
 
 /** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
-async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
+async function lentKeyChat(/** @type {import("node:test").TestContext} */ t, /** @type {{ lend?: boolean }} */ o = {}) {
   const w = await world(t);
   const log = path.join(w.work, "fake-claude.log");
   Object.assign(process.env, { FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_ECHO_PID: "1" });
   t.after(() => { delete process.env.FAKE_CLAUDE_LOG; delete process.env.FAKE_CLAUDE_ECHO_PID; });
-  const b = await world0(w, t);
+  const b = await world0(w, t, o);
   const KC = `sk-ant-oat01-carol-${crypto.randomBytes(12).toString("hex")}`, KA = `sk-ant-oat01-ada-${crypto.randomBytes(12).toString("hex")}`;
   /** @type {Map<string, { person: string, value: string }>} */ const lent = new Map();
   /** @type {{ account: string, person: string }[]} */ const lends = [];
@@ -530,7 +531,7 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t) {
   return { w, b, KC, KA, carolsAcct, adasAcct, chat, watch, say, launches, answers, lends, log };
 }
 
-test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000, skip: LENDKEY_SKIP }, async t => {
+test("lent key: with two members in one chat, the second asker's process is handed the second asker's key and never the first's, and the first asker's live process does not serve the second", { timeout: 240_000 }, async t => {
   const r = await lentKeyChat(t);
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
@@ -558,7 +559,7 @@ test("lent key: with two members in one chat, the second asker's process is hand
   await r.b.stop();
 });
 
-test("lent key: after the turns the key string is in no thread event, log line, threads_runs row, saved file or whole NAME=value line", { timeout: 240_000, skip: LENDKEY_SKIP }, async t => {
+test("lent key: after the turns the key string is in no thread event, log line, threads_runs row, saved file or whole NAME=value line", { timeout: 240_000 }, async t => {
   const r = await lentKeyChat(t);
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
@@ -588,8 +589,8 @@ test("lent key: after the turns the key string is in no thread event, log line, 
   await r.b.stop();
 });
 
-test("a member's own AI key is NOT lent to her turn on this build: the turn does not start on her key, no process holds it, and neither the key nor the fd handoff is in any event, log line, row, file, env or argv", { timeout: 240_000 }, async t => {
-  const r = await lentKeyChat(t);
+test("with no lendKey in the daemon a member's own AI key is NOT lent: the turn does not start on her key, no process holds it, and neither the key nor the fd handoff is in any event, log line, row, file, env or argv", { timeout: 240_000 }, async t => {
+  const r = await lentKeyChat(t, { lend: false });
   await r.say("carol", "carol first");
   await r.say("ada", "ada second");
   // both turns end without starting a process: the Switchboard cannot ask the Vault for the asker's key yet (no person on its call), and it fails closed rather than use any other key
