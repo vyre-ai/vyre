@@ -207,6 +207,35 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     return () => { live = false; };
   }, [screen, username, space, shot]);
 
+  // The install command follows the name and the Linux / macOS switch: a valid, free name issues one (a fresh one-time code) a moment after the person stops typing, and flipping the switch issues the other kind's.
+  useEffect(() => {
+    if (screen !== "create.kind" || shot) return;
+    const wanted = usernameOf(space);
+    setCommand(""); setWaitId("");
+    if (!wanted) return;
+    let live = true;
+    const t = setTimeout(() => {
+      void (async () => {
+        if (!MOCK && (await checkName(wanted)) === "taken") {
+          const alt = (await Promise.all(spaceNameSuggestions(username || wanted, 6).map(async (c) => ((await checkName(c)) === "free" ? c : "")))).find(Boolean) || "";
+          if (!live) return;
+          if (alt) setSuggest(alt);
+          setFailure(SPACE_NAME_SAY.taken(alt));
+          return;
+        }
+        const r = await openSpace({ kind: kind || "linux", name: wanted });
+        if (!live) return;
+        if (!r.ok) { setFailure(r.message); return; }
+        if (!commandOk(r.command)) { setFailure("The install command is not one this app can show."); return; }
+        setFailure("");
+        setCommand(String(r.command));
+        setWaitId(String(r.id || ""));
+        if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
+      })();
+    }, 700);
+    return () => { live = false; clearTimeout(t); };
+  }, [screen, space, kind, shot, username]);
+
   useEffect(() => {
     if (screen !== "create.wait" || !waitId || shot) return;
     const tick = () => {
@@ -482,27 +511,13 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   }
 
   if (screen === "create.kind") {
+    const wanted = usernameOf(space);
     return (
-      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste one line into it. This screen waits until it is online." failure={failure}
-        primary={{ label: "Show the command", disabled: !kind || !usernameOf(space), loading: busy, onPress: () => void run(async () => {
-          const wanted = usernameOf(space);
-          if (!wanted) { setFailure(SPACE_NAME_SAY.required); return; }
-          if (!MOCK && (await checkName(wanted)) === "taken") {
-            const alt = (await Promise.all(spaceNameSuggestions(username || wanted, 6).map(async (c) => ((await checkName(c)) === "free" ? c : "")))).find(Boolean) || "";
-            if (alt) setSuggest(alt);
-            setFailure(SPACE_NAME_SAY.taken(alt));
-            return;
-          }
-          const r = await openSpace({ kind: kind || "linux", name: wanted });
-          if (!r.ok) { setFailure(r.message); return; }
-          if (!commandOk(r.command)) { setFailure("The install command is not one this app can show."); return; }
-          setCommand(String(r.command));
-          setWaitId(String(r.id || ""));
-          if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
-          go("create.wait");
-        }) }}>
-        <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={usernameOf(space) ? `Its address will be ${usernameOf(space)}.vyre.run` : SPACE_NAME_SAY.required} error={space && !usernameOf(space) ? SPACE_NAME_SAY.required : undefined} />
+      <FlowStep steps={steps} onBack={back} title="Connect your server." lead="Name your space, say what the server runs, then paste the line into it. This screen waits until it is online." failure={failure}
+        primary={{ label: "Continue", disabled: !command || !waitId || busy, loading: busy, onPress: () => go("create.wait") }}>
+        <Field label="Space name" name="Space name" value={space} onChangeText={(v) => { setSpace(v); setFailure(""); }} help={wanted ? `Its address will be ${wanted}.vyre.run` : SPACE_NAME_SAY.required} />
         <Segmented label="Your server runs" fill value={kind || "linux"} onChange={(v) => setKind(v as "linux" | "mac")} options={[["linux", "Linux"], ["mac", "macOS"]]} />
+        {wanted && command ? <CodeBlock code={command} lang="sh" /> : wanted ? <Text tone="muted">Making the command...</Text> : null}
       </FlowStep>
     );
   }

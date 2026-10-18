@@ -132,10 +132,10 @@ await walk("new person creates a space and waits", async (t) => {
   await t.pick("Linux");
   await t.type("Space name", "x");
   await t.sees("Name your space");
-  if (await t.enabled("Show the command")) throw new Error("the command waits until the space has a valid name");
   await t.type("Space name", "alex-studio");
   await t.sees("alex-studio.vyre.run");
-  await t.press("Show the command");
+  await t.at("VYRE_CODE=");
+  await t.press("Continue");
   await t.at("Waiting for it to come online");
   await t.sees("curl -fsSL vyre.run/i | sh");
   if (await t.enabled("Waiting")) throw new Error("Waiting stays off until the computer is online");

@@ -297,7 +297,11 @@ try {
     await drv.waitFor("Connect your server.");
     await drv.click(server === "mac" ? "macOS" : "Linux");
     await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
-    await drv.click("Show the command");
+    // The command appears by itself under the name and the switch (no button to show it); Continue then waits for the server.
+    const shown = await drv.waitFor("VYRE_CODE=", 90_000);
+    await drv.shot("03a-command");
+    if (!/VYRE_CODE=[A-Za-z0-9_-]+/.test(shown)) throw new Error(`the command shown on the name screen carries no one-time code: ${shown.slice(0, 200)}`);
+    await drv.click("Continue");
     const t = await drv.waitFor("Waiting for it to come online", 90_000);
     const m = /VYRE_CODE=([A-Za-z0-9_-]+)/.exec(t);
     if (!m) throw new Error(`no install command on the screen: ${t.slice(0, 300)}`);
