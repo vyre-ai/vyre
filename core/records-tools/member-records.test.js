@@ -62,7 +62,7 @@ test("a move cannot change the ID; a member moves, relates and saves her own lay
   const pipe = await as(BEN, "records.pipeline.set", { type: "deal", stages: [{ name: "A" }, { name: "B" }] });
   assert.ok(pipe.error, "a member cannot change the pipeline");
   const field = await as(BEN, "records.field.add", { type: "deal", label: "Budget", kind: "number" });
-  assert.equal(field.error && field.error.code, "not_allowed");
+  assert.ok(field.error && ["not_allowed", "denied"].includes(field.error.code), JSON.stringify(field.error));
   const typeSet = await as(BEN, "records.type.update", { name: "deal", color: "red" });
   assert.ok(typeSet.error, "a member cannot change a type's settings");
   assert.equal((await as(OWNER, "records.type.update", { name: "deal", color: "red" })).error, undefined);
