@@ -225,3 +225,20 @@ test("flows.step.test tries one step on a past run's recorded inputs, says what 
   await assert.rejects(() => t(chainOf(), { id: f.id, step: "nope", sample: {} }), (/** @type {any} */ e) => e.code === "no_such_step");
   await assert.rejects(() => t(chainOf(), { id: f.id, step: "mail", run: "run_missing" }), (/** @type {any} */ e) => e.code === "not_found");
 });
+
+test("the engine half of 'if empty, use': coalesce inside text gives the fallback for a value from the lane that did not run, and the value when there is one", async () => {
+  const { parse, evaluate } = await import("./expr.js");
+  const expr = parse('"Hello " + text(coalesce(steps.other.output.id, "someone"))');
+  assert.equal(evaluate(expr, { steps: {} }), "Hello someone", "the other lane of an If never ran: no value");
+  assert.equal(evaluate(expr, { steps: { other: null } }), "Hello someone", "a step that was turned off or skipped gives null");
+  assert.equal(evaluate(expr, { steps: { other: { output: { id: null } } } }), "Hello someone");
+  assert.equal(evaluate(expr, { steps: { other: { output: { id: "Dana" } } } }), "Hello Dana");
+  // the checker lets a Flow read it after the rejoin
+  const sb = sandbox();
+  const w = await world({ ports: { sandbox: sb.port } });
+  const f = flowOf([{ id: "d", kind: "decide", if: "trigger.n > 5", then: [fn("big")], else: [] }, fn("after", { inputs: { who: { expr: 'text(coalesce(steps.big.n, "someone"))' } } })]);
+  await install(w, f);
+  const run = await fire(w, "payment.received", { n: 1 });
+  assert.equal(run.state, "done");
+  assert.equal(run.steps.after.input.who, "someone");
+});
