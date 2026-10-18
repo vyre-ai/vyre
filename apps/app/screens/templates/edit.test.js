@@ -255,7 +255,7 @@ test("a to-do's reviewer and approver slots are set, replace the older checker, 
   assert.deepEqual(t.reviewer.skills, ["voice"]);
   assert.equal(lateWords(t), "Reviewer passes to the attorney after 2 days");
   assert.deepEqual(slotProblems({ who: "x", due: 1000 }, "reviewer"), ["Set both the time limit and who it passes to for the reviewer, or neither."]);
-  assert.equal(slotProblems({ who: "x", quorum: "all", due: 60000, escalate_to: "role:a" }, "approver").length, 1);
+  assert.equal(slotProblems({ who: "role:x", quorum: "all", due: 60000, escalate_to: "role:a" }, "approver").length, 1);
   b = setSlot(b, 0, 0, "reviewer", null);
   assert.equal(b.stages[0].tasks[0].reviewer, undefined);
   assert.deepEqual(b.stages[0].tasks[0].approver, { who: "role:attorney" }, "taking one slot away leaves the other");
