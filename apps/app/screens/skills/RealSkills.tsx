@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Sheet, Text, showToast } from "@vyre/ui";
-import { Frame, Sec } from "../places/Frame";
-import { IconTile } from "../places/Page";
+import { useLocalSearchParams } from "expo-router";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Frame } from "../places/Frame";
 import { browse, get, versions, draft, approve, rollback, decline, type SkillRow, type SkillVersion, type BrowsePack } from "./skills";
 import { callT as call } from "../../src/real/call-tool";
 import { pickConnections } from "../connections/model";
 import { PluginDeclaresView, PluginEditor, type ConnectionPick } from "./PluginEditor";
 import { emptyPlugin, pluginBody, type PluginManifest } from "./plugin-model";
 import { AIS } from "../../../../lib/ai-ids.js";
+import { SEGMENTS, listRows, needsLines, stateWord, versionLine } from "./skills-model.js";
 
 const LEVELS = [
   { id: "personal", label: "Mine (identity)" },
@@ -20,8 +21,12 @@ const LEVELS = [
 const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
 const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
 
-export function RealSkills() {
-  const [level, setLevel] = useState<string>("space");
+export function RealSkills({ initialLevel = "space", scope }: { initialLevel?: string; scope?: string } = {}) {
+  // Settings opens this at a level (?level=): Skills and plugins under You is personal, under the Space it is the Space's. A caller that passes initialLevel (an agent's Skills tab) wins.
+  const { level: asked } = useLocalSearchParams<{ level?: string }>();
+  const [level, setLevel] = useState<string>(LEVELS.some((l) => l.id === asked) && initialLevel === "space" ? String(asked) : initialLevel);
+  const [segment, setSegment] = useState<"skills" | "plugins">("skills");
+  const [draftPick, setDraftPick] = useState<SkillVersion | null>(null);
   const [pack, setPack] = useState<BrowsePack | null>(null);
   const [err, setErr] = useState("");
   const [pick, setPick] = useState<SkillRow | null>(null);
@@ -44,8 +49,8 @@ export function RealSkills() {
   useEffect(() => { if (installOpen && installKind === "plugin") loadConnections(); }, [installOpen, installKind, loadConnections]);
   const load = useCallback(() => {
     setErr("");
-    browse(level).then(setPack).catch((e) => setErr(errWords(e)));
-  }, [level]);
+    browse(level, level === "agent" ? scope : undefined).then(setPack).catch((e) => setErr(errWords(e)));
+  }, [level, scope]);
   useEffect(load, [load]);
   const act = (run: () => Promise<unknown>, done: string) => {
     setBusy(true);
@@ -60,86 +65,68 @@ export function RealSkills() {
     versions(s.name, lv, scope).then((v) => setHist(v.versions || [])).catch(() => setHist([]));
   };
   const harnessChips = (h?: string[]) => (h && h.length ? h : [...AIS]).map((x) => <Chip key={x} tone="plain">{x}</Chip>);
-  const rows = pack?.skills || [];
-  const drafts = pack?.drafts || [];
   const mayDraft = Boolean(can.draft?.[level]);
   const mayPlugin = Boolean(can.plugin?.[level]);
   const onInstallName = (name: string) => {
     setInstallName(name);
     if (installKind === "plugin") setInstallPlugin((p) => ({ ...p, name: name.trim() || p.name }));
   };
+  const list = pack ? listRows(pack, segment) : [];
+  const noun = segment === "plugins" ? "plugin" : "skill";
+  const sub = level === "personal" ? "Only you use these." : level === "space" ? "Everyone in this Space uses these. Members draft, owners and admins approve." : "Browse, draft, approve or roll back.";
   return (
-    <Frame back="/u/playbooks" title="Skills and plugins" sub="Browse, install, draft, approve or roll back. Space skills apply to every session and cannot be overridden by a personal skill with the same name.">
+    <Frame back="/u/settings" title="Skills and plugins" sub={sub}
+      actions={mayDraft ? <Button size="md" kind="primary" icon="plus" label="New" onPress={() => { setInstallName(""); setInstallKind(segment === "plugins" && mayPlugin ? "plugin" : "skill"); setInstallBody(skillTpl("my-skill")); setInstallPlugin(emptyPlugin("my-plugin")); setInstallOpen(true); }} /> : undefined}>
       {pack?.identityPersonal && level === "personal" ? <Banner><Text size="caption">Personal skills are kept on your identity and follow you into every Space you belong to.</Text></Banner> : null}
-      {pack?.role ? <Banner><Text size="caption">You are signed in as {pack.role} for this Space.</Text></Banner> : null}
-      <Sec title="Level">
+      <View className="gap-s2">
+        <Segmented label="Show" value={segment} onChange={(v) => setSegment(v as "skills" | "plugins")} options={SEGMENTS.map(([k, v]) => [k, v] as [string, string])} />
+        {asked ? null : <Segmented label="Level" value={level} onChange={setLevel} options={LEVELS.map((l) => [l.id, l.label] as [string, string])} />}
+      </View>
+      {err ? <Card flush><ErrorState title="Skills did not load" reason={err} retry={load} /></Card> : null}
+      {pack === null && !err ? <LoadingState rows={4} /> : null}
+      {pack && !list.length ? <Card><EmptyState title={`No ${noun}s here yet`} body={mayDraft ? `Add one with New, or ask your assistant to draft one.` : "Ask an owner or admin to add one for the Space."} /></Card> : null}
+      {list.length ? (
         <Card flush>
-          {LEVELS.map((l, i) => (
-            <View key={l.id}>{i ? <Divider /> : null}
-              <Row lead={<IconTile icon="spark" />} title={l.label} end={level === l.id ? <Chip tone="ok">Showing</Chip> : <Button size="md" label="Show" onPress={() => setLevel(l.id)} />} />
+          {list.map((r, i) => (
+            <View key={r.key}>{i ? <Divider /> : null}
+              <Row title={r.name} sub={r.sub} state={r.state} chevron onPress={() => (r.draft && r.version ? setDraftPick(r.version) : r.skill ? open(r.skill) : undefined)} />
             </View>
           ))}
         </Card>
-      </Sec>
-      {mayDraft ? (
-        <Sec title="Install">
-          <Card>
-            <View className="flex-row flex-wrap gap-s2">
-              <Button size="md" kind="primary" label="New skill or plugin" onPress={() => { setInstallName(""); setInstallKind("skill"); setInstallBody(skillTpl("my-skill")); setInstallPlugin(emptyPlugin("my-plugin")); setInstallOpen(true); }} />
-            </View>
-          </Card>
-        </Sec>
       ) : null}
-      <Sec title="In use">
-        {err ? <Card flush><ErrorState title="Skills did not load" reason={err} retry={load} /></Card> : null}
-        {pack === null && !err ? <LoadingState rows={4} /> : null}
-        {pack && !rows.length ? <Card><EmptyState title="Nothing at this level yet" body={mayDraft ? "Install a skill or plugin, or ask your assistant to draft one." : "Ask an owner or admin to add a Space skill."} /></Card> : null}
-        {rows.length ? (
-          <Card flush>
-            {rows.map((s, i) => (
-              <View key={s.id}>{i ? <Divider /> : null}
-                <Row lead={<IconTile icon="spark" />} title={s.name} sub={[s.level, s.scope, s.description].filter(Boolean).join(" · ")}
-                  end={<View className="flex-row flex-wrap items-center gap-s1 max-w-[45%] justify-end">{harnessChips(s.harnesses)}<Button size="md" label="Open" onPress={() => open(s)} /></View>} />
-              </View>
-            ))}
-          </Card>
-        ) : null}
-      </Sec>
-      {drafts.length ? (
-        <Sec title="Drafts waiting for a yes">
-          <Card flush>
-            {drafts.map((d, i) => (
-              <View key={`${d.name}-${d.version}`}>{i ? <Divider /> : null}
-                <Row title={d.name} sub={`${d.level} · version ${d.version}${d.proposer ? ` · ${d.proposer}` : ""}`}
-                  end={<View className="flex-row gap-s2 flex-wrap justify-end">
-                    {can.approve?.[d.level] ? <Button size="md" kind="primary" label="Approve" disabled={busy} onPress={() => act(() => approve({ name: d.name, level: d.level, scope: d.scope, version: d.version, ...(d.ack ? { ack: d.ack } : {}) }), "Approved.")} /> : null}
-                    <Button size="md" kind="ghost" label="Decline" disabled={busy} onPress={() => act(() => decline({ name: d.name, level: d.level, scope: d.scope, version: d.version }), "Turned down.")} />
-                  </View>} />
-              </View>
-            ))}
-          </Card>
-        </Sec>
-      ) : null}
+
       <Sheet open={!!pick} onClose={() => setPick(null)} title={pick?.name || ""}>
         {pick ? (
           <View className="gap-s3">
-            <View className="flex-row flex-wrap gap-s1">{harnessChips(pick.harnesses)}</View>
-            <Text size="caption" tone="label">{pick.id}</Text>
-            <PluginDeclaresView declares={pick.declares} />
-            <Card><Text mono size="caption">{body.slice(0, 4000)}{body.length > 4000 ? "\n…" : ""}</Text></Card>
+            <Text tone="muted">{[stateWord("approved"), pick.description].filter(Boolean).join(". ")}</Text>
+            {needsLines(pick.declares).length ? <View className="gap-s1"><Text size="caption" strong tone="label">Needs</Text>{needsLines(pick.declares).map((l) => <Text key={l} size="secondary">{l}</Text>)}</View> : null}
+            <Text size="caption" strong tone="label">Versions</Text>
             {hist ? (
               <Card flush>
                 {hist.map((v, i) => (
                   <View key={v.version}>{i ? <Divider /> : null}
-                    <Row title={`Version ${v.version}`} sub={v.state}
-                      end={<View className="flex-row gap-s2">
-                        {v.state === "approved" ? <Chip tone="ok">live</Chip> : null}
-                        {v.state === "retired" && can.approve?.[v.level] ? <Button size="md" label="Roll back" disabled={busy} onPress={() => act(() => rollback({ name: v.name, level: v.level, scope: v.scope, to: v.version, ...(v.ack ? { ack: v.ack } : {}) }), "Rolled back.")} /> : null}
-                      </View>} />
+                    <Row title={versionLine(v)} sub={v.proposer ? `proposed by ${v.proposer}` : undefined}
+                      end={v.state === "retired" && can.approve?.[v.level] ? <Button size="md" label="Roll back" disabled={busy} onPress={() => act(() => rollback({ name: v.name, level: v.level, scope: v.scope, to: v.version, ...(v.ack ? { ack: v.ack } : {}) }), "Rolled back.")} /> : undefined} />
                   </View>
                 ))}
               </Card>
             ) : <LoadingState rows={2} />}
+            <Text size="caption" strong tone="label">Text</Text>
+            <Card><Text mono size="caption">{body.slice(0, 4000)}{body.length > 4000 ? "\n…" : ""}</Text></Card>
+            <View className="flex-row flex-wrap gap-s1">{harnessChips(pick.harnesses)}</View>
+          </View>
+        ) : null}
+      </Sheet>
+
+      <Sheet open={!!draftPick} onClose={() => setDraftPick(null)} title={draftPick?.name || ""}>
+        {draftPick ? (
+          <View className="gap-s3">
+            <Text tone="muted">{`${stateWord("draft")}. ${versionLine(draftPick)}${draftPick.proposer ? `, proposed by ${draftPick.proposer}` : ""}.`}</Text>
+            {needsLines(draftPick.declares).length ? <View className="gap-s1"><Text size="caption" strong tone="label">Needs</Text>{needsLines(draftPick.declares).map((l) => <Text key={l} size="secondary">{l}</Text>)}</View> : null}
+            <View className="flex-row flex-wrap gap-s2">
+              {can.approve?.[draftPick.level] ? <Button size="md" kind="primary" label="Approve" disabled={busy} onPress={() => act(() => approve({ name: draftPick.name, level: draftPick.level, scope: draftPick.scope, version: draftPick.version, ...(draftPick.ack ? { ack: draftPick.ack } : {}) }).then(() => setDraftPick(null)), "Approved.")} /> : null}
+              <Button size="md" kind="ghost" label="Decline" disabled={busy} onPress={() => act(() => decline({ name: draftPick.name, level: draftPick.level, scope: draftPick.scope, version: draftPick.version }).then(() => setDraftPick(null)), "Turned down.")} />
+            </View>
           </View>
         ) : null}
       </Sheet>

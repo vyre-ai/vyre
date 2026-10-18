@@ -5,6 +5,8 @@ import { ThemeProvider as UiThemeProvider } from "@vyre/ui";
 import { MOCK } from "../real/box";
 import { UnlockScreen } from "../../screens/unlock/UnlockScreen";
 import { identityState, lockIdentity } from "../../screens/unlock/real.js";
+import { endsSession } from "../../screens/unlock/identity-change.js";
+import { messageIndex } from "../chat/message-index.js";
 import { applyCover, coverExempt, createIdleLock, lockView, lockWanted } from "./lock-gate.js";
 import { onLockChanged, onLockMinutes, readLockMinutes } from "./lock-setting";
 
@@ -20,7 +22,9 @@ export function UnlockGate({ children }: { children: ReactNode }) {
   const [minutes, setMinutes] = useState<number | null>(null);
   const lock = useRef<ReturnType<typeof createIdleLock> | null>(null);
 
-  const refresh = useCallback(async () => { if (MOCK) return; setStatus(await identityState()); setLoaded(true); }, []);
+  const last = useRef<{ v: typeof status }>({ v: null });
+  // The identity changes state (locked, gone, or another person's): what the app decrypted for the previous one stops being searchable.
+  const refresh = useCallback(async () => { if (MOCK) return; const next = await identityState(); if (endsSession(last.current.v, next)) messageIndex.clear(); last.current.v = next; setStatus(next); setLoaded(true); }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     void readLockMinutes().then(setMinutes);

@@ -37,3 +37,10 @@ export function summary(s) {
   const n = s.tools.length + s.screens.filter((x) => x.off).length;
   return n ? `${n} ${n === 1 ? "thing is" : "things are"} turned off for your agent.` : "Your agent can do what you can do. Turn off anything you do not want it to touch.";
 }
+
+/** The agents as cards: the assistant first, then the others by name; the line under a name says what it is. */
+export function agentCards(/** @type {any} */ d) {
+  const list = Array.isArray(d) ? d : /** @type {any} */ (d)?.agents;
+  return (Array.isArray(list) ? list : []).filter((a) => a && typeof a.name === "string").sort((a, b) => (a.kind === "assistant" ? 0 : 1) - (b.kind === "assistant" ? 0 : 1) || String(a.name).localeCompare(String(b.name)))
+    .map((a) => ({ name: a.name, sub: a.kind === "assistant" ? "Your assistant" : String(a.instructions || "").split("\n")[0].slice(0, 80) || "Agent" }));
+}

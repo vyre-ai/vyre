@@ -2,12 +2,15 @@
 // Fork from here, React, Pin). It shows on hover, on keyboard focus of the message and on a long press; each icon has a tooltip naming it and its key. The keys (R, C, Shift+C, A, E, B, P, M)
 // are read by useMessageKeys (message-keys.js), which sends them here as a "vyre-msg" event on this row so one place does each thing.
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
-import { Icon, Menu, Text, Tip, useUiTheme, type IconName } from "@vyre/ui";
+import { Icon, Tip, useUiTheme, type IconName } from "@vyre/ui";
 import { readSelection } from "./highlight.js";
 import { codeBlocks, copyForms } from "./polish.js";
 import { copy, type BlockCtx } from "./Blocks";
+import { MenuHostCtx } from "./message-menu-host";
+import { messageMenu } from "./message-menu-model.js";
+import { MessageMenuView } from "./MessageMenuView";
 
 const QUICK = ["\u{1F44D}", "✅", "\u{1F440}"];
 
@@ -17,6 +20,11 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   const { color } = useUiTheme();
   const root = useRef<View>(null);
   const [said, setSaid] = useState(false);
+  // The message menu: opened by a right-click or a long press on the message (the row calls the opener), or by the three dots; at: where the pointer was, or null for a sheet.
+  const host = useContext(MenuHostCtx);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null | undefined>(undefined);
+  useEffect(() => { if (!host) return; host.open.current = (at) => { setMenuAt(at); host.shown?.(true); }; return () => { host.open.current = null; }; }, [host]);
+  const closeMenu = () => { setMenuAt(undefined); host?.shown?.(false); };
   const forms = copyForms(text);
   const blocks = codeBlocks(text);
   const h = ctx.wide ? 28 : 44;
@@ -30,6 +38,23 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   const actions: Record<string, (() => void) | undefined> = {
     reply: group?.onReply, copy: done ? () => doCopy(false) : undefined, "copy-md": done ? () => doCopy(true) : undefined, ask: ctx.onHighlight ? ask : undefined, edit, branch,
     pin: group?.onPin ? () => group.onPin?.(!group.pinned) : undefined,
+  };
+  const menu = messageMenu({
+    mine, done, reactions: group?.onReact ? QUICK : [], pinned: group?.pinned, codeBlocks: blocks.length,
+    can: { reply: !!group?.onReply, forward: !!(uuid && ctx.onForward), fork: !!branch, ask: !!ctx.onHighlight, second: !!second, edit: !!edit, retry: !!retry, rewind: !!rewind, pin: !!group?.onPin },
+  });
+  const pickItem = (id: string) => {
+    if (id === "reply") group?.onReply?.();
+    else if (id === "forward") { if (uuid) ctx.onForward?.(uuid, text, from); }
+    else if (id === "copy-md") doCopy(true);
+    else if (id.startsWith("copy-code-")) { const b = blocks[Number(id.slice(10))]; if (b) void copy(b.code, ctx); }
+    else if (id === "fork") branch?.();
+    else if (id === "ask") ask();
+    else if (id === "second") second?.();
+    else if (id === "edit") edit?.();
+    else if (id === "retry") retry?.();
+    else if (id === "rewind") rewind?.();
+    else if (id === "pin") group?.onPin?.(!group.pinned);
   };
   const ref = useRef(actions);
   ref.current = actions;
@@ -52,37 +77,17 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
     </Tip>
   ) : null;
 
-  const items = [
-    ...(done ? [{ label: "Copy as Markdown", onPress: () => doCopy(true) }] : []),
-    ...(done ? blocks.map((b, i) => ({ label: blocks.length > 1 ? `Copy code ${i + 1}` : "Copy code", onPress: () => { void copy(b.code, ctx); } })) : []),
-    ...(edit ? [{ label: "Edit", onPress: edit }] : []),
-    ...(retry ? [{ label: "Retry", onPress: retry }] : []),
-    ...(branch ? [{ label: mine ? "Fork before this message" : "Fork from here", onPress: branch }] : []),
-    ...(rewind ? [{ label: "Rewind to here", onPress: rewind }] : []),
-    ...(second ? [{ label: "Second opinion", onPress: second }] : []),
-    ...(group?.onReact ? QUICK.map((e) => ({ label: `React ${e}`, onPress: () => group.onReact?.(e) })) : []),
-    ...(group?.onPin ? [{ label: group.pinned ? "Unpin" : "Pin", onPress: () => group.onPin?.(!group.pinned) }] : []),
-  ];
+  // The hover bar is three things: Copy, Reply and the three dots, which open the same menu a right-click does.
+  const dots = (e: any) => { const n = e?.nativeEvent; setMenuAt(Platform.OS === "web" && n && typeof n.clientX === "number" ? { x: n.clientX, y: n.clientY } : null); host?.shown?.(true); };
   return (
     <View ref={root} {...(Platform.OS === "web" ? ({ dataSet: { msgbar: "1" } } as object) : {})} style={{ flexDirection: "row", alignItems: "center", gap: 2, marginTop: 2 }}>
       {icon(said ? "check" : "copy", said ? "Copied" : "Copy", "C. Shift for Markdown", actions.copy, actions["copy-md"])}
       {icon("back", "Reply", "R", actions.reply)}
-      {icon("spark", "Ask about this", "A", actions.ask)}
-      {icon("agents", "Second opinion", undefined, second)}
-      {icon("undo", "Rewind to here", undefined, rewind)}
-      {!mine && branch ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Fork from here" onPress={branch}
-          style={({ hovered }: any) => ({ height: h, paddingHorizontal: 8, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
-          <Text size="caption" tone="label">Fork from here</Text>
-        </Pressable>
-      ) : null}
-      {items.length ? (
-        <Menu items={items} trigger={
-          <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
-            <Icon name="more" size={16} tone="label" />
-          </Pressable>
-        } />
-      ) : null}
+      <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} onPress={dots}
+        style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
+        <Icon name="more" size={16} tone="label" />
+      </Pressable>
+      {menuAt !== undefined && (menu.groups.length || menu.reactions.length) ? <MessageMenuView menu={menu} at={menuAt} onPick={pickItem} onReact={(e) => group?.onReact?.(e)} onClose={closeMenu} /> : null}
     </View>
   );
 }

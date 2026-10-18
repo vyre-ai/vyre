@@ -94,3 +94,24 @@ test("the lock says in one line how many processes it stopped, and on the hard r
   assert.deepEqual(f.killed.filter(k => k[1] === "SIGKILL").map(k => k[0]), [7], "pid 9 was reused, so it is not killed");
   assert.ok(said.some(m => /stopped 6 processes/.test(m)), said.join("|"));
 });
+
+import { reportedState } from "./runner.js";
+import { fscryptDriverForTest } from "./workspace.js";
+
+test("a workspace whose lease has ended says locking until nothing can read it, then locked; an open or unknown lease says what it is", () => {
+  assert.equal(reportedState("locked", true), "locking");
+  assert.equal(reportedState("revoked", true), "locking");
+  assert.equal(reportedState("locked", false), "locked");
+  assert.equal(reportedState("revoked", false), "revoked");
+  assert.equal(reportedState("open", true), "open");
+  assert.equal(reportedState("none", false), "none");
+});
+
+test("fscrypt: a key that is only partly removed (incomplete) still counts as mounted, an absent one does not", t => {
+  const base = fs.mkdtempSync(path.join(tempHome(t), "inc-"));
+  fs.mkdirSync(path.join(base, "w", "enc"), { recursive: true });
+  let answer = "present";
+  const drv = fscryptDriverForTest(() => {}, () => answer);
+  for (const [a, mounted] of [["present", true], ["incomplete", true], ["absent", false]]) { answer = a; assert.equal(drv.isMounted(path.join(base, "w")), mounted, a); }
+  assert.equal(drv.isMounted(path.join(base, "nothing")), false, "no folder, not mounted");
+});

@@ -12,6 +12,7 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["documents.signing.audit", "saves a signed request's audit file into the person's own Files: the person's own act, never a model's"],
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
   ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],
   ["identity.lock", "locks the unlocked session: the person's own act"],
@@ -169,6 +170,9 @@ export const PERSON_ONLY = new Map([
   ["recall.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["recall.sealscrub", "scrubs sensitive-looking values out of memory: the person's own act"],
   ["files.drive.restore", "restores a Drive version: admin and owner, with the person's own act"],
+  ["files.drive.space.move", "moves or renames a file or folder in the Space's Drive: the person's own act, each step the kernel's read and write on their chain"],
+  ["files.drive.space.rename", "renames a file or folder in the Space's Drive: the person's own act"],
+  ["files.drive.space.delete", "deletes from the Space's Drive (a version that can be restored): an outward act and the person's own"],
   ["records.define", "changes the Space's types: the person's own act (an assistant proposes through a Kit or a task)"],
   ["records.reveal", "reveals a sealed value: needs the person's Face ID"],
   ["records.forget", "forgets a record for good: the person's own act with their presence (an assistant proposes with records.forget.propose)"],
@@ -529,6 +533,8 @@ export const OPEN = new Set([
   "connectors.logging",
   "files.drive.space.list",
   "files.drive.space.read",
+  "files.places",
+  "files.space.mentions.search",
   "records.linked",
   "records.roles",
   "records.holders",

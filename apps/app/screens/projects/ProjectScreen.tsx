@@ -9,6 +9,12 @@ import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
 import { PAGE_LABEL, RAIL_LABEL, WIDE, pageTabs, railFor, refOf, type PageTab, type RailId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
+// @ts-ignore a plain .js module
+import { kindTabs } from "./kind-panes.js";
+import { useProjectChat } from "./useProjectChat";
+// @ts-ignore a plain .js module
+import { chatNote, chatPath } from "./chat.js";
+import { BoardPane, ClientPane, EmailsPane, FlowsPane } from "./KindPanes";
 import { callT } from "../../src/real/call-tool";
 import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
 import { projectFolder } from "../folderdocs/project";
@@ -43,7 +49,7 @@ export default function ProjectScreen() {
   // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
   const makeTemplate = async (slug: string) => {
     setMaking(true);
-    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Edit it, try it, then publish it.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
+    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Look it over, test it, then go live.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
   };
   const { width } = useWindowDimensions();
   const go = (p: string) => router.push(p as never);
@@ -61,6 +67,7 @@ export default function ProjectScreen() {
   const folder = useMemo(() => (allowsMock() ? mockFolderApi(ref) : projectFolder(ref)), [ref]);
   const at: PageTab | "overview" = tab ?? (wide ? "overview" : "chats");
   const stages = data?.template_snapshot ? <StagesPane snapshot={String(data.template_snapshot)} stage={data.template_stage ? String(data.template_stage) : undefined} template={data.template ? String(data.template) : undefined} /> : null;
+  const chat = useProjectChat(slug);
   const rail = (r: RailId) => {
     if (r === "stages") return stages;
     if (r === "instructions") return ref ? <DocsEditor api={folder} who={h?.title ?? "this project"} title="" /> : <EmptyState title="No instructions here" body="This project has no id Files can keep a folder under." />;
@@ -73,6 +80,10 @@ export default function ProjectScreen() {
   const section = (r: RailId) => { const body = rail(r); if (!body) return null; return r === "instructions" || r === "context" || r === "access" ? <Disclosure key={r} label={RAIL_LABEL[r]} defaultOpen={r === "instructions"}>{body}</Disclosure> : <View key={r} className="gap-s2"><Text size="caption" strong tone="label">{RAIL_LABEL[r]}</Text>{body}</View>; };
   const pageBody = (): React.ReactNode => {
     if (at === "team") return pid ? <TeamTab project={pid} /> : <EmptyState title="No team here" body="This project has no id the box can keep a team under." />;
+    if (at === "client") return <ClientPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
+    if (at === "emails") return <EmailsPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
+    if (at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
+    if (at === "flows") return <FlowsPane slug={slug} snapshot={String(data?.template_snapshot ?? "")} />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
     if (at === "overview") return (
       <View className="flex-row items-start gap-s6">
@@ -87,18 +98,19 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <>{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <>{chat.state === "waiting" ? <Button kind="secondary" size="sm" icon="chat" label="Waiting to be added to the chat" disabled onPress={() => {}} /> : null}{chat.state === "open" ? <Button kind="secondary" size="sm" icon="chat" label="Open the group chat" onPress={() => go(chatPath(chat.chat))} /> : null}{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${wide && (at === "overview") ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
           : (
             <>
+              {chat.state !== "loading" && chatNote(chat as never) ? <Text size="caption" tone="label">{chatNote(chat as never)}</Text> : null}
               <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
               <RecordTags rec={q.data.found.row as never} onChanged={q.reload} />
               {wide
-                ? <Segmented label="Project" value={at === "timeline" || at === "team" ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ["timeline", "Timeline"], ["team", "Team"]]} />
-                : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs()} />}
+                ? <Segmented label="Project" value={at === "timeline" || at === "team" || kindTabs(data).includes(at as never) ? at : "overview"} onChange={(v: string) => setTab(v as never)} options={[["overview", "Overview"], ...kindTabs(data).map((p: string): [string, string] => [p, PAGE_LABEL[p as PageTab]]), ["timeline", "Timeline"], ["team", "Team"]]} />
+                : <Segmented label="Project" value={at as PageTab} onChange={(v: PageTab) => setTab(v)} options={pageTabs(data)} />}
               {pageBody()}
             </>
           )}

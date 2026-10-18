@@ -122,3 +122,13 @@ test("an agent's line from work.chat.summary: its live thread (needs you) or lat
   const row = convosFrom({ chats: [], agents: [agent({ name: "Engineer", summary: { count: 4, latest: "A", at: 9 } })], people: [] })[0];
   assert.deepEqual([row.sub, row.threads, row.last], ["A \u00b7 4 threads", 4, 9]);
 });
+
+test("the Engineer's Space chat is the first row of Space chats, called Engineer, even when older", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "a", title: "Hiring", place: "space", people: ["Sam", "Dee"], last: 99 }), chat({ id: "eng", title: "chat", place: "space", engineer: true, agents: ["engineer"], people: ["Sam", "Dee"], last: 1 })],
+    agents: [], people: [],
+  });
+  const space = convoSections(items).find((s) => s.id === "space");
+  assert.deepEqual(space?.rows.map((r) => r.title), ["Engineer", "Hiring"]);
+  assert.equal(space?.rows[0].pinned, true);
+});

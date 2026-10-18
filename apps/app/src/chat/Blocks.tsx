@@ -77,6 +77,8 @@ export type BlockCtx = {
   /** Face ID for a task's approval: resolves true when the person passed. */
   onFaceId?: () => Promise<boolean>;
   onApprove?: (taskId: string) => void;
+  /** Say something into this thread as the person (a change asked of the Engineer from a card). */
+  onSay?: (text: string) => void;
   onDecline?: (taskId: string) => void;
   /** A person's own message: edit it and run again, run it again as it was, or branch the session from before it. */
   onEditMessage?: (uuid: string, text: string) => void;
@@ -84,6 +86,8 @@ export type BlockCtx = {
   onBranchFrom?: (uuid: string) => void;
   /** Go back to before this message (threads.rewind). */
   onRewindTo?: (uuid: string) => void;
+  /** Forward this message to another chat or an agent (the Forward sheet): its id, its words and who wrote it. */
+  onForward?: (uuid: string, text: string, from: string) => void;
   /** Ask another assistant or model for a second opinion on this answer (stream.second-opinion). */
   onSecondOpinion?: (uuid: string) => void;
   /** Reply to a message (its id, its author's name and its words): the reply stays in the same timeline and carries a small quote. */
@@ -99,6 +103,9 @@ export type BlockCtx = {
   /** A chat with more than one person: vault item names on cards are not shown. */
   hideVaultNames?: boolean;
 };
+
+import { AgentNewCard, useNewAgentDraft } from "./AgentNewCard";
+import { isNewAgentTitle } from "./agent-new-model.js";
 
 export const copy = async (text: string, ctx: BlockCtx) => {
   if (ctx.onCopy) return ctx.onCopy(text);
@@ -361,6 +368,8 @@ export function RecordCard({ block, ctx }: { block: Extract<Block, { block: "rec
 /** A task card, approvals inline (never a modal): Face ID is a callback the screen answers. */
 export function TaskCard({ block, ctx, decided }: { block: Extract<Block, { block: "task" }>; ctx: BlockCtx; decided?: "approve" | "deny" | null }) {
   const [busy, setBusy] = useState(false);
+  // a task that asks to make a NEW agent shows as the agent it would make (the draft the Engineer stored), not as a line
+  const draft = useNewAgentDraft(block.id, isNewAgentTitle(block.title));
   const state = decided === "approve" ? "done" : decided === "deny" ? "declined" : block.state;
   const approve = async () => {
     if (busy) return;
@@ -374,7 +383,8 @@ export function TaskCard({ block, ctx, decided }: { block: Extract<Block, { bloc
   return (
     <Shell icon="todo" tint={state === "needs-approval" ? "accent" : undefined} title={<Text strong>{block.title}</Text>} sub={block.doer ? `For ${block.doer}` : undefined}
       right={state === "needs-approval" ? <Chip tone="accent" icon="now">Needs you</Chip> : state === "done" ? <Chip tone="ok" icon="check">Approved</Chip> : state === "declined" ? <Chip icon="x">Declined</Chip> : null}>
-      {block.why ? <Text tone="muted">{block.why}</Text> : null}
+      {draft && draft.input ? <AgentNewCard input={draft.input} onSay={state === "needs-approval" ? ctx.onSay : undefined} /> : null}
+      {block.why && !(draft && draft.input) ? <Text tone="muted">{block.why}</Text> : null}
       {block.tags.length ? <View style={S.s23}>{block.tags.map((t) => <Chip key={t}>{t}</Chip>)}</View> : null}
       {state === "needs-approval" ? (
         <View style={S.s24}>

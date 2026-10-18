@@ -25,6 +25,9 @@ import { defaults, walk } from "./search.js";
 import { dropWink } from "./drop-wink.js";
 import { drive } from "./drive.js";
 import { registerSpaceDrive } from "./space-drive.js";
+import { registerPlaces } from "./places.js";
+import { registerSpaceEdit } from "./space-edit.js";
+import { registerSpaceMentions } from "./space-mentions.js";
 import { registerSpaceLinks } from "./space-links.js";
 import { registerLinked } from "./linked.js";
 import { googleDriveProvider } from "./linked-gdrive.js";
@@ -415,6 +418,9 @@ export default {
     drive(ctx, { role, guard: g, roots });
     // The Space's own Drive for the app: upload, versions, restore (core/files/space-drive.js).
     registerSpaceDrive(ctx);
+    registerPlaces(ctx);
+    registerSpaceEdit(ctx);
+    registerSpaceMentions(ctx);
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).
     registerSpaceLinks(ctx);
     // Files > Linked: live folders from a source, shown at Linked/<name> (core/files/linked.js). Providers are added as they land (Google Drive first).

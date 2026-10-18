@@ -6,21 +6,23 @@ import { Image, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, SpaceTag, Text, useRecordsWorld, type IconName } from "@vyre/ui";
 import { NAV } from "../shell/nav";
+import { settingsGroups } from "../settings/logic.js";
 import { find } from "./source-real";
-import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
+import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, queryOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
+import { messageIndex } from "../../src/chat/message-index.js";
 import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 
-const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", place: "chevron" as IconName };
+const ICON: Record<string, IconName> = { chat: "chat", project: "projects", agent: "assistants", person: "contacts", record: "file", file: "file", memory: "memory", message: "chat", skill: "kits", place: "chevron" as IconName, setting: "cfg", action: "bolt" };
 
-export default function FindPanel({ onDone, initial = "" }: { onDone?: () => void; initial?: string }) {
+export default function FindPanel({ onDone, initial = "", initialScope = "all" }: { onDone?: () => void; initial?: string; initialScope?: Scope }) {
   const findTag = usePlaceText("home");   // the search is over her own computer
   const router = useRouter();
   const { data: world } = useRecordsWorld();
   const [base, setBase] = useState<Base>(emptyBase);
   const [loaded, setLoaded] = useState(false);
   const [q, setQ] = useState(initial);
-  const [scope, setScope] = useState<Scope>("all");
+  const [scope, setScope] = useState<Scope>(initialScope);
   const [fetched, setFetched] = useState<Fetched>({});
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [recents, setRecents] = useState<string[]>([]);
@@ -40,7 +42,8 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
 
   const places = useMemo(() => [...NAV.items, ...(NAV.more ?? []), ...(NAV.bottom ?? [])].filter((i) => i.id !== "search").map((i) => ({ id: i.id, label: i.label, href: i.href })), []);
   const records = useMemo(() => (world ? recordRows(world.types, world.byType) : []), [world]);
-  const all: Base = useMemo(() => ({ ...base, records, places }), [base, records, places]);
+  const settings = useMemo(() => settingsGroups("this Space").flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), []);
+  const all: Base = useMemo(() => ({ ...base, records, places, settings }), [base, records, places, settings]);
 
   // A query asks the three tools, 150 ms after typing stops; an answer for an old query is dropped.
   useEffect(() => {
@@ -53,15 +56,17 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       const sq = /^[ptu]\s+/i.test(line) ? line.replace(/^[ptu]\s+/i, "") : line;
       const got = (key: keyof Fetched, label: string) => (r: { data?: unknown; error?: { code: string; message: string } }) => {
         if (n !== seq.current) return;
-        if (r.error) setErrs((e) => ({ ...e, [key]: label })); else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
+        if (r.error) { setErrs((e) => ({ ...e, [key]: label })); if (!label) setFetched((f) => ({ ...f, [key]: [] })); } else setFetched((f) => ({ ...f, [key]: r.data ?? [] }));
       };
-      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), drive: got("drive", "") });
+      find.search(sq, { recall: got("recall", "Chats were not searched."), files: got("files", "Files were not searched."), memory: got("memory", "Memory was not searched."), mentions: got("mentions", ""), skills: got("skills", ""), drive: got("drive", "") });
     }, 150);
     return () => clearTimeout(t);
   }, [q]);
 
   const line = q.trim();
-  const secs = useMemo(() => sections(all, line, scope, fetched), [all, line, scope, fetched]);
+  // Messages in the chats this app has opened, searched on this device (memory only, nothing sent).
+  const messages = useMemo(() => { const f = queryOf(line, scope); return f.q.length >= MIN ? messageIndex.search(f.q, { limit: 20, ...(f.from ? { from: f.from } : {}) }) : []; }, [line, scope, loaded]);
+  const secs = useMemo(() => sections(all, line, scope, { ...fetched, messages }), [all, line, scope, fetched, messages]);
   const { cmd, chosen: target } = useMemo(() => readCommand(line, all, chosen), [line, all, chosen]);
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   const idleNow = useMemo(() => idle(all, recents), [all, recents]);
@@ -73,6 +78,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void askRef.current(); return; }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       if (!flatRef.current.length) return;
       e.preventDefault();
@@ -112,7 +118,14 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         if (r.done) setQ("");
         return;
       }
-      // Anything else asks the assistant, and its thread opens.
+      await askAssistant();
+    } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
+  };
+  /** Ask the assistant the line, and open the thread it lands in (Cmd Enter, or the row at the top). */
+  const askAssistant = async () => {
+    if (!line) return;
+    remember();
+    try {
       if (!all.assistant) { setDone("No agent is set up yet."); return; }
       setDone(`Asking ${assistant}.`);
       const r = await find.ask(all.assistant, line);
@@ -120,13 +133,15 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       setDone(r.note || `Sent to ${assistant}.`);
     } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
   };
+  const askRef = useRef(askAssistant);
+  askRef.current = askAssistant;
 
   const hit = (r: Hit) => (
     <Row key={r.key} dense selected={flat[hi]?.key === r.key} lead={<Icon name={ICON[r.kind] ?? "file"} size={16} tone="label" />} title={r.title}
       sub={<View className="gap-s1">{r.snippet ? <Text size="secondary" tone="muted" numberOfLines={2}>{r.snippet.replace(/[«»]/g, "")}</Text> : null}{r.sub ? <Text size="caption" tone="faint" numberOfLines={1}>{r.sub}</Text> : null}</View>}
       state={r.right} end={findTag ? <SpaceTag text={findTag} /> : undefined} onPress={() => pick(r)} />
   );
-  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive"] as const).some((k) => fetched[k] === undefined && !errs[k]);
+  const pending = line.length >= MIN && (["recall", "files", "memory", "mentions", "drive", "skills"] as const).some((k) => fetched[k] === undefined && !errs[k]);
   return (
     <View className="gap-s3">
       <PlaceTag of="home" />
@@ -148,6 +163,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
         </View>
       ) : (
         <View className="gap-s3">
+          <Card flush><Row dense lead={<Icon name="spark" size={16} tone="label" />} title={`Ask ${assistant} about "${queryOf(line, scope).q || line}"`} state="Cmd Enter" onPress={() => void askAssistant()} /></Card>
           {secs.map((s) => {
             const shown = open[s.key] ? s.rows : s.rows.slice(0, SHOW);
             return (

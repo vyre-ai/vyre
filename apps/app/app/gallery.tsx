@@ -169,7 +169,7 @@ function Sample({ name }: { name: string }) {
     return <View style={{ maxWidth: 340 }}><AgentComputerPane name="ads" view={{ state: "live", lastActive: 0, thumbnail: "" }} onWake={() => {}} onSleep={() => {}} onOpen={() => {}} onDock={() => {}} /></View>;
   }
   if (name === "new-agent") {
-    return <NewAgentDialog open onClose={() => {}} values={{ name: "rex", shape: 2, color: 3, job: "", projects: [], runsOn: "subscription", budget: "", model: "", effort: "", computer: false, personal: false }} onChange={() => {}} projects={[{ slug: "northwind", name: "Northwind Bakery" }]} models={[{ id: "sonnet", name: "Sonnet" }, { id: "opus", name: "Opus" }]} owner onCreate={() => {}} />;
+    return <NewAgentDialog open onClose={() => {}} values={{ name: "rex", shape: 2, color: 3, job: "", projects: [], runsOn: "subscription", budget: "", model: "", effort: "", computer: false, personal: false }} onChange={() => {}} projects={[{ slug: "northwind", name: "Northwind Bakery" }]} owner onCreate={() => {}} />;
   }
   if (name === "chats-list") {
     const now = 1_700_000_000_000;

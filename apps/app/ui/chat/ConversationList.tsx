@@ -7,7 +7,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { Avatar, AvatarStack } from "../components/Avatar";
 import { markRef } from "../marks/useMark";
 import { Field } from "../components/Field";
-import { IconButton } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Menu, type MenuItem } from "../components/Menu";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
@@ -69,10 +69,10 @@ function ConvoRow({ c, selected, when, menu, onOpen }: { c: Convo; selected?: bo
 }
 
 /** The header row of the Chat list: whatever leads it (the sidebar's back button), the search, one filter control and the + menu. */
-export function ConversationHeader({ lead, all, query, onQuery, project, onProject, tags, tag, onTag, extraFilters, add }: {
+export function ConversationHeader({ lead, all, query, onQuery, onSearch, project, onProject, tags, tag, onTag, extraFilters, add }: {
   /** Put first in the row (the sidebar's back button). */ lead?: React.ReactNode;
   /** Every row, so the filter menu lists each project once. */ all: readonly Convo[];
-  query: string; onQuery: (q: string) => void; project: string; onProject: (id: string) => void;
+  query: string; onQuery: (q: string) => void; /** The one search bar is the main one: given, the row shows a Search button that opens it on chats, in place of a box of its own. */ onSearch?: () => void; project: string; onProject: (id: string) => void;
   tags?: readonly string[]; tag?: string; onTag?: (t: string) => void;
   /** More choices at the end of the filter menu (the flow chats). */ extraFilters?: MenuItem[];
   /** The + menu: New chat, New group chat, New agent, New email. */ add: MenuItem[];
@@ -87,7 +87,9 @@ export function ConversationHeader({ lead, all, query, onQuery, project, onProje
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
       {lead}
-      <View style={{ flex: 1, minWidth: 0 }}><Field name="Search chats, agents and teammates" value={query} onChangeText={onQuery} placeholder="Search" onKey={(k) => { if (k === "Escape") onQuery(""); }} /></View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        {onSearch ? <Button kind="ghost" icon="search" label="Search chats" onPress={onSearch} /> : <Field name="Search chats, agents and teammates" value={query} onChangeText={onQuery} placeholder="Search" onKey={(k) => { if (k === "Escape") onQuery(""); }} />}
+      </View>
       <Menu align="end" trigger={<IconButton icon="filter" label={narrowed ? "Filter, on" : "Filter"} kind={narrowed ? "secondary" : "ghost"} />} items={filters} />
       <Menu align="end" trigger={<IconButton icon="plus" label="New" kind="ghost" />} items={add} />
     </View>
@@ -97,7 +99,7 @@ export function ConversationHeader({ lead, all, query, onQuery, project, onProje
 /** The filter row: All, People, Groups, Agents, Flows. One is chosen. */
 export function ConversationTypes({ type, onType }: { type: string; onType: (t: string) => void }) {
   return (
-    <ScrollView accessibilityLabel="Show" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 4, paddingHorizontal: RAIL.gutter }} style={{ flexGrow: 0 }}>
+    <ScrollView accessibilityLabel="Show" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 4, paddingHorizontal: RAIL.gutter }} style={{ flexGrow: 0, flexShrink: 0, height: 40 }}>
       {CONVO_TYPES.map((t) => <Chip key={t.id} selected={type === t.id} onPress={() => onType(t.id)}>{t.label}</Chip>)}
     </ScrollView>
   );

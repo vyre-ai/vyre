@@ -131,6 +131,12 @@ export const PROJECT_CHAT = Symbol("project-chat");
 /** The id of a project's group chat: fixed by the project, so a project has one. @param {string} projectUrn */
 export const projectChatId = projectUrn => `chat_pj_${crypto.createHash("sha256").update(String(projectUrn)).digest("hex").slice(0, 20)}`;
 
+/** Proof that a create comes from work.engineer.chat: the chat_eng_ ids are reserved to it. */
+export const ENGINEER_CHAT = Symbol("engineer-chat");
+
+/** The id of the Space's Engineer chat: fixed by the Space, so there is one. @param {string} space */
+export const engineerChatId = space => `chat_eng_${crypto.createHash("sha256").update(`engineer|${space}`).digest("hex").slice(0, 20)}`;
+
 /** The key of a chat: the set of people (and, for a project's chat, the project). A hash of sorted ids, so the same people are always the same chat. @param {string[]} people @param {string | null} project */
 export function chatKey(people, project = null) {
   const h = crypto.createHash("sha256").update(`${project || ""}|${[...new Set(people)].sort().join(",")}`).digest("hex").slice(0, 20);
@@ -423,6 +429,36 @@ export function registerThreads(d) {
       return { chat: id, id, member: true, people, missing: writers.filter(p => !people.includes(p)), extra: people.filter(p => !writers.includes(p)), readonly: readers, readonly_for_you: readers.includes(me) };
     },
   });
+  d.chatTool("work.engineer.chat", {
+    description: "The Space's Engineer chat for its owners and admins, who all read every Engineer message: { chat, people, missing, extra }.",
+    input: obj({ ring: { type: "object", description: "A device applies missing and extra with work.chat.change. Every owner and admin can read every Engineer message any of them sends; it is not private to its sender. On first use: the chat's key ring, made on your device for the id returned with needs_ring; the server never makes it" } }),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      const chain = await d.chainOf(extra), k = d.kernelOf(), hop = chain && chain.hops && chain.hops[0];
+      if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.viewer === true || chain.hops.length !== 1) throw fail("denied", "the Engineer chat is a person's own: ask from your own session, not through an agent");
+      const me = String(hop.actor.id);
+      // the same check the Engineer uses: the Space's owners and admins; anyone else is told there is nothing
+      if (!(await d.hubOf().isStaff(me))) throw fail("not_found", "there is no Engineer chat for you: the Engineer is for an owner or an admin");
+      const m = await d.ctx.call("spaces.members.list", { space: k.space }, { relay: true }).catch(() => null);
+      const staff = (m && m.data && Array.isArray(m.data.members) ? m.data.members : []).filter((/** @type {any} */ r) => r && r.person && (r.role === "owner" || r.role === "admin")).map((/** @type {any} */ r) => String(r.person));
+      if (!staff.includes(me)) staff.push(me);
+      const id = engineerChatId(k.space);
+      const readIt = () => { try { return k.chats.read(chain, id); } catch { return null; } };
+      let c = readIt();
+      if (!c && !(await d.hubOf().chatRecord(id))) {
+        if (!input.ring) return { chat: null, id, needs_ring: true, people: staff, missing: [], extra: [] };
+        const made = await d.createChat({ title: "Engineer", agents: ["engineer"], people: staff.filter(p => p !== me), id, ring: input.ring }, { ...extra, engineerChat: ENGINEER_CHAT });
+        const recd = await d.hubOf().chatRecord(String(made.chat));
+        if (recd) await d.hubOf().setChatFields(recd, { engineer_chat: true });
+        c = readIt();
+      } else if (c) {
+        const recd = await d.hubOf().chatRecord(id);
+        if (recd && !recd.data.engineer_chat) await d.hubOf().setChatFields(recd, { engineer_chat: true });
+      }
+      if (!c) return { chat: id, id, member: false, waiting: true, people: [], missing: [], extra: [] };
+      const people = [...c.people];
+      return { chat: id, id, member: true, place: "space", people, missing: staff.filter(p => !people.includes(p)), extra: people.filter(p => !staff.includes(p)) };
+    },
+  });
   d.chatTool("work.person.shared", {
     description: "What you and one person share: your chat with them, the threads you are both in, their files, and the projects you are both on.",
     input: obj({ person: { type: "string", description: "the person's id" } }, ["person"]),
@@ -461,7 +497,7 @@ export function registerThreads(d) {
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf();
       const origin = String(input.thread), message = String(input.message);
-      if (input.id && String(input.id).startsWith("chat_pj_")) throw fail("bad_input", "that id is reserved for a project's group chat; choose an id like chat_<uuid>");
+      if (input.id && /^chat_(pj|eng)_/.test(String(input.id))) throw fail("bad_input", "that id is reserved for a project's or the Engineer's group chat; choose an id like chat_<uuid>");
       const solo = soloAgent(k, chain, origin);
       if (!solo) throw fail("not_found", "no such thread (work.agent.threads lists yours); only a thread of you and one agent can be forked");
       // a fork is a NEW chat: an id that already names a chat (this thread's own, or any other) is refused before anything is made, and a repeat id can never rewrite another thread's fork origin

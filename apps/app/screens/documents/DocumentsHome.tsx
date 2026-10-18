@@ -1,3 +1,4 @@
+import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -10,6 +11,7 @@ import { FileViewerSheet } from "../drive/FileViewerSheet";
 import { aliasesFor, whenWords } from "../records/documents-model.js";
 import { MADE_GROUPS, madeSub, appState, asRecs, fillsFor, madeGroupOf, madeRows } from "./model.js";
 import { signingLabel, useSigningTemplates } from "./useSigningTemplates";
+import { RequestTimeline } from "./RequestTimeline";
 
 type Tab = "made" | "waiting" | "templates" | "setup";
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
@@ -89,7 +91,7 @@ export function DocumentsHome() {
   };
   const remind = (n: number) => tool("documents.signing.remind", { submission: n }).then(() => showToast("Reminder sent.")).catch((e) => showToast(say(e)));
 
-  const tabs: [Tab, string][] = [["made", "Made"], ...(admin ? ([["waiting", "Waiting"]] as [Tab, string][]) : []), ["templates", "Word templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
+  const tabs: [Tab, string][] = [["made", "Drafting"], ...(admin ? ([["waiting", "Signing"]] as [Tab, string][]) : []), ["templates", "Templates"], ...(admin ? ([["setup", "Setup"]] as [Tab, string][]) : [])];
   return (
     <Page title="Documents" top sub={undefined}>
       <Segmented<Tab> label="Documents" value={tab} onChange={setTab} options={tabs} />
@@ -97,7 +99,7 @@ export function DocumentsHome() {
       {tab === "made" ? (
         rows.length || hasType ? (
           <View className="gap-s3">
-            <ListHeader title={null} noun="documents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}} />
+            <ListHeader onSearch={() => openFind("files")} title={null} noun="documents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}} />
             {shown.length ? (
               <GroupedList groups={MADE_GROUPS.map(([, t]) => ({ name: t }))} items={shown} itemNoun="documents" renderItems={(its) => (
                 <Card flush>
@@ -125,6 +127,7 @@ export function DocumentsHome() {
             {waiting.map((w, i) => (
               <View key={w.submission}>{i ? <View className="h-px bg-edge" /> : null}
                 <Row dense title={String(w.template ?? "Document")} sub={`${w.signer || w.email}, sent ${whenWords(w.at, Date.now()) || "recently"}`} end={<Button kind="secondary" size="sm" label="Remind" onPress={() => void remind(w.submission)} />} />
+                <View style={{ paddingHorizontal: 16, paddingBottom: 10, gap: 2 }}><RequestTimeline submission={w.submission} /></View>
               </View>
             ))}
           </Card>

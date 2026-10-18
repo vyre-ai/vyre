@@ -1,5 +1,6 @@
 // @ts-check
 // The only door the lock screens use. Every name is a registry tool (core/identity), which the MCP server forwards as itself; a model cannot supply the password or the key.
+import { messageIndex } from "../../src/chat/message-index.js";
 import { tool } from "../../src/real/box";
 import { statusFailure, unlockRefusal } from "../../src/shell/lock-gate.js";
 
@@ -31,6 +32,7 @@ export async function migrateIdentity(password) {
 }
 
 export async function lockIdentity() {
+  messageIndex.clear();   // the on-device message search goes with the lock
   try { return done(await tool("identity.lock", {})); }
   catch (e) { return fail(e); }
 }

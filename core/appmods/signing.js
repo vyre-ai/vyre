@@ -142,6 +142,25 @@ export function readWaiting(json) {
   return out.sort((a, b) => b.at - a.at || b.submission - a.submission).slice(0, 50);
 }
 
+/**
+ * One submission's status from DocuSeal's JSON (documents.signing.status, 18 Oct ruling): each signer with the times they were sent to, opened, completed
+ * and declined, the submission's status, and its audit log link (fetched and saved by the server, never shown as a raw provider URL). A signer's page code
+ * never leaves the box. Null for a missing or archived submission.
+ * @param {any} s one submission object from DocuSeal @returns {{ submission: number, status: string, signers: { name: string, email: string, sent: number | null, opened: number | null, signed: number | null, declined: number | null }[], audit_url: string | null } | null}
+ */
+export function readStatus(s) {
+  if (!s || typeof s !== "object" || s.archived_at) return null;
+  const id = Number(s.id);
+  if (!Number.isInteger(id) || id < 1) return null;
+  const t = (/** @type {unknown} */ v) => { const n = Date.parse(String(v || "")); return Number.isFinite(n) && v ? n : null; };
+  const signers = (Array.isArray(s.submitters) ? s.submitters : []).filter(x => x && typeof x === "object").map((/** @type {any} */ x) => ({
+    name: String(x.name || "").slice(0, 120), email: String(x.email || "").slice(0, 254),
+    sent: t(x.sent_at), opened: t(x.opened_at), signed: t(x.completed_at), declined: t(x.declined_at),
+  }));
+  const audit = typeof s.audit_log_url === "string" && /^https:\/\//.test(s.audit_log_url) ? s.audit_log_url : null;
+  return { submission: id, status: String(s.status || "").slice(0, 40), signers, audit_url: audit };
+}
+
 /** The body that asks the signing app for one signature and tells it to send nothing itself: the person's own words go out through Comms. @param {number} templateId @param {string} email @param {string} [name] */
 export function requestBody(templateId, email, name) {
   if (!Number.isInteger(templateId) || templateId < 1) throw new Error("template_id is the number of the signing template in Documents");

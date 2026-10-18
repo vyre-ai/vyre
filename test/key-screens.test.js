@@ -16,6 +16,7 @@ const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^record
 
 /** Hand-written, with why. [pattern, reason]. Moving one means rebuilding it as a screen (data) and deleting the hand-written file. */
 const HAND = /** @type {[RegExp, string][]} */ ([
+  [/^apps\.tsx$/, "the Apps place: tiles for the apps on this Space (appmods.list and appmods.screens), with Make an app and Browse apps; owned by the polish team, drawn with the Vyre UI library"],
   [/^_layout\.tsx$/, "the shell, not a screen"],
   [/^\+not-found\.tsx$/, "the page for an address that matches nothing: a message and a way back, no data"],
   [/^(agents\/index|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page: live status and a conversation entry of their own, owned by the agents team"],

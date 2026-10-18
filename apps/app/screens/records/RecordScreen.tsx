@@ -14,11 +14,11 @@ import { emailOf } from "../shell/module-view.js";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
-export function RecordScreen({ id }: { id: string }) {
+export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: () => void; onOpen?: (urn: string) => void }) {
   const router = useRouter();
   const SPACES = useShell((s) => s.data.spaces);
   const { data: world, loading, error, reload } = useRecordsWorld();
-  const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
+  const open = useCallback((urn: string) => (onOpen ? onOpen(urn) : router.push(`/u/record/${urn.split("/").pop()}` as never)), [router, onOpen]);
   const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
   const env = useFieldEnv(world, open, openTag);
   const urn = urnParam(id);
@@ -36,7 +36,7 @@ export function RecordScreen({ id }: { id: string }) {
     return () => { live = false; };
   }, [isContact]);
   const email = emailOf(rec?.data);
-  const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
+  const back = () => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
   if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);

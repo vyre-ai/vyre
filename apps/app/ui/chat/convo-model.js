@@ -2,7 +2,7 @@
 // The pure half of the Chat screen's one list: chats, group chats, agents and teammates as one row type, newest first, with the project chips and the search. No tool is called here.
 // A chat is a group when two or more others are in it. An agent or a teammate you already talk to alone is that chat's row, not a second one.
 
-/** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, pinned?: string, place?: string }} ChatRow */
+/** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean, pinned?: string, place?: string, engineer?: boolean }} ChatRow */
 /** @typedef {{ id: string, kind: "chat" | "group" | "agent" | "person" | "flow", title: string, sub: string, last: number, project: string, projects: string[], chat: string, agent: string, person: string, open: boolean, asks: number, unread: number, pinned: boolean, status: string, dot: "" | "ask" | "unread", names: string[], look: string, lone: "agent" | "person" | "", section: "pinned" | "personal" | "space" | "projects" | "flows", threads: number }} Convo */
 
 const KIND_WORDS = { chat: "Chat", group: "Group chat", agent: "Agent", person: "Teammate", flow: "Flow" };
@@ -56,12 +56,13 @@ export function convosFrom(i) {
     if (others === 1 && c.agents.length === 1 && c.title === c.agents[0]) aloneAgent.add(c.agents[0]);
     if (others === 1 && c.people.length === 1 && c.title === c.people[0]) alonePerson.add(c.people[0]);
     const pinned = c.pinned === "assistant";
+    const eng = c.engineer === true;
     const agentOnly = others === 1 && c.agents.length === 1;
     const place = placeOf(c);
     const ts = agentOnly ? infoOf.get(c.agents[0]) ?? [] : [];
     out.push({
-      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: c.title, sub: agentOnly ? (sumOf.get(c.agents[0]) ? summaryLine(sumOf.get(c.agents[0]), c.line) : agentLine(ts, c.line)) : c.line, last: Math.max(c.last, agentOnly ? sumOf.get(c.agents[0])?.at ?? 0 : 0), project: c.project,
-      projects: c.project ? [c.project] : [], chat: c.id, agent: "", person: "", open: c.open, asks: c.asks, unread: c.unread, pinned, status: c.status, dot: c.asks > 0 ? "ask" : c.unread > 0 ? "unread" : "", names: [...c.people, ...c.agents], look: "", lone: agentOnly ? "agent" : others === 1 && c.people.length === 1 ? "person" : "",
+      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: eng ? "Engineer" : c.title, sub: agentOnly ? (sumOf.get(c.agents[0]) ? summaryLine(sumOf.get(c.agents[0]), c.line) : agentLine(ts, c.line)) : c.line, last: Math.max(c.last, agentOnly ? sumOf.get(c.agents[0])?.at ?? 0 : 0), project: c.project,
+      projects: c.project ? [c.project] : [], chat: c.id, agent: "", person: "", open: c.open, asks: c.asks, unread: c.unread, pinned: pinned || eng, status: c.status, dot: c.asks > 0 ? "ask" : c.unread > 0 ? "unread" : "", names: [...c.people, ...c.agents], look: "", lone: agentOnly ? "agent" : others === 1 && c.people.length === 1 ? "person" : "",
       section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length, sumOf.get(c.agents[0])?.count ?? 0) : 1,
     });
   }
@@ -86,7 +87,7 @@ const SECTION_ORDER = [["pinned", "Pinned"], ["personal", "Personal"], ["space",
 
 /** The rows in their sections, in the list's order: Pinned, Personal, Space chats, Projects, Flows; an empty section is left out. Inside a section the newest comes first. @param {readonly Convo[]} items @returns {{ id: string, label: string, rows: Convo[] }[]} */
 export function convoSections(items) {
-  return SECTION_ORDER.map(([id, label]) => ({ id, label, rows: items.filter((c) => c.section === id).sort((a, b) => b.last - a.last) })).filter((s) => s.rows.length);
+  return SECTION_ORDER.map(([id, label]) => ({ id, label, rows: items.filter((c) => c.section === id).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.last - a.last) })).filter((s) => s.rows.length);
 }
 
 /** All, each project once (in the order it first appears), then No project. @param {readonly Convo[]} items @returns {{ id: string, label: string }[]} */
