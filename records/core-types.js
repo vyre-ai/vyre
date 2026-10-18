@@ -316,6 +316,7 @@ export const CHAT = {
     choice("status", "Status", ["working", "idle", "stopped", "failed"]),
     text("drive", "Project Drive folder"),
     text("location", "This chat's Drive folder"),
+    text("forked_from", "Forked from (the thread and the reply it was forked at)"),   // set by work.thread.fork: a display link to the origin, never trusted to start a run
     TAGS,
   ],
 };

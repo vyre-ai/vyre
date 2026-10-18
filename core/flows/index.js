@@ -112,7 +112,7 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" || name === "flows.runs" ? [...CALLERS, "module"] : name === "flows.kit.credentials" || name === "flows.credential-uses" || name === "flows.definitions.scan" ? ["module"] : ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {

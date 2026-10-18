@@ -3,6 +3,11 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## 0.6.0
+## Unreleased (polish: agents are persistent, each with many threads)
+
+- feat(work): a thread is a chat of one person and one agent. work.agent.threads lists your threads with an agent (newest first, with live, needs_you or idle, the last line and unread), work.agent.thread.new starts another with the same agent and leaves the old ones, work.thread.fork makes a new thread that starts at one of the agent's replies (the original is untouched; the first answer in the fork starts a run forked from that reply), work.chat.summary is the chat list as pinned, people, groups, agents (one row each with its thread count, latest and live thread) and Flows, and work.flow.threads reads a Flow's runs as its threads. The chat record has a text field forked_from (a display link). A run now reports how many questions wait (threads.of-chat needs); threads.fork-point (the work module only) finds where a reply forks; work.chat.fork-source (the stream only) tells the first answer where a fork starts; flows.runs may be asked by a module that relays the person.
+
+## 0.6.0-rc.1
 
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).
 - ci: the per-job fscrypt volume is mounted on the runner's own path /mnt/fsc-<runner name>, outside /home: under the runner's temp folder (/home/runner/rN/_work/_temp) the sandbox plan's workspace bind was refused by core/runner/runner.foundation.test.js ("the host home is not mounted"), which stays as it is. The unmount step uses the same path. The old shared /mnt/fsc stack (146 to 263 dead mounts per host) was taken off all four CI hosts.
