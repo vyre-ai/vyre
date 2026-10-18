@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2
 
-- feat(flows): the docked step panel has "Test this step": it tries the one step against the Flow's last run (flows.step.test, owner or admin), and shows what went in, what would come out and what it would send, with a line that nothing was changed or sent.
+- feat(flows): the docked step panel has "Test this step": it tries the one step against the Flow's last run (flows.step.test); the button shows only to an owner or an admin, and shows what went in, what would come out and what it would send, with a line that nothing was changed or sent.
 - feat(flows): a value in a step's text can carry a fallback, `{path | fallback}` (quotes allowed), stored as `coalesce(path, "fallback")` and read back the same. A value picked from the other lane of an If is inserted with the fallback "n/a", so the step reads it safely after the lanes rejoin.
 - feat(flows): a run's step has "Retry from this step" (it and the steps after it run again). It is off, with the sentence "That run already sent something; start a new run to send again.", on steps at or before one that already sent something outward.
 - fix(flows): the Else lane of an If is called Otherwise.
