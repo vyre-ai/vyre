@@ -12,8 +12,8 @@ import { segments } from "../../kernel/core/urn.js";
 import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
-// The audit link rule lives with the app client that reads it (appmods/signing.js); one rule for both places.
-import { auditShown, savedAlready } from "../appmods/signing.js";
+// The audit rules live in lib/audit-rules.js: one copy, imported by the app client and this module.
+import { auditShown, savedAlready } from "../../lib/audit-rules.js";
 import { documentRow } from "./record.js";
 import { expandPaths, LinkError } from "../../lib/link/path.js";
 

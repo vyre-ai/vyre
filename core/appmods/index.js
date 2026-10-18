@@ -17,7 +17,8 @@ import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
 import { publishedManifest, checkPublished } from "./published.js";
-import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting, readStatus, auditAllowed, auditBodyWithin } from "./signing.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting, readStatus } from "./signing.js";
+import { auditAllowed, auditBodyWithin } from "../../lib/audit-rules.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
