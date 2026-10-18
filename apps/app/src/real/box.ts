@@ -46,10 +46,12 @@ export const WAITING_TITLE = APPROVE_ON_PHONE;
  * A stand-in for the box, for the gallery's pictures of screens that read the real box (the Vault): it answers each tool from recorded answers (scripts/capture-vault-fixtures.mjs) so a screen is
  * shot with real shapes and no box behind it. Never set in the app itself; only the /gallery route sets it.
  */
-let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
+let override: ((name: string, input: Record<string, unknown>, early?: boolean) => Promise<unknown>) | null = null;
 /** True while a stand-in box is set (the gallery's and the tests'): screens that call through the app's own connection use `tool` instead so the stand-in answers. */
 export const hasBoxOverride = (): boolean => override !== null;
-export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
+/** `first`: the override answers before the sample world does (a gallery fixture drawn from answers recorded from a real box: the sample world's rows are shaped differently), and a tool it has no answer for (undefined, asked with `early`) falls through to the sample world, and then to the override again, which answers {}. */
+let overrideFirst = false;
+export function setBoxOverride(f: ((name: string, input: Record<string, unknown>, early?: boolean) => Promise<unknown>) | null, first = false) { override = f; overrideFirst = first && f !== null; }
 
 /**
  * A call that names its server: the Space-making calls (spaces.name-here, spaces.host-here) name a server and no Space yet. Where a device is paired to several servers `server` is the server's box id and the
@@ -61,6 +63,7 @@ const chatIdOfAnswer = (r: unknown): string => { const x = r as { chat?: unknown
 export type ToolOptions = { server?: string };
 
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}, opts: ToolOptions = {}): Promise<T> {
+  if (override && overrideFirst) { const r = await override(name, given, true); if (r !== undefined) return r as T; }
   if (MOCK && mockAgentMemoryTools[name]) return mockAgentMemoryTools[name](given) as T; // the agent page's Memory pane (mock-agent-memory.ts)
   if (MOCK && mockComputerTools[name]) return mockComputerTools[name](given) as T; // an agent's computer and a chat's background tasks (mock-computers.ts)
   if (MOCK && mockAgentTools[name]) return mockAgentTools[name](given) as T; // and the agent page's (mock-agents.ts)
