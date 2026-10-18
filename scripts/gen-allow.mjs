@@ -232,6 +232,18 @@ export const DECLARED = Object.freeze({
  * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
  */
 export const DECLARED_SINCE = Object.freeze({
+  "sessions.accounts.models": "ccd8984fe@18 Oct 2026",
+  "work.agent.thread.new": "ccd8984fe@18 Oct 2026",
+  "work.agent.threads": "ccd8984fe@18 Oct 2026",
+  "work.chat.add-people": "ccd8984fe@18 Oct 2026",
+  "work.chat.summary": "ccd8984fe@18 Oct 2026",
+  "work.chat.thread.new": "ccd8984fe@18 Oct 2026",
+  "work.chat.threads": "ccd8984fe@18 Oct 2026",
+  "work.flow.threads": "ccd8984fe@18 Oct 2026",
+  "work.person.shared": "ccd8984fe@18 Oct 2026",
+  "work.project.chat": "ccd8984fe@18 Oct 2026",
+  "work.thread.add-people": "ccd8984fe@18 Oct 2026",
+  "work.thread.fork": "ccd8984fe@18 Oct 2026",
   "publish.preview": "d3e4e365a@3 Oct 2026",
   "publish.domain.add": "d3e4e365a@3 Oct 2026",
   "publish.domain.verify": "d3e4e365a@3 Oct 2026",

@@ -2011,7 +2011,7 @@
   },
   "work.chat.add-people": {
    "module": "work",
-   "reason": "the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
+   "reason": "guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
   },
   "work.project.chat": {
    "module": "work",
@@ -2031,7 +2031,7 @@
   },
   "work.thread.add-people": {
    "module": "work",
-   "reason": "moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
+   "reason": "guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
   },
   "work.thread.fork": {
    "module": "work",

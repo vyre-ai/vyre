@@ -1372,6 +1372,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): tries a rule against an act, without changing anything"
  },
  {
+  "tool": "sessions.accounts.models",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; sessions.accounts.models opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: the models one account's provider offers, for an account the caller may see (sessions.accounts.list); an unseen account is not_found"
+ },
+ {
   "tool": "sessions.harness.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; sessions.harness.get opened to a model or a module in 4e3c1f397 (9 Oct 2026); the body decides: read-only: what each harness could do when a session last started; no credentials"
  },
@@ -2020,6 +2024,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether each storage device is there"
  },
  {
+  "tool": "work.agent.thread.new",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.agent.thread.new opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: starts a new thread (a chat with one agent) for the caller as themselves; the kernel authorizes the chat create and the key ring comes from the caller's device"
+ },
+ {
+  "tool": "work.agent.threads",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.agent.threads opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: the caller's own threads with one agent, only chats the kernel lets them read"
+ },
+ {
+  "tool": "work.chat.add-people",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); the kernel's chats.change decides for each thread: the caller must be in it acting directly; the new people come from the call, the ring from the caller's device; nobody is added to a project's chat or a thread with an agent this way, and a thread without its ring is left as it is and returned"
+ },
+ {
   "tool": "work.chat.change",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.change opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
  },
@@ -2064,6 +2080,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.span opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: read-only: the kernel's chats.read on the caller's own chain is the one gate (a person in the chat, or an assistant it lists); a non-member gets not_found, the same answer as for a chat that does not exist, and no word comes from a run outside the chat"
  },
  {
+  "tool": "work.chat.summary",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.summary opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: one row per chat the caller may read, from the kernel's chat read"
+ },
+ {
+  "tool": "work.chat.thread.new",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.thread.new opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: starts another thread in a chat the caller is already in, as themselves; the kernel authorizes the create and the ring comes from the device"
+ },
+ {
+  "tool": "work.chat.threads",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.threads opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: the threads of one chat the caller may read"
+ },
+ {
   "tool": "work.chat.upgrade-move",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.upgrade-move opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: guarded: runs under the CALLER's own chain in both Spaces (records, chats and Drive under it); only the chats the kernel's chat read says the caller is in move"
  },
@@ -2084,8 +2112,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.file.unshare opened to a model or a module in 3874b075a (10 Oct 2026); the body decides: own-scope check: only the shares the caller made can be taken back (the kernel refuses the rest, an admin may take back any), and it only takes access away; it runs under the caller's own kernel chain"
  },
  {
+  "tool": "work.flow.threads",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.flow.threads opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: the caller's Flow runs as threads, filtered by flows.runs mayInspect"
+ },
+ {
   "tool": "work.link.suggest",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.link.suggest opened to a model or a module in 021a571ef (10 Oct 2026); the body decides: read-only: which records a text names, at most three, each one the caller may read; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+ },
+ {
+  "tool": "work.person.shared",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.person.shared opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: read-only: chats and projects the caller shares with one person, each read through the kernel as the caller"
+ },
+ {
+  "tool": "work.project.chat",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.project.chat opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: the caller must read the project; it finds or makes the project's one chat (a fixed id) for the team as the caller acting directly, the kernel authorizes the create, and a viewer is never put in it; it changes no one's membership, it only reports the gap"
  },
  {
   "tool": "work.project.members",
@@ -2138,6 +2178,14 @@
  {
   "tool": "work.template.test",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.template.test opened to a model or a module in 5d02ed44b (9 Oct 2026); the body decides: read-only: tries a template version with nothing created, sent or changed, read under the caller's own kernel chain"
+ },
+ {
+  "tool": "work.thread.add-people",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.thread.add-people opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: guard: the person acting directly (the kernel refuses an assistant, a viewer and a session chain); moves a thread to the chat of a larger set of people; the caller must be in the chat acting as themselves, the new set comes from the call, and the kernel's chats.change decides"
+ },
+ {
+  "tool": "work.thread.fork",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.thread.fork opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: starts a new thread from a chosen message of one the caller is in; the cut is checked by the switchboard and the kernel authorizes the new chat"
  },
  {
   "tool": "work.timeline",
