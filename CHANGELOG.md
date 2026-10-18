@@ -2,7 +2,7 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
-## 0.6.0-rc.1
+## 0.6.0
 
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).
 - ci: the per-job fscrypt volume is mounted on the runner's own path /mnt/fsc-<runner name>, outside /home: under the runner's temp folder (/home/runner/rN/_work/_temp) the sandbox plan's workspace bind was refused by core/runner/runner.foundation.test.js ("the host home is not mounted"), which stays as it is. The unmount step uses the same path. The old shared /mnt/fsc stack (146 to 263 dead mounts per host) was taken off all four CI hosts.
