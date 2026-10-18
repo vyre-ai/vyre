@@ -56,7 +56,7 @@ export function registerRelationships({ tool, obj, str, refuse, parseUrn }) {
   tool("records.relationship.remove", "Take a relationship away: { id } from records.relationship.list. The records are not touched.",
     obj({ space: str, id: str }, ["id"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const row = await d.gateway.records.get(d.chain, "relationship", String(i.id));
-      if (!row) throw refuse("That relationship is not here, or you may not see it.", "not_found");
+      if (!row) throw refuse("That relationship is not here, or you may not see it. Reload the record's relationships and pick one from the list.", "not_found");
       await d.gateway.records.remove(d.chain, "relationship", row.id, row.version);
       return { removed: row.id };
     });

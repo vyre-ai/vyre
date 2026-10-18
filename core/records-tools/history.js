@@ -53,12 +53,12 @@ const sealedShape = (v) => /\{\{field:/.test(JSON.stringify(v ?? null));
  */
 export function undoPlan(ev, now) {
   if (ev.verb === "created") {
-    if (!now) throw new Error("This record is already gone.");
+    if (!now) throw new Error("This record is already gone, so there is nothing to undo. Reload the history.");
     return { op: "remove" };
   }
   if (ev.verb === "removed") return { op: "restore" };
   if (ev.verb === "restored") {
-    if (!now) throw new Error("This record is already gone.");
+    if (!now) throw new Error("This record is already gone, so there is nothing to undo. Reload the history.");
     return { op: "remove" };
   }
   if (!now) throw new Error("This record is in the bin. Bring it back first.");
@@ -143,7 +143,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
         // a note is the planner's: read and taken away as the planner, and only by the person who wrote it
         const keeper = u.type === NOTE ? d.gateway.serviceChain("planner") : d.chain;
         const row = await d.gateway.records.get(keeper, u.type, u.id);
-        if (!row) throw refuse("That entry is already gone.", "not_found");
+        if (!row) throw refuse("That entry is already gone. Reload the record's history to see what is left.", "not_found");
         if (u.type === NOTE && String((row.data || {}).person || "") !== personOf(d)) throw refuse("Only the person who wrote a note takes it back.", "not_allowed");
         if (u.type === "communication" && row.data && row.data.source_key) throw refuse("A message that came in from outside cannot be undone here.", "bad_input");
         await d.gateway.records.remove(keeper, u.type, u.id, row.version);
@@ -153,7 +153,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       const seq = Number(id);
       const ev = (await d.gateway.events.read(d.chain, { since: seq - 1, limit: 1 }))[0];
       const m = ev && Number(ev.seq) === seq ? CHANGE.exec(String(ev.type)) : null;
-      if (!ev || !m || NOT_RECORDS.test(m[1])) throw refuse("That change is not in the history, or you may not read it.", "not_found");
+      if (!ev || !m || NOT_RECORDS.test(m[1])) throw refuse("That change is not in this record's history, or you may not read it. Reload the history and pick one it shows.", "not_found");
       const u = parseUrn(String(ev.subject));
       const now = await d.gateway.records.get(d.chain, u.type, u.id).catch(() => null);
       let plan;

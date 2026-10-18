@@ -48,7 +48,7 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
     obj({ space: str, urn: str, role: str, stage: str, since: str }, ["urn", "role"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const t = (await roleTypes(d)).find((/** @type {any} */ x) => x.name === i.role);
-      if (!t) throw refuse(`${i.role} is not a role. records.roles.summary lists the roles this Space has.`, "not_found");
+      if (!t) throw refuse(`${i.role} is not a role of this Space. Pick one of the roles shown on the record's page.`, "not_found");
       const link = (t.fields || []).find((/** @type {any} */ f) => f.name === t.role.link);
       if (link && link.to && link.to !== u.type) throw refuse(`${roleLabel(t)} is held by a ${link.to}, not a ${u.type}.`, "bad_input");
       if (!(await d.gateway.records.get(d.chain, u.type, u.id))) throw refuse(`${i.urn} is not here, or you may not read it. Pick a record you can see in Records.`, "not_found");

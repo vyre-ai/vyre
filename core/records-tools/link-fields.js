@@ -55,7 +55,7 @@ export function registerLinkFields({ tool, obj, str, refuse, parseUrn }) {
       const u = parseUrn(i.urn);
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
       const field = t && (t.fields || []).find((/** @type {any} */ f) => f.name === i.field && f.kind === "link");
-      if (!field) throw refuse(`${u.type} has no link field called ${i.field}. records.link.add makes one.`, "not_found");
+      if (!field) throw refuse(`${u.type} has no link field called ${i.field}. Ask the person to add the link to the type in Settings, then try again.`, "not_found");
       let value; try { value = linkValue(field, i.to === undefined ? null : i.to); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       const targets = (Array.isArray(value) ? value : value ? [value] : []).map((/** @type {any} */ v) => String(v.urn));
       for (const target of targets) {
