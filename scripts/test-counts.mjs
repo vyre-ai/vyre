@@ -152,8 +152,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     /** The first `not ok` / failing-test line of a file's output and up to 20 lines after it (its error block); the tail of the output when there is none (a hang, a crash). @param {string} out */
     const excerpt = out => {
       const lines = out.split("\n");
-      const at = lines.findIndex(l => /^\s*(not ok\b|✖ (?!failing tests))/.test(l));
-      return (at >= 0 ? lines.slice(at, at + 21) : lines.slice(-12)).map(l => l.slice(0, 300)).filter((l, i, a) => l.trim() || i < a.length - 1);
+      const own = lines.findIndex(l => l.startsWith("FAILED TEST "));
+      const at = own >= 0 ? own : lines.findIndex(l => /^\s*(not ok\b|✖ (?!failing tests))/.test(l));
+      return (at >= 0 ? lines.slice(at, at + (own >= 0 ? 61 : 21)) : lines.slice(-12)).map(l => l.slice(0, 300)).filter((l, i, a) => l.trim() || i < a.length - 1);
     };
     const worker = async () => {
       for (let i = next++; i < files.length; i = next++) {

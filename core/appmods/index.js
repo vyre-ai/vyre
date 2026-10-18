@@ -428,6 +428,8 @@ export default {
     // A WebSocket on an app's origin (a preview's hot reload): the same checks, tunnelled.
     front.on("upgrade", (req, socket, head) => { hostProxy.upgrade(req, /** @type {any} */ (socket), head).then(done => { if (!done) socket.destroy(); }).catch(() => socket.destroy()); });
     await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
+    // From here a throw (a tool the manifest does not declare, say) would leave the front listening with no handle to stop it: it is closed first, so a module that fails to start leaves nothing open.
+    try {
     ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
       const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening: wait a minute and call again, then ask the owner of this server", "unavailable"); return { port: a.port };
     } });
@@ -667,14 +669,14 @@ export default {
         if (!sres || !sres.ok) throw refuse(`${name} would not say how request ${n} is doing`, "app_refused");
         const status = readStatus(await sres.json().catch(() => null));
         const url = status && auditAllowed(r.origin, status.audit_url);
-        if (!url) throw refuse("there is no audit file for this request on the app's own origin", "not_found");
+        if (!url) throw refuse("there is no audit file for this request on the app's own origin: ask the person to open the request in the signing app", "not_found");
         const ares = await fetch(url, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(20_000), redirect: "manual" }).catch(() => null);
         if (!ares || !ares.ok || ares.status >= 300) throw refuse("the audit file could not be fetched", "app_refused");
         const len = Number(ares.headers.get("content-length"));
         const cap = 8 * 1024 * 1024;
-        if (!auditBodyWithin(len, cap)) throw refuse("the audit file is larger than 8 MB, or its size is unknown", "too_large");
+        if (!auditBodyWithin(len, cap)) throw refuse("the audit file is larger than 8 MB, or its size is unknown: ask the person to open it in the signing app", "too_large");
         const bytes = Buffer.from(await ares.arrayBuffer());
-        if (!auditBodyWithin(bytes.length, cap)) throw refuse("the audit file is larger than 8 MB", "too_large");
+        if (!auditBodyWithin(bytes.length, cap)) throw refuse("the audit file is larger than 8 MB: ask the person to open it in the signing app", "too_large");
         return { bytes: bytes.toString("base64") };
       },
     });
@@ -701,5 +703,6 @@ export default {
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
     return { async stop() { offRotate(); for (const t of rotating.values()) clearTimeout(t); rotating.clear(); for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
+    } catch (e) { try { front.close(); front.closeAllConnections(); } catch { /* already closed */ } throw e; }
   },
 };
