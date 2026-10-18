@@ -130,6 +130,18 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   assert.equal((await ok(OWNER, "work.chat.threads", { people: [BEN] })).count, 3, "that chat has three threads now");
   assert.deepEqual((await ok(OWNER, "work.agent.threads", { agent: "juno" })).threads.map((/** @type {any} */ x) => x.title), ["second thread"], "it is no longer one of my own threads with juno");
   assert.ok((await ok(BEN, "work.chat.threads", { chat: first.thread })).threads.some((/** @type {any} */ x) => x.title === "first thread"), "and Ben is in it");
+  // "You and <name>": the chat, the threads we share, the projects we are both on
+  const SPACE = K.id.space, link = (/** @type {string} */ id) => ({ actor: { kind: "person", id, space: SPACE } });
+  const proj = await K.gateway.records.create(ownerChain, "project", { name: "Together", slug: "together", status: "active", memory_scope: "project:together", owner: link(OWNER) });
+  await K.gateway.records.create(ownerChain, "team-member", { name: "ben", actor: link(BEN), kind: "person", project: { urn: proj.urn } });
+  const withBen = await ok(OWNER, "work.person.shared", { person: BEN });
+  assert.deepEqual([withBen.person.id, withBen.chat.threads, withBen.shared_threads], [BEN, 3, 5], "my chat with Ben has three threads, and five threads have us both");
+  assert.deepEqual(withBen.projects.map((/** @type {any} */ p) => p.name), ["Together"], "the project we are both on");
+  const withCy = await ok(OWNER, "work.person.shared", { person: CY });
+  assert.deepEqual([withCy.chat, withCy.shared_threads, withCy.projects.length], [null, 2, 0], "Cy and I share the group's two threads and no chat of our own");
+  assert.equal((await as(OWNER, "work.person.shared", { person: OWNER })).error?.code, "bad_input");
+  assert.deepEqual((await ok(BEN, "work.person.shared", { person: CY })).shared_threads, 2, "Ben sees what he shares with Cy, and not the owner's other threads");
+
   // a thread of other people is not moved this way; adding yourself or no one is refused
   assert.equal((await as(OWNER, "work.thread.add-people", { thread: g1.thread, people: [BEN] })).error?.code, "not_found");
   assert.equal((await as(OWNER, "work.thread.add-people", { thread: second.thread, people: [] })).error?.code, "bad_input");

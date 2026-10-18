@@ -192,6 +192,32 @@ export async function summarize(d, extra) {
   return { pinned, people: chats.filter(c => c.kind === "person"), groups: chats.filter(c => c.kind === "group"), agents: agentRows, flows: await flowRows(d.ctx) };
 }
 
+/** The person id in a person link ({ actor: { id } } or { id }), or "". @param {any} v */
+const personId = v => String((v && v.actor && v.actor.id) || (v && v.id) || "");
+
+/**
+ * "You and <person>": your chat with them, the threads you share (any chat that has both of you), and the projects you are both on. Read through the caller's own chats and projects only.
+ * @param {any} d @param {any} extra @param {string} person
+ */
+export async function personShared(d, extra, person) {
+  const { me, k, faces, items } = await loadMine(d, extra);
+  if (!person || person === me) throw fail("bad_input", "name another person");
+  const chain = await d.chainOf(extra);
+  const both = items.filter(it => it.ppl.includes(person));
+  const direct = items.filter(it => it.key === chatKey([me, person]));
+  const newest = (/** @type {any[]} */ l) => l.map(it => it.thread).sort((a, b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
+  const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, { urn: p.urn, name: p.data.name, owner: personId(p.data.owner), personal: Boolean(p.data.personal_of) }]));
+  /** @type {Map<string, Set<string>>} */ const team = new Map();
+  for (const [urn, p] of projects) if (p.owner) team.set(urn, new Set([p.owner]));
+  for (const t of (await k.records.query(chain, "team-member", { page: { limit: 1000 } })).rows || []) {
+    const u = t.data.project && t.data.project.urn, a = personId(t.data.actor);
+    if (u && a && team.has(String(u))) /** @type {Set<string>} */ (team.get(String(u))).add(String(a));
+  }
+  const together = [...team].filter(([urn, set]) => set.has(me) && set.has(person) && !(projects.get(urn) || { personal: true }).personal).map(([urn]) => ({ urn, name: /** @type {any} */ (projects.get(urn)).name })).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const dm = direct.length ? chatOf(faces, me, direct) : null;
+  return { person: faces.people([person])[0], chat: dm ? { chat: dm.chat, threads: dm.threads, latest: dm.latest, last_active: dm.last_active } : null, threads: newest(both).slice(0, 20), shared_threads: both.length, projects: together };
+}
+
 /**
  * The threads of one chat: by a thread in it, or by the people (you are always one of them).
  * @param {any} d @param {any} extra @param {{ chat?: string, people?: string[], limit?: number, before?: string | null }} q
@@ -285,6 +311,11 @@ export function registerThreads(d) {
     description: "A chat's threads, newest first, found by a thread in it or by its people, with who is in it.",
     input: obj({ chat: { type: "string", description: "a thread id or a chat key from work.chat.summary" }, people: { type: "array", items: { type: "string" }, description: "the other people in the chat, when no chat is named" }, limit: { type: "integer" }, before: { type: "string" } }),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => chatThreads(d, extra, { chat: input.chat ? String(input.chat) : undefined, people: Array.isArray(input.people) ? input.people : [], limit: input.limit, before: input.before ? String(input.before) : null }),
+  });
+  d.chatTool("work.person.shared", {
+    description: "What you and one person share: your chat with them, the threads you are both in, and the projects you are both on.",
+    input: obj({ person: { type: "string", description: "the person's id" } }, ["person"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ extra) => personShared(d, extra, String(input.person)),
   });
   d.chatTool("work.thread.add-people", {
     description: "Add people to your thread with an agent: it moves into the chat of exactly you and them, and the agent comes along. Needs the key ring your device made.",

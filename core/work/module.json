@@ -214,6 +214,12 @@
         "effect": "read"
       },
       {
+        "name": "work.person.shared",
+        "summary": "what you and one person share: your chat, your shared threads, your projects together",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.thread.add-people",
         "summary": "add people to your thread with an agent; it moves into the chat of exactly those people",
         "reach": "anyone",
