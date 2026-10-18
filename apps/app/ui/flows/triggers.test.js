@@ -131,3 +131,21 @@ test("an Assign step can go to whoever on a team takes it first", () => {
   assert.ok(assignChoices(O).some(([v]) => v === "group:owner"));
   assert.match(whoWords("group:owner", O), /takes it first/);
 });
+
+test("a slot's time limit and fallback role are kept together, and one without the other is a problem", () => {
+  const base = { id: "a1", kind: "assign", to: "per_ana", title: "Check it" };
+  const slot = { who: "person:per_bo", due: 172800000, escalate_to: "role:admins" };
+  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, reviewer: slot, approver: { who: "role:admins", quorum: "all", due: 86400000 } }] });
+  assert.equal(d.steps[0].kind, "assign");
+  assert.equal(d.steps[0].reviewerDue, 172800000);
+  assert.equal(d.steps[0].reviewerEscalate, "role:admins");
+  assert.equal(d.steps[0].approverQuorum, "all");
+  const back = toDefinition(d, O).steps[0];
+  assert.deepEqual(back.reviewer, slot);
+  assert.deepEqual(back.approver, { who: "role:admins", quorum: "all", due: 86400000 });
+  assert.match(draftProblems(d, O).join(" "), /Set both the time limit and who it passes to for the approver/);
+  const ok = { ...d, steps: [{ ...d.steps[0], approverDue: undefined }] };
+  assert.doesNotMatch(draftProblems(ok, O).join(" "), /time limit/);
+  const everyone = { ...d, steps: [{ ...d.steps[0], approverDue: 86400000, approverEscalate: "role:admins" }] };
+  assert.match(draftProblems(everyone, O).join(" "), /needs everyone/);
+});

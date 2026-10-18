@@ -18,7 +18,7 @@ import { DateTimeField } from "../components/DateTimeField";
 import { DateValue } from "./DateValue";
 import { FailurePanel } from "./FailurePanel";
 import { DocumentFields } from "./DocumentFields";
-import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, assignChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
+import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, assignChoices, DUE_CHOICES, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -160,6 +160,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                       <>
                         <Field label="Skills the reviewer checks against (optional)" value={s.reviewerSkills ?? ""} onChangeText={(reviewerSkills) => setStep(s.id, { reviewerSkills })} placeholder="For example voice, accuracy" help="Space skills, separated by commas. Each skill's checklist is what they tick." />
                         <ContextBox label="Instructions for the reviewer" value={s.reviewerInstructions ?? ""} onChange={(reviewerInstructions) => setStep(s.id, { reviewerInstructions })} options={options} placeholder="What to look for" />
+                      <Select label="Time limit" value={String(s.reviewerDue ?? "")} options={DUE_CHOICES} onChange={(reviewerDue) => setStep(s.id, { reviewerDue: reviewerDue ? Number(reviewerDue) : undefined })} />
+                      <Select label="If it runs late, pass it to" value={s.reviewerEscalate ?? ""} options={[["", "No one"], ...options.roles.map((r) => [`role:${r.name}`, r.label] as [string, string])]} onChange={(reviewerEscalate) => setStep(s.id, { reviewerEscalate: reviewerEscalate || undefined })} />
                       </>
                     ) : null}
                     </>
@@ -172,6 +174,9 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                       <>
                         <Field label="Skills the approver checks against (optional)" value={s.approverSkills ?? ""} onChangeText={(approverSkills) => setStep(s.id, { approverSkills })} placeholder="For example contracts" help="Space skills, separated by commas." />
                         <ContextBox label="Instructions for the approver" value={s.approverInstructions ?? ""} onChange={(approverInstructions) => setStep(s.id, { approverInstructions })} options={options} placeholder="What a yes means" />
+                      <Select label="Time limit" value={String(s.approverDue ?? "")} options={DUE_CHOICES} onChange={(approverDue) => setStep(s.id, { approverDue: approverDue ? Number(approverDue) : undefined })} />
+                      <Select label="If it runs late, pass it to" value={s.approverEscalate ?? ""} options={[["", "No one"], ...options.roles.map((r) => [`role:${r.name}`, r.label] as [string, string])]} onChange={(approverEscalate) => setStep(s.id, { approverEscalate: approverEscalate || undefined })} />
+                      <Switch label="Everyone on the team must approve" on={s.approverQuorum === "all"} onChange={(on) => setStep(s.id, { approverQuorum: on ? "all" : undefined })} />
                       </>
                     ) : null}
                     </>
@@ -203,6 +208,8 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     <>
                       <Field label="Skills the reviewer checks against (optional)" value={s.reviewerSkills ?? ""} onChangeText={(reviewerSkills) => setStep(s.id, { reviewerSkills })} placeholder="For example voice, accuracy" help="Space skills, separated by commas. Each skill's checklist is what they tick." />
                       <ContextBox label="Instructions for the reviewer" value={s.reviewerInstructions ?? ""} onChange={(reviewerInstructions) => setStep(s.id, { reviewerInstructions })} options={options} placeholder="What to look for" />
+                      <Select label="Time limit" value={String(s.reviewerDue ?? "")} options={DUE_CHOICES} onChange={(reviewerDue) => setStep(s.id, { reviewerDue: reviewerDue ? Number(reviewerDue) : undefined })} />
+                      <Select label="If it runs late, pass it to" value={s.reviewerEscalate ?? ""} options={[["", "No one"], ...options.roles.map((r) => [`role:${r.name}`, r.label] as [string, string])]} onChange={(reviewerEscalate) => setStep(s.id, { reviewerEscalate: reviewerEscalate || undefined })} />
                     </>
                   ) : null}
                   <Select label="Approver (optional): a person or a team or role" value={s.checker ?? ""} options={approverChoices(options)} onChange={(checker) => setStep(s.id, { checker: checker || undefined })} />
@@ -210,6 +217,9 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                     <>
                       <Field label="Skills the approver checks against (optional)" value={s.approverSkills ?? ""} onChangeText={(approverSkills) => setStep(s.id, { approverSkills })} placeholder="For example contracts" help="Space skills, separated by commas." />
                       <ContextBox label="Instructions for the approver" value={s.approverInstructions ?? ""} onChange={(approverInstructions) => setStep(s.id, { approverInstructions })} options={options} placeholder="What a yes means" />
+                      <Select label="Time limit" value={String(s.approverDue ?? "")} options={DUE_CHOICES} onChange={(approverDue) => setStep(s.id, { approverDue: approverDue ? Number(approverDue) : undefined })} />
+                      <Select label="If it runs late, pass it to" value={s.approverEscalate ?? ""} options={[["", "No one"], ...options.roles.map((r) => [`role:${r.name}`, r.label] as [string, string])]} onChange={(approverEscalate) => setStep(s.id, { approverEscalate: approverEscalate || undefined })} />
+                      <Switch label="Everyone on the team must approve" on={s.approverQuorum === "all"} onChange={(on) => setStep(s.id, { approverQuorum: on ? "all" : undefined })} />
                     </>
                   ) : null}
                   <View className="gap-s2">

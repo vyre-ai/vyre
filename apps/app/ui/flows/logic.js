@@ -199,7 +199,7 @@ export function flowSentence(d, o) {
 
 /** What a step still needs before the Flow can be saved, in words, or null. @param {DraftStep} s @param {Options} o */
 export function stepProblem(s, o) {
-  return kindProblem(s, o) || policyProblem(s, formulaProblem);
+  return kindProblem(s, o) || slotProblem(s) || policyProblem(s, formulaProblem);
 }
 
 /** @param {DraftStep} s @param {Options} o */
@@ -574,6 +574,19 @@ export const repeatLimit = (v) => { const n = Math.round(Number(v)); return Numb
 /** The kind ("date" or "datetime") of a field a Create or Update step sets, when the object says so, else null. The field is named as typed: it is matched by the name the engine stores it under. @param {Options} o @param {string | undefined} type @param {string | undefined} field */
 export const dateKindOf = (o, type, field) => { if (!(field || "").trim()) return null; const f = ((o.types.find((x) => x.name === type) || {}).fields || []).find((x) => x.name === slug(field || "")); return f && (f.kind === "date" || f.kind === "datetime") ? f.kind : null; };
 
+/** How long a reviewer or approver may take before the step passes to another role: the choices, in milliseconds. @type {[string, string][]} */
+export const DUE_CHOICES = [["", "No time limit"], ["3600000", "1 hour"], ["14400000", "4 hours"], ["86400000", "1 day"], ["172800000", "2 days"], ["259200000", "3 days"], ["604800000", "1 week"], ["1209600000", "2 weeks"]];
+
+/** What a slot's time limit and fallback still need: both or neither, and no fallback when everyone must answer. @param {DraftStep} s */
+export function slotProblem(s) {
+  for (const [who, due, esc, label] of [[s.reviewer, s.reviewerDue, s.reviewerEscalate, "reviewer"], [s.checker, s.approverDue, s.approverEscalate, "approver"]]) {
+    if (!who) continue;
+    if (!!due !== !!esc) return `Set both the time limit and who it passes to for the ${label}, or neither.`;
+  }
+  if (s.checker && s.approverQuorum === "all" && s.approverEscalate) return "A step that needs everyone cannot also pass to a role when it runs late.";
+  return null;
+}
+
 const commaWords = (/** @type {any} */ t) => String(t || "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 10).map((x) => x.slice(0, 60));
 
 /**
@@ -583,11 +596,11 @@ const commaWords = (/** @type {any} */ t) => String(t || "").split(",").map((x) 
  */
 function withSlots(s, k) {
   if (k.kind !== "assign" && k.kind !== "ask") return k;
-  const slot = (/** @type {string} */ who, /** @type {any} */ skills, /** @type {any} */ ins) => ({ who: doer(who), ...(commaWords(skills).length ? { skills: commaWords(skills) } : {}), ...(String(ins || "").trim() ? { instructions: String(ins).trim().slice(0, 2000) } : {}) });
+  const slot = (/** @type {string} */ who, /** @type {any} */ skills, /** @type {any} */ ins, /** @type {any} */ due, /** @type {any} */ esc, /** @type {boolean} */ all) => ({ who: doer(who), ...(commaWords(skills).length ? { skills: commaWords(skills) } : {}), ...(String(ins || "").trim() ? { instructions: String(ins).trim().slice(0, 2000) } : {}), ...(all ? { quorum: "all" } : {}), ...(Number(due) > 0 ? { due: Number(due) } : {}), ...(esc ? { escalate_to: esc } : {}) });
   const { checker: _c, ...rest } = k;
-  const approver = s.checker ? slot(s.checker, s.approverSkills, s.approverInstructions) : null;
+  const approver = s.checker ? slot(s.checker, s.approverSkills, s.approverInstructions, s.approverDue, s.approverEscalate, s.approverQuorum === "all") : null;
   const rich = !!approver && (Object.keys(approver).length > 1 || k.kind === "ask");
-  return { ...rest, ...(s.reviewer ? { reviewer: slot(s.reviewer, s.reviewerSkills, s.reviewerInstructions) } : {}), ...(approver && rich ? { approver } : approver ? { checker: approver.who } : {}) };
+  return { ...rest, ...(s.reviewer ? { reviewer: slot(s.reviewer, s.reviewerSkills, s.reviewerInstructions, s.reviewerDue, s.reviewerEscalate, false) } : {}), ...(approver && rich ? { approver } : approver ? { checker: approver.who } : {}) };
 }
 
 /** The reviewer and approver of a stored Assign or Ask step as draft fields, and the step without them (so the kind reads it as it always did). `slots` is null when a slot has a shape the editor cannot show. @param {any} s */
@@ -598,11 +611,11 @@ function splitSlots(s) {
   /** @param {any} v @param {string[]} allowed */
   const good = (v, allowed) => v === undefined || (v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.who === "string" && Object.keys(v).every((k) => allowed.includes(k))
     && (v.skills === undefined || (Array.isArray(v.skills) && v.skills.every((/** @type {any} */ x) => typeof x === "string" && x && !x.includes(","))))
-    && (v.instructions === undefined || typeof v.instructions === "string") && (v.quorum === undefined || v.quorum === "any"));
-  if (!good(reviewer, ["who", "skills", "instructions"]) || !good(approver, ["who", "skills", "instructions", "quorum"]) || (approver !== undefined && base.checker !== undefined)) return { base: s, slots: null };
+    && (v.instructions === undefined || typeof v.instructions === "string") && (v.quorum === undefined || v.quorum === "any" || v.quorum === "all") && (v.due === undefined || Number.isInteger(v.due)) && (v.escalate_to === undefined || typeof v.escalate_to === "string"));
+  if (!good(reviewer, ["who", "skills", "instructions", "due", "escalate_to"]) || !good(approver, ["who", "skills", "instructions", "quorum", "due", "escalate_to"]) || (approver !== undefined && base.checker !== undefined)) return { base: s, slots: null };
   const slots = {
-    ...(reviewer ? { reviewer: back(reviewer.who), ...(reviewer.skills ? { reviewerSkills: reviewer.skills.join(", ") } : {}), ...(reviewer.instructions ? { reviewerInstructions: reviewer.instructions } : {}) } : {}),
-    ...(approver ? { checker: back(approver.who), ...(approver.skills ? { approverSkills: approver.skills.join(", ") } : {}), ...(approver.instructions ? { approverInstructions: approver.instructions } : {}) } : {}),
+    ...(reviewer ? { reviewer: back(reviewer.who), ...(reviewer.skills ? { reviewerSkills: reviewer.skills.join(", ") } : {}), ...(reviewer.instructions ? { reviewerInstructions: reviewer.instructions } : {}), ...(reviewer.due ? { reviewerDue: reviewer.due } : {}), ...(reviewer.escalate_to ? { reviewerEscalate: reviewer.escalate_to } : {}) } : {}),
+    ...(approver ? { checker: back(approver.who), ...(approver.skills ? { approverSkills: approver.skills.join(", ") } : {}), ...(approver.instructions ? { approverInstructions: approver.instructions } : {}), ...(approver.quorum === "all" ? { approverQuorum: "all" } : {}), ...(approver.due ? { approverDue: approver.due } : {}), ...(approver.escalate_to ? { approverEscalate: approver.escalate_to } : {}) } : {}),
   };
   return { base, slots };
 }
