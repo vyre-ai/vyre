@@ -53,7 +53,7 @@ async function walk(name, fn) {
     sees: async (text) => { await p.getByText(text, { exact: false }).first().waitFor({ timeout: 6000 }); },
     absent: async (text) => { if (await p.getByText(text, { exact: false }).count()) throw new Error(`this screen still says "${text}"`); },
     body: async () => p.locator("body").innerText(),
-    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.at("Get started"); await t.pick("New here? Get started"); await t.at("Create your identity"); },
+    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Create your identity"); },
   };
   try {
     await fn(t);
@@ -134,7 +134,7 @@ await walk("new person creates a space and waits", async (t) => {
   await t.sees("Name your space");
   await t.type("Space name", "alex-studio");
   await t.sees("alex-studio.vyre.run");
-  await t.at("VYRE_CODE=");
+  await t.sees("VYRE_CODE=");
   await t.press("Continue");
   await t.at("Waiting for it to come online");
   await t.sees("curl -fsSL vyre.run/i | sh");
@@ -167,23 +167,28 @@ await walk("Back retraces identity", async (t) => {
   await t.press("Back");
   await t.at("Create your identity");
   await t.press("Back");
-  await t.at("Get started");
+  await t.at("What should we call you?");
+  await t.press("Back");
+  await t.sees("New here? Get started");
 });
 
 await walk("the first screen offers both, and Back from create returns to it", async (t) => {
   await t.start();
   await t.press("Back");
-  await t.at("Get started");
+  await t.at("What should we call you?");
+  await t.press("Back");
   await t.sees("New here? Get started");
-  await t.sees("Sign in");
+  await t.sees("Sign in to");
+  await t.sees("Sign in with GitHub");
 });
 
 await walk("sign in from any device with a space address, a username and the password", async (t) => {
   await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
-  await t.at("Get started");
-  await t.pick("Sign in");
+  await t.sees("New here? Get started");
+  await t.type("Space name", "juniper");
+  await t.press("Continue");
   await t.at("Sign in");
-  if (await t.enabled("Sign in")) throw new Error("Sign in should wait for all three");
+  if (await t.enabled("Sign in")) throw new Error("Sign in should wait for the username and the password");
   await t.type("Space address", "not an address");
   await t.sees("address of a space");
   await t.type("Space address", "juniper.vyre.run");
@@ -196,10 +201,8 @@ await walk("sign in from any device with a space address, a username and the pas
 
 await walk("sign in with GitHub shows the spaces it found, then asks the password once", async (t) => {
   await t.p.goto(URL0, { waitUntil: "domcontentloaded" });
-  await t.at("Get started");
-  await t.pick("Sign in");
-  await t.at("Sign in");
-  await t.press("Continue with GitHub");
+  await t.sees("New here? Get started");
+  await t.press("Sign in with GitHub");
   await t.at("Your spaces");
   await t.sees("juniper, owner");
   await t.sees("studio, admin");
