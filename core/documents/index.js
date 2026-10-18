@@ -40,7 +40,14 @@ function pathsUnder(alias, asked) {
  * Register the Documents tools. Exported for the tests, which hand in a ctx with a stand-in kernel.
  * @param {any} ctx
  */
+/** The module's own table: which person sent each signature request. Written by documents.send from the verified chain only; no tool edits it (sec53). */
+export const MIGRATIONS = [
+  `CREATE TABLE documents_requests (submission INTEGER PRIMARY KEY, sender TEXT NOT NULL, template TEXT NOT NULL, at INTEGER NOT NULL);`,
+];
+
 export function registerDocuments(ctx) {
+  if (ctx.store && typeof ctx.store.migrate === "function") ctx.store.migrate(MIGRATIONS);
+  const requests = ctx.store && ctx.store.db ? ctx.store.db : null;
   const door = createDoor(ctx);
   const cfg = (/** @type {any} */ () => (ctx.config && ctx.config.documents) || {});
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any) => Promise<any>} fn @param {any} [more] */
@@ -206,8 +213,9 @@ export function registerDocuments(ctx) {
         .catch((/** @type {any} */ e) => { throw e && e.code === "not_found" ? refuse("Documents is not running on this server: install or start it from Apps, then send again", "unavailable") : e; });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
-      // The request is filed under the sender's own chain, so she (and only she, and the owner) can open it later (sec53's ownership check, 18 Oct).
-      await filed(d, { name: `Signature request ${asked.submission}`, status: "Sent", template: `Template ${i.template_id}`, signer_email: email, submission: asked.submission }).catch(() => null);
+      // The sender is the person on the verified chain (never input): the row lets her, and staff, open the request later (sec53's ownership check).
+      const sender = personOf(d.chain);
+      if (requests && sender) requests.prepare("INSERT OR IGNORE INTO documents_requests (submission, sender, template, at) VALUES (?, ?, ?, ?)").run(Number(asked.submission), sender, String(i.template_id), Date.now());
       return { ...asked, sent };
     },
   });
@@ -334,17 +342,16 @@ export function registerDocuments(ctx) {
   /** The one answer for a request the caller may not see, whether it does not exist, is someone else's, or she cannot read it (sec53: no difference to tell apart). */
   const NO_REQUEST = "no such request: check the number, or ask the person who sent it";
   /**
-   * May this caller open a signature request (documents.signing.status, audit, waiting)? Yes when a document record filed under her own chain carries the submission
-   * (the record is written at send time, from the verified chain, so the sender is who may see it). The owner also sees requests from before that record existed. Anyone else: no.
+   * May this caller open a signature request (documents.signing.status, audit, waiting)? The owner and admins (the kernel's membership role) may open any request.
+   * Otherwise only the person who sent it, as the module's own table records it. A request with no row (sent before the table, or never recorded) is staff only.
    * @param {any} d @param {any} submission
    */
   const mayOpenRequest = async (/** @type {any} */ d, /** @type {any} */ submission) => {
-    const n = Number(submission);
-    try {
-      const rows = (await d.gateway.records.query(d.chain, "document", { filter: { field: "submission", op: "eq", value: n }, page: { limit: 1 } })).rows || [];
-      if (rows.length) return true;
-    } catch { /* not readable under this chain: the same as no record */ }
-    return isStaff(personOf(d.chain));
+    const person = personOf(d.chain);
+    if (!person) return false;
+    if (await isStaff(person)) return true;
+    const row = requests ? requests.prepare("SELECT sender FROM documents_requests WHERE submission = ?").get(Number(submission)) : null;
+    return Boolean(row) && String(row.sender) === person;
   };
   /** The Space's owner or an admin, by the kernel's membership role (the same test core/work/hub.js uses for staff). */
   const isStaff = async (/** @type {string | null} */ person) => {

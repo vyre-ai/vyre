@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import crypto from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { registerDocuments } from "./index.js";
 import { docx, textOf } from "./testing/docx.js";
 import { allowLoopbackForTests } from "../../lib/http.js";
@@ -13,7 +14,7 @@ import { allowLoopbackForTests } from "../../lib/http.js";
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
 
-function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})), denied = /** @type {any[]} */ ([]), made = /** @type {any[]} */ ([]) } = {}) {
+function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})), denied = /** @type {any[]} */ ([]), made = /** @type {any[]} */ ([]), db = new DatabaseSync(":memory:") } = {}) {
   /** @type {Map<string, Buffer[]>} */ const files = new Map();
   const gateway = {
     drive: {
@@ -31,11 +32,12 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
   };
   /** @type {Map<string, any>} */ const tools = new Map();
   const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
-  const ctx = { config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
+  const store = { migrate: (/** @type {string[]} */ ms) => { for (const m of ms) db.exec(m); }, db };
+  const ctx = { store, config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
     kernel: { space: SPACE, owner: "per_alex", membership: async (/** @type {string} */ p) => ({ role: p === "per_alex" ? "owner" : p === "per_admin" ? "admin" : "member" }), for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
-  return { run, files, made, tools, emitted };
+  return { run, files, made, tools, emitted, db };
 }
 const b64 = (/** @type {Buffer} */ b) => b.toString("base64");
 const LETTER = () => docx(["Dear {client.name},", "Your fee is {matter.fee}.", "{#fees}{label} {amount}; {/fees}"]);
@@ -404,7 +406,7 @@ test("member access to a request: only the sender (and the owner) may open it; a
   const mia = rig({ chain: MIA, call, made });
   const sent = await mia.run("documents.send", { template_id: 3, email: "sam@example.com" }, { caller: "cli" });
   assert.equal(sent.submission, 41);
-  assert.equal(made.filter(m => m.type === "document" && m.data.submission === 41).length, 1, "the send filed a request record under the sender's chain");
+  assert.equal(mia.db.prepare("SELECT sender FROM documents_requests WHERE submission = 41").get()?.sender, "per_mia", "the send recorded the sender from the verified chain");
 
   const bob = rig({ chain: BOB, call, made });
   const bobStatus = await code(bob.run("documents.signing.status", { submission: 41 }, { caller: "cli" }));
