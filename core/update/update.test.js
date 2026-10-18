@@ -231,5 +231,7 @@ test("R031-47: whatsNewText reads a version's notes, cuts a long one at a paragr
   const long = /** @type {string} */ (whatsNewText("1.2.4", dir));
   assert.ok(long.length < 3100 && /and more/.test(long));
   assert.equal(whatsNewText("9.9.9", dir), null);
+  assert.equal(whatsNewText("1.2.3-rc.1", dir), "Headline.\n\n- one\n- two", "a release candidate with no notes of its own reads the release's");
+  assert.equal(whatsNewText("9.9.9-rc.1", dir), null, "and nothing when neither exists");
   assert.equal(whatsNewText("../etc/passwd", dir), null);
 });

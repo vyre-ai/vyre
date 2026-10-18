@@ -48,7 +48,8 @@ const WHATS_NEW_MAX = 3000;
 export function whatsNewText(version, dir = NOTES_DIR) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) return null;
   let text;
-  try { text = fs.readFileSync(path.join(dir, `${version}.md`), "utf8"); } catch { return null; }
+  // a release candidate (0.6.0-rc.1) reads the release's notes (0.6.0) when it has none of its own
+  try { text = fs.readFileSync(path.join(dir, `${version}.md`), "utf8"); } catch { try { text = fs.readFileSync(path.join(dir, `${version.split("-")[0]}.md`), "utf8"); } catch { return null; } }
   text = text.replace(/\r\n/g, "\n").trim();
   if (!text) return null;
   if (text.length <= WHATS_NEW_MAX) return text;
