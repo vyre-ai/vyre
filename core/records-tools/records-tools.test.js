@@ -217,17 +217,23 @@ test("records.create gives a record of a type with an ID field the next ID (PER-
   assert.equal(refused.error && refused.error.code, "field_not_allowed", JSON.stringify(refused));
   assert.match(String(refused.error.message), /never changes/);
   assert.ok(!(await call("records.update", { urn: first.urn, patch: { name: "Jane Doe" }, base_version: first.version }, { root, caller: "cli" })).error, "other fields still change");
-  // a record made before the type had an ID gets one when a page that shows it is listed, in the order records were made, and once
+  // a record made before the type had an ID: listing it changes nothing (a read does not write), and the define that adds the ID field gives the older records theirs, oldest first, once
   await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
-  const o1 = await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "first" }), o2 = await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "second" });
-  await d.kernel.gateway.records.define(ownerChain, { change_types: [{ name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ref", kind: "text", label: "ID", unique: true, read_only: true }] }] });
+  await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "first" });
+  await new Promise(r => setTimeout(r, 20));
+  await d.kernel.gateway.records.create(ownerChain, "oldtype", { name: "second" });
+  const withId = { name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ref", kind: "text", label: "ID", unique: true, read_only: true }] };
+  await d.kernel.gateway.records.define(ownerChain, { change_types: [withId] });
   await ok("records.list", { type: "oldtype", limit: 10 });
-  await new Promise(r => setTimeout(r, 500));
+  assert.deepEqual((await ok("records.list", { type: "oldtype", limit: 10 })).rows.map(r => r.data.ref ?? null), [null, null], "listing gave nobody an ID: a read does not write");
+  await ok("records.define", { diff: { change_types: [withId] } });
   const filled = (await ok("records.list", { type: "oldtype", limit: 10 })).rows;
   assert.deepEqual(filled.map(r => [r.data.name, r.data.ref]).sort(), [["first", "OLD-0001"], ["second", "OLD-0002"]], "oldest first");
-  await ok("records.list", { type: "oldtype", limit: 10 }); await new Promise(r => setTimeout(r, 300));
+  await ok("records.define", { diff: { change_types: [withId] } });
   assert.deepEqual((await ok("records.list", { type: "oldtype", limit: 10 })).rows.map(r => r.data.ref).sort(), ["OLD-0001", "OLD-0002"], "run again: nothing changes");
-  void o1; void o2;
+  // the member door runs the same create and update bodies as these tools (records.serve-create and serve-update look them up by name), so a member's create gets an ID and a member's update naming ref is refused too
+  const src = (await import("node:fs")).readFileSync(new URL("./index.js", import.meta.url), "utf8");
+  assert.match(src, /const op = ops\.get\(`records\.\$\{i\.call\}`\)/, "the member door looks the handler up in the same table the tools are registered in");
   const plain = (await ok("records.create", { type: "plain", data: { name: "x" } })).record;
   assert.equal(plain.data.ref, undefined, "a type without an ID field is made as before");
 });

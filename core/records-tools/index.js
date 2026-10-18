@@ -9,7 +9,7 @@ import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { isSystemType } from "../../lib/record-types.js";
 import { kindOf } from "../../lib/doc-refs.js";
-import { nextRef } from "./ref.js";
+import { nextRef, refNumber, refPrefix, mintRef } from "./ref.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -91,12 +91,17 @@ export default {
         } catch { return { kind: "record", unknown: true }; }
       },
     });
-    tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may.", obj({ space: str, diff: { type: "object" } }, ["diff"]), (i, d) => d.gateway.records.define(d.chain, i.diff));
+    tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may. A type that gains an ID field gives its older records their IDs, oldest first.", obj({ space: str, diff: { type: "object" } }, ["diff"]), async (i, d) => {
+      const out = await d.gateway.records.define(d.chain, i.diff);
+      // the person who defined it may update these records, so the IDs are given under their own chain, once; records that have one are left alone
+      for (const t of [...((i.diff && i.diff.add_types) || []), ...((i.diff && i.diff.change_types) || [])]) {
+        if (t && typeof t.name === "string" && (t.fields || []).some((/** @type {any} */ f) => f && f.name === "ref")) { try { await fillIds(d, t.name); ctx.log(`records: gave ${t.name}'s records their IDs`); } catch (e) { ctx.log(`records: ${t.name}'s records were not all given their IDs (${/** @type {Error} */ (e).message})`); } }
+      }
+      return out;
+    });
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
       const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
-      // a record made before its type had an ID gets one now, in the background (idempotent: see fillIds)
-      if (r.rows.some((/** @type {any} */ row) => row && row.data && !row.data.ref) && await hasRef(d, String(i.type))) void fillIds(d, String(i.type)).catch(() => {});
       return { rows: r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
@@ -109,33 +114,37 @@ export default {
     }, byUrn);
     // A type with a `ref` field gives each record an ID when it is made (PER-0001, the next after the highest): minted here, one at a time per type so two at once do not share one, and never taken from the caller.
     /** @type {Map<string, Promise<any>>} */ const minting = new Map();
+    /** @type {Map<string, number>} the highest number given out here for a type in a Space, so the next one starts past it whatever the caller can see */ const issued = new Map();
     const hasRef = async (/** @type {any} */ d, /** @type {string} */ type) => { try { return ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === type && (t.fields || []).some((/** @type {any} */ f) => f.name === "ref")); } catch { return false; } };
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
-      const before = minting.get(type) || Promise.resolve();
+      const key = `${d.space}:${type}`;
+      const before = minting.get(key) || Promise.resolve();
       const mine = before.catch(() => {}).then(async () => {
-        // the highest ID in use plus one; if another writer took it between the look and the write (the ID is unique), look again: up to three times
-        for (let tries = 1; ; tries++) {
-          const last = await d.gateway.records.query(d.chain, type, { sort: [{ field: "ref", dir: "desc" }], page: { limit: 5 } }).catch(() => ({ rows: [] }));
-          const ref = nextRef(type, ((last && last.rows) || []).map((/** @type {any} */ r) => r && r.data && r.data.ref));
-          try { return await d.gateway.records.create(d.chain, type, { ...(i.data || {}), ref }); }
-          catch (e) { if (tries >= 3 || !/unique|duplicate|already|conflict/i.test(String(/** @type {any} */ (e) && /** @type {any} */ (e).message))) throw e; }
-        }
+        // Start past the highest ID this caller can see and past the last one given out here. A caller who cannot see every record (a member) may be handed an ID that a hidden record holds: the unique ID refuses it, and the next try moves on
+        // (by 1, then 10, then 100...). What the refusal said is never passed on, so it does not tell anyone that a record with that ID exists.
+        const last = await d.gateway.records.query(d.chain, type, { sort: [{ field: "ref", dir: "desc" }], page: { limit: 5 } }).catch(() => ({ rows: [] }));
+        const seen = nextRef(type, ((last && last.rows) || []).map((/** @type {any} */ r) => r && r.data && r.data.ref));
+        const n = Math.max(refNumber(refPrefix(type), seen), (issued.get(key) || 0) + 1);
+        const out = await mintRef({ type, start: n, create: (ref) => d.gateway.records.create(d.chain, type, { ...(i.data || {}), ref }) });
+        issued.set(key, out.n);
+        return out.made;
       });
-      minting.set(type, mine);
+      minting.set(key, mine);
       return { record: await mine };
     });
     // Records made before their type had an ID get one, once, in the order they were made; a record that has one is left alone, so it can run again. records.list starts it when a page shows a record without one.
     const fillIds = async (/** @type {any} */ d, /** @type {string} */ type) => {
-      const before = minting.get(type) || Promise.resolve();
+      const key = `${d.space}:${type}`;
+      const before = minting.get(key) || Promise.resolve();
       const run = before.catch(() => {}).then(async () => {
         const all = await d.gateway.records.query(d.chain, type, { sort: [{ field: "created_at", dir: "asc" }], page: { limit: 1000 } });
         const rows = (all && all.rows) || [];
         let have = rows.map((/** @type {any} */ r) => r && r.data && r.data.ref).filter(Boolean);
         for (const r of rows) { if (r && r.data && !r.data.ref) { const ref = nextRef(type, have); await d.gateway.records.update(d.chain, type, r.id, { ref }, r.version); have = [...have, ref]; } }
       });
-      minting.set(type, run);
+      minting.set(key, run);
       return run;
     };
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
