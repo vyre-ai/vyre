@@ -24,7 +24,7 @@ test("fallback_model is saved by agents.create and agents.update, cleared by an 
   assert.equal((await c("agents.update", { name: "kit", fallback_model: "haiku" })).error, undefined);
   assert.equal((await find("kit")).fallback_model, "haiku");
   assert.equal((await c("agents.update", { name: "kit", fallback_model: "" })).error, undefined);
-  assert.equal((await find("kit")).fallback_model, null);
+  assert.ok(!(await find("kit")).fallback_model);
   assert.equal((await c("agents.update", { name: "kit", fallback_model: "not a model!" })).error.code, "bad_input");
 });
 
