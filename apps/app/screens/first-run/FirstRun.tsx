@@ -184,13 +184,13 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
       if (!r.ok) return;
       const next = nextForAsk(r);
       if (next.kind === "join") {
-        void readInvite(next.link).then((v) => {
+        void readInvite(String(next.link || "")).then((v) => {
           if (!live) return;
           if (!v.ok) { setAskSaid(v.message); return; }
           setReview({ link: v.link || next.link, role: v.role || "member", space: v.space });
           setStack((s) => [...s.slice(0, -1), "join.review"]);
         });
-      } else if (next.kind === "said") setAskSaid(next.words);
+      } else if (next.kind === "said") setAskSaid(String(next.words || ""));
     });
     tick();
     const t = setInterval(tick, 5000);
@@ -597,7 +597,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             const a = await askJoin({ address: addr, ...(askNote.trim() ? { note: askNote.trim() } : {}) });
             if (!a.ok) { setFailure(a.message); return; }
             const next = nextForAsk(a);
-            if (next.kind === "said") { setFailure(next.words); return; }
+            if (next.kind === "said") { setFailure(String(next.words || "")); return; }
             setAskAddr(addr); setAskSaid("");
             try { const { WORDS } = await import("@vyre/relay-client/words.js"); setAskWords(entryWords(WORDS as unknown as string[], String(a.eid || "")) || ""); } catch { setAskWords(""); }
             go("join.ask");

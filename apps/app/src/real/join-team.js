@@ -237,7 +237,7 @@ export async function openInvite(d, link) {
 async function spaceByAddress(d, address) {
   const name = String(address || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\.vyre\.run\/?$/, "");
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) throw refuse("bad_input", "That is not the address of a Space.");
-  const { payload } = await resolveSpace(d, name, undefined);
+  const { payload } = await resolveSpace(d, name, null);
   const spaceId = String(payload.id || "");
   const route = payload.route;
   if (!/^spc_[a-z2-7]{12,26}$/.test(spaceId) || !route || typeof route.route !== "string") throw refuse("not_found", "That Space could not be reached.");
