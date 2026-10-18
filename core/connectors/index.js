@@ -16,6 +16,7 @@ import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { once } from "../../lib/once.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { createWho } from "./who.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
@@ -40,8 +41,6 @@ export default {
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
 
     // The shipped presets and the reviewed snapshot are built when a connector is first asked about, not at boot: a catalog facade resolves its real catalog on first call.
-    /** @template T @param {() => T} f @returns {() => T} */
-    const once = (f) => { /** @type {T | undefined} */ let v; let done = false; return () => (done ? /** @type {T} */ (v) : (done = true, v = f())); };
     const curatedOf = once(() => catalogFrom(ctx.config)), snapshotOf = once(() => snapshotCatalog(loadSnapshot(ctx.config), curatedOf()));
     /** @param {() => ReturnType<typeof catalogFrom>} get */
     const lazyCatalog = (get) => ({ presets: () => get().presets(), unavailable: () => get().unavailable(), preset: (/** @type {string} */ id) => get().preset(id), checked: () => get().checked(), presetOfName: (/** @type {string} */ n) => get().presetOfName(n), boundFor: (/** @type {string} */ i) => get().boundFor(i) });
