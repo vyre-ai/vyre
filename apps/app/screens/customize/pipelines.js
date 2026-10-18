@@ -34,7 +34,7 @@ export function chanceOf(text) {
 }
 
 /** Change one stage of one pipeline. @param {any[]} pipelines @param {number} p @param {number} i @param {Record<string, any>} patch */
-export const patchStage = (pipelines, p, i, patch) => pipelines.map((x, a) => a === p ? { ...x, stages: x.stages.map((s, b) => b === i ? { ...s, ...patch } : s) } : x);
+export const patchStage = (pipelines, p, i, patch) => pipelines.map((x, a) => a === p ? { ...x, stages: x.stages.map((/** @type {any} */ s, /** @type {number} */ b) => b === i ? { ...s, ...patch } : s) } : x);
 
 /** Move a stage up or down. @param {any[]} pipelines @param {number} p @param {number} i @param {-1|1} dir */
 export function moveStageIn(pipelines, p, i, dir) {
@@ -55,7 +55,7 @@ export function addStageIn(pipelines, p) {
 }
 
 /** Take a stage out (the box refuses while records sit in it). @param {any[]} pipelines @param {number} p @param {number} i */
-export const removeStageIn = (pipelines, p, i) => pipelines.map((x, a) => a === p ? { ...x, stages: x.stages.filter((/** @type {any} */ _s, b) => b !== i) } : x);
+export const removeStageIn = (pipelines, p, i) => pipelines.map((x, a) => a === p ? { ...x, stages: x.stages.filter((/** @type {any} */ _s, /** @type {number} */ b) => b !== i) } : x);
 
 /** Add a pipeline with the stage names of the default, nothing required, named "Pipeline 2" and so on. @param {any[]} pipelines */
 export function addPipeline(pipelines) {

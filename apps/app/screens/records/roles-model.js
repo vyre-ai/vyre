@@ -9,6 +9,7 @@ export function roleChips(rows) {
   const list = Array.isArray(rows) ? rows : [];
   const chip = (/** @type {any} */ r) => {
     const base = String(r && r.role || "").toLowerCase();
+    /** @type {"lead" | "client" | "partner" | "vendor" | "plain"} */
     const tone = base === "lead" || base === "prospect" ? "lead" : base === "client" || base === "customer" ? "client" : base === "partner" ? "partner" : base === "vendor" ? "vendor" : "plain";
     return { key: String(r && r.record && r.record.urn || `${base}:${r && r.stage}`), label: roleLabel(r), urn: String(r && r.record && r.record.urn || ""), ended: !(r && r.current), tone };
   };
