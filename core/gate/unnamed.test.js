@@ -1,5 +1,5 @@
 // @ts-check
-// B8 (sec53 review): `unnamed` is set by the MCP hub only. Through the REAL registry on a real vyred, a model or a session
+// B8: `unnamed` is set by the MCP hub only. Through the REAL registry on a real vyred, a model or a session
 // caller that sends `unnamed` is refused as an undeclared key, so no caller can unblock a send by forging it, and no caller
 // can make a named call look unnamed to the Gate. The hub (module:mcp) is the only one that sets it, and it can only add a hold.
 import "../../scripts/mac-test-guard.mjs";

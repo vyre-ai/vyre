@@ -17,7 +17,7 @@ test("classify: reads by verb or readOnlyHint, never with a send, write or delet
   for (const n of ["send_message", "create_issue", "delete_issue", "get_and_delete", "list_then_send", "sendmessage", "echo_env", "do_thing", "address_book_update"])
     assert.equal(out(n).outward, true, n);
   assert.equal(out("address_lookup").outward, false, "add inside a word is not a write");
-  // B7 (sec53): a server's own hint never relaxes a name that says nothing. An unknown name stays
+  // B7: a server's own hint never relaxes a name that says nothing. An unknown name stays
   // outward whatever the server claims, so a write named "apply_changes" with readOnlyHint is held.
   assert.equal(out("summarize", { readOnlyHint: true }).outward, true, "a hint alone does not make an unknown name a read");
   assert.equal(out("apply_changes", { readOnlyHint: true }).outward, true, "the hint cannot relax an unknown write");
