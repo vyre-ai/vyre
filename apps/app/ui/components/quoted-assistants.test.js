@@ -34,3 +34,13 @@ test("a kit_install task shows the diff's new or changed assistants, else the ca
   assert.deepEqual(kitTaskBoxes({ form: { kind: "other" } }).boxes, []);
   assert.deepEqual(kitTaskBoxes({}).boxes, []);
 });
+
+test("a Kit with assistants cannot be approved until the texts are read, and a list card only opens it", async () => {
+  const { gatedOff, needsRead } = await import("./quoted-assistants-model.js");
+  const kit = { form: { kind: "kit_install", card: { adds: { teammates: [{ name: "a", instructions_quoted: '"x"' }] } } } };
+  const plain = { form: { kind: "kit_install", card: { adds: { teammates: [] } } } };
+  assert.equal(needsRead(kit), true);
+  assert.equal(needsRead(plain), false);
+  for (const id of ["approve", "send", "yes"]) { assert.equal(gatedOff(kit, id, false), true, id); assert.equal(gatedOff(kit, id, true), false); assert.equal(gatedOff(plain, id, false), false, "no assistants, nothing to read"); }
+  assert.equal(gatedOff(kit, "open", false), false, "opening is never gated");
+});

@@ -173,3 +173,12 @@ test("a declined task stays out of the stage's done count and is listed on the s
   assert.equal(g.complete, false, "the stage cannot finish while one is declined");
   assert.deepEqual(g.declined.map((t) => t.id), ["b"]);
 });
+
+test("a Kit install task that makes assistants shows only 'Read before approving' on a list card, and its own page keeps Approve", () => {
+  const actors = [{ id: "ana", name: "Ana", family: "person" }];
+  const task = { id: "k1", title: "Install Desk", state: "needs_check", doer: { kind: "agent", id: "kernel" }, checker: { kind: "person", id: "ana" }, output: { kind: "note" }, form: { kind: "kit_install", card: { adds: { teammates: [{ name: "a", instructions_quoted: '"x"' }] } } } };
+  assert.deepEqual(cardModel({ task, actors, me: "ana" }).actions.map((a) => a.id), ["open"]);
+  assert.equal(cardModel({ task, actors, me: "ana", page: true }).actions.some((a) => a.id === "approve"), true);
+  const plain = { ...task, form: { kind: "kit_install", card: { adds: { teammates: [] } } } };
+  assert.equal(cardModel({ task: plain, actors, me: "ana" }).actions.some((a) => a.id === "approve"), true);
+});

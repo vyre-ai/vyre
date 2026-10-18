@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { View } from "react-native";
 import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
@@ -7,7 +8,7 @@ import { Text } from "../components/Text";
 import { Section } from "./Section";
 import { ReviewPanel } from "./ReviewPanel";
 import { QuotedAssistants } from "../components/QuotedAssistants";
-import { kitTaskBoxes } from "../components/quoted-assistants-model.js";
+import { gatedOff, kitTaskBoxes } from "../components/quoted-assistants-model.js";
 import { TaskExtras } from "./TaskExtras";
 import { TaskSlots } from "./TaskSlots";
 import { stateWord } from "./slots-model.js";
@@ -21,7 +22,8 @@ import { briefOf, cardFor, draftOf, HOW_LABEL, nameOf, recordTitle, stateTone, t
 export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
   world: World; task: any; onAction: (id: string, input?: string) => void; onHow: (how: string) => void; onOpenRecord?: (urn: string) => void;
 }) {
-  const m = cardFor(world, task);
+  const [read, setRead] = useState(false);
+  const m = cardFor(world, task, { page: true });
   const rec = world.records.get(task.record);
   const titles = new Map(world.tasks.map((t) => [t.id, t.title] as [string, string]));
   const draft = draftOf(world, task);
@@ -39,7 +41,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
       </View>
       {task.reviewer || task.review || task.review_skipped || task.state === "in_review" || task.state === "changes_requested" || task.state === "declined" ? <TaskSlots task={task} nameOf={(kind, id) => nameOf(world, id)} /> : null}
       {task.slots?.doer?.group && task.slots.doer.taken === false ? <View className="items-start gap-s1"><Text tone="muted">{`Open to the ${task.slots.doer.group} team. The first to start it owns it.`}</Text><Button label="Claim it" onPress={() => onAction("claim")} /></View> : null}
-      {task.form?.kind === "kit_install" ? <QuotedAssistants boxes={kitTaskBoxes(task).boxes} note={kitTaskBoxes(task).note} /> : null}
+      {task.form?.kind === "kit_install" ? <QuotedAssistants boxes={kitTaskBoxes(task).boxes} note={kitTaskBoxes(task).note} read={read} onRead={() => setRead(true)} /> : null}
       {task.card_extras ? <TaskExtras task={task} /> : null}
       {task.state === "in_review" && task.doer?.id !== world.me ? <ReviewPanel task={task} me={world.me} /> : null}
       {task.state === "stuck" && task.stuck ? (
@@ -58,7 +60,7 @@ export function TaskDetail({ world, task, onAction, onHow, onOpenRecord }: {
         </View>
       ) : undefined} />
       {draft ? <Section title="The draft"><DraftBlock draft={draft} /></Section> : null}
-      {acts.length ? <View className="flex-row flex-wrap gap-s2">{acts.map((a) => <Button key={a.id} kind={a.kind} icon={a.icon as never} label={a.label} onPress={() => onAction(a.id)} />)}</View> : null}
+      {acts.length ? <View className="flex-row flex-wrap gap-s2">{acts.map((a) => <Button key={a.id} kind={a.kind} icon={a.icon as never} label={a.label} disabled={gatedOff(task, a.id, read)} onPress={() => onAction(a.id)} />)}</View> : null}
       {rec && onOpenRecord ? <Button kind="ghost" size="sm" label={`Open ${recordTitle(world, rec)}`} onPress={() => onOpenRecord(rec.id)} /> : null}
     </View>
   );

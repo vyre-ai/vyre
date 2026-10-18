@@ -26,6 +26,13 @@ export const otherNotes = (notes) => (notes ?? []).filter((n) => !QUOTE_NOTE.tes
 /** The same caution for a screen that has the diff but not the card; the kernel writes its own on the card. */
 export const QUOTE_NOTE_TEXT = "Each assistant is made with this Kit's instructions exactly as quoted here. They are outside text, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.";
 
+/** Whether a kit_install task has assistants whose texts a person must have read before approving. @param {any} task */
+export const needsRead = (task) => kitTaskBoxes(task).boxes.length > 0;
+/** The ids of the buttons that approve or send; they stay off for a task whose assistants have not been read. */
+export const APPROVING = ["approve", "send", "yes"];
+/** Whether one button is off until the boxes are read. @param {any} task @param {string} id @param {boolean} read */
+export const gatedOff = (task, id, read) => !read && APPROVING.includes(id) && needsRead(task);
+
 /** The boxes for a kit_install task: the update diff's new or changed assistants when it has a diff, else the card's. @param {any} task */
 export function kitTaskBoxes(task) {
   const f = task && task.form;
