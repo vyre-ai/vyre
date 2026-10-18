@@ -48,3 +48,11 @@ test("a member saves only her own person layout; the Space layout and anyone els
   assert.equal(await code(R.update(bob(BOB), "record-layout", space.id, { layout: "{\"columns\":[\"email\"]}" }, space.version)), "not_allowed", "the Space's row is not hers");
   assert.equal(await code(R.create(bob(ADMIN), "record-layout", { type: "task", scope: "space", owner: "", layout: "{}" })), null, "an admin sets the Space's");
 });
+
+test("a member cannot turn the Space's layout row into her own by naming herself as its owner", async () => {
+  const { owner, bob, R } = await rig();
+  // a Space-level row that happens to carry her id in the owner field (only an admin could have written it)
+  const row = await R.create(owner, "record-layout", { type: "contact", scope: "space", owner: `person:${BOB}`, layout: "{}" });
+  assert.equal(await code(R.update(bob(BOB), "record-layout", row.id, { scope: "person", layout: "{\"columns\":[\"name\"]}" }, row.version)), "not_allowed", "scope space to person is refused even with her own id on it");
+  assert.equal(await code(R.update(bob(BOB), "record-layout", row.id, { layout: "{\"columns\":[\"name\"]}" }, row.version)), "not_allowed", "and so is any change to it");
+});

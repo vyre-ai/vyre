@@ -238,7 +238,8 @@ export function createRecords(cfg) {
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
   const mayView = async (chain, type, rec, depth = 0) => {
-    const rule = PRIVATE_READS[type] || await privRows.ruleOf(type);
+    // the note rule is the planner's Note type's: another module's own `note` type (which may have a `person` field of its own) reads as ever
+    const rule = type === "note" && !(await isProtectedType(type)) ? null : PRIVATE_READS[type] || await privRows.ruleOf(type);
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
