@@ -60,6 +60,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.audit": "who changed what on a record, before and after, from the signed event log; owner and admin only, read through the caller's own events.read so the kernel hides what the caller may not see",
   "records.move": "moves a record to a stage under the caller's own chain; the kernel enforces the stage's entry condition",
   "records.relationship.add": "relates two records under the caller's own chain; the kernel decides who may write and read them",
+  "records.relationship.remove": "takes a relationship away under the caller's own chain; the kernel decides who may write it",
   "records.relationship.list": "lists a record's relationships under the caller's own chain; only rows the caller may read",
   "records.relationship.kinds": "lists the relationship kinds; no record data",
   "records.layout.get": "reads how a type is shown to the caller; no record data",

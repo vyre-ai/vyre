@@ -3,8 +3,6 @@
 // enforces a stage's entry condition (`enter_if`, stage_entry_refused); this file turns the plain list into that condition and back, and gives the move a friendly answer: `needs: [fields]` and nothing written.
 // Pure helpers first, the two tools after (records.pipeline.set, records.move), registered by index.js.
 
-import { withWeighted } from "./rollup.js";
-
 export const LOST_REASON = "lost_reason";
 const NAME = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -71,8 +69,8 @@ export function missingFor(stage, data, patch) {
   return requiresOf(stage && stage.enter_if).filter((f) => empty(merged[f]));
 }
 
-/** @param {{ tool: Function, obj: Function, str: any, refuse: Function, parseUrn: Function }} h */
-export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
+/** @param {{ tool: Function, obj: Function, str: any, refuse: Function, parseUrn: Function, update: (d: any, u: any, patch: any, base: number) => Promise<any> }} h */
+export function registerPipeline({ tool, obj, str, refuse, parseUrn, update }) {
   const typeOf = async (/** @type {any} */ d, /** @type {string} */ name) => {
     const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === name);
     if (!t) throw refuse(`There is no record type called ${name}. Pick one of the types shown in Records.`, "not_found");
@@ -88,6 +86,8 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
       if (hasLost && !fields.some((f) => f.name === LOST_REASON)) fields.push({ name: LOST_REASON, kind: "text", label: "Lost reason" });
       let built;
       try { built = Array.isArray(i.pipelines) ? pipelinesFrom(i.pipelines, new Set(fields.map((f) => f.name))) : (() => { const stages = stagesFrom(i.stages, new Set(fields.map((f) => f.name))); return { names: [], stages, stage_sets: [], options: stages.map((s) => s.name) }; })(); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+      // setting just the default stages keeps the other pipelines as they are, and the stage field still offers their stages
+      if (!Array.isArray(i.pipelines)) built.options = [...new Set([...built.options, ...(t.stage_sets || []).flatMap((/** @type {any} */ x) => (x.stages || []).map((/** @type {any} */ st) => st.name))])];
       const sf = fields.find((f) => f.kind === "stage");
       if (sf) fields[fields.indexOf(sf)] = { ...sf, options: built.options };
       else fields.push({ name: "stage", kind: "stage", label: "Stage", options: built.options });
@@ -96,7 +96,7 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
         if (pf) fields[fields.indexOf(pf)] = { ...pf, kind: "choice", options: built.names };
         else fields.push({ name: "pipeline", kind: "choice", label: "Pipeline", options: built.names });
       }
-      await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields, stages: built.stages, stage_sets: built.stage_sets.length ? built.stage_sets : undefined }] });
+      await d.gateway.records.define(d.chain, { change_types: [{ ...t, fields, stages: built.stages, ...(built.stage_sets.length ? { stage_sets: built.stage_sets } : Array.isArray(i.pipelines) ? { stage_sets: [] } : {}) }] });
       const shape = (/** @type {any[]} */ l) => l.map((s) => ({ name: s.name, ...(typeof s.probability === "number" ? { probability: s.probability } : {}), requires: requiresOf(s.enter_if), lost: isLost(s) }));
       return { type: t.name, stages: shape(built.stages), ...(built.names.length > 1 ? { pipelines: [{ name: built.names[0], stages: shape(built.stages) }, ...built.stage_sets.map((/** @type {any} */ s) => ({ name: s.name, stages: shape(s.stages) }))] } : {}) };
     });
@@ -113,9 +113,9 @@ export function registerPipeline({ tool, obj, str, refuse, parseUrn }) {
       if (!rec) throw refuse("That record is not here, or you may not read it. Pick one you can see in Records.", "not_found");
       let patch = { ...(i.patch && typeof i.patch === "object" ? i.patch : {}), ...(i.lost_reason !== undefined ? { [LOST_REASON]: String(i.lost_reason) } : {}), [sf.name]: i.stage };
       // a stage with a chance sets it, unless the move names one; the weighted value follows
-      if (target && typeof target.probability === "number" && (t.fields || []).some((/** @type {any} */ f) => f.name === "probability") && !("probability" in patch)) patch = withWeighted(t.fields, rec.data || {}, { ...patch, probability: target.probability });
+      if (target && typeof target.probability === "number" && (t.fields || []).some((/** @type {any} */ f) => f.name === "probability") && !("probability" in patch)) patch = { ...patch, probability: target.probability };
       const needs = target ? missingFor(target, rec.data || {}, patch) : [];
       if (needs.length) return { needs, stage: i.stage };
-      return { record: await d.gateway.records.update(d.chain, u.type, u.id, patch, rec.version) };
+      return update(d, u, patch, rec.version);
     }, (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space }));
 }

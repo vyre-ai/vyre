@@ -576,6 +576,7 @@ export const OPEN = new Set([
   "records.busy",
   "records.log",
   "records.relationship.add",
+  "records.relationship.remove",
   "records.relationship.list",
   "records.relationship.kinds",
   "records.seal-put",

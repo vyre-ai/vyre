@@ -53,6 +53,13 @@ export function registerRelationships({ tool, obj, str, refuse, parseUrn }) {
       const data = { from_record: i.from, to_record: i.to, kind: i.kind, ...(i.since ? { since: i.since } : {}), ...(i.until ? { until: i.until } : {}), ...(i.note ? { note: i.note } : {}) };
       return { relationship: await d.gateway.records.create(d.chain, "relationship", data) };
     });
+  tool("records.relationship.remove", "Take a relationship away: { id } is a row from records.relationship.list. The kernel decides who may; the two records are not touched.",
+    obj({ space: str, id: str }, ["id"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
+      const row = await d.gateway.records.get(d.chain, "relationship", String(i.id));
+      if (!row) throw refuse("That relationship is not here, or you may not see it.", "not_found");
+      await d.gateway.records.remove(d.chain, "relationship", row.id, row.version);
+      return { removed: row.id };
+    });
   tool("records.relationship.list", "Everything a record is related to, both directions in one list: [{ id, direction: from|to, other, kind, since, until, note }]. `from` means this record is the first end (it is a Parent of other).",
     obj({ space: str, urn: str }, ["urn"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       parseUrn(i.urn);

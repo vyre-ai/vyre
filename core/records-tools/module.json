@@ -40,6 +40,7 @@
       { "name": "records.field.status", "effect": "read", "reach": "person" },
       { "name": "records.field.promote", "effect": "write", "reach": "person" },
       { "name": "records.relationship.add", "effect": "write", "reach": "person" },
+      { "name": "records.relationship.remove", "effect": "write", "reach": "person" },
       { "name": "records.relationship.list", "effect": "read", "reach": "person" },
       { "name": "records.relationship.kinds", "effect": "read", "reach": "person" },
       { "name": "records.relationship.kinds.set", "effect": "write", "reach": "person" },
