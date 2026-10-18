@@ -53,7 +53,7 @@ async function walk(name, fn) {
     sees: async (text) => { await p.getByText(text, { exact: false }).first().waitFor({ timeout: 6000 }); },
     absent: async (text) => { if (await p.getByText(text, { exact: false }).count()) throw new Error(`this screen still says "${text}"`); },
     body: async () => p.locator("body").innerText(),
-    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Create your identity"); },
+    start: async () => { await p.goto(URL0, { waitUntil: "domcontentloaded" }); await t.sees("New here? Get started"); await t.press("New here? Get started"); await t.at("What should we call you?"); await t.type("First name", "Walk"); await t.type("Last name", "Er"); await t.press("Continue"); await t.at("Pick a username."); },
   };
   try {
     await fn(t);
@@ -75,6 +75,8 @@ async function identity(t) {
   await t.start();
   await t.type("Username", "ab"); await t.sees("3 to 20");
   await t.type("Username", "alex"); await t.sees("vyre.run/u/alex");
+  await t.press("Continue");
+  await t.at("Make your password.");
   if (await t.enabled("Create")) throw new Error("Create should wait for a password");
   await t.type("Password", PASS);
   await t.type("Confirm password", PASS);
@@ -106,23 +108,8 @@ await walk("new person joins a space", async (t) => {
   await t.sees("juniper");
   await t.press("Join");
   await t.at("You're all set");
-  await t.press("Invite someone");
-  await t.at("Invite someone");
-  await t.press("Create link");
-  await t.sees("https://vyre.run/i/sampletoken");
-  await t.press("Done");
-  await t.at("You're all set");
-  await t.sees("juniper");
-  await t.pick("Join another space");
-  await t.at("Join a space");
-  const again = await t.body();
-  if (/\bservers?\b/i.test(again)) throw new Error("the join path names a server");
-  await t.type("Invite link", "https://vyre.run/i/secondtok");
-  await t.press("Continue");
-  await t.press("Join");
-  await t.at("You're all set");
-  await t.sees("juniper");
-  await t.sees("studio");
+  await t.absent("Join another space");
+  await t.absent("Invite someone");
 });
 
 await walk("new person creates a space and waits", async (t) => {
@@ -142,14 +129,14 @@ await walk("new person creates a space and waits", async (t) => {
   await t.absent("Face ID");
 });
 
-await walk("ready tells a phone or another computer how to sign in, and offers no Add a computer or Add a phone choice", async (t) => {
+await walk("the last screen is just All set: no sign-in instructions, no join or create cards, no Add a computer or Add a phone choice", async (t) => {
   await identity(t);
   await t.pick("Join a space");
   await t.type("Invite link", "https://vyre.run/i/abcdefgh");
   await t.press("Continue");
   await t.press("Join");
   await t.at("You're all set");
-  await t.sees("On your phone or another computer, open Vyre and sign in with");
+  await t.absent("On your phone or another computer");
   await t.absent("Add a computer");
   await t.absent("Add your computer");
   await t.absent("Add this computer");
@@ -165,7 +152,9 @@ await walk("Back retraces identity", async (t) => {
   await t.press("Back");
   await t.at("Save your recovery key");
   await t.press("Back");
-  await t.at("Create your identity");
+  await t.at("Make your password.");
+  await t.press("Back");
+  await t.at("Pick a username.");
   await t.press("Back");
   await t.at("What should we call you?");
   await t.press("Back");
@@ -196,7 +185,6 @@ await walk("sign in from any device with a space address, a username and the pas
   await t.type("Password", PASS);
   await t.press("Sign in");
   await t.at("You're all set");
-  await t.sees("juniper");
 });
 
 await walk("sign in with GitHub shows the spaces it found, then asks the password once", async (t) => {
@@ -210,7 +198,6 @@ await walk("sign in with GitHub shows the spaces it found, then asks the passwor
   await t.type("Password", PASS);
   await t.press("Unlock");
   await t.at("You're all set");
-  await t.sees("juniper");
 });
 
 await browser.close();

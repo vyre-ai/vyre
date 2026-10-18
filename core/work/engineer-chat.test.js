@@ -49,7 +49,9 @@ test("the Engineer chat has exactly the Engineer-access set; a member without ac
   await K.gateway.grants.setRole(ownerChain, { person: DEE, role: "admin" }, { presence: proof() });
   const gap = await ok(CY, "work.engineer.chat");
   assert.deepEqual([gap.missing, gap.extra], [[DEE], []]);
-  // a member made a plain member again is extra
-  await K.gateway.grants.setRole(ownerChain, { person: DEE, role: "member" }, { presence: proof() });
-  assert.deepEqual((await ok(OWNER, "work.engineer.chat")).missing, []);
+  // a demoted admin is still in the chat until a device removes her: she shows in `extra`, and the tool removes nobody
+  await K.gateway.grants.setRole(ownerChain, { person: CY, role: "member" }, { presence: proof() });
+  const after = await ok(OWNER, "work.engineer.chat");
+  assert.deepEqual([after.missing, after.extra], [[DEE], [CY]]);
+  assert.ok(after.people.includes(CY), "and she is still a person of the chat");
 });

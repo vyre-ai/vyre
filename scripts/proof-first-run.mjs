@@ -259,8 +259,10 @@ try {
     await drv.fill("Last name", "Walker");
     await drv.shot("01b-name");
     await drv.click("Continue");
-    await drv.waitFor("Create your identity");
+    await drv.waitFor("Pick a username.");
     await drv.fill("Username", USERNAME);
+    await drv.click("Continue");
+    await drv.waitFor("Make your password.");
     await drv.fill("Password", PASSWORD);
     await drv.fill("Confirm password", PASSWORD);
     await drv.click("Create");
@@ -354,8 +356,9 @@ try {
     await drv.click("Continue");
     const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");
-    // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
-    await until(async () => /owner/i.test(await drv.text()), 30_000, "Ready listing the space with the owner role").catch(() => { throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`); });
+    // The last screen is "You're all set." and the Assistant and Engineer waiting in Chats, nothing more.
+    if (!/Engineer/.test(ready) && !(await until(async () => /Engineer/.test(await drv.text()), 10_000, "Engineer on the last screen").then(() => true, () => false))) throw new Error(`the last screen does not show the Assistant and Engineer: ${ready.slice(0, 200)}`);
+    if (/Join another space|Create another space|On your phone or another computer/.test(await drv.text())) throw new Error("the last screen still carries the join, create or sign-in instructions");
     // Nothing is pressed: with one space the first run ends by itself and opens it.
     await until(async () => !(await drv.text()).includes("You're all set"), 30_000, "the space opening by itself after \"You're all set.\"");
   }, { needs: [S("the real installer runs the command on a server")] });

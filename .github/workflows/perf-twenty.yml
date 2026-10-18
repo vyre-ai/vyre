@@ -1,0 +1,22 @@
+# How fast Records is on a real Twenty (stores/twenty/live/perf-live.mjs): p50 and p95 per operation and the Twenty containers' memory. Started by hand; prints a table in the log.
+name: perf-twenty
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/polish/flow6b/**"]
+    paths: ["stores/twenty/live/perf-live.mjs"]
+permissions:
+  contents: read
+jobs:
+  perf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - run: npm ci --no-audit --no-fund
+      # a new Space starts from the saved database, so the numbers are a new Space's
+      - uses: ./.github/actions/twenty-golden
+      - run: node stores/twenty/live/perf-live.mjs perf

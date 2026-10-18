@@ -6,6 +6,7 @@ import { Group, Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { deviceSub, spacesLine } from "./wink.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
+import { VaultDevices } from "./VaultDevices";
 
 /** Devices under your identity: each joins each space on its own. */
 export function DevicesScreen() {
@@ -31,6 +32,7 @@ export function DevicesScreen() {
       <Group>
         <Card flush><Row dense title="Make it faster" sub="Let your devices talk to each other directly when they can." end={<Switch label="Make it faster" on={faster} onChange={(v) => { setFaster(v); showToast(v ? "Direct connections are on." : "Direct connections are off."); }} />} /></Card>
       </Group>
+      <VaultDevices />
     </Page>
   );
 }

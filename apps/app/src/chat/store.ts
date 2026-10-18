@@ -12,6 +12,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
 import { isKind } from "./frame-type.js";
+import { messageIndex } from "./message-index.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
@@ -113,6 +114,18 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     frameSoon(tick);
   }
 
+  /** What this chat now holds in words, for the on-device message search (memory only; nothing leaves the app). */
+  function indexMessages() {
+    const msgs: { id: string; who: string; text: string }[] = [];
+    for (const r of folder.rows) {
+      const it = folder.item(r.key) as { key: string; kind: string; text?: string; author?: string } | undefined;
+      if (!it || !it.text) continue;
+      if (it.kind === "user" && it.text !== "Private message") msgs.push({ id: it.key, who: it.author || "You", text: it.text });
+      else if (it.kind === "text") msgs.push({ id: it.key, who: it.author || "Agent", text: it.text });
+    }
+    messageIndex.index(session, msgs);
+  }
+
   function flush() {
     scheduled = false;
     const frames = buffer;
@@ -156,6 +169,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         void decryptUserMessage(f.data.enc, openPrivateKey).then((plain) => {
           if (plain && folder.setUserText(ukey, plain)) {
             notifyRow(ukey);
+            indexMessages();
             for (const fn of [...layoutSubs]) fn();
           }
         });
@@ -181,6 +195,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       conn.close();
       conn = source.connect({ from, onFrame, onState: (s) => { connection = s; bumpMeta(); } });
     }
+    // The person left this chat: nothing of it stays searchable. Otherwise the index follows what the chat holds now.
+    if (frames.some((f) => isKind(f, "participant-left") && String(f.data?.who) === group.viewer)) messageIndex.drop(session); else indexMessages();
     frameLog = frameLog.concat(frames).slice(-400);
     saveSessionCache(session, { head: folder.last, frames: frameLog });
   }

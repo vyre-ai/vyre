@@ -6,6 +6,7 @@ import { useRouter, usePathname, useGlobalSearchParams } from "expo-router";
 import { Avatar, PinnedViews, SidebarRow, reorderPinned, renameView, unpinList, backTo, panelFor, useWork, type PanelDef, type PanelItem } from "@vyre/ui";
 import { recordTitle } from "../../ui/tasks/model";
 import { ChatsPlusButton, ChatsSidebar } from "../chats/ChatsSidebar";
+import { openFind } from "../find/FindHost";
 import { effective, saveList, useSidebar } from "./sidebar";
 import { useSpaces } from "./state";
 import { useNewView } from "../records/NewViewHost";
@@ -59,6 +60,8 @@ const BUILD: PanelItem[] = BUILD_SECTIONS.map(([id, label, icon, href]) => ({ id
 /** The sections of Settings: what the owner moved under it (sidebar-ia). */
 const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
 
+/** The scope the main search opens on from each section's Search button (the section's own search box is gone: there is one search bar). */
+const SEARCH_SCOPE: Record<string, import("../find/model").Scope> = { projects: "projects", chats: "chats", settings: "settings" };
 const META: Record<string, { title: string; icon: PanelDef["icon"]; search?: string; empty: string }> = {
   projects: { title: "Projects", icon: "projects", search: "Search projects", empty: "No projects yet." },
   chats: { title: "Chats", icon: "chat", empty: "" },
@@ -96,7 +99,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   return {
     id,
     panel: {
-      id, title: meta.title, icon: meta.icon, search: meta.search, ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
+      id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
       items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}

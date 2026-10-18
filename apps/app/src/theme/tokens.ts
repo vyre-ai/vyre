@@ -242,12 +242,12 @@ export const tokens = {
         "accent": "#B8A4FF",
         "accentWash": "rgba(184,164,255,0.12)",
         "accentInk": "#0E0D0C",
-        "ok": "#6FD3A0",
-        "okWash": "rgba(111,211,160,0.12)",
-        "warn": "#E6B450",
-        "warnWash": "rgba(230,180,80,0.12)",
-        "err": "#F08A7A",
-        "errWash": "rgba(240,138,122,0.12)",
+        "ok": "#A9CF9B",
+        "okWash": "rgba(169,207,155,0.12)",
+        "warn": "#E3B26B",
+        "warnWash": "rgba(227,178,107,0.12)",
+        "err": "#E8A0C0",
+        "errWash": "rgba(232,160,192,0.12)",
         "hover": "rgba(241,238,230,0.05)",
         "press": "rgba(241,238,230,0.08)",
         "selected": "rgba(241,238,230,0.09)",
@@ -255,9 +255,9 @@ export const tokens = {
         "scrim": "rgba(0,0,0,0.6)"
       },
       "paper": {
-        "bg": "#ECE8DE",
-        "surface1": "#F4F1EA",
-        "surface2": "#FBFAF6",
+        "bg": "#F4F1EA",
+        "surface1": "#FBFAF6",
+        "surface2": "#FDFCF9",
         "surface3": "#FFFFFF",
         "edge": "rgba(20,19,17,0.09)",
         "edgeStrong": "rgba(20,19,17,0.18)",
@@ -272,16 +272,16 @@ export const tokens = {
         "accent": "#5B3FC4",
         "accentWash": "rgba(91,63,196,0.10)",
         "accentInk": "#FFFFFF",
-        "ok": "#1F7A4D",
-        "okWash": "rgba(31,122,77,0.10)",
-        "warn": "#9A5B00",
-        "warnWash": "rgba(154,91,0,0.10)",
-        "err": "#B3392B",
-        "errWash": "rgba(179,57,43,0.09)",
+        "ok": "#3F7A30",
+        "okWash": "rgba(63,122,48,0.10)",
+        "warn": "#9A6410",
+        "warnWash": "rgba(154,100,16,0.10)",
+        "err": "#A8386A",
+        "errWash": "rgba(168,56,106,0.09)",
         "hover": "rgba(20,19,17,0.045)",
         "press": "rgba(20,19,17,0.075)",
         "selected": "rgba(20,19,17,0.08)",
-        "codeBg": "#EFEBE2",
+        "codeBg": "#F0EDE5",
         "scrim": "rgba(20,19,17,0.32)"
       }
     },
@@ -486,8 +486,8 @@ export const tokens = {
             20
           ],
           "body": [
-            14,
-            20
+            13,
+            18
           ],
           "read": [
             15,
@@ -1023,8 +1023,8 @@ export const tokens = {
           "controlSm": 30,
           "row": 56,
           "body": [
-            14,
-            20
+            13,
+            18
           ]
         },
         "comfortable": {

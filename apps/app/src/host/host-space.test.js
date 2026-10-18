@@ -592,6 +592,65 @@ test("a joining member's key goes to their own Vault in one act: checked with it
   assert.deepEqual(calls, []);
 });
 
+test("adding another Space: the Assistant of the person's other server is read (name and look only), and nothing when there is no other server", async (t) => {
+  const { pp, host, store } = await ready(t);
+  assert.deepEqual(await host.call("onboard.assistant.current", {}), { assistant: null }, "no other server");
+  { const k = await store.load(); await store.save({ ...k, current: "spc_aaaaaaaaaaaa", spaces: [{ id: "spc_aaaaaaaaaaaa", name: "first", role: "owner", server: null, paired: { box: "boxFIRST", route: "r", relay: "x" } }] }); }
+  const first = pp.call;
+  pp.call = async (name, input, box) => name === "agents.list" ? [{ name: "kit", kind: "agent", look: "s0~c0" }, { name: "juno", display: "Juno", kind: "assistant", look: "s3~c5~e1~m2~t4~b1~h0", token: "SECRET" }] : first(name, input, box);
+  const r = await host.call("onboard.assistant.current", {});
+  assert.deepEqual(r, { assistant: { name: "Juno", look: "s3~c5~e1~m2~t4~b1~h0" } });
+  pp.call = async (name, input, box) => name === "agents.list" ? [{ name: "juno", kind: "assistant", look: "<script>" }] : first(name, input, box);
+  assert.equal((await host.call("onboard.assistant.current", {})).assistant.look, "", "a look that is not one is dropped");
+});
+
+test("copying AI accounts to a new Space: only key accounts are copyable, each key is read from the other server one by one, goes to the new Space through the owner's key tool, and no key or item name is in anything returned or thrown", async (t) => {
+  const { pp, host, store } = await ready(t);
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  { const k = await store.load(); await store.save({ ...k, current: "spc_aaaaaaaaaaaa", spaces: [{ id: "spc_aaaaaaaaaaaa", name: "first", role: "owner", server: null, paired: { box: "boxFIRST", route: "r", relay: "x" } }, ...(k.spaces || [])] }); }
+  const first = pp.call, sent = [];
+  const KEY1 = "sk-ant-OLDKEY-0123456789", KEY2 = "sk-or-OLDKEY-0123456789";
+  pp.call = async (name, input, box) => {
+    if (box === "boxFIRST" && name === "sessions.accounts.list") return [{ id: "a1", provider: "claude", label: "Work", kind: "api-key", vault_item: "ai-key-claude-1" }, { id: "a2", provider: "openrouter", label: "Router", kind: "api-key", vault_item: "ai-key-or-1" }, { id: "a3", provider: "codex", label: "Codex login", kind: "login", vault_item: null }, { id: "default", provider: "claude", synthetic: true }];
+    if (box === "boxFIRST" && name === "vault.reveal") { sent.push({ name, box, item: input.name }); return { value: input.name === "ai-key-claude-1" ? KEY1 : KEY2 }; }
+    if (name === "sessions.accounts.key") { sent.push({ name, box, label: input.label, kind: input.kind }); if (input.label === "Router") throw new Error(`refused ${input.key}`); return { account: "ac_new", checked: true }; }
+    return first(name, input, box);
+  };
+  const c = await host.call("onboard.accounts.copyable", {});
+  assert.deepEqual(c.accounts.map((a) => [a.label, a.copy]), [["Work", true], ["Router", true], ["Codex login", false]]);
+  assert.equal(c.from, "first");
+  assert.ok(!JSON.stringify(c).includes("ai-key"), "no item name");
+  const r = await host.call("onboard.accounts.copy", { ids: ["a1", "a2", "a3"] });
+  assert.deepEqual(r.copied.map((x) => [x.label, x.ok]), [["Codex login", false], ["Work", true], ["Router", false]]);
+  assert.ok(!JSON.stringify(r).includes("OLDKEY"), "no key in the answer or the failure words");
+  assert.deepEqual(sent.filter((x) => x.name === "vault.reveal").map((x) => x.box), ["boxFIRST", "boxFIRST"], "each key is read from the OTHER server, one call each");
+  assert.deepEqual(sent.filter((x) => x.name === "sessions.accounts.key").map((x) => [x.box, x.kind]), [["boxA", "anthropic-compatible"], ["boxA", "openrouter"]], "and added to the new Space's server");
+  // sec53: a custom address is added by hand, and an account that is not the caller's is not copied: neither is READ
+  const reveals = [];
+  pp.call = async (name, input, box) => {
+    if (box === "boxFIRST" && name === "sessions.accounts.list") return [
+      { id: "c1", provider: "openai-compatible", label: "My lab", kind: "api-key", vault_item: "lab", base_url: "http://127.0.0.1:8080/v1" },
+      { id: "c2", provider: "openai-compatible", label: "Grok", kind: "api-key", vault_item: "grok", base_url: "https://api.x.ai/v1" },
+      { id: "c3", provider: "claude", label: "Team shared", kind: "api-key", vault_item: "team", person: "per_" + "z".repeat(26) },
+      { id: "c4", provider: "claude", label: "Mine", kind: "api-key", vault_item: "mine" }];
+    if (name === "vault.reveal") { reveals.push(input.name); return { value: "xai-0123456789abcdef" }; }
+    if (name === "sessions.accounts.key") return { account: "ac_x", checked: true };
+    return first(name, input, box);
+  };
+  const lst = await host.call("onboard.accounts.copyable", {});
+  assert.deepEqual(lst.accounts.map((x) => [x.label, x.copy, x.why || ""]), [["My lab", false, "Add this one by hand."], ["Grok", true, ""], ["Team shared", false, "Not yours to copy."], ["Mine", true, ""]]);
+  const cp = await host.call("onboard.accounts.copy", { ids: ["c1", "c2", "c3", "c4"] });
+  assert.deepEqual(reveals.sort(), ["grok", "mine"], "only the caller's own accounts at an allowed address are read");
+  assert.deepEqual(cp.copied.filter((x) => !x.ok).map((x) => [x.label, x.why]).sort(), [["My lab", "Add this one by hand."], ["Team shared", "Not yours to copy."]]);
+  // a read the person does not approve is said, per account, with the way on: never silent
+  pp.call = async (name, input, box) => { if (name === "vault.reveal") throw Object.assign(new Error("Nothing was approved."), { code: "cancelled" }); if (name === "sessions.accounts.list" && box === "boxFIRST") return [{ id: "a1", provider: "claude", label: "Work", kind: "api-key", vault_item: "ai-key-claude-1" }]; return first(name, input, box); };
+  const no = await host.call("onboard.accounts.copy", { ids: ["a1"] });
+  assert.deepEqual([no.copied[0].ok, /Not approved.*Sign in again/.test(no.copied[0].why)], [false, true]);
+  await assert.rejects(() => host.call("onboard.accounts.copy", { ids: [] }), (e) => e.code === "bad_input");
+});
+
 test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {
   const { pp, host } = await ready(t);
   await assert.rejects(() => host.call("onboard.assistant.models", {}), (e) => e.code === "no_server");

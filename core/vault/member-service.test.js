@@ -30,7 +30,7 @@ const good = (/** @type {any} */ o = {}) => ({ presence: { nonce: "n1", expires_
 const code = (/** @type {Promise<any>} */ p) => p.then(() => "ok", (e) => String(e.code));
 
 test("the member door has two calls for a member's own vault: status, and one act that adds a key", () => {
-  assert.deepEqual(CALLS.myvault, ["status", "addkey"]);
+  assert.deepEqual(CALLS.myvault, ["status", "addkey", "addkeys"]);
 });
 
 test("a key is covered by one presence proof over the label and the HASH of the value: the request names the hash, never the value or the password", () => {
@@ -79,4 +79,53 @@ test("a member adds at most ten keys a minute, then is told to try again", async
   assert.equal(await code(svc.addkey(chainOf(), input(), good({ nonce: "x", expires_at: 99999 }))), "limit");
   t += 61_000;
   assert.notEqual(await code(svc.addkey(chainOf(), input(), good({ nonce: "y", expires_at: 99999 }))), "limit", "a minute later it is open again");
+});
+
+const KEY2 = "sk-or-0123456789abcdef";
+/** A door whose verifier stands for exactly one proof made over THIS set. */
+function setRig(clock = () => 1000) {
+  /** @type {any[]} */ const calls = [];
+  const registry = { call: async (/** @type {string} */ tool, /** @type {any} */ i) => { calls.push({ tool, input: i }); return { data: { added: i.input.items.map((/** @type {any} */ x) => ({ label: x.label, item: x.label })) } }; } };
+  const used = new Set();
+  const presence = { check: async (/** @type {any} */ i) => {
+    const p = i.proof || {};
+    if (p.expires_at <= clock()) return "expired";
+    if (used.has(p.nonce)) return "replayed";
+    const want = proofRequest(SPACE, "vaultAddKeys", { items: [{ label: "Work", value: KEY }, { label: "Home", value: KEY2 }] });
+    if (i.op !== want.op || JSON.stringify(i.fields) !== JSON.stringify(want.fields)) return "wrong_payload";
+    used.add(p.nonce); return null;
+  } };
+  return { svc: createMemberVaultService({ space: SPACE, kernel: { gateway: { members: { roleOf: () => "member" } }, presence }, registry, clock }), calls };
+}
+const SET = [{ label: "Work", value: KEY }, { label: "Home", value: KEY2 }];
+
+test("a set of keys is covered by ONE proof over the sorted set: none, a dropped key, a swapped key, a reused or an expired proof each write nothing", async () => {
+  const { svc, calls } = setRig();
+  assert.equal(await code(svc.addkeys(chainOf(), { items: SET })), "needs_presence", "no proof");
+  assert.equal(await code(svc.addkeys(chainOf(), { items: SET.slice(0, 1) }, good())), "needs_presence", "a key dropped after the person saw the list");
+  assert.equal(await code(svc.addkeys(chainOf(), { items: [SET[0], { ...SET[1], value: KEY2 + "x" }] }, good())), "needs_presence", "a key swapped");
+  assert.equal(await code(svc.addkeys(chainOf(), { items: SET }, good({ expires_at: 500 }))), "needs_presence", "expired");
+  assert.deepEqual(calls, [], "nothing was written");
+  const r = await svc.addkeys(chainOf(), { items: [SET[1], SET[0]], password: PW }, good({ nonce: "set" }));
+  assert.deepEqual(r.added.map((x) => x.label), ["Home", "Work"], "the set in another order stands under the same proof");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].input.input.password, PW);
+  assert.equal(await code(svc.addkeys(chainOf(), { items: SET }, good({ nonce: "set" }))), "needs_presence", "the proof is single use");
+});
+
+test("the same name twice in one set is refused before the proof is looked at, and twelve keys stand under one proof", async () => {
+  const { svc, calls } = setRig();
+  assert.equal(await code(svc.addkeys(chainOf(), { items: [{ label: "Work", value: KEY }, { label: "work", value: KEY2 }] }, good())), "bad_input");
+  assert.deepEqual(calls, []);
+  const twelve = Array.from({ length: 12 }, (_, n) => ({ label: `k${n}`, value: `${KEY}${n}` }));
+  let t = 1000; const reg = []; const { createMemberVaultService: make } = await import("./member-service.js");
+  const svc12 = make({ space: SPACE, clock: () => t, registry: { call: async (tool, i) => { reg.push(i.call); return { data: { added: [] } }; } }, kernel: { gateway: { members: { roleOf: () => "member" } }, presence: { check: async (i) => (JSON.stringify(i.fields) === JSON.stringify(proofRequest(SPACE, "vaultAddKeys", { items: twelve }).fields) ? null : "wrong_payload") } } });
+  await svc12.addkeys(chainOf(), { items: twelve }, good());
+  assert.deepEqual(reg, ["addkeys"]);
+});
+
+test("a set is one to twelve keys of strings, and a member who is not in the Space is not found", async () => {
+  const { svc } = setRig();
+  for (const bad of [[], Array.from({ length: 13 }, (_, n) => ({ label: `k${n}`, value: KEY })), [{ label: "x" }], [null], "nope"]) assert.equal(await code(svc.addkeys(chainOf(), { items: bad }, good())), "bad_input", JSON.stringify(bad).slice(0, 30));
+  assert.equal(await code(svc.addkeys(chainOf({ space: "spc_bbbbbbbbbbbb" }), { items: SET }, good())), "not_found");
 });
