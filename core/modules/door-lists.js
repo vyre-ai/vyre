@@ -200,6 +200,8 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "runner.folders", "runner.folders.allow", "runner.folders.available", "runner.folders.remove", "runner.here", "runner.lock", "runner.pause-all", "runner.place",
   "runner.placement", "runner.places", "runner.preview", "runner.resume-all", "runner.settings", "runner.settings.set", "runner.start", "runner.status", "runner.stop",
   "runner.why-not",
+  // asking to join (core/requests): the owner's own tools. A member never lists, decides or switches them from a session; an owner or admin at the Space's door reaches them through the requests service.
+  "requests.accept", "requests.accepting", "requests.attention", "requests.decide", "requests.list",
   "sessions.accounts.key", "sessions.accounts.remove", "sessions.accounts.set", "sessions.harness.get", "sessions.limits.get", "sessions.limits.set",
   "sessions.mention.search", "sessions.mode.get", "sessions.mode.set", "sessions.models", "sessions.models.get", "sessions.models.set", "sessions.prompt.get",
   "sessions.prompt.history", "sessions.prompt.preview", "sessions.prompt.revert", "sessions.prompt.set", "sessions.routes.get", "sessions.routes.set", "sessions.setup",
