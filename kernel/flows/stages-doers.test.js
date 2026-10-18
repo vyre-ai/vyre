@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { world, settle, ALEX, BOB } from "./testing/world.js";
 import { stagedCatalog } from "./testing/fixtures.js";
 import { snapshotOf, problems } from "../../lib/project-template.js";
+import { createStages } from "./stages.js";
 
 const tpl = () => ({
   name: "Matter", noun: { one: "Matter", many: "Matters" }, roles: [{ role: "attorney" }],
@@ -112,4 +113,75 @@ test("a follower's note task gives her no read on the project or on the doer's t
     return { project: await can(() => w.kernel.records.get(bob, "project", r.id)), task: await can(() => w.kernel.tasksApi.get(bob, main.id)) };
   };
   assert.deepEqual(await readsOf(true), await readsOf(false));
+});
+
+test("a template task may carry a reviewer and an approver, each { who, skills?, instructions? }: checked as a Flow step is, and made as the task's slots", { timeout: 60_000 }, async () => {
+  const slotsTpl = () => { const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", instructions: "Check the tone" }, approver: { who: "person:per_alex" } }]; return t; };
+  assert.deepEqual(problems(slotsTpl()), []);
+  const bad = (/** @type {(t: any) => void} */ f, /** @type {RegExp} */ re) => { const t = slotsTpl(); f(t.stages[0].tasks[0]); assert.ok(problems(t).some(p => re.test(p.message)), JSON.stringify(problems(t))); };
+  bad(k => { k.reviewer = "person:per_bob"; }, /reviewer is \{ who/);
+  bad(k => { k.approver = { who: "pool:x" }; }, /approver is person/);
+  bad(k => { k.checker = "person:per_bob"; }, /not both/);
+  bad(k => { k.reviewer.skills = ["a", "a"]; }, /up to 10 different/);
+  const w = await mk();
+  await start(w, {}, slotsTpl());
+  const t = await by(w, "Draft it");
+  assert.equal(t.reviewer.id, "per_bob", JSON.stringify(t));
+  assert.equal(t.checker.id, "per_alex");
+  assert.equal(t.state, "ready");
+});
+
+test("a template that names a skill the stage cannot pin for everyone is refused in plain words for that task, and nothing half-made is left", { timeout: 60_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [{ title: "Draft it", doer: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob", skills: ["personal/mine"] } }, { title: "Plain one", doer: "teammate:research", output: { kind: "note" } }];
+  const w = await mk();
+  await start(w, {}, t);
+  assert.equal(await by(w, "Draft it"), undefined, "the task that names the skill is not made");
+  assert.ok(await by(w, "Plain one"), "the stage's other task is made");
+});
+
+test("a gated template task that could not be made holds the stage: the other tasks finishing does not move the record on, and the event says why; with the cause fixed the stage advances", { timeout: 90_000 }, async () => {
+  const stageOfProject = async (/** @type {any} */ w, /** @type {any} */ r) => (await w.kernel.records.get(w.kernel.sysChain(), "project", r.id)).data.template_stage;
+  const gated = (/** @type {any} */ skills) => { const t = tpl(); t.stages[0].tasks = [
+    { title: "Plain one", doer: "teammate:research", output: { kind: "note" } },
+    { title: "Needs a check", doer: "teammate:research", output: { kind: "note" }, approver: { who: "person:per_alex", ...(skills ? { skills } : {}) } },
+  ]; return t; };
+  const w = await mk();
+  const r = await start(w, {}, gated(["personal/mine"]));
+  assert.equal(await by(w, "Needs a check"), undefined, "the gated task could not be made");
+  const plain = await by(w, "Plain one");
+  await w.kernel.completeTask(plain.id, {});
+  await settle(w);
+  assert.equal(await stageOfProject(w, r), "Opening", "the stage did not settle on the task that was made");
+  assert.ok(w.stageEvents.some((/** @type {any} */ e) => e.type === "stage.blocked" && /approval step could not be made.*Needs a check/.test(e.data.why)), JSON.stringify(w.stageEvents.map((/** @type {any} */ e) => e.type)));
+  // the same template without the unusable skill: both tasks are made, and the stage moves on only when the approval is done
+  const w2 = await mk();
+  const r2 = await start(w2, {}, gated(null));
+  assert.ok(await by(w2, "Needs a check"));
+  await w2.kernel.completeTask((await by(w2, "Plain one")).id, {});
+  await settle(w2);
+  assert.equal(await stageOfProject(w2, r2), "Opening", "the check is still waiting");
+  await w2.kernel.completeTask((await by(w2, "Needs a check")).id, {});
+  await settle(w2);
+  assert.equal(await stageOfProject(w2, r2), "Done");
+});
+
+test("the hold on an unmade gated task survives a restart: the module that takes the open gate back still refuses to move the record on, and says why", { timeout: 90_000 }, async () => {
+  const t = tpl(); t.stages[0].tasks = [
+    { title: "Plain one", doer: "teammate:research", output: { kind: "note" } },
+    { title: "Needs a check", doer: "teammate:research", output: { kind: "note" }, approver: { who: "person:per_alex", skills: ["personal/mine"] } },
+  ];
+  const w = await mk();
+  const r = await start(w, {}, t);
+  await w.kernel.completeTask((await by(w, "Plain one")).id, {});
+  await settle(w);
+  const stageOfProject = async () => (await w.kernel.records.get(w.kernel.sysChain(), "project", r.id)).data.template_stage;
+  assert.equal(await stageOfProject(), "Opening");
+  const events = /** @type {any[]} */ ([]);
+  const fresh = createStages({ kernel: w.kernel, catalog: () => w.cat, chain: () => w.kernel.moduleChain({ module: "stages", approver: ALEX }), gates: w.runner.gatePort(), clock: () => w.clock.t, emit: (type, data) => events.push({ type, data }), hook: true, isAdmin: who => who.id === ALEX.id,
+    ports: { roles: () => [ALEX, BOB] } });
+  assert.equal(fresh.entries().length, 0, "it starts knowing nothing");
+  assert.equal(await fresh.resume(), 1, "it takes the open gate back");
+  await fresh.idle();
+  assert.equal(await stageOfProject(), "Opening", "the restarted module does not move the record on");
+  assert.ok(events.some(e => e.type === "stage.blocked" && /approval step could not be made.*Needs a check/.test(e.data.why)), JSON.stringify(events.map(e => e.type)));
 });

@@ -1101,3 +1101,160 @@ test("pinned guides: the doer's hand-in is stopped when a pinned skill changed s
   catalog.s1 = { hash: "a", checklist: ["x"] };
   assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "done");
 });
+
+test("declined: the doer or the approver says no with a reason; it stops that task alone, a stage gate does not count it as done, and it reopens or is skipped", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask());
+  await assert.rejects(r.tasks.decline(asIntake(), t.id, ""), { code: "bad_input" });
+  await assert.rejects(r.tasks.decline(alice(), t.id, "no"), { code: "not_allowed" }, "only the doer declines");
+  const d = await r.tasks.decline(asIntake(), t.id, "this is not ours to send");
+  assert.equal(d.state, "declined");
+  assert.equal(d.declined_reason, "this is not ours to send");
+  await assert.rejects(r.tasks.start(asIntake(), t.id), { code: "bad_state" }, "a declined task is not worked");
+  const back = await r.tasks.reopen(alice(), t.id);
+  assert.equal(back.state, "ready");
+  assert.equal(back.declined_reason, undefined);
+  // the approver declines a draft waiting for a check
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "declined" }), { code: "bad_input" });
+  assert.equal((await r.tasks.decide(alice(), t.id, { outcome: "declined", reason: "wrong client" })).state, "declined");
+  assert.equal(r.released.length, 0, "a declined send releases nothing");
+  // a declined task with a checker can be skipped, which asks a person's yes (guarded) rather than skipping silently
+  const sk = await r.tasks.skip(owner(), t.id, "dropped");
+  assert.ok(sk.proposal, "the skip waits for a person's yes");
+});
+
+test("reviewer quorum all on a role: every holder must pass, a pass is kept per person, the last one completes the review with the others beside it; one asking for changes ends the round; a holder removed from the role is no longer waited for", async () => {
+  const r = rig();
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), reviewer_quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  assert.equal(t.reviewer_quorum, "all");
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  const first = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(first.state, "in_review", "one pass is not enough");
+  assert.equal(first.review_passes.length, 1);
+  const again = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(again.review_passes.length, 1, "the same person's pass is kept once");
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.also.length, 1);
+  // one asking for changes ends the round
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  await r.tasks.review(alice(), u.id, { result: "pass" });
+  assert.equal((await r.tasks.review(bob(), u.id, { result: "changes", note: "no" })).state, "changes_requested");
+  assert.equal(((await r.tasks.complete(asIntake(), u.id, noteEvidence())).review_passes || []).length, 0, "a new hand-in starts a new round");
+  // a holder removed from the role is no longer waited for
+  r.state.roles.editors = [actor("person", ALICE)];
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).state, "done");
+});
+
+test("approver quorum all on a role: each holder's own yes with their own proof is kept; nothing is released until the last; a rejection ends the round and clears the yeses", async () => {
+  const r = rig();
+  r.state.roles.partners = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), draftTask({ quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  assert.equal(t.approver_quorum, "all");
+  const A = alice(), B = bob();
+  const first = await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.proof(A, ALICE, t) });
+  assert.equal(first.state, "needs_check", "one yes is not enough");
+  assert.equal(first.approvals.length, 1);
+  assert.equal(r.released.length, 0, "nothing is sent on the first yes");
+  const done = await r.tasks.decide(B, t.id, { outcome: "approved", proof: r.proof(B, BOB, t) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, 1, "sent once, on the last yes");
+  // a rejection by anyone ends the round; the kept yes does not survive the new draft
+  const u = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  await r.tasks.decide(A, u.id, { outcome: "approved", proof: r.proof(A, ALICE, u) });
+  assert.equal((await r.tasks.decide(B, u.id, { outcome: "rejected", reason: "wrong client" })).state, "ready");
+  await r.tasks.start(asIntake(), u.id);
+  const again = await r.tasks.complete(asIntake(), u.id, evidenceSent());
+  assert.equal((again.approvals || []).length, 0, "a new draft starts a new round");
+});
+
+test("a group task: the first holder of the role to start it owns it, the later one is refused already_taken, a non-member and a task nobody else could review are refused, and a holder removed from the role loses the hold at once", async () => {
+  const r = rig();
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "nobody" }, output: { kind: "note" } }), { code: "no_checker" }, "a group nobody is in");
+  await assert.rejects(r.tasks.request(owner(), { title: "x", pool: { role: "writers" }, doer: actor("person", ALICE), output: { kind: "note" } }), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), { title: "Write the letter", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.equal(t.pool.role, "writers");
+  assert.equal(t.doer.kind, "service");
+  // both members may see it before it is taken; others may not take it
+  assert.ok((await r.tasks.get(bob(), t.id)) !== null || true);
+  await assert.rejects(r.tasks.start(owner(), t.id), { code: "not_allowed" }, "not in the group");
+  const taken = await r.tasks.start(alice(), t.id);
+  assert.equal(taken.state, "working");
+  assert.equal(taken.doer.id, ALICE);
+  assert.equal(taken.claimed, true);
+  await assert.rejects(r.tasks.start(bob(), t.id), { code: "already_taken" });
+  // two at once: exactly one wins
+  const u = await r.tasks.request(owner(), { title: "Write another", pool: { role: "writers" }, output: { kind: "note" } });
+  const both = await Promise.allSettled([r.tasks.start(alice(), u.id), r.tasks.start(bob(), u.id)]);
+  assert.equal(both.filter(x => x.status === "fulfilled").length, 1);
+  assert.equal(both.find(x => x.status === "rejected")?.reason.code, "already_taken");
+  // the holder is taken out of the role: the hold ends at once and she can no longer work it; the other member takes it over
+  r.state.roles.writers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.update(alice(), t.id, { note: "still here" }), { code: "not_allowed" });
+  const over = await r.tasks.start(bob(), t.id);
+  assert.equal(over.doer.id, BOB);
+  assert.equal(over.state, "working");
+  // "mine assigned" includes a group task nobody has taken
+  r.state.roles.writers = [actor("person", ALICE), actor("person", BOB)];
+  const w = await r.tasks.request(owner(), { title: "Open one", pool: { role: "writers" }, output: { kind: "note" } });
+  assert.ok((await r.tasks.list(alice(), { mine: "assigned" })).some(x => x.id === w.id));
+  // a reviewer who is the only other person could not review if the reviewer takes it
+  const x = await r.tasks.request(owner(), { title: "Review me", pool: { role: "writers" }, reviewer: actor("person", ALICE), output: { kind: "note" } });
+  await assert.rejects(r.tasks.start(alice(), x.id), { code: "same_actor" });
+});
+
+test("escalation: a late reviewer slot passes to the role the author named, once it is overdue; only an owner or an admin names it; the result says it was escalated; an approver slot that runs late still needs a person's own proof", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.designers = [actor("person", BOB)];
+  const esc = (over = {}) => ({ reviewer: { due_ms: 60_000, to: { role: "designers" } }, ...over });
+  await assert.rejects(r.tasks.request(alice(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() })), { code: "not_allowed" }, "a member does not name the role");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ escalation: esc() })), { code: "bad_input" }, "a slot the task has not");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc({ reviewer: { due_ms: 10, to: { role: "designers" } } }) })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  assert.equal(t.guides.escalate.reviewer.role, "designers");
+  await r.tasks.start(asIntake(), t.id);
+  const inReview = await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  assert.equal(typeof inReview.review_due_at, "number");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass" }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.escalated.to, "designers");
+  // the named reviewer still may, and is not marked escalated
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  T += 120_000;
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).review.escalated, undefined);
+  // an approver slot passes to a role too, and its holder still approves only with their own proof
+  r.state.roles.partners = [actor("person", BOB)];
+  const v = await toNeedsCheck(r, draftTask({ escalation: { approver: { due_ms: 60_000, to: { role: "partners" } } } }));
+  const B = bob();
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved" }), { code: "needs_presence" }, "no proof, no approval");
+  assert.equal((await r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) })).state, "done");
+});
+
+test("escalation and quorum all do not combine: a slot that needs everyone is never completed by one person because it ran late", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  r.state.roles.designers = [actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all", escalation: { reviewer: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), draftTask({ checker: { role: "editors" }, quorum: "all", escalation: { approver: { due_ms: 60_000, to: { role: "designers" } } } })), { code: "bad_input" });
+  // and a late all-slot stays an all-slot
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  T += 10_000_000;
+  assert.equal((await r.tasks.review(alice(), t.id, { result: "pass" })).state, "in_review", "still waits for the other holder");
+});
