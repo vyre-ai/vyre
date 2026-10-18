@@ -47,10 +47,10 @@ test("AgentBrowser: checkout in browser mode holds without a screen", async t =>
   assert.equal(out.thread, "th-1");
 });
 
-test("AgentBrowser: with computers.browse unset an agent is never put on the shared browser: its Chrome is its own on the Space's computer, or the call fails loudly", async t => {
+test("AgentBrowser: with per-agent users on and computers.browse unset an agent is never put on the shared browser: its Chrome is its own on the Space's computer, or the call fails loudly", async t => {
   const { pool, shared } = setup(t);
   const lines = [];
-  const ab = new AgentBrowser({ pool, shared, cfg: () => ({}) });
+  const ab = new AgentBrowser({ pool, shared, cfg: () => ({ agentUsers: true }) });
   ab.log = m => lines.push(m);
   let sharedUsed = 0;
   const realEndpoint = shared.endpoint.bind(shared);
