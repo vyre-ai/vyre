@@ -9,6 +9,7 @@ import { EmptyState } from "../components/States";
 import { Fab } from "../components/Fab";
 import { IconButton } from "../components/Button";
 import { Menu } from "../components/Menu";
+import { StatusPill } from "../components/StatusPill";
 import { Icon, ICON_NAMES, type IconName } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Text } from "../components/Text";
@@ -53,6 +54,16 @@ function ProjectTile({ id, icon, size }: { id: string; icon?: string; size: numb
   return <View style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), backgroundColor: color[TINTS[hash(id) % TINTS.length]], alignItems: "center", justifyContent: "center" }}><Icon name={name} size={size >= 44 ? 20 : 16} tone="text-2" /></View>;
 }
 
+/** What is next on a project. When it waits on the reader the shared "Needs you" pill (the one place the accent lives) comes first, and the words stay in the ink. */
+function NextLine({ facts }: { facts: { next: string; needsYou: boolean } }) {
+  return (
+    <View className="flex-row items-center gap-s2">
+      {facts.needsYou ? <StatusPill at={1} of={1} needsYou /> : null}
+      <Text size="secondary" tone={facts.needsYou ? "default" : "label"} numberOfLines={1} className="min-w-0 flex-shrink">{facts.next}</Text>
+    </View>
+  );
+}
+
 /** Up to four faces, overlapped, for who is on a project. */
 function Faces({ ids, world }: { ids: string[]; world: World }) {
   const shown = ids.map((id) => who(world, id)).filter(Boolean);
@@ -63,7 +74,7 @@ function Faces({ ids, world }: { ids: string[]; world: World }) {
 
 /**
  * Projects, calm: a header (count, search with "/", Filter, New), the playbook chip when the list is narrowed to one, and one row per project: a tint tile with the playbook's icon, the name with what is next
- * under it ("Waiting on you: ..." in the accent when something needs the reader), what kind it is, tasks "2/4", who is on it, when it last moved (rowFacts in project-row.js), and a "..." menu (Open, Rename,
+ * under it ("Waiting on you: ..." behind the shared Needs you pill when something needs the reader), what kind it is, tasks "2/4", who is on it, when it last moved (rowFacts in project-row.js), and a "..." menu (Open, Rename,
  * Archive). The whole row opens; Up and Down move through the rows and Enter opens one. On a phone each project is a card.
  */
 export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose, playbook, playbookName: playbookLabel, onClearPlaybook, onRename, onArchive }: {
@@ -131,7 +142,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
         <Pressable accessibilityRole="button" accessibilityLabel={`${recordTitle(world, i.row)}, ${sub(i)}`} onPress={() => onOpen(i.row.id)} onHoverIn={() => setActive(k)}
           style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingHorizontal: 16, minHeight: 64, backgroundColor: active === k ? color.hover : "transparent" }}>
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={36} />
-          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text></View>
+          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><NextLine facts={t} /></View>
           {tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}
           <View style={{ width: 90 }}><Text size="secondary" tone="muted" numberOfLines={1}>{sub(i)}</Text></View>
           <View style={{ width: 92 }}><TaskBar done={t.done} total={t.total} /></View>
@@ -151,7 +162,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={44} />
           <View className="min-w-0 flex-1 gap-s1">
             <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
-            <Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text>
+            <NextLine facts={t} />
             <View className="flex-row flex-wrap items-center gap-s2">{t.total ? <TaskBar done={t.done} total={t.total} /> : null}<Faces ids={t.team} world={world} />{t.moved ? <Text size="caption" tone="faint">{t.moved}</Text> : null}</View>
           </View>
           {rowMenu(i)}

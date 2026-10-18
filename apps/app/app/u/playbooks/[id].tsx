@@ -1,2 +1,2 @@
-import S from "../../../screens/templates/TemplateScreen";
+import S from "../../../screens/templates/PlaybookScreen";
 export default S;

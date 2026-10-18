@@ -46,7 +46,7 @@ export default function ProjectScreen() {
   // a template from this project (its stages, or for a free-flow project its tasks and team), as a draft the person refines in the studio
   const makeTemplate = async (slug: string) => {
     setMaking(true);
-    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Edit it, try it, then publish it.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
+    try { const v = await templates.fromProject(slug); showToast(`${v.name} is a draft playbook. Look it over, test it, then go live.`); router.push(playbookPath(v.template) as never); } catch (e) { showToast(e instanceof Error && e.message ? e.message : "That did not work."); } finally { setMaking(false); }
   };
   const { width } = useWindowDimensions();
   const go = (p: string) => router.push(p as never);
@@ -79,7 +79,7 @@ export default function ProjectScreen() {
     if (at === "client") return <ClientPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
     if (at === "emails") return <EmailsPane client={String((data?.client as { urn?: string } | undefined)?.urn ?? "")} />;
     if (at === "board") return <BoardPane tasks={(q.data?.world.tasks ?? []).filter((t: { record?: string }) => t.record === f?.row.urn)} />;
-    if (at === "flows") return <FlowsPane snapshot={String(data?.template_snapshot ?? "")} />;
+    if (at === "flows") return <FlowsPane slug={slug} snapshot={String(data?.template_snapshot ?? "")} />;
     if (at === "timeline") return ref ? <TimelinePane slug={ref} /> : <EmptyState title="No timeline here" body="This project has no id a timeline can be read under." />;
     if (at === "overview") return (
       <View className="flex-row items-start gap-s6">

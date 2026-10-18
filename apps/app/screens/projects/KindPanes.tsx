@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, EmptyState, LoadingState, Row, SectionLabel, Text, useStore } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 // @ts-ignore a plain .js module
-import { emailQuery, boardColumns, automationsOf } from "./kind-panes.js";
+import { emailQuery, boardColumns, automationsOf, flowsHere } from "./kind-panes.js";
 
 /** The client of a For a client project: the linked Records contact, its fields, and a way to the record. */
 export function ClientPane({ client }: { client: string }) {
@@ -66,10 +66,18 @@ export function BoardPane({ tasks }: { tasks: any[] }) {
   );
 }
 
-/** "Runs on its own": the Flows the project's stages turn on. */
-export function FlowsPane({ snapshot }: { snapshot: string }) {
+/** "Runs on its own": the Flows that name this project, and the ones its playbook's stages turn on. */
+export function FlowsPane({ slug, snapshot }: { slug: string; snapshot: string }) {
   const router = useRouter();
-  const list = automationsOf(snapshot) as { flow: string; when: string; note?: string }[];
+  const [rows, setRows] = useState<any[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!slug) { setRows([]); return () => {}; }
+    callT<any[]>("flows.list", { project: slug }).then((r) => { if (live) setRows(r.error || !Array.isArray(r.data) ? [] : r.data); });
+    return () => { live = false; };
+  }, [slug]);
+  if (rows === null) return <LoadingState rows={2} />;
+  const list = flowsHere(rows, automationsOf(snapshot)) as { key: string; id?: string; title: string; sub: string }[];
   if (!list.length) return <EmptyState title="Nothing runs here on its own yet" body="Ask in the project's chat for a Flow, like a follow-up that sends when a lead comes in, and it shows here." />;
-  return <Card flush>{list.map((a) => <Row key={`${a.flow}:${a.when}`} title={a.flow.replace(/_/g, " ")} sub={a.when === "start" ? "Runs when the project starts" : `Runs in ${a.when}${a.note ? `, ${a.note}` : ""}`} onPress={() => router.push(`/u/flow/${a.flow}` as never)} />)}</Card>;
+  return <Card flush>{list.map((a) => <Row key={a.key} title={a.title} sub={a.sub} onPress={a.id ? () => router.push(`/u/flow/${a.id}` as never) : undefined} />)}</Card>;
 }

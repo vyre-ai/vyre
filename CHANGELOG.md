@@ -21,6 +21,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.0
 
+- feat(flows): a Flow may name the project it runs in (`project`, the project's short name), set by flows.define, the text language and flows.patch, and flows.list takes `{ project }` to show that project's Flows only.
+- feat(projects): a project is made with how it runs (stages, client, ongoing or simple); a Stages project pins its stage names (a default list when none are named); New project asks the kind; client projects have Client and Emails tabs, Ongoing ones Board and Runs on its own; rows say what is next, who is on it, progress and when it last moved.
+- feat(playbooks): cards show a stage bar, to-do and Flow counts and where each is used; a stage column lists the Flows that turn on in it; the list takes a description for the Engineer to draft.
 - ci: golden-refresh.yml uses the same lane rule as the other workflows (sec53's note on ci-lanes): a [golden-update] push or a dispatch from a polish branch runs on a hosted runner, not on the self-hosted fleet.
 - ci: the 24 self-hosted runners are the release lane. node.yml, app.yml, box-image.yml and design-pictures.yml use them only for a tag, main, integrate/**, release/**, a train (.../train) or work/lead-*; every other ref (a polish branch, a pull request, a dispatch from either) runs on GitHub's hosted runners, which are free for this public repository, so ten teams pushing cannot queue ahead of a release. Checked by scripts/ci-lanes.test.js.
 - ci: before mounting its fscrypt volume a job unmounts anything a killed earlier job of the same runner left on the path, and after unmounting it removes the directory, so mounts cannot stack on /mnt/fsc-<runner name> either (node.yml, test-files.yml; scripts/fsc-workflow.test.js).
