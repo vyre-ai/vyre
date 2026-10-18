@@ -25,6 +25,12 @@ test("definitions: a store still starting keeps its own words and the unavailabl
   const starting = createMemoryStore({ clock });
   starting.types = async () => { throw Object.assign(new Error("the record store is still starting: downloading it (the first time only) (12 seconds so far)"), { code: "unavailable" }); };
   await assert.rejects(() => gatewayOver(starting).definitions(owner()), (/** @type {any} */ e) => e.code === "unavailable" && /the record store is still starting: downloading it/.test(e.message));
+  // the store says `unavailable` for other failures too, with an address in the text: none of it reaches the caller
+  for (const text of ["Records did not answer: fetch failed (connect ECONNREFUSED 127.0.0.1:3000)", "Records error: GraphQL: relation \"_object\" does not exist at 10.0.0.7:5432", "the record store for this space is not available yet: no room"]) {
+    const down = createMemoryStore({ clock });
+    down.types = async () => { throw Object.assign(new Error(text), { code: "unavailable" }); };
+    await assert.rejects(() => gatewayOver(down).definitions(owner()), (/** @type {any} */ e) => e.code === "unavailable" && e.message === "the store could not list its types" && !/127\.0\.0\.1|10\.0\.0\.7|GraphQL|ECONNREFUSED/.test(e.message), text);
+  }
   const broken = createMemoryStore({ clock });
   broken.types = async () => { throw new Error("connection reset by 10.0.0.7"); };
   await assert.rejects(() => gatewayOver(broken).definitions(owner()), (/** @type {any} */ e) => e.code === "unavailable" && e.message === "the store could not list its types" && !/10\.0\.0\.7/.test(e.message));
