@@ -143,7 +143,7 @@ export default {
     });
     ctx.tool("requests.decide", {
       effect: "write", callers: ["cli", "local", "deck", "capsule", "tailnet", "device"],
-      description: "Answer a request: approve it by naming the invite just made for that person (the invite itself needs the approver's own presence), or decline it.",
+      description: "Decline a request, or clear every waiting one (clear). It does not approve: approving is made through the Space's own door, which checks the invite you made for that person under your own chain.",
       input: { type: "object", required: ["space", "id"], properties: { space: str, id: str, approve: { type: "boolean" }, invite: str, clear: { type: "boolean" } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         personOnly(meta);
