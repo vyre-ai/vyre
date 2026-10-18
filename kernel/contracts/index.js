@@ -51,6 +51,14 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "in_review", to: "needs_check", by: "reviewer_pass", guarded: true },
   { from: "in_review", to: "done", by: "reviewer_pass", guarded: false },
   { from: "in_review", to: "changes_requested", by: "reviewer" },
+  // Declined (tasks v2): the doer, or the approver, says no with a reason. It stops only that task: a stage cannot finish until it is reopened and done, or skipped.
+  { from: "ready", to: "declined", by: "doer" },
+  { from: "working", to: "declined", by: "doer" },
+  { from: "changes_requested", to: "declined", by: "doer" },
+  { from: "stuck", to: "declined", by: "doer" },
+  { from: "needs_check", to: "declined", by: "checker" },
+  { from: "declined", to: "skipped", by: "proposal_for_person_with_presence", guarded: true },
+  { from: "declined", to: "skipped", by: "doer_or_person", guarded: false },
   { from: "needs_check", to: "done", by: "checker_approval" },
   { from: "needs_check", to: "done", by: "agent_checker_approval" },
   { from: "needs_check", to: "ready", by: "checker" },
@@ -74,6 +82,7 @@ export const TASK_TRANSITIONS = Object.freeze([
 export const TASK_REOPENS = Object.freeze([
   { from: "done", to: "ready", by: "doer_or_person" },
   { from: "skipped", to: "ready", by: "doer_or_person" },
+  { from: "declined", to: "ready", by: "doer_or_person" },
 ].map(r => Object.freeze(r)));
 
 export const FIELD_KINDS = f([

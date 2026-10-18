@@ -1101,3 +1101,26 @@ test("pinned guides: the doer's hand-in is stopped when a pinned skill changed s
   catalog.s1 = { hash: "a", checklist: ["x"] };
   assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "done");
 });
+
+test("declined: the doer or the approver says no with a reason; it stops that task alone, a stage gate does not count it as done, and it reopens or is skipped", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), draftTask());
+  await assert.rejects(r.tasks.decline(asIntake(), t.id, ""), { code: "bad_input" });
+  await assert.rejects(r.tasks.decline(alice(), t.id, "no"), { code: "not_allowed" }, "only the doer declines");
+  const d = await r.tasks.decline(asIntake(), t.id, "this is not ours to send");
+  assert.equal(d.state, "declined");
+  assert.equal(d.declined_reason, "this is not ours to send");
+  await assert.rejects(r.tasks.start(asIntake(), t.id), { code: "bad_state" }, "a declined task is not worked");
+  const back = await r.tasks.reopen(alice(), t.id);
+  assert.equal(back.state, "ready");
+  assert.equal(back.declined_reason, undefined);
+  // the approver declines a draft waiting for a check
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  await assert.rejects(r.tasks.decide(alice(), t.id, { outcome: "declined" }), { code: "bad_input" });
+  assert.equal((await r.tasks.decide(alice(), t.id, { outcome: "declined", reason: "wrong client" })).state, "declined");
+  assert.equal(r.released.length, 0, "a declined send releases nothing");
+  // a declined task with a checker can be skipped, which asks a person's yes (guarded) rather than skipping silently
+  const sk = await r.tasks.skip(owner(), t.id, "dropped");
+  assert.ok(sk.proposal, "the skip waits for a person's yes");
+});

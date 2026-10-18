@@ -249,9 +249,9 @@ export function createTasks(cfg) {
   // if it hashes to what the log recorded.
   const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
   // A task's title and note are the record's, not the text store's: only what the kernel itself holds as free text (the doer's answer, a Flow's form, a block's reason) is kept here.
-  const textOf = (/** @type {any} */ t) => ({ ...(t.guides !== undefined ? { guides: t.guides } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(t.activity !== undefined ? { activity: t.activity } : {}), ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
-  const withoutText = (/** @type {any} */ t) => { const { note: _n, guides: _g, details: _dt, activity: _ac, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
-  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note", "details", "activity", "guides"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textOf = (/** @type {any} */ t) => ({ ...(t.declined_reason !== undefined ? { declined_reason: t.declined_reason } : {}), ...(t.guides !== undefined ? { guides: t.guides } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(t.activity !== undefined ? { activity: t.activity } : {}), ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, declined_reason: _dr, guides: _g, details: _dt, activity: _ac, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note", "details", "activity", "guides", "declined_reason"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
   const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
     const now = tasks.get(t.id) || t;
@@ -690,7 +690,7 @@ export function createTasks(cfg) {
     },
 
     /** Human-only: exactly one person, a checker of this task and not its doer, with a signer's proof over this payload, once. */
-    async decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ outcome: "approved" | "rejected", reason?: string, proof?: any, proofs?: { use?: any } }} */ a) {
+    async decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {{ outcome: "approved" | "rejected" | "declined", reason?: string, proof?: any, proofs?: { use?: any } }} */ a) {
       // Taken before any await: a second decide on this task, with the same proof or another, is refused while one is running (K4 item 1).
       if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
       deciding.add(id);
@@ -717,7 +717,17 @@ export function createTasks(cfg) {
         bodies.delete(id);
         return tasks.get(id);
       }
-      if (a.outcome !== "approved") throw new KernelError("bad_input", "decide approves or rejects");
+      if (a.outcome === "declined") {
+        const text = String(a.reason ?? "").slice(0, FIX_CAP);
+        if (!text.trim()) throw new KernelError("bad_input", "declining a task needs a reason");
+        rule(t, "declined", "checker");
+        const { payload: _p, ...rest } = t;
+        stage(id, freeze({ ...rest, state: "declined", declined_reason: text, declined_by: freeze({ kind: "person", id: person.id }), updated_at: clock() }));
+        note(chain, "task.declined", tasks.get(id), { by: { kind: "person", id: person.id }, reason: text }, d.decision);
+        bodies.delete(id);
+        return tasks.get(id);
+      }
+      if (a.outcome !== "approved") throw new KernelError("bad_input", "decide approves, rejects or declines");
       // The sealed-use proof is checked by the sealing process when it is used; here only its shape and window, so a garbage or expired one is
       // refused now and the approver is not told a complete approval is one that cannot be used (K4 item 12).
       const up = a.proofs && a.proofs.use;
@@ -864,6 +874,19 @@ export function createTasks(cfg) {
     },
 
     /** Open a finished or skipped task again (a to-do ticked by mistake). Its doer, a person, or whoever assigned it; never a task with a checker or an outward act, which is made again. @param {any} chain @param {string} id */
+    async decline(chain, id, reason) {
+      const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
+      const t = get_(id);
+      if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer declines a task");
+      const text = String(reason ?? "").slice(0, FIX_CAP);
+      if (!text.trim()) throw new KernelError("bad_input", "declining a task needs a reason");
+      rule(t, "declined", "doer");
+      const n = put(t, { state: "declined", declined_reason: text, declined_by: freeze({ kind: acting(chain).kind, id: acting(chain).id }), activity: moreActivity(t, acting(chain), "declined") });
+      note(chain, "task.declined", n, { by: { kind: acting(chain).kind, id: acting(chain).id }, reason: text }, d.decision);
+      return n;
+    },
+
+    /** Reopening a finished, skipped or declined task. */
     async reopen(chain, id) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
@@ -871,11 +894,12 @@ export function createTasks(cfg) {
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task reopens it");
       await ownsWrite(chain, t, {});
       if (t.withdrawn) throw new KernelError("bad_state", "a task withdrawn at its due time is not reopened: make a new task");
-      if (needsCheck(t)) throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
+      if (needsCheck(t) && t.state !== "declined") throw new KernelError("bad_state", "a task with a checker or an outward act is made again, not reopened");
       if (!TASK_REOPENS.some(x => x.from === t.state && x.to === "ready")) throw new KernelError("bad_state", `a task that is ${t.state} is not reopened`);
-      const { answer: _a, ...rest } = t;
+      const { answer: _a, declined_reason: _dr, declined_by: _db, payload: _pl, ...rest } = t;
       const n = stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
       note(chain, "task.reopened", n, {});
+      bodies.delete(id);
       return n;
     },
 

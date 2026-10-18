@@ -245,7 +245,8 @@ export function createStages(o) {
     for (const r of rows) if (!r.checkedFail && !((ent.tasks.find(/** @param {any} t */ t => t.id === r.id) || {}).checklist && r.state === "done")) await mark(ent, `task:${r.title}`, DONE.has(r.state) ? { status: "done" } : r.state === "skipped" ? { status: "skipped" } : r.state === "stuck" ? { status: "failed", error: { code: "stuck", message: "the task is stuck" } } : { status: "waiting" });
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
-    if (!ok) { if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
+    if (!ok) { if (rows.some(r => r.state === "declined")) emit("stage.declined", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "declined").map(r => r.id) });
+      if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
     await mark(ent, "tasks", { status: "done" });
     const cur = await o.kernel.records.get(chain, ent.type, ent.id);
     // The stages this record follows: its stage set when the type has sets, else the type's own list.

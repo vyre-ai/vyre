@@ -54,15 +54,16 @@ export default {
       const spec = { ...rest, doer: actor(doer, d.space), ...(typeof checker === "string" && checker ? { checker: actor(checker, d.space) } : {}), ...(typeof approver === "string" && approver ? { approver: actor(approver, d.space) } : {}), ...(typeof reviewer === "string" && reviewer ? { reviewer: /^role:/.test(reviewer) ? { role: reviewer.slice(5) } : actor(reviewer, d.space) } : {}), ...(Array.isArray(helpers) ? { helpers: helpers.map((/** @type {any} */ h) => actor(String(h), d.space)) } : {}) };
       return { task: await asks(d).request(d.chain, spec) };
     });
-    tool("tasks.decide", "Approve or reject a task waiting for a check. The person's own act, with their presence.", obj({ space: str, id: str, outcome: { type: "string", enum: ["approved", "rejected"] }, reason: str }, ["id", "outcome"]), async (i, d) => ({
+    tool("tasks.decide", "Approve, reject (back to the doer) or decline (ends that task) a task waiting for a check. The person's own act, with their presence.", obj({ space: str, id: str, outcome: { type: "string", enum: ["approved", "rejected", "declined"] }, reason: str }, ["id", "outcome"]), async (i, d) => ({
       task: await asks(d).decide(d.chain, String(i.id), { outcome: i.outcome, ...(i.reason ? { reason: String(i.reason) } : {}), ...(d.proof ? { proof: d.proof } : {}) }),
     }));
-    tool("tasks.move", "Move a task: start it, flag it stuck (with a reason), skip it, or fix a stuck one. Which kernel act that is, and whether the caller may, is the kernel's.", obj({ space: str, id: str, to: { type: "string", enum: ["working", "stuck", "skipped", "ready"] }, reason: str, suggested_fix: str }, ["id", "to"]), async (i, d) => {
+    tool("tasks.move", "Move a task: start it, flag it stuck (with a reason), skip it, or fix a stuck one. Which kernel act that is, and whether the caller may, is the kernel's.", obj({ space: str, id: str, to: { type: "string", enum: ["working", "stuck", "skipped", "ready", "declined"] }, reason: str, suggested_fix: str }, ["id", "to"]), async (i, d) => {
       const a = asks(d), id = String(i.id);
       if (i.to === "working") return { task: await a.start(d.chain, id) };
       if (i.to === "stuck") return { task: await a.stuck(d.chain, id, { reason: String(i.reason || ""), ...(i.suggested_fix ? { suggested_fix: String(i.suggested_fix) } : {}) }) };
       if (i.to === "skipped") return { task: await a.skip(d.chain, id, String(i.reason || "")) };
-      if (i.to === "ready") return { task: await a.unblock(d.chain, id, { ...(d.proof ? { proof: d.proof } : {}) }) };
+      if (i.to === "declined") return { task: await a.decline(d.chain, id, String(i.reason || "")) };
+      if (i.to === "ready") { const cur = await a.get(d.chain, id); if (cur && cur.state === "declined") return { task: await a.reopen(d.chain, id) }; return { task: await a.unblock(d.chain, id, { ...(d.proof ? { proof: d.proof } : {}) }) }; }
       throw refuse("a task moves to working, stuck, skipped or ready", "bad_input");
     });
     /** The Deck's evidence ({ note: { text, sources } }) in the kernel's own shape ({ note: text, sources }); anything already in the kernel's shape passes as it is. @param {any} e */
