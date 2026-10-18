@@ -27,7 +27,7 @@ import { fit } from "../../lib/harness-caps.js";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
-import { createMemberOps } from "./member-ops.js";
+import { createMemberOps, uploadRoute } from "./member-ops.js";
 import { identityKernel, personalSkillsOnHome } from "./home-kernel.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 import { resolveApproved } from "../../lib/skill-resolve.js";
@@ -325,6 +325,12 @@ export default {
       input: obj({ ...common, file: { type: "string", description: "the file's bytes, base64" }, filename: { type: "string" } }, ["level", "file"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const c = await need(meta);
+        // Who reaches which path is read from the kernel and fails closed: an owner or an admin takes the owner path below, a member takes her own op (one skill, personal, hers), and everyone else, or a lookup that
+        // fails or answers nothing, is refused.
+        const who = personIdOf(c), mem = who ? await membershipOf(who) : null, role = mem && typeof mem.role === "string" ? mem.role : "";
+        const route = uploadRoute(role);
+        if (route === "member") return /** @type {any} */ (memberOps).import(who, c, i);
+        if (route !== "owner") throw err("not_allowed", "Only the owner, an admin or a team member uploads a skill file here.");
         const raw = String(i.file || "");
         if (raw.length > Math.ceil(IMPORT_LIMITS.zip * 4 / 3) + 8 || !/^[A-Za-z0-9+/=\s]*$/.test(raw)) throw err("bad_input", `the file is not base64, or is larger than ${IMPORT_LIMITS.zip / 1024 / 1024} MB`);
         const up = parseUpload({ file: Buffer.from(raw, "base64"), filename: typeof i.filename === "string" ? i.filename.slice(0, 200) : "" });
@@ -408,6 +414,7 @@ export default {
     // A team member's own skills on the team's server: the member door's rows (core/work/member-tools.js) run these two entries under her chain, in the Space (callInSpace); the home Space's library only.
     const memberLibrary = { ...lib, approved: mergedApproved, draft: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).draft(c, i), approve: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).approve(c, i), decline: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).decline(c, i), rollback: (/** @type {any} */ c, /** @type {any} */ i) => libraryFor(i.level).rollback(c, i), versions: (/** @type {any} */ f) => libraryFor(f.level).versions(f) };
     const memberOps = createMemberOps({
+      log: (/** @type {string} */ m) => ctx.log(m),
       library: memberLibrary, entriesOf, shown,
       vyreSkills: () => sourcesOf({ pkg, home, person: false, agent: null, account: false, projects: [] }).filter((x) => x.level === "vyre"),
       browse: async (/** @type {string} */ person, /** @type {any} */ chain, /** @type {any} */ input) => browsePack(input, { caller: "module", kernelFacts: chain }, { member: true, person }),
@@ -453,7 +460,7 @@ export default {
       return { hash: createHash("sha256").update(String(s.text)).digest("hex"), name: String(s.name || "").slice(0, 80), checklist: checklistOf(s.text) };
     } });
     ctx.tool("skills.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: browse, list, get or versions, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["browse", "list", "get", "versions"]), run: serve(["browse", "list", "get", "versions"]) });
-    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "approve", "decline", "rollback"]), run: serve(["draft", "approve", "decline", "rollback"]) });
+    ctx.tool("skills.serve-write", { effect: "write", internal: true, callers: ["module"], description: "A team member's own skills on the team's server: draft, import (a skill file), approve, decline or rollback, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["draft", "import", "approve", "decline", "rollback"]), run: serve(["draft", "import", "approve", "decline", "rollback"]) });
     return { async stop() {} };
   },
 };
