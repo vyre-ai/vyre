@@ -1,0 +1,79 @@
+# Regenerates the token outputs (scripts/gen-tokens, from lib/theme/tokens.json) on a polish branch and commits them back, because a person may not run the generator on a Mac.
+# Two jobs, as in regen.yml, so the write token never meets the branch's code: `regenerate` runs the branch's gen-tokens with a read-only token and hands over a patch; `commit` runs none of
+# the branch's code, and applies the patch only when it touches exactly the four generated outputs. Only branches named work/polish/** are accepted.
+name: gen-tokens-branch
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gen-tokens-branch-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regenerate:
+    if: startsWith(github.ref_name, 'work/polish/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      stale: ${{ steps.diff.outputs.stale }}
+      sha: ${{ steps.diff.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Regenerate
+        run: node scripts/gen-tokens
+      - name: Keep only the four outputs, as a patch
+        id: diff
+        run: |
+          set -eu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git add -A -- apps/app/src/theme/tokens.ts local/capsule/native/Sources/UI/Tokens.generated.swift web/css/tokens.css apps/app/src/store-core/tokens-v3.js
+          if git diff --cached --quiet; then echo "the generated token files are current"; echo "stale=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          other="$(git status --porcelain | grep -v '^[AM]  ' || true)"
+          if [ -n "$other" ]; then echo "::error::the generator changed files outside the four outputs:"; echo "$other"; exit 1; fi
+          git diff --cached --stat
+          git diff --cached --binary > "$RUNNER_TEMP/tokens.patch"
+          echo "stale=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.diff.outputs.stale == 'true'
+        with:
+          name: tokens-patch
+          path: ${{ runner.temp }}/tokens.patch
+          retention-days: 1
+  commit:
+    needs: regenerate
+    if: needs.regenerate.outputs.stale == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tokens-patch
+          path: ${{ runner.temp }}/patch
+      - name: Apply the patch if it is only the four outputs, and push
+        env:
+          HEAD_SHA: ${{ needs.regenerate.outputs.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -eu
+          case "$BRANCH" in work/polish/*) ;; *) echo "::error::only work/polish/** branches"; exit 1;; esac
+          [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] || { echo "the branch moved on since this run started; run it again"; exit 0; }
+          p="$RUNNER_TEMP/patch/tokens.patch"
+          git apply --numstat "$p" | cut -f3 | grep -v -E '^(apps/app/src/theme/tokens\.ts|local/capsule/native/Sources/UI/Tokens\.generated\.swift|web/css/tokens\.css|apps/app/src/store-core/tokens-v3\.js)$' && { echo "::error::the patch names a path outside the four outputs"; exit 1; } || true
+          if grep -E '^(old mode|new mode|rename |copy |new file mode 120000|deleted file mode 120000)' "$p"; then echo "::error::the patch changes modes, renames or links"; exit 1; fi
+          git apply --index "$p"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "tokens: regenerate the generated token files"
+          git push origin "HEAD:${BRANCH}"
