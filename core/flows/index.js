@@ -77,6 +77,23 @@ const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flo
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 
+/** What a person reads before a Kit with assistants is installed. */
+export const ASSISTANT_WORDS = "Each assistant is made with this Kit's instructions exactly as written below. They are not yet marked as outside text on the assistant itself, so read them here before you approve.";
+
+/**
+ * The install card (flows.kit.card, and the card inside flows.kit.propose's answer) names each assistant with the Kit's FULL instructions, not their length, and says plainly how they are used. The words come
+ * from the Kit the call carried, which is the Kit whose hash the approval covers; nothing is added when the Kit has no assistants. @param {any} out @param {any} kit
+ */
+export function withAssistantWords(out, kit) {
+  const card = out && out.adds ? out : out && out.card && out.card.adds ? out.card : null;
+  const mates = kit && kit.includes && Array.isArray(kit.includes.teammates) ? kit.includes.teammates : [];
+  if (!card || !Array.isArray(card.adds.teammates) || !card.adds.teammates.length || !mates.length) return out;
+  const full = new Map(mates.map((/** @type {any} */ t) => [String(t.name), String(t.instructions || "")]));
+  const adds = { ...card.adds, teammates: card.adds.teammates.map((/** @type {any} */ t) => ({ ...t, instructions: full.has(t.name) ? full.get(t.name) : "" })) };
+  const next = { ...card, adds, notes: [...(card.notes || []), ASSISTANT_WORDS] };
+  return out === card ? next : { ...out, card: next };
+}
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -156,7 +173,7 @@ export default {
             const hf = run ? hideFor(run, me, role === "owner" || role === "admin") : null;
             return f.flows.tools[INNER(name)](chain, { ...own, ...(hf ? { hide_for: hf } : {}) });
           }
-          const out = await f.flows.tools[INNER(name)](chain, rest);
+          const out = /^flows\.kit\.(card|propose)$/.test(name) ? withAssistantWords(await f.flows.tools[INNER(name)](chain, rest), rest.kit) : await f.flows.tools[INNER(name)](chain, rest);
           // a draft made from a chat remembers the chat (work keeps it, and only for a person in that chat): "How it was made" is a thread of the Flow
           if (name === "flows.from-chat" && out && out.ok && out.id && typeof rest.chat === "string" && rest.chat) await ctx.call("work.flow.origin", { flow: String(out.id), chat: rest.chat }, { relay: true }).catch(() => null);
           return out;

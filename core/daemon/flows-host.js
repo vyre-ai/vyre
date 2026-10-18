@@ -419,7 +419,8 @@ export function createFlowsHost(o) {
           if (list.some((/** @type {any} */ a) => a && a.name === t.name)) { log(`flows ${space}: Kit ${t.kit} names an assistant ${t.name} that is already here; it is left as it is`); return { id: null, existed: true }; }
           const r = await o.callAs("agents.create", { name: t.name, instructions: String(t.instructions || ""), projects: [] }, token);
           if (r && r.error) throw Object.assign(new Error(`the Kit's assistant ${t.name} could not be made: ${r.error.message}`), { code: r.error.code || "failed" });
-          return { id: r && r.data && (r.data.id || r.data.uid) ? String(r.data.id || r.data.uid) : null };
+          log(`flows ${space}: Kit ${t.kit} made the assistant ${t.name} with the Kit's instructions as written; they are not yet marked as outside text on the assistant`);
+          return { id: r && r.data && (r.data.id || r.data.uid) ? String(r.data.id || r.data.uid) : null, note: "made with the Kit's instructions as written; not yet marked as outside text on the assistant" };
         },
         remove: async (/** @type {any} */ chain, /** @type {string} */ name, /** @type {string} */ id, /** @type {any} */ by) => {
           const token = await asPerson(by, chain, "Removing a Kit's assistants");

@@ -53,3 +53,16 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   assert.ok(!gone.some((/** @type {any} */ a) => a.name === "desk-helper"), "removing the Kit removes the assistant it made");
   assert.ok(gone.some((/** @type {any} */ a) => a.name === "my-own"), "and keeps the one that was already there");
 });
+
+test("the install card for a Kit with assistants carries their full instructions and says how they are used; a Kit without assistants gets nothing added", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const K = d.kernel, owner = K.id.owner;
+  const meta = async () => ({ token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token });
+  const card = (await d.registry.call("flows.kit.card", { kit: kit() }, "cli", await meta())).data;
+  assert.equal(card.adds.teammates.length, 2);
+  assert.equal(card.adds.teammates[0].instructions, "Greet the person, find the matter and say what is next.", "the full text, not its length");
+  assert.ok(card.notes.some((/** @type {string} */ n) => /exactly as written below/.test(n) && /not yet marked as outside text/.test(n)));
+  const none = (await d.registry.call("flows.kit.card", { kit: { ...kit(), includes: { ...kit().includes, teammates: [] } } }, "cli", await meta())).data;
+  assert.ok(!none.notes.some((/** @type {string} */ n) => /exactly as written below/.test(n)), "no assistants, no words");
+});
