@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
+import { callT } from "../../src/real/call-tool";
+import { RecordScreen } from "./RecordScreen";
+import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
+import { AddTypeSheet } from "../customize/AddTypeSheet";
+import { useKernelTypes } from "../customize/kernel-types";
+import { TypeFields } from "../customize/TypeScreen";
+import { TypeAccess } from "../customize/TypeAccess";
+import { TypeHistory } from "../customize/TypeHistory";
 import { useEffectiveList } from "./views-actions";
 import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
 
-type ViewKind = "list" | "board" | "calendar" | "dashboard";
+type ViewKind = "list" | "gallery" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
 const TABS_MAX = 5;
-const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
+const LABEL: Record<ViewKind, string> = { list: "List", gallery: "Gallery", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /**
  * The `records` block (design language, data source: records): every record of one type, as a list, a board, a calendar or a dashboard, drawn from the type's definition. Nothing here knows Contact
@@ -33,9 +41,15 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
   const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);
+  const [panelId, setPanelId] = useState<string | null>(null);
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
+  const [addingType, setAddingType] = useState(false);
+  const [pane, setPane] = useState("records");
+  useEffect(() => setPane("records"), [type]);
+  const createType = useKernelTypes((k) => k.create);
+  const settingUp = Object.keys(useKernelTypes((k) => k.busy)).length;
   const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<any[]>([]);
@@ -50,6 +64,23 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const cards = useMembers((st) => st.spaces);
   const showing = useSpaces((st) => st.space);
   usePlaceText("showing");   // loads the spaces the row tags are read from
+  // Older records without their ID (a type that gained the field): an owner or admin opening the type asks for its own definition again, unchanged, which gives them their IDs (core/records-tools); once for a type in a visit
+  const idAsked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!world || idAsked.current.has(type)) return;
+    const def = world.types.find((t) => t.name === type);
+    if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
+    idAsked.current.add(type);
+    // The definition is read fresh just before it is replayed, never taken from this page's copy: another admin may have changed the type since the page loaded.
+    const warn = (why: string) => console.warn(`records: the IDs of ${type} were not filled in (${why})`);   // nothing is shown to the person: the next visit asks again
+    void Promise.resolve(store.types(!allowsMock() && space !== "all" ? space : undefined))
+      .then((list: any[]) => { const now = list.find((t) => t.name === type); if (!needsIdFill({ def: now, rows: world.byType[type] || [], canDefine: canShare })) return undefined; return callT("records.define", { diff: { change_types: [defineInputOf(now)] } }); })
+      .then((r) => { if (!r) return; if (r.error) warn(`${r.error.code}: ${r.error.message}`); else reload(); })
+      .catch((e) => warn(e instanceof Error ? e.message : String(e)));
+  }, [world, type, canShare, reload, space, store]);
+  // A new type finishes setting up in the background: when the last one is done, the tabs read it in.
+  const wasSettingUp = useRef(0);
+  useEffect(() => { if (wasSettingUp.current > 0 && settingUp === 0) reload(); wasSettingUp.current = settingUp; }, [settingUp, reload]);
   if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
@@ -64,7 +95,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const named = (["list", "board", "calendar"] as ViewKind[]).flatMap((k) => storedViewsOf(full, k));
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
-  const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : "list";
+  const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const all = world.byType[def.name] || [];
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
   const rows = listRows(def, all, chips, query, lctx);
@@ -76,8 +107,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
-  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
-  const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
+  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
+  // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
+  const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
   const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
@@ -93,7 +125,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   };
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
   return (
-    frame(vd.plural, <>
+    <View className="min-h-0 flex-1">
+    {frame(vd.plural, <>
       <ListHeader noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
@@ -111,6 +144,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
             <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               { label: "New view", onPress: () => setMaking(true) },
+              { label: "New type", onPress: () => setAddingType(true) },
               { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
               { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
             ]} />
@@ -119,6 +153,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
+        <Button kind="ghost" size={phone ? "md" : "sm"} icon="plus" label="New type" onPress={() => setAddingType(true)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
           </>
@@ -128,6 +163,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {world.types.length > TABS_MAX
         ? <Select label="Type" value={type} options={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
         : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
+      {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
+      <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
+      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
       {filter && !cleared ? (
         <Card>
           <View className="flex-row items-center gap-s3 px-s4 py-s3">
@@ -137,12 +175,19 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </Card>
       ) : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: () => switcher }} /> : switcher}
+      {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
+      </>}
+      <AddTypeSheet open={addingType} onClose={() => setAddingType(false)} space={space} taken={world.types.map((t) => t.name)} onAdd={(t, plural) => { createType(t); showToast(`${plural} is being set up. This can take a minute.`); }} />
       <ImportSheet open={importing} onClose={() => setImporting(false)} def={def} noun={vd.plural.toLowerCase()} onDone={reload} />
       <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
-    </>, { own: true, onRefresh: reload })
+    </>, { own: true, onRefresh: reload })}
+    {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
+      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn.split("/").pop() || null)} /> : null}
+    </SidePanel> : null}
+    </View>
   );
 }

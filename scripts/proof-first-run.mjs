@@ -368,7 +368,7 @@ try {
   // First 90 s: a screen that needs Records either shows its content or says, calmly, that Records is setting up (the honest first-start state). An error sentence is never accepted.
   const SETTING = /Records is setting up/i;
   const NOW_OK = /Good (morning|afternoon|evening)/i;
-  const RECORDS_OK = /Contacts|All objects|No records/i;
+  const RECORDS_OK = /Contacts|People|All objects|No records|No people/i;
   await run.step(S("owner walk: Now loads, or says Records is setting up, with no skeleton after 90 s"), async () => {
     await look("Now", "07-now", new RegExp(`${NOW_OK.source}|${SETTING.source}`, "i"), 90_000, async () => { await open("Now", "/u/now", true); });
   }, { needs: READY });

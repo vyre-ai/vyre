@@ -50,6 +50,7 @@ export { markRef, spaceRef } from "./marks/useMark";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
+export { SidePanel } from "./components/SidePanel";
 export { ConnectApps, ShareSheet, SetupSheet } from "./connect/ConnectApps";
 export type { App as ConnectApp, Share as ConnectShare } from "./connect/ConnectApps";
 export { sampleApps as sampleConnectApps, SAMPLE_GRANTEES as SAMPLE_CONNECT_GRANTEES } from "./connect/connect-model.js";
@@ -106,6 +107,7 @@ export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
 export { PinnedViews } from "./views";
 export type { PinnedEntry } from "./views";
+export { GalleryView } from "./views/GalleryView";
 export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, LAYOUTS, OPS, MINE, layoutsFor, fieldChoices, filterExpr, buildView, slugify, personalEntry, personalViewsOf, withPersonalViews, canShare, pinnedViews, pinList, unpinList, renameView, deleteView, reorderPinned, sharedEntry } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";

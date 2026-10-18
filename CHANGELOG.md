@@ -2,6 +2,17 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased
+
+- feat(records): People, Companies, Tasks and Notes (the Note type is `memo`, Twenty reserves "note"), the Gallery view (Companies open in it), and every starting type has an ID (`PER-0001`, `ORG-0001`, `TSK-0001`, `NOT-0001`): a read-only unique `ref` field, made with the record and never changed. A new type starts with its first field and an ID; Blank is a Name and an ID. Older records get their ID, oldest first, when `records.define` adds the field; a record the person who defined it cannot see (a private row) gets its ID later, when someone who can see it defines the type again. `records.list` never writes.
+- feat(records): Add a type opens on its templates (Blank, Order, Property, Deal) and the Kits the box offers; a Kit asks for a yes in Now. It opens from Records (New type) as well as from Settings. The sheet is one component, `AddTypeSheet`.
+- feat(records): a type has Access and History tabs (Settings, Objects, the type). Access shows what the person is, what each role may do with the type and how many hold it, who holds its roles (a role type), and the record as the person or their assistant sees it (records.sees-as). History shows what changed on its records: the audit with the value before and after for an owner or admin (records.audit), the log's plain lines for anyone else (records.events) The same tabs sit under the type tabs on the Records page (Records, Fields, Access, History), with Fields editable in place.
+- fix(box): a new Space that cannot start from the saved database says so. The helper log gets one line, "Records starting without the saved database: <reason>" (no image recorded, no dump in the image, a bad path, a failed copy), and the same sentence follows the Space's status message, so the screen waiting on it shows it. It was silent before. The slow path itself is unchanged.
+- ci(first-run-e2e): the linux job prints a Records timing block (store phases and definitions from the vyre container, the helper's log, when the saved-database restore ran) on every run, so a slow start says where the minutes went.
+- fix(first-run-e2e): the walk knows the contact list is called People now (it waited 15 minutes for the word Contacts on a screen that was ready), and the daemon log it saves leaves out the 264 'waiting work' lines that filled its 300-line tail and cut off the store's own start-up phases.
+- perf(golden): the saved Twenty database also holds the kernel's own types (the Flow types, the Kit types, def-role and def-view, the memory fact, the planner's four and every type a first-party module declares in its manifest: agent, goal, preview_doc, def-watcher, file-share), so a new Space does not make them one field at a time after Records already reads as ready (the first-run walk: Records ready 5 minutes after pairing, the rest of the types about 2 more). A type Twenty refuses is left to the Space and does not stop the build. The golden cache key now covers the files those definitions live in.
+- fix(box): the Space helper no longer takes a Space it is making in this very call for a cut-off first start: no needless down -v, no second saved-database restore and no second ADMIN_PASSWORD line on every first start (about 30 s).
+
 ## Unreleased (polish: agents are persistent, each with many threads)
 
 - fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
