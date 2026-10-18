@@ -51,7 +51,7 @@ config.resolver.nodeModulesPaths = [...(config.resolver.nodeModulesPaths ?? []),
 // The sample-world pages (the component gallery, the screenshot pages, the terminal demo, the key check) import every screen, which makes each of those screens shared between routes and so part of the first
 // load of every page. A real build leaves them out; the mock build (EXPO_PUBLIC_VYRE_MOCK=1, the screenshots' and the sample world's) keeps them.
 if (process.env.EXPO_PUBLIC_VYRE_MOCK !== "1") {
-  config.resolver.blockList = [].concat(config.resolver.blockList ?? [], [/[\\/]app[\\/](gallery|shots-[a-z]+|terminal-demo|keycheck)\.tsx$/]);
+  config.resolver.blockList = [].concat(config.resolver.blockList ?? [], [/[\\/]app[\\/](gallery|shots-[a-z]+|terminal-demo|keycheck|u[\\/]flows[\\/]shot)\.tsx$/]);
 }
 
 // pdf.js (react-pdf, the file viewer) ships one Node-only code path that reads import.meta.url. A classic web script cannot even parse that, so the whole page stayed blank. The web build gets a copy with that
