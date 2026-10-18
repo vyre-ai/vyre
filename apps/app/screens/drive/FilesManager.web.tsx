@@ -20,6 +20,7 @@ import { startThread } from "./new-thread";
 import { ComputerPage } from "./ComputerPage";
 import { canDrop, carriesFiles, dropTarget, dropWords, plan, progressLine } from "./drop-model.js";
 import { Thumb } from "./Thumb";
+import { warm } from "./preload";
 import { create as createSite } from "../sites/real";
 import { BLANK, build as buildSite, publishRefusal } from "../sites/real-model";
 import { useFilesNav } from "./files-nav";
@@ -295,7 +296,7 @@ function Manager({ wide }: { wide: boolean }) {
           </View>
         ) : null}
       </Sheet>
-      <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} onClose={() => setLook({ open: null })} />
+      <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} shown={shown} onClose={() => setLook({ open: null })} />
       <MoveDelete dialog={dialog} onClose={() => setDialog(null)} onDone={() => { setDialog(null); invalidate(); }} />
     </Frame>
   );
@@ -382,14 +383,26 @@ function MoveDelete({ dialog, onClose, onDone }: { dialog: { kind: "move" | "del
   );
 }
 
-/** The full-size look at one file (Space or a double click): the shared FileViewer for a file in the Space or a linked folder, in a sheet; Esc, Space or the close button closes it. */
-function QuickLookSheet({ row, onClose }: { row: FileRow | null; onClose: () => void }) {
+/** The full-size look at one file (Space or a double click): a card with the file's icon, name, kind and size shows first and stays, so the sheet is never blank while the shared FileViewer reads and draws it (image, PDF,
+ *  video, audio, text, code, markdown, documents and sheets; anything else is a card with Download). The neighbours of the open file are read in the background so the arrow keys open the next one at once. */
+function QuickLookSheet({ row, shown, onClose }: { row: FileRow | null; shown: FileRow[]; onClose: () => void }) {
+  useEffect(() => {
+    if (!row) return;
+    const files = shown.filter((r) => !r.dir && r.root === "space");
+    const i = files.findIndex((r) => r.key === row.key);
+    for (const n of [files[i + 1], files[i - 1], files[i + 2]]) if (n) warm(n.path, n.size);
+  }, [row?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!row) return <Sheet open={false} onClose={onClose} title="" children={null} />;
   const source = row.root === "space" ? driveSource(row.path) : row.root === "linked" && row.link ? linkedFileSource(row.link, row.path) : null;
   return (
     <Sheet open onClose={onClose} title={row.name}>
       <View className="gap-s3">
-        {source ? <FileViewer key={row.key} name={row.path} source={source} /> : <Text tone="muted">There is no preview for this source yet. {[KIND_WORD[row.kind], sizeWord(row.size)].filter(Boolean).join(", ")}</Text>}
+        <View className="flex-row items-center gap-s3">
+          <Icon name={ICON[row.kind] as never} tone="text-2" size={28 as never} />
+          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{row.name}</Text><Text size="caption" tone="muted">{[KIND_WORD[row.kind], sizeWord(row.size), when(row.modified)].filter(Boolean).join(", ")}</Text></View>
+          {source && (row.root === "space" || row.root === "linked") ? <Button kind="ghost" size="sm" icon="download" label="Download" onPress={() => { download(row).catch((e) => showToast(say(e))); }} /> : null}
+        </View>
+        {source ? <FileViewer key={row.key} name={row.path} source={source} /> : <Card><Text tone="muted">There is no preview for this source yet.</Text></Card>}
       </View>
     </Sheet>
   );
