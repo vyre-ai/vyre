@@ -28,7 +28,7 @@ export function ReviewPanel({ task, me }: { task: any; me: string }) {
   return (
     <View className="gap-s3 rounded-card border border-edge p-s4">
       <Text strong>Review this work</Text>
-      {task.slots?.reviewer?.instructions ? <Text tone="muted">{String(task.slots.reviewer.instructions)}</Text> : null}
+      {task.slots?.reviewer?.instructions ? <View className="gap-s1"><Text size="caption" tone="label" strong>From the requester</Text><Text tone="muted">{String(task.slots.reviewer.instructions)}</Text></View> : null}
       {Array.isArray(task.slots?.reviewer?.skills) && task.slots.reviewer.skills.length ? <Text size="caption" tone="label">{`Checked against: ${task.slots.reviewer.skills.map((x: { name?: string; id: string }) => x.name || x.id).join(", ")}`}</Text> : null}
       {list.length ? (
         <View className="gap-s2">
