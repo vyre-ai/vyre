@@ -31,6 +31,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+      # the compiler imports the kernel's canonical form, which needs @noble/hashes; no install script runs, and this job has a read-only token
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Compile every kit
         run: |
           set -eu

@@ -23,6 +23,7 @@ test("the job that runs the branch's compiler has a read-only token and keeps no
   assert.match(r, /permissions:\n      contents: read\n/);
   assert.match(r, /persist-credentials: false/);
   assert.ok(!/contents: write/.test(r));
+  assert.match(r, /npm ci --ignore-scripts --no-audit --no-fund\n/, "dependencies install without running any install script");
   assert.match(r, /node records\/language\/cli\.js compile "\$src"/);
 });
 
