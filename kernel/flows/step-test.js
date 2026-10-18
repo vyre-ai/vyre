@@ -15,7 +15,7 @@ export const STEP_INPUT_CAP = 16 * 1024;
 const NOT_INPUT = new Set(["id", "kind", "label", "added_by", "enabled", "on_fail", "verify", "retry", "timeout_ms", "approve", "source", "hash", "language", "outputs", "then", "else", "steps"]);
 
 /**
- * What a step was given, as the run page shows it: a decide's test and its value, a code step's inputs, a call's input, a repeat's list, and for the rest the step's own parameters with their values worked out. A value that cannot
+ * What a step was given, as the run page shows it: a decide's test and its value, a code step's inputs, a repeat's list, and for the rest the step's own parameters with their values worked out. A value that cannot
  * be worked out here is shown as written. @param {any} s @param {(src: string) => any} ev @param {(v: any) => any} val
  */
 export function inputOf(s, ev, val) {
@@ -24,8 +24,6 @@ export function inputOf(s, ev, val) {
   if (s.kind === "repeat") return { over: s.over };
   if (s.kind === "parallel" || s.kind === "branch") return undefined;
   if (s.kind === "fn") return safe(() => val(s.inputs), s.inputs);
-  // a call step is given its `input`; the action and the resource it names are what it does (the effects say so), not what it is given
-  if (s.kind === "call" && s.input && typeof s.input === "object" && !Array.isArray(s.input)) return safe(() => val(s.input), s.input);
   const out = /** @type {Record<string, any>} */ ({});
   for (const [k, v] of Object.entries(s)) if (!NOT_INPUT.has(k)) out[k] = safe(() => val(v), v);
   return Object.keys(out).length ? out : undefined;
@@ -60,7 +58,10 @@ export async function testStepOf(h, flow, stepId, o) {
   const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
   /** @type {any} */ const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: [], dryAsks: 0, dryTasks: [], softReads: false };
   const scope = h.scope(ctx);
-  const input = showable(inputOf(step, (/** @type {string} */ src) => evaluate(parse(src), scope), (/** @type {any} */ v) => resolveValue(v, scope)), STEP_INPUT_CAP);
+  let given = inputOf(step, (/** @type {string} */ src) => evaluate(parse(src), scope), (/** @type {any} */ v) => resolveValue(v, scope));
+  // a call is given its `input`; the action and the resource it names are what it does (the effects below say so), not what it is given
+  if (step.kind === "call" && given && typeof given.input === "object" && given.input !== null && !Array.isArray(given.input)) given = given.input;
+  const input = showable(given, STEP_INPUT_CAP);
   /** @type {{ code: string, message: string } | null} */ let error = null;
   let asks = false;
   try { await h.step(ctx, step); }

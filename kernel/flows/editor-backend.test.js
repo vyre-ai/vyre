@@ -257,14 +257,14 @@ test("(c) a send in the Flow's own failure path, or in a lane of a parallel step
   assert.deepEqual(sent, []);
   // 2. a lane of a parallel step: the lane is a run of its own
   w.clock.t += 1000;
-  const f2 = await install(w, { ...flowOf([fn("a"), { id: "p", kind: "parallel", steps: [{ id: "l1", kind: "branch", steps: [mail("laneMail")] }, { id: "l2", kind: "branch", steps: [fn("laneFn")] }] }, fn("c")]), name: "lanes", trigger: { on: "event", event: "lane.go" } });
+  const f2 = await install(w, { ...flowOf([fn("a"), { id: "p", kind: "parallel", steps: [{ id: "l1", kind: "branch", steps: [mail("lane_mail")] }, { id: "l2", kind: "branch", steps: [fn("lane_fn")] }] }, fn("c")]), name: "lanes", trigger: { on: "event", event: "lane.go" } });
   w.kernel.inbound("lane.go", { n: 1 }); await settle(w);
   const parent = (await w.runner.listRuns({ flow: f2.id }))[0];
   const p = await w.store.getRun(parent.id);
   const child = (p.steps.p && p.steps.p.children || [])[0] || (p.waiting && p.waiting.children || [])[0];
   assert.ok(child, "the lane has a run of its own: " + JSON.stringify(p.steps).slice(0, 200));
   const c = await w.store.getRun(child);
-  c.steps = { laneMail: { status: "done", output: { ok: true }, sent_at: w.clock.t } }; c.state = "done"; await w.store.putRun(c);
+  c.steps = { lane_mail: { status: "done", output: { ok: true }, sent_at: w.clock.t } }; c.state = "done"; await w.store.putRun(c);
   p.state = "failed"; p.waiting = undefined; p.error = { step: "c", code: "boom", message: "boom" };
   p.steps = { a: { status: "done", output: { n: "a" } }, p: { status: "done", output: {}, children: [child] }, c: { status: "failed", error: { code: "boom" } } };
   await w.store.putRun(p);
