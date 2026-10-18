@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAsk } from "./ask-filter.js";
+import { askExample, parseAsk } from "./ask-filter.js";
 
 const def = { fields: [
   { name: "name", kind: "text", label: "Name" },
@@ -38,4 +38,11 @@ test("what cannot be placed stays a search, and an empty-field phrase is said to
   assert.match(r.unused[0], /no meeting/);
   assert.equal(parseAsk("northwind", def, { now }).query, "northwind");
   assert.deepEqual(parseAsk("", def, { now }), { chips: [], query: "", said: [], unused: [] });
+});
+
+test("the example is something the type can answer", () => {
+  assert.equal(askExample(def), "client this month");
+  assert.equal(askExample({ fields: [{ name: "n", kind: "text" }] }), "");
+  const r = parseAsk(askExample(def), def, { now });
+  assert.deepEqual(r.chips.map((c) => c.field), ["close_date", "role"]);
 });

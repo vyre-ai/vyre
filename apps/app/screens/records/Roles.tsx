@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-import { Chip, Menu, showToast } from "@vyre/ui";
+import { Chip, Menu, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { roleChips, summaryChips } from "./roles-model.js";
 
@@ -49,7 +49,11 @@ export function Roles({ urn, onOpen }: { urn: string; onOpen: (urn: string) => v
   const chips = summaryChips(held);
   const roleOf = (i: number) => [...held.filter((r) => r.current), ...held.filter((r) => !r.current)][i];
   if (!chips.length && !free.length) return null;
+  // The stage strip: the first role this record holds, with every stage of it in a row and the current one lit; a press moves it (the same records.move as the pill's menu).
+  const lead = held.find((r) => r.current && (kinds.find((k) => k.role === r.role)?.stages ?? []).length > 1);
+  const strip = lead ? kinds.find((k) => k.role === lead.role)?.stages ?? [] : [];
   return (
+    <View className="gap-s3">
     <View className="flex-row flex-wrap items-center gap-s2">
       {chips.map((c, i) => {
         const r = roleOf(i);
@@ -63,6 +67,13 @@ export function Roles({ urn, onOpen }: { urn: string; onOpen: (urn: string) => v
       {free.length ? (
         <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel="Add a role"><Chip icon="plus">Role</Chip></Pressable>} items={free.map((k) => ({ label: k.label, onPress: () => void add(k) }))} />
       ) : null}
+    </View>
+    {lead && strip.length ? (
+      <View className="flex-row flex-wrap items-center gap-s2">
+        <Text size="caption" tone="label">{lead.label}</Text>
+        {strip.map((s) => <Chip key={s} selected={s === lead.stage} onPress={() => void move(lead, s)}>{s}</Chip>)}
+      </View>
+    ) : null}
     </View>
   );
 }

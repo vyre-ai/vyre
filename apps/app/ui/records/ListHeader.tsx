@@ -10,7 +10,7 @@ import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { KIND_LOGIC, normalizeKind } from "../fields/logic.js";
-import { parseAsk } from "./ask-filter.js";
+import { askExample, parseAsk } from "./ask-filter.js";
 import { CREATED, DATE_PRESETS, chipWords, datePreset, filterableFields } from "./listfilter.js";
 import type { Chip as FilterChip } from "./listfilter.js";
 import { isTagsField, tagChip } from "../tags/model.js";
@@ -33,8 +33,8 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch
   const [adding, setAdding] = useState(false);
   const [sentence, setSentence] = useState("");
   const [heard, setHeard] = useState("");
-  const ask = () => {
-    const r = parseAsk(sentence, def, { me: ctx.me, now: ctx.now });
+  const ask = (text: string = sentence) => {
+    const r = parseAsk(text, def, { me: ctx.me, now: ctx.now });
     if (!r.chips.length && !r.query) { setHeard(""); return; }
     onChips([...chips, ...r.chips]);
     if (r.query) onQuery([query, r.query].filter(Boolean).join(" "));
@@ -71,8 +71,9 @@ export function ListHeader({ title, noun, shown, total, query, onQuery, onSearch
       </View>
       {askBar ? (
         <View className="gap-s1">
-          <Field name="Say what you want to see" value={sentence} onChangeText={setSentence} placeholder="Say what you want to see, like 'clients with no meeting this month'" onSubmit={ask} />
+          <Field name="Say what you want to see" value={sentence} onChangeText={setSentence} placeholder="Say what you want to see, like 'clients with no meeting this month'" onSubmit={() => ask()} />
           {heard ? <Text size="caption" tone="label">{heard}</Text> : null}
+          {askExample(def) && !sentence && !chips.length ? <View className="flex-row flex-wrap items-center gap-s2"><Text size="caption" tone="label">Try</Text><Chip onPress={() => ask(askExample(def))}>{askExample(def)}</Chip></View> : null}
         </View>
       ) : null}
       {chips.length || query ? (

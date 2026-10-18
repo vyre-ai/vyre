@@ -57,3 +57,11 @@ export function parseAsk(sentence, def, o = {}) {
   const query = text.split(" ").filter((w) => w && !STOP.has(w)).join(" ");
   return { chips, query, said, unused };
 }
+
+/** A sentence this type can answer, for the "Try" chip: its first choice or stage option and, when it has a date, "this month" ("lead this month"); "" when it has neither. @param {any} def */
+export function askExample(def) {
+  const fields = def.fields || [];
+  const f = fields.find((/** @type {any} */ x) => ["choice", "stage"].includes(normalizeKind(x.kind)) && Array.isArray(x.options) && x.options.length);
+  const hasDate = fields.some((/** @type {any} */ x) => ["date", "datetime"].includes(normalizeKind(x.kind)));
+  return [f ? String(f.options[0]).toLowerCase() : "", hasDate ? "this month" : ""].filter(Boolean).join(" ");
+}
