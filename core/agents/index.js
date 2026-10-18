@@ -401,11 +401,12 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5; empty clears it" },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS }, look: { type: "string", description: "how it is drawn: a shape s0 to s7 and a colour c0 to c7, like s3~c5, and optionally its character: eyes ~e0-5, mouth ~m0-4, top ~t0-6, blush ~b0|1, charm ~h0-5 in that order, like s3~c5~e2~m1~t4~b1~h0; a part left out is drawn from the agent's uid; empty clears it" },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
-    const LOOK = /^s[0-7]~c[0-7]$/;
-    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7)"); };
+    // A look is a shape and a colour, and may add a character: eyes e0 to e5, mouth m0 to m4, a top t0 to t6, a blush b0 or b1 and a charm h0 to h5, in that order ("s3~c5~e2~m1~t4~b1~h0"). A part left out is drawn from a hash of the agent's uid by the app.
+    const LOOK = /^s[0-7]~c[0-7](~e[0-5])?(~m[0-4])?(~t[0-6])?(~b[01])?(~h[0-5])?$/;
+    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7), and may add eyes ~e0 to ~e5, mouth ~m0 to ~m4, top ~t0 to ~t6, blush ~b0 or ~b1 and charm ~h0 to ~h5, in that order"); };
 
     const checkProjects = p => {
       if (p === undefined) return;

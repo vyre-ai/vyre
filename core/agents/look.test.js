@@ -70,6 +70,14 @@ test("a look that is not a shape and a colour is refused, at creation and at upd
   await assert.rejects(() => call("agents.update", { name: "rex", look: "s9~c1" }), /look/);
 });
 
+test("a look may carry a character: eyes, mouth, top, blush and charm, in that order, each in range; a part may be left out but not reordered", async (t) => {
+  const call = await world(t);
+  await call("agents.create", { name: "rex", look: "s3~c5~e2~m1~t4~b1~h0" });
+  assert.equal((await call("agents.list")).find((r) => r.name === "rex").look, "s3~c5~e2~m1~t4~b1~h0");
+  for (const ok of ["s0~c0~e5", "s0~c0~m4~h5", "s0~c0~t6~b0", "s7~c7~e0~m0~t0~b0~h0"]) await call("agents.update", { name: "rex", look: ok });
+  for (const bad of ["s3~c5~e6", "s3~c5~m5", "s3~c5~t7", "s3~c5~b2", "s3~c5~h6", "s3~c5~m1~e2", "s3~c5~e2~e3", "s3~e2", "s3~c5~x1", "~c5~e2"]) await assert.rejects(() => call("agents.update", { name: "rex", look: bad }), /look/, bad);
+});
+
 test("a model cannot change an agent's look: it proposes, as for any change", async (t) => {
   const call = await world(t);
   await call("agents.create", { name: "rex" });
