@@ -1,5 +1,5 @@
 // The actions on a message as one quiet icon row: Copy (Shift-click copies as Markdown), Reply, Ask about this, and a "..." menu for the rest (Copy as Markdown, Copy code, Edit, Retry,
-// Branch from here, React, Pin). It shows on hover, on keyboard focus of the message and on a long press; each icon has a tooltip naming it and its key. The keys (R, C, Shift+C, A, E, B, P, M)
+// Fork from here, React, Pin). It shows on hover, on keyboard focus of the message and on a long press; each icon has a tooltip naming it and its key. The keys (R, C, Shift+C, A, E, B, P, M)
 // are read by useMessageKeys (message-keys.js), which sends them here as a "vyre-msg" event on this row so one place does each thing.
 
 import { useEffect, useRef, useState } from "react";
@@ -57,7 +57,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
     ...(done ? blocks.map((b, i) => ({ label: blocks.length > 1 ? `Copy code ${i + 1}` : "Copy code", onPress: () => { void copy(b.code, ctx); } })) : []),
     ...(edit ? [{ label: "Edit", onPress: edit }] : []),
     ...(retry ? [{ label: "Retry", onPress: retry }] : []),
-    ...(branch ? [{ label: "Branch from here", onPress: branch }] : []),
+    ...(branch ? [{ label: mine ? "Fork before this message" : "Fork from here", onPress: branch }] : []),
     ...(rewind ? [{ label: "Rewind to here", onPress: rewind }] : []),
     ...(second ? [{ label: "Second opinion", onPress: second }] : []),
     ...(group?.onReact ? QUICK.map((e) => ({ label: `React ${e}`, onPress: () => group.onReact?.(e) })) : []),
@@ -70,6 +70,12 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
       {icon("spark", "Ask about this", "A", actions.ask)}
       {icon("agents", "Second opinion", undefined, second)}
       {icon("undo", "Rewind to here", undefined, rewind)}
+      {!mine && branch ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Fork from here" onPress={branch}
+          style={({ hovered }: any) => ({ height: h, paddingHorizontal: 8, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>
+          <Text size="caption" tone="label">Fork from here</Text>
+        </Pressable>
+      ) : null}
       {items.length ? (
         <Menu items={items} trigger={
           <Pressable accessibilityRole="button" accessibilityLabel="More actions" {...(Platform.OS === "web" ? ({ title: "More actions (M)" } as object) : {})} style={({ hovered }: any) => ({ width: h, height: h, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: hovered ? color.hover : "transparent" })}>

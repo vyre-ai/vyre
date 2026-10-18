@@ -1,0 +1,61 @@
+// @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
+import "../../scripts/test-guard.mjs";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView } from "./threads-model.js";
+
+const agent = { family: "assistant" }, person = { family: "person" };
+
+test("the kind of a chat, from who else is in it", () => {
+  assert.equal(chatKind({ others: [agent] }), "agent");
+  assert.equal(chatKind({ others: [person] }), "person");
+  assert.equal(chatKind({ others: [person, agent] }), "group");
+  assert.equal(chatKind({ others: [agent], flow: true }), "flow");
+});
+
+test("tabs: an agent has Threads, Computer, Details; a group one first level; a Flow Runs and Details; a person Details", () => {
+  assert.deepEqual(panelTabs("agent", ["Engineer"]).map((t) => t[1]), ["Threads", "Computer", "Details"]);
+  assert.deepEqual(panelTabs("group", ["Assistant", "Scout"]), [["group", "Group"]], "a group has no tab row: faces and threads, then drill in");
+  assert.deepEqual(panelTabs("flow", []).map((t) => t[1]), ["Runs", "Details"]);
+  assert.deepEqual(panelTabs("person", []).map((t) => t[1]), ["Details"]);
+});
+
+test("/threads opens Threads for an agent, Runs for a Flow, the group's threads in a group (or the open agent), and nothing for a person", () => {
+  assert.equal(threadsTab("agent", ["Engineer"], "details"), "threads");
+  assert.equal(threadsTab("flow", [], "details"), "runs");
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "group"), "group", "the group's own threads are on its first level");
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Scout"), "agent:Scout", "an agent already open stays");
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Gone"), "group");
+  assert.equal(threadsTab("group", [], "person:per_x"), "group");
+  assert.equal(threadsTab("person", [], "details"), null);
+});
+
+test("a tab this chat does not have falls back to its first", () => {
+  const t = panelTabs("agent", []);
+  assert.equal(tabOf(t, "computer"), "computer");
+  assert.equal(tabOf(t, "library"), "threads");
+});
+
+test("thread rows: live first, then newest; rows without an id are dropped; an untitled one is New thread", () => {
+  const rows = threadRows({ threads: [{ id: "a", title: "Old", at: 1 }, { id: "b", title: "Now", at: 5, live: true, needs: true }, { id: "c", at: 9 }, { title: "no id" }, null] });
+  assert.deepEqual(rows.map((r) => [r.id, r.title, r.live, r.needs]), [["b", "Now", true, true], ["c", "New thread", false, false], ["a", "Old", false, false]]);
+  const real = threadRows({ agent: "kit", count: 3, threads: [{ thread: "c1", title: "Idle one", last_active: 5, state: "idle" }, { thread: "c2", title: "Needs me", last_active: 2, state: "needs_you" }, { thread: "c3", title: "Going", last_active: 1, state: "live" }] });
+  assert.deepEqual(real.map((r) => [r.id, r.live, r.needs]), [["c2", true, true], ["c3", true, false], ["c1", false, false]], "acct6's rows: state says live or needs you");
+  assert.deepEqual(threadRows(null), []);
+  assert.deepEqual(threadRows([{ id: "x", title: "T", at: 2 }]).map((r) => r.id), ["x"]);
+});
+
+test("the agent hint names /new and /threads, and says steer or queue while it works", () => {
+  assert.equal(agentHint("Engineer", false), "/new starts a new thread. /threads shows every thread with Engineer, ready to continue.");
+  assert.match(agentHint("Engineer", true), /steers Engineer now\. Press Tab to queue it for after\./);
+});
+
+test("a group's panel: first level, or one person or agent drilled into; someone who left falls back to the first level", () => {
+  const m = [{ id: "per_sam", name: "Sam", family: "person" }, { id: "agt_kit", name: "kit", family: "assistant" }];
+  assert.deepEqual(groupView("group", m), { level: "first" });
+  assert.deepEqual(groupView("person:per_sam", m), { level: "person", id: "per_sam" });
+  assert.deepEqual(groupView("agent:kit", m), { level: "agent", name: "kit" });
+  assert.deepEqual(groupView("person:per_gone", m), { level: "first" });
+  assert.deepEqual(groupView("agent:Sam", m), { level: "first" }, "a person is not an agent");
+});

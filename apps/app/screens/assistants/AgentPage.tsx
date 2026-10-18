@@ -3,7 +3,7 @@ import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
+import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
 import AgentWork from "./AgentWork";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { AgentMemory } from "./AgentMemory";
@@ -29,7 +29,7 @@ export default function AgentPage() {
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={who} back="/u/assistants" marks={[markRef(a?.kind === "assistant" ? "assistant" : "teammate", who)]}>
+    <Page title={who} back="/u/assistants" marks={[markRef("agent", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
       {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}
@@ -56,7 +56,7 @@ function Header({ a, onLook }: { a: AgentFull; onLook: () => void }) {
   const look = a.kind !== "assistant" && a.look ? a.look : undefined;
   return (
     <View className="flex-row items-center gap-s3">
-      <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name, undefined, look)} size={40} onPress={a.kind === "assistant" ? undefined : onLook} label={a.kind === "assistant" ? undefined : "Change how it looks"} />
+      <Avatar of={markRef("agent", a.name, undefined, look)} size={40} onPress={a.kind === "assistant" ? undefined : onLook} label={a.kind === "assistant" ? undefined : "Change how it looks"} />
       <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-s2">
         <Text size="caption" tone="label">{a.status === "working" ? "Working now." : a.status === "stopped" ? "Paused." : "Idle. Nothing is running."}</Text>
         {a.kind === "assistant" ? <Chip>Your assistant</Chip> : null}
@@ -222,15 +222,17 @@ function ComputerCard({ a, onChange }: { a: AgentFull; onChange: () => void }) {
 /** Change how an agent is drawn: the grid of shapes and the colours, then Save (agents.update look). */
 function LookSheet({ a, open, onClose, onSaved }: { a: AgentFull; open: boolean; onClose: () => void; onSaved: (look: string) => void }) {
   const start = lookOf(a.look ?? "") ?? { shape: 0, color: 0 };
-  const [v, setV] = useState(start);
+  // the character: the parts its look names, and for the rest what it is drawn with now (a hash of its name), so a tap changes one thing and keeps the others
+  const [v, setV] = useState({ ...start, parts: partsOf(withParts(a.look || a.name, a.name.toLowerCase())) as Record<string, number> });
+  const look = lookSeed(v.shape, v.color) + PARTS.map((p) => `~${p.key}${v.parts[p.key] ?? 0}`).join("");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const save = () => { setBusy(true); setProblem(""); agent.setLook(a.name, lookSeed(v.shape, v.color)).then(() => onSaved(lookSeed(v.shape, v.color))).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
+  const save = () => { setBusy(true); setProblem(""); agent.setLook(a.name, look).then(() => onSaved(look)).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
   return (
     <Sheet open={open} onClose={onClose} title={`How ${a.name} looks`}>
       <View className="gap-s4">
-        <View className="items-center"><Avatar of={markRef("teammate", a.name, undefined, lookSeed(v.shape, v.color))} size={56} /></View>
-        <AgentLookPicker shape={v.shape} color={v.color} onChange={(p) => setV((x) => ({ ...x, ...p }))} />
+        <View className="items-center"><Avatar of={markRef("agent", a.name, undefined, look)} size={56} /></View>
+        <AgentLookPicker shape={v.shape} color={v.color} parts={v.parts} onChange={(p) => setV((x) => ({ ...x, ...p }))} onPart={(key, value) => setV((x) => ({ ...x, parts: { ...x.parts, [key]: value } }))} />
         {problem ? <Banner tone="warn">{problem}</Banner> : null}
         <View className="flex-row justify-end gap-s2"><Button kind="ghost" label="Cancel" onPress={onClose} /><Button kind="primary" label={busy ? "Saving" : "Save"} disabled={busy} onPress={save} /></View>
       </View>

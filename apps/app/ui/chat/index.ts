@@ -6,9 +6,11 @@ export { BackgroundTasksCard, type BackgroundTask } from "./BackgroundTasksCard"
 export { RewindSheet, type RewindPoint } from "./RewindSheet";
 export { SecondOpinionSheet, type OpinionTarget } from "./SecondOpinionSheet";
 export { PanelCapabilityRows, type PanelCapabilityRowsProps } from "./PanelCapabilityRows";
-export { ConversationList, ConversationHeader, type Convo } from "./ConversationList";
-export { convosFrom, convoChips, convosShown, convoKindWord } from "./convo-model.js";
+export { NewPopover, type NewRow } from "./NewPopover";
+export { newMenuRows, firstRow } from "./new-menu-model.js";
+export { ConversationList, ConversationTypes, ConversationHeader, type Convo } from "./ConversationList";
+export { convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf } from "./convo-model.js";
 export { AgentComputerPane, type ComputerView } from "./AgentComputerPane";
 export { computerOf, computerWords, computerActions, DOCK } from "./computer-model.js";
 export { NewAgentDialog, AgentLookPicker, type NewAgentValues } from "./NewAgentDialog";
-export { SHAPES, COLOR_COUNT, lookSeed, lookOf } from "./agent-look.js";
+export { SHAPES, COLOR_COUNT, lookSeed, lookOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor } from "./agent-look.js";

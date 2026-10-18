@@ -149,3 +149,8 @@ test("chats carry their tags, and a tag narrows the list", () => {
   assert.deepEqual(byTag(rows, "urgent").rows.map((r) => r.id), ["a"]);
   assert.deepEqual(byTag(rows, "nothing").rows, []);
 });
+
+test("a chat row keeps the box's place (personal, space or project), and none when the box did not say", () => {
+  const rows = chatsFrom({ chats: [{ chat: "c1", title: "a", place: "personal", open: true }, { chat: "c2", title: "b", open: true }] });
+  assert.deepEqual(rows.map((r) => r.place), ["personal", ""]);
+});

@@ -92,7 +92,7 @@ export function AgentsHome() {
     return (
       <Pressable accessibilityRole="button" accessibilityLabel={r.kind === "assistant" ? "Open your assistant" : `Open ${r.name}`} onPress={() => press(r)} disabled={busy === r.name} className="gap-s2 p-s3">
         <View className="flex-row items-center gap-s3">
-          <Avatar of={markRef(r.kind === "assistant" ? "assistant" : "teammate", r.name)} size={40} />
+          <Avatar of={markRef("agent", r.name, undefined, r.look || undefined)} size={40} />
           <View className="min-w-0 flex-1 gap-s1">
             <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{r.kind === "assistant" ? <Chip>Your assistant</Chip> : null}{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>

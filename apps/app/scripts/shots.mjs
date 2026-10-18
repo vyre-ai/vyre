@@ -21,7 +21,9 @@ const { chromium } = require("playwright");
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".json": "application/json", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".ttf": "font/ttf" };
 const server = http.createServer((req, res) => {
-  const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  let p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  // a screen two levels down (u/chats) asks for its scripts relative to itself: serve them from the root
+  { const m = /\/(?:_expo|assets)\/.*/.exec(p); if (m) p = m[0]; }
   let f = path.join(dist, p);
   if (!f.startsWith(dist) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(dist, "index.html");
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
@@ -40,7 +42,7 @@ try {
     for (const r of routes) {
       const [route, query = ""] = r.split("?");
       await page.goto(`http://127.0.0.1:${port}/app/${route}${query ? "?" + query : ""}`, { waitUntil: "networkidle" });
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(Number(process.env.SHOT_WAIT || 600)); // SHOT_WAIT: a screen that boots slowly (the Chats list) is shot after it has loaded
       const sideways = await page.evaluate(() => document.scrollingElement.scrollWidth > innerWidth + 1);
       if (sideways) { bad++; console.log(`WARN ${w} ${r} ${theme}: scrolls sideways`); }
       const full = await page.evaluate(() => Math.max(document.scrollingElement.scrollHeight, ...[...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY !== "visible").map((e) => e.scrollHeight)));
