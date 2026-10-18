@@ -14,6 +14,7 @@ import { startChat } from "../../src/state/start-chat";
 import { byTag, chatsOrdered, chatsShown } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { NewAgentFlow } from "./NewAgentFlow";
+import { openEngineer } from "../engineer/openEngineer";
 import { agentThreads } from "../../src/chat/threads-source";
 import { Text } from "@vyre/ui";
 
@@ -25,8 +26,11 @@ const useChatsFilter = create<{ q: string; type: string; project: string; tag: s
   q: "", type: "all", project: "all", tag: "", all: [], tags: [], compose: false, newAgent: allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search), set: (p) => set(p),
 }));
 
-/** Opens the New agent dialog (the /agent command and the + menu). */
-export const openNewAgent = () => useChatsFilter.getState().set({ newAgent: true });
+/** New agent: the Engineer drafts it in a thread (the "From Agents" handoff), and the person says yes to create it. The sample preview (?newagent=1) keeps the form. */
+export const openNewAgent = (router: { push: (to: never) => void }) => {
+  if (allowsMock() && typeof location !== "undefined" && /[?&]newagent=1/.test(location.search)) { useChatsFilter.getState().set({ newAgent: true }); return; }
+  openEngineer(router, { source: "agent", intent: "create" });
+};
 
 /** The compose button: opens and closes the New menu (also Cmd N). */
 const toggleCompose = () => { const st = useChatsFilter.getState(); st.set({ compose: !st.compose }); };
@@ -93,7 +97,7 @@ export function ChatsSidebar() {
   const personRows = convos.filter((c) => c.lone === "person").map((c) => ({ id: c.id, name: c.title }));
   const pickNew = (r: { kind: string; id: string; label: string }) => {
     if (r.kind === "group") router.push("/u/chats/new?group=1" as never);
-    else if (r.kind === "new-agent") openNewAgent();
+    else if (r.kind === "new-agent") openNewAgent(router);
     else if (r.kind === "flow") router.push("/u/flows" as never);
     else if (r.kind === "person") { const c = byId.get(r.id); if (c) open(c); }
     else if (r.kind === "agent") {
