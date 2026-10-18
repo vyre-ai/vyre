@@ -374,7 +374,7 @@ export function registerThreads(d) {
     input: obj({ project: { type: "string", description: "the project's short name, record id or address" }, ring: { type: "object", description: "on first use: the chat's key ring, made on your device for the id returned with needs_ring; the server never makes it" } }, ["project"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
       const chain = await d.chainOf(extra), k = d.kernelOf(), hop = chain && chain.hops && chain.hops[0];
-      if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.viewer === true) throw fail("denied", "a project's chat is a person's own: ask from your own session");
+      if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.viewer === true || chain.hops.length !== 1) throw fail("denied", "a project's chat is a person's own: ask from your own session, not through an agent");
       const me = String(hop.actor.id);
       const rec = await d.hubOf().projectOf(String(input.project || ""));
       if (!rec || !(await k.records.get(chain, "project", rec.id).catch(() => null))) throw fail("not_found", "no such project (projects.list shows them)");
