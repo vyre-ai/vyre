@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(runner): a lease taken again while the sessions of its ended lease are still stopping keeps its workspace (contact waits for the closing and then checks the real mount); a revoked end still closes hard and deletes, and a vault answer that arrives after a revoke opens nothing and keeps no key (lease.js). Tests in core/runner/lease-race.test.js.
 - fix(guards): the polish train's suite guards. Refusals in Files move, appmods audit, sessions key check and the Vault member link now say what to do next; the partial-move code has a catalogue entry; documents.signing.status is under the 25-word cap; the Files move tools take the one person-surface list (no bare mobile); the audit link check reads that list too; the AI accounts step reads the Anthropic key shape from the shared table; the Vault migration list is one line shorter.
 
 - fix(tests): the node reds on the vault, kernel and documents files. vault.person.of is recorded as needing no presence (a name and a verified flag, no value, owner-only by reach); dev-sign-proof's sample covers vaultAddKey and vaultAddKeys; member-endpoints.js and host-core.js are registered in kernel/door/sinks.json as not inference (an address list and address checks, no provider request); documents.signing.status has a description under the 25-word cap.
