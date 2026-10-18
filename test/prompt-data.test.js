@@ -17,6 +17,11 @@ test("no byte of the data can look like a tag or a prompt boundary, and the data
   assert.deepEqual(JSON.parse(s), evil);
 });
 
+test("a value JSON cannot write is the text null, not an error", () => {
+  assert.equal(dataJson(undefined, 100), "null");
+  assert.match(dataBlock("memory", undefined), /\nnull\n/);
+});
+
 test("a cut ends on a whole token with a marker, never inside an escape", () => {
   const s = dataJson({ s: "é<".repeat(3000) }, 4000);
   assert.ok(s.endsWith(" [cut]"));
