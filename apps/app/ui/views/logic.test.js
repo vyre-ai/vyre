@@ -72,7 +72,7 @@ test("Seal for all names how many records have a value", () => {
   const f = fieldOf(def("contact"), "ssn");
   const s = sealSpec(def("contact"), f, byType.contact);
   assert.match(s.title, /Seal SSN for all people\?/);
-  assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} contacts`));
+  assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} people`));
   assert.equal(isSealedField(f), true);
   assert.equal(isSealedField(fieldOf(def("contact"), "name")), false);
 });
