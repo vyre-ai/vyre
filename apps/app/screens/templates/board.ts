@@ -22,7 +22,8 @@ export function doneRule(s: Stage, _b?: Body): string {
 
 export type Person = { label: string; kind: "role" | "lead" | "person" | "agent" };
 export type Card = { index: number; title: string; assignee: Person; approver: Person | null; followers: Person[]; due: string; needsYes: string; group: string; optional: boolean };
-export type Column = { index: number; name: string; rule: string; last: boolean; groups: string[]; tasks: Card[] };
+export type ColumnFlow = { flow: string; when: string; note?: string };
+export type Column = { index: number; name: string; rule: string; last: boolean; groups: string[]; tasks: Card[]; flows: ColumnFlow[] };
 
 /** One task as a card. */
 export function taskCard(t: Task, b: Body, people: Who[] = [], agents: Who[] = [], index = 0): Card {
@@ -40,6 +41,7 @@ export function boardColumns(b: Body, people: Who[] = [], agents: Who[] = []): C
   return stages.map((s, i) => ({
     index: i, name: stageModeOf(b) === "none" ? "Tasks" : s.name, rule: stageModeOf(b) === "none" ? "" : doneRule(s, b), last: i === stages.length - 1,
     groups: (s.groups || []).map((g) => g.name), tasks: (s.tasks || []).map((t, ti) => taskCard(t, b, people, agents, ti)),
+    flows: (b.automations || []).filter((a) => (i === 0 && a.when === "start") || (stageModeOf(b) !== "none" && a.when === s.name)).map((a) => ({ flow: a.flow, when: a.when, ...(a.note ? { note: a.note } : {}) })),
   }));
 }
 

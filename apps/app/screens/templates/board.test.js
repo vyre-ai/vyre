@@ -17,6 +17,16 @@ const body = () => ({
   ],
 });
 
+test("a column lists the Flows that turn on in its stage: the stage's own, and the project's start Flows in the first", () => {
+  const b = { ...body(), automations: [{ when: "Review", flow: "review_reminder", note: "nudges the attorney" }, { when: "start", flow: "welcome" }, { when: "Review", flow: "second" }] };
+  const cols = boardColumns(b, people, agents);
+  assert.deepEqual(cols.map((c) => c.flows.map((f) => f.flow)), [["welcome"], ["review_reminder", "second"], []]);
+  assert.equal(cols[1].flows[0].note, "nudges the attorney");
+  assert.equal(cols[0].flows[0].when, "start");
+  assert.deepEqual(boardColumns(body(), people, agents).map((c) => c.flows.length), [0, 0, 0], "a playbook with none has none");
+  assert.deepEqual(boardColumns({ ...b, stage_mode: "none" }, people, agents)[0].flows.map((f) => f.flow), ["welcome"], "with no stages the one column holds the start Flows");
+});
+
 test("the screen's name is one constant, and the owner calls these playbooks", () => { assert.equal(TEMPLATES_LABEL, "Playbooks"); assert.equal(playbookPath(), "/u/playbooks"); assert.equal(playbookPath("tpl_estate"), "/u/playbooks/tpl_estate"); });
 
 test("a board has one column per stage, each with its tasks as cards and its rule in words", () => {
