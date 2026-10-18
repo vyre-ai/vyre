@@ -216,6 +216,8 @@ export function validate(m, { firstParty = false } = {}) {
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
   // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
   if (String(m.name) === "kernel") out.push('name "kernel" is reserved for the kernel itself');
+  // vyred is the host's own caller (`module:vyred`): the Flows host, the proposals and the tools only it may call answer to that string, so no module can be called that
+  if (String(m.name) === "vyred") out.push('name "vyred" is reserved for the host itself');
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
   if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
   if (m.requires && !Array.isArray(m.requires)) {

@@ -1450,3 +1450,10 @@ test("modules: a relayed call carries relayedByFirstParty from the loader's rule
   const direct = await reg.call("memory.upgrade.plan", {}, "cli", { kernelFacts: facts, relayedByFirstParty: true });
   assert.equal(direct.data.relayedByFirstParty, null, "a caller's own claim is deleted");
 });
+
+test("modules v1: the names kernel and vyred are the host's own and no module takes them (module:vyred is the caller the Flows host's tools answer to)", () => {
+  for (const name of ["kernel", "vyred"]) {
+    assert.match(validate({ ...good, name }).join(), /is reserved/, name);
+    assert.match(validate({ ...good, name }, { firstParty: true }).join(), /is reserved/, `${name}, even a first-party one`);
+  }
+});

@@ -68,6 +68,11 @@
         "effect": "read"
       },
       {
+        "name": "threads.fork-point",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "threads.lease",
         "reach": "anyone",
         "effect": "write"
