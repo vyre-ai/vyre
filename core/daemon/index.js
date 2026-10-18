@@ -328,6 +328,8 @@ async function startLocked(opts, root, p, release) {
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
       // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
       agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
+      // The skill a task pins, judged as the chain that asked: skills.pin runs in the task's Space with that chain as its proven chain (callInSpace authorizes it first). Any refusal is no skill.
+      pinSkill: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {string} */ id, /** @type {any} */ chain) => { try { const r = await registry.callInSpace({ name: "vyred" }, space, { gateway: k.gateway }, "skills.pin", { id }, chain); return r && !r.error && r.data ? r.data : null; } catch { return null; } },
       callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
