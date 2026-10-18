@@ -113,7 +113,7 @@ const shoot = async (cur, s, t, id) => {
       }
       await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
       const el = page.locator("#fixture");
-      if (!(await el.count())) return { missing: true };
+      if (!(await el.count())) { const seen = await page.evaluate(() => `${location.pathname}${location.search} | ${(document.body.innerText || "").replace(/\s+/g, " ").slice(0, 200)}`).catch(() => "page gone"); errors.push(`page showed: ${seen}`); return { missing: true }; }
       // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same.
       let after = await el.screenshot();
       for (let i = 0; i < 20; i++) { await page.waitForTimeout(250); const next = await el.screenshot(); const still = next.equals(after); after = next; if (still) break; }
