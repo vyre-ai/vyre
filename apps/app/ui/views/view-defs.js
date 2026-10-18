@@ -41,6 +41,16 @@ export const viewDefs = {
     calendar: { date: "due" },
     open: "board",
   },
+  deal: {
+    plural: "Deals", titleField: "name",
+    list: { columns: ["stage", "amount", "close_date", "organization"], sort: "close_date" },
+    board: { groupBy: "stage", card: ["name", "amount", "close_date"] },
+    open: "board",
+  },
+  relationship: {
+    plural: "Relationships", titleField: "kind",
+    list: { columns: ["from_record", "to_record", "since"], sort: "kind" },
+  },
   note: {
     plural: "Notes", titleField: "title",
     list: { columns: ["ref", "state", "list"], sort: "title" },

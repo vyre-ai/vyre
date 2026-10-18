@@ -16,6 +16,14 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
+### The shared browser and a Linux user for each agent
+
+Off until 0.6.2. Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used, even on a server that could run them. To try them on a server you run, set `computers.browse` to `browser` and `computers.agentUsers` to `true` in its config. Nothing else turns them on.
+
+### Downloads in an agent's computer
+
+A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent, and the folder the proof expects (the browser's own) is not the one computerd accepts today (the agent's Downloads). The proof reports these four checks (the two download-path checks, the landing and the read) as known failures; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+
 ### A member's own AI account in chats
 
 A member who has added her own AI account can't chat yet: her turn stops with a clear message, because her own key isn't lent to her chats yet. A member without one chats on the space's AI account if it has one. No one's key ever reaches another person. Fixed in the next update. The owner isn't affected, because the owner's accounts are the space's. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
@@ -132,6 +140,12 @@ A task taken from a group can be taken over by another member only while it is b
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
 
+### A file or draft hand-in is checked by its form
+
+A file or draft hand-in is checked by its form (a path or a record address that is there), not by looking at the file: a task with no checker accepts the doer's word, so give any task that matters a checker.
+
+What to do today: the person who checks the task opens the file before saying yes.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
@@ -155,5 +169,21 @@ Owner: windows with launch.
 A skill a member uploads is text from outside, read strictly and kept as a draft of her own personal skill. Only she approves it, and only she uses it; it is never loaded for anyone else. The upload counters (ten an hour, thirty a day) are kept in memory and start again when the server restarts, so a restart gives her a fresh count. The fifty-skill and fifty-draft limits are counted from the library and do not reset.
 
 What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
+
+Owner: comp6 with sec53.
+
+## An agent's Chrome runs without Chrome's own renderer sandbox
+
+Docker's default seccomp profile refuses the namespaces Chrome's sandbox needs, so the computer's Chrome and each agent's Chrome start with `--no-sandbox`. A Chrome renderer exploit therefore runs as that agent's browser user with no renderer sandbox. It reaches that agent's profile and its debugging pipe. It does not reach another agent's files, the computer's own user or its secrets, because each agent has its own users, processes run with no capability and no new privileges, and the folders are private.
+
+What to do: keep the Chrome in the computer image current (the image carries its version). The fix is a seccomp profile that allows user namespaces, planned for 0.7.
+
+Owner: comp6 with sec53.
+
+## An agent's Chrome has no address-space cap
+
+Chrome reserves far more virtual memory than it uses and does not start under a cap on address space, so an agent's Chrome is held by a cap on committed memory (3 GiB per process), the computer's own memory limit and its process count instead. Every other agent process keeps the address-space cap.
+
+What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
 
 Owner: comp6 with sec53.

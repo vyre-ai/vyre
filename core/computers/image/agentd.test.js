@@ -10,7 +10,7 @@ import { planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, 
 const U = { user: "ag20000", uid: 20000, display: 20 };
 const B = { user: "ag20001", uid: 20001, display: 21 };
 const flat = steps => steps.map(s => s.join(" "));
-const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit --as=\d+ --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
+const WRAP = /^\/usr\/bin\/setpriv --reuid=(\d+) --regid=\1 --clear-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- \/usr\/bin\/prlimit (?:--as|--data)=\d+ --nproc=\d+(?: --[a-z]+=\d+)* \/usr\/bin\/nice -n 5 \/usr\/bin\/env -i /;
 
 test("a new agent's home and run folder were made at image build; adding one only checks them, as the agent, and changes no owner", () => {
   const steps = flat(planCreate(U));
@@ -33,6 +33,7 @@ test("every agent process runs through setpriv as that uid, with absolute paths:
 test("the screen is the browser uid's: its own display on a unix socket (no TCP port), its password a file in the browser's folder, never on the command line; the agent gets only an untrusted cookie", () => {
   const [rm, trusted, mode, xvnc, untrusted, chmodU, wm, chrome] = planStartScreen(U);
   const s = xvnc.join(" ");
+  assert.match(s, / \+extension SECURITY/, "the untrusted cookie the agent gets is a SECURITY extension authority: without the extension there is none");
   assert.match(s, /^\/usr\/bin\/setpriv --reuid=21000 --regid=21000 /, "Xvnc runs as the browser uid, not the agent's");
   assert.match(s, / \/usr\/bin\/Xvnc :20 /);
   assert.match(s, /-rfbport -1 -rfbunixpath \/var\/lib\/vyre\/browsers\/agb21000\/vnc\.sock -rfbunixmode 0600/);
@@ -70,8 +71,11 @@ test("two agents get two displays, sockets and profiles that never overlap", () 
 
 test("sleeping signals only the browser uid's processes (the browser, the window manager, the screen), as itself, and never the tmux server", () => {
   const steps = planStopScreen(U);
-  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ") && x.slice(-5, -1).join(" ") === "-TERM -u 21000 -x"), "the browser, the window manager and the screen are all the browser uid's");
-  assert.deepEqual(steps.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
+  assert.ok(steps.every(x => x.join(" ").startsWith("/usr/bin/setpriv --reuid=21000 ")), "every step is the browser uid's");
+  const signals = steps.filter(x => x.includes("/usr/bin/pkill") && !x.includes("-f"));
+  assert.ok(signals.every(x => x.slice(-5, -1).join(" ") === "-TERM -u 21000 -x"), "the browser, the window manager and the screen are all the browser uid's");
+  assert.deepEqual(signals.map(x => x[x.length - 1]), ["chromium", "fluxbox", "Xvnc"]);
+  assert.ok(steps[0].includes("-f") && steps[1].includes("/usr/bin/sleep"), "the holder first, then the wait for Chrome's clean close");
   assert.ok(!steps.flat().includes("tmux"));
 });
 
@@ -109,13 +113,26 @@ test("a step fails the plan unless it is one that may fail (stopping what is not
   await assert.rejects(() => execute(planWipeHome(U), async argv => { if (argv.includes("/usr/bin/find")) throw new Error("disk"); }, { tolerate: tolerant }), /disk/);
 });
 
+test("Chrome alone has no address-space cap (it dies at start under RLIMIT_AS); every other agent process keeps the finite one", () => {
+  const steps = planStartScreen(U).map(s => s.join(" "));
+  const chrome = steps.filter(s => s.includes("agentd-chrome.py"));
+  assert.equal(chrome.length, 1);
+  assert.match(chrome[0], /prlimit --data=3221225472 --nproc=512 /, "no address-space cap, a 3 GiB cap on committed memory instead, the process cap stays");
+  assert.ok(steps.filter(s => !s.includes("agentd-chrome.py")).every(s => /prlimit --as=3221225472 /.test(s)), "the screen, the window manager and the helpers keep 3 GiB");
+  assert.doesNotMatch(asAgent(U, { memoryMb: 0 }).join(" "), /unlimited|--data/, "a zero from config is never read as no cap");
+  assert.match(asAgent(U, { noAddressCap: true }).join(" "), /--data=/, "the option exists only for the Chrome holder's call: nothing else in agentd.js sets it");
+  assert.equal((fs.readFileSync(new URL("./agentd.js", import.meta.url), "utf8").match(/noAddressCap: true/g) || []).length, 1);
+});
+
 test("sleep keeps the Chrome profile: stopping only signals processes, the profile is under the agent's home, and only a reset or a removal empties that home", () => {
   const holder = fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8");
   assert.match(holder, /PROFILE = BASE \+ "\/profile"/);
   assert.match(holder, /BASE = "\/var\/lib\/vyre\/browsers\/agb%d" % uid/);
   assert.match(holder, /"--user-data-dir=" \+ PROFILE/);
   assert.match(holder, /--restore-last-session/, "the tabs and their logins come back when Chrome does");
-  assert.ok(planStopScreen(U).every(x => x.includes("/usr/bin/pkill") && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
+  assert.ok(planStopScreen(U).every(x => (x.includes("/usr/bin/pkill") || x.includes("/usr/bin/sleep")) && !x.includes("-delete") && !x.includes("/usr/bin/find")), "sleeping deletes nothing");
+  assert.match(planStopScreen(U)[0].join(" "), /pkill -TERM -u 21000 -f \^\/usr\/bin\/python3 -I \/opt\/agentd\/agentd-chrome\.py\$/, "Chrome's holder is asked first, so Chrome closes itself and writes its profile");
+  assert.match(fs.readFileSync(new URL("./agentd-chrome.py", import.meta.url), "utf8"), /Browser\.close/);
   assert.ok(planWipeHome(U).some(x => x.includes("-delete") && x.includes("/var/lib/vyre/browsers/agb21000")), "only a reset empties the browser profile");
   assert.ok(planRemove(U).some(x => x.includes("-delete")));
 });

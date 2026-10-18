@@ -81,6 +81,11 @@
           "label": "Tags"
         },
         {
+          "name": "extra",
+          "kind": "text",
+          "label": "Extra fields"
+        },
+        {
           "name": "last_signed_at",
           "kind": "datetime",
           "label": "Last signed a document"
