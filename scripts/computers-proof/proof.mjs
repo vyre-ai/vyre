@@ -273,7 +273,7 @@ try {
   console.log((iso.stdout || "").split("\n").filter(l => /^(not )?ok /.test(l)).map(l => "  " + l.slice(0, 170)).join("\n"));
   check(iso.status === 0 && line("fail") === "0" && line("skipped") === "0", "3 isolation.test.js on the pool's container", { pass: line("pass"), fail: line("fail"), skipped: line("skipped") });
   const bc = spawnSync("node", ["scripts/computers-proof/browser-checks.mjs", ep.data.url, ep.data.token, CONTAINER], { cwd: here, env, encoding: "utf8", timeout: 240_000 });
-  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
+  console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL|---|total|[-d][rwxs-]{9})/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
 
   // ---- 4g. one computer cannot reach another's ports (the matrix's J7 step 7.4) ----------------
