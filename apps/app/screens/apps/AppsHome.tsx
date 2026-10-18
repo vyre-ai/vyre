@@ -28,12 +28,14 @@ const BUILT: Tile[] = [
 
 /**
  * Apps: one place for the apps on this Space. Tiles come from appmods.list (an app's state shows on its tile) and the built-in apps above.
- * "Make an app" opens the Engineer; "Browse apps" lists what the app catalog has, pinned and checked.
+ * "Make an app" opens the Engineer. The app catalog entry point ("Browse apps") is kept behind SHOW_CATALOG, off for now.
  */
 export function AppsHome() {
   const router = useRouter();
   const [installed, setInstalled] = useState<{ name: string; state?: string }[] | null>(null);
   const [browse, setBrowse] = useState(false);
+  // The catalog entry point stays in the code, off, until the owner turns it on.
+  const SHOW_CATALOG = false;
   const [screens, setScreens] = useState<AppScreen[]>([]);
   useEffect(() => {
     tool<{ apps?: { name: string; state?: string }[] }>("appmods.list")
@@ -85,7 +87,7 @@ export function AppsHome() {
         ) : null}
         <View className="flex-row gap-3">
           <Button kind="primary" label="Make an app" onPress={() => router.push("/u/engineer" as any)} />
-          <Button kind="secondary" label="Browse apps" onPress={() => setBrowse((b) => !b)} />
+          {SHOW_CATALOG ? <Button kind="secondary" label="Browse apps" onPress={() => setBrowse((b) => !b)} /> : null}
         </View>
         {screens.length ? (
           <View className="flex-row flex-wrap gap-3">
@@ -101,9 +103,9 @@ export function AppsHome() {
             })}
           </View>
         ) : null}
-        {browse ? (
+        {SHOW_CATALOG && browse ? (
           <Card>
-            <EmptyState title="The app catalog" body="Open-source apps, pinned to an exact version and checked. The catalog lists them when it is installed on this Space." />
+            <EmptyState title="The app catalog" body="The catalog lists the apps this Space can add." />
           </Card>
         ) : null}
       </View>
