@@ -20,8 +20,8 @@ const LEVELS = [
 const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
 const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
 
-export function RealSkills() {
-  const [level, setLevel] = useState<string>("space");
+export function RealSkills({ initialLevel = "space" }: { initialLevel?: string } = {}) {
+  const [level, setLevel] = useState<string>(initialLevel);
   const [pack, setPack] = useState<BrowsePack | null>(null);
   const [err, setErr] = useState("");
   const [pick, setPick] = useState<SkillRow | null>(null);

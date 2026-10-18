@@ -14,11 +14,12 @@ import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 import { chatHas } from "../agents/home-model.js";
 import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, type AgentFull, type Computer, type UsageFull, type Watcher } from "./agent-model.ts";
 import { AgentThreads } from "./AgentThreads";
+import { RealSkills } from "../skills/RealSkills";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
-type Tab = "threads" | "instructions" | "context" | "models" | "memory" | "used" | "activity";
-const TABS: [Tab, string][] = [["threads", "Threads"], ["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["memory", "Memory"], ["used", "Where it is used"], ["activity", "Activity"]];
+type Tab = "threads" | "overview" | "skills" | "ai" | "computer";
+const TABS: [Tab, string][] = [["threads", "Threads"], ["overview", "Overview"], ["skills", "Skills & plugins"], ["ai", "AI"], ["computer", "Computer"]];
 
 export default function AgentPage() {
   const { name, tab: want } = useLocalSearchParams<{ name: string; tab?: string }>();
@@ -41,12 +42,10 @@ export default function AgentPage() {
           <Chats a={a} />
           <Tabs items={TABS} value={tab} onChange={setTab} />
           {tab === "threads" ? <AgentThreads name={a.name} /> : null}
-          {tab === "instructions" ? <Instructions name={a.name} /> : null}
-          {tab === "context" ? <Context name={a.name} /> : null}
-          {tab === "models" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
-          {tab === "memory" ? <AgentMemory name={a.name} /> : null}
-          {tab === "used" ? <><Used name={a.name} /><Sharing name={a.name} /></> : null}
-          {tab === "activity" ? <><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /><ComputerCard a={a} onChange={load} /></> : null}
+          {tab === "overview" ? <><Instructions name={a.name} /><Context name={a.name} /><AgentMemory name={a.name} /><Used name={a.name} /><Sharing name={a.name} /></> : null}
+          {tab === "skills" ? <RealSkills initialLevel="agent" /> : null}
+          {tab === "ai" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
+          {tab === "computer" ? <><ComputerCard a={a} onChange={load} /><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /></> : null}
         </>
       ) : null}
     </Page>
