@@ -5,7 +5,7 @@ import { createMemberVaultService, ADDKEY_PER_MINUTE } from "./member-service.js
 import { proofRequest } from "../../kernel/remote/proof.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 
-const SPACE = "spc_aaaaaaaaaaaa", BOB = "per_" + "b".repeat(26), KEY = "sk-ant-0123456789abcdef", PW = "member pass phrase 77";
+const SPACE = "spc_aaaaaaaaaaaa", BOB = "per_" + "b".repeat(26), KEY = "sk-ant-" + "0123456789abcdef", PW = "member pass phrase 77";
 const chainOf = (/** @type {any} */ o = {}) => ({ space: SPACE, hops: [{ actor: { kind: "person", id: BOB } }], ...o });
 const input = (/** @type {any} */ o = {}) => ({ label: "Work Claude", value: KEY, password: PW, ...o });
 

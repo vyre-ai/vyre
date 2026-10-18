@@ -50,12 +50,12 @@ export function registerLinkFields({ tool, obj, str, refuse, parseUrn }) {
       return { field: made || field };
     });
 
-  tool("records.link.set", "Connect a record through one of its link fields: { urn, field, to, kind? }. `to` is a record urn (a list of urns for a list field; null clears it). With `kind` (one of records.relationship.kinds) the connection is also kept as a relationship, so it keeps its kind and dates and shows on both records.",
+  tool("records.link.set", "Connect a record through a link field: { urn, field, to, kind? }. With kind it is also kept as a relationship.",
     obj({ space: str, urn: str, field: str, to: { type: ["string", "array", "null"] }, kind: str }, ["urn", "field"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === u.type);
       const field = t && (t.fields || []).find((/** @type {any} */ f) => f.name === i.field && f.kind === "link");
-      if (!field) throw refuse(`${u.type} has no link field called ${i.field}. records.link.add makes one.`, "not_found");
+      if (!field) throw refuse(`${u.type} has no link field called ${i.field}. Ask the person to add the link to the type in Settings, then try again.`, "not_found");
       let value; try { value = linkValue(field, i.to === undefined ? null : i.to); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
       const targets = (Array.isArray(value) ? value : value ? [value] : []).map((/** @type {any} */ v) => String(v.urn));
       for (const target of targets) {

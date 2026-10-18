@@ -21,6 +21,7 @@ import { registerLinkFields } from "./link-fields.js";
 import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
 import { withMe, withOwner } from "./me.js";
+import { seesNote } from "../../lib/note-share.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
 
@@ -112,21 +113,30 @@ export default {
       }
       return out;
     });
+    // The planner's Note type is read raw only by an owner, an admin or the planner; even then a private note is its writer's (core/planner/note-share.js), so the raw route cuts to the same rule.
+    const isPlannerNote = async (/** @type {any} */ d, /** @type {string} */ type) => type === "note" && ((await d.gateway.definitions(d.chain)) || []).some((/** @type {any} */ t) => t.name === "note" && t.protected === true);
+    const mayReadRecord = (/** @type {any} */ d) => async (/** @type {string} */ urn) => { const p = urn.split("/"); try { return Boolean(await d.gateway.records.get(d.chain, p[3], p[4])); } catch { return false; } };
+    const noteSeen = async (/** @type {any} */ d, /** @type {any} */ row) => { if (!row) return true; const n = row.data || {}; const me = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); return seesNote({ kind: "note", by: n.person, visibility: n.visibility, record: n.record }, me ? String(me.actor.id) : null, mayReadRecord(d)); };
+    const cutNotes = async (/** @type {any} */ d, /** @type {string} */ type, /** @type {any[]} */ rows) => { if (!(await isPlannerNote(d, type))) return rows; const out = []; for (const r of rows) if (await noteSeen(d, r)) out.push(r); return out; };
     tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
       const qf = (await quickFieldsOf(d, String(i.type))).filter((f) => f.state !== "real");
       const hit = bagInQuery({ filter: i.filter, sort: i.sort }, qf);
       if (hit) throw refuse(`${hit} is still being set up, so it cannot be filtered or sorted yet. Try again in a minute.`, "bad_input");
       const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: withMe(i.filter, d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person")?.actor.id ?? "") } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
-      return { rows: qf.length ? r.rows.map((/** @type {any} */ x) => mergeOut(x, qf)) : r.rows, next_cursor: r.next_cursor || null };
+      const seen = await cutNotes(d, String(i.type), r.rows);
+      return { rows: qf.length ? seen.map((/** @type {any} */ x) => mergeOut(x, qf)) : seen, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
+      if (rec && (await isPlannerNote(d, u.type)) && !(await noteSeen(d, rec))) return { record: null };
       return { record: rec ? mergeOut(rec, (await quickFieldsOf(d, u.type)).filter((f) => f.state !== "real")) : rec };
     }, byUrn);
+    // (the reference route cuts a planner Note the same way)
     tool("records.reference", "A record put in front of the AI (the # in the composer): the record as data, with every sealed part (and any part this room may not read) a {{field:urn#name}} placeholder, never a value. Null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
+      if (await isPlannerNote(d, u.type) && !(await noteSeen(d, await d.gateway.records.get(d.chain, u.type, u.id)))) return { reference: null };
       return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
     }, byUrn);
     // A type with a `ref` field gives each record an ID when it is made (PER-0001, the next after the highest): minted here, one at a time per type so two at once do not share one, and never taken from the caller.
@@ -136,7 +146,7 @@ export default {
     tool("records.create", "Make a record of a type. A type with an ID field gives the record the next ID (PER-0001).", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => {
       const type = String(i.type);
       try { i = { ...i, data: splitIn(i.data || {}, await quickFieldsOf(d, type)) }; if ("amount" in i.data || "probability" in i.data) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); if (t) i = { ...i, data: withWeighted(t.fields || [], {}, i.data) }; } } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
-      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["record-note", "communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
+      { const who = d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person"); if (who && ["communication", "event"].includes(type)) { const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type); i = { ...i, data: withOwner(type, t && t.fields, i.data || {}, who.actor.id) }; } }
       if (!(await hasRef(d, type))) return { record: await d.gateway.records.create(d.chain, type, i.data) };
       const key = `${d.space}:${type}`;
       const before = minting.get(key) || Promise.resolve();

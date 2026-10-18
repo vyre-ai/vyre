@@ -3,8 +3,8 @@
 // records.history { urn } -> { items }, records.history.undo { id }, records.log { urn, kind, text }. Changes come from the signed event log the caller may read; calls and meetings are `communication` rows
 // and notes are `note` rows that link to the record. An undo is a change of its own (the old values written back, a made record removed, a removed one restored), so it shows in the history too.
 
-/** The type notes are kept in. The planner has a `note` type of its own, so this one has its own name. */
-export const NOTE = "record-note";
+/** Notes are the planner's Note type (lib/note-share.js decides who reads one). */
+export const NOTE = "note";
 export const LOG_KINDS = ["call", "meeting", "note"];
 const CHANGE = /^([a-z][a-z0-9-]*)\.(created|updated|removed|restored)$/;
 const NOT_RECORDS = /^(grant|member|actor|offer|invite|chat|rule|team|vault|task|team-member|flow|kit|goal|memory_fact|planner)/;
@@ -53,12 +53,12 @@ const sealedShape = (v) => /\{\{field:/.test(JSON.stringify(v ?? null));
  */
 export function undoPlan(ev, now) {
   if (ev.verb === "created") {
-    if (!now) throw new Error("This record is already gone.");
+    if (!now) throw new Error("This record is already gone, so there is nothing to undo. Reload the history.");
     return { op: "remove" };
   }
   if (ev.verb === "removed") return { op: "restore" };
   if (ev.verb === "restored") {
-    if (!now) throw new Error("This record is already gone.");
+    if (!now) throw new Error("This record is already gone, so there is nothing to undo. Reload the history.");
     return { op: "remove" };
   }
   if (!now) throw new Error("This record is in the bin. Bring it back first.");
@@ -76,7 +76,7 @@ export function undoPlan(ev, now) {
 /** A logged row as a history item. @param {string} type @param {any} row @param {any} actor */
 export function loggedItem(type, row, actor) {
   const d = row.data || {};
-  if (type === NOTE) return { id: row.urn, kind: "note", actor, text: String(d.body || ""), at: Number(row.created_at || row.updated_at || 0), undo: true };
+  if (type === NOTE) return { id: row.urn, kind: "note", actor, text: String(d.body || d.title || ""), at: Number(d.created || row.created_at || row.updated_at || 0), undo: true };
   const kind = d.kind === "meeting" ? "meeting" : d.kind === "call" ? "call" : d.kind === "text" ? "chat" : "email";
   const at = Number.isFinite(Date.parse(String(d.at || ""))) ? Date.parse(String(d.at)) : Number(row.created_at || row.updated_at || 0);
   return { id: row.urn, kind, actor, text: String(d.excerpt || d.subject || ""), at, undo: d.source_key === undefined || d.source_key === null || d.source_key === "" };
@@ -89,11 +89,12 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
     try { return new Map(((await d.gateway.grants.members.list(d.chain)) || []).map((/** @type {any} */ m) => [String(m.person), String(m.name || m.person)])); } catch { return new Map(); }
   };
   const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
+  const personOf = (/** @type {any} */ d) => { const h = d.chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person"); return h ? String(h.actor.id) : ""; };
   const firstEvent = async (/** @type {any} */ d, /** @type {string} */ urn) => {
     try { return (await d.gateway.events.read(d.chain, { subject_prefix: urn, limit: 1 }))[0] || null; } catch { return null; }
   };
 
-  tool("records.history", "A record's history, newest first: every change with who made it (a person or an assistant), the calls, meetings and notes logged on it, and whether each can be undone. { urn, limit? } -> { items: [{ id, kind, actor: { kind, id, name }, text, at, undo }] }.",
+  tool("records.history", "A record's history, newest first: changes with who made each, plus logged calls, meetings and notes. { urn, limit? }.",
     obj({ space: str, urn: str, limit: { type: "integer" } }, ["urn"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
@@ -109,12 +110,23 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
         const data = e.data || {};
         items.push({ id: String(e.seq), kind: e.acted_via === "assistant" ? "agent" : "edit", actor: actorOf(e, names), text: sentence(m[2], String(def.label || u.type), data.changed || [], data.before, data.after, label), at: Number(e.time), undo: true });
       }
-      for (const type of ["communication", NOTE]) {
+      {
         let rows = [];
-        try { rows = ((await d.gateway.records.linked(d.chain, String(i.urn), { type, field: "record", limit: 50 })) || {}).rows || []; } catch { rows = []; }
+        try { rows = ((await d.gateway.records.linked(d.chain, String(i.urn), { type: "communication", field: "record", limit: 50 })) || {}).rows || []; } catch { rows = []; }
         for (const r of rows) {
           const made = await firstEvent(d, String(r.record.urn));
-          items.push(loggedItem(type, r.record, made ? actorOf(made, names) : { kind: "person", id: "", name: "Someone" }));
+          items.push(loggedItem("communication", r.record, made ? actorOf(made, names) : { kind: "person", id: "", name: "Someone" }));
+        }
+      }
+      // notes about this record: the planner's Note rows, read as the planner and cut to what the caller may read (their own, or shared with the record or the Space). The caller reads the record, or there are none.
+      if (await d.gateway.records.get(d.chain, u.type, u.id)) {
+        const me = personOf(d);
+        let rows = [];
+        try { rows = ((await d.gateway.records.query(d.gateway.serviceChain("planner"), NOTE, { filter: { field: "record", op: "eq", value: String(i.urn) }, page: { limit: 100 } })).rows) || []; } catch { rows = []; }
+        for (const r of rows) {
+          const n = r.data || {};
+          if (n.removed_at || !(n.person === me || n.visibility === "space" || n.visibility === "record")) continue;
+          items.push(loggedItem(NOTE, { ...r, urn: r.urn || `vyre://${d.space}/${NOTE}/${r.id}` }, { kind: "person", id: String(n.person || ""), name: names.get(String(n.person)) || "Someone" }));
         }
       }
       items.sort((a, b) => b.at - a.at);
@@ -128,17 +140,20 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
         // a logged call, meeting or note: undone by taking the row away (a synced message has no undo)
         const u = parseUrn(id);
         if (u.type !== "communication" && u.type !== NOTE) throw refuse("Only a logged call, meeting or note is undone this way.", "bad_input");
-        const row = await d.gateway.records.get(d.chain, u.type, u.id);
-        if (!row) throw refuse("That entry is already gone.", "not_found");
+        // a note is the planner's: read and taken away as the planner, and only by the person who wrote it
+        const keeper = u.type === NOTE ? d.gateway.serviceChain("planner") : d.chain;
+        const row = await d.gateway.records.get(keeper, u.type, u.id);
+        if (!row) throw refuse("That entry is already gone. Reload the record's history to see what is left.", "not_found");
+        if (u.type === NOTE && String((row.data || {}).person || "") !== personOf(d)) throw refuse("Only the person who wrote a note takes it back.", "not_allowed");
         if (u.type === "communication" && row.data && row.data.source_key) throw refuse("A message that came in from outside cannot be undone here.", "bad_input");
-        await d.gateway.records.remove(d.chain, u.type, u.id, row.version);
+        await d.gateway.records.remove(keeper, u.type, u.id, row.version);
         return { undone: id };
       }
       if (!/^[0-9]+$/.test(id)) throw refuse("That is not an id from the history.", "bad_input");
       const seq = Number(id);
       const ev = (await d.gateway.events.read(d.chain, { since: seq - 1, limit: 1 }))[0];
       const m = ev && Number(ev.seq) === seq ? CHANGE.exec(String(ev.type)) : null;
-      if (!ev || !m || NOT_RECORDS.test(m[1])) throw refuse("That change is not in the history, or you may not read it.", "not_found");
+      if (!ev || !m || NOT_RECORDS.test(m[1])) throw refuse("That change is not in this record's history, or you may not read it. Reload the history and pick one it shows.", "not_found");
       const u = parseUrn(String(ev.subject));
       const now = await d.gateway.records.get(d.chain, u.type, u.id).catch(() => null);
       let plan;
@@ -149,7 +164,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       return { undone: id, record: String(ev.subject) };
     });
 
-  tool("records.log", "Log a call, a meeting or a note on a record: { urn, kind: call|meeting|note, text }. It shows in the record's history with who wrote it. A note starts private to its writer.",
+  tool("records.log", "Log a call, a meeting or a note on a record: { urn, kind: call|meeting|note, text }. A note starts private.",
     obj({ space: str, urn: str, kind: str, text: str }, ["urn", "kind", "text"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       if (!LOG_KINDS.includes(String(i.kind))) throw refuse(`Log a ${LOG_KINDS.join(", a ")}. ${i.kind} is not one of them.`, "bad_input");
@@ -158,8 +173,13 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
       if (text.length > 5000) throw refuse("Keep it under 5,000 characters. Put the rest in a document and link it.", "bad_input");
       if (!(await d.gateway.records.get(d.chain, u.type, u.id))) throw refuse(`${i.urn} is not here, or you may not read it. Pick a record you can see in Records.`, "not_found");
       const link = { urn: String(i.urn) };
-      const owner = `person:${d.chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person").actor.id}`;
-      if (i.kind === "note") return { record: await d.gateway.records.create(d.chain, NOTE, { body: text, record: link, visibility: "private", owner }) };
+      const owner = `person:${personOf(d)}`;
+      if (i.kind === "note") {
+        const who = personOf(d);
+        const now = Date.now();
+        // the planner's Note, made by the planner's chain on the caller's behalf (the planner picks it up); private to the writer until shared
+        return { record: await d.gateway.records.create(d.gateway.serviceChain("planner"), NOTE, { title: text.split("\n")[0].slice(0, 80), body: text, state: "open", visibility: "private", record: link.urn, person: who, source: "records", created: now, updated: now }, { on_behalf: d.chain }) };
+      }
       const line = text.split("\n")[0];
       return { record: await d.gateway.records.create(d.chain, "communication", { kind: i.kind, direction: "internal", at: new Date().toISOString(), subject: line.slice(0, 120), excerpt: text.slice(0, 500), record: link, owner }) };
     }, byUrn);

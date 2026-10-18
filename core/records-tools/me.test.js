@@ -13,7 +13,7 @@ test("$me becomes the caller wherever it stands in a filter, and nothing else ch
 
 test("a new note, communication or event is owned by the person who makes it, whatever the body says", () => {
   const fields = [{ name: "owner" }];
-  assert.equal(withOwner("record-note", fields, { body: "x", owner: "person:someone_else" }, "per_a").owner, "person:per_a");
+  assert.equal(withOwner("communication", fields, { subject: "x", owner: "person:someone_else" }, "per_a").owner, "person:per_a");
   assert.equal(withOwner("event", fields, { title: "x" }, "per_a").owner, "person:per_a");
   assert.deepEqual(withOwner("deal", fields, { name: "x" }, "per_a"), { name: "x" }, "other types are left alone");
   assert.deepEqual(withOwner("event", [], { title: "x" }, "per_a"), { title: "x" }, "a type without the field is left alone");
