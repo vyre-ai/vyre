@@ -24,7 +24,7 @@ export const REASON_CODES = f([
 ]);
 export const VISIBILITY_KINDS = f(["space", "members", "actor", "subject", "owner"]);
 
-export const TASK_STATES = f(["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"]);
+export const TASK_STATES = f(["waiting", "ready", "working", "in_review", "changes_requested", "needs_check", "declined", "stuck", "done", "skipped"]);
 export const TASK_OUTPUT_KINDS = f(["fields", "note", "draft", "sent", "decision", "file"]);
 export const TASK_HOW = f(["template", "tailor", "assistant", "person"]);
 export const TASK_SOURCES = f([
@@ -44,6 +44,13 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "working", to: "needs_check", by: "kernel_after_output_check", guarded: true },
   { from: "working", to: "done", by: "kernel_after_output_check", guarded: false },
   { from: "working", to: "stuck", by: "assistant_or_detection" },
+  // Tasks v2 (DESIGN-tasks-v2): a reviewer, when the task has one, checks the work before any approval. A pass goes on to the approver (or to done when there is none); changes send it back to the doer.
+  { from: "working", to: "in_review", by: "kernel_after_output_check" },
+  { from: "changes_requested", to: "in_review", by: "kernel_after_output_check" },
+  { from: "changes_requested", to: "working", by: "doer" },
+  { from: "in_review", to: "needs_check", by: "reviewer_pass", guarded: true },
+  { from: "in_review", to: "done", by: "reviewer_pass", guarded: false },
+  { from: "in_review", to: "changes_requested", by: "reviewer" },
   { from: "needs_check", to: "done", by: "checker_approval" },
   { from: "needs_check", to: "done", by: "agent_checker_approval" },
   { from: "needs_check", to: "ready", by: "checker" },
@@ -55,6 +62,8 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "ready", to: "skipped", by: "flow_deadline" },
   { from: "working", to: "skipped", by: "flow_deadline" },
   { from: "needs_check", to: "skipped", by: "flow_deadline" },
+  { from: "in_review", to: "skipped", by: "flow_deadline" },
+  { from: "changes_requested", to: "skipped", by: "flow_deadline" },
   { from: "stuck", to: "skipped", by: "flow_deadline" },
 ].map(r => Object.freeze(r)));
 

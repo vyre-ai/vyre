@@ -10,7 +10,7 @@ const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = [
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const CALLERS = ["cli", "local", "deck", "capsule", "device"];
-const STATES = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
+const STATES = ["waiting", "ready", "working", "in_review", "changes_requested", "needs_check", "declined", "stuck", "done", "skipped"];
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {

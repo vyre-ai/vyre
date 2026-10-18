@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Unreleased (0.6.2: tasks v2, slice 1)
+
+- feat(tasks): a task can have a reviewer (a person, an agent, or a role) besides its doer and approver. The kernel adds the states In review and Changes requested (and Declined, not used yet): handing in goes to In review when there is a reviewer; the reviewer passes (to Awaiting approval, or Done when nothing else waits and nothing leaves) or asks for changes with a note; the doer hands in again. Nobody reviews their own work: not the doer, a helper, or anyone acting under the doer; an agent reviewer must be another agent and made by an owner or admin; in a Space where only the doer's own person could review, the step is skipped and recorded ("No one else to check this"). A review never frees an outward output. `approver` is accepted as the new name of `checker`. Quorum, groups, per-slot skills and tasks.update follow.
+
 ## Unreleased
 
 - feat(documents): a role that switches the documents group on can also download a signed request's audit file (documents.signing.audit), saved into that person's own Files. Per-request member access still needs the ownership check in team/BACKLOG.md.
