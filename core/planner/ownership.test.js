@@ -166,3 +166,32 @@ test("a member who is neither a task's doer, checker nor on its project cannot s
   assert.equal((await ask.list(w.owner, {})).length, before, "and no card was made");
   assert.ok(await ask.skip(w.owner, plain.id, "the owner may"), "the owner skips");
 });
+
+test("a member lists her own notes and the ones shared with her, never another member's or the owner's private ones, and changes only her own", async t => {
+  const { w, theirs, mine } = await rig(t);
+  const OTHER = MEMBERS[1];
+  const as2 = (/** @type {string} */ tool, /** @type {any} */ input) => w.callAs(memberFacts(OTHER), tool, input);
+  const titles = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ x) => x.title).sort();
+  await w.call("planner.add", { kind: "note", title: "OWNER private" });
+  await w.call("planner.add", { kind: "note", title: "OWNER space", visibility: "space" });
+  await w.call("planner.add", { kind: "note", title: "OWNER about hers", visibility: "record", record: mine.urn });
+  await w.call("planner.add", { kind: "note", title: "OWNER about theirs", visibility: "record", record: theirs.urn });
+  const her = (await asMember(w, "planner.add", { kind: "note", title: "HER private" })).data;
+  await as2("planner.add", { kind: "note", title: "OTHER private" });
+  const list = (/** @type {any} */ input) => asMember(w, "planner.list", { kind: "note", state: "all", ...input }).then(titles);
+  assert.deepEqual(await list({}), ["HER private", "OWNER about hers", "OWNER space"], "her own, the Space's, and the one about a record she can read; not the one about the owner's project");
+  assert.deepEqual(await list({ scope: "mine" }), ["HER private"]);
+  assert.deepEqual(await list({ scope: "shared" }), ["OWNER about hers", "OWNER space"]);
+  assert.deepEqual(await list({ scope: "space" }), ["OWNER space"]);
+  assert.deepEqual(await list({ record: mine.urn }), ["OWNER about hers"]);
+  // changing: only her own item, and only the writer shares
+  const shared = (await w.call("planner.list", { kind: "note", state: "all" })).data.find((/** @type {any} */ x) => x.title === "OWNER space");
+  for (const [tool, input] of [["planner.update", { item: shared.id, title: "mine now" }], ["planner.update", { item: shared.id, visibility: "private" }]]) {
+    const r = await asMember(w, tool, input);
+    assert.ok(r.error, `${tool} ${JSON.stringify(input)} by a member who did not write it`);
+  }
+  assert.ok((await as2("planner.update", { item: her.id, title: "taken" })).error, "another member cannot change her note");
+  assert.ok((await as2("planner.get", { item: her.id })).error, "or open it");
+  assert.ok(!(await asMember(w, "planner.update", { item: her.id, visibility: "space" })).error, "she shares her own");
+  assert.deepEqual(await titles(await as2("planner.list", { kind: "note", state: "all" })), ["HER private", "OTHER private", "OWNER space"], "and now the other member sees it, still not the owner's private note or the one about her project");
+});
