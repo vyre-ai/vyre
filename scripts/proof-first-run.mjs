@@ -236,6 +236,7 @@ try {
   /** @type {string} */ let recoveryKey = "", installCode = "", personId = "";
   /** @type {any} */ let srv = null;
   const S = (/** @type {string} */ n) => n;
+  const ASSISTANT = "Juno";
 
   await run.step(S("the first screen offers Sign in to a space, Get started, and GitHub"), async () => {
     await drv.open();
@@ -330,6 +331,12 @@ try {
     const still = await drv.text();
     if (/You're in/.test(still) || !/Sign in to an AI/.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
     await drv.click("Skip for now");
+    // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
+    const as = await drv.waitFor("Name your Assistant.", 60_000);
+    if (/You're in/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
+    await drv.fill("Name", ASSISTANT);
+    await drv.shot("04c-assistant");
+    await drv.click("Continue");
     const ready = await drv.waitFor("You're in", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
@@ -410,6 +417,8 @@ try {
     await drv.click("Create");
     await look("The new agent", "12-agent-made", /walker/i, 60_000, async () => {});
     await look("Agents", "12b-agents", /walker/i, 60_000, async () => { await open("Agents", "/u/agents", false); });
+    // the Assistant named in the first run is on the server, with the name it was given
+    if (!/juno/i.test(await drv.text())) throw new Error(`the Agents list does not show the Assistant named in the first run: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`);
   }, { needs: READY });
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
     await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });

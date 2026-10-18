@@ -18,6 +18,15 @@ export const WELCOME_COPY = Object.freeze({
   badSpace: "Use the name of a space, like juniper.",
 });
 
+/** The Assistant step: its words, and the name offered until the person types one (the server's own fallback is the same). */
+export const ASSISTANT_COPY = Object.freeze({
+  title: "Name your Assistant.",
+  lead: "It's yours alone, always in your chats, and it knows your Space.",
+  suggestion: "Juno",
+  nameLabel: "Name",
+  tooLong: "Use up to 40 characters.",
+});
+
 /** The three theme choices, in order: the person's setting and its label. "system" follows the device or browser and switches live when it changes. */
 export const THEME_CHOICES = Object.freeze([["paper", "Light"], ["system", "Match this device"], ["dark", "Dark"]]);
 

@@ -421,6 +421,33 @@ test("a page with no daemon offers the AI sign-in once its space is online, and 
   assert.deepEqual([sent.box, sent.input.provider, sent.input.label], ["boxA", "claude", "Claude"], "it goes to the server this onboarding made, not the older one listed first");
 });
 
+test("the Assistant step names the Assistant and keeps its look on the server this onboarding made, and refuses a name or a look it should not take", async (t) => {
+  const { pp, host } = await ready(t);
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "Juno", look: "s1~c2" }), (e) => e.code === "no_server", "no server yet, no Assistant");
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  const first = pp.call;
+  pp.call = async (name, input, box) => {
+    if (name === "onboard.you" || name === "onboard.assistant" || name === "agents.update") {
+      pp.seen.calls.push({ name, input, box });
+      return name === "onboard.assistant" ? { name: "juno", display: "Juno", made: true, why: null, token: "SECRET" } : { ok: true };
+    }
+    return first(name, input, box);
+  };
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "", look: "s1~c2" }), (e) => e.code === "bad_name");
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "x".repeat(41), look: "s1~c2" }), (e) => e.code === "bad_name");
+  await assert.rejects(() => host.call("onboard.assistant.set", { name: "Juno", look: "<script>" }), (e) => e.code === "bad_look");
+  const look = "s3~c5~e1~m2~t4~b1~h0";
+  const r = await host.call("onboard.assistant.set", { name: "Juno", look });
+  assert.deepEqual(r, { name: "juno", display: "Juno", look }, "only the name, the display name and the look come back");
+  const sent = pp.seen.calls.filter((c) => ["onboard.you", "onboard.assistant", "agents.update"].includes(c.name));
+  assert.deepEqual(sent.map((c) => c.name), ["onboard.you", "onboard.assistant", "agents.update"], "named, made, then its look kept");
+  assert.ok(sent.every((c) => c.box === "boxA"), "all three go to the server this onboarding made");
+  assert.equal(sent[0].input.assistant, "Juno");
+  assert.deepEqual(sent[2].input, { name: "juno", look });
+});
+
 test("a Mac window says on its online answer that fingerprint approvals are not there yet; a browser says nothing", async (t) => {
   for (const mac of [true, false]) {
     const { pp, host } = await ready(t, { softwareKeyHere: mac });

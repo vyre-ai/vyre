@@ -9,6 +9,7 @@
 import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
+import { lookOf } from "../../ui/chat/agent-look.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -87,6 +88,15 @@ export function createHost(o) {
   const waits = new Map();
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
+  /** The server this onboarding just made (or joined) is where the Space's own steps go: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one. @param {string} none what to say when there is none yet */
+  const serverOfThisRun = async (none) => {
+    const k = await o.store.load();
+    if (!k) throw bad("Make your username first.", "no_identity");
+    const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
+    const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
+    if (!here) throw bad(`Your server is not set up yet. ${none}`, "no_server");
+    return { box: String(here.paired.box), k };
+  };
   /**
    * The link the join reads: lib/invite-link.js, the one resolver the daemon's join uses too. A `https://vyre.run/i/<token>` link names no server; the names directory says which space has the token's chain id.
    * @param {string} text
@@ -501,17 +511,29 @@ export function createHost(o) {
     },
     "onboard.agent.signin": async (input) => {
       if (!o.space) throw unsupported();
-      const k = await o.store.load();
-      if (!k) throw bad("Make your username first.", "no_identity");
-      // The server this onboarding just made (or joined) is where the sign-in goes: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one.
-      const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
-      const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
-      if (!here) throw bad("Your server is not set up yet. Sign in to an AI once your space is online.", "no_server");
+      const { box } = await serverOfThisRun("Sign in to an AI once your space is online.");
       const provider = String((input && input.provider) || "");
       if (!AIS.includes(provider)) throw bad("That provider does not support sign-in here.");
       const ports = await o.space.load();
       const body = { provider, ...(input.label ? { label: String(input.label).slice(0, 80) } : {}), ...(input.flow ? { flow: String(input.flow).slice(0, 200) } : {}), ...(input.code ? { code: String(input.code).slice(0, 200) } : {}) };
-      return pickSignin(await ports.call("sessions.accounts.signin", body, here.paired.box));
+      return pickSignin(await ports.call("sessions.accounts.signin", body, box));
+    },
+
+    // The Assistant step: name it and pick its look. The same server tools the daemon's first run uses (onboard.you names the assistant, onboard.assistant makes it, agents.update keeps the look),
+    // sent to the server this onboarding made, with nothing but the name and a look seed that names a real shape and colour.
+    "onboard.assistant.set": async (input) => {
+      if (!o.space) throw unsupported();
+      const { box, k } = await serverOfThisRun("Name your Assistant once your space is online.");
+      const display = String((input && input.name) || "").trim();
+      if (!display || display.length > 40 || /[\u0000-\u001f]/.test(display)) throw bad("An Assistant's name is one line of up to 40 characters.", "bad_name");
+      const look = input && input.look ? String(input.look) : "";
+      if (look && !lookOf(look)) throw bad("That look is not one the Assistant can have.", "bad_look");
+      const ports = await o.space.load();
+      await ports.call("onboard.you", { name: k.username, assistant: display }, box);
+      const a = /** @type {any} */ (await ports.call("onboard.assistant", {}, box));
+      if (!a || !a.made || !a.name) throw bad(a && a.why ? String(a.why) : "Your Assistant could not be made yet. Try again in a moment.", "assistant_not_made");
+      if (look) await ports.call("agents.update", { name: String(a.name), look }, box);
+      return { name: String(a.name), display: String(a.display || display), look: look || null };
     },
 
     "onboard.space.list": async () => {

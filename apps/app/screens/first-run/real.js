@@ -132,6 +132,13 @@ export async function signInAgent(input) {
   catch (e) { return fail(e); }
 }
 
+/** Name the Assistant and keep its look: made on the server this space is on. @param {{ name: string, look: string }} input */
+export async function setAssistant(input) {
+  if (MOCK) return mock.setAssistant(input);
+  try { return done(await tool("onboard.assistant.set", input)); }
+  catch (e) { return fail(e); }
+}
+
 export async function loadProgress() {
   if (MOCK) return mock.loadProgress();
   try { return done(await tool("onboard.first.progress", {})); }

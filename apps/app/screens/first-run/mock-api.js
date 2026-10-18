@@ -97,6 +97,11 @@ export async function signInAgent(input) {
   return { ok: true, provider: input.provider, step: "done", signedIn: true };
 }
 
+/** @param {{ name: string, look: string }} input */
+export async function setAssistant(input) {
+  return { ok: true, name: String(input.name || "").toLowerCase(), display: input.name, look: input.look };
+}
+
 export async function loadProgress() {
   return { ok: true, ...progress };
 }

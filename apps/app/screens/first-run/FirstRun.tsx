@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  FlowOver, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, passwordStrength, useUiTheme,
+  Avatar, FlowOver, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
 import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
@@ -12,14 +12,16 @@ import { takeJoin } from "../../src/shell/join-hold.js";
 import { HalftoneField, measureCalm } from "./HalftoneField";
 import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
-import { rememberSpace } from "./welcome-model.js";
+import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
+import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
+import { ASSISTANT_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, removeSpace, renameSpace, setAssistant, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -84,6 +86,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [current, setCurrent] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
+  const [asName, setAsName] = useState("");
+  const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
   const [expiresAt, setExpiresAt] = useState("");
   const [agents, setAgents] = useState<{ id: string; label: string }[]>([]);
   const [agentFlow, setAgentFlow] = useState("");
@@ -414,7 +418,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         lead={online ? "Your server is paired and your space has its address." : "Run this one line there. Nothing else. This screen updates when it is up."}
         failure={failure}
         secondary={back ? { label: "Cancel", onPress: back } : undefined}
-        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("ready"); go("id.ai"); } else go("ready"); } }}>
+        primary={{ label: online ? "Continue" : "Waiting", disabled: !online, onPress: () => { if (noDaemon) { setAiThen("setup.assistant"); go("id.ai"); } else go("setup.assistant"); } }}>
         {taken ? (
           <>
             <Field label="Space name" name="Space name" value={space} onChangeText={setSpace} help={suggest ? `${suggest} is free.` : undefined} />
@@ -459,6 +463,28 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         <Text size="caption" strong tone="label">Expires</Text>
         <Segmented label="Expires" fill value={days} onChange={setDays} options={[["1", "1 day"], ["7", "7 days"], ["30", "30 days"]]} />
         {invite ? <InviteShare link={invite} /> : null}
+      </FlowStep>
+    );
+  }
+
+  if (screen === "setup.assistant") {
+    const name = asName.trim() || ASSISTANT_COPY.suggestion;
+    // the character a look names: shape and colour from the picker, the parts from a hash of the name until a tap changes one (every part is always written, so a tap keeps the rest)
+    const seed = asLook.seed || lookSeed(asLook.shape, asLook.color);
+    const full = withParts(seed, name.toLowerCase());
+    const parts = partsOf(full);
+    return (
+      <FlowStep steps={steps} onBack={back} title={ASSISTANT_COPY.title} lead={ASSISTANT_COPY.lead} failure={failure}
+        primary={{ label: busy ? "Saving..." : "Continue", disabled: busy || asName.length > 40, loading: busy, onPress: () => void run(async () => {
+          const r = await setAssistant({ name, look: full });
+          if (!r.ok) { setFailure(r.message); return; }
+          go("ready");
+        }) }}>
+        <View style={{ alignItems: "center" }}><Avatar of={markRef("agent", name, undefined, full)} size={56} /></View>
+        <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
+        <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
+          onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
+          onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
       </FlowStep>
     );
   }
