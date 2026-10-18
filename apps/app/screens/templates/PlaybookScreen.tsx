@@ -93,9 +93,9 @@ export default function PlaybookScreen() {
                   <StepCard key={c.index} lead={`Stage ${c.index + 1}`} icon="projects" title={c.name} summary={c.summary} open={open === c.index} onToggle={() => setOpen(open === c.index ? -1 : c.index)} last={k === cards.length - 1}>
                     {c.todos.map((t, n) => (
                       <View key={`${n}:${t.title}`} className="gap-s1">
-                        <View className="flex-row items-center gap-s2"><Text strong className="min-w-0 flex-1">{t.title}</Text><Text size="caption" tone="label">{t.doer}</Text></View>
+                        <Text strong>{t.title}</Text>
                         {t.brief ? <Text size="caption" tone="muted">{t.brief}</Text> : null}
-                        {t.checker || t.optional ? <Text size="caption" tone="label">{[t.checker ? `Checked by ${t.checker}` : "", t.optional ? "Optional" : ""].filter(Boolean).join(" · ")}</Text> : null}
+                        <Text size="caption" tone="label">{[`Assigned: ${t.doer}`, t.approver ? `Approver: ${t.approver}` : "", t.optional ? "Optional" : ""].filter(Boolean).join(" · ")}</Text>
                       </View>
                     ))}
                     {c.flows.map((f) => <View key={`${f.flow}:${f.when}`} className="flex-row items-center gap-s2"><Chip>Flow</Chip><Text className="min-w-0 flex-1">{`Turns on ${f.when === "start" ? "when the project starts" : "here"}: ${f.label}${f.note ? `. ${f.note}` : ""}`}</Text></View>)}

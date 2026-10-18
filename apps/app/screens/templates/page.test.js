@@ -26,10 +26,10 @@ test("the headline is one sentence: a playbook goes through its stages, with its
 test("a stage is a card: its to-dos with doers and the first line of the brief, and the Flows that turn on there", () => {
   const cards = stageCards(body(), people, agents);
   assert.deepEqual(cards.map((c) => [c.index, c.name, c.todos.length, c.flows.length]), [[0, "Brief", 2, 1], [1, "Draft", 1, 1], [2, "Review", 0, 0]]);
-  assert.deepEqual(cards[0].todos[0], { title: "Write the brief", doer: "The project lead", brief: "Say what we are launching and by when. Keep it to one page.", optional: false, checker: "" });
+  assert.deepEqual(cards[0].todos[0], { title: "Write the brief", doer: "The project lead", brief: "Say what we are launching and by when. Keep it to one page.", optional: false, approver: "" });
   assert.equal(cards[0].todos[1].optional, true);
   assert.equal(cards[1].todos[0].doer, "Kit (agent)");
-  assert.equal(cards[1].todos[0].checker, "The project lead");
+  assert.equal(cards[1].todos[0].approver, "The project lead", "the checker is the Approver");
   assert.deepEqual(cards[0].flows, [{ flow: "welcome", label: "welcome", when: "start", note: "" }], "start Flows turn on in the first stage");
   assert.deepEqual(cards[1].flows, [{ flow: "launch_email", label: "launch email", when: "Draft", note: "sends the draft to the list" }]);
   assert.equal(cards[2].summary, "No to-dos");
