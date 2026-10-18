@@ -42,7 +42,7 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
   const places = useMemo(() => [...NAV.items, ...(NAV.more ?? []), ...(NAV.bottom ?? [])].filter((i) => i.id !== "search").map((i) => ({ id: i.id, label: i.label, href: i.href })), []);
   const records = useMemo(() => (world ? recordRows(world.types, world.byType) : []), [world]);
   const settings = useMemo(() => settingsGroups("this Space").flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), []);
-  const all: Base = useMemo(() => ({ ...base, records, places, settings }), [base, records, places, settings]);
+  const all: Base = useMemo(() => ({ ...base, records, places, settings: [...settings, ...base.settings] }), [base, records, places, settings]);
 
   // A query asks the three tools, 150 ms after typing stops; an answer for an old query is dropped.
   useEffect(() => {

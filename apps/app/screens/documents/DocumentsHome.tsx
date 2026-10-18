@@ -1,3 +1,4 @@
+import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -97,7 +98,7 @@ export function DocumentsHome() {
       {tab === "made" ? (
         rows.length || hasType ? (
           <View className="gap-s3">
-            <ListHeader title={null} noun="documents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}} />
+            <ListHeader onSearch={() => openFind("files")} title={null} noun="documents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}} />
             {shown.length ? (
               <GroupedList groups={MADE_GROUPS.map(([, t]) => ({ name: t }))} items={shown} itemNoun="documents" renderItems={(its) => (
                 <Card flush>

@@ -10,7 +10,7 @@ export function KeysScreen() {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [values, setValues] = useState<Map<string, KeyValue> | null>(null);
   const [err, setErr] = useState("");
-  const [find, setFind] = useState("");
+  const find = "";   // the one search bar finds a setting; this page lists them
   const [advanced, setAdvanced] = useState(false);
   const load = useCallback(() => { setErr(""); Promise.all([keys.schema(), keys.values()]).then(([s, v]) => { setSchema(s); setValues(v); }).catch((e) => setErr(refusal(e))); }, []);
   useEffect(load, [load]);
@@ -19,7 +19,6 @@ export function KeysScreen() {
   return (
     <Page title="All settings" back="/u/settings">
       <Banner>Every setting Vyre keeps for you. A change is saved at once and applies the way its line says.</Banner>
-      <Field name="Find a setting" value={find} onChangeText={setFind} placeholder="Find a setting" />
       <View className="flex-row"><Button size="sm" kind="ghost" label={advanced ? "Hide advanced" : "Show advanced"} onPress={() => setAdvanced(!advanced)} /></View>
       {err ? <Card flush><ErrorState title="Settings did not load" reason={err} retry={load} /></Card> : null}
       {!schema && !err ? <LoadingState rows={4} /> : null}

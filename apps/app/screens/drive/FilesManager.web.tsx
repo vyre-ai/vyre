@@ -2,6 +2,7 @@
 // (@tanstack/react-table for the columns, @tanstack/react-virtual for the rows), breadcrumbs and a search above it, multi-select with a bulk bar, and a detail panel on the right. Every read
 // and write is an existing files.* tool (files-real.ts); what a source cannot do is not offered (files-model.ts abilities). The detail panel's preview is a slot: native-mount's FileViewer
 // takes it over; until then small text files show as text. Narrow screens keep the Drive screen with its tabs.
+import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
@@ -222,7 +223,7 @@ function Manager({ wide }: { wide: boolean }) {
                 <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
               </View>
             </View>
-            <ListHeader noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
+            <ListHeader onSearch={() => openFind("files")} noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
             ) : null}

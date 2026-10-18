@@ -2,6 +2,7 @@
 // (recall.search, files.search, memory.relevant, mentions.search for vault names, Drive, artifacts and GitHub, and files.drive.space.search for file names in the Space Drive and in the chats the caller is in), a file preview, and the commands Enter runs (agents.ask, threads.send, threads.watch). Vault items are never searched here:
 // they stay behind the Vault.
 import { MIN, pickAgents, pickProjects, pickSessions, type Command } from "./model.ts";
+import { schemaOf } from "../settings/keys-model.ts";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 export type Result<T> = { data?: T; error?: { code: string; message: string } };
@@ -10,9 +11,12 @@ export function findSource(call: Call, surface: string) {
   return {
     /** What Find leans on, in one go. A list that fails is empty: Find still searches what it can. */
     async load() {
-      const [al, cat, th, pl] = await Promise.all([call("agents.list"), call("projects.catalog", { limit: 300 }), call("threads.list", { all: true }), call("projects.list")]);
+      const [al, cat, th, pl, sc] = await Promise.all([call("agents.list"), call("projects.catalog", { limit: 300 }), call("threads.list", { all: true }), call("projects.list"), call("settings.schema")]);
       const agents = pickAgents(al.data);
-      return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data) };
+      // Every setting the server offers is a row too, opening All settings: the one search finds a setting by its name (the box in All settings is gone).
+      let settings: { title: string; sub: string; href: string }[] = [];
+      try { const sch = sc.error ? null : schemaOf(sc.data); if (sch) settings = sch.keys.filter((k) => !k.levels || k.levels.includes("account")).map((k) => ({ title: k.label, sub: sch.groups.find((g) => g.id === k.group)?.label ?? "", href: "/u/settings/all" })); } catch { settings = []; }
+      return { agents, assistant: agents.find((a) => a.kind === "assistant")?.name ?? null, sessions: pickSessions(cat.data, th.data), projects: pickProjects(pl.data), settings };
     },
     /** The searches for a query; each answers on its own so the screen draws as they come. */
     search(q: string, on: { recall: (r: Result<unknown>) => void; files: (r: Result<unknown>) => void; memory: (r: Result<unknown>) => void; mentions: (r: Result<unknown>) => void; drive: (r: Result<unknown>) => void }) {

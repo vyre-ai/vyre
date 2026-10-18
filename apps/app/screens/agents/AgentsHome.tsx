@@ -1,3 +1,4 @@
+import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -122,7 +123,7 @@ export function AgentsHome() {
           ) : null}
           {agents && agents.length ? (
             <>
-              <ListHeader title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
+              <ListHeader onSearch={() => openFind("people")} title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
                 actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
               {shown.length ? (
                 <GroupedList groups={groups} items={shown} itemNoun="agents"
