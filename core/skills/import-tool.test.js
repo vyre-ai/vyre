@@ -24,6 +24,7 @@ test("skills.import through a real daemon: a draft, not an approved skill; works
   assert.ok(!versions.error, JSON.stringify(versions.error));
   const vs = versions.data.versions || versions.data;
   assert.ok(vs.every((/** @type {any} */ v) => v.state === "draft"), "uploaded, not approved");
+  assert.match(String(vs[0].note), /Uploaded \(demo\.zip\).*Hooks aren't run by Vyre/, "the card can show what was uploaded and not taken");
   const listed = await d.registry.call("skills.list", {}, "cli");
   assert.ok(!(listed.data.skills || []).some((/** @type {any} */ s) => s.name === "demo-plugin"), "nothing uses it before approval");
   const bad = await d.registry.call("skills.import", { level: "personal", file: zip([{ name: "../x", data: "x" }]).toString("base64") }, "cli");

@@ -41,7 +41,7 @@
       {
         "name": "skills.import",
         "effect": "write",
-        "reach": "anyone"
+        "reach": "person"
       },
       {
         "name": "skills.draft.learned",
