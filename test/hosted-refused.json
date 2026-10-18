@@ -192,6 +192,7 @@
   "threads.busy",
   "threads.chat-of",
   "threads.chat-stop",
+  "threads.fork-point",
   "threads.chat-switch",
   "threads.chat-thread",
   "threads.claimed",
@@ -258,6 +259,7 @@
   "threads.vouch",
   "threads.watch",
   "threads.work-transcript",
+  "work.chat.fork-source",
   "work.chat.prefs.muted",
   "work.chat.change",
   "work.chat.folder",
@@ -270,6 +272,7 @@
   "work.chat.persistent",
   "work.chat.serve",
   "work.chat.upgrade-move",
-  "work.chat.upgrade-plan"
+  "work.chat.upgrade-plan",
+  "work.thread.add-people"
  ]
 }
