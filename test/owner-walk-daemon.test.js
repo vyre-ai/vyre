@@ -246,3 +246,24 @@ test("6. a joined member works in the team's planner and records through the mem
   assert.ok(items.some((/** @type {any} */ x) => /stage/i.test(x.text) && x.actor.id === MIA), `her stage change is in the history as her: ${JSON.stringify(items.map((/** @type {any} */ x) => [x.kind, x.text])).slice(0, 300)}`);
   assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "and the call she logged");
 });
+
+test("7. an agent that holds only its task hands in a draft of the very record the task is about; a record the task's maker could not read is still refused", { timeout: 180_000 }, async t => {
+  const w = await boot(t);
+  const { K, ask, ownerChain, space, R } = w;
+  const writer = await newAgent(w, "writer");
+  // the agent holds what the daemon lends for a task and nothing else: tasks.read and tasks.work, no read of records
+  const g = { subject: { kind: "actor", actor: writer }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
+  await K.gateway.grants.create(ownerChain, g, { presence: grantProof("grants.create", g, `vyre://${space}/grant/new`) });
+  const project = await R.create(ownerChain, "project", { name: "Rivera", slug: "rivera", status: "active" });
+  const urn = `vyre://${space}/project/${project.id}`;
+  const wc = agentIn(w, "writer", "t-writer-7");
+  const task = await ask.request(ownerChain, { title: "Draft for Rivera", doer: writer, record: urn, output: { kind: "draft" } });
+  await ask.start(wc, task.id);
+  const done = await ask.complete(wc, task.id, { draft: urn }).catch((/** @type {any} */ e) => e);
+  assert.equal(done && done.state, "done", `the draft of the task's own record is accepted: ${done && done.code} ${done && done.message}`);
+  // another record of the Space that the agent could not read is not accepted
+  const other = await R.create(ownerChain, "project", { name: "Okafor", slug: "okafor", status: "active" });
+  const task2 = await ask.request(ownerChain, { title: "Draft for Okafor", doer: writer, record: urn, output: { kind: "draft" } });
+  await ask.start(wc, task2.id);
+  await assert.rejects(() => ask.complete(wc, task2.id, { draft: `vyre://${space}/project/${other.id}` }), { code: "output_check_failed" });
+});
