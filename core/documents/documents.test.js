@@ -21,6 +21,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
       async put(_c, p, bytes) { const v = files.get(p) || []; v.push(Buffer.from(bytes)); files.set(p, v); return { version: v.length, conflict: false }; },
       async get(_c, p, o) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return new Uint8Array(v[(o && o.version ? o.version : v.length) - 1]); },
       async history(_c, p) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return v.map((b, i) => ({ ver: i + 1, size: b.length })); },
+      async stat(_c, p) { const v = files.get(p); if (!v) throw Object.assign(new Error("no such file"), { code: "not_found" }); return { path: p, version: v.length, size: v.at(-1).length }; },
       async listPage(_c, prefix) { return { entries: [...files.keys()].filter(k => k.startsWith(prefix)).map(k => ({ path: k, size: files.get(k)?.at(-1)?.length })), next: null }; },
     },
     async definitions() { return types.map(n => ({ name: n, fields: [{ name: "name" }, { name: "status" }, { name: "template" }, { name: "template_version" }, { name: "file" }, { name: "contact" }, { name: "project" }, { name: "sha256" }, { name: "source" }] })); },
@@ -343,4 +344,33 @@ test("generate gives every template the Space's brand profile as `brand`, unless
   const none = rig({});
   await none.run("documents.template.add", { name: "Header", base64: b64(docx(["{brand.name}"])) });
   assert.equal((await code(none.run("documents.generate", { template: "Header" }))).code, "missing_values", "with no brand profile the name is missing, said by name");
+});
+
+// Download audit, end to end through the documents module (18 Oct): the first Download writes the audit PDF under the caller's chain to Signed/, a second
+// Download writes nothing and returns the saved path, a body that is not a PDF is refused and nothing is saved, and a caller that is not a person's own
+// surface is refused before the app is asked. The app's answer is a fake (the appmods tool), so this checks the documents side as a whole.
+test("Download audit end to end: the first call saves Signed/audit-<n>.pdf once, a second call writes nothing, a non-PDF answer saves nothing, and only a person's surface may ask", async () => {
+  const pdf = Buffer.from("%PDF-1.7\n%fixture audit\n");
+  const asked = /** @type {any[]} */ ([]);
+  const call = async (tool, input) => { asked.push({ tool, input }); return tool === "appmods.signing.audit" ? { data: { bytes: pdf.toString("base64") } } : {}; };
+  const r = rig({ call });
+  const first = await r.run("documents.signing.audit", { submission: 41 }, { caller: "cli" });
+  assert.equal(first.path, "Signed/audit-41.pdf");
+  assert.equal(first.bytes, pdf.length);
+  assert.equal(r.files.get("Signed/audit-41.pdf")?.length, 1, "one version after the first Download");
+  assert.equal(asked.filter(a => a.tool === "appmods.signing.audit").length, 1, "the app was asked once");
+
+  const second = await r.run("documents.signing.audit", { submission: 41 }, { caller: "cli" });
+  assert.equal(second.already, true, "a second Download returns the saved file");
+  assert.equal(second.path, "Signed/audit-41.pdf");
+  assert.equal(r.files.get("Signed/audit-41.pdf")?.length, 1, "a second Download writes nothing: still one version");
+  assert.equal(asked.filter(a => a.tool === "appmods.signing.audit").length, 1, "and does not ask the app again");
+
+  const notPdf = rig({ call: async () => ({ data: { bytes: Buffer.from("<html>error</html>").toString("base64") } }) });
+  assert.equal((await code(notPdf.run("documents.signing.audit", { submission: 9 }, { caller: "cli" }))).code, "app_refused");
+  assert.equal(notPdf.files.has("Signed/audit-9.pdf"), false, "an error page is never saved as an audit file");
+
+  const model = rig({ call });
+  assert.equal((await code(model.run("documents.signing.audit", { submission: 41 }, { caller: "mcp" }))).code, "denied", "a model is refused before the app is asked");
+  assert.equal(asked.filter(a => a.tool === "appmods.signing.audit").length, 1, "and the app was not asked for it");
 });
