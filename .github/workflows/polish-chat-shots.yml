@@ -1,0 +1,49 @@
+# Screenshots of the polish Chats on the sample web export, for review: the list with its sections, the side panel's Threads, Computer and Details tabs, a group and the composer. Run by hand on a branch.
+name: polish-chat-shots
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: polish-chat-shots-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Export the sample web app
+        run: npm run export:web:mock
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: Shots
+        run: |
+          node scripts/shots.mjs "$RUNNER_TEMP/polish-chat" \
+            "u/chats" \
+            "chat-demo?tab=threads&hold=1&note=0" \
+            "chat-demo?tab=computer&hold=1&note=0" \
+            "chat-demo?tab=details&hold=1&note=0" \
+            "chat-demo?scenario=group&tab=group&hold=1&note=0&about=0" \
+            "chat-demo?at=6000&hold=1&note=0&composer=1" \
+            --dist dist --w 390,1280 --theme dark,paper --h 860 --fixed 1 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: polish-chat-shots
+          path: ${{ runner.temp }}/polish-chat
+          retention-days: 14
