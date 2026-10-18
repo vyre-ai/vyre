@@ -8,15 +8,15 @@
 //   rollback   an earlier version, written again as a new approved one
 //   approved / versions   what is in use for a caller, and the history of one skill
 
-import { validName, skillProblems, pluginProblems, hashOf, hasCode, ackOf, declared, visibleFor, LEVELS } from "../../lib/skill-library.js";
+import { validName, skillProblems, pluginProblems, hashOf, hasCode, ackOf, declared, visibleFor, keyRowName, LEVELS } from "../../lib/skill-library.js";
 
 const TYPE = "skill";
 const fail = (/** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ more = {}) => Object.assign(new Error(message), { code, ...more });
 
 /**
- * @param {{ kernel: () => any, agentOwner: (name: string) => Promise<string | null>, projectOwner: (slug: string) => Promise<string | null>, mcpAdd?: (server: any) => Promise<any>, mcpUpdate?: (server: any) => Promise<any>, log?: (m: string) => void }} o
+ * @param {{ kernel: () => any, agentOwner: (name: string) => Promise<string | null>, projectOwner: (slug: string) => Promise<string | null>, mcpAdd?: (server: any) => Promise<any>, mcpUpdate?: (server: any) => Promise<any>, mcpRow?: (name: string) => Promise<any>, log?: (m: string) => void }} o
  */
-export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpdate, log = () => {} }) {
+export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpdate, mcpRow, log = () => {} }) {
   const svc = () => kernel().serviceChain("skills");
   const q = async (/** @type {any} */ filter) => (await kernel().records.query(svc(), TYPE, { ...(filter ? { filter } : {}), page: { limit: 500 } })).rows;
   const shape = (/** @type {any} */ r, withBody = false) => ({ id: `${r.data.level}${r.data.scope ? "/" + r.data.scope : ""}/${r.data.name}`, name: r.data.name, level: r.data.level, scope: r.data.scope || "", version: r.data.version, state: r.data.state, kind: r.data.kind, owner: r.data.owner || null, proposer: r.data.proposer || null, ...(r.data.note ? { note: r.data.note } : {}), hash: r.data.hash, ...(withBody ? { body: r.data.body } : {}) });
@@ -81,21 +81,28 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
    * A plugin's server that needs keys becomes a hub row bound to this plugin: it names the Vault ITEM chosen for each variable (`items["<server>.<VAR>"]`, a name and never a value), and the row waits until the
    * person has granted each item to that one server and variable. A new version that changes the needs, the command or the pin is a new approval with a new choice (the ack covers what it declares); an existing
    * row of the same server is updated, so the old choice never carries over to different code.
-   * @param {string} row @param {any} p @param {any} m @param {any} rec @param {any} as @param {Record<string, unknown> | undefined} items
+   * @param {any} p @param {any} m @param {any} rec @param {any} as @param {Record<string, unknown> | undefined} items @returns {Promise<string>} the row's name
    */
-  async function addKeyed(row, p, m, rec, as, items) {
+  async function addKeyed(p, m, rec, as, items) {
     const chosen = items && typeof items === "object" ? items : {};
     /** @type {Record<string, string>} */ const env = {};
     for (const n of m.needs) { const v = chosen[`${m.name}.${n.var}`]; if (typeof v === "string" && v) env[n.var] = v; }
-    const owner = await isOwner(as);
-    const server = { name: row, transport: "stdio", command: m.command, args: m.args || [], env, auth: { type: "env", bound: { plugin: p.name, level: rec.data.level, person: rec.data.level === "personal" && rec.data.scope ? String(rec.data.scope) : String(as.id), ...(owner ? { owner: true } : {}), needs: m.needs.map((/** @type {any} */ n) => ({ var: n.var, label: n.label })) } } };
+    const role = await roleOf(as), owner = role === "owner";
+    const level = String(rec.data.level), scope = level === "space" ? "" : String(rec.data.scope || as.id);
+    const row = keyRowName({ plugin: p.name, server: m.name, level, scope });
+    const bound = { plugin: p.name, level, person: level === "personal" && rec.data.scope ? String(rec.data.scope) : String(as.id), ...(owner ? { owner: true } : {}), approver: `${role === "owner" ? "the owner" : role === "admin" ? "an admin" : "a member"} (${String(as.id).slice(0, 8)})`, needs: m.needs.map((/** @type {any} */ n) => ({ var: n.var, label: n.label })) };
+    const server = { name: row, transport: "stdio", command: m.command, args: m.args || [], env, auth: { type: "env", bound } };
     try { await mcpAdd?.(server); }
     catch (e) {
       if (!mcpUpdate || !/already a server/.test(String(/** @type {Error} */ (e).message))) throw e;
+      // The row exists. It is updated only when it is this same plugin's own row (same plugin, level, whose it is); another plugin's row, or one made by hand, is never taken over: the grants made to it would serve different code.
+      const have = mcpRow ? await mcpRow(row) : null, hb = have && have.auth && have.auth.bound;
+      if (!hb || hb.plugin !== bound.plugin || hb.level !== bound.level || hb.person !== bound.person || Boolean(hb.owner) !== Boolean(bound.owner)) throw fail("conflict", "another plugin already uses that server name");
       await mcpUpdate(server);
     }
+    return row;
   }
-  const isOwner = async (/** @type {any} */ person) => { const m = kernel().membership ? await kernel().membership(person.id).catch(() => null) : null; return Boolean(m && m.role === "owner"); };
+  const roleOf = async (/** @type {any} */ person) => { const m = kernel().membership ? await kernel().membership(person.id).catch(() => null) : null; return m && typeof m.role === "string" ? m.role : ""; };
 
   /** Make a version the one in use, retiring the one before. `as` is the approving person. @param {any} rec @param {any} as */
   async function make(rec, as, note, items) {
@@ -108,7 +115,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
       for (const m of p.mcp || []) {
         try {
           const row = `p-${p.name}-${m.name}`.slice(0, 32);
-          if (m.needs && m.needs.length) { await addKeyed(row, p, m, rec, as, items); connections.push(row); continue; }
+          if (m.needs && m.needs.length) { connections.push(await addKeyed(p, m, rec, as, items)); continue; }
           const auth = m.connection ? { type: "bearer", item: `conn-${m.connection}` } : { type: "none" };
           await mcpAdd({ name: row, transport: m.transport, auth, ...(m.command ? { command: m.command, args: m.args || [] } : {}), ...(m.url ? { url: m.url } : {}) });
           connections.push(row);

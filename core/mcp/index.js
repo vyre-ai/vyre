@@ -286,6 +286,29 @@ export default {
       },
     });
 
+    // The Vault asks, before it shows a person a request to grant a key to a plugin's server, what that server is. Names, a command line and a label; never a value. Only the vault module asks.
+    ctx.tool("mcp.key.describe", {
+      internal: true,
+      description: "What a key request for a plugin's server is: { watcher } -> { plugin, level, server, command, approver, var, label } or null. Only the vault module asks.",
+      input: obj({ watcher: str }, ["watcher"]),
+      run: async (input, meta) => {
+        if (String(meta && meta.caller) !== "module:vault") throw Object.assign(new Error("only the vault module asks what a key request is for"), { code: "denied" });
+        return { key: hub.describeKey(String(input.watcher)) };
+      },
+    });
+
+    // The skills module asks, before it updates a plugin server's row, whose row it is. Names only. Only the skills module asks.
+    ctx.tool("mcp.key.row", {
+      internal: true,
+      description: "Whose a plugin server's row is: { name } -> { bound: { plugin, level, person, owner? } } or null. Only the skills module asks.",
+      input: obj({ name: str }, ["name"]),
+      run: async (input, meta) => {
+        if (String(meta && meta.caller) !== "module:skills") throw Object.assign(new Error("only the skills module asks whose a plugin server's row is"), { code: "denied" });
+        const r = hub.row(String(input.name));
+        return { bound: r && r.auth.bound ? { plugin: r.auth.bound.plugin, level: r.auth.bound.level, person: r.auth.bound.person, ...(r.auth.bound.owner ? { owner: true } : {}) } : null };
+      },
+    });
+
     ctx.tool("mcp.remove", {
       effect: "write",
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",

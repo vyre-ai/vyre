@@ -316,7 +316,17 @@ export default {
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how, agentKind }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller, agentKind); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
-      presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
+      presence("Let a module use a vault item", async ({ name, module, watcher, project }) => {
+        // A key for a plugin's MCP server: say what the person is giving it to (the plugin, the server's pinned command line, who approved it), not a watcher string. Nothing is released before this is shown.
+        if (module === "mcp" && watcher) {
+          try {
+            const r = await ctx.call("mcp.key.describe", { watcher: String(watcher) });
+            const d = r && !r.error && r.data ? r.data.key : null;
+            if (d) return `Give ${d.plugin} (${d.command}, approved by ${d.approver}) the key ${quoted(name)} for ${d.var}${d.personal ? ". Only your own calls use it" : ". Everyone who can use this plugin acts with this key"}`;
+          } catch { /* the plain words below */ }
+        }
+        return `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+      },
         { skip: ({ caller }) => isAsker(caller), session: () => true }));
 
     tool("vault.revoke", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",

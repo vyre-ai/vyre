@@ -330,6 +330,16 @@ export function normalize(i, opts = {}) {
 }
 
 /**
+ * The watcher a key of a plugin's server is granted to: the row, the variable, and a hash of the code the row runs (command, arguments, the needs). A server whose code changed is a different watcher, so a
+ * grant made for the old code does not serve the new: the person grants again, with presence. @param {any} r the row @param {string} v the variable
+ */
+export function keyWatcher(r, v) {
+  const needs = (r.auth && r.auth.bound ? r.auth.bound.needs : []).map((/** @type {any} */ n) => [n.var, n.label]).sort();
+  const h = crypto.createHash("sha256").update([r.command || "", JSON.stringify(r.args || []), JSON.stringify(needs)].join("\0")).digest("hex").slice(0, 8);
+  return `${r.name}.${v}.${h}`;
+}
+
+/**
  * A plugin's server that needs keys (Vault-backed env): which plugin and level it came from, whose it is, and the variables it needs. `out.env` holds only the NAME of the Vault item chosen for each variable (a value is
  * never here); a variable with no item yet is a server waiting for its key. Each variable's item is read with the grant made to this one server and variable (`<row>.<VAR>`), nothing broader.
  * @param {any} b @param {any} out
@@ -342,7 +352,7 @@ function normalizeBound(b, out) {
     return { var: String(n.var), label: n.label };
   });
   for (const k of Object.keys(out.env)) if (!needs.some((/** @type {any} */ n) => n.var === k)) throw bad(`${k.slice(0, 40)} is not one of the variables this server needs`);
-  return { plugin: b.plugin, level: b.level, person: b.person, ...(b.owner ? { owner: true } : {}), needs };
+  return { plugin: b.plugin, level: b.level, person: b.person, ...(b.owner ? { owner: true } : {}), ...(typeof b.approver === "string" && b.approver ? { approver: b.approver.slice(0, 80) } : {}), needs };
 }
 
 function normalizeAuth(a, out, own = false) {
@@ -535,7 +545,7 @@ export class Hub {
     const s = this.live.get(r.name);
     const base = { name: r.name, transport: r.transport, state: s ? s.state : "stopped", tools: r.cache ? this.visibleTools(r).length : null,
       ...(s && s.error ? { error: s.error } : {}), lastUsed: r.lastUsed || null,
-      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}) }, scope: r.scope,
+      auth: { type: r.auth.type, ...(r.auth.item ? { item: r.auth.item } : {}), ...(r.auth.bound ? { bound: { plugin: r.auth.bound.plugin, level: r.auth.bound.level, person: r.auth.bound.person, ...(r.auth.bound.owner ? { owner: true } : {}) } } : {}) }, scope: r.scope,
       ...(r.owner ? { owner: r.owner, label: r.label || r.name } : {}),
       ...(r.pinSeen ? { held: "tools_changed" } : {}) };
     if (!full) return base;
@@ -1058,7 +1068,7 @@ export class Hub {
     for (const n of r.auth.bound.needs) {
       const ref = r.env[n.var];
       if (!ref) throw fail("needs_key", `${r.name} is waiting for a key: ${n.label}`);
-      spec[n.var] = { ...(typeof ref === "string" ? { item: ref } : ref), watcher: `${r.name}.${n.var}` };
+      spec[n.var] = { ...(typeof ref === "string" ? { item: ref } : ref), watcher: keyWatcher(r, n.var) };
     }
     return spec;
   }
@@ -1070,23 +1080,35 @@ export class Hub {
     try {
       for (const n of r.auth.bound.needs) {
         const ref = r.env[n.var], item = typeof ref === "string" ? ref : ref && ref.item;
-        if (!item || (await this.deps.keyHeld(item, `${r.name}.${n.var}`)) !== true) return false;
+        if (!item || (await this.deps.keyHeld(item, keyWatcher(r, n.var))) !== true) return false;
       }
       return true;
     } catch { return false; }
   }
 
-  /** The keys of a plugin's server that are not in place: no item chosen, or the item is not granted to this one server and variable. Names and labels only. @param {any} r @returns {Promise<{ var: string, label: string }[]>} */
+  /** The keys of a plugin's server that are not in place: no item chosen, or the item is not granted to this one server and variable. Names and labels only. @param {any} r @returns {Promise<{ var: string, label: string, watcher: string }[]>} */
   async missingKeys(r) {
     if (!r.auth || !r.auth.bound) return [];
-    /** @type {{ var: string, label: string }[]} */ const out = [];
+    /** @type {{ var: string, label: string, watcher: string }[]} */ const out = [];
     for (const n of r.auth.bound.needs) {
       const ref = r.env[n.var], item = typeof ref === "string" ? ref : ref && ref.item;
       let held = false;
-      try { held = Boolean(item) && typeof this.deps.keyHeld === "function" && (await this.deps.keyHeld(item, `${r.name}.${n.var}`)) === true; } catch { held = false; }
-      if (!held) out.push({ var: n.var, label: n.label });
+      try { held = Boolean(item) && typeof this.deps.keyHeld === "function" && (await this.deps.keyHeld(item, keyWatcher(r, n.var))) === true; } catch { held = false; }
+      if (!held) out.push({ var: n.var, label: n.label, watcher: keyWatcher(r, n.var) });
     }
     return out;
+  }
+
+  /** What a person is shown before they grant a key to a watcher: the plugin, the server, the pinned command line, who approved it, the variable and its label. Null when no row of a plugin has that watcher. @param {string} watcher */
+  describeKey(watcher) {
+    for (const r of this.rows()) {
+      if (!r.auth.bound) continue;
+      for (const n of r.auth.bound.needs) if (keyWatcher(r, n.var) === watcher) {
+        const b = r.auth.bound;
+        return { plugin: b.plugin, level: b.level, server: r.name, command: cut([r.command, ...(r.args || [])].join(" "), 200), approver: b.approver || "a person", var: n.var, label: n.label, ...(b.level === "personal" ? { personal: true } : {}) };
+      }
+    }
+    return null;
   }
 
   /** The server cannot run until a person gives it its key: stopped if it was running, marked, and said once. @param {string} name @param {string} why */

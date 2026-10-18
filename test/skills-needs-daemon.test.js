@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present, asOwner } from "./helpers.js";
+import { keyRowName } from "../lib/skill-library.js";
 
 const VALUE = "fixture-notes-key-9f8e7d6c5b4a-do-not-print";
 const skill = (/** @type {string} */ name) => `---\nname: ${name}\ndescription: Use this when the team needs the ${name} routine done the same way each time.\n---\nDo the careful thing first.\n`;
@@ -23,6 +24,7 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   const d = await start({ root, log: () => {}, presence: present, kernel: true });
   asOwner(d, root);
   t.after(() => d.stop());
+  const ROW = keyRowName({ plugin: "notes", server: "notes", level: "personal", scope: d.kernel.id.owner });
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "cli") => { const r = await d.registry.call(tool, input, caller); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code, error: r.error }); return r.data; };
   const draft = (/** @type {any} */ p, name = "notes") => call("skills.draft", { name, level: "personal", kind: "plugin", body: JSON.stringify(p) });
   const refused = async (/** @type {Promise<any>} */ p) => p.then(() => assert.fail("was not refused"), (/** @type {Error} */ e) => e.message);
@@ -51,18 +53,18 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   await call("vault.put", { name: "notes-key", kind: "secret", value: VALUE });
   const approved = await call("skills.approve", { name: "notes", level: "personal", version: 1, ack: dr.ack, items: { "notes.NOTES_API_KEY": "notes-key" } });
   assert.equal(approved.state, "approved");
-  assert.deepEqual(approved.connections, ["p-notes-notes"]);
+  assert.deepEqual(approved.connections, [ROW]);
   const servers = await call("mcp.servers", {});
-  const sv = (Array.isArray(servers) ? servers : servers.servers || []).find((/** @type {any} */ s) => s.name === "p-notes-notes");
+  const sv = (Array.isArray(servers) ? servers : servers.servers || []).find((/** @type {any} */ s) => s.name === ROW);
   assert.ok(sv, JSON.stringify(servers).slice(0, 300));
   assert.equal(sv.state, "needs_key", "no grant to this one server and variable: it waits and was never started");
   assert.deepEqual(sv.env, { NOTES_API_KEY: "notes-key" }, "the row names the item");
 
   // the Needs-you queue shows the waiting key as one card per variable, in plain words
   const keys = await call("mcp.keys.waiting", {});
-  assert.deepEqual(keys.servers.map((/** @type {any} */ x) => [x.name, x.plugin, x.waiting.map((/** @type {any} */ w) => w.var)]), [["p-notes-notes", "notes", ["NOTES_API_KEY"]]]);
+  assert.deepEqual(keys.servers.map((/** @type {any} */ x) => [x.name, x.plugin, x.waiting.map((/** @type {any} */ w) => w.var)]), [[ROW, "notes", ["NOTES_API_KEY"]]]);
   const queue = await call("approvals.items", {}).catch(() => null);
-  if (queue) assert.ok(queue.items.some((/** @type {any} */ c) => c.id === "mcp:p-notes-notes:NOTES_API_KEY" && c.title === "notes needs a key: NOTES_API_KEY"), "and it is a card");
+  if (queue) assert.ok(queue.items.some((/** @type {any} */ c) => c.id === `mcp:${ROW}:NOTES_API_KEY` && c.title === "notes needs a key: NOTES_API_KEY"), "and it is a card");
   assert.ok(!JSON.stringify([keys, queue]).includes(VALUE));
 
   // the value is nowhere a record, a version, a listing or a file could hold it
@@ -83,10 +85,50 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.notEqual(v2.ack, dr.ack, "adding a need changes what the card says yes to");
   assert.equal((await call("skills.approve", { name: "notes", level: "personal", version: 2, ack: dr.ack }).catch(e => e)).code, "needs_ack");
   await call("skills.approve", { name: "notes", level: "personal", version: 2, ack: v2.ack, items: { "notes.NOTES_API_KEY": "notes-key-2" } });
-  const probe = await call("mcp.test", { name: "p-notes-notes" });
+  const probe = await call("mcp.test", { name: ROW });
   assert.equal(probe.ok, false, "tried again with the new choice: still no grant, so it waits");
   const after = await call("mcp.servers", {});
-  const sv2 = (Array.isArray(after) ? after : after.servers || []).find((/** @type {any} */ s) => s.name === "p-notes-notes");
+  const sv2 = (Array.isArray(after) ? after : after.servers || []).find((/** @type {any} */ s) => s.name === ROW);
   assert.deepEqual(sv2.env, { NOTES_API_KEY: "notes-key-2" }, "the new choice replaced the old one; NOTES_WORKSPACE has no item yet");
   assert.equal(sv2.state, "needs_key");
+
+  // the card carries the watcher the grant is made to (it names the code), and the grant's words say what is being given and to what
+  const waiting = await call("mcp.keys.waiting", {});
+  const w = waiting.servers[0].waiting.find((/** @type {any} */ x) => x.var === "NOTES_API_KEY");
+  assert.match(w.watcher, new RegExp(`^${ROW}\\.NOTES_API_KEY\\.[0-9a-f]{8}$`));
+  const summary = await /** @type {any} */ (d.registry).tools.get("vault.grant").presence.summary({ name: "notes-key-2", module: "mcp", watcher: w.watcher });
+  assert.match(summary, /^Give notes \(npx -y notes-mcp@1\.2\.3, approved by the owner \(per_/);
+  assert.match(summary, /"notes-key-2" for NOTES_API_KEY\. Only your own calls use it$/);
+  assert.ok(!summary.includes(VALUE));
+  assert.doesNotMatch(await /** @type {any} */ (d.registry).tools.get("vault.grant").presence.summary({ name: "notes-key-2", module: "mcp", watcher: "nobody.NOTES_API_KEY.00000000" }), /^Give /, "a watcher no plugin has gets the plain words");
+});
+
+test("two plugins that would have shared a row are two rows, and one plugin never updates another's row", { timeout: 120_000 }, async t => {
+  const root = fs.realpathSync(tempHome(t));
+  fs.writeFileSync(`${root}/config.json`, JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
+  const d = await start({ root, log: () => {}, presence: present, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "cli"); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  const prefix = "a".repeat(34);
+  const one = plugin(), two = plugin();
+  one.name = `${prefix}-one`; two.name = `${prefix}-two`;
+  for (const p of [one, two]) { const dr = await call("skills.draft", { name: p.name, level: "space", kind: "plugin", body: JSON.stringify(p) }); await call("skills.approve", { name: p.name, level: "space", version: 1, ack: dr.ack, items: { "notes.NOTES_API_KEY": "notes-key" } }); }
+  const servers = await call("mcp.servers", {});
+  const rows = (Array.isArray(servers) ? servers : servers.servers || []).filter((/** @type {any} */ s) => s.auth && s.auth.bound);
+  assert.equal(rows.length, 2, "two rows, not one replaced by the other: " + rows.map((/** @type {any} */ r) => r.name).join(", "));
+  assert.deepEqual(rows.map((/** @type {any} */ r) => r.auth.bound.plugin).sort(), [one.name, two.name].sort());
+
+  // a row of another plugin under the name this plugin would get is never taken over
+  const three = plugin(); three.name = "third";
+  const taken = keyRowName({ plugin: "third", server: "notes", level: "space", scope: "" });
+  await call("mcp.add", { name: taken, transport: "stdio", command: "npx", args: ["-y", "other-mcp@9.9.9"], env: {}, auth: { type: "env", bound: { plugin: "someone-else", level: "space", person: d.kernel.id.owner, owner: true, needs: [{ var: "NOTES_API_KEY", label: "Notes API key" }] } } });
+  const dr3 = await call("skills.draft", { name: "third", level: "space", kind: "plugin", body: JSON.stringify(three) });
+  const refused = await call("skills.approve", { name: "third", level: "space", version: 1, ack: dr3.ack, items: { "notes.NOTES_API_KEY": "notes-key" } }).then(() => null, e => e);
+  assert.ok(refused && /another plugin already uses that server name/.test(refused.message), String(refused && refused.message));
+  const after = (await call("mcp.servers", {}));
+  const kept = (Array.isArray(after) ? after : after.servers || []).find((/** @type {any} */ s) => s.name === taken);
+  assert.equal(kept.command, "npx");
+  assert.deepEqual(kept.args, ["-y", "other-mcp@9.9.9"], "its command is untouched");
+  assert.equal(kept.auth.bound.plugin, "someone-else");
 });

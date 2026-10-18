@@ -173,7 +173,7 @@ export const fromKeys = d => (d && Array.isArray(d.servers) ? d.servers : []).fi
   (Array.isArray(s.waiting) ? s.waiting : []).filter((/** @type {any} */ w) => w && /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(String(w.var))).map((/** @type {any} */ w) => {
     const check = { tool: "mcp.test", input: { name: String(s.name) }, fill: /** @type {string[]} */ ([]) };
     return { id: `mcp:${clean(s.name, 40)}:${w.var}`, kind: "access", title: `${clean(s.plugin, 40) || clean(s.name, 40)} needs a key: ${w.var}`, ...opt("detail", clean(w.label, 60)), at: 0, source: "mcp-keys",
-      facts: { server: clean(s.name, 40), var: String(w.var), watcher: `${clean(s.name, 40)}.${w.var}` },
+      facts: { server: clean(s.name, 40), var: String(w.var), ...(typeof w.watcher === "string" ? { watcher: clean(w.watcher, 120) } : {}) },
       answer: check, answers: [{ label: "Give it a key", open: "/u/vault" }, { label: "Check again", ...check }] };
   }));
 
