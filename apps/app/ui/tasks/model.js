@@ -272,7 +272,8 @@ export function stageGroups(tasks, stages, current) {
     const req = stage ? stageProgress(tasks, stage) : { done: list.filter(isDone).length, total: list.length };
     const none = req.total === 0 && list.length > 0;
     const total = none ? list.length : req.total, done = none ? list.filter(isDone).length : req.done;
-    return { stage, label, tasks: list, done, total, current: isCurrent, complete: total > 0 && done === total };
+    const declined = list.filter((/** @type {any} */ t) => t.state === "declined");
+    return { stage, label, tasks: list, done, total, current: isCurrent, complete: total > 0 && done === total, declined };
   };
   const known = new Set(stages);
   const out = [];

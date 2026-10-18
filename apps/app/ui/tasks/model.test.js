@@ -164,3 +164,12 @@ test("a task In review is a card for its reviewer only, with a Review button and
   const passed = cardModel({ task: { ...task, state: "needs_check", checker: { kind: "person", id: "ana" }, output: { kind: "draft" }, review: { by: { kind: "person", id: "bo" }, type: "person", result: "pass", checklist: [] } }, actors, me: "ana" });
   assert.match(passed.why, /reviewed it/);
 });
+
+test("a declined task stays out of the stage's done count and is listed on the stage", () => {
+  const tasks = [{ id: "a", stage: "Draft", state: "done", title: "A" }, { id: "b", stage: "Draft", state: "declined", title: "B" }];
+  const g = stageGroups(tasks, ["Draft"], "Draft")[0];
+  assert.equal(g.done, 1);
+  assert.equal(g.total, 2);
+  assert.equal(g.complete, false, "the stage cannot finish while one is declined");
+  assert.deepEqual(g.declined.map((t) => t.id), ["b"]);
+});

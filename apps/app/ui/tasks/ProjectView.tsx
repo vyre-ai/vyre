@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
 import { Avatar } from "../components/Avatar";
+import { Button } from "../components/Button";
+import { showToast } from "../components/Toast";
+import { useStore } from "../store";
 import { Icon } from "../components/Icon";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
@@ -33,10 +36,32 @@ function Stages({ world, tasks, stages, current, onOpen }: { world: World; tasks
               {g.current && g.stage ? <Chip>Now</Chip> : null}
               <Text size="caption" tone="label">{g.tasks.length ? `${g.done} of ${g.total} done` : "No tasks yet"}</Text>
             </Pressable>
+            {open && g.declined.length ? <Declined world={world} list={g.declined} /> : null}
             {open ? (g.tasks.length ? g.tasks.map((t) => <TaskRow key={t.id} world={world} task={t} all={tasks} onOpen={() => onOpen(t)} />) : <View className="px-s4 pb-s3"><Text tone="label">No tasks yet.</Text></View>) : null}
           </View>
         );
       })}
+    </View>
+  );
+}
+
+/** "1 declined" under a stage: a declined task stops only itself, and the stage cannot finish until it is reopened and done or skipped. */
+function Declined({ world, list }: { world: World; list: any[] }) {
+  const store = useStore();
+  const act = async (t: any, to: "ready" | "skipped") => {
+    try { await store.move(t.id, to, world.me); showToast(to === "ready" ? `Reopened: ${t.title}.` : `Skipped: ${t.title}.`); } catch (e) { showToast(String((e as Error)?.message || e)); }
+  };
+  return (
+    <View className="gap-s1 border-t border-edge px-s4 py-s2">
+      <Text size="caption" tone="warn" strong>{list.length === 1 ? "1 declined" : `${list.length} declined`}</Text>
+      {list.map((t) => (
+        <View key={t.id} className="flex-row flex-wrap items-center gap-s2">
+          <Text className="min-w-0 flex-1" numberOfLines={1}>{t.title}</Text>
+          <Button size="sm" kind="secondary" label="Reopen" onPress={() => void act(t, "ready")} />
+          <Button size="sm" kind="ghost" label="Skip" onPress={() => void act(t, "skipped")} />
+        </View>
+      ))}
+      <Text size="caption" tone="label">The stage waits until this is reopened and done, or skipped.</Text>
     </View>
   );
 }

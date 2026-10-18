@@ -48,6 +48,13 @@ export function TokenField({ label, name, value, onChange, options, placeholder,
     p.appendChild(x);
     return p;
   };
+  // The placeholder shows while the box is empty (a contenteditable has none of its own): the text comes from data-placeholder.
+  useEffect(() => {
+    const id = "vyre-token-field-css";
+    let st = document.getElementById(id);
+    if (!st) { st = document.createElement("style"); st.id = id; document.head.appendChild(st); }
+    st.textContent = `[data-placeholder]:empty::before{content:attr(data-placeholder);color:${color["text-2"]};opacity:.7;pointer-events:none}`;
+  }, [color]);
   useEffect(() => { const el = box.current; if (el && read(el) !== value) draw(el, value); }, [value, options]); // eslint-disable-line react-hooks/exhaustive-deps
   const changed = () => onChange(read(box.current));
   const put = (token: string) => {
