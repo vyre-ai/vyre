@@ -1,6 +1,8 @@
 // @ts-check
 // Durable transcript cache per chat: frames are written as they are folded so "offline" always has something to show.
 
+import { messageIndex } from "./message-index.js";
+
 const PREFIX = "vyre.chat.cache.";
 const KEY = (/** @type {string} */ session) => `${PREFIX}${session}`;
 const MAX = 400;
@@ -32,8 +34,9 @@ export function hasSessionCache(session) {
   return Boolean(c && c.frames.length);
 }
 
-/** Drop every cached chat transcript (sign-out: nothing readable stays in the browser store). */
+/** Drop every cached chat transcript (sign-out: nothing readable stays in the browser store), and the on-device message index with it. */
 export function clearAllSessionCaches() {
+  messageIndex.clear();
   try {
     if (typeof localStorage === "undefined") return;
     const drop = [];
