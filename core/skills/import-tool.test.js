@@ -4,7 +4,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
-import { crc32 } from "../vault/zip.js";
+import { crc32 } from "../../lib/zip.js";
 import fs from "node:fs";
 import { start } from "../daemon/index.js";
 import { tempHome, present, asOwner } from "../../test/helpers.js";

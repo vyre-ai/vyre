@@ -1,6 +1,7 @@
 // @ts-check
 // The AI accounts step: which providers can be added, what an account is called, and which provider an API key belongs to. An account is a name and a provider; a person may have several of one kind. Pure.
 import { AIS } from "../../../../lib/ai-ids.js";
+import { anthropicKind } from "../../src/store-core/credential-shapes.js";
 
 /** The words of the step. */
 export const ACCOUNTS_COPY = Object.freeze({
@@ -39,6 +40,9 @@ export function labelProblem(label, taken) {
   return "";
 }
 
+/** Whether a typed key starts the way the table says an Anthropic key does: the table's own shape is asked, with the first characters padded out to a whole key, since a key still being typed is short. @param {string} k */
+const isAnthropicPrefix = k => anthropicKind(k.slice(0, 10).toLowerCase().padEnd(40, "a")) !== null;
+
 /**
  * What an API key is, from its prefix: the kind the server's key tool takes (sessions.accounts.key), the provider mark to show, a name to offer, and for xAI the one address it is sent to. Anthropic keys start
  * sk-ant-, OpenRouter keys sk-or-, xAI keys xai-, other OpenAI-style keys sk-. Null when the prefix says nothing.
@@ -46,7 +50,7 @@ export function labelProblem(label, taken) {
  */
 export function keyKindOf(key) {
   const k = String(key || "").trim();
-  if (/^sk-ant-/i.test(k)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
+  if (isAnthropicPrefix(k)) return { kind: "anthropic-compatible", provider: "claude", label: "Claude key" };
   if (/^sk-or-/i.test(k)) return { kind: "openrouter", provider: "openrouter", label: "OpenRouter key" };
   if (/^xai-/i.test(k)) return { kind: "openai-compatible", provider: "grok", label: "Grok key", base_url: "https://api.x.ai/v1" };
   if (/^sk-/i.test(k)) return { kind: "openai-compatible", provider: "codex", label: "OpenAI key" };

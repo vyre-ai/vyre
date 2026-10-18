@@ -17,7 +17,7 @@
 //     carry a value. JSON.parse's own message quotes the input, so it is not passed on.
 
 import path from "node:path";
-import { unzip } from "./zip.js";
+import { unzip } from "../../lib/zip.js";
 import { readEnv } from "./envfiles.js";
 import { parseMore, parseMoreZip, moreCSVFormat, moreJSONFormat, looksLikeKeeperCSV, isKdbx, KDBX_ERROR } from "./import-more.js";
 

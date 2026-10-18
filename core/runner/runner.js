@@ -165,6 +165,8 @@ export function createRunner(o) {
       const reason = why === "expired" ? "lease-expired" : why === "slept" ? "asleep" : why === "released" ? "you" : null;
       if (reason && o.requestServer) for (const s of [...live.keys()]) { try { await moveToServer(s, reason); } catch { /* the server takes it after the lapse */ } }
       for (const s of [...live.keys()]) await stop(s, { why: "teardown" });
+      // The lease state turns "locked" before this runs, so a computer that is back in contact while the sessions above were stopping holds the key again: the workspace it just opened is not ours to close.
+      if (lease.state === "open") return;
       if (await lockHard()) { emit({ type: "locked", why }); } else { emit({ type: "lock-pending", why }); chase(why === "revoked" ? "revoked" : why); }
     },
     async onRevoke() {
@@ -420,7 +422,7 @@ export function createRunner(o) {
     /** Access ended: lock and delete. Called when the kernel withdraws an offer or removes the member, not by a tool. */
     async revoke() { await lease.revoke(); },
     /** Ask the vault again. If access ended while this computer was locked or offline, the workspace is deleted now. */
-    async contact() { const r = await lease.acquire(); if (r.ok) { stopChase(); if (!mnt) await open(); } return r; },   // the lease is held again: a background closing of the old one is over
+    async contact() { const r = await lease.acquire(); if (r.ok) { stopChase(); if (!mnt || !driver.isMounted(dir)) await open(); } return r; },   // the lease is held again: a background closing of the old one is over
     moveToServer,
     /** The sessions running here, with what each uses now. */
     /**

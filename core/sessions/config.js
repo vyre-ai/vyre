@@ -102,4 +102,4 @@ export function claudeBin(dir, cfg) {
 }
 
 /** The plugin layout the skill library lays down (a provider fact, kept with the drivers). */
-export { PLUGIN_LAYOUT } from "./drivers/plugin-layout.js";
+export { PLUGIN_LAYOUT } from "../../lib/plugin-layout.js";

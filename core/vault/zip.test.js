@@ -4,7 +4,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
-import { unzip, crc32 } from "./zip.js";
+import { unzip, crc32 } from "../../lib/zip.js";
 
 /**
  * A minimal zip writer, enough to build good and deliberately broken archives.

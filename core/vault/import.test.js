@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
 import { parse, parseFile, parseCSV, merge, plan } from "./import.js";
-import { crc32 } from "./zip.js";
+import { crc32 } from "../../lib/zip.js";
 import { envEntries } from "./envfiles.js";
 
 // A password with a comma, a quote and a newline, as it appears once CSV-quoted.

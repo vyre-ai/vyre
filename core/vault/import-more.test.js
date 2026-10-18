@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import zlib from "node:zlib";
 import { parse, parseFile } from "./import.js";
 import { readXML, expiry } from "./import-more.js";
-import { crc32 } from "./zip.js";
+import { crc32 } from "../../lib/zip.js";
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SEED = "JBSWY3DPEHPK3PXP";

@@ -3,7 +3,7 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { placement, render, routePlugin, harnessOf } from "../lib/skill-adapters.js";
-import { SKILL_HOMES } from "../core/sessions/drivers/skill-homes.js";
+import { SKILL_HOMES } from "../lib/skill-homes.js";
 
 const SKILL = { name: "write-a-watcher", description: "Use when they want something watched.", text: "---\nname: write-a-watcher\ndescription: Use when they want something watched.\n---\n\n# Write a watcher\n\nSteps.\n", body: "# Write a watcher\n\nSteps.\n" };
 

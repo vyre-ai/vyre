@@ -4,7 +4,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
-import { crc32 } from "../vault/zip.js";
+import { crc32 } from "../../lib/zip.js";
 import { parseUpload, worksWith, IMPORT_LIMITS } from "./import.js";
 
 /** @param {{ name: string, data: string | Buffer, link?: boolean }[]} entries */

@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRegistryPage, parsePlugins, mergeEntries, diffMarkdown } from "../lib/mcp-catalog.js";
 import { pullRegistry, readPluginRepo, annotateProbes, REGISTRY } from "../lib/mcp-catalog-pull.js";
-import { PLUGIN_LAYOUT } from "../core/sessions/drivers/plugin-layout.js";
+import { PLUGIN_LAYOUT } from "../lib/plugin-layout.js";
 import { probeServer } from "../lib/mcp-probe.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
