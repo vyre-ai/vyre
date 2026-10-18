@@ -166,7 +166,7 @@ export function createGateway(cfg) {
     if (!seal) throw new KernelError("unavailable", "sealing is not wired");
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`);
-    let defs; try { defs = await cfg.store.types(); } catch (e) { throw new KernelError("unavailable", "the store could not list its types"); }
+    let defs; try { defs = await cfg.store.types(); } catch (e) { throw new KernelError("unavailable", (e && e.code === "unavailable" && e.message ? String(e.message) : "the store could not list its types")); }
     const def = defs.find((/** @type {any} */ t) => t.name === i.type);
     const f = def && def.fields.find((/** @type {any} */ x) => x.name === i.field);
     if (!def || !f) throw new KernelError("not_found", "no such field");
@@ -283,7 +283,7 @@ export function createGateway(cfg) {
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
-      try { const all = await cfg.store.types(); if (!Array.isArray(all)) return all; const keep = []; for (const t of all) if (!t || await records.mayKeep(chain, t.name)) keep.push(t); return keep; } catch (e) { throw new KernelError("unavailable", "the store could not list its types", String(e && e.message)); }
+      try { const all = await cfg.store.types(); if (!Array.isArray(all)) return all; const keep = []; for (const t of all) if (!t || await records.mayKeep(chain, t.name)) keep.push(t); return keep; } catch (e) { throw new KernelError("unavailable", (e && e.code === "unavailable" && e.message ? String(e.message) : "the store could not list its types"), String(e && e.message)); }
     },
     /** The action registry: what each action is and how risky (ActionDef). */
     actions: () => [...authorizer.actions.values()],
