@@ -48,8 +48,8 @@ test("the session's own list: slashes dropped, sources kept, the composer's own 
     { name: "two words", description: "not a name" },
     null,
   ]);
-  assert.deepEqual(got.map(c => [c.name, c.source]), [["compact", "session"], ["intake-check", "project"], ["pdf", "skill"], ["model", "session"], ["rewind", "session"], ["undo", "session"], ["find", "session"], ["move", "vyre"], ["goal", "session"], ["skills", "vyre"]]);
-  assert.equal(got[1].hint, "[form]");
+  assert.deepEqual(got.map(c => [c.name, c.source]), [["new", "vyre"], ["threads", "vyre"], ["fork", "vyre"], ["flow", "vyre"], ["agent", "vyre"], ["fresh", "vyre"], ["where", "vyre"], ["compact", "session"], ["intake-check", "project"], ["pdf", "skill"], ["rename", "session"], ["model", "session"], ["rewind", "session"], ["undo", "session"], ["find", "session"], ["move", "vyre"], ["goal", "session"], ["skills", "vyre"]]);
+  assert.equal(got[8].hint, "[form]");
   assert.equal(got.find(c => c.name === "model")?.local, "model");
   assert.deepEqual(normalizeCommands({}).map(c => c.name), COMMANDS.map(c => c.name), "an older box's {}");
   assert.deepEqual(normalizeCommands([]).map(c => c.name), COMMANDS.map(c => c.name));
@@ -61,7 +61,13 @@ test("the session's own list: slashes dropped, sources kept, the composer's own 
 
 test("threads.commands' answer object reads as its list; an empty one (not running) is the static list", () => {
   const got = normalizeCommands({ thread: "t1", commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }, { name: "review-intake", description: "", argumentHint: "" }] });
-  assert.deepEqual(got.slice(0, 2).map(c => [c.name, c.hint ?? null, c.source]), [["compact", "<instructions>", "session"], ["review-intake", null, "session"]]);
+  assert.deepEqual(got.slice(7, 9).map(c => [c.name, c.hint ?? null, c.source]), [["compact", "<instructions>", "session"], ["review-intake", null, "session"]]);
+  assert.deepEqual(got.slice(0, 2).map(c => c.name), ["new", "threads"], "/new first, /threads second");
   assert.ok(got.some(c => c.name === "model" && c.local === "model"), "the composer's own are added");
   assert.deepEqual(normalizeCommands({ thread: "t1", commands: [], note: "not running" }).map(c => c.name), COMMANDS.map(c => c.name));
+});
+
+test("/rename is the composer's own: it renames this thread", () => {
+  assert.equal(COMMANDS.find(c => c.name === "rename")?.local, "rename");
+  assert.equal(COMMANDS.find(c => c.name === "rename")?.hint, "<name>");
 });

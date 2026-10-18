@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { convosFrom, convoChips, convosShown, convoKindWord } from "./convo-model.js";
+import { convosFrom, convoChips, convosShown, convoKindWord, convoSections, agentLine, summaryLine, CONVO_TYPES, placeOf } from "./convo-model.js";
 
 const chat = (o) => ({ id: "c", title: "T", project: "", people: [], agents: [], models: [], providers: [], status: "idle", last: 0, line: "", asks: 0, unread: 0, open: true, pinned: "", ...o });
 const agent = (o) => ({ name: "kit", role: "Drafts replies", projects: [], status: "Idle", ...o });
@@ -79,4 +79,46 @@ test("an agent row carries the look the agent was given, and none when it has no
   const items = convosFrom({ chats: [], agents: [agent({ name: "rex", look: "s3~c5" }), agent({ name: "kit" })], people: [] });
   assert.equal(items.find((i) => i.title === "rex").look, "s3~c5");
   assert.equal(items.find((i) => i.title === "kit").look, "");
+});
+
+test("sections follow where a chat lives: Pinned, Personal, Space chats, Projects, Flows; an empty one is left out; the filter row lists the five", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "p", title: "Assistant", agents: ["Assistant"], pinned: "assistant" }), chat({ id: "d", title: "Dana", people: ["Dana"], last: 3 }), chat({ id: "g", title: "Spring", people: ["Sam", "Dana"], agents: ["Assistant"], last: 9 }),
+      chat({ id: "e", title: "Engineer", agents: ["Engineer"], last: 5 }), chat({ id: "pr", title: "Northwind", project: "Northwind", people: ["Sam"], last: 1 })],
+    agents: [agent({ name: "Assistant" }), agent({ name: "Engineer", threads: [{ title: "Pricing page", live: true }, { title: "Signup form" }, { title: "Old" }] }), agent({ name: "Scout", threads: [{ title: "Lead", at: 7 }] })], people: [],
+    flows: [{ id: "f1", title: "New lead follow-up", line: "2 runs", runs: 2, needs: 1 }],
+  });
+  assert.deepEqual(convoSections(items).map((s) => [s.id, s.rows.map((r) => r.title)]), [["pinned", ["Assistant"]], ["personal", ["Scout", "Engineer"]], ["space", ["Spring", "Dana"]], ["projects", ["Northwind"]], ["flows", ["New lead follow-up"]]]);
+  assert.deepEqual(CONVO_TYPES.map((t) => t.id), ["all", "personal", "space", "projects", "flows"]);
+  assert.deepEqual(convosShown(items, { project: "all", query: "", type: "personal" }).map((c) => c.title).sort(), ["Assistant", "Engineer", "Scout"], "the pinned Assistant is Personal");
+  assert.deepEqual(convosShown(items, { project: "all", query: "", type: "flows" }).map((c) => c.kind), ["flow"]);
+  assert.deepEqual(convosShown(items, { project: "all", query: "", type: "space" }).map((c) => c.title).sort(), ["Dana", "Spring"]);
+});
+
+test("a row's own place wins; without one it is worked out from who is in the chat", () => {
+  assert.equal(placeOf({ people: [], agents: ["kit"] }), "personal");
+  assert.equal(placeOf({ people: ["Dana"], agents: [] }), "space");
+  assert.equal(placeOf({ people: ["Dana"], agents: [], project: "Northwind" }), "projects");
+  assert.equal(placeOf({ place: "personal", people: ["Dana"], agents: [] }), "personal");
+  assert.equal(placeOf({ place: "project", people: [], agents: [] }), "projects");
+});
+
+test("an agent's row says its live thread (and that it needs you) or its latest, and how many threads it has", () => {
+  assert.equal(agentLine([{ title: "Pricing page", live: true }, { title: "Signup form" }, { title: "Old" }], "role"), "Pricing page \u00b7 3 threads");
+  assert.equal(agentLine([{ title: "Book the photographer", live: true, needs: true }], "role"), "Book the photographer \u00b7 needs you");
+  assert.equal(agentLine([{ title: "Lead: Hana" }, { title: "Older" }], "role"), "Lead: Hana \u00b7 2 threads");
+  assert.equal(agentLine([], "Builds and fixes things"), "Builds and fixes things");
+  const eng = convosFrom({ chats: [chat({ id: "e", title: "Engineer", agents: ["Engineer"] })], agents: [agent({ name: "Engineer", threads: [{ title: "A", live: true }, { title: "B" }] })], people: [] })[0];
+  assert.equal(eng.sub, "A \u00b7 2 threads");
+  assert.equal(eng.threads, 2);
+});
+
+test("an agent's line from work.chat.summary: its live thread (needs you) or latest, and its thread count", () => {
+  assert.equal(summaryLine({ count: 3, latest: "Signup form", live: "Pricing page" }, "role"), "Pricing page \u00b7 3 threads");
+  assert.equal(summaryLine({ count: 1, live: "Book the photographer", needs: true }, "role"), "Book the photographer \u00b7 needs you");
+  assert.equal(summaryLine({ count: 2, latest: "Lead: Hana" }, "role"), "Lead: Hana \u00b7 2 threads");
+  assert.equal(summaryLine({ count: 0 }, "Builds things"), "Builds things");
+  assert.equal(summaryLine(undefined, "Builds things"), "Builds things");
+  const row = convosFrom({ chats: [], agents: [agent({ name: "Engineer", summary: { count: 4, latest: "A", at: 9 } })], people: [] })[0];
+  assert.deepEqual([row.sub, row.threads, row.last], ["A \u00b7 4 threads", 4, 9]);
 });
