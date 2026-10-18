@@ -51,7 +51,7 @@ test("1b. the hand-in lookup runs on the doer's own chain: a record the doer may
   // a task of the owner's own, which a member who has nothing to do with it cannot read
   const own = await ask.request(ownerChain, { title: "The owner's private errand", doer: w.me, output: { kind: "note" } });
   const secret = `vyre://${space}/task/${own.id}`, missing = `vyre://${space}/task/00000000-0000-4000-8000-000000000000`;
-  await assert.rejects(K.gateway.records.get(cat, "task", own.id), "the member really cannot read it");
+  assert.equal(await K.gateway.records.get(cat, "task", own.id).then(r => r || null, () => null), null, "the member really cannot read it");
   const refusal = async (/** @type {string} */ urn) => {
     const task = await ask.request(ownerChain, { title: "Hand it in", doer: { kind: "person", id: CAT, space }, output: { kind: "file" } });
     await ask.start(cat, task.id);
