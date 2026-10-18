@@ -21,7 +21,7 @@ export function chatToolsSource(call: Call) {
     /** Say when the AI answers in a shared chat: "every" message or only when "mention"ed. The chat shows the change to everyone as a line. */
     replyMode: (chat: string, mode: "every" | "mention") => guard(async () => { await ask("stream.reply-mode", { chat, mode }); return { ok: true }; }),
     /** Give this thread a new name (/rename): the title everywhere. */
-    rename: (thread: string, name: string) => guard(async () => { await ask("threads.rename", { thread, name }); return { ok: true }; }),
+    rename: (thread: string, name: string) => guard(async () => { await ask("work.chat.rename", { chat: thread, title: name }); return { ok: true }; }),
     /** "Fork this chat": a copy from here, or from one message when `at` names it. Answers the new thread. */
     fork: chatToolsFork,
     /** "Fork and continue on the server / this Mac": the copy, then the copy moved (runner.move). Answers the new thread and what happened to it, in words. */
