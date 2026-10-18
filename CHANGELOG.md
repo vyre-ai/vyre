@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2
 
+- feat(flows): a value in a step's text can carry a fallback, `{path | fallback}` (quotes allowed), stored as `coalesce(path, "fallback")` and read back the same. A value picked from the other lane of an If is inserted with the fallback "n/a", so the step reads it safely after the lanes rejoin.
 - feat(flows): a run's step has "Retry from this step" (it and the steps after it run again). It is off, with the sentence "That run already sent something; start a new run to send again.", on steps at or before one that already sent something outward.
 - fix(flows): the Else lane of an If is called Otherwise.
 - feat(flows): on a wide screen a step's settings open in a panel docked beside the steps, with the selected card marked, so the Flow stays in view while a step is edited (on a phone they still open in the card); Move up, Move down, Duplicate and Remove are in the panel.

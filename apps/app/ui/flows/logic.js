@@ -339,11 +339,11 @@ const unlit = (p) => p.slice(1, -1).replace(/\\(.)/gs, (_, c) => (c === "n" ? "\
 const FORMATS = ["date", "time", "datetime", "weekday", "weekdaytime", "iso"];
 /** `{ref}`, `{ref + 2 hours}`, `{ref - 1 day}`, each optionally `as date`, `as time`, `as datetime`, `as weekday`, `as weekdaytime` or `as iso`. The ref is a field, `{now}` or `{today}`. */
 /** Braces doubled are braces and nothing else: `{{name}}` prints as {name} and fills nothing. The one place that reads and writes it (the author's escape for a literal token). */
-const INNER = "[a-z0-9_.]+(?: [+-] \\d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?";
+const INNER = "[a-z0-9_.]+(?: [+-] \\d{1,4} (?:minutes?|hours?|days?|weeks?|months?))?(?: as (?:date|time|datetime|weekday|weekdaytime|iso))?(?: \\| [^{}]+)?";
 const unesc = (/** @type {string} */ s) => s.replace(new RegExp(`\\{\\{(${INNER})\\}\\}`, "gi"), "{$1}");
 /** Text as the author sees it: a brace that would be read as a token is shown doubled, so what was stored as plain text stays plain text when the Flow is saved again. */
 const esc = (/** @type {string} */ s) => s.replace(new RegExp(`(?<!\\{)\\{(${INNER})\\}(?!\\})`, "gi"), "{{$1}}");
-const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?\}(?!\})/gi;
+const TOKEN = /(?<!\{)\{([a-z0-9_.]+)(?: ([+-]) (\d{1,4}) (minutes?|hours?|days?|weeks?|months?))?(?: as (date|time|datetime|weekday|weekdaytime|iso))?(?: \| ([^{}]+))?\}(?!\})/gi;
 /** Values every Flow can read: the time now and today's date, printed in the Space's zone. */
 const HELPERS = /** @type {Record<string, string>} */ ({ now: "datetime(now, tz)", today: "date(now, tz)",
   // what a run knows about itself (kernel/flows/runner.js scope `run`): its number among the Flow's, the Flow's name, who approved it, the Space's name, and the person who started it ("your name")
@@ -357,7 +357,12 @@ let DATE_TOKENS = new Map();
  * call, a time moved by an amount or printed in a named format as `format(ref, "weekdaytime", tz, -1, "day")`, anything else as text.
  * @param {string} t @param {string} [sign] @param {string} [n] @param {string} [unit] @param {string} [fmt]
  */
-const partExpr = (t, sign, n, unit, fmt) => {
+/** The fallback text of a `{path | fallback}` token: trimmed, with surrounding double quotes taken off. @param {string} f */
+const fbText = (f) => { const s = String(f).trim(); return s.length > 1 && s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s; };
+/** A fallback as the author sees it: quoted when a bare one would lose a space at an end or hold a bar. @param {string} f */
+const fbShow = (f) => (/^\s|\s$|\|/.test(f) ? `"${f}"` : f);
+const partExpr = (t, sign, n, unit, fmt, fb) => {
+  if (fb !== undefined && !sign && !fmt && t !== "now" && t !== "today" && !HELPERS[t]) return `text(coalesce(${tokenExpr(t)}, ${lit(fbText(fb))}))`;
   const base = t === "now" || t === "today" ? "now" : tokenExpr(t);
   const kind = t === "now" || t === "today" ? "datetime" : DATE_TOKENS.get(t);
   if (!sign && !fmt) {
@@ -394,15 +399,17 @@ export const val = (t) => {
   const s = String(t ?? "");
   const m = /^\{([a-z0-9_.]+)\}$/i.exec(s.trim());
   if (m) return { expr: HELPERS[m[1]] || tokenExpr(m[1]) };
+  const mf = /^\{([a-z0-9_.]+) \| ([^{}]+)\}$/i.exec(s.trim());
+  if (mf && !HELPERS[mf[1]] && mf[1] !== "now" && mf[1] !== "today") return { expr: `coalesce(${tokenExpr(mf[1])}, ${lit(fbText(mf[2]))})` };
   if (!TOKEN.test(s)) { TOKEN.lastIndex = 0; return typeof t === "string" ? unesc(t) : t; }
   TOKEN.lastIndex = 0;
   const parts = [];
   let at = 0;
-  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(unesc(s.slice(at, x.index)))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5])); at = x.index + x[0].length; }
+  for (const x of s.matchAll(TOKEN)) { if (x.index > at) parts.push(lit(unesc(s.slice(at, x.index)))); parts.push(partExpr(x[1], x[2], x[3], x[4], x[5], x[6])); at = x.index + x[0].length; }
   if (at < s.length) parts.push(lit(unesc(s.slice(at))));
   return { expr: parts.join(" + ") };
 };
-const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|first\\([a-z0-9_.]+\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
+const PART = '(?:"(?:[^"\\\\]|\\\\.)*"|text\\(coalesce\\([a-z0-9_.]+, "(?:[^"\\\\]|\\\\.)*"\\)\\)|(?:text|date|datetime)\\([a-z0-9_.]+(?:, tz)?\\)|first\\([a-z0-9_.]+\\)|format\\([a-z0-9_.]+, "[a-z]+", (?:tz|"UTC")(?:, -?\\d+, "[a-z]+")?\\))';
 const TEMPLATE_PART = new RegExp(PART, "g");
 const TEMPLATE = new RegExp(`^${PART}(?: \\+ ${PART})*$`);
 /** The token a stored reference reads as: `now`, `trigger.x` as {x}, `steps.`/`event.`/`row.`/`item.` as written, or null. @param {string} n */
@@ -421,6 +428,8 @@ function templateText(e) {
       out += `{${ref}${f[4] === undefined ? "" : ` ${Number(f[4]) < 0 ? "-" : "+"} ${Math.abs(Number(f[4]))} ${f[5]}`}${f[2] === dflt ? "" : ` as ${f[2]}`}}`;
       continue;
     }
+    const cf = /^text\(coalesce\(([a-z0-9_.]+), ("(?:[^"\\]|\\.)*")\)\)$/.exec(p);
+    if (cf) { const ref = refToken(cf[1]); if (!ref || ref === "now") return null; out += `{${ref} | ${fbShow(unlit(cf[2]))}}`; continue; }
     const call = /^(text|date|datetime|first)\(([a-z0-9_.]+)/.exec(p) || [];
     const n = call[2] || "";
     if (n === "now" && call[1] !== "text" && call[1] !== "first") out += call[1] === "date" ? "{today}" : "{now}";
@@ -432,7 +441,7 @@ function templateText(e) {
 /** `unval` for an address or number: a main-address read comes back as its {token}. @param {any} v */
 const unvalAddr = (v) => { const e = exprOf(v); const m = e && /^first\((?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))\)$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : unval(v); };
 /** The other way: what a stored value says when it is shown for editing. @param {any} v */
-const unval = (v) => { const e = exprOf(v); if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
+const unval = (v) => { const e = exprOf(v); { const cf = e && /^coalesce\(([a-z0-9_.]+), ("(?:[^"\\]|\\.)*")\)$/.exec(e); if (cf) { const ref = refToken(cf[1]); if (ref && ref !== "now") return `{${ref} | ${fbShow(unlit(cf[2]))}}`; } } if (e === HELPERS.now) return "{now}"; if (e === HELPERS.today) return "{today}"; { const h = Object.keys(HELPERS).find((k) => HELPERS[k] === e && k !== "now" && k !== "today"); if (h) return `{${h}}`; } const m = e && /^(?:trigger\.([a-z0-9_.]+)|((?:steps|event|row|item|error)\.[a-z0-9_.]+))$/i.exec(e); return m ? `{${m[1] ? viaTrigger(m[1]) : m[2]}}` : e ? templateText(e) : typeof v === "string" ? esc(v) : null; };
 
 /** Whether what starts the Flow is itself a record (a created or stage trigger), so steps can use "the record that started the Flow". @param {Trigger} t */
 export const isRecordTrigger = (t) => t.kind === "created" || t.kind === "changed" || t.kind === "stage";

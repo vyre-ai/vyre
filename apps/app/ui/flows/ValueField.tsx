@@ -15,13 +15,13 @@ export function ValueField({ label, name, value, onChange, placeholder, help, dr
 }) {
   const groups = useMemo(() => insertList(draft, stepId, options), [draft, stepId, options]);
   const table = useMemo(() => aliasTable(groups), [groups]);
-  const sources = groups.flatMap((g) => g.items.filter((i) => i.known).map((i) => ({ token: i.token, words: `${g.object ? `${g.object} \u00b7 ` : ""}${i.label}${g.maybe ? ` (only on the ${g.maybe} path)` : ""}` })));
+  const sources = groups.flatMap((g) => g.items.filter((i) => i.known).map((i) => ({ token: i.token, maybe: Boolean(g.maybe), words: `${g.object ? `${g.object} \u00b7 ` : ""}${i.label}${g.maybe ? ` (only on the ${g.maybe} path; reads n/a if that path did not run)` : ""}` })));
   return (
     <View className="gap-s1">
       <Field label={label} name={name} value={toAliasText(value, table)} onChangeText={(v) => onChange(toPathText(v, table))} placeholder={placeholder} help={help} multiline={multiline} lines={lines} />
       {sources.length ? (
         <View className="flex-row">
-          <Menu align="start" trigger={<Button kind="ghost" size="sm" icon="mention" label="Insert a value" />} items={sources.map(({ token, words }) => ({ label: words, onPress: () => onChange(appendToken(value, token)) }))} />
+          <Menu align="start" trigger={<Button kind="ghost" size="sm" icon="mention" label="Insert a value" />} items={sources.map(({ token, words, maybe }) => ({ label: words, onPress: () => onChange(appendToken(value, maybe ? token.replace(/\}$/, " | n/a}") : token)) }))} />
         </View>
       ) : null}
     </View>
