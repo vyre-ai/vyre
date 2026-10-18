@@ -8,6 +8,9 @@ import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
 import { groupFlows, healthRow, listWaits } from "./real-model.js";
+import { callT } from "../../src/real/call-tool";
+import { attentionSource, type AttentionRow } from "./attention-source";
+import { answersFor, rowWords } from "./attention-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
 export function RealFlows() {
@@ -16,6 +19,16 @@ export function RealFlows() {
   const [flows, setFlows] = useState<RealFlow[] | null>(null);
   const [err, setErr] = useState("");
   const [wish, setWish] = useState("");
+  const att = attentionSource(callT);
+  const [rows, setRows] = useState<AttentionRow[]>([]);
+  const [why, setWhy] = useState<{ run: string; text: string } | null>(null);
+  const loadRows = () => { void att.list().then(setRows); };
+  useEffect(loadRows, []);
+  const answer = async (run: string, action: "retry" | "skip" | "stop" | "advance", reason?: string) => {
+    const o = await att.settle(run, action, reason);
+    if (o.message) showToast(o.message);
+    if (o.refresh) { setWhy(null); loadRows(); load(); }
+  };
   const load = () => { setErr(""); listReal().then(setFlows).catch((e) => setErr(e instanceof Error ? e.message : "Flows did not answer.")); };
   useEffect(load, []);
   const needsYou = (flows ?? []).filter((f) => listWaits(f) || healthRow(f).chip);
@@ -28,10 +41,16 @@ export function RealFlows() {
         <Field label="What should happen on its own?" value={wish} onChangeText={setWish} placeholder="For example, when a form comes in, tell me and add it to Records" onSubmit={() => wish.trim() && openEngineer(router, { source: "flow", words: wish.trim() })} />
         <View className="flex-row"><Button kind="primary" size="sm" label="Let Engineer draft it" disabled={!wish.trim()} onPress={() => openEngineer(router, { source: "flow", words: wish.trim() })} /></View>
       </View>
-      {needsYou.length ? (
+      {needsYou.length || rows.length ? (
         <View className="gap-s2 pb-s4">
           <Text size="caption" strong tone="label">Needs you</Text>
-          <Card flush>{needsYou.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}<Row dense title={f.sentence || f.name} sub={listWaits(f) ? "Waiting for you" : healthRow(f).chip || ""} chevron onPress={() => router.push(`/u/flows/${f.id}` as never)} /></View>)}</Card>
+          <Card flush>{rows.map((r, i) => (
+            <View key={r.run}>{i ? <Divider /> : null}
+              <Row dense title={rowWords(r).title} sub={rowWords(r).sub}
+                end={<View className="flex-row gap-s2">{answersFor(r).map((a) => <Button key={a.action} kind="ghost" size="sm" label={a.label} onPress={() => (a.reason ? setWhy({ run: r.run, text: "" }) : void answer(r.run, a.action))} />)}</View>} />
+              {why && why.run === r.run ? <View className="gap-s2 p-s3"><Field label="Why move it on?" value={why.text} onChangeText={(text) => setWhy({ run: r.run, text })} /><View className="flex-row"><Button kind="primary" size="sm" label="Move on" disabled={!why.text.trim()} onPress={() => void answer(r.run, "advance", why.text)} /></View></View> : null}
+            </View>
+          ))}{needsYou.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}<Row dense title={f.sentence || f.name} sub={listWaits(f) ? "Waiting for you" : healthRow(f).chip || ""} chevron onPress={() => router.push(`/u/flows/${f.id}` as never)} /></View>)}</Card>
         </View>
       ) : null}
       {err ? <Card flush><ErrorState title="Flows did not load" reason={err} retry={load} /></Card> : null}
