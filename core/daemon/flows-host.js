@@ -106,7 +106,7 @@ export function createFlowsHost(o) {
     // An agent may approve another agent's work only while the person who made it is an owner or an admin: the kernel asks the agents module, live, who made the agent.
     if (typeof k.setAgentMaker === "function" && typeof o.callModule === "function") k.setAgentMaker(async (/** @type {string} */ id) => { const r = await o.callModule("agents.maker", { agent: id }, space); return r && typeof r.made_by === "string" ? r.made_by : null; });
     // A task pins a Space skill as the chain asking: the daemon's one path into skills.pin, with that chain as the call's proven chain. Set once; a Space with no skill library answers "not one of this Space's skills".
-    if (typeof k.setSkillPin === "function" && typeof o.pinSkill === "function") k.setSkillPin(async (/** @type {string} */ id, /** @type {any} */ chain) => o.pinSkill(space, k, id, chain));
+    if (typeof k.setSkillPin === "function" && typeof o.pinSkill === "function") { try { k.setSkillPin(async (/** @type {string} */ id, /** @type {any} */ chain) => o.pinSkill(space, k, id, chain)); } catch (e) { o.log(`the skill pin was already set for ${space}; kept as it was`); } }
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space });
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
