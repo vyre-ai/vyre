@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(test): the proof stand-ins' names directory picked a free port and released it before the directory bound it, so a test beside it could take the port (host-pairing-real.test.js: "Cannot reach the names directory right now."). Each start now waits for its own process to answer twice, a moment apart, and takes a new port when it exits first.
 - fix(kernel): the event bus no longer throws out of its pump when the log is closed. A handler that failed (or a retry that came due) as the kernel stopped read the log again in its retry path, got "database is not open" and left an unhandled rejection that failed whichever test was running (member-read-scope, needs, threads answer on the v0.6.1 node).
 
 - test(computers-proof): run.sh sets PROOF_ISOLATION=1, so security-live runs proof steps 4g (one computer cannot reach another's ports) and 4h (the agent uid holds no capability). PROOF_KILL stays off.
