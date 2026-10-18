@@ -999,3 +999,42 @@ test("an approval after a review is bound to the review: a proof made without it
   assert.equal(done.state, "done");
   assert.equal(r.released.length, 1);
 });
+
+test("tasks.update: only the doer or a helper, only while the task is theirs to work, with details, a progress note and outputs; the log holds hashes, not text", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), helpers: [actor("person", BOB)] }));
+  await r.tasks.start(asIntake(), t.id);
+  const u = await r.tasks.update(asIntake(), t.id, { details: { client: "Rivera" }, note: "Gathered the Zebra Quarry figures", outputs: ["vyre://" + SPACE + "/file/f1"] });
+  assert.deepEqual(u.details, { client: "Rivera" });
+  assert.equal(u.outputs.length, 1);
+  assert.equal(u.activity.at(-1).note, "Gathered the Zebra Quarry figures");
+  assert.ok(!JSON.stringify(r.log.read()).includes("Zebra Quarry"), "free text stays out of the log");
+  assert.ok(r.log.read({ type: "task.updated" })[0].data.note_hash);
+  // a helper may; another person, the reviewer and the owner who gave it may not
+  assert.ok((await r.tasks.update(bob(), t.id, { note: "second pair of eyes" })).activity.length >= 2);
+  await assert.rejects(r.tasks.update(alice(), t.id, { note: "x" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.update(owner(), t.id, { note: "x" }), { code: "not_allowed" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, {}), { code: "bad_input" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { outputs: ["x".repeat(400)] }), { code: "bad_input" });
+  // once it is with the reviewer nothing changes under them
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { note: "late edit" }), { code: "bad_state" });
+  // changes requested: the doer may update again, and hands in again
+  await r.tasks.review(alice(), t.id, { result: "changes", note: "more" });
+  assert.ok((await r.tasks.update(asIntake(), t.id, { note: "added more" })).activity.length >= 4);
+  // list by slot holder
+  assert.deepEqual((await r.tasks.list(alice(), { reviewer: ALICE })).map(x => x.id), [t.id]);
+  assert.deepEqual(await r.tasks.list(alice(), { reviewer: BOB }), []);
+});
+
+test("the approval covers the details and outputs the doer gave: the body differs from one without them", async () => {
+  const r = rig();
+  const plain = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), plain.id);
+  const a = await r.tasks.complete(asIntake(), plain.id, evidenceSent());
+  const t = await r.tasks.request(owner(), draftTask());
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.update(asIntake(), t.id, { details: { extra: 1 } });
+  const b = await r.tasks.complete(asIntake(), t.id, evidenceSent());
+  assert.notEqual(a.payload.payload_hash, b.payload.payload_hash);
+});

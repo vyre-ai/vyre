@@ -247,9 +247,9 @@ export function createTasks(cfg) {
   // if it hashes to what the log recorded.
   const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
   // A task's title and note are the record's, not the text store's: only what the kernel itself holds as free text (the doer's answer, a Flow's form, a block's reason) is kept here.
-  const textOf = (/** @type {any} */ t) => ({ ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
-  const withoutText = (/** @type {any} */ t) => { const { note: _n, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
-  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textOf = (/** @type {any} */ t) => ({ ...(t.details !== undefined ? { details: t.details } : {}), ...(t.activity !== undefined ? { activity: t.activity } : {}), ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, details: _dt, activity: _ac, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note", "details", "activity"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
   const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
     const now = tasks.get(t.id) || t;
@@ -289,6 +289,10 @@ export function createTasks(cfg) {
     if (c.role) return roleHolders(c.role).filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
     return [c].filter((/** @type {any} */ a) => a && (a.kind === "person" || a.kind === "agent") && !same(a, t.doer));
   };
+  /** One line of a task's activity: who did what and when; a progress note rides as text (kept in the task store, hashed in the log). Capped at 100 lines. */
+  const ACTIVITY_MAX = 100;
+  const moreActivity = (/** @type {any} */ t, /** @type {any} */ who, /** @type {string} */ what, /** @type {string | undefined} */ text) =>
+    deepFreeze([...(t.activity || []), { who: { kind: who.kind, id: who.id }, what, at: clock(), ...(text ? { note: text } : {}) }].slice(-ACTIVITY_MAX));
   /**
    * The reviewer slot (tasks v2): a person, an agent or a role, resolved to who may review NOW. Never the doer or a helper; a role is read live each time, so a person removed from it stops being a reviewer
    * at once. Whether the call itself comes through the doer is the chain check in `review`.
@@ -306,6 +310,8 @@ export function createTasks(cfg) {
    * as well, so a review that changed after the card was shown, or no review where one was passed, does not match what was signed.
    */
   const reviewHashOf = (/** @type {any} */ t) => (t.review ? sha256(canonical({ review: t.review, note: t.review_note !== undefined ? sha256(canonical(t.review_note)) : null })) : null);
+  /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
+  const taskDataHash = (t) => (t.details !== undefined || t.outputs !== undefined ? { task_data_hash: sha256(canonical({ details: t.details ?? null, outputs: t.outputs ?? [] })) } : {});
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
   const ownsWrite = async (chain, t, patch, op = "update", doer = undefined) => { if (typeof cfg.mayWriteTask === "function") await cfg.mayWriteTask(chain, t, patch, op, doer); };
@@ -471,7 +477,8 @@ export function createTasks(cfg) {
           if (q.parent !== undefined && (v.parent || null) !== q.parent) continue;
         }
         if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
-        if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
+        if ((q.checker || q.approver) && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker || q.approver))) continue;
+        if (q.reviewer && !reviewersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.reviewer))) continue;
         if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
         try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
         const v = await overlay(t);
@@ -528,14 +535,43 @@ export function createTasks(cfg) {
         // The facts the card shows are the kernel's: recipients checked against the record's own contact points, slot classes read from the vault. Whatever cannot be resolved shows as unverified.
         const facts = await resolveFacts(ev);
         // PR-2: the form a Flow sent with the task (a proposal's diff, a Kit card) is part of what the checker approves: its hash is in the body the proof covers.
-        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
-      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
+        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t) });
+      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t) });
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       // A review belongs to one hand-in: coming back In review drops the last result and its note from the task (they stay in the log), so no card or approver sees a stale pass.
       const { review: _rv, review_note: _rvn, ...kept } = t;
-      const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, updated_at: clock() })) : put(t, { state: to, payload });
+      const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, activity: moreActivity(t, acting(chain), "submit"), updated_at: clock() })) : put(t, { state: to, payload });
       note(chain, to === "in_review" ? "task.in-review" : "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
+      return n;
+    },
+
+    /**
+     * The doer's (or a helper's) work in progress, for an agent or a person: details (plain data), a progress note and references to what was made (tasks v2). Only while the task is ready, working
+     * or changes_requested, so nothing changes under a reviewer or an approver; every call adds a line to the activity. Rechecked against the caller's hold on every write.
+     * @param {any} chain @param {string} id @param {{ details?: any, note?: string, outputs?: string[] }} a
+     */
+    async update(chain, id, a) {
+      const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
+      const t = get_(id);
+      const who = acting(chain);
+      const helper = (t.helpers || []).some((/** @type {any} */ h) => same(h, who));
+      if (t.kernel || !(isDoer(chain, t) || helper)) throw new KernelError("not_allowed", "only the doer or a helper updates a task");
+      if (!["ready", "working", "changes_requested"].includes(t.state)) throw new KernelError("bad_state", `a task that is ${t.state} cannot be updated: it is with a reviewer or an approver, or finished`);
+      if (!a || typeof a !== "object" || (a.details === undefined && a.note === undefined && a.outputs === undefined)) throw new KernelError("bad_input", "update details, a progress note or outputs");
+      const patch = /** @type {any} */ ({});
+      const did = [];
+      if (a.details !== undefined) { patch.details = opaque(a.details); did.push("details"); }
+      if (a.outputs !== undefined) {
+        if (!Array.isArray(a.outputs) || a.outputs.length > 20 || a.outputs.some((/** @type {any} */ o) => typeof o !== "string" || !o || o.length > 300)) throw new KernelError("bad_input", "outputs are up to 20 references to what was made");
+        patch.outputs = freeze([...a.outputs]); did.push("outputs");
+      }
+      const text = a.note === undefined ? "" : String(a.note).slice(0, FIX_CAP);
+      if (a.note !== undefined && !text.trim()) throw new KernelError("bad_input", "a progress note has words");
+      if (text) did.push("note");
+      patch.activity = moreActivity(t, who, did.join(","), text);
+      const n = put(t, patch);
+      note(chain, "task.updated", n, { by: { kind: who.kind, id: who.id }, did: did.join(","), ...(text ? { note: text } : {}) }, d.decision);
       return n;
     },
 
@@ -563,7 +599,7 @@ export function createTasks(cfg) {
       const review = freeze({ by: freeze({ kind: who.kind, id: who.id }), type: who.kind === "agent" ? "agent" : "person", result: a.result, checklist: freeze(items.map((/** @type {any} */ x) => freeze({ skill: x.skill.slice(0, 80), item: x.item.slice(0, 200), ok: x.ok }))), ...(text ? { note_hash: sha256(canonical(text)) } : {}), at: clock() });
       if (a.result === "changes") {
         rule(t, "changes_requested", "reviewer");
-        const n = put(t, { state: "changes_requested", review, ...(text ? { review_note: text } : {}) });
+        const n = put(t, { state: "changes_requested", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:changes") });
         note(chain, "task.changes-requested", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
         return n;
       }
@@ -572,12 +608,12 @@ export function createTasks(cfg) {
       if (to === "done") {
         const body = bodies.get(id);
         const answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
-        const n = put(t, { state: "done", review, ...(text ? { review_note: text } : {}), ...(answer !== undefined ? { answer } : {}) });
+        const n = put(t, { state: "done", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass"), ...(answer !== undefined ? { answer } : {}) });
         note(chain, "task.completed", n, { reviewed_by: { kind: who.kind, id: who.id }, output: t.output.kind, ...(answer !== undefined ? { answer } : {}) }, d.decision);
         promote(chain);
         return n;
       }
-      const n = put(t, { state: "needs_check", review, ...(text ? { review_note: text } : {}) });
+      const n = put(t, { state: "needs_check", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass") });
       note(chain, "task.review-passed", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
       return n;
     },
