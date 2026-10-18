@@ -38,7 +38,11 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
     const f = (s: DraftStep) => ({ ...s, ...patch });
     set({ steps: mapStep(draft.steps, id, f), ...(draft.onFailure ? { onFailure: mapStep(draft.onFailure, id, f) } : {}) });
   };
-  const ctx: Ctx = { draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
+  const { phone } = useUiTheme();
+  const ctx: Ctx = { docked: !phone, draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
+  const docked = !phone;
+  const openStep = open && open !== "trigger" ? flat([...draft.steps, ...(draft.onFailure ?? [])]).find((x) => x.id === open) ?? null : null;
+  const openRoot: Root = openStep && flat(draft.steps).some((x) => x.id === openStep.id) ? "steps" : "onFailure";
   const t = draft.trigger;
   const setTrig = (patch: Record<string, unknown>) => set({ trigger: { ...t, ...patch } });
 
@@ -51,6 +55,8 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
         </View>
       </Card>
 
+      <View className={docked ? "flex-row items-start gap-s4" : "gap-s4"}>
+      <View className="min-w-0 flex-1 gap-s4">
       <Text size="caption" tone="label">{accessNote ?? "Each step can only read and write what the person who added it can reach. It runs with the access of the person who approved it, and pauses if that is lost."}</Text>
       <View>
         <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
@@ -82,12 +88,41 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
           <Lane lane={{ parent: null, key: "" }} steps={draft.onFailure ?? []} root="onFailure" inHandler ctx={ctx} />
         </View>
       )}
+      </View>
+      {docked && openStep ? <StepPanel s={openStep} ctx={ctx} root={openRoot} inHandler={openRoot === "onFailure"} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** The open step's settings, docked beside the steps so the Flow stays in view while it is edited. */
+function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root; inHandler?: boolean }) {
+  const { draft, options, readOnly, change, setStep, setOpen } = ctx;
+  const mine = rootSteps(draft, root);
+  const all = flat([...draft.steps, ...(draft.onFailure ?? [])]);
+  const mv = canMove(mine, s.id);
+  const c = choiceOf(s.kind);
+  return (
+    <View className="w-[380px] flex-none gap-s3 rounded-card border border-edge-strong bg-surface-2 p-s4">
+      <View className="flex-row items-center gap-s2">
+        <Text strong numberOfLines={1} className="min-w-0 flex-1">{c?.label ?? "Advanced step"}</Text>
+        <Button kind="ghost" size="sm" icon="x" label="Close" onPress={() => setOpen(null)} />
+      </View>
+      <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
+      {readOnly ? null : (
+        <View className="flex-row flex-wrap items-center gap-s2 border-t border-edge pt-s3">
+          {mv.up ? <Button kind="ghost" size="sm" icon="chevron-up" label="Move up" onPress={() => change(root, moveDeep(mine, s.id, -1))} /> : null}
+          {mv.down ? <Button kind="ghost" size="sm" icon="chevron-down" label="Move down" onPress={() => change(root, moveDeep(mine, s.id, 1))} /> : null}
+          <Button kind="ghost" size="sm" icon="copy" label="Duplicate" onPress={() => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }} />
+          <Button kind="ghost" size="sm" icon="trash" label="Remove step" onPress={() => { change(root, removeDeep(mine, s.id)); setOpen(null); }} />
+        </View>
+      )}
     </View>
   );
 }
 
 type Root = "steps" | "onFailure";
-type Ctx = { draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
+type Ctx = { docked?: boolean; draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
 
 const laneKey = (root: Root, l: LaneRef) => `${root}/${l.parent ?? "top"}/${l.key}`;
 const rootSteps = (d: Draft, root: Root) => (root === "steps" ? d.steps : d.onFailure ?? []);
@@ -136,6 +171,7 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
     <View>
       <StepCard lead={`Step ${n}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? "Advanced step"} summary={`${stepSummary(s, options, draft)}${policyWords(s)}`} problem={stepProblem(s, options)} open={open === s.id} onToggle={() => toggle(s.id)} last={false}
         onUp={!readOnly && mv.up ? () => change(root, moveDeep(mine, s.id, -1)) : undefined} onDown={!readOnly && mv.down ? () => change(root, moveDeep(mine, s.id, 1)) : undefined}
+        docked={ctx.docked}
         onDuplicate={readOnly ? undefined : () => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }}
         onRemove={readOnly ? undefined : () => { change(root, removeDeep(mine, s.id)); setOpen(null); }}>
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />

@@ -11,9 +11,9 @@ import { cn } from "../lib/cn";
  * One step of a Flow, drawn as a card: a lead word ("When", "Then", "Step 2"), the kind of step, and what it does in one plain sentence. Closed it is one row; open it shows its settings
  * (children) and Move up, Move down and Remove. `problem` says in words what the step still needs. Used by the Flow builder for the trigger and every step.
  */
-export function StepCard({ lead, icon, title, summary, open, onToggle, problem, children, onUp, onDown, onRemove, onDuplicate, last }: {
+export function StepCard({ lead, icon, title, summary, open, onToggle, problem, children, onUp, onDown, onRemove, onDuplicate, last, docked }: {
   lead: string; icon: IconName; title: string; summary: string; open: boolean; onToggle: () => void; problem?: string | null;
-  children?: React.ReactNode; onUp?: () => void; onDown?: () => void; onRemove?: () => void; /** A copy right after this step. */ onDuplicate?: () => void;
+  children?: React.ReactNode; onUp?: () => void; onDown?: () => void; onRemove?: () => void; /** A copy right after this step. */ onDuplicate?: () => void; /** The settings are shown in a panel beside the steps, so the card only marks itself selected. */ docked?: boolean;
   /** The last card in the column draws no line below it. */ last?: boolean;
 }) {
   return (
@@ -31,7 +31,7 @@ export function StepCard({ lead, icon, title, summary, open, onToggle, problem, 
           </View>
           <Icon name={open ? "chevron-up" : "chevron-down"} size={16} tone="label" />
         </Pressable>
-        {open ? (
+        {open && !docked ? (
           <View className="gap-s3 border-t border-edge px-s4 pb-s4 pt-s3">
             {children}
             {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
