@@ -497,11 +497,66 @@ test("the API key tool sends the key once to the server's key tool and never let
   const ok = await host.call("onboard.agent.key", { kind: "openai-compatible", key: "xai-0123456789abcdef", label: "Grok", base_url: "https://api.x.ai/v1" });
   assert.equal(ok.account, "ac_9");
   assert.equal(sent.length, 1, "only the allowed address went to the server");
-  // a member of the space does not add a key here
+  // a member of the space does not put the key in the owner's Vault: without a member-key store the tool says it is not available, and nothing is sent
   sent.length = 0;
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
-  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "not_owner");
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "host_unsupported");
   assert.deepEqual(sent, [], "nothing was sent for a member");
+});
+
+test("a joining member's key goes to their own Vault: the password is asked for only when their vault is missing or locked, is used for those calls only, and neither it nor the key is in anything returned or thrown", async (t) => {
+  const keys = new Map();
+  const { pp, host, store } = await ready(t, { memberKeys: { get: async (a) => keys.get(a) ?? null, put: async (a, k) => void keys.set(a, k), remove: async (a) => void keys.delete(a) } });
+  const KEY = "sk-ant-MEMBER-KEY-0123456789", PW = "member pass phrase 77";
+  const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
+  pp.seen.resolveAs = "one";
+  await until(host, open.id, (r) => r.online);
+  { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
+  const first = pp.call;
+  const calls = [];
+  let vault = { account: false, unlocked: false }, fail = "";
+  pp.call = async (name, input, box) => {
+    if (!/^(vault\.me\.|sessions\.accounts\.(add|key))/.test(name)) return first(name, input, box);
+    calls.push({ name, input: JSON.parse(JSON.stringify(input || {})), box });
+    if (name === "vault.me.account.status") return { ...vault, ...(vault.account ? { acct: "a1" } : {}) };
+    if (name === "vault.me.account.create") { vault = { account: true, unlocked: false }; return { secretKey: "SECRET-KEY-OF-VAULT", acct: "a1" }; }
+    if (name === "vault.me.account.unlock") { vault = { account: true, unlocked: true }; return { unlocked: true }; }
+    if (name === "vault.me.put") { if (fail) throw new Error(`${fail}: ${input.fields.value} / ${PW}`); return { stored: true }; }
+    if (name === "sessions.accounts.add") return { id: "ac_m1", provider: input.provider, label: input.label };
+    throw new Error("unexpected " + name);
+  };
+  const ask = (extra = {}) => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "My Claude", ...extra });
+  // no vault yet and no password: it asks for the password and sends nothing but the status question
+  await assert.rejects(() => ask(), (e) => e.code === "need_password" && !String(e.message).includes(KEY));
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status"]);
+  // with the password: made, opened, the key into THEIR vault, then the account names the item; the owner's key tool is never used
+  calls.length = 0;
+  const r = await ask({ password: PW });
+  assert.deepEqual(r, { account: "ac_m1", provider: "claude", label: "My Claude", checked: false });
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.create", "vault.me.account.status", "vault.me.account.unlock", "vault.me.put", "sessions.accounts.add"]);
+  assert.ok(calls.every((c) => c.box === "boxA"));
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(PW)).map((c) => c.name).join(), "vault.me.account.create,vault.me.account.unlock", "the password goes to the two vault calls only");
+  assert.equal(calls.filter((c) => JSON.stringify(c.input).includes(KEY)).map((c) => c.name).join(), "vault.me.put", "the key goes to the vault put only");
+  assert.deepEqual(calls[4].input, { provider: "claude", label: "My Claude", kind: "api-key", vault_item: "My Claude" });
+  assert.equal(keys.get("a1"), "SECRET-KEY-OF-VAULT", "the vault's Secret Key stays on this device");
+  assert.ok(!JSON.stringify(r).includes(PW) && !JSON.stringify(r).includes(KEY));
+  // unlocked already: no password is asked for and none is used
+  calls.length = 0;
+  const r2 = await ask({ label: "Second" });
+  assert.equal(r2.account, "ac_m1");
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.put", "sessions.accounts.add"], "no prompt, no create or unlock");
+  // locked: it asks, then opens with the key the device holds
+  vault = { account: true, unlocked: false }; calls.length = 0;
+  await assert.rejects(() => ask({ label: "Third" }), (e) => e.code === "need_password");
+  await ask({ label: "Third", password: PW });
+  assert.deepEqual(calls.map((c) => c.name), ["vault.me.account.status", "vault.me.account.status", "vault.me.account.unlock", "vault.me.put", "sessions.accounts.add"]);
+  // an error that echoes the key and the password is thrown without either
+  fail = "the vault refused"; vault = { account: true, unlocked: true };
+  await assert.rejects(() => ask({ label: "Fourth", password: PW }), (e) => { assert.ok(!String(e.message).includes(KEY) && !String(e.message).includes(PW), String(e.message)); return true; });
+  // a provider a member cannot add a key for here is said plainly, with nothing sent
+  calls.length = 0;
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "openai-compatible", key: KEY, label: "x" }), (e) => e.code === "bad_kind");
+  assert.deepEqual(calls, []);
 });
 
 test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {

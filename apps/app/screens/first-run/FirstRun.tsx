@@ -103,6 +103,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [keyPassword, setKeyPassword] = useState("");
+  const [needPw, setNeedPw] = useState(false);
   const screen = stack[stack.length - 1];
   useEffect(() => { onScreen(screen); }, [screen, onScreen]);
   const go = (next: Screen) => {
@@ -404,7 +406,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           ))}
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={`Add ${ACCOUNTS_COPY.keyTile}`} disabled={busy || Boolean(agentFlow)}
-          onPress={() => { setFailure(""); setPick("key"); setApiKey(""); setAcctLabel(""); }}
+          onPress={() => { setFailure(""); setPick("key"); setApiKey(""); setKeyPassword(""); setNeedPw(false); setAcctLabel(""); }}
           style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: pick === "key" ? 2 : 0.5, borderColor: pick === "key" ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
           <Icon name="key" size={24} tone="text" />
           <Text>{ACCOUNTS_COPY.keyTile}</Text>
@@ -417,13 +419,16 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             <View style={{ gap: 12 }}>
               <Field label={ACCOUNTS_COPY.keyLabel} kind="password" value={apiKey} onChangeText={setApiKey} help={seen ? `Looks like ${seen.label.replace(" key", "")}.` : ACCOUNTS_COPY.keyHelp} error={apiKey.trim() && !seen ? ACCOUNTS_COPY.keyUnknown : undefined} />
               <Field label={ACCOUNTS_COPY.nameLabel} value={name} onChangeText={setAcctLabel} error={name && prob ? prob : undefined} />
-              <Button kind="secondary" size="lg" label={ACCOUNTS_COPY.add} loading={busy} disabled={!seen || !keyShapeOk(apiKey) || Boolean(prob) || busy} onPress={() => void run(async () => {
+              {needPw ? <PasswordField label={ACCOUNTS_COPY.keyPassword} value={keyPassword} onChangeText={setKeyPassword} /> : null}
+              <Button kind="secondary" size="lg" label={ACCOUNTS_COPY.add} loading={busy} disabled={!seen || !keyShapeOk(apiKey) || Boolean(prob) || busy || (needPw && !keyPassword)} onPress={() => void run(async () => {
                 if (!seen) return;
-                const r = await addAgentKey({ kind: seen.kind, key: apiKey.trim(), label: name.trim(), ...(seen.base_url ? { base_url: seen.base_url } : {}) });
+                const r = await addAgentKey({ kind: seen.kind, key: apiKey.trim(), label: name.trim(), ...(seen.base_url ? { base_url: seen.base_url } : {}), ...(needPw && keyPassword ? { password: keyPassword } : {}) });
+                setKeyPassword("");
+                if (!r.ok && r.code === "need_password") { setNeedPw(true); setFailure(""); return; }
                 setApiKey("");
                 if (!r.ok) { setFailure(r.message); return; }
                 setAccounts((x) => [...x, { provider: seen.provider, label: name.trim() }]);
-                setPick(""); setAcctLabel("");
+                setPick(""); setAcctLabel(""); setNeedPw(false);
               })} />
             </View>
           );

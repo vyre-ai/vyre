@@ -10,6 +10,7 @@ import { claimIdentity } from "../identity/claim.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
 import { lookOf } from "../../ui/chat/agent-look.js";
+import { createMine, unlockMine } from "../state/member-key.js";
 import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAddressOf, spaceKey, usernameOf } from "../../../../lib/first-run-shape.js";
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
@@ -65,7 +66,7 @@ function pickSignin(r) {
 
 /**
  * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
- *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean }} o
+ *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -88,6 +89,40 @@ export function createHost(o) {
   const waits = new Map();
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
+  /**
+   * A joining member's own key: it goes to THEIR OWN Vault (never the space owner's), then the account names it. Their vault is made, or opened, with their password only when it must be (none yet, or locked):
+   * the password is used for those two calls and nowhere else, kept by no one here, and never in anything this throws. The key is sent once over the same peer wire as every other vault.me call.
+   * @param {any} ports @param {string} box @param {{ kind: string, key: string, label: string, password: string }} i
+   */
+  const memberKey = async (ports, box, i) => {
+    const provider = { "anthropic-compatible": "claude", openrouter: "openrouter" }[/** @type {"anthropic-compatible" | "openrouter"} */ (i.kind)];
+    if (!provider) throw bad("A key for that provider is added by the space's owner for now.", "bad_kind");
+    if (!o.memberKeys) throw unsupported();
+    /** @type {(tool: string, input?: any) => Promise<any>} */
+    const ask = (tool, input) => ports.call(tool, input || {}, box);
+    const redact = (/** @type {unknown} */ e) => {
+      let said = String((e && /** @type {any} */ (e).message) || "That did not work. Try again.");
+      for (const secret of [i.key, i.password]) if (secret) said = said.split(secret).join("[hidden]");
+      return bad(said.slice(0, 200), e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
+    };
+    try {
+      const st = await ask("vault.me.account.status");
+      if (!st || !st.account) {
+        if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
+        await createMine(ask, o.memberKeys, i.password);
+        await unlockMine(ask, o.memberKeys, i.password);
+      } else if (!st.unlocked) {
+        if (!i.password) throw bad("Your password, to open your own Vault.", "need_password");
+        await unlockMine(ask, o.memberKeys, i.password);
+      }
+      await ask("vault.me.put", { name: i.label, kind: "api-key", fields: { value: i.key } });
+      const add = await ask("sessions.accounts.add", { provider, label: i.label, kind: "api-key", vault_item: i.label });
+      return { account: String((add && (add.id || add.account)) || ""), provider, label: i.label, checked: false };
+    } catch (e) {
+      throw /** @type {any} */ (e).code === "need_password" ? e : redact(e);
+    }
+  };
+
   /** The server this onboarding just made (or joined) is where the Space's own steps go: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one. @param {string} none what to say when there is none yet @param {boolean} [strict] a tool that WRITES (the Assistant, its model) never falls back to the current space's server, which may be a team's: it takes the one made in this run, else the only paired server, else refuses */
   const serverOfThisRun = async (none, strict = false) => {
     const k = await o.store.load();
@@ -543,7 +578,6 @@ export function createHost(o) {
     "onboard.agent.key": async (input) => {
       if (!o.space) throw unsupported();
       const { box, role } = await serverOfThisRun("Add an AI account once your space is online.", true);
-      if (role && role !== "owner") throw bad("Only the owner of a space adds an API key here.", "not_owner");
       const kind = String((input && input.kind) || "");
       if (!["anthropic-compatible", "openai-compatible", "openrouter"].includes(kind)) throw bad("That kind of key is not supported here.", "bad_kind");
       const key = String((input && input.key) || "").trim();
@@ -554,6 +588,7 @@ export function createHost(o) {
       if (base && !(kind === "openai-compatible" && base === "https://api.x.ai/v1")) throw bad("That address is not one a key can be sent to from here.", "bad_address");
       const ports = await o.space.load();
       /** @type {any} */ let r;
+      if (role && role !== "owner") return memberKey(ports, box, { kind, key, label, password: input && input.password ? String(input.password) : "" });
       try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
       catch (e) {
         // whatever the server or the provider said, the key is never in what is thrown here

@@ -13,6 +13,7 @@ export const ACCOUNTS_COPY = Object.freeze({
   empty: "Add an AI account, or press Skip for now.",
   tooLong: "Use up to 80 characters.",
   keyTile: "API key",
+  keyPassword: "Your password, to open your own Vault",
   keyLabel: "API key",
   keyHelp: "Checked with the provider, kept in your Vault, and never shown again.",
   keyUnknown: "That does not look like a key we know. Check it, or add a Claude, Codex or Grok account by signing in.",
