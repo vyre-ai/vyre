@@ -249,6 +249,21 @@ async function heapDetail(home) {
       // objects are named by their constructor, closures and code by their function; strings and numbers are grouped by kind alone
       if (kind === "object" || kind === "closure" || kind === "code" || kind === "native") { const k = `${kind}:${strings[nodes[i + iName]]}`.slice(0, 80); byName.set(k, (byName.get(k) || 0) + size); }
     }
+    // The strings, split: script source (a module's text V8 keeps), JSON-like data, and the rest, by what each starts with (the snapshot keeps a string's first characters), and the 20 largest.
+    const cls = { source: [0, 0], json: [0, 0], "turn or other text": [0, 0] }, big = [];
+    for (let i = 0; i < nodes.length; i += n) {
+      const kind = types[nodes[i + iType]];
+      if (kind !== "string" && kind !== "concatenated string" && kind !== "sliced string") continue;
+      const size = nodes[i + iSize], text = String(strings[nodes[i + iName]]);
+      const head = text.trimStart().slice(0, 40);
+      const c = /^(\/\/|\/\*|import |export |"use strict"|'use strict'|\(function|function |const |let |var |class |async |#!)/.test(head) ? "source" : /^[\[{]/.test(head) ? "json" : "turn or other text";
+      cls[c][0] += size; cls[c][1]++;
+      if (size > 200_000) big.push([size, c, head.replace(/\s+/g, " ")]);
+    }
+    log("strings split (MB, count):");
+    for (const [k, [b, c]] of Object.entries(cls)) log(`  ${k.padEnd(20)} ${mb(b).padStart(7)}  ${c}`);
+    log("strings over 200 KB each, largest first:");
+    for (const [b, c, h] of big.sort((a, b2) => b2[0] - a[0]).slice(0, 20)) log(`  ${mb(b).padStart(7)}  ${c.padEnd(18)} ${JSON.stringify(h)}`);
     log("settled heap by kind (MB self size):");
     for (const [k, v] of [...byKind].sort((a, b) => b[1] - a[1])) log(`  ${k.padEnd(16)} ${mb(v)}`);
     log("settled heap, top 25 constructors / functions (MB self size):");
