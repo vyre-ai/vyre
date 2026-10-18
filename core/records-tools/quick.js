@@ -127,7 +127,8 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
 
 /** The quick-field rows of a type. @param {any} d @param {string} type */
 export async function quickRows(d, type) {
-  try { return (await d.gateway.records.query(d.chain, "quick-field", { filter: { field: "type", op: "eq", value: type }, page: { limit: 200 } })).rows || []; } catch { return []; }
+  // no filter on the data field `type`: it came back empty for a member (see layout.js); the rows are few
+  try { return ((await d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).rows || []).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
 }
 /** The quick fields of a type in the shape the helpers use. @param {any} d @param {string} type */
 export async function quickFieldsOf(d, type) {
