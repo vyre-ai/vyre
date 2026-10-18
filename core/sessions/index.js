@@ -99,7 +99,7 @@ const MEMBER = Symbol("member door");
 /** The caller label of the daemon's own door: the only one that may run the member calls. */
 const DOOR = "module:vyred";
 /** The sign-in calls a team member reaches through the team's server, and the account tool each runs (kernel/remote/wire.js CALLS.accounts). A member adds a login of their own; a key needs a Vault of their own (0.3.4). */
-const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind", add: "sessions.accounts.add" });
+const MEMBER_ACCOUNTS = Object.freeze({ list: "sessions.accounts.list", signin: "sessions.accounts.signin", remove: "sessions.accounts.remove", default: "sessions.accounts.bind", add: "sessions.accounts.add", check: "sessions.accounts.key" });
 /** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
 const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
@@ -648,7 +648,8 @@ export default {
         const run = tool ? runs.get(tool) : null;
         if (!run || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(String(i.person))) throw Object.assign(new Error(`call is ${Object.keys(MEMBER_ACCOUNTS).join(", ")}`), { code: "bad_input" });
         const input = i.input && typeof i.input === "object" ? { ...i.input } : {};
-        const picked = i.call === "default" ? { id: input.id, is_default: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
+        // a check is the key tool in its check-only form and nothing else: only the kind, the key and the address are taken from the member's input
+        const picked = i.call === "default" ? { id: input.id, is_default: true } : i.call === "check" ? { kind: input.kind, key: input.key, ...(input.base_url !== undefined ? { base_url: input.base_url } : {}), check_only: true } : input;   // a default is the only binding a member sets: the Space's projects and agents are the owner's to scope
         return run(picked, { caller: "local", [MEMBER]: String(i.person) });
       },
     });

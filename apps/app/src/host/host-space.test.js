@@ -500,13 +500,13 @@ test("the API key tool sends the key once to the server's key tool and never let
   // a member of the space does not put the key in the owner's Vault: without a member-key store the tool says it is not available, and nothing is sent
   sent.length = 0;
   { const k = await store.load(); await store.save({ ...k, spaces: (k.spaces || []).map((x) => ({ ...x, role: "member" })) }); }
-  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "host_unsupported");
+  await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work" }), (e) => e.code === "ask_owner");
   assert.deepEqual(sent, [], "nothing was sent for a member");
 });
 
 test("a joining member's key goes to their own Vault: the password is asked for only when their vault is missing or locked, is used for those calls only, and neither it nor the key is in anything returned or thrown", async (t) => {
   const keys = new Map();
-  const { pp, host, store } = await ready(t, { memberKeys: { get: async (a) => keys.get(a) ?? null, put: async (a, k) => void keys.set(a, k), remove: async (a) => void keys.delete(a) } });
+  const { pp, host, store } = await ready(t, { memberKeyPath: true, memberKeys: { get: async (a) => keys.get(a) ?? null, put: async (a, k) => void keys.set(a, k), remove: async (a) => void keys.delete(a) } });
   const KEY = "sk-ant-MEMBER-KEY-0123456789", PW = "member pass phrase 77";
   const open = await host.call("onboard.space.open", { kind: "linux", name: "alex-space" });
   pp.seen.resolveAs = "one";

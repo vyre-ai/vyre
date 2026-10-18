@@ -66,7 +66,7 @@ function pickSignin(r) {
 
 /**
  * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
- *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
+ *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeyPath?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
   const f = o.fetch || globalThis.fetch.bind(globalThis);
@@ -98,6 +98,8 @@ export function createHost(o) {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
     const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
     if (!provider) throw bad("That kind of key is not supported here.", "bad_kind");
+    // A member's key goes through the team server's member door, which carries these calls only once sec53 has signed them and they are green; until then a member is told to ask the owner.
+    if (!o.memberKeyPath) throw bad("Ask the owner to add this account.", "ask_owner");
     if (!o.memberKeys) throw unsupported();
     /** @type {(tool: string, input?: any) => Promise<any>} */
     const ask = (tool, input) => ports.call(tool, input || {}, box);
