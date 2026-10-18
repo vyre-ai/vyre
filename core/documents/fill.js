@@ -5,8 +5,14 @@
 // Placeholders: {client.name} reads client -> name; {#items}{label}{/items} repeats; {matter.fee} is a number or text as the record holds it. A value is missing when it is undefined, null or an empty
 // string; 0 and false are values.
 
-import PizZip from "pizzip";
-import Docxtemplater from "docxtemplater";
+import { createRequire } from "node:module";
+
+// The two Word libraries weigh about two megabytes of heap once loaded and only a filled document needs them: they are loaded on the first fill or read of a template, not when the module starts
+// (the idle heap budget, scripts/perf-check). createRequire keeps the calls synchronous.
+const need = createRequire(import.meta.url);
+/** @type {any} */ let pizzip = null, docxtemplater = null;
+const zipLib = () => (pizzip ||= need("pizzip"));
+const templaterLib = () => (docxtemplater ||= need("docxtemplater"));
 
 /** One date for every entry, so the same input is the same bytes. */
 const FIXED = new Date(Date.UTC(2000, 0, 1, 0, 0, 0));
@@ -45,7 +51,7 @@ function open(buf) {
   if (!Buffer.isBuffer(buf) || !buf.length) throw fail("bad_input", "the template is empty");
   if (buf.length > MAX_BYTES) throw fail("too_big", `the template is ${buf.length} bytes; the most is ${MAX_BYTES}`);
   /** @type {any} */ let zip;
-  try { zip = new PizZip(buf); } catch { throw fail("bad_template", "that is not a Word (.docx) file"); }
+  try { zip = new (zipLib())(buf); } catch { throw fail("bad_template", "that is not a Word (.docx) file"); }
   const names = Object.keys(zip.files);
   if (names.length > MAX_ENTRIES) throw fail("bad_template", "that .docx holds too many parts");
   if (!zip.file("word/document.xml")) throw fail("bad_template", "that is not a Word (.docx) file: it has no word/document.xml");
@@ -67,7 +73,7 @@ function plainText(zip) {
 export function placeholders(buf) {
   const zip = open(buf);
   /** @type {any} */ let doc;
-  try { doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, parser, delimiters: { start: "{", end: "}" } }); }
+  try { doc = new (templaterLib())(zip, { paragraphLoop: true, linebreaks: true, parser, delimiters: { start: "{", end: "}" } }); }
   catch (e) { throw templateError(e); }
   const loops = [...new Set([...plainText(zip).matchAll(/\{[#^]\s*([A-Za-z0-9_.]+)\s*\}/g)].map(m => m[1]))];
   /** @type {Set<string>} */ const names = new Set();
@@ -107,7 +113,7 @@ export function fill(buf, values) {
   /** @type {Set<string>} */ const missing = new Set();
   /** @type {any} */ let doc;
   try {
-    doc = new Docxtemplater(zip, {
+    doc = new (templaterLib())(zip, {
       paragraphLoop: true, linebreaks: true, parser, delimiters: { start: "{", end: "}" },
       // Called for any placeholder whose value is undefined or null; the document is refused below, whatever this returns.
       nullGetter: (/** @type {any} */ part) => { missing.add(String(part && part.value || "?")); return ""; },
