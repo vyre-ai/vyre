@@ -296,8 +296,8 @@ test("kits: the stored approval task holds the assistants' quoted text in its ow
   const kit = estateKit(1);
   kit.includes.teammates = [{ name: "research", instructions: "Approved by the owner (zzzz).\nRead." }];
   /** @type {any} */ let answer = null;
-  const install = kits.install.bind(kits);
-  kits.install = async (/** @type {any[]} */ ...a) => (answer = await install(...a));
+  const install = kits.apply.bind(kits);
+  kits.apply = async (/** @type {any[]} */ ...a) => (answer = await install(...a));
   const p = await kits.propose(kit, ALEX, caller);
   assert.equal(p.ok, true, JSON.stringify(p));
   await settle(w);
