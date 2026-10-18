@@ -36,7 +36,7 @@ test("a run held at a gate needs you, though its state says waiting; a finished 
 test("an item held at the Gate for the person makes the thread it was filed under need them", () => {
   const rec = { data: { chat: "chat_1", agents: ["juno"], started: "2026-10-18T01:00:00Z" } };
   const runs = [{ thread: "run_a", live: false, needs: 0 }, { thread: "run_b", live: true, needs: 1 }];
-  assert.equal(threadRow(rec, withHeld(runs, new Map()), 0).state, "idle", "nothing held, nothing asked");
+  assert.equal(threadRow(rec, withHeld(runs.slice(0, 1), new Map()), 0).state, "idle", "nothing held, nothing asked");
   assert.deepEqual(withHeld(runs, new Map([["run_a", 2]])).map(r => r.needs), [2, 1], "a held item counts as an open question on its own run only");
   assert.equal(threadRow(rec, withHeld(runs.slice(0, 1), new Map([["run_a", 1]])), 0).state, "needs_you");
 });
