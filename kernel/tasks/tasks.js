@@ -480,7 +480,7 @@ export function createTasks(cfg) {
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
       const t = freeze({
-        id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
+        id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.record && (await (typeof cfg.facts === "function" ? cfg.facts(chain, {}) : cfg.facts || {}).record?.(spec.record)) ? { record_read: true } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
         source: spec.source || "manual", doer: freeze({ ...doer }), ...(spec.helpers ? { helpers: freeze([...spec.helpers]) } : {}),
         ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.pool ? { pool: freeze({ role: spec.pool.role }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(spec.quorum === "all" ? { approver_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),

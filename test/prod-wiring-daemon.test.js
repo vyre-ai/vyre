@@ -89,5 +89,23 @@ test("1c. an agent handing in a draft of the record its task is about is not ref
   assert.equal((await ask.complete(agentChain, given.id, { draft: urn })).state, "done", "the draft of the very record the task is about is accepted");
 });
 
+test("1d. the exception is only for a record the person who made the task could read: a doer cannot use a task she made for herself to learn that a record she cannot read exists", { timeout: 120_000 }, async t => {
+  const w = await world(t);
+  const { ask, ownerChain, space, K } = w;
+  const CAT = "per_" + "defghijklmnopqrstuvwxyzabc";
+  await K.gateway.grants.setRole(ownerChain, { person: CAT, role: "member" }, { presence: { op: "stand-in", fields: {}, n: Math.random() } });
+  const cat = K.chains.fromFacts({ kind: "device", device_key_id: "d-cat", person: CAT, path: "relay" });
+  const own = await ask.request(ownerChain, { title: "The owner's private errand", doer: w.me, output: { kind: "note" } });
+  const secret = `vyre://${space}/task/${own.id}`;
+  assert.equal(await K.gateway.records.get(cat, "task", own.id).then(r => r || null, () => null), null, "she really cannot read it");
+  const mine = await ask.request(cat, { title: "A draft about it", doer: { kind: "person", id: CAT, space }, output: { kind: "draft" }, record: secret });
+  assert.equal(mine.record_read, undefined, "the kernel did not mark a record the requester could not read");
+  await ask.start(cat, mine.id);
+  await assert.rejects(ask.complete(cat, mine.id, { draft: secret }), { code: "output_check_failed" }, "so the hand-in tells her nothing about it");
+  // the owner could read it: the same task made by the owner is marked, and a hand-in naming it passes
+  const ok = await ask.request(ownerChain, { title: "A draft about it", doer: w.me, output: { kind: "draft" }, record: secret });
+  assert.equal(ok.record_read, true);
+});
+
 // Items 3 (the person responsible for an agent) and 4 (a Kit's teammate) are not proved here: both need an agent running under a lent grant, or a Kit install through its approval, which a bare daemon test cannot set up.
 // Read from code: with no responsible port the maker of an agent unblocks its stuck task with a fresh proof like anyone else, and a Kit teammate part is skipped because the Flows host provides no teammates port.
