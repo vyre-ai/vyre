@@ -38,7 +38,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   // mirror their owner tools: lock, status, list and grants.status are reads; the store tools are module plumbing for member-mcp (the body refuses non-person callers)
   "vault.named.list", "vault.named.access.get", "vault.me.account.lock", "vault.me.account.status", "vault.me.list", "vault.me.unshare.agent", "vault.me.shares", "vault.me.vaults", "vault.me.provisioned", "vault.me.shared.list", "vault.me.shared.request", "vault.me.connection.shares", "vault.me.connection.directory", "vault.me.store.get", "vault.me.store.put", "vault.me.store.list", "vault.me.store.remove", "vault.access.get",
   "vault.history",
-  "vault.people", "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
+  "vault.people", "vault.person.of" /* the person's own view of which Vault person a Space member is linked to: a name and a verified flag, never a value, no access given or taken; like vault.people it is owner-only by reach (reach: person), so presence would prove nothing more */, "vault.fingerprint", "vault.vaults.create", "vault.vaults.list", "vault.vaults.sync",
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.state", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
