@@ -81,6 +81,11 @@
           "label": "Tags"
         },
         {
+          "name": "extra",
+          "kind": "text",
+          "label": "Extra fields"
+        },
+        {
           "name": "source",
           "kind": "choice",
           "label": "How they found us",
@@ -495,6 +500,11 @@
           "name": "tags",
           "kind": "text",
           "label": "Tags"
+        },
+        {
+          "name": "extra",
+          "kind": "text",
+          "label": "Extra fields"
         },
         {
           "name": "stage",
