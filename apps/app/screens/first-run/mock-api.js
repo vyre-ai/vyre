@@ -131,7 +131,7 @@ export async function copyAccounts(input) {
 }
 
 export async function listAssistantModels() {
-  return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] }] };
+  return { ok: true, accounts: [{ id: "ac_1", label: "Claude", provider: "claude", models: [{ id: "m_a", label: "Opus" }, { id: "m_b", label: "Sonnet" }] }] };
 }
 
 /** @param {string} model */

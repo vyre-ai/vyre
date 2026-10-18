@@ -7,11 +7,11 @@
 // names the library allows. A part Vyre does not take is listed in `leftOut` with the reason, never silently dropped and never half-installed.
 
 import path from "node:path";
-import { unzip } from "../vault/zip.js";
+import { unzip } from "../../lib/zip.js";
 import { frontMatter } from "../../lib/docs-corpus.js";
 import { validName, skillProblems, pluginProblems, LIMITS, hasCode } from "../../lib/skill-library.js";
-import { PLUGIN_LAYOUT } from "../sessions/drivers/plugin-layout.js";
-import { SKILL_HOMES } from "../sessions/drivers/skill-homes.js";
+import { PLUGIN_LAYOUT } from "../../lib/plugin-layout.js";
+import { SKILL_HOMES } from "../../lib/skill-homes.js";
 
 export const IMPORT_LIMITS = Object.freeze({ zip: 2 * 1024 * 1024, inflated: 6 * 1024 * 1024, entries: 400, file: LIMITS.body });
 // Grok MCP: written as a Claude-layout .mcp.json (docs.x.ai says Grok reads Claude Code plugins and MCPs); Grok documents no MCP table of its own. Not yet run.

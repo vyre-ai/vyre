@@ -3,13 +3,14 @@
 // decision: `drive.read` and `drive.write` on the source and the destination of a move, `drive.delete` for a delete (an outward act: the kernel asks, and the answer reaches the person as it is). Nothing is lost silently:
 // the Drive keeps every version, a move writes the new path before it removes the old one, and a delete is a tombstone version that files.drive.versions lists and files.drive.restore brings back.
 // A file moves by get + put + delete (no kernel call is added); a folder moves with the gateway's moveFolder.
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const CALLERS = [...PERSON_SURFACES, "device"];
 /** Most files a folder delete takes in one call; a bigger folder is done in parts, so one call cannot empty a Drive. */
 export const MAX_FOLDER_DELETE = 200;
 /** The largest file a move carries through this call, as upload does. */
@@ -42,12 +43,12 @@ export function registerSpaceEdit(ctx) {
     if (from === to) throw refuse("it is already there", "bad_input");
     if (to.startsWith(`${from}/`)) throw refuse("a folder cannot move into itself", "bad_input");
     const kind = await kindOf(drive, d.chain, from);
-    if (kind === "none") throw refuse("there is nothing at that path", "not_found");
+    if (kind === "none") throw refuse("there is nothing at that path: files.drive.space.list shows what is there", "not_found");
     const there = await kindOf(drive, d.chain, to);
     if (there !== "none") throw refuse(`${to} already exists: pick another name, or move it out of the way first`, "conflict");
     if (kind === "folder") { const r = await drive.moveFolder(d.chain, from, to); return { from, to, kind, moved: r.moved }; }
     const st = await drive.stat(d.chain, from);
-    if (st && typeof st.size === "number" && st.size > MAX_MOVE) throw refuse(`a file here moves up to ${MAX_MOVE / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+    if (st && typeof st.size === "number" && st.size > MAX_MOVE) throw refuse(`a file here moves up to ${MAX_MOVE / 1048576} MB: use a Flow or the VyreDrive mount for a larger one`, "too_large");
     const bytes = await drive.get(d.chain, from);
     await drive.put(d.chain, to, bytes, {});            // the new path is written first
     try { await drive.delete(d.chain, from); }          // then the old one is tombstoned
@@ -67,7 +68,7 @@ export function registerSpaceEdit(ctx) {
   tool("files.drive.space.delete", `Delete a file, or the files of a folder (at most ${MAX_FOLDER_DELETE} at once), from the Space's Drive: { space?, path }. A delete is a version: files.drive.versions lists it and files.drive.restore brings the file back. An outward act, so the kernel may ask first and the answer says so. A folder delete can stop part way: the answer then names how many went, where it stopped and why.`,
     obj({ space: str, path: str }, ["path"]), async (i, d, drive) => {
       const p = pathOf(i.path), kind = await kindOf(drive, d.chain, p);
-      if (kind === "none") throw refuse("there is nothing at that path", "not_found");
+      if (kind === "none") throw refuse("there is nothing at that path: files.drive.space.list shows what is there", "not_found");
       if (kind === "file") { await drive.delete(d.chain, p); return { path: p, kind, deleted: 1 }; }
       /** @type {string[]} */ const files = [];
       let after = null;
