@@ -13,11 +13,12 @@ import { useChats } from "../../src/state/chats";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 import { chatHas } from "../agents/home-model.js";
 import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, type AgentFull, type Computer, type UsageFull, type Watcher } from "./agent-model.ts";
+import { AgentThreads } from "./AgentThreads";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
-type Tab = "instructions" | "context" | "models" | "memory" | "used" | "activity";
-const TABS: [Tab, string][] = [["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["memory", "Memory"], ["used", "Where it is used"], ["activity", "Activity"]];
+type Tab = "threads" | "instructions" | "context" | "models" | "memory" | "used" | "activity";
+const TABS: [Tab, string][] = [["threads", "Threads"], ["instructions", "Instructions"], ["context", "Context"], ["models", "Models"], ["memory", "Memory"], ["used", "Where it is used"], ["activity", "Activity"]];
 
 export default function AgentPage() {
   const { name, tab: want } = useLocalSearchParams<{ name: string; tab?: string }>();
@@ -25,7 +26,7 @@ export default function AgentPage() {
   const [a, setA] = useState<AgentFull | null | undefined>(undefined);
   const [err, setErr] = useState("");
   const [looking, setLooking] = useState(false);
-  const [tab, setTab] = useState<Tab>(TABS.some(([k]) => k === want) ? (want as Tab) : "instructions");
+  const [tab, setTab] = useState<Tab>(TABS.some(([k]) => k === want) ? (want as Tab) : "threads");
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
@@ -39,6 +40,7 @@ export default function AgentPage() {
           <LookSheet a={a} open={looking} onClose={() => setLooking(false)} onSaved={(look) => { setA({ ...a, look }); setLooking(false); }} />
           <Chats a={a} />
           <Tabs items={TABS} value={tab} onChange={setTab} />
+          {tab === "threads" ? <AgentThreads name={a.name} /> : null}
           {tab === "instructions" ? <Instructions name={a.name} /> : null}
           {tab === "context" ? <Context name={a.name} /> : null}
           {tab === "models" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
