@@ -100,9 +100,9 @@ async function browserDriver(shared = null) {
       page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
     async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen starts: ${b.slice(0, 260)} | The screen ends: ${b.slice(-260)} | the add-server stages: ${stageTrail.join("; ") || "none seen"} | console errors: ${consoleErrors.slice(-3).join(" || ") || "none"}`); }); return body(); },
-    async click(/** @type {string} */ t) {
+    async click(/** @type {string} */ t, /** @type {boolean} */ exact = false) {
       // By role first, in this order, and the words only when no control has that name: a union of all of them takes the first in the page, which for a switch is the words beside it (they toggle nothing).
-      const candidates = [page.getByRole("button", { name: t }), page.getByRole("radio", { name: t }), page.getByRole("switch", { name: t }), page.getByText(t, { exact: true })];
+      const candidates = [page.getByRole("button", { name: t, exact }), page.getByRole("radio", { name: t, exact }), page.getByRole("switch", { name: t, exact }), page.getByText(t, { exact: true })];
       const end = Date.now() + 15_000;
       for (;;) {
         for (const c of candidates) if (await c.count()) { await c.first().click({ timeout: 15_000 }); return; }
@@ -497,7 +497,8 @@ try {
       const t = await drv.waitFor(words2, 20_000);
       await drv.shot("24-owner-review");
       if (!t.includes(words2)) throw new Error(`the owner is shown other words than the asker's (${words2})`);
-      await drv.click("Approve");
+      // exact: the ask's own row says "before you approve" and a loose name would press the row, which only folds it away
+      await drv.click("Approve", true);
       await until(async () => !/asks to join/.test(await drv.text()), 60_000, "the ask leaving the owner's list once approved").catch(async (e) => {
         await drv.shot("fail-owner-approve");
         throw new Error(`${e.message} | the owner's screen: ${(await drv.text()).replace(/\s+/g, " ").slice(0, 500)}`);

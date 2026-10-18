@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2 (join by address)
 
+- test(join): the walk pressed "Approve" by a loose name, and the ask's own row ("before you approve") matched first, so the press only folded the row away. The browser driver takes an exact name and the walk uses it for Approve.
+
 - fix(join): the first-run group walk (run 39143779793) failed all four steps. The requests module named its tables join_requests and join_settings, but a module's tables must start with its own name, so the module never started on the real server and every call to it answered "no such call" (now requests_asks and requests_settings). And a page with no daemon (the hosted web app) keeps the person's name in its own host, so the Settings screen answered "Choose your Vyre name first." and showed nothing: the door's list, decline and clear need no name there, and turning asking on and making the invite for an approval go through the paired server's own tools.
 
 - fix(welcome): FirstRun read `shot` one line before it was made ("Cannot access 'shot' before initialization" on the real first screen); the order is fixed and a test (first-run-order.test.js) fails if the first screens' function reads any constant before its line.
