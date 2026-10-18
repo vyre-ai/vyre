@@ -25,3 +25,14 @@ export function filterByScope(rows, scope, me) {
     default: return rows;
   }
 }
+
+/** The scope a type opens on: Mine for Notes and Communications, Team for Events (the people you work with, and the Busy blocks of the rest). @param {string} type */
+export const defaultScope = (type) => (type === "event" ? "team" : (scopesFor(type)[0] || [""])[0]);
+
+/** The records.list filter that cuts a scope on the box ("$me" is the caller), or undefined when the scope keeps every row it may read. @param {string} scope */
+export function scopeFilter(scope) {
+  if (scope === "mine") return { field: "owner", op: "eq", value: "$me" };
+  if (scope === "shared" || scope === "team") return { field: "owner", op: "ne", value: "$me" };
+  if (scope === "space") return { field: "visibility", op: "eq", value: "space" };
+  return undefined;
+}

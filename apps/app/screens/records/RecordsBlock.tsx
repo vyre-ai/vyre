@@ -15,7 +15,7 @@ import { MyTasks } from "./MyTasks";
 import { BusyBlocks } from "./BusyBlocks";
 import { AddColumn } from "./AddColumn";
 import { BoardWithStats } from "./BoardWithStats";
-import { filterByScope, scopesFor } from "./scope-views.js";
+import { defaultScope, filterByScope, scopeFilter, scopesFor } from "./scope-views.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -49,7 +49,12 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const openedView = b.data?.records?.view;
   const router = useRouter();
   const store = useStore();
-  const { data: world, loading, error, reload } = useRecordsWorld();
+  // The scope tab (Mine, Team, Space...) is cut on the box, so a long list is right once it pages; filterByScope below stays as the answer for a box that ignores the filter.
+  const [scopePicked, setScopePicked] = useState("");
+  const scopes = scopesFor(type);
+  const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : defaultScope(type);
+  const sf = scopeFilter(scope);
+  const { data: world, loading, error, reload } = useRecordsWorld(sf ? { [type]: sf } : undefined);
   const { phone } = useUiTheme();
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
   const [viewName, setViewName] = useState<string | undefined>(openedView);
@@ -57,7 +62,6 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const [panelId, setPanelId] = useState<string | null>(null);
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
-  const [scopePicked, setScopePicked] = useState("");
   const [making, setMaking] = useState(false);
   const [addingType, setAddingType] = useState(false);
   const [pane, setPane] = useState("records");
@@ -72,7 +76,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const canShare = useSidebar((s) => s.canSetDefault);
   const entries = useEffectiveList();
   // The pins (sidebar links) open this screen with a view in the address: follow it.
-  useEffect(() => { setViewName(openedView); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
+  useEffect(() => { setViewName(openedView); setScopePicked(""); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   const mv = useMoveStage(env, reload);
@@ -113,8 +117,6 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
   const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
-  const scopes = scopesFor(def.name);
-  const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : scopes[0]?.[0] ?? "";
   const everyone = world.byType[def.name] || [];
   const all = scopes.length ? filterByScope(everyone, scope, (world as any).me) : everyone;
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
