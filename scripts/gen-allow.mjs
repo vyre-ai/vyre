@@ -333,6 +333,8 @@ export const DECLARED_SINCE = Object.freeze({
   "documents.signed-link.revoke": "60d4a2c31@10 Oct 2026",
   "documents.signing.flow": "2f459afa0@10 Oct 2026",
   "documents.signing.waiting": "e9c422518@10 Oct 2026",
+  // read only, no page code: the same data class as waiting; the audit link is for a person's own surface only (18 Oct, sec53)
+  "documents.signing.status": "8b6d68bd3@18 Oct 2026",
   "documents.template.add": "613f5aad8@10 Oct 2026",
   "documents.template.get": "613f5aad8@10 Oct 2026",
   "documents.template.list": "613f5aad8@10 Oct 2026",

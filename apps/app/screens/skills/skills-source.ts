@@ -13,7 +13,7 @@ const dataOf = (r: unknown) => (r && typeof r === "object" && "data" in (r as ob
 export function skillsSource(call: Call) {
   const ask = async (tool: string, input: Record<string, unknown> = {}) => dataOf(await call(tool, input));
   return {
-    browse: (level?: string) => ask("skills.browse", level ? { level } : {}) as Promise<BrowsePack>,
+    browse: (level?: string, scope?: string) => ask("skills.browse", { ...(level ? { level } : {}), ...(scope ? { scope } : {}) }) as Promise<BrowsePack>,
     versions: (name: string, level: string, scope = "") => ask("skills.versions", { name, level, ...(scope ? { scope } : {}) }) as Promise<{ versions: SkillVersion[] }>,
     get: (id: string) => ask("skills.get", { id }) as Promise<{ id: string; text: string; description?: string }>,
     draft: (body: { name: string; level: string; scope?: string; kind?: string; body: string; note?: string }) => ask("skills.draft", body),

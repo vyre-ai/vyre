@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { roleLine, statusOf, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups } from "./home-model.js";
+import { roleLine, statusOf, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups, byRecent } from "./home-model.js";
 
 const NOW = 1_760_000_000_000;
 
@@ -109,4 +109,15 @@ test("a chat is with an agent when it lists it; the assistant's pinned chat is n
   assert.ok(chatHas({ agents: ["kit", "rev"] }, "kit"));
   assert.ok(!chatHas({ agents: ["kit"] }, "rev"));
   assert.ok(!chatHas({ agents: ["kit"], pinned: "assistant" }, "kit"));
+});
+
+test("the agents list sorts by the most recent activity, newest first; an agent with no activity goes last, by name (Agents polish)", () => {
+  const rows = [
+    { name: "kit", last_active: 1000 },
+    { name: "juno", last_active: 5000 },
+    { name: "ava" },
+    { name: "mo", last_active: 5000 },
+  ];
+  assert.deepEqual(byRecent(rows).map(r => r.name), ["juno", "mo", "kit", "ava"]);
+  assert.deepEqual(byRecent([]).map(r => r.name), []);
 });
