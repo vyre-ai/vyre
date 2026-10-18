@@ -365,6 +365,20 @@ if setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- test -f "
   setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid --bounding-set=-all,+setuid,+setgid --no-new-privs -- \
     env -i PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" \
     node /opt/agentd/agentd-main.js &
+  AGENTD_PID=$!
+  # It was started with &, so a start that fails (setpriv refusing a flag, node dying) is invisible unless something looks: say so in the container log, loudly, and vyred says so too when it waits for agentd.
+  (
+    n=0
+    until setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- test -S "${AGENTD_DIR}/agentd.sock"; do
+      n=$((n + 1))
+      if ! setpriv --reuid=1004 --regid=1004 --clear-groups --inh-caps=-all -- /bin/sh -c 'kill -0 "$0"' "${AGENTD_PID}" 2>/dev/null; then
+        log "AGENTD EXITED: it is not running, so agents get no computer of their own"; exit 1
+      fi
+      if [ "$n" -ge 40 ]; then log "AGENTD DID NOT START: its socket never appeared in 20 s, so agents get no computer of their own"; exit 1; fi
+      sleep 0.5
+    done
+    log "agentd is up"
+  ) &
 fi
 
 # ---- computerd, in the foreground, as vyre: its exit is the container's exit ------------------

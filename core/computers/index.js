@@ -461,6 +461,26 @@ export default {
       });
 
     const agentdReady = () => { const box = pool.row(SHARED_COMPUTER_ID); return Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function" && box && box.container && pool.hosts.has(SHARED_COMPUTER_ID)); };
+    // The Space's computer for agentBrowser: never the shared browser unless computers.browse is "browser" on purpose. It waits (bounded) for the computer and agentd, and says so loudly when they do not come.
+    {
+      agentBrowser.log = ctx.log;
+      const canExec = Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function");
+      agentBrowser.space = !canExec ? null : { endpoint: async agent => {
+        const waitMs = Number((ctx.config && ctx.config.computers && ctx.config.computers.agentdWaitMs) ?? 90_000), t0 = Date.now();
+        let last = NOT_SET, said = false;
+        for (;;) {
+          if (agentdReady()) {
+            try { await agentTools.place(agent); await agentUsers.wake(agent); return await cdpAdapter.endpoint(agent); } catch (e) { last = /** @type {Error} */ (e).message; }
+          }
+          if (Date.now() - t0 > waitMs) {
+            ctx.log(`AGENT COMPUTER NOT READY: ${agent} waited ${Math.round(waitMs / 1000)} s for the Space's computer and agentd (${last}); the shared browser is not used because computers.browse is not "browser"`);
+            throw new Error(`the Space's computer is not ready yet (${last}); try again in a moment. The shared browser is used only when computers.browse is "browser".`);
+          }
+          if (!said) { said = true; ctx.log(`agent computer: starting the Space's computer for ${agent}; waiting up to ${Math.round(waitMs / 1000)} s for agentd`); }
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      } };
+    }
     const agentEndpoint = makeAgentEndpoint({ resolve, claimOf: agentClaim, mayUse: agentTools.mayUse, place: agentTools.place, wake: a => agentUsers.wake(a), endpoint: a => cdpAdapter.endpoint(a) });
 
     tool("computers.endpoint", "Where the agent's Chrome and computerd answer, and computerd's token. Thaws the shared browser or checks out a desktop.",

@@ -58,8 +58,8 @@ try {
   check(up, "agentd answers through the one allowed exec", up ? undefined : lastErr);
   // the process itself: agentctl's uid, no new privileges, and a bounding set of setuid and setgid only (the entrypoint cannot set securebits: that needs CAP_SETPCAP, which no computer has)
   const apid = shOk(["exec", CONTAINER, "sh", "-c", "pgrep -u agentctl -f agentd-main | head -1"]);
-  const ast = shOk(["exec", CONTAINER, "grep", "-E", "^(Uid|CapEff|CapBnd|NoNewPrivs):", `/proc/${apid}/status`]);
-  check(/^Uid:\s*1004\b/m.test(ast) && /^NoNewPrivs:\s*1$/m.test(ast) && /^CapBnd:\s*0*c0$/m.test(ast), "agentd runs as agentctl with no new privileges and only setuid and setgid in its bounding set", ast.replace(/\n/g, " | "));
+  const ast = shOk(["exec", CONTAINER, "grep", "-E", "^(Uid|CapEff|CapBnd|CapAmb|NoNewPrivs):", `/proc/${apid}/status`]);
+  check(/^Uid:\s*1004\b/m.test(ast) && /^NoNewPrivs:\s*1$/m.test(ast) && /^CapBnd:\s*0*c0$/m.test(ast) && /^CapAmb:\s*0*c0$/m.test(ast) && /^CapEff:\s*0*c0$/m.test(ast), "agentd runs as agentctl with no new privileges and only setuid and setgid in its bounding set", ast.replace(/\n/g, " | "));
   await ctl.createUser(B);
   for (const u of [A, B]) await ctl.startScreen(u);
   // vyred's address is pinned by computerd and written for the relay, as the pool does before it opens a screen
@@ -247,6 +247,19 @@ try {
   shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `ln -sfn /etc ${AH}/to-etc && ln -sfn /var/lib/vyre/agents/ag20001/home ${AH}/to-other && mkdir -p ${AH}/work`]);
   const good = await run(`${AH}/work`);
   check(good.exit && good.exit.code === 0 && good.stdout.trim() === "20000", "a run starts as the agent's uid in a folder of its home", good);
+  // sec53: what a process started THROUGH agentd holds. The agent's shell and the agent's Chrome have no capability at all and cannot gain one; this is the guard that does not depend on securebits.
+  const zero = "0000000000000000";
+  const capsOf = txt => Object.fromEntries(["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"].map(k => [k, ((new RegExp(`^${k}:\\s*(\\S+)`, "m")).exec(txt) || [])[1]]));
+  const agentProc = await run(`${AH}/work`, ["/usr/bin/grep", "-E", "^(Cap|NoNewPrivs)", "/proc/self/status"]);
+  const agentCaps = capsOf(agentProc.stdout || "");
+  check(Object.values(agentCaps).every(v => v === zero) && /^NoNewPrivs:\s*1$/m.test(agentProc.stdout || ""), "a process agentd starts for the agent holds no capability (inheritable, permitted, effective, bounding, ambient) and has no-new-privileges", { ...agentCaps, out: (agentProc.stdout || "").replace(/\n/g, " | ").slice(-200) });
+  const cpid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 21000 -x chromium | head -1"]);
+  const chromeStatus = shOk(["exec", "-u", "0", CONTAINER, "grep", "-E", "^(Cap|NoNewPrivs)", `/proc/${cpid}/status`]);
+  check(Object.values(capsOf(chromeStatus)).every(v => v === zero) && /^NoNewPrivs:\s*1$/m.test(chromeStatus), "the agent's Chrome (the browser uid, started through agentd) holds no capability and has no-new-privileges", chromeStatus.replace(/\n/g, " | ").slice(-200));
+  // sec53: what uid 0 would own if agentd ever became it (no securebits). Root-owned files nobody else may read, on the state volume and the homes; none may hold a token, key or password.
+  const rootOwned = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "find /var/lib/vyre /home -xdev -user 0 ! -perm -004 2>/dev/null | head -100"]);
+  console.log("--- root-owned files with no world read (state volume and homes)\n" + (rootOwned || "(none)"));
+  check(!/token|key|pass|secret|\.boot|xauth|cookie|\.pem|cred/i.test(rootOwned), "no root-owned, not world-readable file on the state volume or in the homes is a token, key or password", rootOwned ? rootOwned.split("\n").length + " files, none such" : "none");
   for (const link of ["to-etc", "to-other"]) {
     const bad = await run(`${AH}/${link}`);
     check(bad.registered && bad.exit && bad.exit.error && /inside the agent's home/.test(bad.exit.error) && bad.stdout === "", `a run through a link out of the home (${link}) is refused by the helper and prints nothing`, bad);

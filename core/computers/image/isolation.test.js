@@ -443,6 +443,19 @@ test("isolation (static): agentd starts with no new privileges and a bounding se
   assert.doesNotMatch(DOCKERFILE, /chown[^\n]*agentctl[^\n]*\/opt\/agentd|chmod [0-7]*[2367][0-7] \/opt\/agentd/, "agentctl never owns or writes its own code");
 });
 
+test("isolation (static): agentd's bounding set is exactly setuid and setgid, nothing but the agent's own processes may differ, and a failed start of agentd is loud", () => {
+  const line = ENTRYPOINT.split("\n").find(l => l.includes("--reuid=1004") && l.includes("--bounding-set"));
+  assert.ok(line, "the agentd start line");
+  assert.match(line, /--bounding-set=-all,\+setuid,\+setgid(?=\s)/);
+  assert.doesNotMatch(line.replace(/--bounding-set=-all,\+setuid,\+setgid/, ""), /\+(?!setuid|setgid)[a-z_]+/, "no other capability is raised on that line");
+  assert.match(line, /--no-new-privs/);
+  // started with &: the entrypoint must look afterwards and say so in the container log when agentd is not there
+  assert.match(ENTRYPOINT, /AGENTD_PID=\$!/);
+  assert.match(ENTRYPOINT, /AGENTD DID NOT START/);
+  assert.match(ENTRYPOINT, /AGENTD EXITED/);
+  for (const l of ENTRYPOINT.split("\n").filter(x => /^[^#]*\bsetpriv /.test(x))) assert.doesNotMatch(l, /--no-new-privs=|--securebits=[^\s]*-no_new_privs|--nnp/, "no setpriv line turns no-new-privs off");
+});
+
 test("isolation (static): an agent's Chrome is started the way the computer's own Chrome is: --no-sandbox in a container whose seccomp refuses Chrome's namespaces", () => {
   const holder = fs.readFileSync(path.join(HERE_DIR, "agentd-chrome.py"), "utf8");
   assert.match(holder, /"--no-sandbox"/, "without it Chrome exits 'No usable sandbox!' and the holder ends with it");

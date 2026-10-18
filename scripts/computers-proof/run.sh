@@ -32,5 +32,10 @@ echo "proof exit code $RC"
 PROOF_CONTINUE="${PROOF_CONTINUE:-1}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
 RC2=$?
 echo "agent proof exit code $RC2"
-[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && exit 0
+# the one-computer proof (0.6): a vyred with the default settings, which agent has which computer. It needs the shared container name to itself, so the earlier proofs' containers go first.
+for c in $(docker ps -a --filter name=csproof-computer- --format '{{.Names}}'); do docker rm -f "$c" >/dev/null 2>&1; done
+PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/space.mjs
+RC3=$?
+echo "space proof exit code $RC3"
+[ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && [ "$RC3" -eq 0 ] && exit 0
 exit 1
