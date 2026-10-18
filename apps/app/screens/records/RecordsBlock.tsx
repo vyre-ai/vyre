@@ -13,7 +13,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -66,10 +66,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     const def = world.types.find((t) => t.name === type);
     if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
     idAsked.current.add(type);
-    void callT("records.define", { diff: { change_types: [defineInputOf(def)] } })
-      .then((r) => { if (r.error) console.warn(`records: the IDs of ${type} were not filled in (${r.error.code}: ${r.error.message})`); else reload(); })   // nothing is shown to the person: the next visit asks again
-      .catch((e) => console.warn(`records: the IDs of ${type} were not filled in (${e instanceof Error ? e.message : String(e)})`));
-  }, [world, type, canShare, reload]);
+    // The definition is read fresh just before it is replayed, never taken from this page's copy: another admin may have changed the type since the page loaded.
+    const warn = (why: string) => console.warn(`records: the IDs of ${type} were not filled in (${why})`);   // nothing is shown to the person: the next visit asks again
+    void Promise.resolve(store.types(!allowsMock() && space !== "all" ? space : undefined))
+      .then((list: any[]) => { const now = list.find((t) => t.name === type); if (!needsIdFill({ def: now, rows: world.byType[type] || [], canDefine: canShare })) return undefined; return callT("records.define", { diff: { change_types: [defineInputOf(now)] } }); })
+      .then((r) => { if (!r) return; if (r.error) warn(`${r.error.code}: ${r.error.message}`); else reload(); })
+      .catch((e) => warn(e instanceof Error ? e.message : String(e)));
+  }, [world, type, canShare, reload, space, store]);
   // A new type finishes setting up in the background: when the last one is done, the tabs read it in.
   const wasSettingUp = useRef(0);
   useEffect(() => { if (wasSettingUp.current > 0 && settingUp === 0) reload(); wasSettingUp.current = settingUp; }, [settingUp, reload]);
