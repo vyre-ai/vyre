@@ -298,7 +298,11 @@ export default {
     // The Computer tab's picture of an agent's screen (agent-frame.js): none while a person types into it or a fill shields it, kept in memory only, dropped on reset, removal and the computer stopping.
     const frames = new AgentFrames({ users: agentUsers, typing: agent => keyboard.takeovers.has(agent), shielded: agent => shield.has(agent), watching: agent => (screenViewers.get(agent) || 0) > 0 });
     // Where the computer runs, as facts the viewer's app turns into words (My Computer or Space's Cloud): the server's role here and who owns the Space.
-    const runsOn = () => ({ role: (ctx.config && ctx.config.role) || null, owner: (ctx.kernel && ctx.kernel.owner) || null });
+    const runsOn = () => {
+      const role = (ctx.config && ctx.config.role) || null, owner = (ctx.kernel && ctx.kernel.owner) || null;
+      // when the Space's server is the owner's own machine (role local, Vyre Home) it is that person's device: named, so the app can say My Computer for the owner and for no one else
+      return { role, owner, device: role === "local" && owner ? { id: (ctx.config && ctx.config.machine) || null, owner } : null };
+    };
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
     const agentTools = registerAgentTools({ tool, users: agentUsers, frames, runsOn, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {

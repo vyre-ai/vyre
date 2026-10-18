@@ -55,7 +55,7 @@ function AgentComputer() {
   if (!v) return null;
   const run = () => { setBusy(true); setSaid(""); system.updateComputer().then((r) => { setSaid(String(r?.message || "Updated.")); load(); }).catch((e) => setSaid(say(e, "The computer was not updated."))).finally(() => setBusy(false)); };
   return (
-    <Sec title="Agent computer">
+    <Sec title="Agents' computer">
       <Card flush>
         {v.rows.map(([k, val], i) => <View key={k}>{i ? <Divider /> : null}<Row title={k} end={<Text tone="muted">{val}</Text>} /></View>)}
         <Divider />

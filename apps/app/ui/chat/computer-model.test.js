@@ -57,3 +57,11 @@ test("the tab's view of one agent: the picture, who holds the screen, where it r
   assert.equal(agentComputerView(null).state, "asleep");
   assert.equal(agentComputerView({ state: "live", thumbnail: "javascript:alert(1)" }).frame, "", "only an image data URL is ever a picture");
 });
+
+test("My Computer also covers a session on any of the viewer's own devices: one the viewer owns, or one in the viewer's paired list; a device of someone else is not", () => {
+  assert.equal(whereWords({ role: "box", owner: "per_a", device: { id: "dev_1", owner: "per_b" } }, "per_b"), "My Computer", "the device's owner");
+  assert.equal(whereWords({ role: "box", owner: "per_a", device: { id: "dev_9", owner: "per_c" } }, "per_b", ["dev_9"]), "My Computer", "a device in the viewer's paired list");
+  assert.equal(whereWords({ role: "box", owner: "per_a", device: { id: "dev_9", owner: "per_c" } }, "per_b", ["dev_1"]), "Space's Cloud", "someone else's device");
+  assert.equal(whereWords({ role: "box", device: { id: "dev_9" } }, "per_b"), "Space's Cloud");
+  assert.equal(agentComputerView({ state: "live", runs_on: { role: "box", device: { id: "dev_9", owner: "per_c" } } }, { viewer: "per_b", devices: ["dev_9"] }).where, "My Computer");
+});

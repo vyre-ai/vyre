@@ -247,7 +247,7 @@ export default {
       callers: CALLERS,
       run: async (_, meta) => {
         const targets = [];
-        if (!offMac(meta) && (await hasScreen())) targets.push({ target: "mac", kind: "mac", label: "This Mac", live: true });
+        if (!offMac(meta) && (await hasScreen())) targets.push({ target: "mac", kind: "mac", label: "My Computer", live: true });
         const list = await ask("computers.list", {});
         for (const c of (list && Array.isArray(list.computers) ? list.computers : [])) {
           if (!c || typeof c.agent !== "string" || !AGENT.test(c.agent)) continue;

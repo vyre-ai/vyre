@@ -27,19 +27,24 @@ export const computerActions = (v) => (v.state === "asleep" ? ["wake"] : v.state
 export const DOCK = [{ id: "chrome", label: "Chrome", icon: "globe" }, { id: "files", label: "Files", icon: "folder" }, { id: "terminal", label: "Terminal", icon: "terminal" }];
 
 /**
- * Where the session runs, in the viewer's words (the spec's two: "My Computer" and "Space's Cloud"). It is relative to who looks: "My Computer" when the Space's server runs on a device of the viewer's own (the owner's
- * own Mac, Vyre Home: role "local", and the viewer is the Space's owner), "Space's Cloud" for everyone else and for any server that is not the viewer's own device. The tool gives facts (`runs_on: { role, owner }`), not words.
- * @param {{ role?: string | null, owner?: string | null } | null | undefined} runsOn @param {string | null | undefined} viewer the viewer's person id
+ * Where the session runs, in the viewer's words (the spec's two: "My Computer" and "Space's Cloud"). It is relative to who looks: "My Computer" when the session runs on a device that belongs to the viewer: the Space's
+ * server when it is the viewer's own Mac (Vyre Home: role "local" and the viewer is the owner), or any device named in the facts (`device: { id, owner }`) that the viewer owns or has paired (`mine`: the ids of the
+ * viewer's own paired devices). "Space's Cloud" for everyone else and for any server that is not the viewer's own device. The tool gives facts, not words.
+ * @param {{ role?: string | null, owner?: string | null, device?: { id?: string | null, owner?: string | null } | null } | null | undefined} runsOn
+ * @param {string | null | undefined} viewer the viewer's person id @param {string[]} [mine] ids of the viewer's own paired devices
  * @returns {"My Computer" | "Space's Cloud"}
  */
-export function whereWords(runsOn, viewer) {
-  return runsOn && runsOn.role === "local" && runsOn.owner && viewer && String(runsOn.owner) === String(viewer) ? "My Computer" : "Space's Cloud";
+export function whereWords(runsOn, viewer, mine = []) {
+  if (!runsOn || !viewer) return "Space's Cloud";
+  const d = runsOn.device;
+  if (d && ((d.owner && String(d.owner) === String(viewer)) || (d.id && mine.includes(String(d.id))))) return "My Computer";
+  return runsOn.role === "local" && runsOn.owner && String(runsOn.owner) === String(viewer) ? "My Computer" : "Space's Cloud";
 }
 
 /**
  * Everything the Computer tab needs for one agent, from computers.agent.frame's answer: the state and picture (a data URL, or none), where it runs in the viewer's words, who holds the screen, and which buttons apply.
  * Watch needs a live screen; Take over needs a live screen and the right to edit the agent, and is not offered while someone already has it.
- * @param {any} d the tool's answer @param {{ viewer?: string | null, canEdit?: boolean }} [who]
+ * @param {any} d the tool's answer @param {{ viewer?: string | null, canEdit?: boolean, devices?: string[] }} [who] devices: the ids of the viewer's own paired devices
  */
 export function agentComputerView(d, who = {}) {
   const v = computerOf(d);
@@ -50,7 +55,7 @@ export function agentComputerView(d, who = {}) {
     frame: v.thumbnail || "",
     withheld: d?.withheld === "typing" || d?.withheld === "shielded" ? d.withheld : null,
     heldBy,
-    where: whereWords(d?.runs_on, who.viewer),
+    where: whereWords(d?.runs_on, who.viewer, who.devices || []),
     canWatch: live,
     canTakeOver: live && who.canEdit === true && heldBy !== "taken-over",
   };

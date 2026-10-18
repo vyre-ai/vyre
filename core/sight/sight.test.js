@@ -178,7 +178,7 @@ test("sight.targets: the Mac when screen runs, one row per computer, and nothing
   const { reg } = await world(t, [FAKES.screen, FAKES.computers]);
   const { targets } = data(await reg.call("sight.targets", {}, "capsule"));
   assert.deepEqual(targets, [
-    { target: "mac", kind: "mac", label: "This Mac", live: true },
+    { target: "mac", kind: "mac", label: "My Computer", live: true },
     { target: "agent:juno", kind: "agent", label: "juno", live: false },
     { target: "agent:kit", kind: "agent", label: "kit", live: true, holder: "glass:laptop" },
   ]);
