@@ -1211,3 +1211,36 @@ test("a group task: the first holder of the role to start it owns it, the later 
   const x = await r.tasks.request(owner(), { title: "Review me", pool: { role: "writers" }, reviewer: actor("person", ALICE), output: { kind: "note" } });
   await assert.rejects(r.tasks.start(alice(), x.id), { code: "same_actor" });
 });
+
+test("escalation: a late reviewer slot passes to the role the author named, once it is overdue; only an owner or an admin names it; the result says it was escalated; an approver slot that runs late still needs a person's own proof", async () => {
+  const r = rig({ roleOf: a => (a.id === OWNER ? "owner" : null) });
+  r.state.roles.designers = [actor("person", BOB)];
+  const esc = (over = {}) => ({ reviewer: { due_ms: 60_000, to: { role: "designers" } }, ...over });
+  await assert.rejects(r.tasks.request(alice(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() })), { code: "not_allowed" }, "a member does not name the role");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ escalation: esc() })), { code: "bad_input" }, "a slot the task has not");
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc({ reviewer: { due_ms: 10, to: { role: "designers" } } }) })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  assert.equal(t.guides.escalate.reviewer.role, "designers");
+  await r.tasks.start(asIntake(), t.id);
+  const inReview = await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  assert.equal(typeof inReview.review_due_at, "number");
+  await assert.rejects(r.tasks.review(bob(), t.id, { result: "pass" }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.escalated.to, "designers");
+  // the named reviewer still may, and is not marked escalated
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), escalation: esc() }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  T += 120_000;
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).review.escalated, undefined);
+  // an approver slot passes to a role too, and its holder still approves only with their own proof
+  r.state.roles.partners = [actor("person", BOB)];
+  const v = await toNeedsCheck(r, draftTask({ escalation: { approver: { due_ms: 60_000, to: { role: "partners" } } } }));
+  const B = bob();
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) }), { code: "not_allowed" }, "not yet late");
+  T += 120_000;
+  await assert.rejects(r.tasks.decide(B, v.id, { outcome: "approved" }), { code: "needs_presence" }, "no proof, no approval");
+  assert.equal((await r.tasks.decide(B, v.id, { outcome: "approved", proof: r.proof(B, BOB, v) })).state, "done");
+});
