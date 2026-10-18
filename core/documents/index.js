@@ -344,7 +344,16 @@ export function registerDocuments(ctx) {
       const rows = (await d.gateway.records.query(d.chain, "document", { filter: { field: "submission", op: "eq", value: n }, page: { limit: 1 } })).rows || [];
       if (rows.length) return true;
     } catch { /* not readable under this chain: the same as no record */ }
-    return Boolean(ctx.kernel && ctx.kernel.owner) && personOf(d.chain) === String(ctx.kernel.owner);
+    return isStaff(personOf(d.chain));
+  };
+  /** The Space's owner or an admin, by the kernel's membership role (the same test core/work/hub.js uses for staff). */
+  const isStaff = async (/** @type {string | null} */ person) => {
+    if (!person) return false;
+    if (ctx.kernel && ctx.kernel.owner && String(ctx.kernel.owner) === person) return true;
+    try {
+      const m = ctx.kernel && typeof ctx.kernel.membership === "function" ? await ctx.kernel.membership(person) : null;
+      return Boolean(m && (m.role === "owner" || m.role === "admin"));
+    } catch { return false; }
   };
 
   async function filed(/** @type {any} */ d, /** @type {Record<string, any>} */ data) {
