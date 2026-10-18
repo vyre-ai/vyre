@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { useWindowDimensions } from "react-native";
 import { Tree, type NodeRendererProps } from "react-arborist";
-import { Icon, Text, showToast } from "@vyre/ui";
+import { Chip, Icon, Text, showToast } from "@vyre/ui";
 import { rootsOf, parsePlace, type TreeNode } from "./files-model.ts";
 import { linked } from "./real";
 import { useFilesNav } from "./files-nav";
@@ -38,7 +38,7 @@ function Places() {
                 style={{ display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 8px", borderRadius: 10, cursor: "pointer", background: on ? "var(--surface-3)" : "transparent" }}>
                 <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "people" : p.kind === "newsite" ? "plus" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
                 <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={on}>{p.label}</Text></div>
-                {p.live ? <span title="Live" style={{ width: 6, height: 6, borderRadius: 3, background: "var(--ok, #2D8C5A)" }} /> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
+                {p.live ? <Chip tone="ok">Live</Chip> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
               </div>
             );
           })}
