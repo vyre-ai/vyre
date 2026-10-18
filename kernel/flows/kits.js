@@ -390,6 +390,7 @@ export class KitManager {
     }
     if (waiver && this.k.kits) await this.k.kits.end(waiver);
     for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
+    /** @type {{ name: string, made: boolean, existed: boolean, instructions_quoted: string }[]} */ const assistants = [];
     for (const part of parts) {
       const key = `${part.kind}:${part.name}`;
       if (part.kind === "type" || part.kind === "seed") continue;
@@ -420,7 +421,7 @@ export class KitManager {
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "teammate") {
         // The port answers { id } for an assistant it made; that id is what a removal checks, so a same-named assistant of the person's own is never taken away with the Kit.
-        if (this.ports.teammates) { const made = await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external", by: p.approver }); if (made && made.id) row.refs[key] = made.id; }
+        if (this.ports.teammates) { const made = await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external", by: p.approver }); if (made && made.id) row.refs[key] = made.id; assistants.push({ name: part.name, made: Boolean(made && made.id), existed: Boolean(made && made.existed), instructions_quoted: quotedText(part.def.instructions) }); }
       }
       if (!row.added.includes(key)) row.added.push(key);
       await this.store.put(row);
@@ -433,7 +434,7 @@ export class KitManager {
     row.status = "installed"; row.from = null; row.at = this.now();
     await this.store.put(row);
     await this.store.delProposal(proposalId);
-    return { installed: kit.id, version: kit.version, flows: row.flows };
+    return { installed: kit.id, version: kit.version, flows: row.flows, ...(assistants.length ? { assistants, note: "Each assistant listed was made with the Kit's instructions exactly as quoted. They are outside text: read them. One that already existed under that name was left as it was." } : {}) };
   }
 
   /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */

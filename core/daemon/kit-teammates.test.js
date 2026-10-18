@@ -36,6 +36,10 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   assert.ok(p && p.ok, JSON.stringify(p));
   assert.ok(!(await agents()).some((/** @type {any} */ a) => a.name === "desk-helper"), "the proposal makes nothing");
   const row = await K.gateway.ask.get(chainOf(), p.task);
+  // what the approver is asked to sign carries the instructions, quoted, and the note, whoever proposed and whether or not anyone opened the card
+  const formCard = row.form.card;
+  assert.equal(formCard.adds.teammates.find((/** @type {any} */ x) => x.name === "desk-helper").instructions_quoted, JSON.stringify("Greet the person, find the matter and say what is next."), "the task form holds the text");
+  assert.ok(formCard.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n) && /outside text/.test(n)), "and the note");
   await K.gateway.ask.decide(chainOf(), p.task, { outcome: "approved", proof: { op: "task.decide", fields: { task: p.task, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
   await until(async () => ((await call("flows.kit.list")) || []).some((/** @type {any} */ k) => k.id === "front-desk" && k.status === "installed"), "the Kit to install");
 
@@ -51,6 +55,8 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   const vs = await call("agents.versions", { agent: "desk-helper" });
   assert.ok(JSON.stringify(vs).includes("kit-front-desk"), "its tags say which Kit made it: " + JSON.stringify(vs).slice(0, 400));
   assert.ok(!JSON.stringify(helper).includes("This is the Kit") && JSON.stringify(vs).includes("Greet the person"), "the Kit's text is its instructions, and the Kit id is not in them");
+  const listed = (await call("flows.kit.list")).find((/** @type {any} */ k) => k.id === "front-desk");
+  assert.ok(listed, "listed");
   await call("flows.kit.remove", { id: "front-desk" });
   const gone = await agents();
   assert.ok(!gone.some((/** @type {any} */ a) => a.name === "desk-helper"), "removing the Kit removes the assistant it made");
