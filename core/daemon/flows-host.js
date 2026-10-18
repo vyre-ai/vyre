@@ -17,6 +17,7 @@ import { createAgentWake } from "./agent-wake.js";
 import { lendConnections, endConnections } from "./connection-lend.js";
 import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
+import { teammatePort } from "./kit-teammates.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -402,33 +403,8 @@ export function createFlowsHost(o) {
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
     guardUntilReady(flows.tools, () => typesReady, () => exhausted);
-    // A Kit's assistants (its `teammates` part). Installing makes each one with agents.create and removing the Kit removes it with agents.delete, both as the person who approved the install or the removal, on
-    // their own session: the grants are the ones that person would need doing it by hand (projects "none", the instructions are the Kit's own text, which the card called outside text). An assistant of that
-    // name that is already there is left alone and not claimed: nothing is created, no id is kept, and removing the Kit never takes it away.
-    if (typeof o.callAs === "function") {
-      const asPerson = async (/** @type {any} */ by, /** @type {any} */ chain, /** @type {string} */ what) => {
-        const h = by && by.kind === "person" ? by : (chain && Array.isArray(chain.hops) ? (chain.hops.find((/** @type {any} */ x) => x.actor.kind === "person") || {}).actor : null);
-        if (!h || h.kind !== "person") throw Object.assign(new Error(`${what} runs as the person who approved it: this change carries none`), { code: "denied" });
-        return (await k.surfaces.open(personChain(String(h.id)), { ttl_ms: 60_000 })).token;
-      };
-      ports.teammates = {
-        create: async (/** @type {any} */ chain, /** @type {any} */ t) => {
-          const token = await asPerson(t.by, chain, "Installing a Kit's assistants");
-          const have = await o.callAs("agents.list", {}, token);
-          const list = have && !have.error && have.data ? (Array.isArray(have.data) ? have.data : have.data.agents || []) : [];
-          if (list.some((/** @type {any} */ a) => a && a.name === t.name)) { log(`flows ${space}: Kit ${t.kit} names an assistant ${t.name} that is already here; it is left as it is`); return { id: null, existed: true }; }
-          const r = await o.callAs("agents.create", { name: t.name, instructions: String(t.instructions || ""), projects: [] }, token);
-          if (r && r.error) throw Object.assign(new Error(`the Kit's assistant ${t.name} could not be made: ${r.error.message}`), { code: r.error.code || "failed" });
-          log(`flows ${space}: Kit ${t.kit} made the assistant ${t.name} with the Kit's instructions as written; they are not yet marked as outside text on the assistant`);
-          return { id: r && r.data && (r.data.id || r.data.uid) ? String(r.data.id || r.data.uid) : null, note: "made with the Kit's instructions as written; not yet marked as outside text on the assistant" };
-        },
-        remove: async (/** @type {any} */ chain, /** @type {string} */ name, /** @type {string} */ id, /** @type {any} */ by) => {
-          const token = await asPerson(by, chain, "Removing a Kit's assistants");
-          const r = await o.callAs("agents.delete", { agent: name, ...(id ? { id } : {}) }, token);
-          if (r && r.error && r.error.code !== "not_found") throw Object.assign(new Error(`the Kit's assistant ${name} was not removed: ${r.error.message}`), { code: r.error.code || "failed" });
-        },
-      };
-    }
+    // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).
+    if (typeof o.callAs === "function") ports.teammates = teammatePort({ callAs: o.callAs, session: async (/** @type {string} */ id) => (await k.surfaces.open(personChain(id), { ttl_ms: 60_000 })).token, log, space });
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);
       const live = await store.active(x.flow).catch(() => null);

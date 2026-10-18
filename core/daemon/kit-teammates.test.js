@@ -48,6 +48,7 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   if (shown) assert.match(JSON.stringify(shown), /Mine\./, "and still says what the person wrote");
   assert.ok(!JSON.stringify(shown || {}).includes("This is the Kit's text"), "the Kit did not rewrite it");
 
+  assert.ok(JSON.stringify(helper).includes("kit-front-desk"), "its visible tags say which Kit made it: " + JSON.stringify(helper).slice(0, 300));
   await call("flows.kit.remove", { id: "front-desk" });
   const gone = await agents();
   assert.ok(!gone.some((/** @type {any} */ a) => a.name === "desk-helper"), "removing the Kit removes the assistant it made");
@@ -61,8 +62,8 @@ test("the install card for a Kit with assistants carries their full instructions
   const meta = async () => ({ token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token });
   const card = (await d.registry.call("flows.kit.card", { kit: kit() }, "cli", await meta())).data;
   assert.equal(card.adds.teammates.length, 2);
-  assert.equal(card.adds.teammates[0].instructions, "Greet the person, find the matter and say what is next.", "the full text, not its length");
-  assert.ok(card.notes.some((/** @type {string} */ n) => /exactly as written below/.test(n) && /not yet marked as outside text/.test(n)));
+  assert.equal(card.adds.teammates[0].instructions_quoted, JSON.stringify("Greet the person, find the matter and say what is next."), "the full text, quoted, not its length");
+  assert.ok(card.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n) && /text from outside/.test(n)));
   const none = (await d.registry.call("flows.kit.card", { kit: { ...kit(), includes: { ...kit().includes, teammates: [] } } }, "cli", await meta())).data;
-  assert.ok(!none.notes.some((/** @type {string} */ n) => /exactly as written below/.test(n)), "no assistants, no words");
+  assert.ok(!none.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n)), "no assistants, no words");
 });

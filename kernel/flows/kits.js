@@ -113,14 +113,14 @@ export function installCard(kit, cat) {
     replaces: Boolean(merged.types[p.name] && merged.types[p.name] !== p.def && cat.types[p.name]),
   }));
   const roles = parts.filter(p => p.kind === "role").map(p => ({ name: p.name, base: p.def.base, abilities: p.def.abilities || [] }));
-  const teammates = parts.filter(p => p.kind === "teammate").map(p => ({ name: p.name, instructions_chars: String(p.def.instructions || "").length, trust: "external" }));
+  const teammates = parts.filter(p => p.kind === "teammate").map(p => ({ name: p.name, instructions_chars: String(p.def.instructions || "").length, instructions_quoted: quotedText(p.def.instructions), trust: "external" }));
   const templates = parts.filter(p => p.kind === "template").map(p => ({ name: p.name, kind: p.def.kind, slots: sealedSlots(p.def.body), trust: "external" }));
   const seed = parts.filter(p => p.kind === "seed").length;
   /** @type {string[]} */ const notes = [];
   if (flows.some(f => f.outward.length)) notes.push("Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.");
   if (flows.some(f => f.code.length)) notes.push("Some Flows run code in the sandbox.");
   if (flows.some(f => f.sealed_uses.length) || types.some(t => t.sealed.length)) notes.push("Sealed fields are in play: assistants only ever see placeholders.");
-  if (teammates.length) notes.push("Assistants start from this Kit's own instructions, which count as outside text until you have read them.");
+  if (teammates.length) notes.push("Each assistant is made with this Kit's instructions exactly as quoted here, and acts with your reach. They are text from outside, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.");
   return {
     kit: { id: kit.id, version: kit.version, name: kit.name, description: kit.description || "", hash: kitHash(kit) },
     ok: checked.ok, errors: checked.errors,
@@ -134,6 +134,15 @@ export function sealedSlots(body) {
   const out = [];
   for (const m of String(body || "").matchAll(/\{\{\s*sealed\.([a-z0-9_.]+)\s*\}\}/gi)) out.push(m[1]);
   return out;
+}
+
+/**
+ * Text a person reads that a Kit's author wrote: the characters that could end a line or imitate a control are taken out, and it is shown as one quoted string (never joined into the card's own words), cut
+ * at 2000 characters with a visible mark that says how long it was. The card's hash covers it, since the card is part of the task form the approver signs. @param {unknown} text
+ */
+export function quotedText(text) {
+  const clean = String(text ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ");
+  return clean.length > 2000 ? `${JSON.stringify(clean.slice(0, 2000))} [cut: ${clean.length} characters in all]` : JSON.stringify(clean);
 }
 
 /**
@@ -199,7 +208,10 @@ export function diffKits(oldKit, newKit, cat) {
     }
   }
   for (const r of removed) risks.push({ part: `${r.kind} ${r.name}`, what: "is removed" });
-  return { from: oldKit.version, to: newKit.version, added, removed, changed, widenings, risks, widening: widenings.length > 0 };
+  // an assistant that is new or whose instructions changed, with the new text itself (quoted, capped): the approver reads what it will follow, not that something changed
+  const assistants = [...b.values()].filter(p => p.kind === "teammate" && (!a.has(`teammate:${p.name}`) || a.get(`teammate:${p.name}`)?.def.instructions !== p.def.instructions))
+    .map(p => ({ name: p.name, change: a.has(`teammate:${p.name}`) ? "changed" : "new", instructions_quoted: quotedText(p.def.instructions), trust: "external" }));
+  return { from: oldKit.version, to: newKit.version, added, removed, changed, widenings, risks, assistants, widening: widenings.length > 0 };
 }
 
 /** The in-memory ledger of installed Kits. */
