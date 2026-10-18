@@ -30,8 +30,11 @@ test("no link and no same-named person: the Vault step is skipped and the sheet 
   const plan = vaultPlan({ memberName: "Eve", linked: null, people });
   assert.deepEqual(plan, { mode: "none", linked: null, candidates: [] });
   assert.deepEqual(offboardNames(plan, ["Dana"]), []);
-  assert.equal(removeWords(plan, "Eve", "Juniper Studio").body, "Eve had no shared Vault items.");
-  assert.equal(vaultPlan({ memberName: "Eve", linked: null, people: null }).mode, "none", "no vault.people answer is the same as no people");
+  assert.match(removeWords(plan, "Eve", "Juniper Studio").body, /^No one in the Vault is linked to Eve or shares their name\. If you shared items under another name, end them in the Vault\.$/);
+  const unchecked = vaultPlan({ memberName: "Eve", linked: null, people: null });
+  assert.equal(unchecked.mode, "unchecked", "no vault.people answer is not the same as no people");
+  assert.match(removeWords(unchecked, "Eve", "Juniper Studio").body, /^The Vault could not be checked\./);
+  assert.deepEqual(offboardNames(unchecked, ["Eve"]), []);
 });
 
 test("a name collision does not offboard the wrong person: a linked different name wins and the other same-named row is not touched", () => {
@@ -39,7 +42,9 @@ test("a name collision does not offboard the wrong person: a linked different na
   assert.deepEqual(offboardNames(plan, ["Dana"]), ["Sam"]);
 });
 
-test("the done line names what to rotate", () => {
+test("the done line names what to rotate, and says plainly which Vault access was not ended", () => {
   assert.equal(doneLine("Dana", "Juniper Studio", { rotate: 0 }), "Dana was removed from Juniper Studio.");
   assert.match(doneLine("Dana", "Juniper Studio", { rotate: 2 }), /2 secrets they could read need a new value/);
+  assert.equal(doneLine("Dana", "Juniper Studio", { rotate: 0, failed: ["Dana"] }), "Dana was removed from Juniper Studio. Vault access for Dana was not ended. End it from the Vault.");
+  assert.match(doneLine("Dana", "Juniper Studio", { rotate: 1, failed: ["Dana", "dana"] }), /Vault access for Dana, dana was not ended\. End it from the Vault\..*1 secret they could read/);
 });

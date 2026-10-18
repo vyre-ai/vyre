@@ -2,7 +2,7 @@
 // Removing someone from a Space also ends what they hold in the Vault. A member is linked to a Vault person by vault.person.of; when it names one, that person is offboarded with the removal. When it
 // does not, the sheet lists the Vault people with the same name and the owner ticks the ones to end: never a silent guess. Pure, so Node tests it.
 
-/** @typedef {{ mode: "linked" | "choose" | "none", linked: string | null, candidates: string[] }} VaultPlan */
+/** @typedef {{ mode: "linked" | "choose" | "none" | "unchecked", linked: string | null, candidates: string[] }} VaultPlan */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v.trim() : "");
 
@@ -20,6 +20,8 @@ export function linkedOf(d) {
  */
 export function vaultPlan({ memberName, linked, people }) {
   if (linked) return { mode: "linked", linked, candidates: [] };
+  // No answer from vault.people at all (the tool is missing, locked, or failed): the Vault was not checked, which is not the same as nothing being there.
+  if (people === null || people === undefined) return { mode: "unchecked", linked: null, candidates: [] };
   const list = Array.isArray(people) ? people : Array.isArray(/** @type {any} */ (people)?.people) ? /** @type {any} */ (people).people : [];
   const want = str(memberName).toLowerCase();
   const names = list.map((p) => str(/** @type {any} */ (p)?.name)).filter(Boolean);
@@ -39,11 +41,14 @@ export function removeWords(plan, name, space) {
   const title = `Remove ${name} from ${space}?`;
   if (plan.mode === "linked") return { title, body: "Their access to shared Vault items, passes and emergency access ends too." };
   if (plan.mode === "choose") return { title, body: `${name} loses access to ${space}.`, choose: "Also end Vault sharing with:" };
-  return { title, body: `${name} had no shared Vault items.` };
+  if (plan.mode === "unchecked") return { title, body: `The Vault could not be checked. If you shared Vault items with ${name}, end them in the Vault.` };
+  return { title, body: `No one in the Vault is linked to ${name} or shares their name. If you shared items under another name, end them in the Vault.` };
 }
 
-/** After the removal: one line saying what ended and what to rotate. @param {string} name @param {string} space @param {{ rotate: number }} done */
+/** After the removal: one line saying what ended, what could not be ended, and what to rotate. @param {string} name @param {string} space @param {{ rotate: number, failed?: string[] }} done */
 export function doneLine(name, space, done) {
   const base = `${name} was removed from ${space}.`;
-  return done.rotate > 0 ? `${base} ${done.rotate} ${done.rotate === 1 ? "secret" : "secrets"} they could read need a new value: see the Vault.` : base;
+  const failed = done.failed && done.failed.length ? ` Vault access for ${done.failed.join(", ")} was not ended. End it from the Vault.` : "";
+  const rotate = done.rotate > 0 ? ` ${done.rotate} ${done.rotate === 1 ? "secret" : "secrets"} they could read need a new value: see the Vault.` : "";
+  return `${base}${failed}${rotate}`;
 }
