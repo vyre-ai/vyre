@@ -50,7 +50,7 @@ export const SHARED_ME_TOOLS = ["vault.me.mention.search", "vault.me.mention.res
 /** The surfaces a member's own session comes in through (a model's labels are not among them). */
 export const MEMBER_SURFACES = PERSON_SURFACES;
 
-export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.lend", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
+export const ME_MODULE_TOOLS = ["vault.me.release", "vault.me.has", "vault.me.serve", "vault.me.lend", "vault.connection.token", "vault.connection.revoke", "vault.me.connect.put", "vault.me.who"];
 
 /**
  * @param {{ ctx: any, people: import("../people.js").PeopleVaults,
@@ -103,6 +103,37 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
   // A member's own AI key or setup token, for the account row that names it. `has` answers only whether the named item is in that person's vault (the add-time check, never a value); it is for the sessions module.
   // `lend` takes the ACCOUNT only and works out the person from the verified chain of the turn the call is made in: it gives the one item that account names, to the Switchboard, for that member's own turn, and
   // only when the account row is theirs and their vault is unlocked. The value goes into the session's environment and nowhere else: never an event, a log line, an error or an audit row.
+  // The member door's own call (core/vault/member-service.js, wire.js CALLS.myvault): the person is the one the door's chain names. Only the daemon's door runs it, never a person's surface and never a model. It runs the same
+  // functions as the vault.me.* tools, for the five calls the first run needs, with the input cut to exactly what each takes. The password, the Secret Key and the value are used for that one call and are never logged or returned.
+  ctx.tool("vault.me.serve", {
+    internal: true,
+    description: "A team member's own Vault, as the member's own chain from the team's door: status, create, unlock, list, put (an AI key). Only the daemon's own door runs it.",
+    input: obj({ call: str, person: str, space: str, input: { type: "object" } }, ["call", "person", "space"]),
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (String((meta && meta.caller) || "") !== "module:vyred") throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const id = String(i.person);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id) || id === String(ctx.kernel && ctx.kernel.owner)) throw Object.assign(new Error(ME_REFUSAL), { code: "denied" });
+      const input = i.input && typeof i.input === "object" && !Array.isArray(i.input) ? i.input : {};
+      const text = (/** @type {unknown} */ v, /** @type {number} */ max) => { const t = typeof v === "string" ? v : ""; if (!t || t.length > max) throw Object.assign(new Error("that input is not valid"), { code: "bad_input" }); return t; };
+      switch (String(i.call)) {
+        case "status": return people.status(id);
+        case "create": return people.create(id, { password: text(input.password, 1024) });
+        case "unlock": return people.unlock(id, { password: text(input.password, 1024), secretKey: text(input.secretKey, 256) });
+        case "list": { const l = await people.list(id, {}); const rows = Array.isArray(l) ? l : (l && l.items) || []; return { items: rows.map((/** @type {any} */ x) => ({ name: String(x.name), kind: String(x.kind) })) }; }
+        case "put": {
+          const name = text(input.name, 60);
+          if (!/^[A-Za-z0-9][A-Za-z0-9 ._@+-]{0,59}$/.test(name)) throw Object.assign(new Error("a Vault item's name is up to 60 letters, digits, spaces and . _ @ + -"), { code: "bad_input" });
+          if (input.kind !== "api-key") throw Object.assign(new Error("only an AI key is put here"), { code: "bad_input" });
+          const f = input.fields && typeof input.fields === "object" ? input.fields : {};
+          const value = text(f.value, 400);
+          if (value.length < 12 || /[\s\u0000-\u001f\u007f]/.test(value) || Object.keys(f).length !== 1) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
+          await people.put(id, { name, kind: "api-key", description: "", fields: { value } });
+          return { stored: true, name };
+        }
+        default: throw Object.assign(new Error("call is status, create, unlock, list or put"), { code: "bad_input" });
+      }
+    },
+  });
   ctx.tool("vault.me.has", {
     internal: true,
     description: "Whether a member's own vault holds an AI key or setup token by this name: { name } -> { has }. Only the sessions module asks, at the moment a member adds the account, and the person is the one on the call's verified chain, never the input (a `person` in the input is ignored). Never a value.",
