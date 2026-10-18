@@ -81,6 +81,11 @@
           "label": "Tags"
         },
         {
+          "name": "extra",
+          "kind": "text",
+          "label": "Extra fields"
+        },
+        {
           "name": "date_of_birth",
           "kind": "date",
           "label": "Date of birth"

@@ -696,10 +696,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
-  "tool": "flows.step.test",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; tries one step of a Flow on a past run of that Flow or on sample values: reads run for real, nothing is stored, sent or emitted, and a past run is shown only as far as the caller may see it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
- },
- {
   "tool": "flows.test.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the saved test cases of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -1284,6 +1280,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads events the caller may see; the kernel decides"
  },
  {
+  "tool": "records.field.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a type's fast fields and where each is; no record data"
+ },
+ {
   "tool": "records.forget.propose",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to forget a record: it reads the record under the caller's own chain and makes a task for the person, who decides with their presence; nothing is forgotten here"
  },
@@ -1304,6 +1304,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Kits the library offers: public text, no data"
  },
  {
+  "tool": "records.layout.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads how a type is shown to the caller; no record data"
+ },
+ {
   "tool": "records.linked",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the records linked to one, under the caller's own chain; the kernel decides each"
  },
@@ -1316,8 +1320,24 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
  },
  {
+  "tool": "records.move",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): moves a record to a stage under the caller's own chain; the kernel enforces the stage's entry condition"
+ },
+ {
   "tool": "records.reference",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
+ },
+ {
+  "tool": "records.relationship.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): relates two records under the caller's own chain; the kernel decides who may write and read them"
+ },
+ {
+  "tool": "records.relationship.kinds",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the relationship kinds; no record data"
+ },
+ {
+  "tool": "records.relationship.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a record's relationships under the caller's own chain; only rows the caller may read"
  },
  {
   "tool": "records.roles",
@@ -1628,16 +1648,8 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks for a task under the caller's own chain; the kernel decides who may"
  },
  {
-  "tool": "tasks.review",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the reviewer slot's holder passes the work or asks for changes; never the doer, a helper or anyone under the doer; a pass never frees an outward output"
- },
- {
   "tool": "tasks.submit",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): hands in a doer's work for a check; the kernel decides"
- },
- {
-  "tool": "tasks.update",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the doer or a helper adds details, a progress note or outputs while the task is theirs to work; the kernel rechecks the hold on every write"
  },
  {
   "tool": "team.charter.draft",

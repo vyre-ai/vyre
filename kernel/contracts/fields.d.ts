@@ -110,6 +110,8 @@ export interface StageDef {
   readonly owner?: string;
   /** The record can enter this stage only while this Expression, over the record as it would be after the write, is true. */
   readonly enter_if?: string;
+  /** The chance (0 to 100) a record in this stage will close; a move into the stage sets the record's probability from it. */
+  readonly probability?: number;
 }
 
 /** A stage set: the stages a record follows while `when` holds for it. The first set that holds wins; the type's `stages` are the default set. */
@@ -150,6 +152,12 @@ export interface TypeDefinition {
   readonly role?: { readonly link: string; readonly ended?: readonly string[] };
   /** The sections of the type in the order shown (at most 20, names 1 to 60 characters, none twice in any case); a field names one in `group`. Presentation only. A rename is one change_types that rewrites the names. */
   readonly groups?: readonly { readonly name: string; readonly collapsed?: boolean }[];
+  /** Presentation only (core/records-tools/type-settings.js): a colour name or hex, whether Records leaves the type out of its own list, and the colours of a choice or stage field's options. */
+  readonly color?: string;
+  readonly hidden_in_records?: boolean;
+  /** What the screens call a role type ("Lead" for the type labelled "Lead role"); roles only. */
+  readonly role_label?: string;
+  readonly option_colors?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 /** How a field is shown. */

@@ -30,7 +30,7 @@ export function toData(/** @type {any} */ r) {
     project: r.project ?? null, thread: r.thread ?? null, source: r.source ?? null, added_by: r.source_name ?? null, created: r.created, updated: r.updated,
     removed_at: iso(r.deleted_at), done_at: iso(r.done_at), person: r.by ?? null,
   };
-  if (r.kind === "note") return d;
+  if (r.kind === "note") return { ...d, visibility: r.visibility ?? "private", record: r.record ?? null };
   return { ...d, kind: r.kind, at: iso(r.at), tz: r.tz ?? null, floating: Boolean(r.floating), wall: r.wall ?? null, date: r.date ?? null, repeat: r.repeat == null ? null : typeof r.repeat === "string" ? r.repeat : JSON.stringify(r.repeat),
     duration_ms: r.duration_ms ?? null, snooze_until: iso(r.snooze_until), next_fire: r.next_fire ?? null, waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null,
     paused: Boolean(r.paused), waits_on_fired: r.waits_on_fired ?? null };
@@ -45,6 +45,7 @@ export function fromRecord(/** @type {any} */ rec, /** @type {"reminder"|"note"}
     repeat: d.repeat ?? null, due: null, duration_ms: d.duration_ms ?? null, snooze_until: ms(d.snooze_until), next_fire: d.next_fire ?? null, created: d.created ?? 0, updated: d.updated ?? 0,
     done_at: ms(d.done_at), deleted_at: ms(d.removed_at), source: d.source ?? null, source_name: d.added_by ?? null, where_: null, waits_on: d.waits_on ?? null, run_count: d.run_count ?? 0,
     last_result: d.last_result ?? null, paused: d.paused ? 1 : 0, waits_on_fired: d.waits_on_fired ?? null, by: d.person ?? null,
+    ...(type === "note" ? { visibility: d.visibility ?? "private", record: d.record ?? null } : {}),
   };
 }
 

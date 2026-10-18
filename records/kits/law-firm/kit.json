@@ -451,6 +451,11 @@
           "label": "Tags"
         },
         {
+          "name": "extra",
+          "kind": "text",
+          "label": "Extra fields"
+        },
+        {
           "name": "practice_area",
           "kind": "choice",
           "label": "Practice area",
