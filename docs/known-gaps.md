@@ -32,6 +32,10 @@ When the lease of a computer lent to a Space ends, the workspace key is removed 
 
 On a new Linux server, Records takes about 10 to 13 minutes to set up the first time. Records and Projects say it is setting up and get ready by themselves. A faster start comes in the next update.
 
+### The Personal project on a new Linux server
+
+On a new Linux server, the Personal project can be missing after Records finishes setting up. Fixed in the next update.
+
 ### A Viewer's AI cannot open the project folder
 
 A Viewer's AI can read a project's records and files through Vyre, but cannot open the project's folder directly.

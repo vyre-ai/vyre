@@ -1,0 +1,96 @@
+# Recompiles the record kits (records/kits/*/kit.ts -> kit.json, with `node records/language/cli.js compile`) on a polish branch and commits kit.json back, because a person may not run the compiler on a Mac and the
+# test "the checked-in kit is what its source compiles to" is red whenever the language or a kit's source changes. Built the way gen-tokens-branch.yml and regen.yml are: two jobs, so the write token never meets
+# the branch's code. `regenerate` runs the branch's compiler with a read-only token and no stored credentials and hands over a patch; `commit` runs none of the branch's code and applies the patch only when it
+# touches exactly records/kits/<name>/kit.json files. Only branches named work/polish/** are accepted. It runs on a push that changes a kit's source, the language or this workflow (the bot's own commit touches
+# only kit.json files, so it starts nothing more), and can be dispatched once the file is on the default branch.
+name: gen-kits-branch
+on:
+  push:
+    branches: ["work/polish/**"]
+    paths: ["records/kits/**/kit.ts", "records/language/**", ".github/workflows/gen-kits-branch.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gen-kits-branch-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regenerate:
+    if: startsWith(github.ref_name, 'work/polish/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      stale: ${{ steps.diff.outputs.stale }}
+      sha: ${{ steps.diff.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # the compiler imports the kernel's canonical form, which needs @noble/hashes; no install script runs, and this job has a read-only token
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile every kit
+        run: |
+          set -eu
+          n=0
+          for src in records/kits/*/kit.ts; do
+            out="${src%.ts}.json"
+            node records/language/cli.js compile "$src" > "$RUNNER_TEMP/kit.json.new"
+            mv "$RUNNER_TEMP/kit.json.new" "$out"
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no kit source found"; exit 1; }
+          echo "compiled $n kits"
+      - name: Keep only the kit.json files, as a patch
+        id: diff
+        run: |
+          set -eu
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git add -A -- 'records/kits/*/kit.json'
+          if git diff --cached --quiet; then echo "the checked-in kits are what their sources compile to"; echo "stale=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          other="$(git status --porcelain | grep -v '^[AM]  ' || true)"
+          if [ -n "$other" ]; then echo "::error::the compiler changed files outside the kit.json files:"; echo "$other"; exit 1; fi
+          git diff --cached --stat
+          git diff --cached --binary > "$RUNNER_TEMP/kits.patch"
+          echo "stale=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.diff.outputs.stale == 'true'
+        with:
+          name: kits-patch
+          path: ${{ runner.temp }}/kits.patch
+          retention-days: 1
+  commit:
+    needs: regenerate
+    if: needs.regenerate.outputs.stale == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: kits-patch
+          path: ${{ runner.temp }}/patch
+      - name: Apply the patch if it is only kit.json files, and push
+        env:
+          HEAD_SHA: ${{ needs.regenerate.outputs.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -eu
+          case "$BRANCH" in work/polish/*) ;; *) echo "::error::only work/polish/** branches"; exit 1;; esac
+          [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] || { echo "the branch moved on since this run started; run it again"; exit 0; }
+          p="$RUNNER_TEMP/patch/kits.patch"
+          if git apply --numstat "$p" | cut -f3 | grep -v -E '^records/kits/[A-Za-z0-9_-]+/kit\.json$'; then echo "::error::the patch names a path that is not a kit.json file"; exit 1; fi
+          if grep -E '^(old mode|new mode|rename |copy |new file mode 120000|deleted file mode 120000)' "$p"; then echo "::error::the patch changes modes, renames or links"; exit 1; fi
+          git apply --index "$p"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "kits: recompile the checked-in kit.json files from their kit.ts"
+          git push origin "HEAD:${BRANCH}"

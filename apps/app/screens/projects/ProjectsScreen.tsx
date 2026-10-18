@@ -29,6 +29,14 @@ export default function ProjectsScreen() {
   const showing = useSpaces((s) => s.space);
   usePlaceText("showing");   // loads the spaces the tags are read from
   const { phone } = useUiTheme();
+  // A Space's first start makes its Personal project a moment after Records is ready: a list that shows no project looks again every few seconds, for a few minutes, instead of staying empty until the person leaves and returns.
+  const empty = Boolean(q.data) && q.data!.items.length === 0;
+  useEffect(() => {
+    if (!empty) return undefined;
+    let tries = 0;
+    const t = setInterval(() => { if (++tries > 60) { clearInterval(t); return; } q.reload(); }, 5000);
+    return () => clearInterval(t);
+  }, [empty]);   // eslint-disable-line react-hooks/exhaustive-deps
   // the live templates of this Space, by what each calls its projects: "New matter", "New campaign", then "New blank project"
   const [rows, setRows] = useState<TemplateRow[]>([]);
   useEffect(() => { templates.list().then(setRows).catch(() => setRows([])); }, []);
