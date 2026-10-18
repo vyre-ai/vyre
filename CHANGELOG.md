@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(records): the day-one snapshot. A new Space starts with People, Companies, Deals (the Sales pipeline: Lead, Qualified, Proposal, Won, Lost; Proposal needs an amount, Won an amount and a close date, Lost a reason), Projects, Tasks, Events, Notes, Communications and Relationships; Files, Templates, Playbooks, Skills, team members and contact points no longer show as Records tabs.
 - feat(records): roll-ups. records.rollup.add adds a count, sum, average, minimum or maximum over the records that point at a record (the store keeps it current). A type with amount, probability and weighted_value fields keeps weighted_value (amount x probability / 100) up to date whenever its amount or probability is written, so a roll-up can sum it.
 - feat(records): layouts. records.layout.get answers how a type is shown to you (columns, sort, group, structured filters, header fields per role, related lists, field groups), your own choices laid over the Space's with the source of each key; records.layout.set saves it for the Space (an owner's or admin's act) or for you.
 - ci(gen-kits-branch): also recompiles an app's own Kit (core/appmods/catalog/*.kit.ts to .kit.json), and starts when records/core-types.js changes, since Kits restate core types.
