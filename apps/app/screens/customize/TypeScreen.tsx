@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
 import type { Draft, Group, Rules } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useKernelTypes } from "./kernel-types";
@@ -9,6 +9,8 @@ import { TypeAccess } from "./TypeAccess";
 import { TypeHistory } from "./TypeHistory";
 import type { Def } from "./kernel-types";
 import { addStage, moveStage, renameStage } from "./logic.js";
+import { askable, pipelineInput, stageRows, toggleLost, toggleNeed } from "./stage-rules.js";
+import { callT } from "../../src/real/call-tool";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
 import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
 
@@ -61,6 +63,9 @@ export function TypeFields({ type }: { type: string }) {
   ) : null;
   const stages = (def.stages ?? []).map((s) => s.name);
   const putStages = (n: string[]) => { const old = new Map((def.stages ?? []).map((s: any) => [s.name, s])); save({ ...def, stages: n.map((x) => old.get(x) ?? { name: x }) } as Def); };
+  // A stage's rules (the fields it needs, whether it is a lost stage) are written by records.pipeline.set, which makes the entry condition; the list is read back from the type.
+  const needsRows = stageRows(def);
+  const putRules = (rows: ReturnType<typeof stageRows>) => { void callT("records.pipeline.set", pipelineInput(def.name, rows)).then((r) => { if (r.error) showToast(r.error.message || "That did not save."); else void load(); }); };
   const list = (
     <View className="min-w-0 flex-1 gap-s3">
       <SectionLabel first>Name</SectionLabel>
@@ -92,6 +97,13 @@ export function TypeFields({ type }: { type: string }) {
                     <Button kind="ghost" size="sm" label="Move up" disabled={i === 0} onPress={() => putStages(moveStage(stages, i, -1))} />
                     <Button kind="ghost" size="sm" label="Move down" disabled={i === stages.length - 1} onPress={() => putStages(moveStage(stages, i, 1))} />
                     <Button kind="ghost" size="sm" label="Rename" disabled={(names[i] ?? s) === s} onPress={() => { const n = renameStage(stages, i, names[i] ?? s); if (n === stages) { showToast("A stage needs a name that no other stage has."); setNames({}); } else { putStages(n); setNames({}); } }} />
+                  </View>
+                  <View className="gap-s1">
+                    <Text size="caption" tone="label">{needsRows[i]?.requires.length ? "Needs these before a record can enter it" : "Needs nothing to enter"}</Text>
+                    <View className="flex-row flex-wrap gap-s1">
+                      {askable(def).map((f: any) => <Chip key={f.name} selected={!!needsRows[i]?.requires.includes(f.name)} onPress={() => putRules(toggleNeed(needsRows, i, f.name))}>{String(f.label ?? f.name)}</Chip>)}
+                      <Chip selected={!!needsRows[i]?.lost} onPress={() => putRules(toggleLost(needsRows, i))}>Counts as lost, asks why</Chip>
+                    </View>
                   </View>
                 </View>
               </View>

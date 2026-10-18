@@ -100,6 +100,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
+  const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
   const all = world.byType[def.name] || [];
   const lctx = { tags: env.tags, me: (world as any).me, actors: world.actors as any[], links: env.links, now: env.now };
   const rows = listRows(def, all, chips, query, lctx);
@@ -159,16 +160,20 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           <>
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
-        <Button kind="ghost" size={phone ? "md" : "sm"} icon="plus" label="New type" onPress={() => setAddingType(true)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
           </>
         )}
       </View>
-      {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
-      {world.types.length > TABS_MAX
-        ? <Select label="Type" value={type} options={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
-        : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
+      {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one. */}
+      <View className="flex-row items-center gap-s2">
+        <View className="min-w-0 flex-1">
+          {tabTypes.length > TABS_MAX
+            ? <Select label="Type" value={type} options={tabTypes.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
+            : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
+        </View>
+        <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
+      </View>
       {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
       <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
       {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
