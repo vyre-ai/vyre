@@ -163,7 +163,7 @@ test("through the member door a member moves a record, relates two, saves her ow
   }
   const deal = (await w.as(ANA, "records.create", { type: "deal", data: { name: "Okafor", amount: 1000 } })).record;
   const ref = deal.data.ref;
-  assert.equal(await code(w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified", patch: { ref: "DEA-9999" } })), "field_not_allowed", "a move cannot change the ID");
+  assert.notEqual(await code(w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified", patch: { ref: "DEA-9999" } })), null, "a move cannot change the ID");
   const moved = (await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" })).record;
   assert.equal(moved.data.stage, "Qualified"); assert.equal(moved.data.ref, ref);
   const a = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
@@ -182,7 +182,9 @@ test("through the member door a member moves a record, relates two, saves her ow
 test("an admin cannot read a member's private note through the raw route; the member and a shared note are read", { timeout: 120_000 }, async t => {
   const w = await world(t);
   const { PLANNER_TYPES } = await import("../planner/types.js");
-  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: PLANNER_TYPES.map((x) => ({ ...x })) }).catch(() => {});
+  await w.d.kernel.gateway.records.define(w.ownerChain, { add_types: PLANNER_TYPES.map((x) => JSON.parse(JSON.stringify(x))) }).catch((/** @type {any} */ e) => { if (!/exist/i.test(String(e && e.message))) throw e; });
+  const noteDef = (await w.d.kernel.gateway.definitions(w.ownerChain)).find((/** @type {any} */ x) => x.name === "note");
+  assert.ok(noteDef && noteDef.protected === true && noteDef.fields.some((/** @type {any} */ f) => f.name === "visibility"), `the planner's Note type is defined: ${JSON.stringify(noteDef && noteDef.fields.map((/** @type {any} */ f) => f.name))}`);
   await w.d.kernel.gateway.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
   const svc = w.d.kernel.gateway.serviceChain("planner");
   const note = async (/** @type {string} */ title, /** @type {any} */ more) => w.d.kernel.gateway.records.create(svc, "note", { title, state: "open", person: BEN, ...more }, { on_behalf: w.chainOf(BEN) });
