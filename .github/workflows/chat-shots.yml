@@ -47,6 +47,8 @@ jobs:
           node scripts/shots.mjs "$RUNNER_TEMP/chat-shots" "shots-approval" "shots-approval?done=1" \
             --dist dist --w 390,1280 --theme dark,paper --h 1500 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Polish Chats shots
+        env:
+          SHOT_WAIT: "5000"
         run: |
           node scripts/shots.mjs "$RUNNER_TEMP/chat-shots" \
             "u/chats" \

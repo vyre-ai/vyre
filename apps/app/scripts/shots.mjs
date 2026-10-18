@@ -40,7 +40,7 @@ try {
     for (const r of routes) {
       const [route, query = ""] = r.split("?");
       await page.goto(`http://127.0.0.1:${port}/app/${route}${query ? "?" + query : ""}`, { waitUntil: "networkidle" });
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(Number(process.env.SHOT_WAIT || 600)); // SHOT_WAIT: a screen that boots slowly (the Chats list) is shot after it has loaded
       const sideways = await page.evaluate(() => document.scrollingElement.scrollWidth > innerWidth + 1);
       if (sideways) { bad++; console.log(`WARN ${w} ${r} ${theme}: scrolls sideways`); }
       const full = await page.evaluate(() => Math.max(document.scrollingElement.scrollHeight, ...[...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY !== "visible").map((e) => e.scrollHeight)));
