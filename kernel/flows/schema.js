@@ -89,12 +89,12 @@ export function checkSlots(s, p, out) {
     const v = s[slot];
     if (v === undefined) continue;
     const at = `${p}.${slot}`;
-    if (!isObj(v)) { out.push({ path: at, message: `${slot} is { who, skills?, instructions?${slot === "approver" ? ", quorum?" : ""} }` }); continue; }
-    onlyKeys(v, slot === "approver" ? ["who", "skills", "instructions", "quorum"] : ["who", "skills", "instructions"], at, out);
+    if (!isObj(v)) { out.push({ path: at, message: `${slot} is { who, skills?, instructions?, quorum? }` }); continue; }
+    onlyKeys(v, ["who", "skills", "instructions", "quorum"], at, out);
     if (!who(v.who)) out.push({ path: `${at}.who`, message: `${slot === "approver" ? "an approver" : "a reviewer"} is person:<id>, role:<name> or teammate:<agent>${slot === "approver" ? " (a teammate approves internal work only)" : ""}` });
     if (v.skills !== undefined && !(Array.isArray(v.skills) && v.skills.length <= 10 && new Set(v.skills).size === v.skills.length && v.skills.every((/** @type {any} */ i) => typeof i === "string" && i.length > 0 && i.length <= 80))) out.push({ path: `${at}.skills`, message: "skills are up to 10 different Space skill ids" });
     if (v.instructions !== undefined && !(typeof v.instructions === "string" && v.instructions.length <= 2000)) out.push({ path: `${at}.instructions`, message: "instructions are a text of at most 2000 characters" });
-    if (v.quorum !== undefined && v.quorum !== "any") out.push({ path: `${at}.quorum`, message: "quorum is any: one yes is enough" });
+    if (v.quorum !== undefined && !(v.quorum === "any" || (v.quorum === "all" && typeof v.who === "string" && v.who.startsWith("role:")))) out.push({ path: `${at}.quorum`, message: "quorum is any (one yes is enough), or all for a role: every holder says yes" });
   }
   if (s.approver !== undefined && s.checker !== undefined) out.push({ path: `${p}.approver`, message: "give approver, or checker (the old name), not both" });
 }

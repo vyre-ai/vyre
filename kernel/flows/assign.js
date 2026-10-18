@@ -43,6 +43,7 @@ export async function slotsOf(s, who) {
   const per = (/** @type {string} */ k) => ({ ...(rv && rv[k] ? { reviewer: rv[k] } : {}), ...(ap && ap[k] ? { approver: ap[k] } : {}) });
   return {
     ...(rv ? { reviewer: await who(rv.who) } : {}), ...(ap ? { approver: await who(ap.who) } : {}),
+    ...(rv && rv.quorum === "all" ? { reviewer_quorum: "all" } : {}), ...(ap && ap.quorum === "all" ? { quorum: "all" } : {}),
     ...(Object.keys(per("instructions")).length ? { instructions: per("instructions") } : {}), ...(Object.keys(per("skills")).length ? { skills: per("skills") } : {}),
   };
 }
