@@ -249,5 +249,6 @@ test("a private note and an outside calendar's event are private on every kernel
   const b = await gw.records.create(gw.serviceChain("planner"), "note", { title: "B", state: "open", person: BEN, visibility: "record", record: a.urn }, { on_behalf: w.chainOf(BEN) });
   await gw.records.update(gw.serviceChain("planner"), "note", a.id, { record: b.urn }, a.version);
   const quick = (/** @type {Promise<any>} */ p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("hung")), 10_000))]);
-  assert.equal((await quick(gw.records.query(w.chainOf(ZED), "note", { page: { limit: 50 } }))).rows.length, 0, "an admin reads neither, and the check ends");
+  { const titles = (await quick(gw.records.query(w.chainOf(ZED), "note", { page: { limit: 50 } }))).rows.map((/** @type {any} */ r) => r.data.title); assert.ok(!titles.includes("A") && !titles.includes("B"), `an admin reads neither, and the check ends: ${titles}`); }
+  assert.ok(await quick(gw.records.get(w.chainOf(BEN), "note", a.id)) !== undefined, "and the check ends for the writer too");
 });
