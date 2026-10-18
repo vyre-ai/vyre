@@ -20,6 +20,10 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 Off until 0.6.2. Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used, even on a server that could run them. To try them on a server you run, set `computers.browse` to `browser` and `computers.agentUsers` to `true` in its config. Nothing else turns them on.
 
+### Downloads in an agent's computer
+
+A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent. The proof reports it as a known failure; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+
 ### A member's own AI account in chats
 
 A member who has added her own AI account can't chat yet: her turn stops with a clear message, because her own key isn't lent to her chats yet. A member without one chats on the space's AI account if it has one. No one's key ever reaches another person. Fixed in the next update. The owner isn't affected, because the owner's accounts are the space's. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
