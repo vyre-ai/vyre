@@ -9,7 +9,7 @@ import { tempHome } from "../../test/helpers.js";
 import { holdersOf, createRing, addHolders } from "../../lib/chat-keys.js";
 import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
 import { toB64u, fromB64u } from "../../lib/databox.js";
-import { threadRow, runThread } from "./threads.js";
+import { threadRow, runThread, withHeld } from "./threads.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 const BEN = "per_" + "cdefghijklmnopqrstuvwxyzab", CY = "per_" + "defghijklmnopqrstuvwxyzabc";
@@ -31,6 +31,14 @@ test("a run held at a gate needs you, though its state says waiting; a finished 
   const held = runThread(run, { run: "r1", kind: "gate", gate: true, message: "Approve the send" });
   assert.deepEqual([held.state, held.needs], ["needs_you", { gate: true, reason: "Approve the send" }]);
   assert.equal(runThread({ ...run, state: "done" }, { kind: "gate", gate: true }).state, "idle");
+});
+
+test("an item held at the Gate for the person makes the thread it was filed under need them", () => {
+  const rec = { data: { chat: "chat_1", agents: ["juno"], started: "2026-10-18T01:00:00Z" } };
+  const runs = [{ thread: "run_a", live: false, needs: 0 }, { thread: "run_b", live: true, needs: 1 }];
+  assert.equal(threadRow(rec, withHeld(runs.slice(0, 1), new Map()), 0).state, "idle", "nothing held, nothing asked");
+  assert.deepEqual(withHeld(runs, new Map([["run_a", 2]])).map(r => r.needs), [2, 1], "a held item counts as an open question on its own run only");
+  assert.equal(threadRow(rec, withHeld(runs.slice(0, 1), new Map([["run_a", 1]])), 0).state, "needs_you");
 });
 
 test("two threads with one agent, newest first; a group chat, another agent's chat and another member's view are not threads with it", { timeout: 240_000 }, async t => {
@@ -169,6 +177,7 @@ test("a Flow's runs are its threads, and the chat list has one row per Flow with
   const flow = { format: 1, name: "census_flow", label: "Census", authorship: "human", trigger: { on: "manual" }, steps: [] };
   const def = await ok("flows.define", { flow });
   await ok("flows.approve", { id: def.id, version: def.version, hash: def.hash });
+  assert.deepEqual((await ok("work.chat.summary")).flows.map((/** @type {any} */ r) => [r.flow, r.runs, r.name]), [[def.id, 0, "Census"]], "a Flow with no runs has its row, with its name");
   const started = await ok("flows.start", { id: def.id });
   const runId = started.run || started.id;
   assert.ok(runId, JSON.stringify(started));
@@ -182,4 +191,15 @@ test("a Flow's runs are its threads, and the chat list has one row per Flow with
   assert.equal(rows[0].name, "Census", "a Flow row has the Flow's own name, not its id");
   assert.equal(rows[0].latest.id, runId);
   assert.ok((await d.registry.call("work.flow.threads", { flow: def.id }, "mcp", {})).error, "a call with no person reads none");
+  // a member who may not inspect the Flow is told nothing of it: no row, no name, no run, no attention
+  const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: K.id.owner, path: "direct", session: "s" });
+  await K.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
+  const asBen = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: BEN, path: "direct", session: "s-ben" }))).token });
+  const seen = await asBen("work.chat.summary");
+  assert.ok(!seen.error, JSON.stringify(seen.error));
+  assert.deepEqual(seen.data.flows, [], "Ben's chat list has no row for a Flow he cannot inspect");
+  assert.ok(!JSON.stringify(seen.data).includes("Census"), "and nothing carries its name");
+  const peek = await asBen("work.flow.threads", { flow: def.id });
+  assert.ok(peek.error || (peek.data.threads || []).length === 0, "and its runs are not his to list");
+  assert.ok(!JSON.stringify(peek).includes("Census") && !JSON.stringify(peek).includes(runId), "not by name and not by run");
 });
