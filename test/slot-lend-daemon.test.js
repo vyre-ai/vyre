@@ -38,28 +38,24 @@ test("a reviewer or approver agent holds one task for a round through the minted
   assert.equal((await handIn(a.id)).state, "in_review");
   await handIn(other.id);
   await assert.rejects(ask.review(agentChain("job-1"), a.id, { result: "pass" }), "no grant, no review");
-  await lend(a, "reviewer");
-  { const ch = agentChain("job-1"); const res = `vyre://${space}/task/${a.id}`; const out = /** @type {any} */ ({ now: Date.now() });
-    for (const act of ["tasks.read", "tasks.work"]) out[act] = await K.gateway.authorize({ chain: ch, action: act, resource: res }).then((/** @type {any} */ v) => ({ e: v.effect, r: v.reason })).catch((/** @type {any} */ e) => String(e && e.message));
-    out.ownerWork = await K.gateway.authorize({ chain: K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }), action: "tasks.work", resource: res }).then((/** @type {any} */ v) => ({ e: v.effect, r: v.reason })).catch((/** @type {any} */ e) => String(e && e.message));
-    out.labels = ch.labels; out.hops = ch.hops.map((/** @type {any} */ h) => ({ k: h.actor.kind, via: h.entered_by }));
-    console.log("DEBUGAUTH", JSON.stringify(out).slice(0, 1500)); }
+  await lend(a, "reviewer", "job-1");
+  await assert.rejects(ask.review(agentChain("job-2"), a.id, { result: "pass" }), "the grant is held to the job's thread");
   await assert.rejects(ask.review(agentChain("job-1"), other.id, { result: "pass" }), "another task is out of reach");
   assert.equal((await ask.review(agentChain("job-1"), a.id, { result: "pass" })).state, "done", "the reviewer agent passes the task it was asked to review");
 
   // approver: internal work, with tasks.decide lent; the reviewer's grant could not decide
   const b = await given({ checker: rev });
   assert.equal((await handIn(b.id)).state, "needs_check");
-  await lend(b, "reviewer");
+  await lend(b, "reviewer", "job-3");
   await assert.rejects(ask.decide(agentChain("job-3"), b.id, { outcome: "approved" }), "a grant to review is not a grant to decide");
   await sh.mint.end({ source: `flows:task:${b.id}:reviewer`, reason: "test" });
-  await lend(b, "approver");
+  await lend(b, "approver", "job-4");
   assert.equal((await ask.decide(agentChain("job-4"), b.id, { outcome: "approved" })).state, "done", "the approver agent decides internal work");
 
   // the round's end takes the hold back
   const c = await given({ reviewer: rev });
   await handIn(c.id);
-  await lend(c, "reviewer");
+  await lend(c, "reviewer", "job-5");
   await sh.mint.end({ source: `flows:task:${c.id}:reviewer`, reason: "the round is over" });
   await assert.rejects(ask.review(agentChain("job-5"), c.id, { result: "pass" }), "after the round the agent holds nothing");
 });

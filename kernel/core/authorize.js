@@ -432,7 +432,7 @@ export function createAuthorizer(cfg) {
     // where the act may go: every recipient must match the grant's `to` (an act with no recipients, or one outside it, is not covered)
     if (g.conditions && g.conditions.to !== undefined && !(await toAllows(g.conditions.to, recipients, cfg.listHas))) return { ok: false, reason: "wrong_recipient" };
     // A grant lent for one task (a Flow's lend of the task to an agent, a vault lease for it) ends with the task: once the task is done, skipped or withdrawn it holds nothing, even before the lend is taken back.
-    const lent = /^(?:flows:task|vault:lease):(.+)$/.exec(String(g.source || ""));
+    const lent = /^(?:flows:task|vault:lease):(.+?)(?::(?:reviewer|approver))?$/.exec(String(g.source || ""));   // a review or an approval round's grant ends with its task too
     if (lent && !(typeof cfg.taskOpen === "function" && await cfg.taskOpen(lent[1]))) return { ok: false, reason: "expired" };   // no answer about the task counts as ended
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
