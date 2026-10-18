@@ -34,7 +34,7 @@ const used = new Set();
 const proof = (/** @type {string} */ action, /** @type {any} */ input, /** @type {string} */ resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_proof") };
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
-const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 5000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(10); } throw new Error(`timed out waiting for ${what}` + (true ? ` [${LOGS.slice(-25).join(' | ').slice(0, 3000)}]` : '')); };
+const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 5000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(10); } throw new Error(`timed out waiting for ${what}`); };
 
 /** Everything that survives a daemon restart (the kernel and its sessions' turn store, the stream's own database and home) and the stream side that does not. */
 async function world(t, opts = {}) {
@@ -488,8 +488,6 @@ test("review D: an asker who left the chat while their message waited gets no tu
 // ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
 // The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
 // vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
-/** A wait that timed out says what the thread held (types, notices, run rows): DIAG, removed once the lent-key tests are green. */
-const dump = async (/** @type {any} */ r) => { const th = kitThread(r.b, r.chat.id); const g = await r.b.reg.call("threads.get", { thread: th, limit: 1000 }, "cli").catch(() => null); const ev = (g && g.data && g.data.events) || []; const rows = r.b.reg.deps.db.prepare("SELECT status, stopped_reason, pid, provider, account FROM threads_runs").all(); return ` {frames: ${textOf(r.watch.frames).slice(-300)}} {events: ${ev.map((/** @type {any} */ e) => e.type + (e.type === "thread.text" || e.type === "thread.sent" ? ":" + String(e.payload.text).slice(0, 70) : "")).join(",").slice(0, 1500)}} {rows: ${JSON.stringify(rows)}}`; };
 const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
 
 /** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
@@ -530,7 +528,7 @@ async function lentKeyChat(/** @type {import("node:test").TestContext} */ t, /**
   const say = async (/** @type {string} */ who, /** @type {string} */ text) => { const r = await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work }); assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); };
   const launches = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)) : []);
   // the fake program echoes the whole prompt: a second asker's turn is preceded by the continuation note (which quotes the earlier answer), so an answer is a LINE ending in the pid, with "echo: " in front on the first
-  const answers = () => { const seen = new Set(); return [...textOf(watch.frames).matchAll(/(?:^|\n)[ \t]*(?:echo: )?([^\n]*?) \[pid (\d+)\]/g)].map(m => ({ text: m[1], pid: Number(m[2]) })).filter(a => { const k = `${a.pid} ${a.text}`; if (/^[>\s]/.test(a.text) || seen.has(k)) return false; seen.add(k); return true; }); };   // a quoted earlier answer inside the note is not an answer
+  const answers = () => { const seen = new Set(); return [...textOf(watch.frames).matchAll(/(?:^|\n)[ \t]*(?:echo: )?([^\n]*?) \[pid (\d+)\]/g)].map(m => ({ text: m[1], pid: Number(m[2]) })).filter(a => { const k = `${a.pid} ${a.text}`; if (/^[>|\s]/.test(a.text) || seen.has(k)) return false; seen.add(k); return true; }); };   // a quoted earlier answer inside the note is not an answer
   return { w, b, KC, KA, carolsAcct, adasAcct, chat, watch, say, launches, answers, lends, log };
 }
 
@@ -544,7 +542,7 @@ test("lent key: with two members in one chat, the second asker's process is hand
   assert.ok(!first[0].envShas.includes(sha16(r.KC)), "and is in no environment value of it");
   // carol's process is alive and idle (the idle close is minutes away); ada asks now
   await r.say("ada", "ada second");
-  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000).catch(async (/** @type {any} */ e) => { throw new Error(e.message + await dump(r)); });
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
   const all = r.launches();
   assert.equal(all.length, 2, "ada's turn started a process of its own");
   const second = all[1];
@@ -567,7 +565,7 @@ test("lent key: after the turns the key string is in no thread event, log line, 
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
   await r.say("ada", "ada second");
-  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000).catch(async (/** @type {any} */ e) => { throw new Error(e.message + await dump(r)); });
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
   const thread = kitThread(r.b, r.chat.id);
   const events = (await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli")).data.events;
   const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
