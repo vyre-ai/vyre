@@ -100,10 +100,10 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
     delete h.box;
     return h;
   };
-  const open = async (head) => {
+  const open = async (head, chan = INVITEE) => {
     const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
     const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
-    d.acceptInvitee(s, { inviteeId: INVITEE }, head);
+    d.acceptInvitee(s, { inviteeId: chan }, head);
     return peerSession(c, { first: 1 });
   };
   const kcall = (client, call, args, space = SPACE) => client.call("kernel.call", { v: 1, space, id: "c" + Math.random().toString(36).slice(2), ts: clock, call, args }, { timeoutMs: 3000 });
@@ -551,4 +551,17 @@ test("ask door: the per-channel and Space-wide hourly caps are checked BEFORE th
   w.tick(3_600_001);
   const c = await w.open(w.askHello());
   assert.equal((await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)), true, "an hour later it is open again");
+});
+
+test("ask door: forged asks from fresh channels do not spend the Space's allowance or reach the directory past its cap, and a valid ask still goes through", async () => {
+  const w = inviteeWorld({ askLimits: { perChannelHour: 5, perSpaceHour: 3 }, limits: { perBox: 50 } });
+  const alpha = "abcdefghijklmnopqrstuvwxyz234567";
+  for (let i = 0; i < 200; i++) {
+    const chan = "zz" + alpha[i % 32] + alpha[Math.floor(i / 32) % 32] + "aaaaaaaaaaaa";
+    const c = await w.open({ ...w.askHello({ channel: chan }), sig: "A".repeat(86) }, chan);
+    await w.kcall(c, "requests.ask", [{}]).then(() => assert.fail("a forged ask was served"), () => {});
+  }
+  assert.ok(w.live.lookups <= 50, `the directory was asked ${w.live.lookups} times, past its cap of 50`);
+  const c = await w.open(w.askHello());
+  assert.equal((await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)), true, "a valid ask still goes through: the forged ones did not use up the Space's three an hour");
 });

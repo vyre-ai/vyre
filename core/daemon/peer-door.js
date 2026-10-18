@@ -137,7 +137,8 @@ export function createPeerDoor(o) {
     if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
     for (const [n, exp] of nonces) { if (exp > now) break; nonces.delete(n); }
     if (nonces.has(h.nonce)) return { why: "replayed" };
-    if (overAsk(`c:${inviteeId}`, askLim.perChannelHour, now) || overAsk(`s:${h.space}`, askLim.perSpaceHour, now)) return { why: "rate_limited" };
+    // BEFORE the directory: only the cheap guards that protect it (this channel, the box-wide lookup cap below). The Space-wide hourly allowance is spent only by a hello whose signature stood (below), so forged hellos from fresh channels cannot use it up.
+    if (overAsk(`c:${inviteeId}`, askLim.perChannelHour, now)) return { why: "rate_limited" };
     if (typeof o.identityEntry !== "function" || typeof o.boxId !== "function") return { why: "cannot_check" };
     let box = null;
     try { box = await o.boxId(); } catch { box = null; }
@@ -153,6 +154,8 @@ export function createPeerDoor(o) {
     if (!entry || typeof entry.pub !== "string" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
     if (entry.alg === "webauthn-es256" ? !(await verifyWebAuthn(entry.pub, String(entry.rp || ""), askMessage(box, h), h.sig)) : !verifyDevice(entry.pub, askMessage(box, h), h.sig)) return { why: "bad_proof" };
     if (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since) || youngAt({ founder: entry.founder, since: /** @type {number} */ (entry.since) }, now)) return { why: "young_device" };
+    // a hello whose signature stood and whose device is old enough: now it counts against the Space-wide hourly allowance
+    if (overAsk(`s:${h.space}`, askLim.perSpaceHour, now)) return { why: "rate_limited" };
     if (nonces.has(h.nonce)) return { why: "replayed" };
     nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
     trim(nonces, lim.nonceMax);

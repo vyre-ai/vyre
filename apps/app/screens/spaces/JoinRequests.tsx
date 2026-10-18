@@ -27,10 +27,11 @@ export function JoinRequests({ space, label }: { space: string; label: string })
   if (MOCK || !st) return problem ? <Banner icon="refresh"><Text tone="warn">{problem}</Text></Banner> : null;
   const act = async (key: string, fn: () => Promise<unknown>) => { setBusy(key); setProblem(""); try { await fn(); await load(); setOpen(""); } catch (e) { setProblem(said(e)); } setBusy(""); };
   const approve = (r: Waiting) => act(r.id, async () => {
-    const { makeTeamInvite } = await import("../../src/real/team-join");
+    const { makeTeamInvite, teamDecide } = await import("../../src/real/team-join");
     // the invite is made through the ordinary path, for this person's id, with the owner's own presence; the ask is then linked to it
     const made = await makeTeamInvite({ space, name: label, role: "member", to: r.identity, ttlDays: 7 });
-    await tool("requests.decide", { space, id: r.id, approve: true, invite: made.token });
+    // the Space's door checks, under the approver's own chain, that this invite is theirs, unused, for this person and a role they may give, before it is linked
+    await teamDecide(space, { id: r.id, approve: true, invite: made.token });
   });
   return (
     <Card>

@@ -26,6 +26,7 @@ export default {
     const db = ctx.store.db;
     const now = () => (typeof ctx.now === "function" ? ctx.now() : Date.now());
     /** @type {Map<string, number[]>} identity -> ask times in the last hour (kept in memory: the cap is per hour) */ const asks = new Map();
+    /** @type {Map<string, number[]>} identity -> status reads in the last minute: an ask stream has no call count of its own */ const reads = new Map();
     const spaceOk = (/** @type {unknown} */ s) => { if (typeof s !== "string" || !SPACE.test(s)) throw refuse("That is not a Space.", "bad_input"); return s; };
     const accepting = (/** @type {string} */ space) => { const r = /** @type {any} */ (db.prepare("SELECT accepting FROM join_settings WHERE space = ?").get(space)); return Boolean(r && r.accepting); };
     const openRows = (/** @type {string} */ space) => /** @type {any[]} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND state = 'open' AND created > ? ORDER BY created").all(space, now() - LIMITS.ttlMs));
@@ -39,7 +40,18 @@ export default {
       if (!accepting(space)) return closed();                      // off, or not a Space that takes them
       const t = now();
       const mine = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND identity = ?").get(space, person));
-      if (mine) return statusFor(mine, t);                         // the same row, never a second one, however many devices
+      if (mine) {
+        // a declined or expired ask may be made again after a day: the SAME row is reopened (one row per Space and identity), under the same caps below
+        const endedAt = mine.state === "declined" ? Number(mine.decided || 0) : mine.state === "open" && t - mine.created >= LIMITS.ttlMs ? mine.created + LIMITS.ttlMs : null;
+        if (endedAt === null || t - endedAt < LIMITS.askAgainMs) return statusFor(mine, t);   // the same row, never a second one, however many devices
+        const recentA = (asks.get(person) || []).filter(x => t - x < LIMITS.hourMs);
+        if (recentA.length >= LIMITS.perIdentityHour) { asks.set(person, recentA); return closed(); }
+        if (openRows(space).length >= LIMITS.open) { noteRefusal(space); return closed(); }
+        recentA.push(t); asks.set(person, recentA);
+        db.prepare("UPDATE join_requests SET state = 'open', created = ?, entry = ?, note = ?, name = ?, decided = NULL, decided_by = NULL, invite = NULL WHERE id = ?").run(t, String(i.entry), cleanNote(i.note), typeof i.name === "string" && NAME.test(i.name) ? i.name : null, mine.id);
+        ctx.events.emit("requests.asked", { space, request: mine.id });
+        return { state: "waiting" };
+      }
       const recent = (asks.get(person) || []).filter(x => t - x < LIMITS.hourMs);
       if (recent.length >= LIMITS.perIdentityHour) { asks.set(person, recent); return closed(); }
       if (openRows(space).length >= LIMITS.open) { noteRefusal(space); return closed(); }
@@ -51,6 +63,9 @@ export default {
       return { state: "waiting" };
     };
     const doStatus = (/** @type {string} */ space, /** @type {string} */ person, /** @type {string | null} */ role) => {
+      const t = now(), seen = (reads.get(person) || []).filter(x => t - x < 60_000);
+      if (seen.length >= LIMITS.statusPerMinute) { reads.set(person, seen); return closed(); }
+      seen.push(t); reads.set(person, seen);
       if (role) return closed();
       const mine = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE space = ? AND identity = ?").get(space, person));
       return mine ? statusFor(mine, now()) : closed();             // a person with no row learns no more than anyone: closed
@@ -64,8 +79,12 @@ export default {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM join_requests WHERE id = ? AND space = ?").get(String(i.id || ""), space));
       if (!row || row.state !== "open") throw refuse("No such request is waiting.", "not_found");
       if (i.approve === true) {
-        // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here; it is an invite token, checked in form
-        if (typeof i.invite !== "string" || !INVITE.test(i.invite)) throw refuse("Approve by creating the invite first, then name it.", "bad_input");
+        // approval is only through the existing invite path: the approver created an invite (their own presence) and names it here. The SPACE'S DOOR has already checked, under the approver's own chain, that it exists, is theirs,
+        // unused and unexpired, grants no role above theirs; here it must also be made for THIS asker and not already linked to another ask.
+        if (typeof i.invite !== "string" || !INVITE.test(i.invite) || typeof i.invite_id !== "string" || !i.invite.startsWith(i.invite_id)) throw refuse("Approve by creating the invite first, then name it.", "bad_input");
+        if (i.invitee !== row.identity) throw refuse("That invite was not made for this person.", "bad_input");
+        const taken = /** @type {any} */ (db.prepare("SELECT id FROM join_requests WHERE invite LIKE ? AND id != ?").get(`${i.invite_id}%`, row.id));
+        if (taken) throw refuse("That invite is already linked to another request.", "bad_input");
         db.prepare("UPDATE join_requests SET state = 'approved', invite = ?, decided = ?, decided_by = ? WHERE id = ?").run(i.invite, now(), by, row.id);
       } else db.prepare("UPDATE join_requests SET state = 'declined', decided = ?, decided_by = ? WHERE id = ?").run(now(), by, row.id);
       ctx.events.emit("requests.decided", { space, request: row.id, approved: i.approve === true });
@@ -79,6 +98,8 @@ export default {
     };
 
     // ---- the owner's tools (a person at their own surface: never a model, never a module) --------------------------------------------------------------------------
+    /** The person at the surface: the chain's person hop, else the box's owner. Recorded as who decided, so the audit says who. @param {any} meta */
+    const personOf = (meta) => { const h = meta && Array.isArray(meta.hops) ? meta.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return String(h ? h.actor.id : (ctx.kernel && ctx.kernel.owner) || "owner"); };
     const personOnly = (/** @type {any} */ meta) => { if (!isPerson(meta || {})) throw refuse("Only a person at their own device changes who may ask to join.", "denied"); };
     ctx.tool("requests.accepting", {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device"],
@@ -109,7 +130,11 @@ export default {
       effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
       description: "The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused.",
       input: { type: "object", properties: {} },
-      run: async () => {
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => {
+        // the approvals module is the only reader; another module is refused, and a person gets the list only when they are the box's owner
+        const caller = String(meta.caller || "");
+        if (caller.startsWith("module:")) { if (caller !== "module:approvals") throw refuse("Only the approvals list reads the requests waiting.", "denied"); }
+        else { personOnly(meta); const owner = ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : ""; if (owner && personOf(meta) !== owner) throw refuse("Only the Space's owner sees the requests waiting.", "denied"); }
         const t = now();
         const rows = /** @type {any[]} */ (db.prepare("SELECT id, space, identity, entry, name, created FROM join_requests WHERE state = 'open' AND created > ? ORDER BY created").all(t - LIMITS.ttlMs));
         const full = /** @type {any[]} */ (db.prepare("SELECT space, refused FROM join_settings WHERE accepting = 1 AND refused > 0").all());
@@ -120,7 +145,14 @@ export default {
       effect: "write", callers: ["cli", "local", "deck", "capsule", "tailnet", "device"],
       description: "Answer a request: approve it by naming the invite just made for that person (the invite itself needs the approver's own presence), or decline it.",
       input: { type: "object", required: ["space", "id"], properties: { space: str, id: str, approve: { type: "boolean" }, invite: str, clear: { type: "boolean" } } },
-      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { personOnly(meta); const space = spaceOk(i.space); return i.clear === true ? doClear(space, "owner") : doDecide(space, "owner", i); },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        personOnly(meta);
+        const space = spaceOk(i.space);
+        // approving is made only through the Space's door, where the invite is checked under the approver's own chain (core/requests/service.js); this tool declines and clears
+        if (i.approve === true) throw refuse("Approve through the Space's own door, with the invite you made for this person.", "bad_input");
+        const by = personOf(meta);
+        return i.clear === true ? doClear(space, by) : doDecide(space, by, i);
+      },
     });
 
     // ---- the Space's door: the ask door's non-member and an admin's calls, from the Space's kernel (core/requests/service.js) --------------------------------------------

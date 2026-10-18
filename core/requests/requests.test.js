@@ -96,10 +96,14 @@ test("the owner sees the waiting asks and a refused count; decline and clear lea
   assert.deepEqual([l.open, l.accepting, l.refused], [2, true, 0]);
   const first = l.requests.find((r) => r.identity === ASKER);
   assert.deepEqual([first.name, first.entry, first.note], ["ada.vyre.run", ENTRY, "hi"]);
-  assert.equal((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true })).error.code, "bad_input", "no approval without the invite");
-  assert.equal((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true, invite: "inv_nothex" })).error.code, "bad_input");
-  const inv = "inv_" + "a".repeat(32) + ".pinPIN_123-abc";
-  assert.ok((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true, invite: inv })).data.ok);
+  assert.equal((await w.tool("requests.decide", { space: SPACE, id: first.id, approve: true, invite: "inv_" + "a".repeat(32) })).error.code, "bad_input", "the owner's tool never approves: approval is through the door");
+  assert.equal((await w.serve("decide", OWNER, "owner", { id: first.id, approve: true, invite: "inv_nothex", invite_id: "inv_nothex", invitee: ASKER })).error.code, "bad_input");
+  const invId = "inv_" + "a".repeat(32), inv = invId + ".pinPIN_123-abc";
+  assert.equal((await w.serve("decide", OWNER, "owner", { id: first.id, approve: true, invite: inv, invite_id: invId, invitee: ASKER2 })).error.code, "bad_input", "an invite made for someone else is refused");
+  assert.ok((await w.serve("decide", OWNER, "owner", { id: first.id, approve: true, invite: inv, invite_id: invId, invitee: ASKER })).data.ok);
+  const other = l.requests.find((r) => r.identity === ASKER2);
+  assert.equal((await w.serve("decide", OWNER, "owner", { id: other.id, approve: true, invite: inv, invite_id: invId, invitee: ASKER2 })).error.code, "bad_input", "one invite is not linked to two asks");
+  assert.equal(w.db.prepare("SELECT decided_by FROM join_requests WHERE id = ?").get(first.id).decided_by, OWNER, "the audit says who approved");
   assert.deepEqual((await w.serve("status", ASKER, null)).data, { state: "approved", invite: inv });
   const second = l.requests.find((r) => r.identity === ASKER2);
   await w.tool("requests.decide", { space: SPACE, id: second.id });
@@ -151,4 +155,51 @@ test("requests.attention lists what waits and what was refused, never the note",
   assert.deepEqual([a.requests[0].name, a.requests[0].entry, a.requests[0].space], ["ada.vyre.run", ENTRY, SPACE]);
   assert.ok(!JSON.stringify(a).includes("SECRET-NOTE"));
   assert.deepEqual(a.refusing, []);
+});
+
+test("approve is checked through the Space's door under the approver's own chain: it must exist, be theirs, be unused and unexpired, and give a role they may give", async () => {
+  const calls = [];
+  const registry = { call: async (tool, input) => { calls.push(input); return { data: { ok: true } }; } };
+  const ADMIN = "per_" + "d".repeat(26), invId = "inv_" + "b".repeat(32), token = invId + ".pin";
+  const listed = [{ id: invId, role: "member", status: "pending", invitee: ASKER, issued_by: ADMIN }];
+  const mk = (list, role = "admin") => createRequestsService({ space: SPACE, kernel: { gateway: { members: { roleOf: ({ id }) => (id === ADMIN ? role : null) }, grants: { invites: { list: async (chain) => { assert.equal(chain.hops[0].actor.id, ADMIN, "read under the approver's chain"); return list; } } } } }, registry });
+  const chain = { space: SPACE, hops: [{ actor: { kind: "person", id: ADMIN } }] };
+  const go = (svc, extra = {}) => svc.decide(chain, { id: "req_1", approve: true, invite: token, ...extra }).then(() => "ok", (e) => `${e.code}:${e.message}`);
+  assert.equal(await go(mk(listed)), "ok");
+  assert.deepEqual([calls[0].invite, calls[0].invite_id, calls[0].invitee], [token, invId, ASKER]);
+  for (const [why, list] of [["not found", []], ["made by someone else", [{ ...listed[0], issued_by: OWNER }]], ["already used", [{ ...listed[0], status: "used" }]], ["expired", [{ ...listed[0], status: "expired" }]], ["a role above the approver's", [{ ...listed[0], role: "owner" }]], ["no invitee", [{ ...listed[0], invitee: null }]]]) {
+    const n = calls.length;
+    assert.match(await go(mk(list)), /^bad_input:Approve by creating the invite first/, why);
+    assert.equal(calls.length, n, `${why}: nothing reached the module`);
+  }
+  assert.match(await go(mk(listed), { invite: "inv_zz" }), /^bad_input/);
+  const bad = createRequestsService({ space: SPACE, kernel: { gateway: { members: { roleOf: () => "admin" }, grants: { invites: { list: async () => { throw new Error("down"); } } } } }, registry });
+  assert.match(await go(bad), /^bad_input/, "a gateway that cannot be read approves nothing");
+  assert.equal(await mk(listed).decide(chain, { id: "req_1", approve: false }).then(() => "ok"), "ok", "declining needs no invite");
+});
+
+test("a declined or expired ask may be made again after a day: the same row is reopened under the same caps; sooner it gets the same answer", async () => {
+  const w = await world();
+  await w.tool("requests.accept", { space: SPACE, accepting: true });
+  await ask(w);
+  const id = w.db.prepare("SELECT id FROM join_requests").get().id;
+  await w.tool("requests.decide", { space: SPACE, id, approve: false });
+  assert.equal((await ask(w)).data.state, "not_accepted", "right after a decline: the same answer, no second row");
+  w.tick(LIMITS.askAgainMs - 1000);
+  assert.equal((await ask(w)).data.state, "not_accepted");
+  w.tick(2000);
+  assert.equal((await ask(w)).data.state, "waiting", "after a day it asks again");
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM join_requests").get().n, 1, "still one row");
+  assert.equal(w.db.prepare("SELECT id FROM join_requests").get().id, id);
+});
+
+test("requests.status is limited per identity (thirty a minute), requests.attention is for the approvals list and the box owner only, and decided_by is the person", async () => {
+  const w = await world();
+  await w.tool("requests.accept", { space: SPACE, accepting: true });
+  await ask(w);
+  const out = [];
+  for (let n = 0; n < 32; n++) out.push((await w.serve("status", ASKER, null)).data.state);
+  assert.deepEqual([out[0], out[29], out[30]], ["waiting", "waiting", "closed"], "the 31st read in a minute gets the closed words");
+  assert.equal((await w.tools.get("requests.attention").run({}, { caller: "module:mail" }).catch((e) => e)).code, "denied", "another module is refused");
+  assert.ok((await w.tools.get("requests.attention").run({}, { caller: "module:approvals" })).requests);
 });

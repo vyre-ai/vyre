@@ -142,6 +142,12 @@ async function inviteDeps(space: string) {
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
 
+/** Answer a request to join through the Space's own door, as the approver (the invite is checked there, under their own chain). */
+export async function teamDecide(space: string, input: { id: string; approve: boolean; invite?: string }) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.decide", [input]);
+}
+
 export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
   const { createTeamInvite } = await import("./team-invite.js");
   return createTeamInvite(await inviteDeps(i.space), i);

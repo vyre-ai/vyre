@@ -6,6 +6,7 @@
 // Every method runs the requests module's internal tool requests.serve as the daemon's own door, so the rules and the storage are the module's, once.
 
 import { KernelError } from "../../kernel/core/errors.js";
+import { MAY_SET } from "../../kernel/grants/roles.js";
 
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", limit: "limit" });
 
@@ -34,7 +35,26 @@ export function createRequestsService(o) {
     async status(/** @type {any} */ chain) { const person = who(chain); return serve("status", person, roleOf(person), {}); },
     // the admin side: a person who is an owner or admin of this Space; anyone else is told nothing (not found)
     async list(/** @type {any} */ chain) { const person = who(chain), role = roleOf(person); if (role !== "owner" && role !== "admin") throw new KernelError("not_found", "not found"); return serve("list", person, role, {}); },
-    async decide(/** @type {any} */ chain, /** @type {any} */ input) { const person = who(chain), role = roleOf(person); if (role !== "owner" && role !== "admin") throw new KernelError("not_found", "not found"); const i = obj(input); return serve("decide", person, role, { id: i.id, approve: i.approve, invite: i.invite }); },
+    /**
+     * Answer an ask. Declining is plain. Approving names the invite the approver made: it is read here, from the grants gateway UNDER THE APPROVER'S OWN CHAIN, and must exist, be one this person made, be unused and unexpired, and
+     * give a role this person may give; the module then checks it was made for this asker and is not linked to another ask. Anything else is one plain refusal.
+     */
+    async decide(/** @type {any} */ chain, /** @type {any} */ input) {
+      const person = who(chain), role = roleOf(person);
+      if (role !== "owner" && role !== "admin") throw new KernelError("not_found", "not found");
+      const i = obj(input);
+      if (i.approve !== true) return serve("decide", person, role, { id: i.id, approve: false });
+      const token = typeof i.invite === "string" ? i.invite : "";
+      const invId = token.split(".")[0];
+      const plain = new KernelError("bad_input", "Approve by creating the invite first, then name it.");
+      if (!/^inv_[0-9a-f]{32}$/.test(invId)) throw plain;
+      /** @type {any[]} */ let list;
+      try { list = await o.kernel.gateway.grants.invites.list(chain); } catch { throw plain; }
+      const inv = (Array.isArray(list) ? list : []).find(x => x && x.id === invId);
+      const allowed = /** @type {any} */ (MAY_SET)[/** @type {string} */ (role)] || [];
+      if (!inv || inv.issued_by !== person || inv.status !== "pending" || !allowed.includes(inv.role) || typeof inv.invitee !== "string") throw plain;
+      return serve("decide", person, role, { id: i.id, approve: true, invite: token, invite_id: invId, invitee: inv.invitee });
+    },
     async clear(/** @type {any} */ chain) { const person = who(chain), role = roleOf(person); if (role !== "owner" && role !== "admin") throw new KernelError("not_found", "not found"); return serve("clear", person, role, {}); },
   };
 }

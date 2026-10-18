@@ -13,6 +13,10 @@ export const LIMITS = Object.freeze({
   /** how long a request stays open */
   ttlMs: 14 * 24 * 3_600_000,
   noteMax: 200,
+  /** status reads per identity per minute (the app asks every five seconds) */
+  statusPerMinute: 30,
+  /** a declined or expired asker may ask again after this long (the same row, counted in the same caps) */
+  askAgainMs: 24 * 3_600_000,
   hourMs: 3_600_000,
 });
 
