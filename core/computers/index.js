@@ -280,18 +280,20 @@ export default {
     // agentd inside the computer does the work, on a root-only unix socket. vyred reaches it only through the driver running agentd-client.js in the computer
     // (`execIn`, the one exec shape policy.js allows); a driver that cannot do that (none configured, the fake) leaves the Computer tab saying so.
     const NOT_SET = "the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it";
-    const lazy = name => async u => {
+    const lazy = name => async (/** @type {any[]} */ ...args) => {
       const driver = pool.driver;
       const box = pool.row(SHARED_COMPUTER_ID);
       if (!driver || typeof /** @type {any} */ (driver).execIn !== "function" || !box || !box.container) throw new Error(NOT_SET);
       const exec = (/** @type {string} */ input) => /** @type {any} */ (driver).execIn(String(box.container), input);
       const ctl = agentdCtl({ transport: execTransport(exec), vncKey: () => memberKey() });
-      return /** @type {any} */ (ctl)[name](u);
+      return /** @type {any} */ (ctl)[name](...args);
     };
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
       // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
       emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
-      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome") } });
+      ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome"),
+        // the screen relay's tickets, the Chrome link, a harness session, a command and the terminals: every action agentd answers, or AgentUsers says "this computer cannot" and the agent has no Chrome of its own
+        screenTicket: lazy("screenTicket"), cdpTicket: lazy("cdpTicket"), runTicket: lazy("runTicket"), terminalTicket: lazy("terminalTicket"), exec: lazy("exec"), terminals: lazy("terminals") } });
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
