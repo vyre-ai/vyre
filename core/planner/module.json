@@ -371,6 +371,21 @@
               "label": "Note"
             },
             {
+              "name": "visibility",
+              "kind": "choice",
+              "label": "Who can read it",
+              "options": [
+                "private",
+                "record",
+                "space"
+              ]
+            },
+            {
+              "name": "record",
+              "kind": "text",
+              "label": "About (a record's address)"
+            },
+            {
               "name": "list",
               "kind": "text",
               "label": "List"

@@ -75,7 +75,7 @@ test("a member's planner reads show her own items, not the owner's or another me
   const titles = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ x) => x.title).sort();
   assert.deepEqual(await titles(await asMember(w, "planner.list", { state: "all" })), ["HER note", "HER todo"], "she lists only hers");
   assert.deepEqual(await titles(await as2("planner.list", { state: "all" })), ["THIRD reminder"]);
-  assert.equal((await titles(await w.call("planner.list", { state: "all" }))).length, 6, "the owner sees every item");
+  assert.equal((await titles(await w.call("planner.list", { state: "all" }))).length, 5, "the owner sees every item except a member's private note, which is hers alone");
   const others = (await w.call("planner.list", { state: "all" })).data.find((/** @type {any} */ x) => x.title === "OWNER note");
   const peek = await asMember(w, "planner.get", { item: others.id });
   assert.ok(peek.error, "planner.get of the owner's note refused: " + JSON.stringify(peek).slice(0, 160));
@@ -140,10 +140,11 @@ test("planner rows are read by the person they are for: a member reads no remind
   };
   assert.deepEqual(await seen(member), [], "a member reads none of them through Records");
   for (const [type, id] of [["note", ownerNote.id], ["reminder", ownerRem.id], ["note", hers.id]]) {
-    const before = (await R.get(w.owner, type, id)).data.title;
+    const keeper = w.k.gateway.serviceChain("planner");   // the owner does not read a member's private note, so the planner's own chain looks
+    const before = (await R.get(keeper, type, id)).data.title;
     await assert.rejects(() => R.update(member, type, id, { title: "TAKEN" }), `update of ${type} ${id} by a member`);
     await assert.rejects(() => R.remove(member, type, id), `remove of ${type} ${id} by a member`);
-    assert.equal((await R.get(w.owner, type, id)).data.title, before, `${type} ${id} unchanged`);
+    assert.equal((await R.get(keeper, type, id)).data.title, before, `${type} ${id} unchanged`);
   }
   await assert.rejects(() => R.create(member, "note", { title: "NEW", state: "open" }), "a member creates no planner note through Records");
   assert.ok((await seen(w.owner)).includes("OWNER-NOTE") && (await seen(w.owner)).includes("HER-REMINDER"), "the owner reads all");

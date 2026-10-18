@@ -17,6 +17,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
+import { seesNote, visibilityOf, aboutOf, NOTE_VISIBILITY } from "../../lib/note-share.js";
 import { isPerson } from "../../lib/caller.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 
@@ -439,6 +440,18 @@ export default {
       catch (e) { ctx.log(`planner: parse failed (${/** @type {Error} */ (e).message})`); return null; }
     };
 
+    /** A note's sharing from its input: private unless asked, and a record-level share names the record. @param {any} input */
+    const noteShare = (input) => {
+      const visibility = visibilityOf(input.visibility), record = input.record ? aboutOf(input.record) : null;
+      if (input.record && !record) throw fail("record is the address of a record, like vyre://<space>/contact/<id>. A note is about a record, not another note.");
+      if (visibility === "record" && !record) throw fail("A note shared with its record needs that record: { record }.");
+      return { visibility, record };
+    };
+    /** May the caller read this record (the kernel decides, on their own chain). */
+    const mayReadRecord = (w) => async (/** @type {string} */ urn) => { const p = urn.split("/"); try { return Boolean(K && await K.records.get(w.chain, p[3], p[4])); } catch { return false; } };
+    /** Does the caller see this item: a note by its sharing (an owner or an admin too), anything else by hiddenFrom. */
+    const seen = async (r, w, me) => (r && r.kind === "note" && r.by ? seesNote(r, callerPerson(w && w.chain), mayReadRecord(w)) : !hiddenFrom(r, me));
+
     const add = async (i, w) => {
       const t = now();
       let input = { ...i };
@@ -474,7 +487,8 @@ export default {
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
         tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name, by: callerPerson(w.chain),
-        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused), assignee };
+        waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused), assignee,
+        ...(kind === "note" ? noteShare(input) : {}) };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
       const made = await st.create({ ...row, next_fire: n.next_fire }, w);
@@ -547,6 +561,10 @@ export default {
       owns(item, w);
       if (item.kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       await mayChangeTodo(item, w);
+      if (item.kind === "note") {
+        if (!(await seen(item, w, await viewerOf(w)))) throw fail("no such item", "not_found");
+        if ((i.visibility !== undefined || i.record !== undefined) && callerPerson(w.chain) !== item.by) throw fail("Only the person who wrote a note changes who can read it.", "denied");
+      }
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
       // checked at add time - letting an agent redirect it afterward with planner.update would be
@@ -568,6 +586,7 @@ export default {
       if (i.parent !== undefined) { if (i.parent && !st.item(i.parent)) throw fail("no such parent item", "not_found"); patch.parent = i.parent || null; }
       if (i.waits_on !== undefined) { if (i.waits_on && !st.item(i.waits_on)) throw fail("no such item to wait on", "not_found"); patch.waits_on = i.waits_on || null; }
       if (i.paused !== undefined) patch.paused = Boolean(i.paused);
+      if (item.kind === "note" && (i.visibility !== undefined || i.record !== undefined)) Object.assign(patch, noteShare({ visibility: i.visibility ?? item.visibility, record: i.record !== undefined ? i.record : item.record }));
       if (i.state !== undefined) {
         if (!STATES.includes(i.state)) throw fail(`state is one of ${STATES.join(", ")}`);
         patch.state = i.state;
@@ -1048,6 +1067,7 @@ export default {
     const repeatSchema = { type: "object", description: "every: day|weekday|week|month|year, with optional days, interval, until", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
       days: { type: "array", items: int }, interval: int, until: str } };
     const itemFields = { title: str, body: str, list: str, priority: int, parent: str, project: str, thread: str, tags: { type: "array", items: str },
+      visibility: { type: "string", enum: NOTE_VISIBILITY, description: "a note only: private (the writer), record (everyone who can read the record it is about) or space (every member)" }, record: { type: "string", description: "a note only: the address of the record it is about" },
       pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number", description: "a timer's length in ms" }, wall: { type: "string", description: "wall-clock HH:MM, with date" }, date: { type: "string", description: "YYYY-MM-DD, with wall" }, due: when, repeat: repeatSchema, tz: str, floating: bool,
       // /later: waits_on chains a task after another item's own done, instead of a time; paused
       // stops just this one item (rule 2) without deleting it or losing its run history.
@@ -1095,11 +1115,20 @@ export default {
       async (i, w) => await add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared"], description: "mine: written by you; shared: notes others shared with you" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
       async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
         const me = await viewerOf(w), want = Math.min(500, Math.max(1, i.limit || 100));
-        const items = st.list({ ...i, limit: me ? 500 : want }).filter(r => !hiddenFrom(r, me)).slice(0, want).map(shape);
+        const kept = [];
+        const person = callerPerson(w && w.chain);
+        for (const r of st.list({ ...i, limit: (me || i.kind === "note" || !i.kind) ? 500 : want })) {
+          if (i.record && r.record !== i.record) continue;
+          if (i.scope === "mine" && r.by !== person) continue;
+          if (i.scope === "shared" && (r.kind !== "note" || r.by === person)) continue;
+          if (await seen(r, w, me)) kept.push(r);
+          if (kept.length >= want) break;
+        }
+        const items = kept.map(shape);
         return i.cursor ? { items, last_event } : items;
       }, { agents: true });
 
@@ -1109,7 +1138,7 @@ export default {
         const f = i.firing ? st.firing(i.firing) : null;
         const me = await viewerOf(w);
         const item0 = st.item(f ? f.item : i.item);
-        if (item0 && hiddenFrom(item0, me)) throw fail("no such item", "not_found");
+        if (item0 && !(await seen(item0, w, me))) throw fail("no such item", "not_found");
         const item = item0;
         if (!item) {
           let row = cal.row(f ? f.item : i.item);

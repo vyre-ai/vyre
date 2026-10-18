@@ -17,6 +17,7 @@ import { createAgentWake } from "./agent-wake.js";
 import { lendConnections, endConnections } from "./connection-lend.js";
 import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
+import { teammatePort } from "./kit-teammates.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -261,6 +262,17 @@ export function createFlowsHost(o) {
         const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");
         if (seat && wantSeat && wantSeat.fields.some((/** @type {any} */ f) => !seat.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantSeat] });
       } catch (e) { log(`flows: the team-member type for ${space} did not gain its level field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before an event could be shared has the old Event type: it gains `visibility` (the core definition is additive; a synced event with none is private to its owner).
+      try {
+        const ev = (await k.store.types()).find((/** @type {any} */ t) => t.name === "event"), wantEv = CORE_TYPES.find((/** @type {any} */ t) => t.name === "event");
+        if (ev && wantEv && wantEv.fields.some((/** @type {any} */ f) => !ev.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantEv] });
+      } catch (e) { log(`flows: the event type for ${space} did not gain its visibility field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before types carried their own presentation has core types without `hidden_in_records` (Templates, Playbooks, team seats and the like have screens of their own): they gain the flag.
+      try {
+        const now = await k.store.types();
+        const flagged = CORE_TYPES.filter((/** @type {any} */ w) => w.hidden_in_records === true).map((/** @type {any} */ w) => now.find((/** @type {any} */ t) => t.name === w.name)).filter((/** @type {any} */ t) => t && t.hidden_in_records !== true);
+        if (flagged.length) await gw.records.define(owner(), { change_types: flagged.map((/** @type {any} */ t) => ({ ...t, hidden_in_records: true })) });
+      } catch (e) { log(`flows: the core types for ${space} did not gain hidden_in_records: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
       // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
       try {
@@ -401,6 +413,8 @@ export function createFlowsHost(o) {
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
     guardUntilReady(flows.tools, () => typesReady, () => exhausted);
+    // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).
+    if (typeof o.callAs === "function") ports.teammates = teammatePort({ callAs: o.callAs, session: async (/** @type {string} */ id) => (await k.surfaces.open(personChain(id), { ttl_ms: 60_000 })).token, log, space });
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);
       const live = await store.active(x.flow).catch(() => null);

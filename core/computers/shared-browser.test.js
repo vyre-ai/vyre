@@ -37,7 +37,8 @@ test("browseMode: fake driver stays desktop unless browse is browser", () => {
   assert.equal(browseMode({ driver: "fake" }), "desktop");
   assert.equal(browseMode({ driver: "fake", browse: "browser" }), "browser");
   assert.equal(browseMode({ browse: "desktop" }), "desktop");
-  assert.equal(browseMode({ docker: "http://proxy" }), "browser");
+  assert.equal(browseMode({ docker: "http://proxy" }), "desktop", "fail closed: the shared browser is on only when browse is browser");
+  assert.equal(browseMode(undefined), "desktop");
 });
 
 test("shared browser: memberCdpToken derives from uid membership", async t => {

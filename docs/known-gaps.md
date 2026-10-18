@@ -16,6 +16,14 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
+### The shared browser and a Linux user for each agent
+
+Off until 0.6.2. Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used, even on a server that could run them. To try them on a server you run, set `computers.browse` to `browser` and `computers.agentUsers` to `true` in its config. Nothing else turns them on.
+
+### Downloads in an agent's computer
+
+A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent, and the folder the proof expects (the browser's own) is not the one computerd accepts today (the agent's Downloads). The proof reports these four checks (the two download-path checks, the landing and the read) as known failures; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+
 ### A member's own AI account in chats
 
 A member who has added her own AI account can't chat yet: her turn stops with a clear message, because her own key isn't lent to her chats yet. A member without one chats on the space's AI account if it has one. No one's key ever reaches another person. Fixed in the next update. The owner isn't affected, because the owner's accounts are the space's. The lent-key test for it (core/stream/person-turns-live.test.js) stays red until then.
@@ -131,6 +139,12 @@ What to do today: if a key is revoked while a quorum approval is open, reject th
 A task taken from a group can be taken over by another member only while it is being worked on or waiting for changes. If the person who took it is removed from the group while the work is in review or waiting for a check, it stays where it is until it moves.
 
 What to do today: ask the reviewer or approver to send it back, then another member takes it.
+
+### A file or draft hand-in is checked by its form
+
+A file or draft hand-in is checked by its form (a path or a record address that is there), not by looking at the file: a task with no checker accepts the doer's word, so give any task that matters a checker.
+
+What to do today: the person who checks the task opens the file before saying yes.
 
 ## True today, with no date
 
