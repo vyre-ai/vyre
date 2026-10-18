@@ -82,3 +82,26 @@ export function editCalls(kind, r, to) {
   }
   return null;
 }
+
+/**
+ * The folder picker for "Move to...": the folders listed at the place being browsed, minus the ones that cannot take what is moved (a moved folder itself or anything inside it, and the folder it is already in
+ * as a target of no change), as picker rows; plus the way up.
+ * @param {readonly { dir: boolean, path: string, name: string }[]} listed what the place holds @param {readonly { path: string, dir: boolean }[]} moving @param {string} here the folder being browsed ("" for the top)
+ * @returns {{ folders: { name: string, path: string }[], up: string | null, here: string, hereOk: boolean }}
+ */
+export function pickerView(listed, moving, here) {
+  const inside = (/** @type {string} */ p) => moving.some((m) => m.dir && (p === m.path || p.startsWith(`${m.path}/`)));
+  const folders = listed.filter((x) => x.dir && !inside(x.path)).map((x) => ({ name: x.name, path: x.path })).sort((a, b) => a.name.localeCompare(b.name));
+  const up = here ? (here.includes("/") ? here.slice(0, here.lastIndexOf("/")) : "") : null;
+  const parents = new Set(moving.map((m) => (m.path.includes("/") ? m.path.slice(0, m.path.lastIndexOf("/")) : "")));
+  return { folders, up, here, hereOk: !inside(here) && !(parents.size === 1 && parents.has(here)) };
+}
+
+/** What a drag of rows carries and where it can drop: dropping on one of the dragged rows themselves, or a folder inside a dragged folder, is no move. @param {readonly string[]} dragged keys @param {string} overKey @param {readonly { key: string, dir: boolean, path: string }[]} rows */
+export function dragMoveTarget(dragged, overKey, rows) {
+  const over = rows.find((r) => r.key === overKey);
+  if (!over || !over.dir || dragged.includes(overKey)) return null;
+  const moving = rows.filter((r) => dragged.includes(r.key));
+  if (moving.some((m) => m.dir && (over.path === m.path || over.path.startsWith(`${m.path}/`)))) return null;
+  return over;
+}

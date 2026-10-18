@@ -63,3 +63,27 @@ test("a move, a rename and a delete are the right tool for the source, with the 
   assert.equal(editCalls("move", { root: "box", path: "x", name: "x" }, "y"), null, "a box share is read-only");
   assert.equal(editCalls("delete", { root: "linked", path: "x", name: "x" }, ""), null, "a linked row with no link id does nothing");
 });
+
+test("the folder picker lists folders only, never a moved folder or what is inside it, and says whether here is a real change", async () => {
+  const { pickerView } = await import("./file-menu-model.js");
+  const listed = [{ dir: true, path: "Clients/B", name: "B" }, { dir: true, path: "Clients/A", name: "A" }, { dir: false, path: "Clients/f.txt", name: "f.txt" }, { dir: true, path: "Clients/A/sub", name: "sub" }];
+  const v = pickerView(listed, [{ path: "Clients/A", dir: true }], "Clients");
+  assert.deepEqual(v.folders.map((f) => f.path), ["Clients/B"], "A is being moved, sub is inside it, the file is not a folder");
+  assert.equal(v.up, "", "one level up from Clients is the top");
+  assert.equal(v.hereOk, false, "Clients is where A already is");
+  assert.equal(pickerView(listed, [{ path: "Clients/A", dir: true }], "Clients/B").hereOk, true);
+  assert.equal(pickerView(listed, [{ path: "Clients/A", dir: true }], "Clients/A/sub").hereOk, false, "never into itself");
+  assert.equal(pickerView([], [{ path: "x.txt", dir: false }], "").up, null, "the top has no up");
+  assert.equal(pickerView([], [{ path: "x.txt", dir: false }], "").hereOk, false, "a file already at the top");
+  assert.equal(pickerView([], [{ path: "a/x.txt", dir: false }, { path: "b/y.txt", dir: false }], "").hereOk, true, "rows from different folders gather at the top");
+});
+
+test("a drag of rows can drop on a folder that is not among them and not inside one", async () => {
+  const { dragMoveTarget } = await import("./file-menu-model.js");
+  const rows = [{ key: "k1", dir: true, path: "A" }, { key: "k2", dir: true, path: "B" }, { key: "k3", dir: false, path: "f.txt" }, { key: "k4", dir: true, path: "A/in" }];
+  assert.equal(dragMoveTarget(["k3"], "k2", rows)?.path, "B");
+  assert.equal(dragMoveTarget(["k1"], "k1", rows), null, "onto itself");
+  assert.equal(dragMoveTarget(["k1"], "k4", rows), null, "into its own inside");
+  assert.equal(dragMoveTarget(["k3"], "k3", rows), null, "a file is not a target");
+  assert.equal(dragMoveTarget(["k3"], "nope", rows), null);
+});
