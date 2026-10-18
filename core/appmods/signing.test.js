@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
-import { readStatus } from "./signing.js";
+import { readStatus, auditShown } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -290,4 +290,11 @@ test("readStatus: a declined signer shows the decline, and a missing or archived
   assert.equal(r.signers[0].signed, null);
   assert.equal(readStatus(null), null);
   assert.equal(readStatus({ id: 8, archived_at: "2026-10-18T05:00:00Z", submitters: [] }), null);
+});
+
+test("auditShown: the audit link is returned only to a person's own surface; a model, a harness or a module gets none (sec53)", () => {
+  const url = "https://docuseal.example/audit/41.pdf";
+  for (const caller of ["cli", "local", "deck", "capsule", "device"]) assert.equal(auditShown(caller, url), url, caller);
+  for (const caller of ["mcp", "harness", "module:documents", "agent", "mcp:agent:juno"]) assert.equal(auditShown(caller, url), null, caller);
+  assert.equal(auditShown("cli", "http://docuseal.example/x"), null, "only https");
 });

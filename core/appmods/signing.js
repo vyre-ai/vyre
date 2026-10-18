@@ -142,6 +142,12 @@ export function readWaiting(json) {
   return out.sort((a, b) => b.at - a.at || b.submission - a.submission).slice(0, 50);
 }
 
+/** The audit link a caller may see: a person's own surface only, and only https. A model, a harness or a module never gets it (the file is saved on the server, sec53). @param {string} caller @param {string | null} url */
+export function auditShown(caller, url) {
+  const person = ["cli", "local", "deck", "capsule", "device"].includes(String(caller || ""));
+  return person && typeof url === "string" && /^https:\/\//.test(url) ? url : null;
+}
+
 /**
  * One submission's status from DocuSeal's JSON (documents.signing.status, 18 Oct ruling): each signer with the times they were sent to, opened, completed
  * and declined, the submission's status, and its audit log link (fetched and saved by the server, never shown as a raw provider URL). A signer's page code

@@ -12,6 +12,8 @@ import { segments } from "../../kernel/core/urn.js";
 import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
+// The audit link rule lives with the app client that reads it (appmods/signing.js); one rule for both places.
+import { auditShown } from "../appmods/signing.js";
 import { documentRow } from "./record.js";
 import { expandPaths, LinkError } from "../../lib/link/path.js";
 
@@ -234,7 +236,9 @@ export function registerDocuments(ctx) {
       await door.open(i || {}, meta);
       const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
-      return { status: (r && r.data && r.data.status) || null };
+      const st = (r && r.data && r.data.status) || null;
+      // The audit link is for a person's own surface only (sec53): the file itself is saved on the server, never handed to a model.
+      return { status: st ? { ...st, audit_url: auditShown(meta && meta.caller, st.audit_url) } : null };
     },
   });
 
