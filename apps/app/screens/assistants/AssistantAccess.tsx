@@ -5,12 +5,13 @@ import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Field, Row, Switch, Text, showToast } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { tool } from "../../src/real/box";
-import { areaLine, refusal, stateFrom, summary, switchCall, toolCall, type AccessState } from "./access-model.js";
+import { agentCards, areaLine, refusal, stateFrom, summary, switchCall, toolCall, type AccessState } from "./access-model.js";
 
 /** The page, drawn from a state (the gallery draws it from a sample). */
-export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurnOffTool, onTurnOnTool, more, onOpen }: {
+export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurnOffTool, onTurnOnTool, more, onOpen, agents }: {
   s: AccessState; busy: boolean; problem: string; typed: string; setTyped: (v: string) => void;
   onSwitch: (id: string, on: boolean) => void; onTurnOffTool: () => void; onTurnOnTool: (name: string) => void;
+  /** Each agent, as a small card that opens its own page in Apps (the agent's permissions live there; this page keeps what every agent may do). */ agents?: { name: string; sub: string }[];
   /** The other pages that decide what agents may do, led to from here so this is the one place to look. */ more?: { title: string; sub: string; href: string }[]; onOpen?: (href: string) => void;
 }) {
   return (
@@ -35,6 +36,13 @@ export function AccessView({ s, busy, problem, typed, setTyped, onSwitch, onTurn
           <View className="flex-row"><Button kind="secondary" label="Turn off" disabled={busy || !typed.trim()} onPress={onTurnOffTool} /></View>
         </Card>
       </Group>
+      {agents && agents.length ? (
+        <Group title="Agents" note="Each agent has its own page in Apps.">
+          <Card flush>
+            {agents.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row title={a.name} sub={a.sub} chevron onPress={() => onOpen?.(`/u/agents/${encodeURIComponent(a.name)}`)} /></View>)}
+          </Card>
+        </Group>
+      ) : null}
       {more && more.length ? (
         <Group title="More options" note="What agents are asked, shown and spend.">
           <Card flush>
@@ -62,6 +70,8 @@ export function AssistantAccessScreen() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [typed, setTyped] = useState("");
+  const [agents, setAgents] = useState<{ name: string; sub: string }[]>([]);
+  useEffect(() => { tool<any>("agents.list", {}).then((d) => setAgents(agentCards(d))).catch(() => setAgents([])); }, []);
   const load = useCallback(() => { tool<any>("assistant.access.get", {}).then((d) => setS(stateFrom(d))).catch(() => setS(null)); }, []);
   useEffect(load, [load]);
   const run = async (call: { tool: string; input: Record<string, unknown> }, done?: string) => {
@@ -72,7 +82,7 @@ export function AssistantAccessScreen() {
   };
   if (!s) return <Page title="What agents may do" back="/u/settings"><Text tone="label">This server does not keep these settings yet.</Text></Page>;
   return (
-    <AccessView more={MORE} onOpen={(href) => router.push(href as never)} s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
+    <AccessView agents={agents} more={MORE} onOpen={(href) => router.push(href as never)} s={s} busy={busy} problem={problem} typed={typed} setTyped={setTyped}
       onSwitch={(id, on) => void run(switchCall(id, on))}
       onTurnOffTool={() => { const c = toolCall(typed) as { problem?: string; tool?: string; input?: Record<string, unknown> }; if (c.problem || !c.tool) { setProblem(c.problem ?? ""); return; } setTyped(""); void run({ tool: c.tool, input: c.input ?? {} }, "Turned off for your agent."); }}
       onTurnOnTool={(name) => void run({ tool: "assistant.access.restore", input: { tools: [name] } })} />
