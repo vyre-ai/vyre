@@ -63,7 +63,7 @@ function Faces({ ids, world }: { ids: string[]; world: World }) {
 
 /**
  * Projects, calm: a header (count, search with "/", Filter, New), the playbook chip when the list is narrowed to one, and one row per project: a tint tile with the playbook's icon, the name with what is next
- * under it ("Waiting on you: ..." in the accent when something needs the reader), what kind it is, tasks "2/4", who is on it, when it last moved (rowFacts in project-row.js), and a "..." menu (Open, Rename,
+ * under it ("Waiting on you: ..." in the stronger ink when something needs the reader), what kind it is, tasks "2/4", who is on it, when it last moved (rowFacts in project-row.js), and a "..." menu (Open, Rename,
  * Archive). The whole row opens; Up and Down move through the rows and Enter opens one. On a phone each project is a card.
  */
 export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onChoose, playbook, playbookName: playbookLabel, onClearPlaybook, onRename, onArchive }: {
@@ -131,7 +131,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
         <Pressable accessibilityRole="button" accessibilityLabel={`${recordTitle(world, i.row)}, ${sub(i)}`} onPress={() => onOpen(i.row.id)} onHoverIn={() => setActive(k)}
           style={{ flexDirection: "row", alignItems: "center", gap: 16, paddingHorizontal: 16, minHeight: 64, backgroundColor: active === k ? color.hover : "transparent" }}>
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={36} />
-          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text></View>
+          <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Text size="secondary" tone={t.needsYou ? "default" : "label"} medium={t.needsYou} numberOfLines={1}>{t.next}</Text></View>
           {tagOf && tagOf(spaceId(i)) ? <SpaceTag text={tagOf(spaceId(i)) as string} /> : null}
           <View style={{ width: 90 }}><Text size="secondary" tone="muted" numberOfLines={1}>{sub(i)}</Text></View>
           <View style={{ width: 92 }}><TaskBar done={t.done} total={t.total} /></View>
@@ -151,7 +151,7 @@ export function ProjectsList({ world, items, onOpen, onNew, tagOf, choices, onCh
           <ProjectTile id={i.row.id} icon={snapshotIcon(i)} size={44} />
           <View className="min-w-0 flex-1 gap-s1">
             <Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text>
-            <Text size="secondary" tone={t.needsYou ? "accent" : "label"} numberOfLines={1}>{t.next}</Text>
+            <Text size="secondary" tone={t.needsYou ? "default" : "label"} medium={t.needsYou} numberOfLines={1}>{t.next}</Text>
             <View className="flex-row flex-wrap items-center gap-s2">{t.total ? <TaskBar done={t.done} total={t.total} /> : null}<Faces ids={t.team} world={world} />{t.moved ? <Text size="caption" tone="faint">{t.moved}</Text> : null}</View>
           </View>
           {rowMenu(i)}
