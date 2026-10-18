@@ -122,3 +122,30 @@ test("the agentd plan for the picture runs as the screen's owner with the displa
   assert.ok(SHOT.maxBytes <= 40 * 1024);
   assert.throws(() => planShot({ user: "root", uid: 0, display: 20 }), /not one of the agent users/);
 });
+
+test("agentd's shot action answers a picture for a real agent triple only, refuses a picture over the cap, and a wrong token gets nothing", async t => {
+  const fs = await import("node:fs");
+  const { startAgentd } = await import("./image/agentd-main.js");
+  const { callAgentd } = await import("./image/agentd-client.js");
+  const { SCRATCH } = await import("../../test/scratch.mjs");
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-shot-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const socket = path.join(dir, "a.sock"), tokenFile = path.join(dir, "token");
+  fs.writeFileSync(tokenFile, "t".repeat(40), { mode: 0o400 });
+  /** @type {string[][]} */ const asked = [];
+  let big = false;
+  const server = startAgentd({ socket, tokenFile, run: async () => {}, shot: async (/** @type {string[]} */ argv) => { asked.push(argv); if (big) throw new Error("the picture is too large"); return Buffer.from("jpegbytes"); } });
+  await new Promise(r => server.on("listening", () => r(null)));
+  t.after(() => server.close());
+  const call = (/** @type {any} */ body, token = "t".repeat(40)) => callAgentd({ socket, token, action: "shot", body: JSON.stringify(body) });
+  const ok = await call({ user: "ag20000", uid: 20000, display: 20 });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(JSON.parse(ok.text), { mime: "image/jpeg", width: 480, height: 300, jpeg: Buffer.from("jpegbytes").toString("base64") });
+  assert.equal(asked.length, 1);
+  assert.equal((await call({ user: "ag1000", uid: 1000, display: 20 })).status, 400);
+  assert.equal((await call({ user: "ag20000", uid: 20000, display: 21 })).status, 400);
+  assert.equal((await call({ user: "ag20000", uid: 20000, display: 20 }, "x".repeat(40))).status, 401);
+  assert.equal(asked.length, 1, "nothing bad took a picture");
+  big = true;
+  assert.equal((await call({ user: "ag20000", uid: 20000, display: 20 })).status, 400);
+});
