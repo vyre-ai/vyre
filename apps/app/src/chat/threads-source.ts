@@ -13,6 +13,11 @@ export const agentThreads = {
     const r = await callT("work.agent.threads", { agent });
     return r.error ? { problem: said(r.error) } : { rows: threadRows(r.data) };
   },
+  /** A group's own threads (a group has threads too): work.chat.threads { chat }, the shape of work.agent.threads. The name is a stand-in until acct6 names it. */
+  async ofChat(chat: string): Promise<{ rows: ThreadRow[] } | { problem: string }> {
+    const r = await callT("work.chat.threads", { chat });
+    return r.error ? { problem: said(r.error) } : { rows: threadRows(r.data) };
+  },
   /** A new thread with this agent; the old ones stay saved. */
   async start(agent: string): Promise<{ thread: string } | { problem: string }> {
     // the device chooses the chat's id and makes its key ring, as work.chat.create does; the sample world has no ring to make

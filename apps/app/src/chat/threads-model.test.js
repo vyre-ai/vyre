@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint } from "./threads-model.js";
+import { chatKind, panelTabs, threadsTab, tabOf, threadRows, agentHint, groupView } from "./threads-model.js";
 
 const agent = { family: "assistant" }, person = { family: "person" };
 
@@ -14,20 +14,20 @@ test("the kind of a chat, from who else is in it", () => {
   assert.equal(chatKind({ others: [agent], flow: true }), "flow");
 });
 
-test("tabs: an agent has Threads, Computer, Details; a group has Group and one per agent; a Flow Runs and Details; a person Details", () => {
+test("tabs: an agent has Threads, Computer, Details; a group one first level; a Flow Runs and Details; a person Details", () => {
   assert.deepEqual(panelTabs("agent", ["Engineer"]).map((t) => t[1]), ["Threads", "Computer", "Details"]);
-  assert.deepEqual(panelTabs("group", ["Assistant", "Scout"]), [["group", "Group"], ["agent:Assistant", "Assistant"], ["agent:Scout", "Scout"]]);
+  assert.deepEqual(panelTabs("group", ["Assistant", "Scout"]), [["group", "Group"]], "a group has no tab row: faces and threads, then drill in");
   assert.deepEqual(panelTabs("flow", []).map((t) => t[1]), ["Runs", "Details"]);
   assert.deepEqual(panelTabs("person", []).map((t) => t[1]), ["Details"]);
 });
 
-test("/threads opens Threads for an agent, Runs for a Flow, the first agent tab in a group unless an agent tab is open, and nothing for a person", () => {
+test("/threads opens Threads for an agent, Runs for a Flow, the group's threads in a group (or the open agent), and nothing for a person", () => {
   assert.equal(threadsTab("agent", ["Engineer"], "details"), "threads");
   assert.equal(threadsTab("flow", [], "details"), "runs");
-  assert.equal(threadsTab("group", ["Assistant", "Scout"], "group"), "agent:Assistant");
-  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Scout"), "agent:Scout", "an open agent tab stays");
-  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Gone"), "agent:Assistant");
-  assert.equal(threadsTab("group", [], "group"), null);
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "group"), "group", "the group's own threads are on its first level");
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Scout"), "agent:Scout", "an agent already open stays");
+  assert.equal(threadsTab("group", ["Assistant", "Scout"], "agent:Gone"), "group");
+  assert.equal(threadsTab("group", [], "person:per_x"), "group");
   assert.equal(threadsTab("person", [], "details"), null);
 });
 
@@ -49,4 +49,13 @@ test("thread rows: live first, then newest; rows without an id are dropped; an u
 test("the agent hint names /new and /threads, and says steer or queue while it works", () => {
   assert.equal(agentHint("Engineer", false), "/new starts a new thread. /threads shows every thread with Engineer, ready to continue.");
   assert.match(agentHint("Engineer", true), /steers Engineer now\. Press Tab to queue it for after\./);
+});
+
+test("a group's panel: first level, or one person or agent drilled into; someone who left falls back to the first level", () => {
+  const m = [{ id: "per_sam", name: "Sam", family: "person" }, { id: "agt_kit", name: "kit", family: "assistant" }];
+  assert.deepEqual(groupView("group", m), { level: "first" });
+  assert.deepEqual(groupView("person:per_sam", m), { level: "person", id: "per_sam" });
+  assert.deepEqual(groupView("agent:kit", m), { level: "agent", name: "kit" });
+  assert.deepEqual(groupView("person:per_gone", m), { level: "first" });
+  assert.deepEqual(groupView("agent:Sam", m), { level: "first" }, "a person is not an agent");
 });

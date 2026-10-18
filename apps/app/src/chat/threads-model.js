@@ -16,24 +16,24 @@ export function chatKind({ others, flow = false }) {
 }
 
 /**
- * The tabs of the side panel. An agent: Threads, Computer, Details. A group: Group, then one tab per agent in it. A person: Details alone. A Flow: Runs and Details.
+ * The tabs of the side panel. An agent: Threads, Computer, Details. A group has no tab row: its first level is everyone as faces plus the group's threads, and a tap on a person or an agent goes in (see panelView). A person: Details alone. A Flow: Runs and Details.
  * @param {ChatKind} kind @param {readonly string[]} agents the agents in the chat, by name @returns {[string, string][]}
  */
 export function panelTabs(kind, agents) {
   if (kind === "agent") return [["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]];
-  if (kind === "group") return [["group", "Group"], ...agents.map((a) => /** @type {[string, string]} */ ([`agent:${a}`, a]))];
+  if (kind === "group") return [["group", "Group"]];
   if (kind === "flow") return [["runs", "Runs"], ["details", "Details"]];
   return [["details", "Details"]];
 }
 
 /**
- * The tab /threads opens: Threads for an agent, Runs for a Flow, and in a group the first agent's tab unless an agent tab is already open. Null when the chat has no threads (a person).
+ * The tab /threads opens: Threads for an agent, Runs for a Flow, and in a group the group's own threads (its first level), or the agent's panel when one is already open. Null when the chat has no threads (a person).
  * @param {ChatKind} kind @param {readonly string[]} agents @param {string} current the tab showing now @returns {string | null}
  */
 export function threadsTab(kind, agents, current) {
   if (kind === "agent") return "threads";
   if (kind === "flow") return "runs";
-  if (kind === "group") return /^agent:/.test(current) && agents.includes(current.slice(6)) ? current : agents.length ? `agent:${agents[0]}` : null;
+  if (kind === "group") return /^agent:/.test(current) && agents.includes(current.slice(6)) ? current : "group";
   return null;
 }
 
@@ -56,4 +56,16 @@ export function threadRows(raw) {
 /** The hint under the composer for an agent: /new and /threads. @param {string} agent @param {boolean} working */
 export function agentHint(agent, working) {
   return working ? `Your message steers ${agent} now. Press Tab to queue it for after.` : `/new starts a new thread. /threads shows every thread with ${agent}, ready to continue.`;
+}
+
+/**
+ * What a group's panel shows: its first level, or one person or one agent drilled into (the tab is `person:<id>` or `agent:<name>`). A tab that names someone who left falls back to the first level.
+ * @param {string} tab @param {readonly { id: string, name: string, family: string }[]} members
+ * @returns {{ level: "first" } | { level: "person", id: string } | { level: "agent", name: string }}
+ */
+export function groupView(tab, members) {
+  const person = /^person:(.+)$/.exec(tab), agent = /^agent:(.+)$/.exec(tab);
+  if (person && members.some((m) => m.id === person[1] && m.family !== "assistant")) return { level: "person", id: person[1] };
+  if (agent && members.some((m) => m.name === agent[1] && m.family === "assistant")) return { level: "agent", name: agent[1] };
+  return { level: "first" };
 }

@@ -5,8 +5,8 @@ import { Banner, Button, Chip, EmptyState, Icon, LoadingState, Row } from "@vyre
 import { agentThreads, type ThreadRow } from "./threads-source";
 import { ageOf } from "../../screens/chats/chat-model.js";
 
-export function ThreadsTab({ agent, noun = "thread", current, onSwitch, onNew }: {
-  agent: string; /** "thread", or "run" for a Flow. */ noun?: "thread" | "run";
+export function ThreadsTab({ agent, chat, noun = "thread", current, onSwitch, onNew }: {
+  agent: string; /** A group's own threads: read by chat instead of by agent. */ chat?: string; /** "thread", or "run" for a Flow. */ noun?: "thread" | "run";
   /** The thread showing now. */ current?: string;
   onSwitch: (thread: string) => void;
   /** Starts a thread; the tab looks again after. */ onNew?: () => Promise<string | null>;
@@ -14,7 +14,7 @@ export function ThreadsTab({ agent, noun = "thread", current, onSwitch, onNew }:
   const [rows, setRows] = useState<ThreadRow[] | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { const r = await agentThreads.list(agent); if ("rows" in r) { setRows(r.rows); setProblem(""); } else { setRows([]); setProblem(r.problem); } }, [agent]);
+  const load = useCallback(async () => { const r = chat ? await agentThreads.ofChat(chat) : await agentThreads.list(agent); if ("rows" in r) { setRows(r.rows); setProblem(""); } else { setRows([]); setProblem(r.problem); } }, [agent, chat]);
   useEffect(() => { setRows(null); void load(); }, [load]);
   const make = async () => { if (!onNew || busy) return; setBusy(true); const why = await onNew(); setBusy(false); if (why) setProblem(why); else await load(); };
   const now = Date.now();
@@ -22,7 +22,7 @@ export function ThreadsTab({ agent, noun = "thread", current, onSwitch, onNew }:
     <View style={{ gap: 8 }}>
       {problem ? <Banner tone="warn">{problem}</Banner> : null}
       {onNew && noun === "thread" ? <View style={{ flexDirection: "row" }}><Button kind="secondary" size="sm" label="New thread" disabled={busy} onPress={() => void make()} /></View> : null}
-      {rows === null ? <LoadingState rows={3} /> : !rows.length ? <EmptyState title={noun === "run" ? "No runs yet" : "No threads yet"} body={noun === "run" ? "Each run of this Flow is its own thread." : `Your first message to ${agent} starts one.`} /> : rows.map((t) => (
+      {rows === null ? <LoadingState rows={3} /> : !rows.length ? <EmptyState title={noun === "run" ? "No runs yet" : "No threads yet"} body={noun === "run" ? "Each run of this Flow is its own thread." : chat ? "Start one from the message box with /new." : `Your first message to ${agent} starts one.`} /> : rows.map((t) => (
         <Row key={t.id} dense selected={t.id === current} lead={<Icon name={t.live ? "spark" : "chat"} size={20} />} title={t.title}
           sub={t.live ? (t.needs ? "Live, needs you" : "Live") : t.at ? ageOf(t.at, now) : ""} end={t.needs ? <Chip tone="accent">Needs you</Chip> : undefined} onPress={() => onSwitch(t.id)} />
       ))}

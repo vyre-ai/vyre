@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { RAIL, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { ComputerTab } from "./ComputerTab";
 import { ThreadsTab } from "./ThreadsTab";
-import { chatKind, panelTabs, tabOf, threadsTab } from "./threads-model.js";
+import { chatKind, groupView, panelTabs, tabOf, threadsTab } from "./threads-model.js";
 import { StandingRows } from "./StandingRows";
 import { jumpIndex, stepFocus } from "@vyre/ui/lib/picker-model.js";
 import { ProjectPicker } from "./ProjectPicker";
@@ -136,13 +136,8 @@ export function ChatPanel(p: ChatPanelProps) {
     return () => { on = false; };
   }, [p.open, tab, p.thread]);
 
-  const details = (
-    <View style={{ gap: 4 }}>
-      {p.participants.map((x) => (
-        <Row key={x.id} dense lead={<Face name={x.name} family={fam(x.family)} size={32} id={x.id} />} title={x.name}
-          sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
-          onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
-      ))}
+  const addBlock = (
+    <>
       {p.onAdd && p.addable ? (adding ? (
         <View style={{ gap: 4 }}>
           {p.addable.length ? p.addable.map((a) => (
@@ -150,7 +145,18 @@ export function ChatPanel(p: ChatPanelProps) {
               end={<Button size="sm" kind="secondary" label="Add" onPress={async () => { const r = await p.onAdd?.(a); if (r) setProblem(r); else setAdding(false); }} />} />
           )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
         </View>
-      ) : <Row dense title="Add a teammate" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
+      ) : <Row dense title="Add people" lead={<Icon name="plus" size={20} />} onPress={() => setAdding(true)} />) : null}
+    </>
+  );
+
+  const details = (
+    <View style={{ gap: 4 }}>
+      {p.participants.map((x) => (
+        <Row key={x.id} dense lead={<Face name={x.name} family={fam(x.family)} size={32} id={x.id} />} title={x.name}
+          sub={x.id === p.viewer ? "You" : x.family === "assistant" ? `Agent${x.role ? `, ${x.role}` : ""}` : x.role ?? "Person"}
+          onPress={x.family === "assistant" ? () => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(x.name)}?tab=activity` as never); } : p.onOpenParticipant ? () => p.onOpenParticipant?.(x.id) : undefined} accessibilityLabel={`${x.name}, open card`} />
+      ))}
+      {addBlock}
 
       <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} state={proj ? "Change" : "Move"} chevron onPress={() => { cameFromMore.current = false; p.onPage("project"); }} accessibilityLabel={proj ? `Project ${proj.name}. Move to another project` : "Not in a project. Move to a project"} />
       <Row dense lead={<Icon name="more" size={20} />} title="More" sub="Effort, permissions, where it runs and the rest" chevron onPress={() => open("more")} />
@@ -213,9 +219,57 @@ export function ChatPanel(p: ChatPanelProps) {
   const tabs = panelTabs(kind, agents.map((x) => x.name));
   const cur = tabOf(tabs, tab === "library" ? "details" : tab);
   const threadsOf = (agent: string, noun: "thread" | "run" = "thread") => <ThreadsTab key={agent} agent={agent} noun={noun} current={p.thread} onSwitch={(t) => p.onSwitchThread?.(t)} onNew={p.onNewThread ? () => p.onNewThread!(agent) : undefined} />;
-  const agentBody = (agent: string) => <View style={{ gap: 16 }}>{threadsOf(agent)}<ComputerTab agents={[agent]} onLeave={p.onClose} /></View>;
-  const body0 = cur === "threads" && agents[0] ? threadsOf(agents[0].name) : cur === "runs" ? threadsOf(p.title, "run") : cur === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} />
-    : /^agent:/.test(cur) ? agentBody(cur.slice(6)) : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{details}{library}</View> : details;
+  // A group's panel: everyone as faces plus the group's threads; a tap on someone goes in, with Back.
+  const view = kind === "group" ? groupView(tab, p.participants) : null;
+  const [drillTab, setDrillTab] = useState("threads");
+  useEffect(() => { setDrillTab("threads"); }, [tab]);
+  const faceOf = (x: (typeof p.participants)[number]) => (
+    <Pressable key={x.id} accessibilityRole="button" accessibilityLabel={x.id === p.viewer ? "You" : `Open ${x.name}`} disabled={x.id === p.viewer}
+      onPress={() => setTab(x.family === "assistant" ? `agent:${x.name}` : `person:${x.id}`)} style={{ alignItems: "center", gap: 4, width: 72 }}>
+      <Face name={x.name} family={fam(x.family)} size={48} id={x.id} />
+      <Text size="caption" numberOfLines={1}>{x.id === p.viewer ? "You" : x.name}</Text>
+    </Pressable>
+  );
+  const groupFirst = (
+    <View style={{ gap: 16 }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{p.participants.map(faceOf)}</View>
+      {addBlock}
+      <View style={{ gap: 8 }}>
+        <Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>Threads</Text>
+        <ThreadsTab key={p.chat} agent={p.title} chat={p.chat} current={p.thread} onSwitch={(t) => p.onSwitchThread?.(t)} onNew={p.onNewThread ? () => p.onNewThread!(p.title) : undefined} />
+      </View>
+      <Row dense lead={proj ? <Avatar of={markRef("project", proj.name, proj.slug)} size={32} /> : <Icon name="projects" size={20} />} title={proj ? proj.name : "Not in a project"} sub={proj ? "Project" : "Keep this chat with its project"} />
+    </View>
+  );
+  const backRow = <Row dense lead={<Icon name="chev-l" size={20} />} title="Back" onPress={() => setTab("group")} />;
+  const agentView = (name: string) => {
+    const who = p.participants.find((x) => x.name === name);
+    return (
+      <View style={{ gap: 16 }}>
+        {backRow}
+        <View style={{ alignItems: "center", gap: 6 }}><Face name={name} family="assistant" size={56} id={who?.id ?? name} /><Text size="title" medium>{name}</Text></View>
+        <Tabs items={[["threads", "Threads"], ["computer", "Computer"], ["details", "Details"]]} value={drillTab} onChange={setDrillTab} />
+        {drillTab === "threads" ? threadsOf(name) : drillTab === "computer" ? <ComputerTab agents={[name]} onLeave={p.onClose} /> : <Row dense title={`Open ${name}`} sub="Model, effort, what it can see and use" chevron onPress={() => { p.onClose(); router.push(`/u/assistants/${encodeURIComponent(name)}` as never); }} />}
+      </View>
+    );
+  };
+  const personView = (id: string) => {
+    const who = p.participants.find((x) => x.id === id);
+    if (!who) return null;
+    return (
+      <View style={{ gap: 16 }}>
+        {backRow}
+        <View style={{ alignItems: "center", gap: 6 }}><Face name={who.name} family="person" size={56} id={who.id} /><Text size="title" medium>{who.name}</Text>{who.role ? <Text tone="label">{who.role}</Text> : null}</View>
+        <View style={{ gap: 4 }}>
+          <Text size="caption" tone="label" style={{ paddingHorizontal: 12 }}>{`You and ${who.name}`}</Text>
+          {p.onOpenParticipant ? <Row dense lead={<Icon name="chat" size={20} />} title="Your chat" sub="Just the two of you" chevron onPress={() => p.onOpenParticipant?.(who.id)} /> : null}
+        </View>
+      </View>
+    );
+  };
+  const body0 = view ? (view.level === "agent" ? agentView(view.name) : view.level === "person" ? personView(view.id) : groupFirst)
+    : cur === "threads" && agents[0] ? threadsOf(agents[0].name) : cur === "runs" ? threadsOf(p.title, "run") : cur === "computer" && agents.length ? <ComputerTab agents={agents.map((a) => a.name)} onLeave={p.onClose} />
+    : kind === "agent" && cur === "details" ? <View style={{ gap: 16 }}>{details}{library}</View> : details;
   // The top of the panel: one face, the name, the labels. A chat with one other shows their face; more than one shows a small stack.
   const others = p.participants.filter((x) => x.id !== p.viewer);
   const hero = (
@@ -234,9 +288,10 @@ export function ChatPanel(p: ChatPanelProps) {
       </View>
     </View>
   );
+  const drilled = Boolean(view && view.level !== "first");
   const root = (
     <View style={{ gap: 16 }}>
-      {hero}
+      {drilled ? null : hero}
       {tabs.length > 1 ? <Tabs items={tabs} value={cur} onChange={setTab} /> : null}
       {body0}
     </View>
