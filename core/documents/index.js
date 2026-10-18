@@ -13,7 +13,7 @@ import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
 // The audit link rule lives with the app client that reads it (appmods/signing.js); one rule for both places.
-import { auditShown } from "../appmods/signing.js";
+import { auditShown, savedAlready } from "../appmods/signing.js";
 import { documentRow } from "./record.js";
 import { expandPaths, LinkError } from "../../lib/link/path.js";
 
@@ -251,6 +251,11 @@ export function registerDocuments(ctx) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(i || {}, meta);
       if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
+      // A second Download does not write again: the file is already in Files > Signed, so its path is returned (the ruling, 18 Oct).
+      const path0 = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
+      let existing = null;
+      try { existing = await d.gateway.drive.stat(d.chain, path0); } catch (e) { if (/** @type {any} */ (e)?.code !== "not_found") throw e; }
+      if (savedAlready(existing)) return { path: path0, bytes: 0, already: true };
       const r = await ctx.call("appmods.signing.audit", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
       const bytes = Buffer.from(String(r.data.bytes), "base64");

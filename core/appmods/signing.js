@@ -157,6 +157,11 @@ export function auditAllowed(appOrigin, url) {
   } catch { return null; }
 }
 
+/** Whether the audit file is already saved: the Drive's stat answers a path and a version for a saved file, and nothing for a missing one. @param {any} stat */
+export function savedAlready(stat) {
+  return Boolean(stat && typeof stat === "object" && typeof stat.path === "string" && stat.version != null);
+}
+
 /** Whether a body of `bytes` fits the cap; an unknown size never does. @param {number} bytes @param {number} cap */
 export function auditBodyWithin(bytes, cap) {
   return Number.isFinite(bytes) && bytes >= 0 && bytes <= cap;

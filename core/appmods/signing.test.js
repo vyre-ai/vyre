@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
-import { readStatus, auditShown, auditAllowed, auditBodyWithin } from "./signing.js";
+import { readStatus, auditShown, auditAllowed, auditBodyWithin, savedAlready } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -311,4 +311,11 @@ test("auditBodyWithin: the audit file is read only up to the size cap; a larger 
   assert.equal(auditBodyWithin(10, 100), true);
   assert.equal(auditBodyWithin(101, 100), false);
   assert.equal(auditBodyWithin(Number.NaN, 100), false, "an unknown size is refused");
+});
+
+test("savedAlready: a second Download finds the file already in Files > Signed and does not write it again (18 Oct ruling)", () => {
+  assert.equal(savedAlready({ path: "Signed/audit-41.pdf", version: 1, size: 10 }), true, "a stat for the saved file");
+  assert.equal(savedAlready(null), false, "no file yet");
+  assert.equal(savedAlready(undefined), false);
+  assert.equal(savedAlready({}), false, "an answer with no version is not a saved file");
 });
