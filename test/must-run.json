@@ -3,6 +3,7 @@
   "tests": {
     "core/runner/hardening.test.js": ["*"],
     "core/runner/lease-race.test.js": ["*"],
+    "core/runner/env-hidden.test.js": ["*"],
     "core/runner/lent-wire.test.js": ["*"],
     "core/runner/lent-pipe-runner.test.js": ["*"],
     "core/runner/runner.foundation.test.js": ["*"],

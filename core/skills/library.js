@@ -125,6 +125,8 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
     if (!person) throw fail("not_allowed", "an approval is a person's own: an assistant drafts and proposes, the owner says yes");
     return applyApproval(person, i);
   }
+  /** What the approval card says about keys, for a plugin whose servers need them. @param {any} p @param {string} level */
+  const keyNote = (p, level) => (p.mcp || []).some((/** @type {any} */ m) => m.needs && m.needs.length) ? { keys: level === "personal" ? "Only your own calls use this key." : "Everyone who can use this plugin acts with this key." } : {};
   async function applyApproval(person, i) {
     const scope = i.level === "space" ? "" : i.level === "personal" ? String(i.scope || person.id) : String(i.scope ?? "");
     const have = await history(String(i.name), String(i.level), scope);
@@ -135,7 +137,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, mcpUpd
     if (rec.data.state === "retired") throw fail("bad_state", "that version was retired; draft it again or roll back to it");
     if (rec.data.kind === "plugin") {
       const p = JSON.parse(String(rec.data.body));
-      if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: it declares ${JSON.stringify(declared(p))}. Approve with ack: "${ackOf(p)}" to say yes to exactly that`, { declares: declared(p), ack: ackOf(p) });
+      if (hasCode(p) && i.ack !== ackOf(p)) throw fail("needs_ack", `${p.name} has code: it declares ${JSON.stringify(declared(p))}. Approve with ack: "${ackOf(p)}" to say yes to exactly that${keyNote(p, rec.data.level).keys ? ` ${keyNote(p, rec.data.level).keys}` : ""}`, { declares: declared(p), ack: ackOf(p), ...keyNote(p, rec.data.level) });
     }
     return make(rec, person, undefined, i.items);
   }

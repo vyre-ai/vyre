@@ -42,6 +42,11 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.deepEqual(dr.declares.mcp[0].needs, [{ var: "NOTES_API_KEY", label: "Notes API key" }]);
   assert.ok((await draft({ ...plugin({ command: "docker", args: ["run", "--rm", "-i", "-e", "NOTES_API_KEY", "ghcr.io/example/notes-mcp@sha256:" + "b".repeat(64)] }), name: "box-notes" }, "box-notes")).ack);
 
+  // the card says whose key it is
+  const gate = await call("skills.approve", { name: "notes", level: "personal", version: 1 }).catch(e => e);
+  assert.equal(gate.code, "needs_ack");
+  assert.match(gate.error.message, /Only your own calls use this key\./);
+
   // the item exists in the Vault; its value must appear nowhere below
   await call("vault.put", { name: "notes-key", kind: "secret", value: VALUE });
   const approved = await call("skills.approve", { name: "notes", level: "personal", version: 1, ack: dr.ack, items: { "notes.NOTES_API_KEY": "notes-key" } });
