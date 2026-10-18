@@ -242,7 +242,7 @@ export const DECLARED_SINCE = Object.freeze({
   "work.flow.threads": "ccd8984fe@18 Oct 2026",
   "work.person.shared": "ccd8984fe@18 Oct 2026",
   "work.project.chat": "ccd8984fe@18 Oct 2026",
-  "work.engineer.chat": "18 Oct 2026",
+  "work.engineer.chat": "ccd8984fe@18 Oct 2026",
   "work.thread.add-people": "ccd8984fe@18 Oct 2026",
   "work.thread.fork": "ccd8984fe@18 Oct 2026",
   "publish.preview": "d3e4e365a@3 Oct 2026",
