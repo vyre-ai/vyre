@@ -18,7 +18,7 @@ process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; proc
 /** What this walk cannot do in a bare daemon, and why. */
 export const SKIPPED = Object.freeze({
   "a real device signature": "the daemon here verifies proofs with a stand-in that checks the signed operation and fields (and one use per proof), not a Secure Enclave or phone key: the card's own sign_fields are what is signed",
-  "a file in Drive": "there is no Drive gateway in a bare daemon, so the file is handed in as a reference to a record the doer can read, as the kernel's own hand-in check accepts",
+  "a file in Drive": "there is no Drive gateway in a bare daemon, so the file and the draft are handed in as relative Drive paths, whose form is all the kernel checks (kernel/tasks/facts.js); a hand-in that names a record is read on the doer's own chain and is covered by test/prod-wiring-daemon.test.js",
   "a running agent session": "the agent's hand-in is made on the agent's own chain; no model runs",
   "an outward send held at the Gate": "no sender is configured in a bare daemon",
 });
@@ -58,9 +58,6 @@ async function boot(t) {
   await K.gateway.grants.addActor(ownerChain, agent, { presence: grantProof("grants.role", { actor: agent }, `vyre://${space}/member/research`) });
   const g = { subject: { kind: "actor", actor: agent }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
   await K.gateway.grants.create(ownerChain, g, { presence: grantProof("grants.create", g, `vyre://${space}/grant/new`) });
-  // what the owner lets the assistant read: the projects it works on (the hand-in check reads the draft on the assistant's own chain)
-  const gr = { subject: { kind: "actor", actor: agent }, actions: ["records.read"], resource: { prefix: `vyre://${space}/project/*` }, conditions: {}, source: "test" };
-  await K.gateway.grants.create(ownerChain, gr, { presence: grantProof("grants.create", gr, `vyre://${space}/grant/new`) });
   // a member who is a manager
   const role = { person: MIA, role: "manager" };
   await K.gateway.grants.setRole(ownerChain, role, { presence: grantProof("grants.role", role, `vyre://${space}/member/${MIA}`) });
@@ -84,7 +81,7 @@ test("1. a stage's tasks: the agent hands in a draft, the manager passes it, the
   assert.ok(draft.checker && draft.checker.id, "the owner approves");
   // the agent hands in a draft on its own chain: the work goes to the reviewer, not to done
   await ask.start(agentChain, draft.id);
-  const handed = await ask.complete(agentChain, draft.id, { draft: urn });
+  const handed = await ask.complete(agentChain, draft.id, { draft: "drafts/rivera-letter.md" });
   assert.equal(handed.state, "in_review", "a task with a reviewer waits for the review");
   // the owner is not the manager role: they cannot review it; the manager can
   await assert.rejects(() => ask.review(ownerChain, draft.id, { result: "pass" }), (/** @type {any} */ e) => e && e.code !== undefined);
@@ -97,9 +94,9 @@ test("1. a stage's tasks: the agent hands in a draft, the manager passes it, the
   await assert.rejects(() => ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign({ ...card.sign_fields, payload_hash: "other" }) }), { code: "needs_presence" });
   const done = await ask.decide(ownerChain, draft.id, { outcome: "approved", proof: sign(card.sign_fields) });
   assert.equal(done.state, "done");
-  // the second task is the owner's own: a file, handed in as a reference to a record they can read
+  // the second task is the owner's own: a file, handed in as a relative Drive path (the kernel checks its form only; the file itself is the doer's claim)
   await ask.start(ownerChain, idFile.id);
-  assert.equal((await ask.complete(ownerChain, idFile.id, { file: urn })).state, "done");
+  assert.equal((await ask.complete(ownerChain, idFile.id, { file: "ids/rivera-id.pdf" })).state, "done");
   // every required task is done: the stage moves on by itself, once
   const projId = urn.slice(urn.lastIndexOf("/") + 1);
   const moved = await until(async () => { const r = await w.R.get(ownerChain, "project", projId); seen.v = r && r.data; return r && r.data.template_stage === "Done" ? r : null; }, "the project to move to its next stage");
