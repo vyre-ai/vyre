@@ -83,6 +83,7 @@ export const MEMBER_MAY = Object.freeze(new Set([
 /** Tools only the Space's owner and admins call from a session: the owner's connected accounts, computers, services, spend, settings and set-up, and every tool whose handler does not yet keep a member to her own. */
 export const OWNER_ONLY = Object.freeze(new Set([
   "about.text",
+  "agents.draft.get", "agents.new.apply", "agents.new.draft", "agents.new.title",
   "agents.resume", "agents.rollover", "agents.spawn", "agents.stop",
   "appearance.check", "appearance.presets", "appearance.resolve",
   "appmods.connection", "appmods.domain.add", "appmods.domain.list", "appmods.domain.remove", "appmods.hosts", "appmods.install", "appmods.logs", "appmods.open",
