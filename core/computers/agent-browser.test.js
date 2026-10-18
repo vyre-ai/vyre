@@ -47,10 +47,10 @@ test("AgentBrowser: checkout in browser mode holds without a screen", async t =>
   assert.equal(out.thread, "th-1");
 });
 
-test("AgentBrowser: with computers.browse unset an agent is never put on the shared browser: its Chrome is its own on the Space's computer, or the call fails loudly", async t => {
+test("AgentBrowser: with per-agent users on and computers.browse unset an agent is never put on the shared browser: its Chrome is its own on the Space's computer, or the call fails loudly", async t => {
   const { pool, shared } = setup(t);
   const lines = [];
-  const ab = new AgentBrowser({ pool, shared, cfg: () => ({}) });
+  const ab = new AgentBrowser({ pool, shared, cfg: () => ({ agentUsers: true }) });
   ab.log = m => lines.push(m);
   let sharedUsed = 0;
   const realEndpoint = shared.endpoint.bind(shared);
@@ -78,4 +78,19 @@ test("AgentBrowser: computers.browse \"browser\" on purpose is the one way onto 
   ab.space = { endpoint: async () => { throw new Error("the Space's computer must not be asked"); } };
   assert.equal((await ab.checkout("kit", {})).model, "browser");
   assert.ok(lines.some(l => /shared browser \(computers\.browse is "browser" on purpose\)/.test(l)));
+});
+
+test("AgentBrowser: unset means one computer for each agent; computers.agentUsers true means the agent's own Linux user on the Space's computer, and the two never mix", async t => {
+  const { pool, shared } = setup(t);
+  const off = new AgentBrowser({ pool, shared, cfg: () => ({}) });
+  assert.equal(off.mode(), "desktop", "unset: the agent's own desktop container");
+  off.space = { endpoint: async () => { throw new Error("the Space's computer must not be asked"); } };
+  assert.equal((await off.checkout("kit", {})).model, "desktop");
+  const on = new AgentBrowser({ pool, shared, cfg: () => ({ agentUsers: true }) });
+  assert.equal(on.mode(), "browser", "agentUsers: the Space's computer");
+  on.space = { endpoint: async a => ({ url: `http://space/${a}`, token: "t" }) };
+  assert.equal((await on.checkout("kit", {})).model, "computer");
+  assert.equal(on.explicitShared(), false, "and not the shared browser, which only browse: browser asks for");
+  const desk = new AgentBrowser({ pool, shared, cfg: () => ({ agentUsers: true, browse: "desktop" }) });
+  assert.equal(desk.mode(), "desktop", "an explicit desktop wins");
 });
