@@ -112,9 +112,9 @@ What to do today: open an interactive artifact from a session like that only whe
 
 ### Vyre Computer: one Chrome, reads in parallel
 
-Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent is not built, and a write goes through the page, asked first.
+This is about your own Chrome on your own computer, which Vyre Computer drives for you; it is not about the agents' browsers on the Space computer, where each agent has its own Linux user and its own Chrome. Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent in your Chrome is not built, and a write goes through the page, asked first.
 
-What to do today: ask for one job at a time when several agents need Chrome.
+What to do today: ask for one job at a time when several agents need your Chrome.
 
 ### Models side by side
 
