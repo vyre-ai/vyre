@@ -508,6 +508,10 @@ try {
       await two.waitFor("You are invited", 120_000);
       await two.shot("25-asker-invited");
       await two.click("Join");
+      // a member who has joined goes on to connect their own AI (their own accounts, never the owner's); skipping it ends at the last screen
+      await two.waitFor("Connect your AI", 120_000);
+      await two.shot("26a-asker-connect-ai");
+      await two.click("Skip for now");
       const t = await two.waitFor("You're all set", 120_000);
       await two.shot("26-asker-in");
       if (/This Space only takes invites/.test(t)) throw new Error("the second person was told the Space only takes invites");
