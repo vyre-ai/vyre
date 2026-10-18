@@ -53,7 +53,7 @@ function rig(over = {}) {
   const state = { roles };
   const tasks = createTasks({
     space: SPACE, authorizer, log, presence, chains, clock, ...(over.mayReadTask ? { mayReadTask: over.mayReadTask } : {}), ...(over.agentMaker ? { agentMaker: over.agentMaker } : {}),
-    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
+    members: { has: a => members.has(`${a.kind}:${a.id}`), roleOf: a => (over.roleOf ? over.roleOf(a) : null), ...(over.people ? { people: () => over.people } : {}) }, roleHolders: r => state.roles[r] || [], approver: () => actor("person", OWNER),
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
@@ -928,12 +928,18 @@ test("nobody reviews their own work: the reviewer is not the doer or a helper, a
   const r = rig();
   // a different person is named, but she is the doer's helper: refused at the request
   await assert.rejects(r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), helpers: [actor("person", ALICE)], reviewer: actor("person", ALICE) })), { code: "same_actor" });
-  // the doer is the only one who could review: in a Space with no one else the step is skipped and recorded
-  const t = await r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) }));
+  // a team Space: naming yourself as your reviewer is refused, never skipped
+  const team = rig({ people: [actor("person", OWNER), actor("person", ALICE), actor("person", BOB)] });
+  await assert.rejects(team.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) })), { code: "same_actor" });
+  // a Space that cannot say who else is in it is not a one-person Space
+  await assert.rejects(r.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) })), { code: "same_actor" });
+  // the doer is the only person in the Space: the step is skipped and recorded with the member count
+  const solo = rig({ people: [actor("person", BOB)] });
+  const t = await solo.tasks.request(owner(), noteTask({ doer: actor("person", BOB), reviewer: actor("person", BOB) }));
   assert.equal(t.reviewer, undefined);
-  assert.equal(t.review_skipped.why, "No one else to check this");
-  await r.tasks.start(bob(), t.id);
-  assert.equal((await r.tasks.complete(bob(), t.id, noteEvidence())).state, "done");
+  assert.deepEqual([t.review_skipped.why, t.review_skipped.members], ["No one else to check this", 1]);
+  await solo.tasks.start(bob(), t.id);
+  assert.equal((await solo.tasks.complete(bob(), t.id, noteEvidence())).state, "done");
   // a reviewer who is not a member is refused
   await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", "per_nobody") })), { code: "not_a_member" });
 });
@@ -957,4 +963,20 @@ test("approver is the new name of checker: both work, both together are refused,
   assert.equal(a.checker.id, ALICE);
   await assert.rejects(r.tasks.request(owner(), draftTask({ approver: actor("person", ALICE) })), { code: "bad_input" });
   await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), quorum: "all" })), { code: "bad_input" });
+});
+
+test("a resubmitted task drops the old review, and the changes note is text the doer can read while the log holds only its hash", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE) }));
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  const asked = await r.tasks.review(alice(), t.id, { result: "changes", note: "Add the Zebra Quarry figures" });
+  assert.equal((await r.tasks.get(owner(), t.id)).review_note, "Add the Zebra Quarry figures", "the task carries the note for the doer");
+  assert.ok(!JSON.stringify(r.log.read()).includes("Zebra Quarry"), "the log holds the hash and no text");
+  assert.ok(r.log.read({ type: "task.changes-requested" })[0].data.note_hash);
+  assert.equal(asked.review.result, "changes");
+  const again = await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  assert.equal(again.state, "in_review");
+  assert.equal(again.review, undefined, "no stale result on the task");
+  assert.equal((await r.tasks.get(owner(), t.id)).review_note, undefined);
 });

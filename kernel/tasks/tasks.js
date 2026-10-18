@@ -247,9 +247,9 @@ export function createTasks(cfg) {
   // if it hashes to what the log recorded.
   const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
   // A task's title and note are the record's, not the text store's: only what the kernel itself holds as free text (the doer's answer, a Flow's form, a block's reason) is kept here.
-  const textOf = (/** @type {any} */ t) => ({ ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
-  const withoutText = (/** @type {any} */ t) => { const { note: _n, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
-  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textOf = (/** @type {any} */ t) => ({ ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
   const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
     const now = tasks.get(t.id) || t;
@@ -386,7 +386,7 @@ export function createTasks(cfg) {
       let checker = spec.approver !== undefined ? spec.approver : spec.checker;
       if (spec.quorum !== undefined && spec.quorum !== "any") throw new KernelError("bad_input", "quorum is any for now: one yes or pass is enough");
       // The reviewer slot: a person, an agent or a role. An agent reviewer must be another agent than the doer (compared by uid), and a reviewer who could only be the doer's own person is skipped in a Space with no one else.
-      let reviewer = spec.reviewer, reviewSkipped = false;
+      let reviewer = spec.reviewer, reviewSkipped = false, reviewMembers = 0;
       if (reviewer !== undefined) {
         const okSlot = reviewer && typeof reviewer === "object" && (typeof reviewer.role === "string" ? Object.keys(reviewer).every(k => k === "role") : ["person", "agent"].includes(reviewer.kind) && typeof reviewer.id === "string" && reviewer.space === cfg.space);
         if (!okSlot) throw new KernelError("bad_input", "a reviewer is a person or an agent of this space, or a role");
@@ -394,8 +394,9 @@ export function createTasks(cfg) {
         if (reviewer.kind === "agent" && !(await agentMakerIsStaff(reviewer.id))) throw new KernelError("not_allowed", "this agent may not review work: the person who made it is not an owner or an admin");
         if (!reviewersOf({ doer, helpers: spec.helpers, reviewer }).length) {
           // Skipped only when nobody but the doer's own person could hold the slot (the single-person Space); anyone else eligible who is missing is an error.
-          const mine = reviewer.role ? roleHolders(reviewer.role) : [reviewer];
-          if (mine.length && mine.every((/** @type {any} */ a) => a && a.kind === "person" && same(a, doer.kind === "person" ? doer : (spec.helpers || [])[0] || doer))) reviewSkipped = true;
+          // The Space's own people who could hold it: anyone but the doer, a helper or a viewer. Skipped only when there is no one (a port that cannot say counts as someone: fail closed).
+          const others = typeof cfg.members.people === "function" ? cfg.members.people().filter((/** @type {any} */ p) => !same(p, doer) && !(spec.helpers || []).some((/** @type {any} */ h) => same(h, p))) : [{}];
+          if (others.length === 0) { reviewSkipped = true; reviewMembers = (typeof cfg.members.people === "function" ? cfg.members.people().length : 0); }
           else throw new KernelError(reviewer.role ? "no_checker" : "same_actor", reviewer.role ? "no person other than the doer holds that role" : "the reviewer must be someone other than the doer");
         }
       }
@@ -420,7 +421,7 @@ export function createTasks(cfg) {
       const t = freeze({
         id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
         source: spec.source || "manual", doer: freeze({ ...doer }), ...(spec.helpers ? { helpers: freeze([...spec.helpers]) } : {}),
-        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this" }) } : {}), output: freeze({ ...spec.output }),
+        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
@@ -435,7 +436,7 @@ export function createTasks(cfg) {
       recCache.set(id, { at: Date.now(), rec: made });
       try {
         stage(id, t);
-        note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length, ...(t.reviewer ? { reviewers: reviewersOf(t).length } : {}), ...(reviewSkipped ? { review_skipped: "No one else to check this" } : {}) });
+        note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length, ...(t.reviewer ? { reviewers: reviewersOf(t).length } : {}), ...(reviewSkipped ? { review_skipped: "No one else to check this", members: reviewMembers } : {}) });
       } catch (e) { if (made) await recs.remove("task", id, made.version).catch(() => {}); recCache.delete(id); throw e; }
       dirty.delete(id);
       return t;
@@ -526,7 +527,9 @@ export function createTasks(cfg) {
       } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
-      const n = put(t, { state: to, payload });
+      // A review belongs to one hand-in: coming back In review drops the last result and its note from the task (they stay in the log), so no card or approver sees a stale pass.
+      const { review: _rv, review_note: _rvn, ...kept } = t;
+      const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, updated_at: clock() })) : put(t, { state: to, payload });
       note(chain, to === "in_review" ? "task.in-review" : "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
     },
@@ -555,7 +558,7 @@ export function createTasks(cfg) {
       const review = freeze({ by: freeze({ kind: who.kind, id: who.id }), type: who.kind === "agent" ? "agent" : "person", result: a.result, checklist: freeze(items.map((/** @type {any} */ x) => freeze({ skill: x.skill.slice(0, 80), item: x.item.slice(0, 200), ok: x.ok }))), ...(text ? { note_hash: sha256(canonical(text)) } : {}), at: clock() });
       if (a.result === "changes") {
         rule(t, "changes_requested", "reviewer");
-        const n = put(t, { state: "changes_requested", review });
+        const n = put(t, { state: "changes_requested", review, ...(text ? { review_note: text } : {}) });
         note(chain, "task.changes-requested", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
         return n;
       }
@@ -564,12 +567,12 @@ export function createTasks(cfg) {
       if (to === "done") {
         const body = bodies.get(id);
         const answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
-        const n = put(t, { state: "done", review, ...(answer !== undefined ? { answer } : {}) });
+        const n = put(t, { state: "done", review, ...(text ? { review_note: text } : {}), ...(answer !== undefined ? { answer } : {}) });
         note(chain, "task.completed", n, { reviewed_by: { kind: who.kind, id: who.id }, output: t.output.kind, ...(answer !== undefined ? { answer } : {}) }, d.decision);
         promote(chain);
         return n;
       }
-      const n = put(t, { state: "needs_check", review });
+      const n = put(t, { state: "needs_check", review, ...(text ? { review_note: text } : {}) });
       note(chain, "task.review-passed", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
       return n;
     },
