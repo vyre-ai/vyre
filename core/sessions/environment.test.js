@@ -169,7 +169,7 @@ for (const driver of ["cli", "sdk"]) {
     for (const [who, text] of Object.entries(seen)) {
       assert.ok(text.includes("[Vyre environment]"), who);
       assert.ok(text.includes(want.text.split("\n\n")[0]), `${who} has the same opening`);
-      assert.match(text, /approvals\.pending/, who);
+      assert.doesNotMatch(text, /Outward acts|held as a task/, who);
       assert.match(text, /memory_turn/, who);
     }
     // For the ACP agents the person's words come after it.
