@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci(codex): codex-mcp-real.yml runs scripts/codex-mcp-real-check.mjs: a real Codex CLI (0.159.3) reads the [mcp_servers] tables mcpToml writes (codex mcp list and get in a throwaway CODEX_HOME, no account and no model call), with a quote in an argument and an sse server left out.
 - fix(runner): a lease taken again while the sessions of its ended lease are still stopping keeps its workspace (contact waits for the closing and then checks the real mount); a revoked end still closes hard and deletes, and a vault answer that arrives after a revoke opens nothing and keeps no key (lease.js). Tests in core/runner/lease-race.test.js.
 - fix(guards): the polish train's suite guards. Refusals in Files move, appmods audit, sessions key check and the Vault member link now say what to do next; the partial-move code has a catalogue entry; documents.signing.status is under the 25-word cap; the Files move tools take the one person-surface list (no bare mobile); the audit link check reads that list too; the AI accounts step reads the Anthropic key shape from the shared table; the Vault migration list is one line shorter.
 
