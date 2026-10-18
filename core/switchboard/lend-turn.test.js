@@ -44,3 +44,14 @@ test("memberKey asks lendKey for exactly the settled asker and account, and take
   await assert.rejects(memberKey(ctx, acct(), undefined), e => e.code === "no_credential");
   assert.equal(asked.length, 1);
 });
+
+test("the asker comes only from the verified asker or the stored one: a person named by the launch's options or the thread's record changes nothing", async () => {
+  const named = { person: "per_ada", account: "acc-ada", switchPerson: "per_ada", kernelTurn: { asker: "per_ben", chat: "chat1" } };
+  const recOf = { id: "t1", chat: "chat1", person: "per_ada", agent: "per_ada" };
+  // ben is the verified asker: the lend is for ben whatever else names ada
+  assert.deepEqual(await lendTurn(sbOf().sb, "t1", recOf, named, acct()), { asker: "per_ben", space: null });
+  // ada's account in a turn ben asked: refused, though the options and the record both name ada
+  await assert.rejects(lendTurn(sbOf().sb, "t1", recOf, named, acct({ id: "acc-ada", person: "per_ada" })), /not available to this turn/);
+  // no verified or stored asker at all: naming ada in the options lends nothing
+  await assert.rejects(lendTurn(sbOf().sb, "t1", recOf, { person: "per_ada" }, acct({ person: "per_ada" })), /not available to this turn/);
+});
