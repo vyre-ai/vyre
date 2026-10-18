@@ -408,7 +408,7 @@ test("member access to a request: only the sender (and the owner) may open it; a
   assert.equal(sent.submission, 41);
   assert.equal(mia.db.prepare("SELECT sender FROM documents_requests WHERE submission = 41").get()?.sender, "per_mia", "the send recorded the sender from the verified chain");
 
-  const bob = rig({ chain: BOB, call, made });
+  const bob = rig({ chain: BOB, call, made, db: mia.db });
   const bobStatus = await code(bob.run("documents.signing.status", { submission: 41 }, { caller: "cli" }));
   assert.equal(bobStatus?.code, "not_found", "B asking for A's request is refused");
   const bobAudit = await code(bob.run("documents.signing.audit", { submission: 41 }, { caller: "cli" }));
@@ -421,11 +421,11 @@ test("member access to a request: only the sender (and the owner) may open it; a
   assert.equal((await mia.run("documents.signing.status", { submission: 41 }, { caller: "cli" })).status.submission, 41, "A opens her own request");
   assert.equal((await mia.run("documents.signing.waiting", {}, { caller: "cli" })).requests.length, 1, "A's waiting list has her request");
 
-  const owner = rig({ call, made });
+  const owner = rig({ call, made, db: mia.db });
   assert.equal((await owner.run("documents.signing.status", { submission: 41 }, { caller: "cli" })).status.submission, 41, "the owner sees the request");
   assert.equal((await code(owner.run("documents.signing.status", { submission: 99 }, { caller: "cli" })))?.message, bobStatus?.message, "an id that does not exist gets the same answer");
 
-  const oldMember = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_old", space: SPACE } }] }, call, made });
+  const oldMember = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_old", space: SPACE } }] }, call, made, db: mia.db });
   assert.equal((await code(oldMember.run("documents.signing.status", { submission: 7 }, { caller: "cli" })))?.code, "not_found", "a member with no record for an old request gets not_found");
 });
 
@@ -434,8 +434,8 @@ test("an admin sees the requests the owner may see; a plain member with no recor
   const call = async (/** @type {string} */ tool, /** @type {any} */ input) => tool === "appmods.signing.request" ? { submission: 52, url: "u" } : tool === "appmods.signing.status" ? { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } } : {};
   const sender = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_mia", space: SPACE } }] }, call, made });
   await sender.run("documents.send", { template_id: 3, email: "sam@example.com" }, { caller: "cli" });
-  const admin = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_admin", space: SPACE } }] }, call, made });
+  const admin = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_admin", space: SPACE } }] }, call, made, db: sender.db });
   assert.equal((await admin.run("documents.signing.status", { submission: 52 }, { caller: "cli" })).status.submission, 52, "an admin opens any request");
-  const plain = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_pat", space: SPACE } }] }, call, made });
+  const plain = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_pat", space: SPACE } }] }, call, made, db: sender.db });
   assert.equal((await code(plain.run("documents.signing.status", { submission: 52 }, { caller: "cli" })))?.code, "not_found", "a plain member does not");
 });
