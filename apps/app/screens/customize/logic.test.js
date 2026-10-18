@@ -71,3 +71,13 @@ test("lines say what a field and a type are", () => {
   assert.equal(fieldLine({ key: "r", label: "R", kind: "stage", rule: "Needs a signed engagement" }), "Stage · Needs a signed engagement");
   assert.equal(typeLine(matter), "1 field · holds work · from the Kit Estate planning matter");
 });
+
+test("every new type starts with its first field and an ID after it; Blank is a Name and an ID", () => {
+  const blank = buildType("blank", "", false, "mine");
+  assert.deepEqual(blank.fields.map((f) => [f.key, f.label]), [["name", "Name"], ["ref", "ID"]]);
+  assert.equal(templateBlurb("blank"), "Two fields, Name and ID. Add the rest yourself.");
+  const deal = buildType("deal", "Deal", false, "mine");
+  assert.deepEqual(deal.fields.slice(0, 3).map((f) => f.key), ["title", "ref", "contact"], "after the first field, before the rest");
+  assert.equal(templateBlurb("deal"), "Fields: Title, Contact, Value and Close date. Stages: Lead, Meeting, Proposal, Won and Lost.", "the blurb does not list the ID");
+  assert.equal(buildType("deal", "Deal", false, "mine").fields.filter((f) => f.key === "ref").length, 1, "one ID, not two");
+});

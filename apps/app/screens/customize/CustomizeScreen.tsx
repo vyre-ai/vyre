@@ -10,7 +10,7 @@ import { TEMPLATES, buildType, templateBlurb, templateName } from "./logic.js";
 import { toKernelType } from "./real-model.js";
 
 const STARTERS: Starter[] = [
-  { id: "blank", label: "Blank", blurb: "One field, Title. Add the rest yourself.", fields: ["Title"] },
+  { id: "blank", label: "Blank", blurb: "Two fields, Name and ID. Add the rest yourself.", fields: ["Name", "ID"] },
   ...TEMPLATES.filter(([id]) => id !== "blank").map(([id, label]) => ({ id, label, blurb: templateBlurb(id), fields: buildType(id, "x", false, "s").fields.map((f: any) => f.label) })),
 ];
 
