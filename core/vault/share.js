@@ -68,7 +68,7 @@ const MEMBER = /^[A-Za-z0-9_-]{1,80}$/;
 /** A Space member's id, from the person's own surface only. A model may not link a Vault person to a member: it throws denied. */
 function memberOf(member, caller) {
   if (member === undefined || member === null || member === "") return null;
-  if (isAsker(caller)) throw Object.assign(new Error("a model cannot link a Vault person to a Space member"), { code: "denied" });
+  if (isAsker(caller)) throw Object.assign(new Error("a model cannot link a Vault person to a Space member; ask the person to link them"), { code: "denied" });
   if (!MEMBER.test(String(member))) throw new Error("a member id is letters, digits, dash and underscore, up to 80");
   return String(member);
 }
