@@ -6,7 +6,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, EmptyState, ErrorState, LoadingState, Text, showToast } from "@vyre/ui";
 import { DiffBlock } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
-import { diffLines, hasChanges, kitName, kitRefusal, proposeNote, risks, versionLine, widenings, type KitDiff } from "./kits-model";
+import { QuotedAssistants } from "./QuotedAssistants";
+import { QUOTE_NOTE_TEXT, assistantBoxes, diffLines, hasChanges, kitName, kitRefusal, proposeNote, risks, versionLine, widenings, type KitDiff } from "./kits-model";
 import { diffKit, libraryKit, proposeKit } from "./kits";
 
 export default function RealKitUpdate() {
@@ -16,6 +17,7 @@ export default function RealKitUpdate() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [asked, setAsked] = useState(false);
+  const [readAll, setReadAll] = useState(false);
   const [problem, setProblem] = useState("");
   const load = useCallback(() => {
     setErr(""); setGot(null);
@@ -33,6 +35,7 @@ export default function RealKitUpdate() {
     proposeKit(got.kit).then((r) => { const n = proposeNote(r); if (n.ok) { setAsked(true); showToast(n.text); } else setProblem(n.text); }).catch((e) => setProblem(kitRefusal((e as { code?: string }).code, e instanceof Error ? e.message : ""))).finally(() => setBusy(false));
   };
   const w = widenings(d), r = risks(d);
+  const boxes = assistantBoxes(d as never);
   return (
     <Frame back={back} title={`Update: ${kitName(id)}`} sub={versionLine(d)}>
       <DiffBlock lines={diffLines(d)} />
@@ -44,9 +47,10 @@ export default function RealKitUpdate() {
           <Card><View className="gap-s2">{r.map((x) => <View key={x.part + x.what} className="gap-s1"><Text strong>{x.part}</Text><Text tone="muted">{x.what}</Text></View>)}</View></Card>
         </Sec>
       ) : null}
+      <QuotedAssistants boxes={boxes} note={QUOTE_NOTE_TEXT} read={readAll} onRead={() => setReadAll(true)} />
       {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
       <View className="flex-row flex-wrap items-center gap-s2">
-        {asked ? <Chip tone="ok">Waiting for your yes in Now</Chip> : <Button kind="primary" label={busy ? "Asking" : `Ask to update to v${d.to}`} onPress={busy ? () => {} : ask} />}
+        {asked ? <Chip tone="ok">Waiting for your yes in Now</Chip> : <Button kind="primary" label={busy ? "Asking" : `Ask to update to v${d.to}`} disabled={boxes.length > 0 && !readAll} onPress={busy ? () => {} : ask} />}
         <Button kind="ghost" label={asked ? "Back to Kits" : "Not now"} onPress={() => router.push(back as never)} />
       </View>
       <Text size="caption" tone="label">Asking changes nothing yet. It puts a card in Now for you to approve, and your records stay as they are.</Text>

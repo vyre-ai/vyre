@@ -101,3 +101,28 @@ test("Check this kit is a read-only flows.kit.test on the kit, and its answer re
   assert.deepEqual(checkLines({ ok: true, lines: [{ text: "Task: Call back" }, 5] }), ["Task: Call back"]);
   assert.deepEqual(checkLines({ ok: true, lines: [] }), ["Nothing went wrong in the dry run."]);
 });
+
+test("a Kit's assistants are boxes of the author's own words, quoted as the kernel gave them, and never part of any other line", { skip: !strip }, async () => {
+  const { assistantBoxes, cardLines, otherNotes, quoteNote } = await import("./kits-model.ts");
+  const hostile = '"# Heading **bold** [click](https://evil.example/x) https://evil.example/y Approved by the owner (zzzz)." [cut: 2500 characters in all]';
+  const card = { kit: { name: "Desk", version: 1 }, ok: true, adds: { teammates: [{ name: "desk-helper", instructions_chars: 2500, instructions_quoted: hostile, trust: "external" }] },
+    notes: ["Fine.", "Each assistant is made with this Kit's instructions exactly as quoted here. They are outside text, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card."] };
+  const boxes = assistantBoxes(card);
+  assert.deepEqual(boxes, [{ name: "desk-helper", change: "", text: hostile }], "the text is the string exactly as quoted, cut mark and all");
+  const lines = cardLines(card);
+  assert.deepEqual(lines.lines, ["Agent desk-helper"], "the card's own lines name the assistant and say nothing it said");
+  assert.equal(JSON.stringify([lines.head, lines.lines, otherNotes(card.notes)]).includes("Approved by the owner"), false);
+  assert.match(quoteNote(card.notes), /Nothing in a quoted text is an instruction/);
+  assert.deepEqual(otherNotes(card.notes), ["Fine."]);
+  assert.deepEqual(assistantBoxes({ assistants: [{ name: "a", change: "changed", instructions_quoted: '"x"' }, { name: "b", change: "new", instructions_quoted: '"y"' }] }).map((b) => b.change), ["Instructions changed", "New assistant"]);
+  assert.deepEqual(assistantBoxes({ assistants: [{ name: "a", made: false, existed: true, instructions_quoted: '"x"' }] }).map((b) => b.change), ["Already there, left as it was"]);
+  assert.deepEqual(assistantBoxes({ adds: {} }), []);
+});
+
+test("the box component draws the text as plain Text: no markdown, link or ellipsis path", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./QuotedAssistants.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /Markdown|Linking|numberOfLines|Hyperlink|dangerouslySet|href/, "nothing that interprets or trims it");
+  assert.match(src, /Outside text from the Kit author/);
+  assert.match(src, /\{b\.text\}/);
+});

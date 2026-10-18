@@ -6,7 +6,8 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, show
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { useRouter } from "expo-router";
-import { checkLines, addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
+import { QuotedAssistants } from "./QuotedAssistants";
+import { assistantBoxes, otherNotes, quoteNote, checkLines, addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
 import { checkKit, kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
 
 const say = (e: unknown) => kitRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
@@ -16,7 +17,8 @@ export function RealKits() {
   const [rows, setRows] = useState<KitRow[] | null>(null);
   const [err, setErr] = useState("");
   const [lib, setLib] = useState<LibraryKit[] | null>(null);
-  const [open, setOpen] = useState<{ id: string; name: string; kit: unknown; card: ReturnType<typeof cardLines> } | null>(null);
+  const [open, setOpen] = useState<{ id: string; name: string; kit: unknown; card: ReturnType<typeof cardLines>; boxes: ReturnType<typeof assistantBoxes>; quote: string } | null>(null);
+  const [readAll, setReadAll] = useState(false);
   const [loadingCard, setLoadingCard] = useState("");
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,8 +26,8 @@ export function RealKits() {
   const check = () => { if (!open) return; setBusy(true); checkKit(open.kit).then((r) => setChecked(checkLines(r))).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const load = useCallback(() => { setErr(""); listKits().then(setRows).catch((e) => setErr(say(e))); listLibrary().then(setLib).catch(() => setLib(null)); }, []);
   const read = (k: LibraryKit) => {
-    setLoadingCard(k.id); setNote(null); setChecked(null);
-    kitCard(k.id).then((r) => setOpen({ id: k.id, name: k.name ?? kitName(k.id), kit: r.kit, card: cardLines(r.card as never) })).catch((e) => showToast(say(e))).finally(() => setLoadingCard(""));
+    setLoadingCard(k.id); setNote(null); setChecked(null); setReadAll(false);
+    kitCard(k.id).then((r) => setOpen({ id: k.id, name: k.name ?? kitName(k.id), kit: r.kit, card: cardLines(r.card as never), boxes: assistantBoxes(r.card as never), quote: quoteNote((r.card as { notes?: string[] }).notes) })).catch((e) => showToast(say(e))).finally(() => setLoadingCard(""));
   };
   const ask = () => {
     if (!open) return;
@@ -71,12 +73,14 @@ export function RealKits() {
           <View className="gap-s3">
             <Text size="caption" tone="label">What this Kit adds. Its own text counts as outside text until you have read it.</Text>
             {open.card.lines.length ? <Card flush>{open.card.lines.map((l, i) => <View key={l}>{i ? <Divider /> : null}<Row title={l} /></View>)}</Card> : <Text>This Kit adds nothing the box could list.</Text>}
-            {open.card.notes.map((n) => <Banner key={n}><Text>{n}</Text></Banner>)}
+            {otherNotes(open.card.notes).map((n) => <Banner key={n}><Text>{n}</Text></Banner>)}
+            <QuotedAssistants boxes={open.boxes} note={open.quote} read={readAll} onRead={() => setReadAll(true)} />
             {open.card.blocked ? <Banner tone="warn"><Text>{open.card.blocked}</Text></Banner> : null}
             {note && !note.ok ? <Banner tone="warn"><Text>{note.text}</Text></Banner> : null}
             <Button kind="secondary" label={busy ? "Checking" : "Check this kit"} disabled={busy} onPress={check} />
             {checked ? <Card flush>{checked.map((l, i) => <View key={i}>{i ? <Divider /> : null}<Row title={l} /></View>)}</Card> : null}
-            <Button kind="primary" label={busy ? "Asking" : "Ask to install"} disabled={!!open.card.blocked} onPress={busy ? () => {} : ask} />
+            <Button kind="primary" label={busy ? "Asking" : "Ask to install"} disabled={!!open.card.blocked || (open.boxes.length > 0 && !readAll)} onPress={busy ? () => {} : ask} />
+            {open.boxes.length > 0 && !readAll ? <Text size="caption" tone="label">Read what the assistants would be told, then tap "I have read these".</Text> : null}
             <Text size="caption" tone="label">This changes nothing yet. It puts a card in Now for you to approve.</Text>
           </View>
         ) : null}
