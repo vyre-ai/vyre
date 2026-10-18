@@ -235,7 +235,7 @@ test("a Vault person is linked to a Space member: a linked row answers its name,
   await o.v.share.addPerson({ card: card("dana", dana), name: "dana", member: "per_dana" }, "cli");
   // unlinked: Ben is pinned with no member id
   await o.v.share.addPerson({ card: card("ben", ben), name: "ben" }, "cli");
-  assert.deepEqual(o.v.share.personOfMember({ member: "per_dana" }), { name: "dana" }, "a linked row answers its name");
+  assert.deepEqual(o.v.share.personOfMember({ member: "per_dana" }), { name: "dana", verified: false }, "a linked row answers its name, not yet verified");
   assert.equal(o.v.share.personOfMember({ member: "per_ben" }), null, "an unlinked row answers nothing: no guessing by name");
   assert.equal(o.v.share.personOfMember({ member: "per_nobody" }), null, "an unknown member answers nothing");
   // a model cannot set or change the link

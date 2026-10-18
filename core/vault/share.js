@@ -156,12 +156,12 @@ export class Share {
   /** @param {string} name */
   row(name) { return /** @type {any} */ (this.db.prepare("SELECT * FROM vault_people WHERE name = ?").get(String(name))); }
 
-  /** The Vault person linked to a Space member: { name } when exactly one row is linked to that member, else null (two rows, or none, is no answer). */
+  /** The Vault person linked to a Space member: { name, verified } when exactly one row is linked to that member, else null (two rows, or none, is no answer). `verified` is false until the safety words were checked: the link is the adder's claim, and a recipient must treat false as not yet. */
   personOfMember({ member } = {}) {
     const id = String(member || "");
     if (!MEMBER.test(id)) return null;
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT name FROM vault_people WHERE member = ?").all(id));
-    return rows.length === 1 ? { name: rows[0].name } : null;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT name, verified FROM vault_people WHERE member = ?").all(id));
+    return rows.length === 1 ? { name: rows[0].name, verified: Boolean(rows[0].verified) } : null;
   }
 
   /** A row's fingerprint; rows pinned before v2 have none stored, so it is computed. */
