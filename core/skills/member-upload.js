@@ -45,6 +45,10 @@ export function strictFrontMatter(raw) {
   const lines = String(raw).replace(/\r\n/g, "\n").split("\n");
   const show = (/** @type {string} */ l) => JSON.stringify(l.length > 40 ? l.slice(0, 40) + "..." : l);
   const refuse = (/** @type {string} */ l, /** @type {string} */ why) => bad(`the front matter of a member's skill is a name and a description and nothing else: ${show(l)} ${why}`);
+  // No hidden line: a reader that counts \r, NEL, the Unicode line and paragraph separators, a vertical tab or a form feed as a line break would see a key where this one sees one more line of text. Every control
+  // character but a plain newline (and DEL) in the block, delimiters included, refuses the file.
+  const block = (lines.indexOf("---", 1) >= 0 ? lines.slice(0, lines.indexOf("---", 1) + 1) : lines).join("\n");
+  if (/[\u0000-\u0009\u000b-\u001f\u007f\u0085\u2028\u2029]/.test(block)) throw bad("the front matter has a line break character other than a plain newline, or another control character");
   if (lines[0] !== "---") throw bad("a member's skill starts with a line that is exactly --- (no blank line, space or mark before it), then name and description, then --- on a line of its own");
   const end = lines.indexOf("---", 1);
   if (end < 0) throw bad("the front matter has no closing --- line");
