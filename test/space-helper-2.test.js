@@ -265,6 +265,7 @@ test("space helper #90: a Space with its mark is never touched, a Space with dat
   const a = r.ask("up harlow\n"); await r.helper();
   assert.equal(r.status(a).state, "ok");
   assert.ok(fs.existsSync(path.join(d, "ready")));
+  assert.ok(!/repair:/.test(fs.existsSync(path.join(r.SP, "private", "log")) ? fs.readFileSync(path.join(r.SP, "private", "log"), "utf8") : ""), "a Space made by this call is not looked at for a cut-off start");
   // marked: even a database that looks empty (it is not asked about) keeps its volumes
   r.flag("core-empty-harlow");
   const b = r.ask("up harlow\n"); await r.helper();

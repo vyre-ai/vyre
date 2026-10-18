@@ -1722,7 +1722,8 @@ sp_up() {
   sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
   # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
   sp_attach "$n" || return 1
-  sp_repair "$n" || return 1
+  # a Space made by this very call has no earlier, cut-off start to repair: its database is empty because nothing has started yet (the saved database is restored by the start below)
+  [ "$fresh" = 1 ] || sp_repair "$n" || return 1
   sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
   if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
   # the saved database has been restored: from here the compose file has no restore step, and the server skips its migration steps

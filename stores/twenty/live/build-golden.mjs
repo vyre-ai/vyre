@@ -12,6 +12,10 @@ import { provisionSpace, names, spaceDir, realRunner, TWENTY_TESTED_REF, tagOfRe
 import { createTwentyStore } from "../store.js";
 import { defineCore } from "../space-store.js";
 import { TwentyClient } from "../client.js";
+import { FLOW_TYPES } from "../../../kernel/flows/store.js";
+import { KIT_TYPES } from "../../../kernel/flows/kits.js";
+import { MEMORY_FACT } from "../../../kernel/gateway/memory.js";
+import { PLANNER_TYPES } from "../../../core/planner/types.js";
 
 const out = path.resolve(process.argv[2] ?? new URL("../golden", import.meta.url).pathname);
 const image = process.env.TWENTY_IMAGE_REF || TWENTY_TESTED_REF;
@@ -26,6 +30,17 @@ try {
   const p = await provisionSpace({ home, space, reach: "ip", runner: realRunner(), image, golden: false, log: lap });
   const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: path.join(spaceDir(home, space), "state"), webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
   await defineCore(store, lap);
+  // The kernel's own types, made at every start (core/daemon/flows-host.js: the Flow and Kit types and the two Kit storage types; the planner's and the memory's own): put in the saved database too,
+  // so a new Space starts with them and its first define finds nothing to do (each type took Twenty seconds per field, minutes in all, after Records already read as ready).
+  // One at a time, and one that Twenty refuses is left to the Space to make as before: a bad extra must never stop the build.
+  {
+    const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
+    const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
+    for (const t of [...FLOW_TYPES, ...KIT_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition"), MEMORY_FACT, ...PLANNER_TYPES]) {
+      if (known.has(t.name)) continue;
+      try { await store.define({ add_types: [JSON.parse(JSON.stringify(t))] }); lap(`system type ${t.name} made`); } catch (e) { lap(`system type ${t.name} NOT made, the Space will make it: ${/** @type {Error} */ (e).message}`); }
+    }
+  }
   lap(`types made: ${(await store.types()).map((/** @type {any} */ t) => t.name).join(", ")}`);
   // the repair in box/vyre (sp_schema) and the helper's mark ask for this table: if a pinned Twenty ever renames it, this build fails instead of every Space reading as empty
   const hasUser = execFileSync("docker", ["exec", `${n.project}-db-1`, "psql", "-U", "postgres", "-d", "default", "-tAc", CORE_USER_PROBE]).toString().replace(/\s/g, "");
