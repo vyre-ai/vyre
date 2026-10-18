@@ -20,6 +20,7 @@ import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { RecordsSetup } from "./RecordsSetup";
 import { HomeHeader } from "./HomeHeader";
 import { HomeAgents } from "./HomeAgents";
+import { AskDock } from "./AskDock";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
 
@@ -47,12 +48,13 @@ export default function NowScreen() {
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
   useEffect(() => { if (!real) return; let live = true; void createCardSource(callT).agents().then((a) => { if (live) setAgents(a); }); return () => { live = false; }; }, [real]);
   const [working, setWorking] = useState(0);
+  const [ask, setAsk] = useState<{ names: string[]; assistant: string }>({ names: [], assistant: "" });
   const go = (p: string) => router.push(p as never);
   const { run, sheets } = useTaskActions(world, go);
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       <HomeHeader now={q.data?.now ?? Date.now()} today={calendar?.length} working={working} />
-      {real ? <HomeAgents onCount={setWorking} /> : null}
+      {real ? <HomeAgents onCount={setWorking} onNames={(names, assistant) => setAsk({ names, assistant })} /> : null}
       {real ? <RecordsSetup /> : null}
       {real ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}
@@ -67,6 +69,7 @@ export default function NowScreen() {
         : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
+      {real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : null}
       {sheets}
     </LargeTitleScreen>
   );

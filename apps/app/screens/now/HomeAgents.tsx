@@ -6,12 +6,12 @@ import { callT } from "../../src/real/call-tool";
 import { agentCards } from "./home-model.js";
 
 /** The agents on Home: a face each, a ring that pulses while it is working and turns violet when it waits on you. A tap opens that agent. */
-export function HomeAgents({ onCount }: { onCount?: (working: number) => void }) {
+export function HomeAgents({ onCount, onNames }: { onCount?: (working: number) => void; onNames?: (names: string[], assistant: string) => void }) {
   const router = useRouter();
   const [cards, setCards] = useState<ReturnType<typeof agentCards>>([]);
   useEffect(() => {
     let live = true;
-    void callT<any>("agents.list", {}).then((r) => { if (!live || r.error) return; const d = r.data; const c = agentCards(Array.isArray(d) ? d : d?.agents); setCards(c); onCount?.(c.filter((a) => a.live).length); });
+    void callT<any>("agents.list", {}).then((r) => { if (!live || r.error) return; const d = r.data; const c = agentCards(Array.isArray(d) ? d : d?.agents); setCards(c); onCount?.(c.filter((a) => a.live).length); onNames?.(c.map((a) => a.name), c.find((a) => a.kind === "assistant")?.name ?? ""); });
     return () => { live = false; };
   }, []);
   if (!cards.length) return null;
