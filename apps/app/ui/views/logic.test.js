@@ -263,11 +263,11 @@ test("the four starting types open as they should: People and Companies as table
   const { CORE_TYPES } = await import("../../../../records/core-types.js");
   const of = (/** @type {string} */ n) => CORE_TYPES.find((/** @type {any} */ t) => t.name === n);
   const names = Object.fromEntries(["contact", "organization", "task", "memo"].map((n) => [n, viewDefOf(of(n)).plural]));
-  assert.deepEqual(names, { contact: "People", organization: "Companies", task: "Tasks", memo: "Notes" });
+  assert.deepEqual(names, { contact: "People", organization: "Companies", task: "Tasks", memo: "Memos" });
   assert.equal(viewDefOf(of("task")).open, "board", "Tasks open as a board");
   assert.equal(viewDefOf(of("contact")).open, undefined, "People open as the table");
   assert.deepEqual(viewsOf(of("task"), viewDefOf(of("task"))), ["list", "board", "calendar"], "Tasks offer a board and a calendar: they have a status and a due date");
-  assert.deepEqual(viewsOf(of("memo"), viewDefOf(of("memo"))), ["list"], "Notes have nothing to group or date by: only the list");
+  assert.deepEqual(viewsOf(of("memo"), viewDefOf(of("memo"))), ["list"], "Memos have nothing to group or date by: only the list");
   assert.deepEqual(viewsOf(of("organization"), viewDefOf(of("organization"))), ["list", "gallery"], "Companies offer the gallery");
   assert.equal(viewDefOf(of("organization")).open, "gallery", "Companies open as cards");
 });

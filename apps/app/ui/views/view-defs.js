@@ -42,7 +42,7 @@ export const viewDefs = {
     open: "board",
   },
   memo: {
-    plural: "Notes", titleField: "name",
+    plural: "Memos", titleField: "name",
     list: { columns: ["contact", "organization"], sort: "name" },
   },
   matter: {
