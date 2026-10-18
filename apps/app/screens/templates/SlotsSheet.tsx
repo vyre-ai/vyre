@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Button, Field, Select, Sheet, Switch, Text } from "@vyre/ui";
+import { Button, Field, Select, Sheet, SkillsPicker, Switch, Text } from "@vyre/ui";
 import { approverOf, assigneeChoices, slotProblems } from "./edit";
 import type { Body, Slot, Task } from "./model";
 
@@ -16,7 +16,7 @@ function SlotFields({ label, slot, onChange, body, people, agents, approver }: {
       <Select label={label} value={slot?.who ?? ""} options={[["", approver ? "No approval" : "No review"], ...who]} onChange={(v) => onChange(v ? { ...(slot ?? {}), who: v } : null)} />
       {slot ? (
         <>
-          <Field label="Skills it checks against (optional)" value={(slot.skills ?? []).join(", ")} onChangeText={(t) => set({ skills: t.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 10) })} placeholder="Space skill ids, separated by commas" help="Only skills from this Space. Each skill's checklist is what they tick." />
+          <SkillsPicker label="Skills it checks against (optional)" value={slot.skills ?? []} onChange={(skills) => set({ skills })} />
           <Field label="Instructions (optional)" value={slot.instructions ?? ""} onChangeText={(t) => set({ instructions: t.slice(0, 2000) })} multiline placeholder="What to look for" />
           <Select label="Time limit" value={String(slot.due ?? "")} options={DUE} onChange={(v) => set({ due: v ? Number(v) : undefined })} />
           <Select label="If it runs late, pass it to" value={slot.escalate_to ?? ""} options={[["", "No one"], ...roles]} onChange={(v) => set({ escalate_to: v || undefined })} />

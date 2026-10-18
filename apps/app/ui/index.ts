@@ -36,6 +36,7 @@ export { DateTimeField } from "./components/DateTimeField";
 export { TokenField } from "./components/TokenField";
 export { Composer } from "./components/Composer";
 export { Switch } from "./components/Switch";
+export { SkillsPicker } from "./components/SkillsPicker";
 export { FormFields } from "./components/FormFields";
 export { blank as blankForm, missing as missingForm, submission as formSubmission, isQuestions } from "./components/form-fields-model.js";
 export { Segmented } from "./components/Segmented";
