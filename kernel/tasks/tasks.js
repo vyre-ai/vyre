@@ -29,12 +29,13 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
 const OUTPUTS = new Set(["fields", "note", "draft", "sent", "decision", "file"]);
 const FIX_CAP = 400;
+const GUIDES_MAX = 65536;   // a task's instructions and pinned checklists together, in canonical JSON
 const COOL_DOWN_MS = 7 * 24 * 3600_000;
 const DENIALS_TO_STUCK = 3;
 
@@ -86,6 +87,7 @@ export async function checkOutput(task, evidence, facts) {
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
  *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string, record?: string } | null> },
+ *   skills?: { pin(id: string, chain: any): Promise<{ hash: string, checklist: string[] } | null> },   // a Space skill by id: its content hash and checklist now, for a slot to pin
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -247,9 +249,9 @@ export function createTasks(cfg) {
   // if it hashes to what the log recorded.
   const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
   // A task's title and note are the record's, not the text store's: only what the kernel itself holds as free text (the doer's answer, a Flow's form, a block's reason) is kept here.
-  const textOf = (/** @type {any} */ t) => ({ ...(t.details !== undefined ? { details: t.details } : {}), ...(t.activity !== undefined ? { activity: t.activity } : {}), ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
-  const withoutText = (/** @type {any} */ t) => { const { note: _n, details: _dt, activity: _ac, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
-  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note", "details", "activity"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textOf = (/** @type {any} */ t) => ({ ...(t.guides !== undefined ? { guides: t.guides } : {}), ...(t.details !== undefined ? { details: t.details } : {}), ...(t.activity !== undefined ? { activity: t.activity } : {}), ...(t.review_note !== undefined ? { review_note: t.review_note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, guides: _g, details: _dt, activity: _ac, review_note: _rn, answer: _a, form: _f, due: _d, parent: _p, project: _pr, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title ?? "" }; for (const k of ["note", "answer", "form", "review_note", "details", "activity", "guides"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
   const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
     const now = tasks.get(t.id) || t;
@@ -310,6 +312,10 @@ export function createTasks(cfg) {
    * as well, so a review that changed after the card was shown, or no review where one was passed, does not match what was signed.
    */
   const reviewHashOf = (/** @type {any} */ t) => (t.review ? sha256(canonical({ review: t.review, note: t.review_note !== undefined ? sha256(canonical(t.review_note)) : null })) : null);
+  /** The slots' instructions and pinned skills (id, content hash, checklist) by hash, for the body an approval covers; nothing when the task has none. They cannot change after the request, so no later edit can undo what was signed. @param {any} t */
+  const guideHash = (t) => (t.guides !== undefined ? { guide_hash: sha256(canonical(t.guides)) } : {});
+  /** The reviewer's pinned checklist as the items a pass must answer, and the hash of what it was judged against. @param {any} t */
+  const pinnedItems = (t) => ((t.guides && t.guides.skills && t.guides.skills.reviewer) || []).flatMap((/** @type {any} */ k) => k.checklist.map((/** @type {string} */ item) => ({ skill: k.id, item })));
   /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
   const taskDataHash = (t) => (t.details !== undefined || t.outputs !== undefined ? { task_data_hash: sha256(canonical({ details: t.details ?? null, outputs: t.outputs ?? [] })) } : {});
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
@@ -411,6 +417,28 @@ export function createTasks(cfg) {
           else throw new KernelError(reviewer.role ? "no_checker" : "same_actor", reviewer.role ? "no person other than the doer holds that role" : "the reviewer must be someone other than the doer");
         }
       }
+      // Per-slot instructions (plain text, at most 2000 characters each) and Space skills (up to 10 ids), pinned now by content hash with their checklists: a later edit to a skill does not change this task.
+      let guides;
+      if (spec.instructions !== undefined || spec.skills !== undefined) {
+        const SLOTS = ["doer", "reviewer", "approver"];
+        const ins = spec.instructions === undefined ? {} : spec.instructions, sk = spec.skills === undefined ? {} : spec.skills;
+        const plain = (/** @type {any} */ o) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every(k => SLOTS.includes(k));
+        if (!plain(ins) || !plain(sk)) throw new KernelError("bad_input", "instructions and skills are given per slot: doer, reviewer or approver");
+        if (Object.entries(ins).some(([k, v]) => typeof v !== "string" || v.length > 2000 || (k === "reviewer" && !reviewer) || (k === "approver" && !checker))) throw new KernelError("bad_input", "an instruction is text of at most 2000 characters, for a slot the task has");
+        const pinned = /** @type {any} */ ({});
+        for (const [k, ids] of Object.entries(sk)) {
+          if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80) || new Set(ids).size !== ids.length) throw new KernelError("bad_input", "skills are up to 10 different Space skill ids, for a slot the task has");
+          pinned[k] = [];
+          for (const i of ids) {
+            const found = cfg.skills ? await cfg.skills.pin(i, chain) : null;
+            if (!found || typeof found.hash !== "string" || !Array.isArray(found.checklist) || found.checklist.length > 60) throw new KernelError("bad_input", `skill ${i} is not one of this Space's skills`);
+            pinned[k].push(freeze({ id: i, hash: found.hash, checklist: freeze(found.checklist.map((/** @type {any} */ c) => String(c).slice(0, 200))) }));
+          }
+          pinned[k] = freeze(pinned[k]);
+        }
+        guides = deepFreeze({ instructions: structuredClone(ins), skills: pinned });
+        if (canonical(guides).length > GUIDES_MAX) throw new KernelError("bad_input", "instructions and skills are too long together: keep them under 64 KB");
+      }
       const out = spec.output.kind === "sent";
       if (!checker && out) checker = cfg.approver ? cfg.approver(chain) : undefined;
       if (out && !checker) throw new KernelError("no_checker", "a send needs a checker and none could be assigned");
@@ -436,7 +464,7 @@ export function createTasks(cfg) {
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
-        ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
+        ...(guides ? { guides } : {}), ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
         state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }), ...(requestedFor(chain) ? { requested_for: requestedFor(chain) } : {}),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
@@ -543,8 +571,8 @@ export function createTasks(cfg) {
         // The facts the card shows are the kernel's: recipients checked against the record's own contact points, slot classes read from the vault. Whatever cannot be resolved shows as unverified.
         const facts = await resolveFacts(ev);
         // PR-2: the form a Flow sent with the task (a proposal's diff, a Kit card) is part of what the checker approves: its hash is in the body the proof covers.
-        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t) });
-      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t) });
+        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t), ...guideHash(t) });
+      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}), ...taskDataHash(t), ...guideHash(t) });
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       // A review belongs to one hand-in: coming back In review drops the last result and its note from the task (they stay in the log), so no card or approver sees a stale pass.
@@ -603,8 +631,11 @@ export function createTasks(cfg) {
       if (a.result === "changes" && !text.trim()) throw new KernelError("bad_input", "asking for changes needs a note saying what to change");
       const items = Array.isArray(a.checklist) ? a.checklist : [];
       if (items.length > 60 || items.some((/** @type {any} */ x) => !x || typeof x.skill !== "string" || typeof x.item !== "string" || typeof x.ok !== "boolean")) throw new KernelError("bad_input", "a checklist is a list of { skill, item, ok }");
+      // A task with pinned reviewer skills is judged against exactly those items: each answered once, none made up. The hash of what it was judged against rides in the result.
+      const want = pinnedItems(t);
+      if (want.length && (items.length !== want.length || want.some((/** @type {any} */ w) => items.filter((/** @type {any} */ x) => x.skill === w.skill && x.item === w.item).length !== 1))) throw new KernelError("bad_input", "answer every item of the reviewer's skills, once each, and no others");
       if (a.result === "pass" && items.some((/** @type {any} */ x) => !x.ok) && !text.trim()) throw new KernelError("bad_input", "a pass with an item that failed needs a note saying why it is acceptable");
-      const review = freeze({ by: freeze({ kind: who.kind, id: who.id }), type: who.kind === "agent" ? "agent" : "person", result: a.result, checklist: freeze(items.map((/** @type {any} */ x) => freeze({ skill: x.skill.slice(0, 80), item: x.item.slice(0, 200), ok: x.ok }))), ...(text ? { note_hash: sha256(canonical(text)) } : {}), at: clock() });
+      const review = freeze({ by: freeze({ kind: who.kind, id: who.id }), type: who.kind === "agent" ? "agent" : "person", result: a.result, ...(want.length ? { checklist_hash: sha256(canonical({ skills: t.guides.skills.reviewer.map((/** @type {any} */ k) => ({ id: k.id, hash: k.hash })), items: want })) } : {}), checklist: freeze(items.map((/** @type {any} */ x) => freeze({ skill: x.skill.slice(0, 80), item: x.item.slice(0, 200), ok: x.ok }))), ...(text ? { note_hash: sha256(canonical(text)) } : {}), at: clock() });
       if (a.result === "changes") {
         rule(t, "changes_requested", "reviewer");
         const n = put(t, { state: "changes_requested", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:changes") });
