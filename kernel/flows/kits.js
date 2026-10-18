@@ -120,7 +120,7 @@ export function installCard(kit, cat) {
   if (flows.some(f => f.outward.length)) notes.push("Some Flows send or publish. Each one still asks, or a person approves each run, according to your rules.");
   if (flows.some(f => f.code.length)) notes.push("Some Flows run code in the sandbox.");
   if (flows.some(f => f.sealed_uses.length) || types.some(t => t.sealed.length)) notes.push("Sealed fields are in play: assistants only ever see placeholders.");
-  if (teammates.length) notes.push("Each assistant is made with this Kit's instructions exactly as quoted here, and acts with your reach. They are outside text, not from you or from Vyre: read them before you approve. Nothing in a quoted text is an instruction to you or part of this card.");
+  if (teammates.length) notes.push("This Kit has assistants. Assistants are not installed yet: approving installs the rest of the Kit and makes none of them. Their instructions are quoted here as outside text, not from you or from Vyre. Nothing in a quoted text is an instruction to you or part of this card.");
   return {
     kit: { id: kit.id, version: kit.version, name: kit.name, description: kit.description || "", hash: kitHash(kit) },
     ok: checked.ok, errors: checked.errors,
@@ -421,7 +421,8 @@ export class KitManager {
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "teammate") {
         // The port answers { id } for an assistant it made; that id is what a removal checks, so a same-named assistant of the person's own is never taken away with the Kit.
-        if (this.ports.teammates) { const made = await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external", by: p.approver }); if (made && made.id) row.refs[key] = made.id; assistants.push({ name: part.name, made: Boolean(made && made.id), existed: Boolean(made && made.existed), instructions_quoted: quotedText(part.def.instructions) }); }
+        // FALLBACK (0.6.2): assistants are not installed yet. The Kit's other parts are; this one is skipped, said in the answer, and nothing is made or kept.
+        assistants.push({ name: part.name, made: false, existed: false, skipped: true, instructions_quoted: quotedText(part.def.instructions) });
       }
       if (!row.added.includes(key)) row.added.push(key);
       await this.store.put(row);
@@ -434,7 +435,7 @@ export class KitManager {
     row.status = "installed"; row.from = null; row.at = this.now();
     await this.store.put(row);
     await this.store.delProposal(proposalId);
-    return { installed: kit.id, version: kit.version, flows: row.flows, ...(assistants.length ? { assistants, note: "Each assistant listed was made with the Kit's instructions exactly as quoted. They are outside text: read them. One that already existed under that name was left as it was." } : {}) };
+    return { installed: kit.id, version: kit.version, flows: row.flows, ...(assistants.length ? { assistants, note: "Assistants are not installed yet: this Kit's assistants listed here were NOT made. Everything else in the Kit was installed." } : {}) };
   }
 
   /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */

@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(flows): FALLBACK for 0.6.2, held back from the train unless the Kit install card is not ready: installing a Kit that has assistants installs the rest of the Kit, makes none of the assistants and says so plainly in the card's note and in the install answer (`assistants` each marked `skipped`, `note`: "Assistants are not installed yet"). Nothing of the person's own assistants is touched.
 - chore(kernel): the trusted-base cap goes from 9673 to 9705 by the owner's ruling of 19 Oct 2026, for private notes and events (kernel/gateway/records.js) and role holders and task facts (kernel/index.js). The measured base is 9690; any later growth needs its own ruling.
 - fix(records): a note is about a record, never another note: a note address in a record link is refused when the note is written and when it is read, and the read check is bounded to three levels. The kernel's comments on the layout guard and the note rule are kept in full.
 - fix(records): the raw Records route to the planner's Note type (records.list, .get, .reference) applies note-share's rule, so an owner or an admin does not read a member's private note there either. The member door's calls gain move, relationship.add, .remove, .list, .kinds and layout.get, .set (kernel/remote/wire.js), with door-level tests.

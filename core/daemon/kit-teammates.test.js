@@ -18,7 +18,7 @@ const kit = () => ({
   ] },
 });
 
-test("installing a Kit makes its assistants as the approver, leaves a same-named one alone, and removing the Kit removes only the ones it made", { timeout: 180_000 }, async t => {
+test("FALLBACK: installing a Kit with assistants installs the rest, makes none of them and touches no assistant of the person's", { timeout: 180_000 }, async t => {
   const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, owner = K.id.owner;
@@ -39,28 +39,18 @@ test("installing a Kit makes its assistants as the approver, leaves a same-named
   // what the approver is asked to sign carries the instructions, quoted, and the note, whoever proposed and whether or not anyone opened the card
   const formCard = row.form.card;
   assert.equal(formCard.adds.teammates.find((/** @type {any} */ x) => x.name === "desk-helper").instructions_quoted, JSON.stringify("Greet the person, find the matter and say what is next."), "the task form holds the text");
-  assert.ok(formCard.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n) && /outside text/.test(n)), "and the note");
+  assert.ok(formCard.notes.some((/** @type {string} */ n) => /Assistants are not installed yet/.test(n) && /outside text/.test(n)), "and the note");
   await K.gateway.ask.decide(chainOf(), p.task, { outcome: "approved", proof: { op: "task.decide", fields: { task: p.task, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
   await until(async () => ((await call("flows.kit.list")) || []).some((/** @type {any} */ k) => k.id === "front-desk" && k.status === "installed"), "the Kit to install");
 
+  // FALLBACK: assistants are not installed yet. The Kit installs, no assistant is made, the person's own is untouched, and removing the Kit takes nothing away.
   const after = await agents();
-  const helper = after.find((/** @type {any} */ a) => a.name === "desk-helper");
-  assert.ok(helper, "the Kit's assistant was made: " + after.map((/** @type {any} */ a) => a.name).join(", "));
-  const mine = after.find((/** @type {any} */ a) => a.name === "my-own");
-  assert.ok(mine, "the person's own assistant is still there");
+  assert.ok(!after.some((/** @type {any} */ a) => a.name === "desk-helper"), "the Kit's assistant was NOT made: " + after.map((/** @type {any} */ a) => a.name).join(", "));
+  assert.ok(after.some((/** @type {any} */ a) => a.name === "my-own"), "the person's own assistant is still there");
   const shown = await call("agents.get", { agent: "my-own" }).catch(() => null);
   if (shown) assert.match(JSON.stringify(shown), /Mine\./, "and still says what the person wrote");
-  assert.ok(!JSON.stringify(shown || {}).includes("This is the Kit's text"), "the Kit did not rewrite it");
-
-  const vs = await call("agents.versions", { agent: "desk-helper" });
-  assert.ok(JSON.stringify(vs).includes("kit-front-desk"), "its tags say which Kit made it: " + JSON.stringify(vs).slice(0, 400));
-  assert.ok(!JSON.stringify(helper).includes("This is the Kit") && JSON.stringify(vs).includes("Greet the person"), "the Kit's text is its instructions, and the Kit id is not in them");
-  const listed = (await call("flows.kit.list")).find((/** @type {any} */ k) => k.id === "front-desk");
-  assert.ok(listed, "listed");
   await call("flows.kit.remove", { id: "front-desk" });
-  const gone = await agents();
-  assert.ok(!gone.some((/** @type {any} */ a) => a.name === "desk-helper"), "removing the Kit removes the assistant it made");
-  assert.ok(gone.some((/** @type {any} */ a) => a.name === "my-own"), "and keeps the one that was already there");
+  assert.ok((await agents()).some((/** @type {any} */ a) => a.name === "my-own"), "removing the Kit takes nothing of the person's away");
 });
 
 test("the install card for a Kit with assistants carries their full instructions and says how they are used; a Kit without assistants gets nothing added", { timeout: 120_000 }, async t => {
@@ -71,7 +61,7 @@ test("the install card for a Kit with assistants carries their full instructions
   const card = (await d.registry.call("flows.kit.card", { kit: kit() }, "cli", await meta())).data;
   assert.equal(card.adds.teammates.length, 2);
   assert.equal(card.adds.teammates[0].instructions_quoted, JSON.stringify("Greet the person, find the matter and say what is next."), "the full text, quoted, not its length");
-  assert.ok(card.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n) && /outside text/.test(n)));
+  assert.ok(card.notes.some((/** @type {string} */ n) => /Assistants are not installed yet/.test(n) && /outside text/.test(n)));
   const none = (await d.registry.call("flows.kit.card", { kit: { ...kit(), includes: { ...kit().includes, teammates: [] } } }, "cli", await meta())).data;
-  assert.ok(!none.notes.some((/** @type {string} */ n) => /exactly as quoted here/.test(n)), "no assistants, no words");
+  assert.ok(!none.notes.some((/** @type {string} */ n) => /Assistants are not installed yet/.test(n)), "no assistants, no words");
 });

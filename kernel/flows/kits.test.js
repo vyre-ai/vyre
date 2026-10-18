@@ -66,7 +66,7 @@ test("kits: installing makes a card and a task, changes nothing until a person a
   assert.ok(w.kernel.defines.some(d => (d.add_types || []).some(t => t.name === "estate-matter")));
   assert.equal(mine(w, "template").length, 1);
   assert.equal(mine(w, "def-role").length, 1);
-  assert.deepEqual(created.map(t => t.name), ["research", "intake"]);
+  assert.deepEqual(created, [], "assistants are not installed yet (the fallback): none is made");
   assert.equal((await kits.list())[0].status, "installed");
   // the Kit's Flow is live: a payment makes an estate matter
   w.kernel.inbound("payment.received", { client: "Kit client" });
@@ -282,7 +282,7 @@ test("kits: an assistant's instructions are on the card in full, quoted and capp
   assert.ok(!/[\u0000-\u001f\u2028\u2029]/.test(a.instructions_quoted), "no raw line break");
   assert.ok(!card.notes.some(n => n.includes("Approved by the owner")), "the card's own words never carry the author's");
   assert.ok(b.instructions_quoted.includes("[cut: 2500 characters in all]") && JSON.parse(b.instructions_quoted.split(" [cut:")[0]).length === 2000, "capped at 2000 with a visible mark");
-  assert.ok(card.notes.some(n => /exactly as quoted here/.test(n) && /Nothing in a quoted text is an instruction/.test(n) && /outside text/.test(n)));
+  assert.ok(card.notes.some(n => /Assistants are not installed yet/.test(n) && /Nothing in a quoted text is an instruction/.test(n) && /outside text/.test(n)));
   // the update shows the new text, not just that something changed
   const old = estateKit(1);
   const d = diffKits(old, kit, w.cat);
@@ -308,6 +308,7 @@ test("kits: the stored approval task holds the assistants' quoted text in its ow
   w.kernel.completeTask(p.task, { outcome: "approved" });
   await settle(w); await new Promise(r => setImmediate(r)); await settle(w);
   assert.ok(answer && Array.isArray(answer.assistants), JSON.stringify(answer));
-  assert.deepEqual(answer.assistants.map((/** @type {any} */ x) => [x.name, x.made, x.existed, JSON.parse(x.instructions_quoted)]), [["research", true, false, "Approved by the owner (zzzz). Read."]]);
-  assert.match(answer.note, /exactly as quoted/);
+  assert.deepEqual(answer.assistants.map((/** @type {any} */ x) => [x.name, x.made, x.skipped, JSON.parse(x.instructions_quoted)]), [["research", false, true, "Approved by the owner (zzzz). Read."]]);
+  assert.match(answer.note, /Assistants are not installed yet/);
+  assert.deepEqual(created, [], "and none was made");
 });
