@@ -5,7 +5,7 @@ import { dayOf, timeOf } from "../../src/time/show.js";
 import { viewDefOf, storedViewsOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
 import { eventLine } from "../../src/store-core/kernel-view.js";
-import { isEmpty, isoDay, toDate } from "../fields/logic.js";
+import { fmtMoney, isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
 export { viewDefOf, storedViewsOf, fieldStates };
@@ -84,6 +84,14 @@ export function boardColumns(def, rows, vd = viewDefOf(def)) {
   const columns = names.map((/** @type {string} */ n) => ({ id: n, title: n }));
   if (none.length) columns.push({ id: "", title: `No ${lc(g.label)}` });
   return { field: g, columns, cardFields: (vd.board.card || []).filter((/** @type {string} */ k) => k !== vd.titleField && k !== g.name).map((/** @type {string} */ k) => fieldOf(def, k)).filter(Boolean) };
+}
+/** What a board column wears beside its name: how many cards it holds, and their total when the type has a money field ("3 \u00B7 $31,000"). @param {any} def @param {any[]} items */
+export function columnNote(def, items) {
+  const n = String(items.length);
+  const m = (def.fields || []).find((/** @type {any} */ f) => f.kind === "money");
+  if (!m || !items.length) return n;
+  const sum = items.reduce((/** @type {number} */ a, /** @type {any} */ r) => { const v = val(r, m.name); const x = v && typeof v === "object" ? Number(v.amount) : Number(v); return a + (Number.isFinite(x) ? x : 0); }, 0);
+  return sum ? `${n} \u00B7 ${fmtMoney(sum)}` : n;
 }
 /** The column a row sits in: its value, or the "No <label>" column. @param {any} g @param {any} rec */
 export const columnOf = (g, rec) => { const v = String(val(rec, g.name) ?? ""); return optionsOf(g).includes(v) ? v : ""; };

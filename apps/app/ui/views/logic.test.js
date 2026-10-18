@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
+import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf, columnNote } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -279,4 +279,12 @@ test("gallery cards: a title, one line under it, and a picture only from an http
   const rows = [{ id: "o1", data: { name: "Juniper Studio", domain: "juniper.example", logo: "https://juniper.example/l.png" } }, { id: "o2", data: { name: "Kit & Co", domain: "kit.example", logo: "http://x.example/l.png" } }, { id: "o3", data: { name: "Plain" } }];
   const cards = galleryCards(def, rows, viewDefOf(def));
   assert.deepEqual(cards.map((c) => [c.key, c.title, c.subtitle, c.image ?? null]), [["o1", "Juniper Studio", "juniper.example", "https://juniper.example/l.png"], ["o2", "Kit & Co", "kit.example", null], ["o3", "Plain", "", null]], "an http picture is not used");
+});
+
+test("a board column wears its count, and its total when the type has money", () => {
+  const deal = { fields: [{ name: "name", kind: "text" }, { name: "value", kind: "money" }] };
+  assert.equal(columnNote(deal, []), "0");
+  assert.equal(columnNote(deal, [{ data: { value: { amount: 24000, currency: "USD" } } }, { data: { value: 7000 } }]), "2 \u00B7 $31,000");
+  assert.equal(columnNote(deal, [{ data: { name: "no value" } }]), "1", "no amount, no total");
+  assert.equal(columnNote({ fields: [{ name: "name", kind: "text" }] }, [{ data: {} }, { data: {} }]), "2", "no money field, just the count");
 });

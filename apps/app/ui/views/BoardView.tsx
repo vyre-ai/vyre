@@ -6,7 +6,7 @@ import { Card } from "../components/Card";
 import { Text } from "../components/Text";
 import { EmptyState } from "../components/States";
 import type { FieldEnv } from "../fields/types";
-import { boardColumns, columnOf, titleOf, viewDefOf, viewRows } from "./logic.js";
+import { boardColumns, columnNote, columnOf, titleOf, viewDefOf, viewRows } from "./logic.js";
 import { TitleCell, fieldNode } from "./shared";
 
 /** The board: columns by a choice or stage field (they stack on a phone), a card per row, and a card moves by drag on the web or by its menu elsewhere. */
@@ -22,10 +22,12 @@ export function BoardView({ def, rows, env, onOpen, onMove, view, noFilter }: { 
         items={rows}
         columnOf={(r: any) => columnOf(b.field, r)}
         keyOf={(r: any) => r.urn}
+        note={(_id: string, items: any[]) => columnNote(def, items)}
+        emptyHint={`Drop a ${String(def.label ?? "card").toLowerCase()} here`}
         onMove={onMove ? (r: any, to: string) => { haptic.stage(); onMove(r, to); } : undefined}
         renderCard={(r: any) => (
           <PressableScale depth={0.98} accessibilityRole="button" accessibilityLabel={titleOf(def, r, vd)} onPress={() => onOpen?.(r)}>
-            <Card className="gap-s2 p-s3">
+            <Card className="gap-s2 p-s4">
               <TitleCell def={def} rec={r} />
               {b.cardFields.map((f: any) => (
                 <View key={f.name} className="flex-row flex-wrap items-center gap-s2">
