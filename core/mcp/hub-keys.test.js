@@ -52,7 +52,7 @@ test("a server with no item chosen, or whose item is not granted to it, waits an
   await assert.rejects(r.hub.call({ server: "p-notes-notes", tool: "list_notes" }, person), (/** @type {any} */ e) => e.code === "needs_key");
   assert.ok(r.events.some(e => e.type === "mcp.needs-key"), "said once as an event");
   // an item is named but nobody granted it to this server and variable
-  r.hub.update({ name: "p-notes-notes", env: { NOTES_API_KEY: "notes-key" } });
+  await r.hub.update({ name: "p-notes-notes", env: { NOTES_API_KEY: "notes-key" } });
   await assert.rejects(r.hub.call({ server: "p-notes-notes", tool: "list_notes" }, person), (/** @type {any} */ e) => e.code === "needs_key");
   assert.equal(r.opened.length, 0, "a child is not started without the grant");
   assert.ok(view);
