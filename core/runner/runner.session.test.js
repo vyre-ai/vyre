@@ -109,7 +109,10 @@ test("runner: when the lease ends the workspace locks, the session stops, and th
   assert.equal(r.runner.status().state, "locked");
   // The key is off the filesystem the moment the workspace locks, but a file the stopped session held open stays readable until its last holder is gone ("incomplete" removal): the end state is what is asserted,
   // within a few seconds, not the instant between the stop and the kernel dropping that file.
-  await waitFor(() => findOnDisk(r.runner.dir, ["before expiry"]).length === 0, 40_000);
+  // The promise is that the data is unreadable soon after the lease ends: the bound stays 20 s (it is not raised for a loaded runner), and the time it really took is printed so a slow lock is a finding for the lock code.
+  const lockedAt = Date.now();
+  await waitFor(() => findOnDisk(r.runner.dir, ["before expiry"]).length === 0, 20_000);
+  console.log(`lease-ends: plaintext unreadable ${Date.now() - lockedAt} ms after the workspace reported locked`);
   assert.deepEqual(findOnDisk(r.runner.dir, ["before expiry"]), []);
   // Back online and still a member: it opens again with the same data.
   r.sp.state.offline = false;
