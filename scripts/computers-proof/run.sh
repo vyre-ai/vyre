@@ -29,7 +29,7 @@ PROOF_HOLD="${PROOF_HOLD:-0}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT
 RC=$?
 echo "proof exit code $RC"
 # the agent computer proof (0.6): two agents on one computer, logins that survive sleep. Its own container, on the same image, proxy and network.
-PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
+PROOF_CONTINUE="${PROOF_CONTINUE:-1}" PROOF_DIR="$DIR" PROXY_URL="http://127.0.0.1:$PORT" BEARER_FILE="$DIR/run/bearer" $NI node scripts/computers-proof/agents.mjs
 RC2=$?
 echo "agent proof exit code $RC2"
 [ "$RC" -eq 0 ] && [ "$RC2" -eq 0 ] && exit 0

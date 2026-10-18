@@ -24,8 +24,9 @@ const sh = (args, opts = {}) => execFileSync("docker", args, { encoding: "utf8",
 const shOk = args => { try { return sh(args, { stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { return `ERR ${String(e.stdout || "").trim()} ${String(e.stderr || e.message).trim()}`.trim(); } };
 function check(ok, name, evidence) {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`);
-  if (!ok) throw new Error(`step failed: ${name}`);
+  if (!ok) { if (process.env.PROOF_CONTINUE === "1") { failedChecks.push(name); return; } throw new Error(`step failed: ${name}`); }
 }
+const failedChecks = [];
 setTimeout(() => { console.log("FAIL watchdog: the agent proof ran over 10 minutes\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-4000)); process.exit(3); }, 10 * 60_000).unref();
 
 const d = new DockerDriver({ url: PROXY, bearer: fs.readFileSync(BEARER, "utf8").trim(), labelPrefix: PREFIX, network: "csproof-net" });
@@ -233,6 +234,7 @@ try {
   check(denied(asOther), "another agent cannot list this agent's home", asOther.slice(-80));
   await b.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");
+  if (failedChecks.length) throw new Error(`${failedChecks.length} checks failed: ${failedChecks.join("; ")}`);
   console.log("agent computer proof: all checks passed");
 } catch (e) {
   console.log(`FAIL ${e.message}\n--- container log (tail)\n${shOk(["logs", "--tail", "60", CONTAINER]).slice(-4000)}`);
