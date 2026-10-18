@@ -7,7 +7,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { Tickets, SESSION_RE } from "./agentd-relay.js";
-import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planExec, EXEC_LIMITS, asBrowser, browserOf, execute, tolerant } from "./agentd.js";
+import { planTerminals, parseTerminals, planCreate, planStartScreen, planStopScreen, planWipeHome, planRemove, planExec, planShot, SHOT, EXEC_LIMITS, asBrowser, browserOf, execute, tolerant } from "./agentd.js";
 
 const ACTIONS = {
   "create": planCreate, "start": planStartScreen, "stop": planStopScreen, "wipe": planWipeHome, "remove": planRemove,
@@ -48,19 +48,32 @@ const runExec = (argv, o) => new Promise(resolve => {
   if (child.stdin) { child.stdin.on("error", () => {}); child.stdin.end(typeof o.stdin === "string" ? o.stdin : ""); }
 });
 
-/** @param {{ token: string, run?: (argv: string[]) => Promise<void>, out?: (argv: string[]) => Promise<string>, tickets?: Tickets, exec?: typeof runExec }} o */
+/**
+ * Run one command and keep what it printed as bytes (a picture), capped. A command that fails or prints more than the cap is an error, never a partial picture.
+ * @param {string[]} argv @returns {Promise<Buffer>}
+ */
+const runBytes = argv => new Promise((resolve, reject) => {
+  execFile(argv[0], argv.slice(1), { env: {}, timeout: 10_000, maxBuffer: SHOT.maxBytes + 1, encoding: "buffer", killSignal: "SIGKILL" }, (err, so) => {
+    if (err || !so || !so.length) return reject(new Error("no picture of that screen"));
+    if (so.length > SHOT.maxBytes) return reject(new Error("the picture is too large"));
+    resolve(Buffer.from(so));
+  });
+});
+
+/** @param {{ token: string, run?: (argv: string[]) => Promise<void>, out?: (argv: string[]) => Promise<string>, tickets?: Tickets, exec?: typeof runExec, shot?: typeof runBytes }} o */
 export function createAgentd(o) {
   const run = o.run || runArgv;
   const tickets = o.tickets || new Tickets();
   const out = o.out || runOut;
   const exec = o.exec || runExec;
+  const shot = o.shot || runBytes;
   const same = (/** @type {string} */ a, /** @type {string} */ b) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && crypto.timingSafeEqual(x, y); };
   return http.createServer((req, res) => {
     const send = (/** @type {number} */ code, /** @type {any} */ body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     const given = String(req.headers.authorization || "").replace(/^Bearer /, "");
     if (!same(given, o.token)) return send(401, { error: { code: "denied", message: "no" } });
     const action = /^\/agents\/([a-z]+)$/.exec(String(req.url || ""))?.[1];
-    if (req.method !== "POST" || !action || !(action in ACTIONS || action === "ticket" || action === "terminals" || action === "exec")) return send(404, { error: { code: "not_found", message: "no such action" } });
+    if (req.method !== "POST" || !action || !(action in ACTIONS || action === "ticket" || action === "terminals" || action === "exec" || action === "shot")) return send(404, { error: { code: "not_found", message: "no such action" } });
     let raw = "";
     req.on("data", c => { raw += c; if (raw.length > 15_000) req.destroy(); });
     req.on("end", async () => {
@@ -90,6 +103,7 @@ export function createAgentd(o) {
           const argv = planExec(u, body, body.limits || {});
           return send(200, await exec(argv, { stdin, timeoutMs: t }));
         }
+        if (action === "shot") { const jpeg = await shot(planShot(u)); return send(200, { mime: "image/jpeg", width: SHOT.width, height: SHOT.height, jpeg: jpeg.toString("base64") }); }
         if (action === "terminals") return send(200, { sessions: parseTerminals(await out(planTerminals(u))) });
         const steps = /** @type {any} */ (ACTIONS)[action](u, body.limits || {});
         if (action === "start" && typeof body.vncPassword === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(body.vncPassword)) {

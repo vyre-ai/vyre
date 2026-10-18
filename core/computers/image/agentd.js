@@ -247,3 +247,17 @@ export function planExec(u, req, lim = {}) {
 
 /** A streaming run (a harness session) may carry a longer command line than a one-shot exec. */
 export const RUN_ARGV_BYTES = 10_000;
+
+/** One small picture of an agent's screen for the Computer tab: a downscaled JPEG, capped so the answer fits the one exec channel into the computer. */
+export const SHOT = Object.freeze({ width: 480, height: 300, quality: 40, maxBytes: 40 * 1024 });
+
+/**
+ * Take the picture AS the screen's owner (the browser uid owns the agent's X server and its trusted cookie, so the agent's own programs can never run this and only the screen's owner can read the whole screen).
+ * The picture goes to standard output as a JPEG; nothing is written to a file.
+ * @param {{ user: string, uid: number, display: number }} u
+ */
+export function planShot(u) {
+  check(u);
+  const b = browserOf(u);
+  return [...asBrowser(u, { cpuSeconds: 20 }, { DISPLAY: `:${u.display}`, XAUTHORITY: b.trusted }), "/usr/bin/import", "-window", "root", "-resize", `${SHOT.width}x${SHOT.height}`, "-quality", String(SHOT.quality), "jpeg:-"];
+}

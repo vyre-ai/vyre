@@ -45,6 +45,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   cdpTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
  *   runTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, spec: { argv: string[], cwd?: string, env?: Record<string, string> }): Promise<void>,
+ *   shot?(u: { agentId: string, user: string, uid: number, display: number }): Promise<{ mime: string, width: number, height: number, jpeg: string }>,
  *   exec?(u: { agentId: string, user: string, uid: number, display: number }, req: { argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }): Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
@@ -136,6 +137,14 @@ export class AgentUsers {
     if (typeof this.ctl.runTicket !== "function") throw new Error("this computer cannot run a session as an agent");
     await this.ctl.runTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket, spec);
     this.touchNow(id);
+  }
+
+  /** One small picture of the agent's live screen (JPEG, base64), or throws when the screen is not on. Does not count as use: looking at the tab must not keep an agent awake. @param {string} id */
+  async shot(id) {
+    const r = this.row(id);
+    if (!r || r.state !== "live") throw new Error(`${id}'s screen is not on`);
+    if (typeof this.ctl.shot !== "function") throw new Error("this computer cannot take a picture of a screen");
+    return this.ctl.shot({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display });
   }
 
   /** Run a command as the agent's own Linux user inside the computer; counts as use. The screen need not be up. @param {string} id @param {{ argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }} req */

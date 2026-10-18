@@ -22,6 +22,7 @@ import { AgentUsers, MIGRATIONS as AGENT_USER_MIGRATIONS } from "./agent-users.j
 import { agentdCtl, execTransport, vncPasswordFor, RELAY_PORT } from "./agentd-ctl.js";
 import { SHARED_COMPUTER_ID } from "../../lib/browser-access.js";
 import { registerAgentTools } from "./agent-tools.js";
+import { AgentFrames } from "./agent-frame.js";
 import { ComputerUpdater, assertOwner, trackTurns, sleepAgentsWhenStopped, MIGRATIONS as UPDATE_MIGRATIONS } from "./update.js";
 import fs from "node:fs";
 import { makeAgentEndpoint } from "./agent-endpoint.js";
@@ -290,12 +291,16 @@ export default {
     };
     const agentUsers = new AgentUsers({ db: ctx.store.db, now: () => Date.now(),
       // a screen that goes to sleep, or a home that is reset or removed, takes the agent's Chrome link with it
-      emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); emit(type, payload, where); },
+      emit: (type, payload, where) => { if (/^computer\.agent-(asleep|reset|removed)$/.test(type)) cdpAdapter.drop(payload.agent); if (/^computer\.agent-(reset|removed)$/.test(type)) frames.drop(payload.agent); emit(type, payload, where); },
       ctl: { createUser: lazy("createUser"), removeUser: lazy("removeUser"), startScreen: lazy("startScreen"), stopScreen: lazy("stopScreen"), wipeAgentHome: lazy("wipeAgentHome") } });
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
+    // The Computer tab's picture of an agent's screen (agent-frame.js): none while a person types into it or a fill shields it, kept in memory only, dropped on reset, removal and the computer stopping.
+    const frames = new AgentFrames({ users: agentUsers, typing: agent => keyboard.takeovers.has(agent), shielded: agent => shield.has(agent), watching: agent => (screenViewers.get(agent) || 0) > 0 });
+    // Where the computer runs, as facts the viewer's app turns into words (My Computer or Space's Cloud): the server's role here and who owns the Space.
+    const runsOn = () => ({ role: (ctx.config && ctx.config.role) || null, owner: (ctx.kernel && ctx.kernel.owner) || null });
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
-    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+    const agentTools = registerAgentTools({ tool, users: agentUsers, frames, runsOn, call: ctx.call, callers: PEOPLE, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
         const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
         return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
@@ -314,7 +319,7 @@ export default {
     const turnsRunning = trackTurns(ctx.events.on);
     const offCreated = ctx.events.on("computer.created", e => { if (e && e.payload && e.payload.agent === SHARED_COMPUTER_ID) updater.noteCreated(); });
     // The computer died or was stopped while vyred runs: its screens went with it.
-    const offStopped = sleepAgentsWhenStopped(ctx.events.on, agentUsers);
+    const offStopped = sleepAgentsWhenStopped(ctx.events.on, { asleepAll: () => { agentUsers.asleepAll(); frames.dropAll(); } });
     const ownerOnly = meta => assertOwner(ctx.kernel, meta);
     tool("computers.update", "Bring the Space's agent computer to the image that matches this version of Vyre. It keeps every agent's logins and files, closes their screens first, and checks each agent's folders for the new layout. Terminal jobs running in the old computer end. It runs by itself after a Vyre update; this runs it now. force: replace the computer even if it looks current. Owner only.",
       obj({ force: { type: "boolean" } }), async (i, meta) => { await ownerOnly(meta); return updater.run({ force: i && i.force === true }); });

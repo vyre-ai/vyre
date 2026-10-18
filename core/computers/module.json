@@ -27,6 +27,7 @@
       {"name": "computers.agent.terminals", "effect": "read", "reach": "person"},
       {"name": "computers.agent.terminal.open", "effect": "write", "reach": "person"},
       {"name": "computers.exec", "effect": "write", "reach": "person"},
+      {"name": "computers.agent.frame", "effect": "read", "reach": "person"},
       {"name": "computers.agent.reset", "effect": "write", "reach": "person"},
       {"name": "computers.update", "effect": "write", "reach": "person"},
       {"name": "computers.update.status", "effect": "read", "reach": "person"},

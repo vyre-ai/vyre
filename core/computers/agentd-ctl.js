@@ -42,6 +42,12 @@ export function agentdCtl(deps) {
       if (r.status < 200 || r.status >= 300 || !r.json) throw new Error(`the agent computer could not run that (${r.status}${r.json && r.json.error ? `: ${r.json.error.message}` : ""})`);
       return r.json;
     },
+    /** one small JPEG of the agent's screen (agentd.js planShot): { mime, width, height, jpeg } with the picture as base64 */
+    shot: async u => {
+      const r = await deps.transport("shot", { user: u.user, uid: u.uid, display: u.display });
+      if (r.status < 200 || r.status >= 300 || !r.json || typeof r.json.jpeg !== "string") throw new Error(`the agent computer could not take a picture (${r.status})`);
+      return r.json;
+    },
     /** the agent's tmux sessions */
     terminals: async u => {
       const r = await deps.transport("terminals", { user: u.user, uid: u.uid, display: u.display });

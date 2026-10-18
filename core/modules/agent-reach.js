@@ -284,6 +284,7 @@ export const PERSON_ONLY = new Map([
   ["chrome.interject", "the person's steer over the assistant"],
   ["chrome.pause", "the person's stop over the assistant"],
   ["chrome.resume", "the person's stop over the assistant: an assistant must not resume itself"],
+  ["computers.agent.frame", "reads the person's own machine: a small picture of an agent's screen, never while someone types"],
   ["computers.agent.reset", "controls the person's own machine: empties an agent's home on the computer"],
   ["computers.agent.status", "reads the person's own machine: whether an agent's screen is open"],
   ["computers.agent.sleep", "controls the person's own machine: closes an agent's screen"],

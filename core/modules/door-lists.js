@@ -104,7 +104,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "commands.list",
   "comms.credentials", "comms.email", "comms.send", "comms.service.get", "comms.service.test",
   "computer.targets", "computer.use",
-  "computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
+  "computers.agent.frame", "computers.agent.reset", "computers.agent.sleep", "computers.agent.status", "computers.agent.terminal.open", "computers.agent.terminals", "computers.agent.wake", "computers.agent.watch",
   "computers.checkout", "computers.exec", "computers.get", "computers.giveback", "computers.handback.set", "computers.handback.status",
   "computers.limits", "computers.list", "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate", "computers.pause",
   "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",

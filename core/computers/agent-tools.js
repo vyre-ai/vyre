@@ -8,6 +8,7 @@
 //   computers.agent.terminals {agent} -> { terminals: [{ name, windows }] }; the agent's tmux sessions (needs use of the agent)
 //   computers.agent.terminal.open {agent, session} -> { ticket, path }; a one-use ticket for ONE terminal; it types as the agent, so it needs the right to edit the agent
 //   computers.exec {agent, argv, cwd?, env?, stdin?, timeoutMs?} -> { code, signal, stdout, stderr, truncated }; runs a command AS the agent's own Linux user in its computer (needs the right to edit the agent)
+//   computers.agent.frame {agent} -> { agent, state, lastActive, thumbnail?, width?, height?, at?, held_by?, withheld?, runs_on }; a small picture (data URL) of the agent's screen for the Computer tab, at most one capture per 5 s, none while someone types or a fill shields it (needs use of the agent)
 //   computers.agent.reset {agent}   -> the same; empties THIS agent's home (needs the right to edit the agent)
 //
 // Who may call: someone with access to the agent. The agents module decides that and says it in one tool, `agents.level` (edit, use or none), judged against the
@@ -22,7 +23,7 @@ const AGENT = /^[a-z][a-z0-9._-]{1,80}$/;
  * Returns `mayUse` (the agents module's level check) and `place` (the agent's place on the computer, made on first use) for the one path that needs them besides these tools: the agent's endpoint.
  * @param {{ tool: (name: string, description: string, input: any, run: (i: any, meta: any) => Promise<any>, extra?: any) => void,
  *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any, opts?: { relay?: boolean }) => Promise<any>, callers: string[],
- *   held?: (agent: string) => boolean, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
+ *   frames?: { view: (agent: string) => Promise<any> }, runsOn?: () => any, held?: (agent: string) => boolean, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
  */
 export function registerAgentTools(d) {
   /** @param {"use" | "edit"} need @param {string} agent */
@@ -83,6 +84,13 @@ export function registerAgentTools(d) {
       const a = agentOf(i); await mayUse("edit", a);
       await place(a);
       return d.users.exec(a, { argv: i.argv, ...(i.cwd !== undefined ? { cwd: i.cwd } : {}), ...(i.env !== undefined ? { env: i.env } : {}), ...(i.stdin !== undefined ? { stdin: i.stdin } : {}), ...(i.timeoutMs !== undefined ? { timeoutMs: i.timeoutMs } : {}) });
+    }, { callers: d.callers });
+
+  d.tool("computers.agent.frame", "A small picture of the agent's screen for the Computer tab: a data URL, at most one new picture per 5 seconds, none while someone is typing into the screen or a sign-in has it shielded (then only who holds it). Also where the computer runs, as facts. Needs access to the agent.",
+    obj({ agent: str }, ["agent"]), async i => {
+      const a = agentOf(i); await mayUse("use", a);
+      if (!d.frames) throw new Error("this machine cannot show an agent's screen");
+      return { ...(await d.frames.view(a)), runs_on: d.runsOn ? d.runsOn() : { role: null, owner: null } };
     }, { callers: d.callers });
 
   d.tool("computers.agent.reset", "Empty one agent's home on the computer: its Chrome profile and logins, files and terminal state. Nobody else's home is touched. Needs the right to edit the agent.",
