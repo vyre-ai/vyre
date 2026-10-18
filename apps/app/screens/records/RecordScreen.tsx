@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import { Appear, allowsMock, Banner, Button, Chip, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { href } from "../../../../lib/tags.js";
 import { useShell } from "../shell/shared";
-import { useSidebar } from "../shell/sidebar";
 import { RecordHistory } from "./RecordHistory";
 import { Connections } from "./Connections";
 import { HeaderFields } from "./HeaderFields";
@@ -35,7 +34,6 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
   const [canSend, setCanSend] = useState(false);
   const [forgetting, setForgetting] = useState<null | { busy: boolean; problem: string }>(null);
-  const admin = useSidebar((s) => s.canSetDefault);
   const isContact = rec?.type === "contact";
   useEffect(() => {
     if (!isContact) { setCanSend(false); return; }
@@ -56,7 +54,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2">{admin ? <Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /><Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
       <View className="flex-row flex-wrap items-center gap-s2 px-s4 pt-s2">
         {(pinned ? pinnedFacts(def, rec, pinned).map(([l, v]) => <Chip key={l}>{v === null ? `${l}: Add` : `${l}: ${v}`}</Chip>) : factsOf(def, rec).map(([l, v]) => <Chip key={l}>{`${l}: ${v}`}</Chip>))}
         <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />

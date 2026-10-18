@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): Records. "Delete for good" on a record page and "Who sees it" in New view are always shown; the server decides who may and a refusal shows in its own words.
 - fix(app): Records. The layout menu always offers Space default; the kernel decides who may save it, and a refusal shows in its own words instead of the control being hidden on a client-side guess.
 - feat(app): Records. The Tasks tab opens with My tasks in three groups, Assigned to you, Reviewing and Approving (tasks.list mine), each with the states that mean it is your turn; a box without the three slots shows nothing there (screens/records/MyTasks.tsx, my-tasks-model.js).
 - feat(app): Records. A card dragged to another column of the Tasks board goes through tasks.move (ready, working, stuck, skipped), because a task's status belongs to the kernel; Done, Needs check and Waiting say why a card will not go there (screens/records/task-drop.js).
