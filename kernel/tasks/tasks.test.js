@@ -1152,3 +1152,26 @@ test("reviewer quorum all on a role: every holder must pass, a pass is kept per 
   r.state.roles.editors = [actor("person", ALICE)];
   assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).state, "done");
 });
+
+test("approver quorum all on a role: each holder's own yes with their own proof is kept; nothing is released until the last; a rejection ends the round and clears the yeses", async () => {
+  const r = rig();
+  r.state.roles.partners = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), draftTask({ quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  assert.equal(t.approver_quorum, "all");
+  const A = alice(), B = bob();
+  const first = await r.tasks.decide(A, t.id, { outcome: "approved", proof: r.proof(A, ALICE, t) });
+  assert.equal(first.state, "needs_check", "one yes is not enough");
+  assert.equal(first.approvals.length, 1);
+  assert.equal(r.released.length, 0, "nothing is sent on the first yes");
+  const done = await r.tasks.decide(B, t.id, { outcome: "approved", proof: r.proof(B, BOB, t) });
+  assert.equal(done.state, "done");
+  assert.equal(r.released.length, 1, "sent once, on the last yes");
+  // a rejection by anyone ends the round; the kept yes does not survive the new draft
+  const u = await toNeedsCheck(r, draftTask({ checker: { role: "partners" }, quorum: "all" }));
+  await r.tasks.decide(A, u.id, { outcome: "approved", proof: r.proof(A, ALICE, u) });
+  assert.equal((await r.tasks.decide(B, u.id, { outcome: "rejected", reason: "wrong client" })).state, "ready");
+  await r.tasks.start(asIntake(), u.id);
+  const again = await r.tasks.complete(asIntake(), u.id, evidenceSent());
+  assert.equal((again.approvals || []).length, 0, "a new draft starts a new round");
+});

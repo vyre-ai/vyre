@@ -412,7 +412,7 @@ export function createTasks(cfg) {
       if (!cfg.members.has(doer)) throw new KernelError("not_a_member", "the doer is not a member of this space");
       if (spec.approver !== undefined && spec.checker !== undefined) throw new KernelError("bad_input", "a task has one approver: give approver, or checker (the old name), not both");
       let checker = spec.approver !== undefined ? spec.approver : spec.checker;
-      if (spec.quorum !== undefined && spec.quorum !== "any") throw new KernelError("bad_input", "quorum is any for now: one yes or pass is enough");
+      if (spec.quorum !== undefined && (!["any", "all"].includes(spec.quorum) || (spec.quorum === "all" && !(checker && checker.role)))) throw new KernelError("bad_input", "quorum is any, or all for an approver that is a role");
       if (spec.reviewer_quorum !== undefined && (!["any", "all"].includes(spec.reviewer_quorum) || (spec.reviewer_quorum === "all" && !(spec.reviewer && spec.reviewer.role)))) throw new KernelError("bad_input", "reviewer_quorum is any, or all for a reviewer that is a role");
       // The reviewer slot: a person, an agent or a role. An agent reviewer must be another agent than the doer (compared by uid), and a reviewer who could only be the doer's own person is skipped in a Space with no one else.
       let reviewer = spec.reviewer, reviewSkipped = false, reviewMembers = 0;
@@ -474,7 +474,7 @@ export function createTasks(cfg) {
       const t = freeze({
         id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
         source: spec.source || "manual", doer: freeze({ ...doer }), ...(spec.helpers ? { helpers: freeze([...spec.helpers]) } : {}),
-        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
+        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(spec.quorum === "all" ? { approver_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
@@ -592,8 +592,8 @@ export function createTasks(cfg) {
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       // A review belongs to one hand-in: coming back In review drops the last result and its note from the task (they stay in the log), so no card or approver sees a stale pass.
-      const { review: _rv, review_note: _rvn, review_passes: _rps, ...kept } = t;
-      const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, activity: moreActivity(t, acting(chain), "submit"), updated_at: clock() })) : put(t, { state: to, payload });
+      const { review: _rv, review_note: _rvn, review_passes: _rps, approvals: _aps, ...kept } = t;
+      const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, activity: moreActivity(t, acting(chain), "submit"), updated_at: clock() })) : put(t, { state: to, payload, approvals: freeze([]) });
       note(chain, to === "in_review" ? "task.in-review" : "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
     },
@@ -695,7 +695,7 @@ export function createTasks(cfg) {
       if (t.state !== "needs_check") throw new KernelError("bad_state", "there is nothing waiting for a check");
       if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
       rule(t, "ready", "doer");
-      const { payload: _p, ...rest } = t;
+      const { payload: _p, approvals: _aps, ...rest } = t;
       stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
       note(chain, "task.voided", tasks.get(id), { reason: String(reason || "").slice(0, 200) });
       bodies.delete(id);
@@ -724,7 +724,7 @@ export function createTasks(cfg) {
       if (a.outcome === "rejected") {
         if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
         rule(t, "ready", "checker");
-        const { payload: _p, ...rest } = t;
+        const { payload: _p, approvals: _aps, ...rest } = t;
         stage(id, freeze({ ...rest, state: "ready", outcome: "rejected", updated_at: clock() }));
         note(chain, "task.rejected", tasks.get(id), { reason: a.reason.slice(0, 400) }, d.decision);
         bodies.delete(id);
@@ -734,7 +734,7 @@ export function createTasks(cfg) {
         const text = String(a.reason ?? "").slice(0, FIX_CAP);
         if (!text.trim()) throw new KernelError("bad_input", "declining a task needs a reason");
         rule(t, "declined", "checker");
-        const { payload: _p, ...rest } = t;
+        const { payload: _p, approvals: _aps, ...rest } = t;
         stage(id, freeze({ ...rest, state: "declined", declined_reason: text, declined_by: freeze({ kind: "person", id: person.id }), updated_at: clock() }));
         note(chain, "task.declined", tasks.get(id), { by: { kind: "person", id: person.id }, reason: text }, d.decision);
         bodies.delete(id);
@@ -752,6 +752,16 @@ export function createTasks(cfg) {
       // One verifier: the sealing process's. The signed fields are the task, the canonical payload hash and the decision it is bound to.
       const why = p ? await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision, ...(reviewHashOf(t) ? { review_hash: reviewHashOf(t) } : {}) }, proof: p }) : "no_proof";
       if (why) throw needsPresence("approving needs your confirmation on this device, over exactly this", why);
+      // Quorum "all" on a role: each holder's own yes, each with their own presence proof over this same payload, is kept; the last one completes the approval. A holder taken out of the role is no longer waited for.
+      if (t.approver_quorum === "all") {
+        const votes = [...(t.approvals || []).filter((/** @type {any} */ v) => !same(v.by, person)), freeze({ by: freeze({ kind: "person", id: person.id }), key_id: p.key_id })];
+        const waiting = checkersOf(t).filter((/** @type {any} */ c) => !votes.some((/** @type {any} */ v) => same(v.by, c)));
+        if (waiting.length) {
+          const kept = put(t, { approvals: freeze(votes) });
+          note(chain, "task.approval-kept", kept, { payload_hash: t.payload.payload_hash, key_id: p.key_id, waiting: waiting.length }, d.decision);
+          return kept;
+        }
+      }
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
         // WF-2: the send happens before the event is written. If the event is refused the task goes back to waiting, and a second approval must not send again: the send is made once per
