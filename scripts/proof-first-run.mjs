@@ -328,14 +328,14 @@ try {
     if (!/Not your server\?/i.test(t)) throw new Error(`the online screen does not offer "Not your server? Remove it": ${t.slice(0, 300)}`);
     await drv.click("Continue");
     // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
-    const ai = await drv.waitFor("Sign in to an AI", 30_000);
+    const ai = await drv.waitFor("Connect your AI.", 30_000);
     if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
     await drv.shot("04b-ai-signin");
     // Continue with nothing signed in does not leave the step (it starts the sign-in on the paired server and shows what came back, or says why not); only Skip for now goes on.
     await drv.click("Continue");
     await new Promise((r) => setTimeout(r, 5000));
     const still = await drv.text();
-    if (/You're in/.test(still) || !/Sign in to an AI/.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
+    if (/You're in/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
     await drv.click("Skip for now");
     // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
     const as = await drv.waitFor("Name your Assistant.", 60_000);

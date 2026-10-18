@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Button, ChoiceHero, ChoiceList, CodeBlock, Field, FlowStep, InviteShare, PasswordField, ProviderSignInButton,
-  Avatar, FlowOver, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
+  Avatar, FlowOver, ProviderBadge, RecoveryKeySheet, RolePicker, Segmented, SpaceSwitcherTitle, Text, markRef, passwordStrength, useUiTheme,
 } from "@vyre/ui";
 import { AI_SIGNIN_COPY, INVITE_ROLES, JOIN_COPY, PHASES, SIGNIN_COPY, SPACE_NAME_SAY, afterAi, afterRecovery, commandOk, entryScreen, displayNameOf, passwordOk, phaseOf, spaceAddressOf, spaceNameSuggestions, usernameOf } from "../../../../lib/first-run-shape.js";
 import { MOCK } from "../../src/real/box";
@@ -14,6 +14,7 @@ import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
+import { ACCOUNTS_COPY, defaultLabel, labelProblem } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
@@ -52,7 +53,7 @@ export function FirstRun() {
 
 function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const router = useRouter();
-  const { phone } = useUiTheme();
+  const { phone, color } = useUiTheme();
   const params = useLocalSearchParams<{ path?: string | string[]; shot?: string | string[] }>();
   const path = one(params.path);
   const shot = shotOf(one(params.shot) || "");
@@ -95,7 +96,9 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
-  const [signedAgents, setSignedAgents] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<{ provider: string; label: string }[]>([]);
+  const [pick, setPick] = useState("");
+  const [acctLabel, setAcctLabel] = useState("");
   const screen = stack[stack.length - 1];
   useEffect(() => { onScreen(screen); }, [screen, onScreen]);
   const go = (next: Screen) => {
@@ -322,28 +325,58 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   }
 
   if (screen === "id.ai") {
+    const onward = () => go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) }));
+    const taken = accounts.map((x) => x.label);
+    const labelOf = (id: string) => agents.find((x) => x.id === id)?.label || id;
+    const problem = pick ? labelProblem(acctLabel, taken) : "";
     return (
-      <FlowStep steps={steps} onBack={back} title={AI_SIGNIN_COPY.title} lead={AI_SIGNIN_COPY.lead} failure={failure}
-        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: () => go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })) }}
-        primary={{ label: agentFlow ? "Done" : "Continue", loading: busy, onPress: () => void run(async () => {
-          if (signedAgents.length === agents.length && agents.length) { go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
-          const pick = agents.find((a) => !signedAgents.includes(a.id));
-          // Nothing to sign in to is not "signed in": the person goes on only by choosing to skip, never by a Continue that did nothing.
-          if (!pick) { if (!agents.length) { setFailure("No AI sign-in is available here yet. Press Skip for now to go on, and add one later in Settings."); return; } go(afterAi({ path, heldInvite: review?.link, ...(aiThen ? { then: aiThen } : {}) })); return; }
-          const r = await signInAgent({ provider: pick.id, label: pick.label, ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
-          if (!r.ok) { setFailure(r.message); return; }
-          if (r.flow && r.step !== "done") {
-            setAgentFlow(String(r.flow));
-            if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick.id}`, "width=520,height=720");
-            if (typeof r.url === "string") setAgentUrl(r.url);
-            if (typeof r.code === "string") setAgentCode(r.code);
-            return;
-          }
-          setSignedAgents((s) => [...s, pick.id]);
-          setAgentFlow(""); setAgentCode(""); setAgentUrl("");
-        }) }}>
-        {agents.map((a) => <Text key={a.id} tone={signedAgents.includes(a.id) ? "default" : "muted"}>{signedAgents.includes(a.id) ? `${a.label} is signed in` : a.label}</Text>)}
-        {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
+      <FlowStep steps={steps} onBack={back} title={ACCOUNTS_COPY.title} lead={ACCOUNTS_COPY.lead} failure={failure}
+        secondary={{ label: AI_SIGNIN_COPY.skip, onPress: onward }}
+        primary={{ label: "Continue", loading: busy, onPress: () => {
+          // Nothing added is not "connected": the person goes on only by choosing to skip, never by a Continue that did nothing.
+          if (!accounts.length) { setFailure(ACCOUNTS_COPY.empty); return; }
+          onward();
+        } }}>
+        <View style={{ gap: 8 }} accessibilityLabel="AI providers">
+          {agents.map((a) => (
+            <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`Add ${a.label}`} disabled={busy || Boolean(agentFlow)}
+              onPress={() => { setFailure(""); setPick(a.id); setAcctLabel(defaultLabel(a.label, taken)); }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: pick === a.id ? 2 : 0.5, borderColor: pick === a.id ? color.primary : color["edge-strong"], backgroundColor: color["surface-2"] }}>
+              <ProviderBadge provider={a.id} size={28} />
+              <Text>{a.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {pick ? (
+          <View style={{ gap: 12 }}>
+            <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
+            {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
+            {agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
+            <Button kind="secondary" size="lg" label={agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy} disabled={Boolean(problem) || busy} onPress={() => void run(async () => {
+              const r = await signInAgent({ provider: pick, label: acctLabel.trim(), ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
+              if (!r.ok) { setFailure(r.message); return; }
+              if (r.flow && r.step !== "done") {
+                setAgentFlow(String(r.flow));
+                if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                if (typeof r.url === "string") setAgentUrl(r.url);
+                if (typeof r.code === "string") setAgentCode(r.code);
+                return;
+              }
+              setAccounts((x) => [...x, { provider: pick, label: acctLabel.trim() }]);
+              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl("");
+            })} />
+          </View>
+        ) : null}
+        {accounts.length ? (
+          <View style={{ gap: 6 }} accessibilityLabel="Your AI accounts">
+            {accounts.map((x) => (
+              <View key={x.label} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <ProviderBadge provider={x.provider} size={20} />
+                <Text>{`${x.label} is signed in`}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </FlowStep>
     );
   }

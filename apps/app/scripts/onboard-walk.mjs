@@ -84,7 +84,7 @@ async function identity(t) {
   if (await t.enabled("Continue")) throw new Error("Continue should wait until the recovery key is saved");
   await pSwitch(t);
   await t.press("Continue");
-  await t.at("Sign in to an AI");
+  await t.at("Connect your AI.");
   await t.press("Skip for now");
 }
 
@@ -162,7 +162,7 @@ await walk("Back retraces identity", async (t) => {
   await identity(t);
   await t.at("Your space");
   await t.press("Back");
-  await t.at("Sign in to an AI");
+  await t.at("Connect your AI.");
   await t.press("Back");
   await t.at("Save your recovery key");
   await t.press("Back");
