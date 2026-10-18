@@ -263,5 +263,7 @@ try {
   console.log(`FAIL ${e.message}\n--- container log (tail)\n${shOk(["logs", "--tail", "60", CONTAINER]).slice(-4000)}`);
   process.exitCode = 1;
 } finally {
-  try { await d.stop(id); } catch {}
+  // After a FAIL the CDP sockets the steps opened would keep the process alive until the 10-minute watchdog: stop the computer (bounded), then leave at once with the proof's own exit code.
+  try { await Promise.race([d.stop(id), sleep(30_000)]); } catch {}
+  process.exit(process.exitCode || 0);
 }
