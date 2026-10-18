@@ -26,6 +26,9 @@ export const recordsApi = {
     o.type === "note" || o.type === "record-note"
       ? callT<unknown>("planner.update", { item: urn.split("/").pop(), visibility, ...(o.record ? { record: o.record } : {}) })
       : callT<unknown>("records.share", { urn, visibility }),
+  /** One note, and a change to your own (planner.get, planner.update). */
+  noteGet: (id: string) => callT<unknown>("planner.get", { item: id }),
+  noteUpdate: (input: Record<string, any>) => callT<unknown>("planner.update", input),
   /** Notes by who they are about: mine, shared with me, or the whole Space (planner.list, which cuts them to what the caller may read). */
   notes: (scope: "mine" | "shared" | "space") => callT<{ items: NoteRow[] }>("planner.list", { kind: "note", scope, state: "all", limit: 200 }),
   /** The blocks of time other people's private events take up: Busy, nothing else. */

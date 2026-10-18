@@ -242,7 +242,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       ) : null}
       {def.name === "event" ? <BusyBlocks /> : null}
       {def.name === "task" ? <MyTasks onOpen={(id) => router.push(`/u/record/${id}` as never)} /> : null}
-      {def.name === "note" ? <NotesList scope={scope as "mine" | "shared" | "space"} /> : null}
+      {def.name === "note" ? <NotesList me={(world as any).me} scope={scope as "mine" | "shared" | "space"} /> : null}
       {shown === "list" && !phone && def.name !== "note" ? (
         <TableControls columns={tableColumns.length + 1} onColumns={() => setColsOpen(true)}
           fields={def.fields.filter((f: any) => ["choice", "stage", "link", "actor", "boolean"].includes(f.kind) && tableColumns.includes(f.name)).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))}
