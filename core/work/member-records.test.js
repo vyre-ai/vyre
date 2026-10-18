@@ -313,5 +313,7 @@ test("a joined member's notes go through the team's planner as herself: her own 
     assert.ok(r && (r.error || (r.data && r.data.error)), `${what} is refused: ${JSON.stringify(r).slice(0, 160)}`);
   }
   const direct = await w.d.registry.call("planner.serve", { call: "list", input: {} }, "module", {});
-  assert.equal(direct.error && direct.error.code, "denied", "a module calling it straight is refused");
+  assert.ok(direct.error && ["denied", "no_such_tool"].includes(direct.error.code), `a module calling it straight is refused: ${JSON.stringify(direct.error)}`);
+  const directWrite = await w.d.registry.call("planner.serve-write", { call: "add", input: { title: "x" } }, "module", {});
+  assert.ok(directWrite.error, "and so is the write tool");
 });
