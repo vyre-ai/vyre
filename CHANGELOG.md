@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased (polish: agents are persistent, each with many threads)
 
 - perf: Documents loads its two Word libraries (pizzip, docxtemplater) on the first fill or read of a template, not at start, so the idle heap is lower and Documents starts faster. Nothing else changes
+- fix(runner): a workspace is never reported "locked" while it can still be read. Its status says "locking" from the end of the lease until the key is really off the filesystem, and an fscrypt key that is only partly removed ("incomplete": a process still holds a file) counts as mounted, so the lock keeps retrying and stopping the holders instead of calling it done
 
 - fix(agents): agents.draft.get names a next step a person can take when the proposed agent is not found: ask the Engineer to propose it again.
 - fix(agents): the new-agent tools sit on the guard lists: agents.new.draft, agents.new.title, agents.new.apply and agents.draft.get are OWNER_ONLY at the member door (staff re-checked in the handler), and agents.draft.get is PERSON_ONLY for an assistant.
