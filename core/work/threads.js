@@ -485,6 +485,7 @@ export function registerThreads(d) {
     description: "Keep the chat a draft Flow was made from: { flow, chat }. Only the flows module asks, as the person who made it.",
     input: obj({ flow: { type: "string" }, chat: { type: "string" } }, ["flow", "chat"]),
     run: async (/** @type {any} */ input, /** @type {any} */ extra) => {
+      d.kernelOf();
       if (String(extra && extra.caller) !== "module:flows") throw fail("denied", "only the flows module keeps where a Flow was made");
       const chain = await d.chainOf(extra);
       try { d.kernelOf().chats.read(chain, String(input.chat)); } catch { return { kept: false }; }
