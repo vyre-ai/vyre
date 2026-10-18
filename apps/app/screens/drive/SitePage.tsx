@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, LoadingState, Row, Text, showToast } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, LoadingState, Row, Tabs, Text, showToast } from "@vyre/ui";
 import { presenceText } from "../shell/FaceIdSheet";
-import { act, decide, list, preview, status as statusOf } from "../sites/real";
+import { act, decide, list, preview, retire, status as statusOf } from "../sites/real";
+import { RealSite, Serving, type Tab } from "../sites/RealSites";
 import { sites, nextStep, domainLine, heldOf, planLines, decision, publishRefusal, type Held, type Site, type Status } from "../sites/real-model";
 import { siteAddress, unpublished } from "./site-page-model.js";
 import { startThread } from "./new-thread";
@@ -20,6 +21,8 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
   const [err, setErr] = useState("");
   const [held, setHeld] = useState<Held | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"overview" | "history" | "domain" | "secrets" | "jobs" | "serving">("overview");
+  const [noDocker, setNoDocker] = useState<string | null>(null);
   const load = useCallback(() => { setErr(""); list().then(setDeps).catch((e) => setErr(say(e))); }, []);
   useEffect(load, [load]);
   const site: Site | undefined = deps ? sites(deps).find((s) => s.name === name) : undefined;
@@ -54,12 +57,17 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
         <View className="flex-1" />
         <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => { void startThread(router, "engineer", `Change my site ${site.name}: `, `Change ${site.name}`); }} />
         {address.url ? <Button kind="ghost" size="sm" label="Visit" onPress={() => { window.open(address.url!, "_blank", "noopener"); }} /> : null}
+        {site.live ? <Button kind="holdText" size="sm" label="Unpublish" disabled={busy} onPress={() => { setBusy(true); retire(site.live!.id).then(() => { showToast("Unpublished."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); }} /> : null}
         {next && !held ? <Button kind="primary" size="sm" label={busy ? "Working" : waiting ? "Publish changes" : next.label} disabled={busy} onPress={publish} /> : null}
       </View>
       {hold && held ? (
         <AskCard title={hold.title} why={hold.lines.join(" ")}
           actions={[{ label: busy ? "Deciding" : presenceText("Approve with Face ID"), kind: "primary", icon: "faceid", onPress: busy ? () => {} : () => decideHeld(true) }, { label: "Not now", kind: "ghost", onPress: () => decideHeld(false) }]} />
       ) : null}
+      <Tabs<typeof tab> value={tab} onChange={setTab} items={[["overview", "Overview"], ["history", "Versions"], ["domain", "Domain"], ["secrets", "Secrets"], ["jobs", "Jobs"], ["serving", "Serving"]]} />
+      {tab === "serving" ? <View className="gap-s3">{noDocker ? <Banner tone="warn"><Text>{noDocker}</Text></Banner> : null}<Serving onNoDocker={setNoDocker} /></View>
+        : tab !== "overview" ? <RealSite embedded={{ name: site.name, tab: tab as Tab }} /> : (
+      <View className="gap-s3">
       {waiting ? <Banner><Text>{`Version ${cur.version} is not published yet. Version ${site.live!.version} is what visitors see.`}</Text></Banner> : null}
       <Card flush>
         <View style={{ height: 360 }}>
@@ -69,9 +77,9 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
       <Card flush>
         <Row title="Address" sub={address.url ?? "Not live yet"} />
         {cur.domains.map((d) => <View key={d.host}><Divider /><Row title={d.host} sub={domainLine(d)} /></View>)}
-        <Divider />
-        <Row title="More settings" sub="History, domains, secrets, jobs and logs" end={<Button kind="ghost" size="sm" label="Open" onPress={() => router.push(`/u/sites/${encodeURIComponent(site.name)}` as never)} />} />
       </Card>
+      </View>
+      )}
     </View>
   );
 }

@@ -50,6 +50,9 @@ function Manager({ wide }: { wide: boolean }) {
   const [focus, setFocus] = useState(-1);
   const [dialog, setDialog] = useState<{ kind: "move" | "delete" | "rename"; rows: FileRow[] } | null>(null);
   const [look, setLook] = useState<{ open: string | null }>({ open: null });
+  // the search box looks in this folder (the default) or in all the files of the Space
+  const [scopeAll, setScopeAll] = useState(false);
+  const [found, setFound] = useState<FileRow[] | null>(null);
 
   // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
@@ -73,10 +76,17 @@ function Manager({ wide }: { wide: boolean }) {
 
   const go = setPlace;
 
+  useEffect(() => {
+    if (!scopeAll || q.trim().length < 2) { setFound(null); return; }
+    let live = true;
+    const t = setTimeout(() => { loader.searchAll(q).then((r) => { if (live) setFound(r); }).catch(() => { if (live) setFound([]); }); }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [scopeAll, q]);
   const shown = useMemo(() => {
+    if (found) return found;
     const recs = (rows ?? []).map((row) => ({ row, data: { name: row.name, kind: KIND_WORD[row.kind] }, created_at: row.modified ? new Date(row.modified).toISOString() : undefined }));
     return sortRows((listRows(FILE_DEF, recs, chips, q) as typeof recs).map((x) => x.row), sort.key, sort.dir);
-  }, [rows, q, chips, sort]);
+  }, [rows, q, chips, sort, found]);
   const keys = useMemo(() => shown.map((r) => r.key), [shown]);
   useEffect(() => { setSel((s) => prune(s, keys)); }, [keys]);
   const picked = shown.filter((r) => sel.set.has(r.key));
@@ -236,6 +246,7 @@ function Manager({ wide }: { wide: boolean }) {
                 <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
               </View>
             </View>
+            {root === "space" || place === "recent" ? <View className="flex-row"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
             <ListHeader noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>

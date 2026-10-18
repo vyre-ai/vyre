@@ -30,7 +30,7 @@ function Places() {
   useEffect(() => { tool<{ projects?: { name: string; path: string }[]; agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => setFolders({ projects: r?.projects ?? [], agents: r?.agents ?? [] })).catch(() => setFolders({ projects: [], agents: [] })); }, []);
   useEffect(() => { listDeployments().then((d) => setSites(siteList(d).map((s) => ({ id: s.name, name: s.name, live: Boolean(s.live) })))).catch(() => setSites([])); }, []);
   const groups = placeGroups({ sites, projects: folders.projects, agents: folders.agents });
-  const target = (id: string) => (id === "all" ? "space" : id === "shared-with-me" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
+  const target = (id: string) => (id === "all" ? "space" : id === "shared-links" ? "shared" : id.startsWith("project:") || id.startsWith("agent:") ? `space:${id.slice(id.indexOf(":") + 1)}` : id);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: 8 }}>
       {groups.map((g) => (
