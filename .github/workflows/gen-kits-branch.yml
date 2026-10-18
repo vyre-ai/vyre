@@ -7,7 +7,7 @@ name: gen-kits-branch
 on:
   push:
     branches: ["work/polish/**"]
-    paths: ["records/kits/**/kit.ts", "core/appmods/catalog/*.kit.ts", "records/core-types.js", "records/language/**", ".github/workflows/gen-kits-branch.yml"]
+    paths: ["records/kits/**/kit.ts", "records/language/**", ".github/workflows/gen-kits-branch.yml"]
   workflow_dispatch:
 permissions:
   contents: read
