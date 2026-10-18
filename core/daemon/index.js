@@ -319,7 +319,7 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, onDevice: fn => events.on("link.mac-online", () => fn()), onThreadEnd: fn => { const th = (/** @type {any} */ e) => String(e.thread || (e.data && e.data.thread) || ""); events.on("thread.finished", (/** @type {any} */ e) => { if (th(e)) fn(th(e)); }); events.on("thread.stopped", (/** @type {any} */ e) => { if (th(e)) fn(th(e), e.reason || (e.data && e.data.reason)); }); }, publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, registry, onDevice: fn => events.on("link.mac-online", () => fn()), onThreadEnd: fn => { const th = (/** @type {any} */ e) => String(e.thread || (e.data && e.data.thread) || ""); events.on("thread.finished", (/** @type {any} */ e) => { if (th(e)) fn(th(e)); }); events.on("thread.stopped", (/** @type {any} */ e) => { if (th(e)) fn(th(e), e.reason || (e.data && e.data.reason)); }); }, publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
@@ -328,8 +328,6 @@ async function startLocked(opts, root, p, release) {
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
       // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
       agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
-      // The skill a task pins, judged as the chain that asked: skills.pin runs in the task's Space with that chain as its proven chain (callInSpace authorizes it first). Any refusal is no skill.
-      pinSkill: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {string} */ id, /** @type {any} */ chain) => { try { const r = await registry.callInSpace({ name: "vyred" }, space, { gateway: k.gateway }, "skills.pin", { id }, chain); return r && !r.error && r.data ? r.data : null; } catch { return null; } },
       callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.

@@ -1088,3 +1088,16 @@ test("pinned guides: a skill the caller may not read refuses exactly like a miss
   await assert.rejects(r.tasks.request(owner(), spec(["a", "a"])), { code: "bad_input" });
   await assert.rejects(r.tasks.request(owner(), spec(["big", "big2", "big3", "big4", "big5", "big6", "big7", "big8", "big9", "big10"], { doer: "y".repeat(2000), reviewer: "y".repeat(2000), approver: "y".repeat(2000) })), { code: "bad_input" });
 });
+
+test("pinned guides: the doer's hand-in is stopped when a pinned skill changed since the task was made; more than 60 reviewer checklist items together is refused at request", async () => {
+  const catalog = { s1: { hash: "a", checklist: ["x"] }, big1: { hash: "b", checklist: Array.from({ length: 40 }, (_, i) => `i${i}`) }, big2: { hash: "c", checklist: Array.from({ length: 40 }, (_, i) => `j${i}`) } };
+  const r = rig({ skills: { pin: async id => catalog[id] || null } });
+  await assert.rejects(r.tasks.request(owner(), draftTask({ reviewer: actor("person", BOB), skills: { reviewer: ["big1", "big2"] } })), { code: "bad_input" });
+  const t = await r.tasks.request(owner(), noteTask({ skills: { doer: ["s1"] } }));
+  await r.tasks.start(asIntake(), t.id);
+  catalog.s1 = { hash: "changed", checklist: ["x"] };
+  await assert.rejects(r.tasks.complete(asIntake(), t.id, noteEvidence()), { code: "bad_state" });
+  await assert.rejects(r.tasks.update(asIntake(), t.id, { note: "going on" }), { code: "bad_state" });
+  catalog.s1 = { hash: "a", checklist: ["x"] };
+  assert.equal((await r.tasks.complete(asIntake(), t.id, noteEvidence())).state, "done");
+});

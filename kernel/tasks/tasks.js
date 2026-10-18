@@ -447,6 +447,8 @@ export function createTasks(cfg) {
           }
           pinned[k] = freeze(pinned[k]);
         }
+        // a review answers every pinned item, and a review holds at most 60 answers: more than that could never be reviewed
+        if (((pinned.reviewer || []).reduce((n, k) => n + k.checklist.length, 0)) > 60) throw new KernelError("bad_input", "the reviewer's skills together have more than 60 checklist items: use fewer or shorter checklists");
         guides = deepFreeze({ instructions: structuredClone(ins), skills: pinned });
         if (canonical(guides).length > GUIDES_MAX) throw new KernelError("bad_input", "instructions and skills are too long together: keep them under 64 KB");
       }
@@ -550,6 +552,7 @@ export function createTasks(cfg) {
       const d = await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
       if (t.kernel || !isDoer(chain, t)) throw new KernelError("not_allowed", "only the doer finishes a task");
+      await pinsHold(chain, t, "doer");
       // The kernel checks the declared output before anything moves: an assistant cannot mark a task done while the check fails.
       const to = t.reviewer ? "in_review" : needsCheck(t) ? "needs_check" : "done";
       rule(t, to, "kernel_after_output_check");

@@ -49,4 +49,9 @@ test("skills.pin: hash and checklist for a skill the person may use; the same an
   // only the kernel's path runs it: a plain registry call carries no proven chain
   const bare = await d.registry.call("skills.pin", { id: "personal/ana-check" }, "module:vyred");
   assert.equal(bare.error.code, "not_found");
+
+  // the pin and the agent maker are set once by the daemon: no handle a module is given carries either, and a second set is refused
+  const handle = /** @type {any} */ (d.kernel).kernelFor ? d.kernel.kernelFor({ name: "probe" }) : {};
+  for (const k of ["setSkillPin", "setAgentMaker"]) assert.equal(k in handle, false, `${k} is not on a module's handle`);
+  assert.throws(() => /** @type {any} */ (d.kernel).setSkillPin(async () => null), /set once/);
 });

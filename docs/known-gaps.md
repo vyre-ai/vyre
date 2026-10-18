@@ -114,6 +114,12 @@ You can hand one message to several models and see each answer in its own block,
 
 What to do today: use the fan-out for answers, and read plans and diffs as they come.
 
+### A skill edited and put back during a task's review
+
+A task pins the skills of its slots when it is made, and the person or assistant holding a slot is checked against them at the act: starting, updating, handing in, reviewing, approving. A skill that is edited and then put back exactly between a holder reading it and that final act is not noticed, because the check is at the act and not at the read. Only someone who may edit the Space's skills can do this.
+
+What to do today: keep who may edit Space skills short, and read the review result on the card, which shows the checklist it was judged against.
+
 ## True today, with no date
 
 - **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server, and a Windows PC runs no sessions of its own; a Windows home is planned. See [Windows](using/windows.md). The installer is Authenticode signed only when the GitHub environment `windows` has `WINDOWS_AUTHENTICODE_PFX_B64` and `WINDOWS_AUTHENTICODE_PFX_PASSWORD`. Until then it is unsigned, and Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.

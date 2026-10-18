@@ -4,6 +4,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "./schema.js";
+import { slotsOf } from "./assign.js";
 
 const flow = (/** @type {any} */ step) => ({ format: 1, name: "t", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps: [{ id: "s1", ...step }] });
 const assign = (/** @type {any} */ over = {}) => ({ kind: "assign", to: "role:designers", title: "Draft", output: { kind: "note" }, ...over });
@@ -29,4 +30,10 @@ test("slots are refused when malformed: who, quorum, both approver and checker, 
   bad({ reviewer: { who: "role:r", skills: ["a", "a"] } }, /up to 10 different/);
   bad({ reviewer: { who: "role:r", skills: Array.from({ length: 11 }, (_, i) => `s${i}`) } }, /up to 10 different/);
   bad({ approver: { who: "person:per_b", instructions: "x".repeat(2001) } }, /2000/);
+});
+
+test("slotsOf maps a step's reviewer and approver objects to the task's slots, and nothing for a step without them", async () => {
+  const who = async (/** @type {string} */ r) => ({ ref: r });
+  assert.deepEqual(await slotsOf({ kind: "assign" }, who), {});
+  assert.deepEqual(await slotsOf({ reviewer: { who: "role:e", skills: ["a"], instructions: "tone" }, approver: { who: "person:p" } }, who), { reviewer: { ref: "role:e" }, approver: { ref: "person:p" }, instructions: { reviewer: "tone" }, skills: { reviewer: ["a"] } });
 });

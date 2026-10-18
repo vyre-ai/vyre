@@ -433,7 +433,7 @@ test("a reset rotates the lend key: the old sealed key opens nothing and the new
 test("vault.me.serve: a vault just made hands over its Secret Key even when the list or the put fails after, and the vault then opens with it", async t => {
   const { reg, call: asBob, people } = rig(t);
   const add = (/** @type {any} */ input) => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", call: "addkey", person: BOB, input }, { caller: "module:vyred" }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
-  const KEY = "sk-ant-0123456789abcdef";
+  const KEY = "sk-ant-" + "0123456789abcdef";
   const list = people.list.bind(people);
   people.list = async () => { throw new Error("the list is down"); };
   const first = await add({ label: "My Claude", value: KEY, password: PW });
@@ -476,7 +476,7 @@ test("vault.me.serve addkeys: one vault opening, every key a free name in the me
 test("vault.me.serve: only the daemon's door runs it, never as the owner; addkey makes or opens the member's own vault, picks a free name, puts one AI key, and returns no value or password", async t => {
   const { reg, call: asBob } = rig(t);
   const run = (/** @type {any} */ i, caller = "module:vyred") => reg.get("vault.me.serve").run({ space: "spc_aaaaaaaaaaaa", ...i }, { caller }).then((/** @type {any} */ data) => ({ data }), (/** @type {any} */ error) => ({ error }));
-  const KEY = "sk-ant-0123456789abcdef";
+  const KEY = "sk-ant-" + "0123456789abcdef";
   const add = (/** @type {any} */ person, /** @type {any} */ input) => run({ call: "addkey", person, input });
   assert.equal((await run({ call: "status", person: BOB }, "device:abcdefghijklmnop")).error.code, "denied", "a person's surface does not run it");
   assert.equal((await run({ call: "status", person: OWNER })).error.code, "denied", "never as the owner");

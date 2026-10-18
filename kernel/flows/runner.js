@@ -31,7 +31,7 @@ import { recordOfTrigger } from "./run-record.js";
 import { createJoins, laneOf } from "./joins.js";
 import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
-import { chooseDoer } from "./assign.js";
+import { chooseDoer, slotsOf } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
@@ -1862,15 +1862,7 @@ export class FlowRunner {
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
       // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
-      // The task's slots (tasks v2): a reviewer, an approver, and per-slot instructions and Space skills, as the author wrote them. The kernel pins the skills and refuses what the Flow's person may not use.
-      const slotOf = (/** @type {any} */ v) => (v && typeof v === "object" ? v : null);
-      const rv = slotOf(s.reviewer), ap = slotOf(s.approver);
-      const slots = {
-        ...(rv ? { reviewer: await this.#checker(ctx, rv.who) } : {}), ...(ap ? { approver: await this.#checker(ctx, ap.who) } : {}),
-        ...((rv && rv.instructions) || (ap && ap.instructions) ? { instructions: { ...(rv && rv.instructions ? { reviewer: rv.instructions } : {}), ...(ap && ap.instructions ? { approver: ap.instructions } : {}) } } : {}),
-        ...((rv && rv.skills) || (ap && ap.skills) ? { skills: { ...(rv && rv.skills ? { reviewer: rv.skills } : {}), ...(ap && ap.skills ? { approver: ap.skills } : {}) } } : {}),
-      };
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...slots, flow: run.flow }, { idem });
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, ...(await slotsOf(s, (/** @type {string} */ r) => this.#checker(ctx, r))), flow: run.flow }, { idem });
       // Followers each get a note task in their Now: it says what the task is and carries their own box. A follower who cannot be given one never stops the step.
       for (const [i, ref] of (Array.isArray(s.followers) ? s.followers : []).entries()) {
         try {
