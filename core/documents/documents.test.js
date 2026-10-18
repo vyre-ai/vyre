@@ -379,7 +379,7 @@ test("Download audit end to end: the first call saves Signed/audit-<n>.pdf once,
   const other = rig({ chain: bob, call, denied: [bob] });
   other.files.set("Signed/audit-41.pdf", [pdf]);
   const bobTry = await code(other.run("documents.signing.audit", { submission: 41 }, { caller: "cli" }));
-  assert.equal(bobTry?.code, "denied", "a person who cannot read the file is refused");
+  assert.equal(bobTry?.code, "not_found", "a person who cannot read the file is refused");
   assert.equal(other.files.get("Signed/audit-41.pdf")?.length, 1, "nothing is written for her");
 
   const model = rig({ call });
@@ -397,7 +397,7 @@ test("member access to a request: only the sender (and the owner) may open it; a
   const calls = /** @type {string[]} */ ([]);
   const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
     calls.push(tool);
-    if (tool === "appmods.signing.request") return { submission: 41, url: "https://app.example.com/sign/41" };
+    if (tool === "appmods.signing.request") return { data: { submission: 41, url: "https://app.example.com/sign/41" } };
     if (tool === "appmods.signing.status") return { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } };
     if (tool === "appmods.signing.audit") return { data: { bytes: PDF.toString("base64") } };
     if (tool === "appmods.signing.waiting") return { data: { requests: [{ submission: 41, slug: "s", url: "u", email: "sam@example.com", signer: "Sam", template: "T", at: 1 }] } };
@@ -431,7 +431,7 @@ test("member access to a request: only the sender (and the owner) may open it; a
 
 test("an admin sees the requests the owner may see; a plain member with no record does not", async () => {
   const made = /** @type {any[]} */ ([]);
-  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => tool === "appmods.signing.request" ? { submission: 52, url: "u" } : tool === "appmods.signing.status" ? { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } } : {};
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => tool === "appmods.signing.request" ? { data: { submission: 52, url: "u" } } : tool === "appmods.signing.status" ? { data: { status: { submission: input.submission, status: "pending", signers: [], audit_url: null } } } : {};
   const sender = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_mia", space: SPACE } }] }, call, made });
   await sender.run("documents.send", { template_id: 3, email: "sam@example.com" }, { caller: "cli" });
   const admin = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_admin", space: SPACE } }] }, call, made, db: sender.db });
