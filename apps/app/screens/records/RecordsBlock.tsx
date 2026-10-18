@@ -4,6 +4,8 @@ import { ViewControls } from "./ViewControls";
 import { callT } from "../../src/real/call-tool";
 import { RecordScreen } from "./RecordScreen";
 import { needsIdFill, defineInputOf } from "./records-screen.js";
+import { useMoveStage } from "./MoveStage";
+import { isStageGroup } from "./move-rule.js";
 import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
@@ -62,6 +64,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   useEffect(() => { setViewName(openedView); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
+  const mv = useMoveStage(env, reload);
   const cards = useMembers((st) => st.spaces);
   const showing = useSpaces((st) => st.space);
   usePlaceText("showing");   // loads the spaces the row tags are read from
@@ -105,6 +108,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const move = async (rec: any, to: string) => {
     const g = vd.board?.groupBy;
     if (!g) return;
+    // A stage board moves by the one rule: a stage that needs fields asks for them first (MoveStage); any other group is a plain change.
+    if (to && isStageGroup(def, g)) { await mv.go(rec, def, to); return; }
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
@@ -181,6 +186,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       </>}
+      {mv.sheet}
       <AddTypeSheet open={addingType} onClose={() => setAddingType(false)} space={space} taken={world.types.map((t) => t.name)} onAdd={(t, plural) => { createType(t); showToast(`${plural} is being set up. This can take a minute.`); }} />
       <ImportSheet open={importing} onClose={() => setImporting(false)} def={def} noun={vd.plural.toLowerCase()} onDone={reload} />
       <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}

@@ -36,7 +36,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -186,7 +186,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew 
 
   return (
     <View className="gap-s4">
-      {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => change(sf, s)} /> : null}
+      {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => (onStage ? onStage(s) : change(sf, s))} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
         <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} />
         <View className="flex-1" />

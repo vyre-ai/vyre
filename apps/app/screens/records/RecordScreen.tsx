@@ -7,6 +7,7 @@ import { href } from "../../../../lib/tags.js";
 import { useShell } from "../shell/shared";
 import { useSidebar } from "../shell/sidebar";
 import { RecordTimeline } from "./RecordTimeline";
+import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
 import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
@@ -21,6 +22,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const open = useCallback((urn: string) => (onOpen ? onOpen(urn) : router.push(`/u/record/${urn.split("/").pop()}` as never)), [router, onOpen]);
   const openTag = useCallback((t: string) => router.push(href(t) as never), [router]);
   const env = useFieldEnv(world, open, openTag);
+  const mv = useMoveStage(env, reload);
   const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const events = useRecordEvents(rec?.urn);
@@ -54,8 +56,9 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
       </View>
       <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
-        <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
+        <Appear index={1}><RecordPage def={def} rec={rec} world={world} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<RecordTimeline urn={rec.urn} />} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
+      {mv.sheet}
       <Sheet open={!!forgetting} onClose={() => setForgetting(null)} title={`Forget ${title} for good?`}>
         {forgetting ? (
           <View className="gap-s3">
