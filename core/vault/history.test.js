@@ -102,3 +102,45 @@ test("history tools: vault.history is names only for Claude, revert and old-vers
   assert.equal((await run("vault.reveal", { name: "site-login", version: 1 })).value, p1);
   assert.equal((await run("vault.revert", { name: "site-login", version: 1 })).version, 3);
 });
+
+
+test("a member of a shared vault cannot revert or move an item in it: her own vault has no such item, nothing changes, and neither tool is a member door row or callable from a member surface", async t => {
+  // A shared item lives in the owner's vault. A member reads and uses it through the owner's Space tools with her own chain. Her revert
+  // resolves the name only in her own vault (mustRow), so the owner's item is not found for her. The tool layer refuses her surface before a tool runs.
+  const owner = setup(t), member = setup(t);
+  await owner.vault.put({ name: "shared-login", kind: "login", fields: { username: "alex", password: fake("p1") } }, "cli");
+  await owner.vault.put({ name: "shared-login", kind: "login", fields: { username: "alex", password: fake("p2") } }, "cli");
+  const itemId = () => owner.vault.row("shared-login").id;
+  const ownerVer = () => owner.vault.row("shared-login").ver;
+  const ownerHist = () => owner.db.prepare("SELECT COUNT(*) AS n FROM vault_history WHERE item = ?").get(itemId()).n;
+  const before = { ver: ownerVer(), hist: ownerHist() };
+  await assert.rejects(member.vault.revert({ name: "shared-login", version: 1 }, "member:juno"), "a member's revert does not reach the owner's item");
+  assert.equal(ownerVer(), before.ver, "the item's version is unchanged");
+  assert.equal(ownerHist(), before.hist, "no history row was added");
+  assert.equal(member.db.prepare("SELECT COUNT(*) AS n FROM vault_history").get().n, 0, "the member's vault gained no history row");
+  // the member door: neither tool is among its rows, which is what keeps a member out of the Space's vault
+  const memberDoor = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "work", "member-tools.js"), "utf8");
+  for (const name of ["vault.revert", "vault.move"]) assert.ok(!memberDoor.includes(name), `${name} is not a member door row`);
+  // the caller lists: they name only the person's own surfaces (this asserts the lists, not the runtime refusal, which reach.test.js covers)
+  const { tools } = await recorded(t);
+  for (const name of ["vault.revert", "vault.move"]) {
+    const callers = tools.get(name).callers;
+    for (const viewer of ["member", "mcp", "agent", "chat", "phone", "device", "tailnet", "space", "module"]) {
+      assert.ok(!callers.includes(viewer), `${name}: ${viewer} is refused`);
+    }
+  }
+});
+
+
+test("a viewer of a shared item cannot revert it: vault.revert is callable only from the person's own surfaces, never from a member, agent, model or device that only reads or uses a shared item", async t => {
+  // The registry refuses a call whose surface is not in a tool's callers list before the tool runs. The list is the gate here: a member who
+  // holds only use or read on a shared item reaches the Vault from these surfaces, and none of them may revert.
+  const { tools } = await recorded(t);
+  const callers = tools.get("vault.revert").callers;
+  assert.ok(Array.isArray(callers) && callers.length, "vault.revert names its callers");
+  for (const viewer of ["mcp", "agent", "chat", "member", "phone", "device", "tailnet", "space", "module"]) {
+    assert.ok(!callers.includes(viewer), `${viewer} (a viewer's surface) must not be able to call vault.revert`);
+  }
+  assert.ok(callers.includes("cli") && callers.includes("deck"), "the person's own surfaces still revert");
+  assert.ok(tools.get("vault.revert").presence, "and a revert asks for presence");
+});

@@ -37,6 +37,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.0-rc.1
 ## 0.6.0
 
+- feat(app): the Vault groups its items into AI and apps, Logins, and Notes and other, and shows the breach banner only when one of your own items is breached (screens/vault/vault-groups.js).
+
 - feat(agents): an agent's `look` may carry a character after its shape and colour: eyes `~e0-5`, mouth `~m0-4`, top `~t0-6`, blush `~b0|1`, charm `~h0-5`, in that order ("s3~c5~e2~m1~t4~b1~h0"). Old looks (s0-7~c0-7) stay valid; a part left out is drawn from the agent's uid by the app.
 - ci: gen-kits-branch.yml recompiles `records/kits/*/kit.ts` into `kit.json` on a `work/polish/**` branch and commits the result back (a person may not run the compiler on a Mac). Two jobs, as in gen-tokens-branch.yml and regen.yml: the job that runs the branch's compiler has a read-only token and keeps no credentials; the job that writes runs none of the branch's code and applies the patch only when it names `records/kits/NAME/kit.json` files. Starts on a change to a kit source, the language or the workflow. Checked by scripts/gen-kits-workflow.test.js.
 - ci: golden-refresh.yml uses the same lane rule as the other workflows (sec53's note on ci-lanes): a [golden-update] push or a dispatch from a polish branch runs on a hosted runner, not on the self-hosted fleet.
