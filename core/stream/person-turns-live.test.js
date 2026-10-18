@@ -488,6 +488,8 @@ test("review D: an asker who left the chat while their message waited gets no tu
 // ---- a member's own key, lent for one turn (vault.me.lend, core/switchboard/member-key.js): two members in one chat, the real Switchboard and the fake claude as a real child process.
 // The vault is a stand-in at the registry's call (vault.me.has and vault.me.lend only, the contract of core/vault/tools/me.js: the person is the turn's verified chain, the account must be theirs); the real
 // vault.me.lend is covered by core/vault/tools/me.test.js. What is REAL here is everything that decides whose key goes into which process. Written without a run: CI is the test.
+/** A wait that timed out says what the thread held (types, notices, run rows): DIAG, removed once the lent-key tests are green. */
+const dump = async (/** @type {any} */ r) => { const th = kitThread(r.b, r.chat.id); const g = await r.b.reg.call("threads.get", { thread: th, limit: 1000 }, "cli").catch(() => null); const ev = (g && g.data && g.data.events) || []; const rows = r.b.reg.deps.db.prepare("SELECT status, stopped_reason, pid, provider, account FROM threads_runs").all(); return ` {events: ${ev.map((/** @type {any} */ e) => e.type + (e.payload && e.payload.notice ? ":" + String(e.payload.text).slice(0, 80) : "")).join(",").slice(0, 1500)}} {rows: ${JSON.stringify(rows)}}`; };
 const sha16 = (/** @type {string} */ v) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 16);
 
 /** Carol and Ada each have an account of their own that names a key in their own vault; returns what the stand-in lent and the keys. */
@@ -541,7 +543,7 @@ test("lent key: with two members in one chat, the second asker's process is hand
   assert.ok(!first[0].envShas.includes(sha16(r.KC)), "and is in no environment value of it");
   // carol's process is alive and idle (the idle close is minutes away); ada asks now
   await r.say("ada", "ada second");
-  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000).catch(async (/** @type {any} */ e) => { throw new Error(e.message + await dump(r)); });
   const all = r.launches();
   assert.equal(all.length, 2, "ada's turn started a process of its own");
   const second = all[1];
@@ -564,7 +566,7 @@ test("lent key: after the turns the key string is in no thread event, log line, 
   await r.say("carol", "carol first");
   await until(() => r.answers().some(a => a.text === "carol first"), "carol's answer", 120_000);
   await r.say("ada", "ada second");
-  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000);
+  await until(() => r.answers().some(a => a.text === "ada second"), "ada's answer", 120_000).catch(async (/** @type {any} */ e) => { throw new Error(e.message + await dump(r)); });
   const thread = kitThread(r.b, r.chat.id);
   const events = (await r.b.reg.call("threads.get", { thread, limit: 1000 }, "cli")).data.events;
   const rows = r.b.reg.deps.db.prepare("SELECT * FROM threads_runs").all();
