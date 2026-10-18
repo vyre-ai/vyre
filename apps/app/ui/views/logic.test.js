@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
+import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -71,8 +71,8 @@ test("calendar: the start month is the first with a dated row from now on, and r
 test("Seal for all names how many records have a value", () => {
   const f = fieldOf(def("contact"), "ssn");
   const s = sealSpec(def("contact"), f, byType.contact);
-  assert.match(s.title, /Seal SSN for all contacts\?/);
-  assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} contacts`));
+  assert.match(s.title, /Seal SSN for all people\?/);
+  assert.match(s.body, new RegExp(`^${byType.contact.filter((r) => r.data.ssn?.present).length} of ${byType.contact.length} people`));
   assert.equal(isSealedField(f), true);
   assert.equal(isSealedField(fieldOf(def("contact"), "name")), false);
 });
@@ -256,4 +256,26 @@ test("a stored filter reads as words in the Filtered row", () => {
   assert.equal(filterWords(t, 'stage != "Closed" and fee >= 100'), "Stage is not Closed and Fee is at least 100");
   assert.equal(filterWords(t, "not empty(due)"), "Due is filled in");
   assert.equal(filterWords(t, "empty(due)"), "Due is empty");
+});
+
+test("the four starting types open as they should: People and Companies as tables, Tasks as a board, Notes as a list", async () => {
+  const { viewDefOf } = await import("./view-defs.js");
+  const { CORE_TYPES } = await import("../../../../records/core-types.js");
+  const of = (/** @type {string} */ n) => CORE_TYPES.find((/** @type {any} */ t) => t.name === n);
+  const names = Object.fromEntries(["contact", "organization", "task", "memo"].map((n) => [n, viewDefOf(of(n)).plural]));
+  assert.deepEqual(names, { contact: "People", organization: "Companies", task: "Tasks", memo: "Notes" });
+  assert.equal(viewDefOf(of("task")).open, "board", "Tasks open as a board");
+  assert.equal(viewDefOf(of("contact")).open, undefined, "People open as the table");
+  assert.deepEqual(viewsOf(of("task"), viewDefOf(of("task"))), ["list", "board", "calendar"], "Tasks offer a board and a calendar: they have a status and a due date");
+  assert.deepEqual(viewsOf(of("memo"), viewDefOf(of("memo"))), ["list"], "Notes have nothing to group or date by: only the list");
+  assert.deepEqual(viewsOf(of("organization"), viewDefOf(of("organization"))), ["list", "gallery"], "Companies offer the gallery");
+  assert.equal(viewDefOf(of("organization")).open, "gallery", "Companies open as cards");
+});
+
+test("gallery cards: a title, one line under it, and a picture only from an https address in an image field", async () => {
+  const { viewDefOf } = await import("./view-defs.js");
+  const def = { name: "organization", label: "Organization", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "domain", kind: "text", label: "Domain" }, { name: "logo", kind: "url", label: "Logo" }] };
+  const rows = [{ id: "o1", data: { name: "Juniper Studio", domain: "juniper.example", logo: "https://juniper.example/l.png" } }, { id: "o2", data: { name: "Kit & Co", domain: "kit.example", logo: "http://x.example/l.png" } }, { id: "o3", data: { name: "Plain" } }];
+  const cards = galleryCards(def, rows, viewDefOf(def));
+  assert.deepEqual(cards.map((c) => [c.key, c.title, c.subtitle, c.image ?? null]), [["o1", "Juniper Studio", "juniper.example", "https://juniper.example/l.png"], ["o2", "Kit & Co", "kit.example", null], ["o3", "Plain", "", null]], "an http picture is not used");
 });

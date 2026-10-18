@@ -25,7 +25,7 @@ export type Ctx = {
   /** The avatar to show: GitHub's, until the person picks another. */
   avatar?: string;
   master: string;
-  /** Setting a new master password after the recovery kit, not the first one. */
+  /** Setting a new password after the recovery kit, not the first one. */
   reset: boolean;
   ai: Record<string, AiState>;
   aiSkipped: boolean;

@@ -20,7 +20,7 @@ A chat is a conversation thread. People and agents both take part, and the model
 - **Side panel**: one tap on the chat header opens it, with three tabs. **Details** holds the people, the agent's page, the project (Move to a project; a chat is in at most one), the record and how the chat answers. **Library** holds the chat's files and its subagents. **Computer** shows the computer of an agent in the chat: asleep, waking or live with a thumbnail; Wake, Sleep, and Open for the full-screen view (`apps/app/src/chat/ComputerTab.tsx`, `computers.agent.*`).
 - **Filter by tag**: a row of tag chips above the list.
 - **Composer** (`apps/app/src/chat/ChatComposer.tsx`): `@` lists people, agents and files, and `#` lists the kinds other modules offer (vault items, Drive files, artifacts, GitHub, records). Enter sends.
-- **Message actions** (`apps/app/src/chat/MessageBar.tsx`): Copy, Reply, Ask about this, and a menu with Copy as Markdown, Copy code, Edit, Retry, Branch from here, React and Pin. They show on hover, keyboard focus or long press.
+- **Message actions** (`apps/app/src/chat/MessageBar.tsx`): Copy, Reply, Ask about this, and a menu with Copy as Markdown, Copy code, Edit, Retry, Fork from here, React and Pin. They show on hover, keyboard focus or long press.
 - **Chat menu** (`apps/app/screens/chats/useChatMenu.tsx`): Open, Rename, Move to a project, Archive, Delete.
 - A question an agent asks shows as one card in the chat (`apps/app/src/chat/QuestionsCard.tsx`), and a held send shows as a card for the person to approve.
 

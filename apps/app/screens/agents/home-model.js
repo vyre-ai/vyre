@@ -41,7 +41,7 @@ export function agentRow(a, me, names = {}) {
   return {
     name: String(a.name), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
     model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects, names), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
-    ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
+    ...(a.look ? { look: String(a.look) } : {}), ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
   };
 }
 
@@ -113,3 +113,9 @@ export function rowActions(r, o = {}) {
 
 /** Whether a chat row has this agent in it. @param {{ agents?: string[], pinned?: string }} c @param {string} name */
 export const chatHas = (c, name) => c.pinned !== "assistant" && (c.agents ?? []).some((a) => a === name);
+
+/** Agents newest first by their last activity (last_active, milliseconds); no activity goes last, and ties sort by name. @param {any[]} rows */
+export function byRecent(rows) {
+  const at = (r) => (typeof r.last_active === "number" && Number.isFinite(r.last_active) ? r.last_active : -Infinity);
+  return [...rows].sort((a, b) => (at(b) - at(a)) || String(a.name).localeCompare(String(b.name)));
+}

@@ -50,7 +50,7 @@ export function RealAccount() {
             </Card>
           </Group>
           <GithubCard />
-          <Group title="Lock" note="Locking forgets your unlocked keys on this device. The master password opens them again.">
+          <Group title="Lock" note="Locking forgets your unlocked keys on this device. The password opens them again.">
             <Card className="gap-s3">
               <Segmented label="Lock after" value={autoLock} onChange={chooseLock} options={LOCK_CHOICES as unknown as [string, string][]} />
               <View className="flex-row"><Button size="sm" icon="lock" label="Lock now" onPress={lockNow} /></View>
@@ -92,7 +92,7 @@ export function RealSeeing() {
     <Page title="What my agents can see" back="/u/settings">
       {err ? <Card flush><ErrorState title="Agents did not load" reason={err} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here, with the projects each works in." /></Card> : null}
-      {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
+      {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("agent", a.name, undefined, (a as { look?: string }).look || undefined)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
       <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
     </Page>
   );

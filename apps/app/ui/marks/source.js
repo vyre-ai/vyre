@@ -4,7 +4,6 @@
 // plus the person face v2 ported from the prototype (team/0.2.2/prototype-src/p3o.js personV2) and the device marks of team/0.3/assets.
 // Same seed, same mark, on every surface. A mark never falls back to a letter.
 
-import { creature } from "../../../../lib/wink-code/creature.js";
 import { character } from "../../../../lib/wink-code/characters.js";
 import { emblem } from "../../../../lib/wink-code/emblem.js";
 import { agentV2 } from "../../../../lib/wink-code/agent2.js";
@@ -126,7 +125,8 @@ export function markSource(kind, seed, scheme, o = {}) {
   let svg;
   switch (kind) {
     case "person": svg = person(seed, scheme); break;
-    case "assistant": svg = creature(seed, px); break;
+    // The Assistant and every agent are the same kind of little character (agent2.js), drawn from their look and, for what it leaves out, a hash of their name.
+    case "assistant": svg = agentV2(seed, px, scheme); break;
     case "agent": svg = agentV2(seed, px, scheme); break;
     case "teammate": svg = character(seed, px, scheme, /** @type {any} */ (badgeColor(seed))); break;
     case "project":

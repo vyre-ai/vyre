@@ -40,7 +40,7 @@ import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfil
 import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
-import { Share, SHARE_MIGRATIONS } from "./share.js";
+import { Share, SHARE_MIGRATIONS, MEMBER_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
@@ -153,6 +153,8 @@ export const MIGRATIONS = [
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
   CONVERSIONS_MIGRATION, GRANT_REQUEST_KIND_MIGRATION, NAMED_MIGRATION,
+  // The Space member a person is linked to, appended last so earlier steps keep their numbers (share.js).
+  ...MEMBER_MIGRATIONS,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */

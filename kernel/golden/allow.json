@@ -548,20 +548,12 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): file names on the box's VyreDrive shares matching a # query, names only"
  },
  {
-  "tool": "files.places",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the caller's own places: projects they are on and agents they own or were given, with the Drive folder of each; the kernel decides what they may open there"
- },
- {
   "tool": "files.receive",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns on or off whether the Mac takes in files the box delivers, the receive switch"
  },
  {
   "tool": "files.send",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
- },
- {
-  "tool": "files.space.mentions.search",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): Space Drive file paths matching a # query, only files the kernel lets the caller read"
  },
  {
   "tool": "flows.actions",
@@ -2106,6 +2098,10 @@
  {
   "tool": "work.chat.upgrade-plan",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.chat.upgrade-plan opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: read-only: counts of the caller's own chats, from the chats the kernel says the caller is in, under the caller's own chain; the kernel: every call is authorized with the chain the kernel builds for the caller"
+ },
+ {
+  "tool": "work.engineer.chat",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.engineer.chat opened to a model or a module in ccd8984fe (18 Oct 2026); the body decides: guard: only an owner or an admin (the Engineer's own check) and a person acting directly with one hop, else not_found; it finds or makes the Space's one Engineer chat (a fixed id) with a ring from the caller's device, the kernel authorizes the create, and it changes no one's membership, it only reports the gap"
  },
  {
   "tool": "work.file.list",

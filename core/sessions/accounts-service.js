@@ -7,6 +7,7 @@
 //   signin({ provider, label? })      start a sign-in the provider runs as a new account of theirs; poll it with { flow }, give it a pasted code with { flow, code }; { account } signs one of theirs in again
 //   remove({ id })                    take one of their accounts away
 //   default({ id })                   make one of their accounts their pick on its provider
+//   check({ kind, key, base_url? })   check an API key with its provider and keep nothing: { checked, host }. The key is sent once, used for that one read-only request, never stored, logged or returned
 //   add({ provider, kind, label, vault_item })   a key or setup token they keep in their OWN vault (vault.me.*): the item is named, never sent; it is read only at the start of their own turns
 //
 // A member's key lives in their own vault, not the owner's: `add` names an item of it. Each call runs the sessions module's internal
@@ -14,12 +15,18 @@
 
 import { KernelError } from "../../kernel/core/errors.js";
 
+/** Key checks per member per minute. */
+export const CHECKS_PER_MINUTE = 10;
 const CODES = /** @type {Record<string, string>} */ ({ denied: "not_allowed", not_found: "not_found", bad_input: "bad_input", not_asked: "not_allowed" });
 
 /**
  * @param {{ space: string, kernel: any, registry: { call(tool: string, input: any, caller: string, meta?: any): Promise<any> } }} o
  */
 export function createAccountsService(o) {
+  // a key check goes out to a provider from this server's address: a member gets ten a minute
+  const now = /** @type {() => number} */ ((/** @type {any} */ o).clock || Date.now);
+  /** @type {Map<string, number[]>} */ const tries = new Map();
+  const allowCheck = (/** @type {string} */ person) => { const t = now(), l = (tries.get(person) || []).filter((x) => t - x < 60_000); if (l.length >= CHECKS_PER_MINUTE) { tries.set(person, l); return false; } l.push(t); tries.set(person, l); return true; };
   const who = (/** @type {any} */ chain) => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || chain.viewer === true || chain.delegated === true || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw new KernelError("not_found", "not found");
@@ -31,11 +38,12 @@ export function createAccountsService(o) {
   const run = (/** @type {string} */ call) => async (/** @type {any} */ chain, /** @type {any} */ input) => {
     const person = who(chain);
     if (!isMember(person)) throw new KernelError("not_found", "not found");   // not a member: nothing to say
+    if (call === "check" && !allowCheck(person)) throw new KernelError("limit", "try again in a minute");
     const i = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     delete i.space; delete i.as; delete i.person;
     const r = await o.registry.call("sessions.accounts.serve", { call, person, space: o.space, input: i }, "module:vyred", { door: true });
     if (r && r.error) throw new KernelError(/** @type {any} */ (CODES[r.error.code] || "bad_input"), String(r.error.message || "that did not work"));
     return r.data;
   };
-  return { list: run("list"), signin: run("signin"), remove: run("remove"), default: run("default"), add: run("add") };
+  return { list: run("list"), signin: run("signin"), remove: run("remove"), default: run("default"), add: run("add"), check: run("check") };
 }

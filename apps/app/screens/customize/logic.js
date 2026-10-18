@@ -16,7 +16,7 @@ export const TEMPLATES = [
 
 /** @type {Record<string, { name: string, fields: Field[], stages: string[] }>} */
 const TPL = {
-  blank: { name: "Item", fields: [{ key: "title", label: "Title", kind: "text", required: true }], stages: [] },
+  blank: { name: "Item", fields: [{ key: "name", label: "Name", kind: "text", required: true }], stages: [] },
   order: {
     name: "Order",
     fields: [{ key: "title", label: "Title", kind: "text", required: true }, { key: "customer", label: "Customer", kind: "link" }, { key: "total", label: "Total", kind: "money" }, { key: "due", label: "Due", kind: "date" }, { key: "stage", label: "Stage", kind: "stage" }],
@@ -40,9 +40,17 @@ const list = (/** @type {string[]} */ a) => (a.length > 1 ? `${a.slice(0, -1).jo
 export function templateBlurb(/** @type {string} */ id) {
   const t = TPL[id];
   if (!t) return "";
-  if (id === "blank") return "One field, Title. Add the rest yourself.";
-  const f = t.fields.filter((x) => x.kind !== "stage").slice(0, 4).map((x) => x.label);
+  if (id === "blank") return "Two fields, Name and ID. Add the rest yourself.";
+  const f = t.fields.filter((x) => x.kind !== "stage" && x.key !== "ref").slice(0, 4).map((x) => x.label);
   return `Fields: ${list(f)}.${t.stages.length ? ` Stages: ${list(t.stages)}.` : ""}`;
+}
+
+/** The Kits the box offers as starting points in Add a type: each adds types, so its row lists them by name (a Kit installs through a yes in Now, nothing is made here). */
+export function kitStarters(/** @type {{ id: string, name?: string, description?: string, adds?: { types?: unknown[] } }[]} */ lib, /** @type {string[]} */ installed = []) {
+  return lib.filter((k) => !installed.includes(k.id)).map((k) => {
+    const types = (k.adds?.types ?? []).map(String);
+    return { id: `kit:${k.id}`, label: k.name || k.id, blurb: k.description || (types.length ? `Adds ${list(types)}.` : "A ready-made set."), fields: types.map((t) => t[0].toUpperCase() + t.slice(1)), from: k.id };
+  });
 }
 
 export const templateName = (/** @type {string} */ id) => TPL[id]?.name ?? "Item";
@@ -64,7 +72,10 @@ export function buildType(/** @type {string} */ tpl, /** @type {string} */ name,
   const label = name.trim() || t.name;
   let id = slug(label);
   for (let n = 2; taken.includes(id); n++) id = `${slug(label)}-${n}`;
-  return /** @type {TypeDef} */ ({ id, label, plural: pluralOf(label), spaces: [space], work, fields: t.fields.map((f) => ({ ...f })), stages: [...t.stages] });
+  // every type starts with an ID after its first field: made with each record, never changed (core/records-tools/ref.js)
+  const fields = t.fields.map((f) => ({ ...f }));
+  if (!fields.some((f) => f.key === "ref")) fields.splice(1, 0, { key: "ref", label: "ID", kind: "text" });
+  return /** @type {TypeDef} */ ({ id, label, plural: pluralOf(label), spaces: [space], work, fields, stages: [...t.stages] });
 }
 
 /** @returns {TypeDef} */

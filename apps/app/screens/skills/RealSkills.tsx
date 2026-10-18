@@ -20,8 +20,8 @@ const LEVELS = [
 const errWords = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
 const skillTpl = (name: string) => `---\nname: ${name}\ndescription: Use when the work is about ${name}.\n---\n\n# ${name}\n\nSteps.\n`;
 
-export function RealSkills() {
-  const [level, setLevel] = useState<string>("space");
+export function RealSkills({ initialLevel = "space", scope }: { initialLevel?: string; scope?: string } = {}) {
+  const [level, setLevel] = useState<string>(initialLevel);
   const [pack, setPack] = useState<BrowsePack | null>(null);
   const [err, setErr] = useState("");
   const [pick, setPick] = useState<SkillRow | null>(null);
@@ -44,8 +44,8 @@ export function RealSkills() {
   useEffect(() => { if (installOpen && installKind === "plugin") loadConnections(); }, [installOpen, installKind, loadConnections]);
   const load = useCallback(() => {
     setErr("");
-    browse(level).then(setPack).catch((e) => setErr(errWords(e)));
-  }, [level]);
+    browse(level, level === "agent" ? scope : undefined).then(setPack).catch((e) => setErr(errWords(e)));
+  }, [level, scope]);
   useEffect(load, [load]);
   const act = (run: () => Promise<unknown>, done: string) => {
     setBusy(true);

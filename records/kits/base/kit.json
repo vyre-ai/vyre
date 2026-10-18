@@ -18,6 +18,12 @@
           "required": true
         },
         {
+          "name": "ref",
+          "kind": "text",
+          "label": "ID",
+          "unique": true
+        },
+        {
           "name": "email",
           "kind": "text",
           "label": "Email",

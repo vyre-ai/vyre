@@ -50,6 +50,7 @@ export { markRef, spaceRef } from "./marks/useMark";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
+export { SidePanel } from "./components/SidePanel";
 export { ConnectApps, ShareSheet, SetupSheet } from "./connect/ConnectApps";
 export type { App as ConnectApp, Share as ConnectShare } from "./connect/ConnectApps";
 export { sampleApps as sampleConnectApps, SAMPLE_GRANTEES as SAMPLE_CONNECT_GRANTEES } from "./connect/connect-model.js";
@@ -106,6 +107,7 @@ export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
 export { PinnedViews } from "./views";
 export type { PinnedEntry } from "./views";
+export { GalleryView } from "./views/GalleryView";
 export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam, LAYOUTS, OPS, MINE, layoutsFor, fieldChoices, filterExpr, buildView, slugify, personalEntry, personalViewsOf, withPersonalViews, canShare, pinnedViews, pinList, unpinList, renameView, deleteView, reorderPinned, sharedEntry } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
@@ -125,7 +127,7 @@ export { VyreMark } from "./components/VyreMark";
 export type { MarkState, MarkSize } from "./components/VyreMark";
 export { Stack } from "./components/Stack";
 export type { StackGap } from "./components/Stack";
-export { FlowStep } from "./components/FlowStep";
+export { FlowStep, FlowOver } from "./components/FlowStep";
 export { CodeField } from "./components/CodeField";
 export { CodeDisplay } from "./components/CodeDisplay";
 export { PasswordField } from "./components/PasswordField";
@@ -199,6 +201,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES, ConversationList, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord,
+  FEATURED_SLASHES, NATIVE_SLASHES, ConversationList, ConversationTypes, NewPopover, newMenuRows, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
 } from "./chat";
 export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

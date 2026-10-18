@@ -1,7 +1,7 @@
 // Continue with GitHub, behind small doors. In MOCK it answers from flow-model.js. Otherwise it talks to the relay (relay/worker/github.js) and the escrow it fronts:
 //   signInWithGithub()   the browser goes to GitHub and back with a one-use ticket; the relay says who GitHub says this is and which Vyre name, if any, is linked to that numeric id
 //   enterWithGithub()    a returning person on a new device: this device makes its key, the escrow adds it to the name's list as a limited device and seals the Secret Key and home hint to this
-//                        device's own agreement key; the device keeps them. The master password then opens the vault. GitHub never opens it.
+//                        device's own agreement key; the device keeps them. The password then opens the vault. GitHub never opens it.
 //   linkGithub()         a signed-in device ties the GitHub id to its name: it puts the relay's key on the list and sends the escrow the Secret Key and the home hint
 // The Secret Key is read and written only through the vault tools below (`vaultSecretKey`), the seam wire-identity's export and import fill; until those tools exist the calls say so in words.
 

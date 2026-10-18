@@ -1,5 +1,5 @@
 // @ts-check
-// The master password on a device with no Node (kernel/identity/master.js, ADR 0054), the same record in the same bytes: one Argon2id stretch of the password unlocks a root key, the root key wraps
+// The password on a device with no Node (kernel/identity/master.js, ADR 0054), the same record in the same bytes: one Argon2id stretch of the password unlocks a root key, the root key wraps
 // the identity halves and the member box key, and the recovery key is a second way to the same root key. A record made here opens with kernel/identity/master.js, and one made there opens here (a test
 // pins both ways). Everything that comes out of unlock lives in the caller's memory; nothing here stores anything, and a key is only ever kept as these wrapped bytes (never as a CryptoKey).
 
@@ -30,8 +30,8 @@ export const normalizeRecovery = (code) => String(code ?? "").toLowerCase().repl
 /** @param {unknown} password */
 export function checkPassword(password) {
   const pw = String(password ?? "").normalize("NFKC");
-  if (pw.length < PASSWORD_MIN) throw refuse("Choose a master password of at least 12 characters. A phrase of four words works well.", "weak_password");
-  if (pw.length > 256) throw refuse("That master password is too long. Choose one of 256 characters or fewer.", "weak_password");
+  if (pw.length < PASSWORD_MIN) throw refuse("Choose a password of at least 12 characters. A phrase of four words works well.", "weak_password");
+  if (pw.length > 256) throw refuse("That password is too long. Choose one of 256 characters or fewer.", "weak_password");
   return pw;
 }
 
@@ -101,7 +101,7 @@ export async function createMasterRecord(o) {
  * @returns {Promise<{ privateKey: string, agreePrivate: string | null }>}
  */
 export async function openMasterRecord(rec, o) {
-  if (!rec || rec.v !== 1) throw refuse("There is no master password on this device yet. Create your username first.", "no_identity");
+  if (!rec || rec.v !== 1) throw refuse("There is no password on this device yet. Create your username first.", "no_identity");
   /** @type {Uint8Array} */ let rk;
   if (o.kek) {
     try { rk = unwrap(o.kek, rec.passwordWrap, AAD_PW); }

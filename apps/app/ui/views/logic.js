@@ -52,12 +52,27 @@ export function listColumns(def, vd = viewDefOf(def)) {
 }
 /** Which views a type has, in the order the switcher shows them. @param {any} def @param {any} [vd] @returns {("list"|"board"|"calendar"|"dashboard")[]} */
 export function viewsOf(def, vd = viewDefOf(def)) {
-  /** @type {("list"|"board"|"calendar"|"dashboard")[]} */
+  /** @type {("list"|"gallery"|"board"|"calendar"|"dashboard")[]} */
   const out = ["list"];
+  if (vd.gallery && fieldOf(def, vd.titleField)) out.push("gallery");
   if (vd.board && fieldOf(def, vd.board.groupBy)) out.push("board");
   if (vd.calendar && fieldOf(def, vd.calendar.date)) out.push("calendar");
   if (vd.dashboard?.widgets?.some((/** @type {any} */ w) => dashboardWidgetOk(def, w))) out.push("dashboard");
   return out;
+}
+
+/**
+ * The cards of the gallery: each record's key, title, one line under it (the field the view names, shown as text) and an image address when the type has an image field named `image`, `logo` or `photo`. Pure.
+ * @param {any} def @param {any[]} rows @param {any} [vd]
+ */
+export function galleryCards(def, rows, vd = viewDefOf(def)) {
+  const sub = vd.gallery && vd.gallery.subtitle ? fieldOf(def, vd.gallery.subtitle) : null;
+  const img = (def.fields || []).find((/** @type {any} */ f) => ["image", "logo", "photo"].includes(f.name) && ["text", "url"].includes(f.kind));
+  return rows.map((rec) => {
+    const s = sub ? val(rec, sub.name) : "";
+    const i = img ? val(rec, img.name) : "";
+    return { key: String(rec.id), rec, title: titleOf(def, rec, vd), subtitle: typeof s === "string" || typeof s === "number" ? String(s) : "", ...(typeof i === "string" && /^https:\/\//.test(i) ? { image: i } : {}) };
+  });
 }
 
 /** The board: one column per option or stage of the grouping field, and "No <label>" for rows with none. @param {any} def @param {any} rows @param {any} [vd] */

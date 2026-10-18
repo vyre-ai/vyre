@@ -3,7 +3,7 @@
 // It draws what convo-model.js shapes and calls nothing itself; the screen owns the data and what a tap does.
 
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { Avatar, AvatarStack } from "../components/Avatar";
 import { markRef } from "../marks/useMark";
 import { Field } from "../components/Field";
@@ -15,7 +15,9 @@ import { RAIL } from "../shell/rail-tokens.js";
 import { Sheet } from "../components/Sheet";
 import { Text } from "../components/Text";
 import { useUiTheme } from "../theme";
-import { convoChips, type Convo } from "./convo-model.js";
+import { convoChips, convoSections, CONVO_TYPES, type Convo } from "./convo-model.js";
+import { Chip } from "../components/Chip";
+import { SidebarLabel } from "../shell/SidebarLabel";
 
 export type { Convo };
 
@@ -92,7 +94,16 @@ export function ConversationHeader({ lead, all, query, onQuery, project, onProje
   );
 }
 
-/** The rows of the Chat list. */
+/** The filter row: All, People, Groups, Agents, Flows. One is chosen. */
+export function ConversationTypes({ type, onType }: { type: string; onType: (t: string) => void }) {
+  return (
+    <ScrollView accessibilityLabel="Show" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 4, paddingHorizontal: RAIL.gutter }} style={{ flexGrow: 0, flexShrink: 0, height: 40 }}>
+      {CONVO_TYPES.map((t) => <Chip key={t.id} selected={type === t.id} onPress={() => onType(t.id)}>{t.label}</Chip>)}
+    </ScrollView>
+  );
+}
+
+/** The rows of the Chat list, in sections: Pinned, People, Groups, Agents, Flows. */
 export function ConversationList({ items, onOpen, whenOf, menuOf, currentChat }: {
   /** The rows to draw (already filtered). */ items: readonly Convo[];
   onOpen: (c: Convo) => void;
@@ -102,7 +113,12 @@ export function ConversationList({ items, onOpen, whenOf, menuOf, currentChat }:
 }) {
   return (
     <View style={{ gap: RAIL.rowGap }}>
-      {items.map((c) => <ConvoRow key={c.id} c={c} selected={Boolean(c.chat) && c.chat === currentChat} when={whenOf(c)} menu={menuOf?.(c)} onOpen={() => onOpen(c)} />)}
+      {convoSections(items).map((sec) => (
+        <View key={sec.id} style={{ gap: RAIL.rowGap }}>
+          {sec.id === "pinned" ? null : <SidebarLabel>{sec.label}</SidebarLabel>}
+          {sec.rows.map((c) => <ConvoRow key={c.id} c={c} selected={Boolean(c.chat) && c.chat === currentChat} when={whenOf(c)} menu={menuOf?.(c)} onOpen={() => onOpen(c)} />)}
+        </View>
+      ))}
     </View>
   );
 }

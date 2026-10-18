@@ -88,6 +88,7 @@ export function fscryptSetupPlan(base, runCmd = (c, a) => spawnSync(c, a, { enco
 }
 
 /** @param {"darwin"|"linux"|"win32"|string} platform @param {{ sizeGb?: number, base?: string, prefer?: "fscrypt"|"gocryptfs" }} [opts] */
+export { fscryptDriver as fscryptDriverForTest };
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
   if (platform === "linux") return opts.prefer === "fscrypt" || (opts.prefer !== "gocryptfs" && opts.base && fscryptSupported(opts.base)) ? fscryptDriver(opts.log) : linuxDriver();
@@ -292,15 +293,16 @@ export async function lockUntilComplete(d) {
   return { locked: false, rounds: tries };
 }
 
-function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }) {
+function fscryptDriver(log = (/** @type {string} */ m) => { try { process.stderr.write(`${m}\n`); } catch { /* nowhere to say it */ } }, statusOf = (/** @type {string} */ f) => { const r = spawnSync("python3", [FSCRYPTCTL, "status", f], { encoding: "utf8", timeout: 10_000 }); return r.status === 0 ? r.stdout.trim() : "absent"; }) {
   const enc = dir => path.join(dir, "enc");
   const key64 = key => { const k = Buffer.from(crypto.hkdfSync("sha512", key, Buffer.alloc(0), "vyre fscrypt workspace v1", 64)); const hex = Buffer.from(k.toString("hex")); k.fill(0); return hex; };
   const helper = (verb, dir, key) => runWithPass("python3", [FSCRYPTCTL, verb, dir], key ? key64(key) : Buffer.alloc(0));
-  const status = dir => { const r = spawnSync("python3", [FSCRYPTCTL, "status", enc(dir)], { encoding: "utf8", timeout: 10_000 }); return r.status === 0 ? r.stdout.trim() : "absent"; };
+  const status = dir => statusOf(enc(dir));
   return {
     name: "fscrypt",
     exists: dir => fs.existsSync(enc(dir)),
-    isMounted: dir => fs.existsSync(enc(dir)) && status(dir) === "present",
+    // "incomplete" is a key that is only partly gone: a process still holds a file open and can read it, so the workspace is NOT closed until the removal has finished.
+    isMounted: dir => fs.existsSync(enc(dir)) && ["present", "incomplete"].includes(status(dir)),
     async create(dir, key) {
       // Owner-only: only POSIX permissions protect an UNLOCKED workspace. Only the folders THIS call creates are chmodded; a folder that was
       // already there (a home, a shared mount) is never touched.

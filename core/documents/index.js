@@ -12,6 +12,8 @@ import { segments } from "../../kernel/core/urn.js";
 import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
+// The audit rules live in lib/audit-rules.js: one copy, imported by the app client and this module.
+import { auditShown, savedAlready } from "../../lib/audit-rules.js";
 import { documentRow } from "./record.js";
 import { expandPaths, LinkError } from "../../lib/link/path.js";
 
@@ -222,6 +224,56 @@ export function registerDocuments(ctx) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       if (!(meta && meta.caller === "module:approvals")) await door.open(i || {}, meta);
       return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+    },
+  });
+
+  // One request's timeline (18 Oct ruling): what was sent, opened, signed or declined, read from the signing app through its own module.
+  ctx.tool("documents.signing.status", {
+    description: "One signature request's timeline: { submission } -> { status: { submission, status, signers: [{ name, email, sent, opened, signed, declined }], audit_url } | null }. Times are milliseconds.",
+    input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
+    callers: CALLERS, effect: "read",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const r = await ctx.call("appmods.signing.status", { name: "documents", submission: Number(i.submission) });
+      if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return { status: null }; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
+      const st = (r && r.data && r.data.status) || null;
+      // The audit link is for a person's own surface only : the file itself is saved on the server, never handed to a model.
+      return { status: st ? { ...st, audit_url: auditShown(meta && meta.caller, st.audit_url) } : null };
+    },
+  });
+
+  // Download audit (18 Oct ruling): the audit file is fetched by the server from the app's own origin, and written under the caller's chain to Files > Signed.
+  // A person's own surface only; a model, a harness or a module never gets the file.
+  /** One Download at a time per request, in this process (the in-process lock; see the note in the tool). */
+  const auditLocks = new Map();
+  ctx.tool("documents.signing.audit", {
+    description: "Download a request's audit file: { submission } -> { path } in Files > Signed. A person's own surface only.",
+    input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const d = await door.open(i || {}, meta);
+      if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
+      // Two clicks on one request queue here (an in-process lock per submission): the second finds the file the first saved. A second Download
+      // does not write again; the file already in Files > Signed is returned (the ruling, 18 Oct). A cross-process race can add one more
+      // version of identical bytes, which is harmless (BACKLOG: create-only drive put).
+      const key = `audit:${Number(i.submission)}`;
+      const prior = auditLocks.get(key) || Promise.resolve();
+      const run = prior.catch(() => {}).then(async () => {
+        const path0 = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
+        let existing = null;
+        try { existing = await d.gateway.drive.stat(d.chain, path0); } catch (e) { if (/** @type {any} */ (e)?.code !== "not_found") throw e; }
+        if (savedAlready(existing)) return { path: path0, bytes: 0, already: true };
+        const r = await ctx.call("appmods.signing.audit", { name: "documents", submission: Number(i.submission) });
+        if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+        const bytes = Buffer.from(String(r.data.bytes), "base64");
+        // An error page from the app is not an audit file: the bytes must start with the PDF signature before they are saved as one.
+        if (bytes.subarray(0, 4).toString("latin1") !== "%PDF") throw refuse("the app did not send an audit PDF", "app_refused");
+        const put = await d.gateway.drive.put(d.chain, path0, new Uint8Array(bytes), { base: null });
+        return { path: path0, bytes: bytes.length, ...(put && put.version ? { version: put.version } : {}) };
+      });
+      auditLocks.set(key, run);
+      run.finally(() => { if (auditLocks.get(key) === run) auditLocks.delete(key); }).catch(() => {});
+      return run;
     },
   });
 
