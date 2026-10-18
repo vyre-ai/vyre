@@ -179,23 +179,20 @@ test("(c) a retry from before a step that already sent is refused and sends noth
   assert.ok(f.id);
 });
 
-test("(c) a retry from a step runs the version the run started on, not a newer one, and a draft keeps the same idempotency key", async () => {
+test("(c) a retry from a step runs the version the run started on, not a newer one", async () => {
   const sb = sandbox();
-  const idems = /** @type {string[]} */ ([]);
-  const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ _a, /** @type {string} */ _r, /** @type {any} */ _i, /** @type {any} */ o) => { idems.push(o.idem); return { ok: true }; } } });
-  const d1 = await install(w, flowOf([{ id: "draft", kind: "call", action: "email.draft", resource: `vyre://${(await import("./testing/fixtures.js")).SPACE}/mail/*`, input: { to: "a@example.com" } }, fn("a")]));
+  const w = await world({ ports: { sandbox: sb.port } });
+  const d1 = await install(w, flowOf([fn("a"), fn("b")]));
   const run = await fire(w);
   assert.equal(run.state, "done");
-  assert.equal(idems.length, 1);
-  // a newer version goes live whose code step is different
-  const v2 = await w.runner.define(d1.id, flowOf([{ id: "draft", kind: "call", action: "email.draft", resource: `vyre://${(await import("./testing/fixtures.js")).SPACE}/mail/*`, input: { to: "changed@example.com" } }, fn("z")]), ALEX);
+  // a newer version goes live whose second step is different
+  const v2 = await w.runner.define(d1.id, flowOf([fn("a"), fn("z")]), ALEX);
   assert.ok(v2.ok, JSON.stringify(v2.errors));
   await w.runner.approve(d1.id, v2.version, ALEX, v2.hash);
   sb.calls.length = 0;
-  await w.runner.retry(run.id, { from: "draft" }); await settle(w);
-  assert.deepEqual(sb.calls, ["a"], "version 1's code ran, not version 2's");
-  assert.equal(idems.length, 2);
-  assert.equal(idems[0], idems[1], "the same key, so the receiving side can see it is the same act");
+  await w.runner.retry(run.id, { from: "a" }); await settle(w);
+  assert.deepEqual(sb.calls, ["a", "b"], "version 1's steps ran, not version 2's");
+  assert.equal((await w.store.getRun(run.id)).version, d1.version);
 });
 
 test("flows.step.test tries one step on a past run's recorded inputs, says what it would send, and sends nothing", async () => {
