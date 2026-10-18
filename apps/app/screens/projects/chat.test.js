@@ -11,6 +11,7 @@ test("the project chat answers as open, waiting, pending, missing (the tool is n
   assert.deepEqual(chatAnswer(full({ missing: ["per_a", "per_b"], extra: ["per_c"], readonly_for_you: true })), { state: "open", chat: "chat_pj_ab12", adding: 2, readOnly: true });
   assert.deepEqual(chatAnswer({ data: { chat: "chat_pj_ab12", member: false, waiting: true } }), { state: "waiting" }, "on the team, not in the chat yet");
   assert.deepEqual(chatAnswer({ data: { chat: null, pending: true } }), { state: "pending" }, "a viewer, and nobody has made it");
+  assert.deepEqual(chatAnswer({ data: { chat: null, id: "chat_pj_ab12", needs_ring: true, people: ["per_a"] } }), { state: "making" }, "a writer, and no device has made the ring yet");
   for (const code of ["unknown_tool", "no_such_tool", "not_found"]) assert.equal(chatAnswer({ error: { code, message: "no such tool work.project.chat" } }).state, "missing", code);
   assert.equal(chatAnswer({ error: { code: "not_found", message: "no such project" } }).state, "failed", "a project the person cannot read is a failure, not a missing tool");
   assert.deepEqual(chatAnswer({ error: { code: "denied", message: "you cannot open it" } }), { state: "failed", why: "you cannot open it" });
@@ -26,6 +27,7 @@ test("the line under the button says what is happening, or nothing", () => {
   assert.match(chatNote(chatAnswer({ data: { chat: "x", member: false, waiting: true } })), /adds you/);
   assert.match(chatNote(chatAnswer({ data: { chat: null, pending: true } })), /Nobody has made/);
   assert.equal(chatNote(chatAnswer({ error: { code: "unknown_tool", message: "" } })), null);
+  assert.equal(chatNote({ state: "making" }), null, "a team member is never shown that nobody has made it");
 });
 
 test("the chat opens at its own page", () => {

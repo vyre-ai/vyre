@@ -1,11 +1,11 @@
 // @ts-check
 // A project's group chat, pure: the answer of work.project.chat { project } read as one of five states. The tool returns { chat, id, member, people[], missing[], extra[], readonly[], readonly_for_you }; a person who is on the
-// team but not yet in the chat gets { member: false, waiting: true }, and a viewer asking before anyone made it gets { chat: null, pending: true }. `missing` are team members not in the chat yet, `extra` people in it who are
+// team but not yet in the chat gets { member: false, waiting: true }, a viewer asking before anyone made it gets { chat: null, pending: true }, and a writer asking before anyone made it gets { chat: null, needs_ring: true } (a device makes the ring and asks again). `missing` are team members not in the chat yet, `extra` people in it who are
 // not on the team: a device in the chat applies both (work.chat.change), so the screen only says it is under way. Tested by chat.test.js. The hook is useProjectChat.ts.
 
 /**
  * @param {{ data?: any, error?: { code: string, message: string } } | undefined} r
- * @returns {{ state: "open", chat: string, adding: number, readOnly: boolean } | { state: "waiting" } | { state: "pending" } | { state: "missing" } | { state: "failed", why: string }}
+ * @returns {{ state: "open", chat: string, adding: number, readOnly: boolean } | { state: "making" } | { state: "waiting" } | { state: "pending" } | { state: "missing" } | { state: "failed", why: string }}
  */
 export function chatAnswer(r) {
   if (r && r.error) {
@@ -15,6 +15,8 @@ export function chatAnswer(r) {
   }
   const d = r && r.data;
   if (d && d.pending === true && !d.chat) return { state: "pending" };
+  // no chat yet and the server never makes the key: a device in the team makes the ring (ensureProjectChat) and asks again. The person is not shown this; the page waits.
+  if (d && d.needs_ring === true && !d.chat) return { state: "making" };
   if (d && d.member === false && d.waiting === true) return { state: "waiting" };
   if (!d || typeof d.chat !== "string" || !d.chat) return { state: "failed", why: "The group chat did not open." };
   return { state: "open", chat: d.chat, adding: Array.isArray(d.missing) ? d.missing.length : 0, readOnly: d.readonly_for_you === true };
