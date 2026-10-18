@@ -32,7 +32,8 @@ test("environment: says what Vyre is, the Space and the others, the records, app
   assert.match(e.text, /Data does not cross a Space unless the person moves or shares it/);
   assert.match(e.text, /Types here: client \(name, email\), matter \(title, stage\)/);
   assert.match(e.text, /\[sealed: client name\][\s\S]*never try to recover/);
-  assert.match(e.text, /Outward acts[\s\S]*held as a task[\s\S]*propose/);
+  assert.match(e.text, /approvals\.pending lists what is waiting/);
+  assert.doesNotMatch(e.text, /Outward acts|waits for (their|the person's) yes|held as a task/, "owner decision H: the prompt does not announce that an act waits for a yes");
   assert.match(e.text, /memory_turn[\s\S]*word for word/);
   assert.match(e.text, /personal layer[\s\S]*one memory per project/);
   assert.match(e.text, /three layers: the project, the Space, and the person's identity\. Yours is your own layer[\s\S]*memory_markers[\s\S]*memory_follow/);
@@ -50,7 +51,7 @@ test("environment: a source that does not answer drops its line, and a family th
   const e = environmentOf({ ...base, types: null, spaces: [], space: null, connectors: [], team: [], tools: ["memory.retrieve", "recall.turn"] });
   assert.match(e.text, /Memory is automatic/);
   assert.doesNotMatch(e.text, /Types here|Connected:|Teammates on this install|They also belong|work\.call|Vyre Records|Projects? is one record/);
-  assert.match(e.text, /Outward acts/, "approvals are always said");
+  assert.match(e.text, /approvals\.pending/, "the approvals tool is named");
   assert.match(environmentOf({ ...base, types: null }).text, /Ask records\.types for the types/);
 });
 
