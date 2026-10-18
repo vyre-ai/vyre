@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
+- fix(app): the type check knows react-dom's createPortal (a local declaration, no new dependency), which the web message menu uses.
+- test: journey-fork-continue expects the owner's wording for where a fork runs ("Space's Cloud", "My Computer").
+- fix(app): the message menu offers Copy only for a message that is finished (done is true), and the wiring test reads the Rewind and Second opinion labels from the menu model.
+- fix(app): the sample world's message menu offers Fork from here (and Fork before this message on your own), as a real chat does; the chat shots right-click an agent reply and your own message.
+- fix(app): the sample fork origin (a fixed demo key) runs only when the demo route asks for it and the app is in the mock world (sampleAllowed, tested).
+- fix(app): the message menu is drawn on the page itself (a portal to document.body on the web), so it is not clipped by the transcript scroller or placed against a transformed row; the shots print how many menus are open after the right-click.
+- feat(app): a forked thread shows "Earlier in the original": one read of the origin's frames (stream.read) up to the reply it was forked at, folded outside the thread's store, private messages opened with the ring this device holds, dimmed, ending in a "Forked here" divider. A device that cannot open the origin shows the banner alone. The chat shots open a sample fork that goes through the same fold and decrypt.
+- feat(app): adding people to a group chat uses work.chat.add-people: it asks, makes the ring each missing thread needs on this device, and asks again, so a person added to a group gets every thread.
+- fix(app): "Make a Flow from this chat" passes the chat's id to flows.from-chat, so the Flow remembers where it was made.
+- feat(app): a draft can hold # tags: writeDraft(thread, text, mentions) keeps { kind, id, name } beside the text and the composer shows them as chips.
+
+- fix(app): the chat key helpers (ringWithPeople, ringWithoutPeople) take the device record with its public key as well as its agree function, so the type check passes.
 - perf: Documents loads its two Word libraries (pizzip, docxtemplater) on the first fill or read of a template, not at start, so the idle heap is lower and Documents starts faster. Nothing else changes
 - fix(runner): a workspace is never reported "locked" while it can still be read. Its status says "locking" from the end of the lease until the key is really off the filesystem, and an fscrypt key that is only partly removed ("incomplete": a process still holds a file) counts as mounted, so the lock keeps retrying and stopping the holders instead of calling it done
 

@@ -65,7 +65,7 @@ import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, rec
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
-import { closeToAddedModules } from "../../lib/first-party-door.js"; import { forkCut } from "./fork-point.js";
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -186,26 +186,8 @@ export const MIGRATIONS = [
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
-/** What a provider is called in a line a person reads. @param {string} p */
-export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
-
-/** The things a provider can do that a person would miss, in the words a notice uses. */
-const CAP_WORDS = { rewind: "going back to an earlier turn", steering: "steering a turn that is running", questions: "asking you questions with options", interrupt: "stopping a turn midway", transcripts: "opening its transcript in a terminal" };
-
-/**
- * The line a thread says when its provider changes: what the new one has, and what it does not. Plain words, never a promise Vyre cannot keep.
- * @param {{ from: string, to: string, had: boolean, reason?: string, fromCaps?: any, toCaps?: any }} o
- */
-export function switchedLine({ from, to, had, reason = "asked", fromCaps = {}, toCaps = {} }) {
-  const f = providerName(from), t = providerName(to);
-  if (reason === "back") return `Back on ${t}. It has this session's memory and files, and what ${f} said this turn.`;
-  const parts = [reason === "limit" ? `${f}'s limit was reached.` : "", reason === "once" ? `This turn runs on ${t}. It has this session's memory and files. The session stays on ${f}.` : `Switched to ${t}. It has this session's memory and files.`];
-  // A provider that never ran the thread starts from what was said so far, not from the other one's own notes and tool results.
-  if (!had && reason !== "once") parts.push(`It starts from what was said so far, not from ${f}'s own working notes.`);
-  const lost = Object.keys(CAP_WORDS).filter(k => fromCaps[k] && !toCaps[k]).map(k => CAP_WORDS[k]);
-  if (lost.length) parts.push(`${t} cannot do these here: ${lost.join(", ")}.`);
-  return parts.filter(Boolean).join(" ");
-}
+import { providerName, switchedLine } from "./switched.js";
+export { providerName, switchedLine };
 
 /** Words a model wrote, quoted into a Vyre line: every line indented, so a line of its own that looks like the end of the block or a new Vyre line stays inside the quote. @param {string} text */
 export const quoted = text => String(text).split("\n").map(l => `  | ${l}`).join("\n");
@@ -674,8 +656,13 @@ export class Switchboard {
     });
   }
 
-  /** Where a thread forks: the run of this chat that holds the agent's message, and the transcript line that ends it (core/sessions/drivers/fork-point.js reads the provider's file). @param {string} chat @param {string} message @returns {{ run: string, uuid: string }} */
-  forkPoint(chat, message) { const hit = forkCut(this.ofChat(String(chat)).reverse(), r => findSession(this.deps.transcripts || [], this.nativeOf(r.thread)), String(message)); this.needCap(hit.run, "fork", "fork a thread"); return hit; }
+  /** Where a thread forks: the newest run of this chat whose transcript holds the agent's message (the provider's message id or a line's uuid), and the last line of it, which ends the kept part. @param {string} chat @param {string} message @returns {{ run: string, uuid: string }} */
+  forkPoint(chat, message) {
+    const runs = this.ofChat(String(chat)).reverse();
+    if (!runs.length) throw Object.assign(new Error("this thread has no conversation yet, so there is nothing to fork from: send a message in it first, then fork one of the replies"), { code: "not_found" });
+    for (const r of runs) { let line; try { line = this.findLine(r.thread, String(message), "assistant"); } catch { continue; } this.needCap(r.thread, "fork", "fork a thread"); return { run: r.thread, uuid: String(line.uuid) }; }
+    throw Object.assign(new Error("that is not one of the agent's replies in this thread: pick a reply from this thread and fork from that"), { code: "not_found" });
+  }
 
   /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
   terminalsOf(chat) {
@@ -3241,14 +3228,14 @@ export class Switchboard {
    * The same thread and transcript; a running turn is stopped first.
    * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
    */
-  /** The user turn named by uuid, in this session's transcript here (rewind and forkAt share the lookup). */
-  findLine(id, uuid) {
+  /** The user turn named by uuid, in this session's transcript here (rewind, forkAt and forkPoint share the lookup; of "assistant" finds an agent reply, by uuid or the provider message id, and keeps the last line that holds it). */
+  findLine(id, uuid, of = "user") {
     const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
     let line = null;
     for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
       if (!l.includes(uuid)) continue;
-      try { const j = JSON.parse(l); if (j.uuid === uuid && j.type === "user") { line = j; break; } } catch {}
+      try { const j = JSON.parse(l); if (of === "user" ? j.uuid === uuid && j.type === "user" : j.type === "assistant" && j.uuid && (j.uuid === uuid || (j.message && j.message.id === uuid))) { line = j; if (of === "user") break; } } catch {}
     }
     if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
     return line;

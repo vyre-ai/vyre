@@ -77,7 +77,7 @@ export async function ringWithHolders(ring, me, holders) {
 
 /**
  * The ring of a chat with these people's devices added, for work.thread.add-people. A person with a device that cannot yet open private chats stops it with a plain line.
- * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {string[]} people @param {{ holder: string, ecdh: any }} me
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {string[]} people @param {{ holder: string, jwk: any, ecdh: any }} me
  * @returns {Promise<{ ring: any } | { say: string }>}
  */
 export async function ringWithPeople(call, chat, people, me) {
@@ -100,7 +100,7 @@ export async function ringWithoutHolders(ring, me, keep, drop) {
 
 /**
  * The ring of a chat with these people taken out (a project's chat after someone left the team), for work.chat.change { remove_people, ring }.
- * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {string[]} remaining everyone who stays, this person included @param {string[]} removed @param {{ holder: string, ecdh: any }} me
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {string} chat @param {string[]} remaining everyone who stays, this person included @param {string[]} removed @param {{ holder: string, jwk: any, ecdh: any }} me
  * @returns {Promise<{ ring: any } | { say: string }>}
  */
 export async function ringWithoutPeople(call, chat, remaining, removed, me) {
