@@ -1069,3 +1069,14 @@ test("pinned guides: instructions and skills ride on the task, the checklist is 
   assert.equal(done.state, "needs_check");
   assert.ok(done.review.checklist_hash, "the result stores the hash of the checklist it was judged against");
 });
+
+test("pinned guides: a skill the caller may not read refuses exactly like a missing one, a repeated skill id is refused, and the guides have a size cap", async () => {
+  const seen = [];
+  const r = rig({ skills: { pin: async (id, chain) => { seen.push(chain.hops[0].actor.id); return id === "secret" ? null : id.startsWith("big") ? { hash: "h", checklist: Array.from({ length: 60 }, () => "x".repeat(200)) } : { hash: "h1", checklist: ["a"] }; } } });
+  const spec = (skills, instructions) => draftTask({ reviewer: actor("person", BOB), skills: { reviewer: skills }, ...(instructions ? { instructions } : {}) });
+  const msg = async skills => { try { await r.tasks.request(owner(), spec(skills)); return null; } catch (e) { return `${e.code}: ${e.message}`; } };
+  assert.equal(await msg(["secret"]), "bad_input: skill secret is not one of this Space's skills");
+  assert.deepEqual(seen.slice(0, 1), [OWNER], "the pin is asked with the caller's chain");
+  await assert.rejects(r.tasks.request(owner(), spec(["a", "a"])), { code: "bad_input" });
+  await assert.rejects(r.tasks.request(owner(), spec(["big", "big2", "big3", "big4", "big5", "big6", "big7", "big8", "big9", "big10"], { doer: "y".repeat(2000), reviewer: "y".repeat(2000), approver: "y".repeat(2000) })), { code: "bad_input" });
+});

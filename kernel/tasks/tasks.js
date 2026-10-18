@@ -35,6 +35,7 @@ const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
 const OUTPUTS = new Set(["fields", "note", "draft", "sent", "decision", "file"]);
 const FIX_CAP = 400;
+const GUIDES_MAX = 65536;   // a task's instructions and pinned checklists together, in canonical JSON
 const COOL_DOWN_MS = 7 * 24 * 3600_000;
 const DENIALS_TO_STUCK = 3;
 
@@ -86,7 +87,7 @@ export async function checkOutput(task, evidence, facts) {
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
  *   resolve?: { template?: (id: string, version: number) => Promise<{ body: string } | null>, contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string, record?: string } | null> },
- *   skills?: { pin(id: string): Promise<{ hash: string, checklist: string[] } | null> },   // a Space skill by id: its content hash and checklist now, for a slot to pin
+ *   skills?: { pin(id: string, chain: any): Promise<{ hash: string, checklist: string[] } | null> },   // a Space skill by id: its content hash and checklist now, for a slot to pin
  *   facts?: { record?: (urn: string) => Promise<any>, exists?: (urn: string) => Promise<boolean> },
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
@@ -311,11 +312,11 @@ export function createTasks(cfg) {
    * as well, so a review that changed after the card was shown, or no review where one was passed, does not match what was signed.
    */
   const reviewHashOf = (/** @type {any} */ t) => (t.review ? sha256(canonical({ review: t.review, note: t.review_note !== undefined ? sha256(canonical(t.review_note)) : null })) : null);
-  /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
   /** The slots' instructions and pinned skills (id, content hash, checklist) by hash, for the body an approval covers; nothing when the task has none. They cannot change after the request, so no later edit can undo what was signed. @param {any} t */
   const guideHash = (t) => (t.guides !== undefined ? { guide_hash: sha256(canonical(t.guides)) } : {});
   /** The reviewer's pinned checklist as the items a pass must answer, and the hash of what it was judged against. @param {any} t */
   const pinnedItems = (t) => ((t.guides && t.guides.skills && t.guides.skills.reviewer) || []).flatMap((/** @type {any} */ k) => k.checklist.map((/** @type {string} */ item) => ({ skill: k.id, item })));
+  /** The details and outputs the doer gave with tasks.update, by hash, for the body an approval covers (nothing when there are none: a task never updated signs what it always did). @param {any} t */
   const taskDataHash = (t) => (t.details !== undefined || t.outputs !== undefined ? { task_data_hash: sha256(canonical({ details: t.details ?? null, outputs: t.outputs ?? [] })) } : {});
   const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   /** The ownership rule for a task write (kernel/gateway/ownership.js), the same one the records write path applies: a person who is not the doer, the giver or on the task's project does not change it, move it into a project she is not on, or skip it. @param {any} chain @param {any} t the task, or null for a new one @param {any} patch @param {"create"|"update"|"remove"} op */
@@ -426,16 +427,17 @@ export function createTasks(cfg) {
         if (Object.entries(ins).some(([k, v]) => typeof v !== "string" || v.length > 2000 || (k === "reviewer" && !reviewer) || (k === "approver" && !checker))) throw new KernelError("bad_input", "an instruction is text of at most 2000 characters, for a slot the task has");
         const pinned = /** @type {any} */ ({});
         for (const [k, ids] of Object.entries(sk)) {
-          if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80)) throw new KernelError("bad_input", "skills are up to 10 Space skill ids, for a slot the task has");
+          if ((k === "reviewer" && !reviewer) || (k === "approver" && !checker) || !Array.isArray(ids) || ids.length > 10 || ids.some((/** @type {any} */ i) => typeof i !== "string" || !i || i.length > 80) || new Set(ids).size !== ids.length) throw new KernelError("bad_input", "skills are up to 10 different Space skill ids, for a slot the task has");
           pinned[k] = [];
           for (const i of ids) {
-            const found = cfg.skills ? await cfg.skills.pin(i) : null;
+            const found = cfg.skills ? await cfg.skills.pin(i, chain) : null;
             if (!found || typeof found.hash !== "string" || !Array.isArray(found.checklist) || found.checklist.length > 60) throw new KernelError("bad_input", `skill ${i} is not one of this Space's skills`);
             pinned[k].push(freeze({ id: i, hash: found.hash, checklist: freeze(found.checklist.map((/** @type {any} */ c) => String(c).slice(0, 200))) }));
           }
           pinned[k] = freeze(pinned[k]);
         }
         guides = deepFreeze({ instructions: structuredClone(ins), skills: pinned });
+        if (canonical(guides).length > GUIDES_MAX) throw new KernelError("bad_input", "instructions and skills are too long together: keep them under 64 KB");
       }
       const out = spec.output.kind === "sent";
       if (!checker && out) checker = cfg.approver ? cfg.approver(chain) : undefined;
