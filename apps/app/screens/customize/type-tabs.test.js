@@ -2,6 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../audit/model.js";
 import { accessRows, eventLines, holderRows, tabRefusal } from "./type-tabs.js";
 
 const roles = [
@@ -44,4 +45,11 @@ test("refusals are in words", () => {
   assert.equal(tabRefusal("not_allowed"), "Only an owner or an admin sees this.");
   assert.equal(tabRefusal("no_such_tool"), "This server cannot show that yet. It will once it is updated.");
   assert.equal(tabRefusal("x", "Boom"), "Boom");
+});
+
+test("a member whose records.audit is refused by the box reads the plain refusal and is shown no change", () => {
+  const said = refusal("not_allowed", "only an owner or an admin opens the audit");
+  assert.equal(said, "Only an owner or an admin opens the audit.", "the box's code becomes the plain sentence, not its raw text");
+  assert.equal(tabRefusal("not_allowed"), "Only an owner or an admin sees this.");
+  assert.deepEqual(eventLines(undefined, "contact"), [], "no events, no lines");
 });

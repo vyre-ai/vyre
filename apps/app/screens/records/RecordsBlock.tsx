@@ -7,6 +7,7 @@ import { NewViewSheet } from "./NewViewSheet";
 import { ImportSheet } from "./ImportSheet";
 import { AddTypeSheet } from "../customize/AddTypeSheet";
 import { useKernelTypes } from "../customize/kernel-types";
+import { TypeFields } from "../customize/TypeScreen";
 import { TypeAccess } from "../customize/TypeAccess";
 import { TypeHistory } from "../customize/TypeHistory";
 import { useEffectiveList } from "./views-actions";
@@ -162,9 +163,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {world.types.length > TABS_MAX
         ? <Select label="Type" value={type} options={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
         : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={world.types.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
-      {/* The type's own tabs, as on a Flow: its records, its fields (Settings), who may do what with it, and what changed. */}
-      <Tabs value={pane} onChange={(v) => { if (v === "fields") router.push(`/u/settings/customize/${type}` as never); else setPane(v); }} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
-      {pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
+      {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
+      <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
+      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
       {filter && !cleared ? (
         <Card>
           <View className="flex-row items-center gap-s3 px-s4 py-s3">

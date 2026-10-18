@@ -22,21 +22,17 @@ async function copyText(text: string) {
   await mod.setStringAsync(text);
 }
 
-/** One type: its name, its fields in groups, the field editor beside them (a sheet on a phone), its stages. Every change is one records.define. */
-export function TypeScreen() {
-  const { type } = useLocalSearchParams<{ type: string }>();
-  const router = useRouter();
+/** One type's fields, in groups, with the field editor beside them (a sheet on a phone), its name and its stages. Every change is one records.define. Settings and the Records page both show it. */
+export function TypeFields({ type }: { type: string }) {
   const { phone } = useUiTheme();
-  const { defs, load, loading, save, busy } = useKernelTypes();
+  const { defs, load, save, busy } = useKernelTypes();
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
-  const [tab, setTab] = useState("fields");
   const [label, setLabel] = useState("");
   const [names, setNames] = useState<Record<number, string>>({});
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
   useEffect(() => { if (def) setLabel(def.label); }, [def?.name]);
-  if (!def && loading) return <Page title="Objects" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
-  if (!def) return <Page title="Objects" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
+  if (!def) return null;
   const types = defs.map((d) => ({ name: d.name, label: d.label, plural: (d.plural as string) ?? `${d.label}s` }));
   const self = types.find((t) => t.name === def.name)!;
   const groups: Group[] = def.groups ?? [];
@@ -107,15 +103,32 @@ export function TypeScreen() {
     </View>
   );
   return (
-    <Page title={def.label ? `${self.plural}` : "Type"} sub="Objects" back="/u/settings/customize">
+    <>
       {working ? <Banner><Text strong>{`Setting up ${def.label} in Records...`}</Text><Text size="caption" tone="muted">This can take a minute. You can leave this page; it finishes on its own.</Text></Banner> : null}
-      <Tabs value={tab} onChange={setTab} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
-      {tab === "access" ? <TypeAccess type={def.name} label={self.plural} /> : tab === "history" ? <TypeHistory type={def.name} /> : null}
-      <View className={tab !== "fields" ? "hidden" : phone ? "gap-s3" : "flex-row items-start gap-s4"}>
+      <View className={phone ? "gap-s3" : "flex-row items-start gap-s4"}>
         {list}
         {!phone && pane ? <View className="min-w-0 flex-1 gap-s3"><SectionLabel first>{edit?.orig ? `Edit ${edit.orig.label}` : "New field"}</SectionLabel><Card>{pane}</Card></View> : null}
       </View>
       <Sheet open={phone && !!edit} onClose={() => setEdit(null)} title={edit?.orig ? `Edit ${edit.orig.label}` : "New field"}>{pane}</Sheet>
+    </>
+  );
+}
+
+/** One type in Settings: its Fields, Access and History tabs. */
+export function TypeScreen() {
+  const { type } = useLocalSearchParams<{ type: string }>();
+  const router = useRouter();
+  const { defs, load, loading } = useKernelTypes();
+  useEffect(() => { if (!defs.length) void load(); }, []);
+  const def = defs.find((d) => d.name === type);
+  const [tab, setTab] = useState("fields");
+  if (!def && loading) return <Page title="Objects" back="/u/settings/customize"><LoadingState rows={3} /></Page>;
+  if (!def) return <Page title="Objects" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
+  const plural = (def.plural as string) ?? `${def.label}s`;
+  return (
+    <Page title={def.label ? plural : "Type"} sub="Objects" back="/u/settings/customize">
+      <Tabs value={tab} onChange={setTab} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
+      {tab === "access" ? <TypeAccess type={def.name} label={plural} /> : tab === "history" ? <TypeHistory type={def.name} /> : <TypeFields type={def.name} />}
     </Page>
   );
 }
