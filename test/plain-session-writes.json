@@ -473,6 +473,10 @@
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
   },
+  "skills.import": {
+   "class": "own",
+   "why": "an uploaded skill or plugin becomes a DRAFT only, as the person the call carries, through the same path as skills.draft; nothing runs on upload and nothing uses it until the level's owner approves"
+  },
   "skills.draft": {
    "class": "own",
    "why": "writes a DRAFT only, as the person the call carries; nothing uses it until the level's owner approves"

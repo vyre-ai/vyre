@@ -41,6 +41,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- feat(skills): skills.import uploads a SKILL.md, a .md, or a .zip of a skill folder or a plugin (.claude-plugin/plugin.json). It becomes a draft through the same path as skills.draft (the level's owner approves; nothing runs on upload). The file is checked strictly (2 MB zip, 6 MB inflated, no link, no path out or absolute, only skills, commands, agents, hooks and .mcp.json, library name rules, no keys); MCP env and headers are dropped, agents and Claude shell hooks are left out, and each is said. The answer carries worksWith per part for Claude, Codex and Grok (Grok is from its docs and not yet run; Codex has no plugin commands or hooks) and leftOut
+
 - fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
 - fix(app): the type check knows react-dom's createPortal (a local declaration, no new dependency), which the web message menu uses.
 - test: journey-fork-continue expects the owner's wording for where a fork runs ("Space's Cloud", "My Computer").
