@@ -16,6 +16,7 @@ import { ensurePersistent } from "../../src/state/persistent-chat";
 import { NewAgentFlow } from "./NewAgentFlow";
 import { openEngineer } from "../engineer/openEngineer";
 import { agentThreads } from "../../src/chat/threads-source";
+import { ensureEngineerChat } from "../../src/chat/engineer-chat";
 import { Text } from "@vyre/ui";
 
 /** The id of the chat the path shows (/u/chats/<id> or /session/<id>), or "". */
@@ -62,6 +63,8 @@ export function ChatsSidebar() {
   const f = useChatsFilter();
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
+  // the Engineer's Space chat is made or mended on the first open by someone who may use it, then shows pinned in Space chats
+  useEffect(() => { if (allowsMock()) return; void ensureEngineerChat().then((r) => { if (r.state === "ready") refresh(); }); }, []);
   // your assistant has one chat, pinned at the top: it is started the first time you are here
   const asked = useRef(false);
   useEffect(() => {

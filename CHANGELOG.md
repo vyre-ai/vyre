@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- feat(app): the Engineer is one Space chat for everyone who may use it (work.engineer.chat): ensureEngineerChat makes or mends it on this device with the project chat's ring logic, the chat list shows it first in Space chats as Engineer, and New agent, Describe it and Change it in chat open a new thread in it (work.chat.thread.new with agent engineer). A person who may not use the Engineer sees nothing and keeps their own Engineer chat.
 - fix(app): the gallery's new-agent sample no longer carries a model list of its own (the cohesion-drift guard).
 - fix(app): the type check knows react-dom's createPortal (a local declaration, no new dependency), which the web message menu uses.
 - test: journey-fork-continue expects the owner's wording for where a fork runs ("Space's Cloud", "My Computer").

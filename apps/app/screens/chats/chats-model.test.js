@@ -154,3 +154,9 @@ test("a chat row keeps the box's place (personal, space or project), and none wh
   const rows = chatsFrom({ chats: [{ chat: "c1", title: "a", place: "personal", open: true }, { chat: "c2", title: "b", open: true }] });
   assert.deepEqual(rows.map((r) => r.place), ["personal", ""]);
 });
+
+test("the Engineer's Space chat carries engineer_chat through to the row", () => {
+  const [a, b] = chatsFrom({ rows: [{ id: "chat_eng_1", title: "Engineer", place: "space", engineer_chat: true, open: true }, { id: "chat_x", title: "X", open: true }] });
+  assert.equal(a.engineer, true);
+  assert.equal(b.engineer, false);
+});
