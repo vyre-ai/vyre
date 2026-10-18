@@ -36,7 +36,7 @@ function Places() {
             return (
               <div key={p.id} role="button" onClick={() => { if (p.kind === "newsite") router.push(`/u/chats/new?begin=${encodeURIComponent("Build me a new site: ")}` as never); else go(target(p.id)); }}
                 style={{ display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 8px", borderRadius: 10, cursor: "pointer", background: on ? "var(--surface-3)" : "transparent" }}>
-                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "people" : p.kind === "newsite" ? "plus" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
+                <Icon name={(p.kind === "all" ? "drive" : p.kind === "recent" ? "clock" : p.kind === "shared" ? "users" : p.kind === "newsite" ? "plus" : "globe") as never} size={16 as never} tone={on ? "text" : "text-2"} />
                 <div style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text size="caption" strong={on}>{p.label}</Text></div>
                 {p.live ? <Chip tone="ok">Live</Chip> : p.draft ? <Text size="caption" tone="faint">draft</Text> : null}
               </div>
