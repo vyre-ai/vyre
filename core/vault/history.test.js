@@ -104,7 +104,7 @@ test("history tools: vault.history is names only for Claude, revert and old-vers
 });
 
 
-test("a member of a shared vault cannot revert or move an item in it: her own vault has no such item, nothing changes, and the tools refuse her surface", async t => {
+test("a member of a shared vault cannot revert or move an item in it: her own vault has no such item, nothing changes, and neither tool is a member door row or callable from a member surface", async t => {
   // A shared item lives in the owner's vault. A member reads and uses it through the owner's Space tools with her own chain. Her revert
   // resolves the name only in her own vault (mustRow), so the owner's item is not found for her. The tool layer refuses her surface before a tool runs.
   const owner = setup(t), member = setup(t);
@@ -118,7 +118,10 @@ test("a member of a shared vault cannot revert or move an item in it: her own va
   assert.equal(ownerVer(), before.ver, "the item's version is unchanged");
   assert.equal(ownerHist(), before.hist, "no history row was added");
   assert.equal(member.db.prepare("SELECT COUNT(*) AS n FROM vault_history").get().n, 0, "the member's vault gained no history row");
-  // the tool layer: revert and move accept only the person's own surfaces, so a member's call is refused before the tool runs
+  // the member door: neither tool is among its rows, which is what keeps a member out of the Space's vault
+  const memberDoor = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "work", "member-tools.js"), "utf8");
+  for (const name of ["vault.revert", "vault.move"]) assert.ok(!memberDoor.includes(name), `${name} is not a member door row`);
+  // the caller lists: they name only the person's own surfaces (this asserts the lists, not the runtime refusal, which reach.test.js covers)
   const { tools } = await recorded(t);
   for (const name of ["vault.revert", "vault.move"]) {
     const callers = tools.get(name).callers;
