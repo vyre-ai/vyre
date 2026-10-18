@@ -3612,7 +3612,7 @@ Delete a file, or the files of a folder (at most 200 at once), from the Space's 
 - Input:
   - `path` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.drive.space.list`
 
@@ -3633,7 +3633,7 @@ Move a file or folder in the Space's Drive, under the caller's own grants: { spa
   - `from` string, required
   - `to` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.drive.space.read`
 
@@ -3653,7 +3653,7 @@ Rename a file or folder in place in the Space's Drive: { space?, path, name }. `
   - `name` string, required
   - `path` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.drive.status`
 
