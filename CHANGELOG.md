@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- perf: Documents loads its two Word libraries (pizzip, docxtemplater) on the first fill or read of a template, not at start, so the idle heap is lower and Documents starts faster. Nothing else changes
+
 - fix(agents): agents.draft.get names a next step a person can take when the proposed agent is not found: ask the Engineer to propose it again.
 - fix(agents): the new-agent tools sit on the guard lists: agents.new.draft, agents.new.title, agents.new.apply and agents.draft.get are OWNER_ONLY at the member door (staff re-checked in the handler), and agents.draft.get is PERSON_ONLY for an assistant.
 - fix(agents): agents.draft.get says what to do when the proposed agent is not found (the errors-teach guard).
