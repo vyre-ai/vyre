@@ -13,7 +13,7 @@ import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./Pr
 import { kindTabs } from "./kind-panes.js";
 import { useProjectChat } from "./useProjectChat";
 // @ts-ignore a plain .js module
-import { chatPath } from "./chat.js";
+import { chatNote, chatPath } from "./chat.js";
 import { BoardPane, ClientPane, EmailsPane, FlowsPane } from "./KindPanes";
 import { callT } from "../../src/real/call-tool";
 import { ContextEditor, DocsEditor } from "../folderdocs/FolderDocs";
@@ -98,13 +98,14 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <>{chat.state === "open" ? <Button kind="secondary" size="sm" icon="chat" label="Open the group chat" onPress={() => go(chatPath(chat.chat))} /> : null}{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <>{chat.state === "waiting" ? <Button kind="secondary" size="sm" icon="chat" label="Waiting to be added to the chat" disabled onPress={() => {}} /> : null}{chat.state === "open" ? <Button kind="secondary" size="sm" icon="chat" label="Open the group chat" onPress={() => go(chatPath(chat.chat))} /> : null}{mayMake && data?.slug ? <Button kind="ghost" size="sm" label={makingTemplate ? "Making" : "Make a playbook"} loading={makingTemplate} onPress={() => void makeTemplate(String(data.slug))} /> : null}{slug ? <Menu items={[{ label: "Rename", onPress: () => setRenaming(h?.title ?? "") }, { label: "Archive", onPress: () => setArchiving(true) }]} trigger={<IconButton icon="more" label="More for this project" />} /> : null}</> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${wide && (at === "overview") ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
           : (
             <>
+              {chat.state !== "loading" && chatNote(chat as never) ? <Text size="caption" tone="label">{chatNote(chat as never)}</Text> : null}
               <ProjectHeaderStrip stage={strip?.stage ?? null} owners={strip?.people ?? []} slug={slug} onManage={() => setTab("team")} />
               <RecordTags rec={q.data.found.row as never} onChanged={q.reload} />
               {wide
