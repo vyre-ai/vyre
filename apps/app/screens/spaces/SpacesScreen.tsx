@@ -6,7 +6,7 @@ import { ComputersSection } from "./ComputersSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, LogoPicker, SpaceTile, Button, Card, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
+import { Avatar, Banner, LogoPicker, SpaceTile, Button, Card, Menu, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, showToast, markRef, spaceRef, haptic } from "@vyre/ui";
 import { Footnote, Page, Sec } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { useSpaces } from "../shell/state";
@@ -21,12 +21,16 @@ import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canMana
 
 const TEAM = MOCK ? loadTeammates() : [];
 
-type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "temp"; name: string; scope: string; days: string };
+import type { VaultPlan } from "./remove-model.js";
+import { doneLine, linkedOf, offboardNames, removeWords, vaultPlan } from "./remove-model.js";
+import { tool } from "../../src/real/box";
+
+type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "remove"; id: string; plan: VaultPlan | null; ticked: string[] } | { kind: "temp"; name: string; scope: string; days: string };
 
 export function SpacesScreen() {
   const router = useRouter();
   const phone = usePhone();
-  const { members, spaces: SPACES, projects, warnings, error, loading, space, selfId, deviceId, load, setRole, remove, extendBy, addTemp } = useMembers();
+  const { members, spaces: SPACES, projects, warnings, error, loading, space, selfId, deviceId, load, setRole, removeWithVault, extendBy, addTemp } = useMembers();
   useEffect(() => { void load(); }, [load]);
   const cur = SPACES.find((x) => x.id === space);
   const MY_ROLE = (MOCK ? "admin" : (ROLE_IDS as readonly string[]).includes(cur?.role ?? "") ? cur!.role : "member") as Role;
@@ -131,10 +135,39 @@ export function SpacesScreen() {
               <Button kind="primary" label="Save" disabled={(sheet.role === "temp" && !sheet.scope) || (sheet.role === member(sheet.id)?.role && sheet.role !== "temp")} onPress={() => { const m = member(sheet.id)!; const to = sheet.role; setSheet(null); void setRole(m.id, to, { scope: sheet.scope, days: Number(sheet.days) }).then((e) => { if (fail(e)) { haptic.approve(); showToast(`${m.name} is now ${roleLabel(to)}.`); } }); }} />
               <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />
               <View className="flex-1" />
-              <Button kind="hold" label={`Remove ${member(sheet.id)?.name}`} onPress={() => { const m = member(sheet.id)!; setSheet(null); void remove(m.id).then((e) => { if (fail(e)) showToast(`${m.name} was removed from ${spaceName}.`); }); }} />
+              <Button kind="hold" label={`Remove ${member(sheet.id)?.name} from ${spaceName}`} onPress={() => { const m = member(sheet.id)!; setSheet({ kind: "remove", id: m.id, plan: null, ticked: [] }); if (MOCK) { setSheet({ kind: "remove", id: m.id, plan: vaultPlan({ memberName: m.name, linked: null, people: [] }), ticked: [] }); return; }
+                void Promise.all([tool<unknown>("vault.person.of", { member: m.id }).then(linkedOf).catch(() => null), tool<unknown>("vault.people", {}).catch(() => null)])
+                  .then(([linked, people]) => setSheet((cur) => (cur && cur.kind === "remove" && cur.id === m.id ? { ...cur, plan: vaultPlan({ memberName: m.name, linked, people }) } : cur))); }} />
             </View>
           </>
         ) : null}
+      </Sheet>
+
+      <Sheet open={sheet?.kind === "remove"} onClose={() => setSheet(null)} title={sheet?.kind === "remove" ? removeWords(sheet.plan ?? vaultPlan({ memberName: "", linked: null, people: null }), member(sheet.id)?.name ?? "this person", spaceName).title : undefined}>
+        {sheet?.kind === "remove" ? (() => {
+          const m = member(sheet.id);
+          if (!m) return null;
+          if (!sheet.plan) return <Text tone="muted">Checking what {m.name} holds in the Vault.</Text>;
+          const w = removeWords(sheet.plan, m.name, spaceName);
+          return (
+            <>
+              <Text tone="muted">{w.body}</Text>
+              {w.choose ? (
+                <View className="gap-s2">
+                  <Text size="caption" strong tone="label">{w.choose}</Text>
+                  {sheet.plan.candidates.map((n) => (
+                    <Row key={n} title={n} end={<Switch label={n} on={sheet.ticked.includes(n)} onChange={(on: boolean) => setSheet({ ...sheet, ticked: on ? [...sheet.ticked, n] : sheet.ticked.filter((x) => x !== n) })} />} />
+                  ))}
+                </View>
+              ) : null}
+              <View className="flex-row flex-wrap gap-s2">
+                <Button kind="ghost" label="Cancel" onPress={() => setSheet(null)} />
+                <View className="flex-1" />
+                <Button kind="hold" label={`Remove ${m.name}`} onPress={() => { const names = offboardNames(sheet.plan!, sheet.ticked); setSheet(null); void removeWithVault(m.id, names).then((r) => { if (fail(r.error)) showToast(doneLine(m.name, spaceName, r)); }); }} />
+              </View>
+            </>
+          );
+        })() : null}
       </Sheet>
 
       <Sheet open={sheet?.kind === "extend"} onClose={() => setSheet(null)} title={sheet?.kind === "extend" ? `Extend ${member(sheet.id)?.name}` : undefined}>

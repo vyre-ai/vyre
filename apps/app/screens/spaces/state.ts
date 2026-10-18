@@ -23,6 +23,8 @@ type S = {
   load: (space?: string | null) => Promise<void>;
   setRole: (id: string, role: Role, opts?: Opts) => Promise<string | null>;
   remove: (id: string) => Promise<string | null>;
+  /** Remove a member, then end what the given Vault people hold (vault.offboard each). Answers the error, or null and how many secrets need a new value. */
+  removeWithVault: (id: string, vaultNames: string[]) => Promise<{ error: string | null; rotate: number }>;
   extendBy: (id: string, days: number) => Promise<string | null>;
   addTemp: (m: Member & { person?: string }) => Promise<string | null>;
 };
@@ -91,6 +93,15 @@ export const useMembers = create<S>((set, get) => {
     async remove(id) {
       if (mockOn) { set((s) => ({ members: s.members.filter((m) => m.id !== id) })); return null; }
       return write("spaces.members.remove", { space: spaceId(), person: id });
+    },
+    async removeWithVault(id, vaultNames) {
+      const error = await get().remove(id);
+      if (error) return { error, rotate: 0 };
+      let rotate = 0;
+      if (!mockOn) for (const person of vaultNames) {
+        try { const r = await tool<{ rotate?: unknown[] }>("vault.offboard", { person }); rotate += Array.isArray(r?.rotate) ? r.rotate.length : 0; } catch { /* the member is out; the Vault step can be done from the Vault */ }
+      }
+      return { error: null, rotate };
     },
     async extendBy(id, days) {
       if (mockOn) { set((s) => ({ members: s.members.map((m) => (m.id === id ? (extend(m, days) as Member) : m)) })); return null; }
