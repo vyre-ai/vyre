@@ -19,7 +19,10 @@ import { useUiTheme } from "../theme";
 import { AGENT_COLORS } from "../../../../lib/wink-code/agent2.js";
 import { SHAPES, lookSeed } from "./agent-look.js";
 
-export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string };
+export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string; model: string; effort: string; computer: boolean; personal: boolean };
+
+/** The effort choices: the box's own default, then four levels. */
+const EFFORTS: [string, string][] = [["", "Default"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["max", "Max"]];
 
 /** The grid of eight shapes and the row of eight colours that make an agent's look. Used by the New agent dialog and by an agent's Details. */
 export function AgentLookPicker({ shape, color: col, onChange }: { shape: number; color: number; onChange: (p: { shape?: number; color?: number }) => void }) {
@@ -47,9 +50,11 @@ export function AgentLookPicker({ shape, color: col, onChange }: { shape: number
   );
 }
 
-export function NewAgentDialog({ open, onClose, values, onChange, projects, busy, problem, onCreate }: {
+export function NewAgentDialog({ open, onClose, values, onChange, projects, models, owner, busy, problem, onCreate }: {
   open: boolean; onClose: () => void; values: NewAgentValues; onChange: (v: Partial<NewAgentValues>) => void;
   /** The projects it could work in; null while they load. */ projects: readonly { slug: string; name: string }[] | null;
+  /** The box's model choices (sessions.models.get); null while they load, empty when it lists none. */ models?: readonly { id: string; name: string }[] | null;
+  /** The person may give an agent a computer and let it use their personal memory: owner only. */ owner?: boolean;
   busy?: boolean; problem?: string; onCreate: () => void;
 }) {
   const { color } = useUiTheme();
@@ -74,6 +79,18 @@ export function NewAgentDialog({ open, onClose, values, onChange, projects, busy
               {projects === null ? <Text tone="muted">Looking.</Text> : !projects.length ? <Text tone="muted">No projects yet. It will see none until you add some.</Text>
                 : projects.map((p) => <Row key={p.slug} dense title={p.name} end={<Switch label={p.name} on={values.projects.includes(p.slug)} onChange={() => toggle(p.slug)} />} />)}
             </View>
+            <View style={{ gap: 8 }}>
+              <Text medium>Model</Text>
+              {models === undefined || models === null ? <Text tone="muted">Looking.</Text> : models.length ? <Segmented label="Model" value={values.model} onChange={(model) => onChange({ model })} options={[["", "Default"], ...models.slice(0, 4).map((m) => [m.id, m.name] as [string, string])]} /> : <Text tone="muted">The box picks the model.</Text>}
+              <Text medium>Effort</Text>
+              <Segmented label="Effort" value={values.effort} onChange={(effort) => onChange({ effort })} options={EFFORTS} />
+            </View>
+            {owner ? (
+              <View style={{ gap: 4 }}>
+                <Row dense title="Give it a computer" sub="Its own Chrome, terminal and files in Space's Cloud" end={<Switch label="Give it a computer" on={values.computer} onChange={(computer) => onChange({ computer })} />} />
+                <Row dense title="Let it use your personal memory" sub="What you have told your own assistant" end={<Switch label="Let it use your personal memory" on={values.personal} onChange={(personal) => onChange({ personal })} />} />
+              </View>
+            ) : null}
             <View style={{ gap: 8 }}>
               <Text medium>Runs on</Text>
               <Segmented label="Runs on" value={values.runsOn} onChange={(runsOn) => onChange({ runsOn })} options={[["subscription", "Your Claude plan"], ["key", "An API key with a budget"]]} />
