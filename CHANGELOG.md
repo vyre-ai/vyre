@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(skills): a team member uploads a skill file (skills.import through the member door, or the tool on her own chain): skills only (a plugin, a link, a ".." name or an oversize file is refused as for the owner), always a personal draft for herself that she approves alone (a different level or scope in the input is refused, never replaced), the same file limits as the owner path, at most 10 uploads a minute per member, and the uploads count toward her 50 waiting drafts. The member row's keys are level, scope, file and filename; skills.import stays person-only in agent reach. Tests in core/skills/member-import.test.js.
 - fix(runner): a lease taken again while the sessions of its ended lease are still stopping keeps its workspace (contact waits for the closing and then checks the real mount); a revoked end still closes hard and deletes, and a vault answer that arrives after a revoke opens nothing and keeps no key (lease.js). Tests in core/runner/lease-race.test.js.
 - fix(guards): the polish train's suite guards. Refusals in Files move, appmods audit, sessions key check and the Vault member link now say what to do next; the partial-move code has a catalogue entry; documents.signing.status is under the 25-word cap; the Files move tools take the one person-surface list (no bare mobile); the audit link check reads that list too; the AI accounts step reads the Anthropic key shape from the shared table; the Vault migration list is one line shorter.
 

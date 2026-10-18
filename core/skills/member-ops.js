@@ -9,12 +9,17 @@
 
 import { KernelError } from "../../kernel/core/errors.js";
 import { LIMITS } from "../../lib/skill-library.js";
+import { parseUpload, IMPORT_LIMITS } from "./import.js";
 
 /** The most drafts waiting for a yes that one member may have across all levels: the owner's approval list is not hers to fill. */
 export const MAX_PENDING_DRAFTS = 50;
 
+/** A member's uploads: at most this many in a window, counted per member (the file is parsed and unzipped on the server). */
+export const IMPORTS_PER_WINDOW = 10;
+export const IMPORT_WINDOW_MS = 60_000;
+
 /**
- * @param {{ library: any, entriesOf: (items: any[]) => any[], shown: (s: any) => any, vyreSkills: () => any[], browse?: (person: string, chain: any, input: any) => Promise<any> }} o
+ * @param {{ now?: () => number, library: any, entriesOf: (items: any[]) => any[], shown: (s: any) => any, vyreSkills: () => any[], browse?: (person: string, chain: any, input: any) => Promise<any> }} o
  */
 export function createMemberOps(o) {
   /** What she may use: Vyre's own, the Space's approved skills and her own personal ones. @param {string} person */
@@ -57,9 +62,36 @@ export function createMemberOps(o) {
         const owner = await o.library.ownerOfLevel(String(i.level), String(i.scope ?? ""));
         if (!owner || owner !== p) throw new KernelError("not_allowed", `Only the ${i.level}'s owner drafts a skill for it. Ask the owner, or draft a personal skill for yourself.`);
       }
-      const mine = (await o.library.versions({ state: "draft" })).filter((/** @type {any} */ v) => v.proposer === `person:${p}`).length;
-      if (mine >= MAX_PENDING_DRAFTS) throw new KernelError("too_many", `You have ${MAX_PENDING_DRAFTS} drafts waiting for a yes. Ask the owner to approve or clear some, then draft again.`);
+      await pendingGuard(p);
       return o.library.draft(chain, { name: i.name, level: i.level, scope: i.scope, kind: "skill", body: i.body, note: i.note });
+  };
+  /** @type {Map<string, number[]>} when each member's recent uploads happened */
+  const importTimes = new Map();
+  /** The room she has left for drafts waiting for a yes, the same for a draft and an upload. @param {string} p */
+  const pendingGuard = async (p) => {
+    const mine = (await o.library.versions({ state: "draft" })).filter((/** @type {any} */ v) => v.proposer === `person:${p}`).length;
+    if (mine >= MAX_PENDING_DRAFTS) throw new KernelError("too_many", `You have ${MAX_PENDING_DRAFTS} drafts waiting for a yes. Ask the owner to approve or clear some, then draft again.`);
+  };
+  /**
+   * A file she uploads: a skill, for herself. The level and the scope are set here, never taken: a different one in the input is refused. A plugin (MCP servers, hooks, commands) is refused in the draft's words.
+   * The size, the unzip limits and the name checks are the owner path's own (core/skills/import.js); a rate limit and the pending-draft cap are hers.
+   */
+  ops.import = async (/** @type {string} */ p, /** @type {any} */ chain, /** @type {any} */ input) => {
+      const i = clean(input);
+      if (i.level !== undefined && i.level !== "personal") throw new KernelError("bad_input", "A member uploads a personal skill: leave the level out, or say personal.");
+      if (i.scope !== undefined && i.scope !== "" && String(i.scope) !== p) throw new KernelError("bad_input", "A member uploads for herself: leave the scope out.");
+      const raw = String(i.file || "");
+      if (raw.length > Math.ceil(IMPORT_LIMITS.zip * 4 / 3) + 8 || !/^[A-Za-z0-9+/=\s]*$/.test(raw)) throw new KernelError("bad_input", `the file is not base64, or is larger than ${IMPORT_LIMITS.zip / 1024 / 1024} MB`);
+      const now = (o.now || Date.now)();
+      const recent = (importTimes.get(p) || []).filter(t => now - t < IMPORT_WINDOW_MS);
+      if (recent.length >= IMPORTS_PER_WINDOW) throw new KernelError("too_many", `You can upload ${IMPORTS_PER_WINDOW} files a minute. Wait a little, then upload again.`);
+      recent.push(now); importTimes.set(p, recent);
+      const up = parseUpload({ file: Buffer.from(raw, "base64"), filename: typeof i.filename === "string" ? i.filename.slice(0, 200) : "" });
+      if (up.kind === "plugin" || up.code) throw new KernelError("not_allowed", "A plugin can carry code that runs in sessions, so a member cannot add one. Ask the owner or an admin to add it.");
+      await pendingGuard(p);
+      const shown = typeof i.filename === "string" && i.filename ? ` (${i.filename.replace(/[^\w .-]/g, "").slice(0, 80)})` : "";
+      const draft = await o.library.draft(chain, { name: up.name, level: "personal", scope: p, kind: "skill", body: up.body, note: `Uploaded${shown}.${up.leftOut.length ? ` Not taken: ${up.leftOut.join("; ")}.` : ""} Hooks aren't run by Vyre.`.slice(0, 490) });
+      return { ...draft, kind: up.kind, name: up.name, worksWith: up.worksWith, leftOut: up.leftOut, code: false };
   };
   ops.approve = async (/** @type {string} */ _p, /** @type {any} */ chain, /** @type {any} */ input) => { const i = clean(input); return o.library.approve(chain, { name: i.name, level: i.level, scope: i.scope, version: i.version, ...(i.ack ? { ack: i.ack } : {}) }); };
   ops.decline = async (/** @type {string} */ _p, /** @type {any} */ chain, /** @type {any} */ input) => { const i = clean(input); return o.library.decline(chain, { name: i.name, level: i.level, scope: i.scope, version: i.version }); };
