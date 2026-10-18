@@ -93,6 +93,16 @@ export function createHost(o) {
    * the password is used for those two calls and nowhere else, kept by no one here, and never in anything this throws. The key is sent once over the same peer wire as every other vault.me call.
    * @param {any} ports @param {string} box @param {string} space the team's Space id: the app routes a joined team's calls through its door by it @param {{ kind: string, key: string, label: string, password: string, base_url?: string }} i
    */
+  /** The key kind each provider's account is added as. */
+  const COPY_KINDS = /** @type {Record<string, string>} */ ({ claude: "anthropic-compatible", openrouter: "openrouter", "openai-compatible": "openai-compatible" });
+  /** The person's OTHER paired server (the current Space's, else the first that is not the one made here), for reads when another Space is added: its box and the Space's name. */
+  const otherServer = async () => {
+    const k = await o.store.load();
+    if (!k) throw bad("Make your username first.", "no_identity");
+    const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box && s.paired.box !== madeHere));
+    const there = paired.find((s) => s.id === k.current) || paired[0];
+    return there ? { box: String(there.paired.box), name: String(there.name || "your other Space").slice(0, 60) } : null;
+  };
   const memberKey = async (ports, box, space, i) => {
     // every kind the owner can add; the provider an account of it is made for (an OpenAI-style key, xAI's included, is an openai-compatible account at its address)
     const provider = { "anthropic-compatible": "claude", openrouter: "openrouter", "openai-compatible": "openai-compatible" }[/** @type {"anthropic-compatible" | "openrouter" | "openai-compatible"} */ (i.kind)];
@@ -622,6 +632,64 @@ export function createHost(o) {
       if (!a) return { assistant: null };
       const look = typeof a.look === "string" && lookOf(a.look) ? a.look : "";
       return { assistant: { name: String(a.display || a.name || "").slice(0, 40), look } };
+    },
+    // Adding another Space: the AI accounts of the person's OTHER server, for the copy sheet. Labels, providers and whether a key can be copied (a key account can; a sign-in account keeps its token on that server and signs in again). No key, no item name.
+    "onboard.accounts.copyable": async () => {
+      if (!o.space) throw unsupported();
+      const other = await otherServer();
+      if (!other) return { from: null, accounts: [] };
+      const ports = await o.space.load();
+      /** @type {any} */ let l;
+      try { l = await ports.call("sessions.accounts.list", {}, other.box); } catch { return { from: other.name, accounts: [] }; }
+      const rows = (Array.isArray(l) ? l : l && Array.isArray(l.accounts) ? l.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
+      return { from: other.name, accounts: rows.slice(0, 12).map((/** @type {any} */ a) => ({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), copy: a.kind === "api-key" && typeof a.vault_item === "string" && COPY_KINDS[String(a.provider)] !== undefined })) };
+    },
+    // Copy chosen key accounts into the NEW Space: each key is read from the other server's Vault (a gated read, one per key, with its own presence), kept in memory only, and added to the new Space through the same
+    // path a typed key takes (the owner's key tool, or a member's own Vault in one set act). Returns, per account, whether it was added; never a key or an item name.
+    "onboard.accounts.copy": async (input) => {
+      if (!o.space) throw unsupported();
+      const ids = Array.isArray(input && input.ids) ? input.ids.map(String).slice(0, 12) : [];
+      if (!ids.length) throw bad("Pick the accounts to copy.", "bad_input");
+      const dest = await serverOfThisRun("Copy accounts once your space is online.", true);
+      const other = await otherServer();
+      if (!other) throw bad("There is no other Space to copy from.", "no_server");
+      const ports = await o.space.load();
+      const l = /** @type {any} */ (await ports.call("sessions.accounts.list", {}, other.box));
+      const rows = (Array.isArray(l) ? l : l && Array.isArray(l.accounts) ? l.accounts : []).filter((/** @type {any} */ a) => a && ids.includes(String(a.id)));
+      /** @type {{ id: string, label: string, ok: boolean, why?: string }[]} */ const done = [];
+      /** @type {{ id: string, label: string, kind: string, key: string, base_url?: string }[]} */ const keys = [];
+      for (const a of rows) {
+        const label = String(a.label || a.provider || "AI account").slice(0, 80), kind = COPY_KINDS[String(a.provider)];
+        if (a.kind !== "api-key" || typeof a.vault_item !== "string" || !kind) { done.push({ id: String(a.id), label, ok: false, why: "Sign in again on the new Space." }); continue; }
+        try {
+          const got = /** @type {any} */ (await ports.call("vault.reveal", { name: a.vault_item, field: "value" }, other.box));
+          const key = String(got && (got.value ?? got.fields?.value) || "");
+          if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) { done.push({ id: String(a.id), label, ok: false, why: "That key could not be read." }); continue; }
+          const base = typeof a.base_url === "string" && a.base_url === "https://api.x.ai/v1" ? a.base_url : "";
+          keys.push({ id: String(a.id), label, kind, key, ...(base ? { base_url: base } : {}) });
+        } catch (e) { done.push({ id: String(a.id), label, ok: false, why: String((e && /** @type {any} */ (e).code) === "held_for_approval" ? "Waiting for your approval." : "That key could not be read.") }); }
+      }
+      try {
+        if (dest.role && dest.role !== "owner") {
+          if (keys.length) {
+            const r = /** @type {any} */ (await ports.call("vault.me.add-keys", { items: keys.map((k) => ({ label: k.label, value: k.key })), ...(input && input.password ? { password: String(input.password) } : {}), ...(dest.space ? { space: dest.space } : {}) }, dest.box));
+            if (r && typeof r.secret_key === "string" && r.acct && o.memberKeys) await o.memberKeys.put(String(r.acct), r.secret_key);
+            const added = new Set(((r && r.added) || []).map((/** @type {any} */ x) => String(x.label)));
+            for (const k of keys) done.push({ id: k.id, label: k.label, ok: added.has(k.label), ...(added.has(k.label) ? {} : { why: String((r && r.reason) || "Not added.").slice(0, 120) }) });
+          }
+        } else {
+          for (const k of keys) {
+            try { await ports.call("sessions.accounts.key", { kind: k.kind, key: k.key, label: k.label, name: k.label, ...(k.base_url ? { base_url: k.base_url } : {}) }, dest.box); done.push({ id: k.id, label: k.label, ok: true }); }
+            catch (e) { done.push({ id: k.id, label: k.label, ok: false, why: String((e && /** @type {any} */ (e).message) || "Not added.").split(k.key).join("[key]").slice(0, 120) }); }
+          }
+        }
+      } catch (e) {
+        const said = String((e && /** @type {any} */ (e).message) || "Not added.");
+        const clean = keys.reduce((t, k) => t.split(k.key).join("[hidden]"), said).slice(0, 160);
+        if (e && /** @type {any} */ (e).code === "need_password") throw e;
+        throw bad(clean, e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed");
+      } finally { keys.length = 0; }
+      return { copied: done };
     },
     "onboard.assistant.models": async () => {
       if (!o.space) throw unsupported();
