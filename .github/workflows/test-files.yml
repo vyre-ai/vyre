@@ -59,10 +59,14 @@ jobs:
       - name: A loop-mounted ext4 with fscrypt, and the must-run switch
         run: |
           sudo fallocate -l 256M "$RUNNER_TEMP/fsc.img" && sudo mkfs.ext4 -q -O encrypt "$RUNNER_TEMP/fsc.img"
-          # The volume is mounted in this job's own temp folder, never on a path shared with other jobs: six runners of a host used to mount their images one on top of another, on one shared path, each job's tests saw
+          # The volume is mounted on this runner's own path, never on one shared with other runners: six runners of a host used to mount their images one on top of another, on one shared path, each job's tests saw
           # the newest job's volume, and an unmount found another job's files open ("a process still holds a file open"); the images were deleted but the mounts never left (150 to 260 per host).
-          mkdir -p "$RUNNER_TEMP/fsc" && sudo mount -o loop "$RUNNER_TEMP/fsc.img" "$RUNNER_TEMP/fsc" && sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/fsc"
-          echo "VYRE_FSCRYPT_DIR=$RUNNER_TEMP/fsc" >> "$GITHUB_ENV"
+          # Outside /home: the sandbox plan (core/runner) refuses a writable bind under /home or /root, and the runner's temp folder is under /home/runner. The name is the runner's own (a runner runs one job at a time).
+          fsc="/mnt/fsc-$(printf '%s' "$RUNNER_NAME" | tr -c 'A-Za-z0-9_.-' '-')"
+          # a mount a killed earlier job of this runner left on the path goes first, so mounts never stack
+          while mountpoint -q "$fsc"; do sudo umount -l "$fsc" || break; done
+          sudo mkdir -p "$fsc" && sudo mount -o loop "$RUNNER_TEMP/fsc.img" "$fsc" && sudo chown "$(id -u):$(id -g)" "$fsc"
+          echo "VYRE_FSCRYPT_DIR=$fsc" >> "$GITHUB_ENV"
           echo "VYRE_MUST_RUN=1" >> "$GITHUB_ENV"
       # a self-hosted runner restores its dependencies and the pinned Chrome from its own disk (scripts/ci-prewarm.sh); GitHub's hosted runner installs them
       - if: ${{ runner.environment != 'github-hosted' }}
@@ -89,4 +93,5 @@ jobs:
       # The volume is this job's own (above): leaving it mounted leaked one loop mount per job, 150 to 260 per host, and the next job's tests could meet its files.
       - name: Unmount the job's volume
         if: ${{ always() }}
-        run: sudo umount -l "$RUNNER_TEMP/fsc" 2>/dev/null || true
+        run: |
+          case "$VYRE_FSCRYPT_DIR" in /mnt/fsc-*) sudo umount -l "$VYRE_FSCRYPT_DIR" 2>/dev/null || true; sudo rmdir "$VYRE_FSCRYPT_DIR" 2>/dev/null || true;; esac
