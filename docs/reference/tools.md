@@ -6782,10 +6782,10 @@ Whose a plugin server's row is: { name } -> { exists, bound: { plugin, level, pe
 
 ### `mcp.keys.waiting`
 
-Plugin MCP servers waiting for a key: { servers: [{ name, plugin, level, waiting: [{ var, label }] }] }. For Needs you.
+Plugin MCP servers waiting for a key: { servers: [{ name, plugin, level, waiting: [{ var, label }] }] }. Only the approvals queue asks, for Needs you.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `module`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `mcp.mine.add`
 
@@ -8649,7 +8649,7 @@ Items, newest time first, filtered by kind, state, list, project, pinned or tag.
   - `pinned` boolean
   - `project` string
   - `record` string: notes about this record
-  - `scope` "mine" or "shared": mine: written by you; shared: notes others shared with you
+  - `scope` one of "mine", "shared", "space": mine: written by you; shared: notes others shared with you; space: notes shared with the whole Space
   - `state` one of "open", "done", "cancelled", "all": open by default; all for every state
   - `tag` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`

@@ -613,7 +613,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [19](tools.md#mcp), 5 of them only for other modules
+- Tools: [19](tools.md#mcp), 6 of them only for other modules
 - Emits: [11 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
