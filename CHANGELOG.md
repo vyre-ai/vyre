@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased (polish: agents are persistent, each with many threads)
 
+- fix(app): the type check knows react-dom's createPortal (a local declaration, no new dependency), which the web message menu uses.
 - test: journey-fork-continue expects the owner's wording for where a fork runs ("Space's Cloud", "My Computer").
 - fix(app): the message menu offers Copy only for a message that is finished (done is true), and the wiring test reads the Rewind and Second opinion labels from the menu model.
 - fix(app): the sample world's message menu offers Fork from here (and Fork before this message on your own), as a real chat does; the chat shots right-click an agent reply and your own message.
