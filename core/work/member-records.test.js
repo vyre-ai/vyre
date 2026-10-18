@@ -242,4 +242,12 @@ test("a private note and an outside calendar's event are private on every kernel
   assert.ok((await call(w.OWNER, "planner.update", { item: item.id, title: "hijack" })).error, "and the owner cannot edit another person's private note");
   { const mine = await call(ZED, "planner.update", { item: item.id, visibility: "space" }); assert.ok(!mine.error, `its writer can: ${JSON.stringify(mine.error)}`); }
   assert.ok(note.urn);
+  // a note about a note is refused at write time, and two notes written about each other (made past the planner) do not loop
+  const about = await call(ZED, "planner.add", { kind: "note", title: "about a note", record: note.urn, visibility: "record" });
+  assert.ok(about.error && /not another note/.test(JSON.stringify(about.error)), JSON.stringify(about));
+  const a = await gw.records.create(gw.serviceChain("planner"), "note", { title: "A", state: "open", person: BEN, visibility: "record", record: "pending" }, { on_behalf: w.chainOf(BEN) });
+  const b = await gw.records.create(gw.serviceChain("planner"), "note", { title: "B", state: "open", person: BEN, visibility: "record", record: a.urn }, { on_behalf: w.chainOf(BEN) });
+  await gw.records.update(gw.serviceChain("planner"), "note", a.id, { record: b.urn }, a.version);
+  const quick = (/** @type {Promise<any>} */ p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("hung")), 10_000))]);
+  assert.equal((await quick(gw.records.query(w.chainOf(ZED), "note", { page: { limit: 50 } }))).rows.length, 0, "an admin reads neither, and the check ends");
 });

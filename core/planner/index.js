@@ -443,7 +443,7 @@ export default {
     /** A note's sharing from its input: private unless asked, and a record-level share names the record. @param {any} input */
     const noteShare = (input) => {
       const visibility = visibilityOf(input.visibility), record = input.record ? aboutOf(input.record) : null;
-      if (input.record && !record) throw fail("record is the address of a record, like vyre://<space>/contact/<id>");
+      if (input.record && !record) throw fail("record is the address of a record, like vyre://<space>/contact/<id>. A note is about a record, not another note.");
       if (visibility === "record" && !record) throw fail("A note shared with its record needs that record: { record }.");
       return { visibility, record };
     };
