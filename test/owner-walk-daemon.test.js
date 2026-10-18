@@ -26,20 +26,21 @@ export const SKIPPED = Object.freeze({
 const used = new Set();
 /** The stand-in presence check: the proof must be for this operation, over these exact fields, once. */
 const presence = { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_payload") };
-const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 40_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
+const seen = { v: /** @type {any} */ (null) };
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 40_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}; last seen: ${JSON.stringify(seen.v).slice(0, 600)}`); await new Promise(r => setTimeout(r, 100)); } };
 const grantProof = (/** @type {string} */ action, /** @type {any} */ input, /** @type {string} */ resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
 const MIA = "per_" + "mnopqrstuvwxyzabcdefghijkl";   // a person id is per_ and 26 letters
 
-const TEMPLATE = {
+const templateFor = (/** @type {string} */ owner) => ({
   name: "Walk", roles: [{ role: "researcher", agent: "research" }],
   stages: [
     { name: "Intake", tasks: [
-      { title: "Draft the letter", doer: "role:researcher", output: { kind: "draft" }, reviewer: { who: "role:manager" }, approver: { who: "owner" } },
+      { title: "Draft the letter", doer: "role:researcher", output: { kind: "draft" }, reviewer: { who: "role:manager" }, approver: { who: `person:${owner}` } },
       { title: "File the ID", doer: "owner", output: { kind: "file" } },
     ] },
     { name: "Done" },
   ],
-};
+});
 const INTAKE = { name: "intake", label: "Intake", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["New", "Retained"] }], stages: [{ name: "New" }, { name: "Retained" }] };
 
 /** @param {any} t */
@@ -68,12 +69,12 @@ async function boot(t) {
 test("1. a stage's tasks: the agent hands in a draft, the manager passes it, the owner approves over the card's own fields, and the stage moves on", { timeout: 240_000 }, async t => {
   const w = await boot(t);
   const { call, ask, ownerChain, miaChain, agentChain, space } = w;
-  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.define", { body: templateFor(w.owner) });
   await call("work.template.golive", { template: "tpl_walk", version: 1 });
   const proj = await call("work.start-project", { template: "tpl_walk", name: "Rivera" });
   const urn = proj.urn || `vyre://${space}/project/${proj.id}`;
   // the stage's tasks are made by the stages module as the Kit's installer, with the slots the template named
-  const tasks = await until(async () => { const l = (await ask.list(ownerChain, {})).filter((/** @type {any} */ x) => x.record === urn); return l.length >= 2 ? l : null; }, "the stage's two tasks");
+  const tasks = await until(async () => { const all = await ask.list(ownerChain, {}); seen.v = all.map((/** @type {any} */ x) => [x.title, x.record, x.state]); const l = all.filter((/** @type {any} */ x) => x.record === urn); return l.length >= 2 ? l : null; }, "the stage's two tasks");
   const draft = tasks.find((/** @type {any} */ x) => x.title === "Draft the letter"), idFile = tasks.find((/** @type {any} */ x) => x.title === "File the ID");
   assert.deepEqual([draft.doer.kind, draft.doer.id], ["agent", "research"], "the agent is the doer");
   assert.deepEqual(draft.reviewer, { role: "manager" }, "the manager role reviews");
@@ -106,7 +107,8 @@ test("2. a member's private note is hers alone: the owner cannot read it", { tim
   const { callAs, ownerChain, miaChain, call } = w;
   const made = await callAs(miaChain, "planner.add", { kind: "note", title: "Mia's private thought" });
   assert.ok(made.data && made.data.id, `she can write a note: ${JSON.stringify(made).slice(0, 200)}`);
-  assert.equal((await callAs(miaChain, "planner.get", { item: made.data.id })).data.title, "Mia's private thought", "and read it back");
+  const back = await callAs(miaChain, "planner.get", { item: made.data.id });
+  assert.equal(back.data && back.data.title, "Mia's private thought", `and read it back: ${JSON.stringify(back).slice(0, 300)}`);
   const ownerList = await call("planner.list", { state: "all" });
   assert.ok(!(ownerList || []).some((/** @type {any} */ x) => x.title === "Mia's private thought"), "the owner's list does not hold it");
   const peek = await callAs(ownerChain, "planner.get", { item: made.data.id });
@@ -124,10 +126,10 @@ test("3. a Flow with two triggers and an If: each trigger starts one run, the If
   assert.ok(def.ok, JSON.stringify(def));
   await host.flows.tools["flows.approve"](host.personChain(), { id: def.id, version: def.version, hash: def.hash });
   const rec = await R.create(ownerChain, "intake", { name: "Chen", stage: "New" });
-  const first = await until(async () => { const l = (await call("flows.runs", { id: def.id })).runs || []; return l.length === 1 ? l : null; }, "the creation trigger's run");
+  const first = await until(async () => { const r = await call("flows.runs", { id: def.id }); seen.v = r; const l = r.runs || []; return l.length === 1 ? l : null; }, "the creation trigger's run");
   assert.equal(first[0].trigger.index, 1, "the second trigger started it");
   await R.update(ownerChain, "intake", rec.id, { stage: "Retained" }, rec.version);
-  const both = await until(async () => { const l = (await call("flows.runs", { id: def.id })).runs || []; return l.length === 2 ? l : null; }, "the stage trigger's run");
+  const both = await until(async () => { const r = await call("flows.runs", { id: def.id }); seen.v = r; const l = r.runs || []; return l.length === 2 ? l : null; }, "the stage trigger's run");
   assert.deepEqual(both.map((/** @type {any} */ r) => r.trigger.index).sort(), [0, 1], "one run for each trigger, none twice");
   const run = (await call("flows.run", { run: both[0].id })).run || (await call("flows.run", { run: both[0].id }));
   const steps = run.steps || {};
