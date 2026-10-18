@@ -157,3 +157,11 @@ A skill a member uploads is text from outside, read strictly and kept as a draft
 What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
 
 Owner: comp6 with sec53.
+
+## A Kit's assistants are not marked as outside text
+
+When you install a Kit that has assistants, Vyre makes each one with the Kit's instructions exactly as written, as you, and the approval card shows that text in full. The assistant itself is not marked as coming from outside text: once you approve, its instructions are yours to the agent. The assistant is tagged with the Kit that made it (`kit-<id>`), and a tag the agents module refuses does not undo the assistant. An assistant of the same name that was already there is left alone, and removing the Kit removes only the ones it made.
+
+What to do: read the quoted instructions on the card before you approve; read them again from the assistant's page if you want to change them.
+
+Owner: comp6 with sec53. Fix: an `origin` field on the agent row (0.6.3, see BACKLOG).
