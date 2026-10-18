@@ -782,6 +782,7 @@ export class Registry {
     const m = f.manifest, rec = this.modules.get(m.name);
     const failedDep = requiresOf(m).find(d => this.modules.get(d)?.state !== "running");
     if (failedDep) { Object.assign(rec, requiresFailure(this, failedDep)); return; }
+    /** What a failed start can still be asked to close: the handle start returned (when something after it failed) or the module's own stop. @type {any} */ let loaded = null;
     try {
       const entry = path.join(f.dir, m.main || "index.js");
       // Every module goes through the adapter for the contract it names (compat/v<major>.js, the
@@ -799,6 +800,7 @@ export class Registry {
         await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [], ctx: door });
         for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input, /** @type {any} */ meta) => this.deps.moduleHost.call(m.name, e.name, input, meta ? { caller: meta.caller, who: meta.who, agent: meta.agent, thread: meta.thread, project: meta.project } : undefined) });
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
+        loaded = rec.handle;
         rec.sandboxed = true;
         rec.state = "running"; delete rec.error;
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
@@ -806,10 +808,15 @@ export class Registry {
       }
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
+      loaded = mod;
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
+      loaded = rec.handle;
       rec.state = "running"; delete rec.error;
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
+      // A start that failed (or a registration the registry refused) may have left something open: the handle it returned, else the module's own stop(), is called once, bounded, and a stop that throws or hangs changes nothing.
+      await this.closeFailed(m.name, loaded);
+      delete rec.handle;
       // A module that failed only because the Space's record store is still starting is "waiting": it reports running, answers in the store's words, and starts again when the store joins (store-waiting.js).
       Object.assign(rec, failure(e));
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
@@ -818,6 +825,15 @@ export class Registry {
       if (rec.state === "waiting") { stubTools(this, m, rec.error); armWaiting(this); }
       this.deps.log(`module ${m.name} ${rec.state === "waiting" ? "is waiting for the records" : "failed to start"}: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
+  }
+
+  /** Ask what a failed start left to close, once, within MODULE_STOP_MS. @param {string} name @param {any} what a handle or a module with a stop() */
+  async closeFailed(name, what) {
+    if (!what || typeof what.stop !== "function") return;
+    try {
+      const timedOut = await within(Promise.resolve().then(() => what.stop()).then(() => false), MODULE_STOP_MS, true);
+      if (timedOut) this.deps.log(`warn: module ${name} did not stop within ${MODULE_STOP_MS}ms after its start failed; moving on`);
+    } catch (e) { this.deps.log(`warn: module ${name} threw in stop() after its start failed: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** The record store has joined: start again every module that failed because it was away, then the ones that failed for needing one of them. */
