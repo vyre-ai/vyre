@@ -83,7 +83,7 @@ export function createPrivateRows(d) {
   /** Do this type's rows read by a rule of their own (a built-in rule, or a link to a project)? */
   const isPrivate = async (/** @type {string} */ type) => d.builtinRule(type) || (await linksOf(type)).length > 0;
   /** For a total over a type that reads by a rule of its own: the check each row must pass to be counted for this chain (undefined when every row reads the same, or the caller is staff or a service). */
-  const rowsMayView = async (/** @type {any} */ chain, /** @type {string} */ type) => (!(await isPrivate(type)) || d.serviceOnly(chain) || d.staffOfChain(chain) ? undefined : (/** @type {any} */ rec) => mayView(chain, type, rec));
+  const rowsMayView = async (/** @type {any} */ chain, /** @type {string} */ type) => (!(await isPrivate(type)) || d.serviceOnly(chain) || (d.staffOfChain(chain) && !OWN_ONLY.has(type)) ? undefined : (/** @type {any} */ rec) => mayView(chain, type, rec));
   return { linksOf, ruleOf, isPrivate, rowsMayView, invalidate, linkGate, mergeGuard };
 }
 
@@ -111,16 +111,15 @@ export async function visiblePage(spec, getPage, ok) {
   return { rows, ...(more ? { next_cursor: next } : {}) };
 }
 
+/** Types whose read rule binds an owner and an admin as well: private means private. */
+export const OWN_ONLY = Object.freeze(new Set(["event", "note"]));
+
 /**
  * Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
  * people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
- * An event that came from an outside
- * calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (lib/note-share.js).
- * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
+ * An event that came from an outside calendar is read by the person whose calendar it is, unless they shared it with the Space (the others see a Busy block from records.busy). It binds an owner and an admin too (OWN_ONLY). Notes are the planner's Note type and are shared by the planner (lib/note-share.js).
+ * @param {{ store: any, urn: (type: string, id: string) => string, attrsOf: (urn: string) => any, tasks: any, mayReadRef?: (chain: any, ref: string, depth?: number) => Promise<boolean> }} d @returns {Record<string, (me: string, rec: any, chain: any) => Promise<boolean>>}
  */
-/** Types whose read rule binds an owner and an admin as well: private means private. */
-export const OWN_ONLY = Object.freeze(new Set(["event"]));
-
 export function createReadRules(d) {
   const { store, urn, attrsOf } = d;
   const seatOf = projectTeamOf(store, urn, attrsOf);
@@ -128,6 +127,14 @@ export function createReadRules(d) {
   const taskFacts = async (/** @type {string} */ tid) => { if (d.tasks && typeof d.tasks.facts === "function") return d.tasks.facts(tid); const t = await store.get("task", tid).catch(() => null); return t ? { doer: t.data.doer ?? null, assigned_by: t.data.assigned_by ?? null, project: t.data.project && (t.data.project.urn || t.data.project) ? String(t.data.project.urn || t.data.project) : null } : null; };
   const writer = (/** @type {string} */ me, /** @type {any} */ rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}`; };
   return {
+    // The planner's Note (a note about a record): its writer reads it; shared with the Space, everyone; shared with the record, whoever may read that record (mayReadRef, bounded in depth); otherwise it is
+    // private, to an owner and an admin as well. A note carried over from the old planner has no writer on it and reads as it always did, and another module's own `note` type has no `person` and reads as ever.
+    // The STORED row is read: what a reader is shown has the planner's hidden `person` field cut.
+    note: async (me, rec, chain, depth = 0) => {
+      const n = (await store.get("note", rec.id).catch(() => null))?.data || rec.data || {};
+      if (!n.person || n.person === me || writer(me, rec) || n.visibility === "space") return true;
+      return n.visibility === "record" && typeof n.record === "string" && Boolean(d.mayReadRef && await d.mayReadRef(chain, n.record, depth));
+    },
     event: async (me, rec) => !(rec.data && rec.data.source === "google") || (rec.data && rec.data.visibility === "space") || writer(me, rec),
     communication: async (me, rec) => { const at = attrsOf(rec.urn) || {}, ow = String(at.owner || at.created_for || ""); return ow === me || ow === `person:${me}` || onProject(me, rec.data && rec.data.record); },
     "team-member": (me, rec) => onProject(me, rec.data && rec.data.project),

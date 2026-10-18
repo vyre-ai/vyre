@@ -63,8 +63,18 @@ export function effective(space, mine) {
 
 /** @param {{ tool: Function, obj: Function, str: any, refuse: Function }} h */
 export function registerLayouts({ tool, obj, str, refuse }) {
+  // read without a filter and pick the type's rows here: a filter on the data field `type` came back empty for a member reading her own row
   const rows = async (/** @type {any} */ d, /** @type {string} */ type) => {
-    try { return (await d.gateway.records.query(d.chain, "record-layout", { filter: { field: "type", op: "eq", value: type }, page: { limit: 200 } })).rows || []; } catch { return []; }
+    /** @type {any[]} */ const out = []; let cursor;
+    try {
+      for (let pages = 0; pages < 10; pages++) {
+        const p = await d.gateway.records.query(d.chain, "record-layout", { page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+        out.push(...(p.rows || []).filter((/** @type {any} */ r) => r.data && r.data.type === type));
+        if (!p.next_cursor) break;
+        cursor = p.next_cursor;
+      }
+    } catch { return []; }
+    return out;
   };
   const me = (/** @type {any} */ d) => `person:${d.chain.hops[0].actor.id}`;
   const parse = (/** @type {any} */ r) => { try { return JSON.parse(r.data.layout || "{}"); } catch { return {}; } };

@@ -15,6 +15,7 @@ import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks, taskOpen } from "./tasks/tasks.js";
+import { createFacts } from "./tasks/facts.js";
 import { mayWrite, mayReadTask, judgeWriter, projectTeamOf } from "./gateway/ownership.js";
 import { sealerPresence } from "./core/presence.js";
 import { OWNER_SCOPED_TYPES, matchGrant, toAllows } from "./core/authorize.js";
@@ -88,10 +89,14 @@ export async function createKernel(cfg) {
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   /** @type {((agentId: string) => Promise<string | null> | string | null) | null} */ let agentMakerFn = null;
+  /** The skill pin (tasks v2): set once by the daemon at startup and held here, never replaceable and never reachable from a module. A task pins a Space skill through it as the chain asking; no callback means no skill can be pinned. @type {((id: string, chain: any, spaceOnly?: boolean) => Promise<{ hash: string, checklist: string[], name?: string } | null>) | null} */ let skillPinFn = null;
+  // Who holds a role now, read live: the Space members whose role is that name. The one meaning of "role" for a task slot and a Flow (the Flows host asks the kernel for it).
+  const roleHolders = (/** @type {string} */ role) => (grantsStore && members && typeof members.people === "function" ? members.people().filter((/** @type {any} */ p) => grantsStore.roleOf(p) === role) : []);
   const tasks = createTasks({
-    agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
+    roleHolders, facts: (/** @type {any} */ c) => createFacts(gateway.records, c, cfg.space), agentMaker: (/** @type {string} */ id) => (agentMakerFn ? agentMakerFn(id) : null),
+    skills: { pin: async (/** @type {string} */ id, /** @type {any} */ chain, /** @type {boolean} */ spaceOnly = false) => (skillPinFn ? skillPinFn(id, chain, spaceOnly) : null) },
     canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
-    space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
+    space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null), ...(members && typeof members.people === "function" ? { people: () => members.people() } : {}) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
     // A task's project link must name a record that is there (the gate says whether the chain may read it, not whether it exists).
@@ -570,5 +575,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, setAgentMaker: (/** @type {typeof agentMakerFn} */ f) => { agentMakerFn = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated, stop: async () => { if (typeof log.flush === "function") log.flush(); } }), cfg.drive);   // stop: the log's owner stores its batched cursors when the kernel stops
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, roleHolders, setAgentMaker: (/** @type {typeof agentMakerFn} */ f) => { agentMakerFn = f; }, setSkillPin: (/** @type {NonNullable<typeof skillPinFn>} */ f) => { if (skillPinFn) throw new Error("the skill pin is set once, at startup"); if (typeof f !== "function") throw new Error("the skill pin is a function"); skillPinFn = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated, stop: async () => { if (typeof log.flush === "function") log.flush(); } }), cfg.drive);   // stop: the log's owner stores its batched cursors when the kernel stops
 }

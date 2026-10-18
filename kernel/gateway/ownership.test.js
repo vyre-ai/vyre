@@ -173,7 +173,7 @@ const TASK_CALLS = {
   // judged by the ownership rule (kernel/gateway/ownership.js): doer, giver, or the project's owner or team
   ownership: ["request", "edit", "skip", "reopen", "unblock"],
   // moved only by the actor the task names (the doer works it, the checker decides it; isDoer / checkersOf in kernel/tasks/tasks.js): a stranger is refused by that rule
-  actor: ["start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix"],
+  actor: ["start", "complete", "revise", "decide", "stuck", "observeDenial", "declineFix", "update", "review", "decline"],
   // moved only by the Flows service on a Flow step's due time (tasks.withdraw, ADR 0054): the grant is the Flows module's own, so a person, an assistant and every other module are refused (kernel/flows/deadline.test.js)
   service: ["withdraw"],
   // reads, or kernel-internal bookkeeping with no person to speak of
@@ -196,6 +196,9 @@ test("the actor-gated task calls refuse a stranger; unblock cannot hand a task t
   const refusedAny = (p) => assert.rejects(p, e => ["not_allowed", "denied", "forbidden", "not_found", "chain_not_person", "bad_state", "needs_presence", "presence_required"].includes(e.code), "refused");
   await refusedAny(T.start(stranger, t.id));
   await refusedAny(T.complete(stranger, t.id, { note: "x", sources: ["https://x"] }));
+  await refusedAny(T.update(stranger, t.id, { note: "x" }));       // update is the doer's or a helper's, decline the doer's, review the reviewer slot's
+  await refusedAny(T.decline(stranger, t.id, "not mine"));
+  await refusedAny(T.review(stranger, t.id, { result: "pass" }));
   await T.start(chains.eve, t.id);
   await refusedAny(T.stuck(stranger, t.id, { reason: "not mine" }));
   await refusedAny(T.revise(stranger, t.id, "no"));

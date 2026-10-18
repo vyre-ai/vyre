@@ -443,14 +443,14 @@ export default {
     /** A note's sharing from its input: private unless asked, and a record-level share names the record. @param {any} input */
     const noteShare = (input) => {
       const visibility = visibilityOf(input.visibility), record = input.record ? aboutOf(input.record) : null;
-      if (input.record && !record) throw fail("record is the address of a record, like vyre://<space>/contact/<id>");
+      if (input.record && !record) throw fail("record is the address of a record, like vyre://<space>/contact/<id>. A note is about a record, not another note.");
       if (visibility === "record" && !record) throw fail("A note shared with its record needs that record: { record }.");
       return { visibility, record };
     };
     /** May the caller read this record (the kernel decides, on their own chain). */
     const mayReadRecord = (w) => async (/** @type {string} */ urn) => { const p = urn.split("/"); try { return Boolean(K && await K.records.get(w.chain, p[3], p[4])); } catch { return false; } };
     /** Does the caller see this item: a note by its sharing (an owner or an admin too), anything else by hiddenFrom. */
-    const seen = async (r, w, me) => (r && r.kind === "note" ? seesNote(r, callerPerson(w && w.chain), mayReadRecord(w)) : !hiddenFrom(r, me));
+    const seen = async (r, w, me) => (r && r.kind === "note" && r.by ? seesNote(r, callerPerson(w && w.chain), mayReadRecord(w)) : !hiddenFrom(r, me));
 
     const add = async (i, w) => {
       const t = now();
@@ -555,12 +555,16 @@ export default {
 
     const update = async (i, w) => {
       const ev = cal.row(i.item);
-      if (ev && !st.item(i.item)) return updateEvent(ev, i, w);
+      if (ev && !st.item(i.item)) { if (await viewerOf(w)) throw fail("no such item", "not_found"); return updateEvent(ev, i, w); }   // events are not scoped to a member yet
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
       if (item.kind === "task" && !(await mayScheduleJobs(w))) throw memberRefusal();
       await mayChangeTodo(item, w);
+      if (item.kind === "note") {
+        if (!(await seen(item, w, await viewerOf(w)))) throw fail("no such item", "not_found");
+        if ((i.visibility !== undefined || i.record !== undefined) && callerPerson(w.chain) !== item.by) throw fail("Only the person who wrote a note changes who can read it.", "denied");
+      }
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       // HIGH 2 (reviewer, 2026-09-28): a task's own thread/project is exactly what taskScope
       // checked at add time - letting an agent redirect it afterward with planner.update would be
@@ -1111,7 +1115,7 @@ export default {
       async (i, w) => await add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared"], description: "mine: written by you; shared: notes others shared with you" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, record: { type: "string", description: "notes about this record" }, scope: { type: "string", enum: ["mine", "shared", "space"], description: "mine: written by you; shared: notes others shared with you; space: notes shared with the whole Space" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
       async (i, w) => {
         const last_event = i.cursor ? cursor() : 0;
         const me = await viewerOf(w), want = Math.min(500, Math.max(1, i.limit || 100));
@@ -1121,6 +1125,7 @@ export default {
           if (i.record && r.record !== i.record) continue;
           if (i.scope === "mine" && r.by !== person) continue;
           if (i.scope === "shared" && (r.kind !== "note" || r.by === person)) continue;
+          if (i.scope === "space" && (r.kind !== "note" || r.visibility !== "space")) continue;
           if (await seen(r, w, me)) kept.push(r);
           if (kept.length >= want) break;
         }
@@ -1137,6 +1142,8 @@ export default {
         if (item0 && !(await seen(item0, w, me))) throw fail("no such item", "not_found");
         const item = item0;
         if (!item) {
+          // an event is any person's until the planner scopes events to the person (see door-gate.test.js): a member is told there is no such item
+          if (me) throw fail("no such item", "not_found");
           let row = cal.row(f ? f.item : i.item);
           // An event outside the window the planner rings for is still an event record.
           if (!row && i.item) { const rec = await K.records.get(K.serviceChain(), "event", String(i.item)).catch(() => null); row = rec ? fromEvent(rec, now()) : null; }

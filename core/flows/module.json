@@ -18,6 +18,7 @@
       { "name": "flows.compile-text", "effect": "read", "reach": "anyone" },
       { "name": "flows.graph", "effect": "read", "reach": "anyone" },
       { "name": "flows.simulate", "effect": "read", "reach": "anyone" },
+      { "name": "flows.step.test", "effect": "read", "reach": "anyone" },
       { "name": "flows.start", "effect": "write", "reach": "anyone" },
       { "name": "flows.pause", "effect": "write", "reach": "person" },
       { "name": "flows.resume", "effect": "write", "reach": "person" },

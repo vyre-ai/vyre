@@ -75,7 +75,7 @@ test("a member's planner reads show her own items, not the owner's or another me
   const titles = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ x) => x.title).sort();
   assert.deepEqual(await titles(await asMember(w, "planner.list", { state: "all" })), ["HER note", "HER todo"], "she lists only hers");
   assert.deepEqual(await titles(await as2("planner.list", { state: "all" })), ["THIRD reminder"]);
-  assert.equal((await titles(await w.call("planner.list", { state: "all" }))).length, 6, "the owner sees every item");
+  assert.equal((await titles(await w.call("planner.list", { state: "all" }))).length, 5, "the owner sees every item except a member's private note, which is hers alone");
   const others = (await w.call("planner.list", { state: "all" })).data.find((/** @type {any} */ x) => x.title === "OWNER note");
   const peek = await asMember(w, "planner.get", { item: others.id });
   assert.ok(peek.error, "planner.get of the owner's note refused: " + JSON.stringify(peek).slice(0, 160));
@@ -140,10 +140,11 @@ test("planner rows are read by the person they are for: a member reads no remind
   };
   assert.deepEqual(await seen(member), [], "a member reads none of them through Records");
   for (const [type, id] of [["note", ownerNote.id], ["reminder", ownerRem.id], ["note", hers.id]]) {
-    const before = (await R.get(w.owner, type, id)).data.title;
+    const keeper = w.k.gateway.serviceChain("planner");   // the owner does not read a member's private note, so the planner's own chain looks
+    const before = (await R.get(keeper, type, id)).data.title;
     await assert.rejects(() => R.update(member, type, id, { title: "TAKEN" }), `update of ${type} ${id} by a member`);
     await assert.rejects(() => R.remove(member, type, id), `remove of ${type} ${id} by a member`);
-    assert.equal((await R.get(w.owner, type, id)).data.title, before, `${type} ${id} unchanged`);
+    assert.equal((await R.get(keeper, type, id)).data.title, before, `${type} ${id} unchanged`);
   }
   await assert.rejects(() => R.create(member, "note", { title: "NEW", state: "open" }), "a member creates no planner note through Records");
   assert.ok((await seen(w.owner)).includes("OWNER-NOTE") && (await seen(w.owner)).includes("HER-REMINDER"), "the owner reads all");
@@ -164,4 +165,43 @@ test("a member who is neither a task's doer, checker nor on its project cannot s
   await assert.rejects(() => ask.skip(stranger, guarded.id, "no"), { code: "not_allowed" }, "a task that needs a check: not even a skip proposal for the owner's Now");
   assert.equal((await ask.list(w.owner, {})).length, before, "and no card was made");
   assert.ok(await ask.skip(w.owner, plain.id, "the owner may"), "the owner skips");
+});
+
+test("a member lists her own notes and the ones shared with her, never another member's or the owner's private ones, and changes only her own", async t => {
+  const { w, theirs, mine } = await rig(t);
+  const OTHER = MEMBERS[1];
+  const as2 = (/** @type {string} */ tool, /** @type {any} */ input) => w.callAs(memberFacts(OTHER), tool, input);
+  const titles = async (/** @type {any} */ r) => (r.data || []).map((/** @type {any} */ x) => x.title).sort();
+  await w.call("planner.add", { kind: "note", title: "OWNER private" });
+  await w.call("planner.add", { kind: "note", title: "OWNER space", visibility: "space" });
+  await w.call("planner.add", { kind: "note", title: "OWNER about hers", visibility: "record", record: mine.urn });
+  await w.call("planner.add", { kind: "note", title: "OWNER about theirs", visibility: "record", record: theirs.urn });
+  const her = (await asMember(w, "planner.add", { kind: "note", title: "HER private" })).data;
+  await as2("planner.add", { kind: "note", title: "OTHER private" });
+  const list = (/** @type {any} */ input) => asMember(w, "planner.list", { kind: "note", state: "all", ...input }).then(titles);
+  assert.deepEqual(await list({}), ["HER private", "OWNER about hers", "OWNER space"], "her own, the Space's, and the one about a record she can read; not the one about the owner's project");
+  assert.deepEqual(await list({ scope: "mine" }), ["HER private"]);
+  assert.deepEqual(await list({ scope: "shared" }), ["OWNER about hers", "OWNER space"]);
+  assert.deepEqual(await list({ scope: "space" }), ["OWNER space"]);
+  assert.deepEqual(await list({ record: mine.urn }), ["OWNER about hers"]);
+  // changing: only her own item, and only the writer shares
+  const shared = (await w.call("planner.list", { kind: "note", state: "all" })).data.find((/** @type {any} */ x) => x.title === "OWNER space");
+  for (const [tool, input] of [["planner.update", { item: shared.id, title: "mine now" }], ["planner.update", { item: shared.id, visibility: "private" }]]) {
+    const r = await asMember(w, tool, input);
+    assert.ok(r.error, `${tool} ${JSON.stringify(input)} by a member who did not write it`);
+  }
+  assert.ok((await as2("planner.update", { item: her.id, title: "taken" })).error, "another member cannot change her note");
+  assert.ok((await as2("planner.get", { item: her.id })).error, "or open it");
+  assert.ok(!(await asMember(w, "planner.update", { item: her.id, visibility: "space" })).error, "she shares her own");
+  assert.deepEqual(await titles(await as2("planner.list", { kind: "note", state: "all" })), ["HER private", "OTHER private", "OWNER space"], "and now the other member sees it, still not the owner's private note or the one about her project");
+});
+
+test("a member cannot open or change an event through planner.get or planner.update: events are not scoped to her yet", async t => {
+  const { w } = await rig(t);
+  const made = await w.call("planner.add", { kind: "event", title: "Owner's meeting", at: "2027-01-01T10:00:00Z" });
+  const id = made.data && made.data.id;
+  assert.ok(id, JSON.stringify(made).slice(0, 200));
+  assert.equal((await asMember(w, "planner.get", { item: id })).error?.code, "not_found");
+  assert.equal((await asMember(w, "planner.update", { item: id, title: "mine now" })).error?.code, "not_found");
+  assert.ok((await w.call("planner.get", { item: id })).data, "the owner still opens it");
 });

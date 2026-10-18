@@ -33,3 +33,7 @@ A plugin with only skills and commands installs like a skill. A plugin with a **
 - each MCP server becomes a Connection, which you give a credential from the Vault yourself.
 
 The approval carries a short acknowledgement of that declaration. A plugin changed after it was approved is a new version and needs a new yes.
+
+## Uploading a skill as a team member
+
+A member of the team can upload one skill: a `SKILL.md`, a `.md`, or a `.zip` of one skill folder. The front matter has a name and a description and nothing else, and the folder holds text files only. It becomes a draft of your own personal skill, and you approve it yourself. A plugin, a script, or anything that looks like a key is refused. You can upload ten files an hour and thirty a day, and keep fifty personal skills. The owner or an admin adds plugins.

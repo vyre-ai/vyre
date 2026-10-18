@@ -98,6 +98,7 @@ export function registerHistory({ tool, obj, str, refuse, parseUrn }) {
     obj({ space: str, urn: str, limit: { type: "integer" } }, ["urn"]), async (/** @type {any} */ i, /** @type {any} */ d) => {
       const u = parseUrn(i.urn);
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
+      if (!(await d.gateway.records.get(d.chain, u.type, u.id))) throw refuse("That record is not here, or you may not read it. Pick one you can see in Records.", "not_found");
       const names = await namesOf(d);
       const def = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ t) => t.name === u.type) || {};
       const label = (/** @type {string} */ n) => { const f = (def.fields || []).find((/** @type {any} */ x) => x.name === n); return String((f && f.label) || n).toLowerCase(); };

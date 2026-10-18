@@ -224,19 +224,28 @@ export function createRecords(cfg) {
   const mayKeep = (chain, type) => adminish(chain) || keeperOk(chain, type);
   // Types read by a rule of their own, per record (class 3): a communication by the person whose mail it is and the team of the project it concerns; a project by its owner and team; a team row and a task by the
   // people of their project (a task also by its doer and whoever gave it, the same people the write rule names). An owner or an admin reads all; a type NOT listed here reads as ever.
-  const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; } });
+  const PRIVATE_READS = createReadRules({ store, urn, attrsOf: (/** @type {string} */ u) => attrsOf(u), get tasks() { return cfg.tasks; },
+    // May this chain read the record a note is about: the grant for it, then that record's own per-row rule. A note is about a record, never another note (that would let two notes name each other), and the
+    // check is bounded in depth besides: the rule of the record it names may itself ask, and past three levels the answer is no.
+    mayReadRef: async (/** @type {any} */ chain, /** @type {string} */ ref, /** @type {number} */ depth = 0) => {
+      const m = /^vyre:\/\/[^/]+\/([a-z][a-z0-9-]*)\/([0-9a-f-]{36})$/.exec(ref);
+      if (!m || m[1] === "note" || depth >= 3 || !(await allowed(chain, "records.read", ref))) return false;
+      const row = await store.get(m[1], m[2]).catch(() => null);
+      return row ? mayView(chain, m[1], { ...row, urn: ref }, depth + 1) : false;
+    } });
   /** The one statement of "staff": is this person an owner or an admin of the Space. @param {any} a */ const staffActor = (a) => Boolean(a) && Boolean(members) && typeof members.membership === "function" && roleAtLeast(String((members.membership(a) || {}).role), "admin");
   /** Is the chain's PERSON (its first person hop, never a later hop) staff. @param {any} chain */ const staffOfChain = (chain) => staffActor(isChain(chain) ? (chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || {}).actor : null);
   const serviceOnly = (/** @type {any} */ chain) => isChain(chain) && chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service");
   /** May this chain read this row of a listed type: a service with no person, staff, or the person the rule names. Anything unreadable is no. @param {any} chain @param {string} type @param {any} rec */
-  const mayView = async (chain, type, rec) => {
-    const rule = PRIVATE_READS[type] || await privRows.ruleOf(type);
+  const mayView = async (chain, type, rec, depth = 0) => {
+    // the note rule is the planner's Note type's: another module's own `note` type (which may have a `person` field of its own) reads as ever
+    const rule = type === "note" && !(await isProtectedType(type)) ? null : PRIVATE_READS[type] || await privRows.ruleOf(type);
     if (!rule || !rec) return true;
     const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
     if (!who) return serviceOnly(chain);
     if (staffOfChain(chain) && !OWN_ONLY.has(type)) return true;
     try {
-      if (await rule(String(who.actor.id), rec, chain)) return true;
+      if (await rule(String(who.actor.id), rec, chain, depth)) return true;
       // an explicit grant that names a row scope, given by an owner or an admin (never a delegation), is access to see: the authorizer already matched it to this very row
       const d = await check(chain, "records.read", rec.urn);
       return Boolean(d && (d.grants || []).some((/** @type {string} */ id) => { const g = cfg.grantOf && cfg.grantOf(id); return Boolean(g && !g.parent && g.resource && Array.isArray(g.resource.where) && g.resource.where.length && staffActor(g.issuer)); }));
@@ -1308,19 +1317,19 @@ export function createRecords(cfg) {
     mayViewRow: async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) => { if (!(await privateType(type))) return true; const r = await api.get(chain, type, id).catch(() => null); return r ? mayView(chain, type, r) : (serviceOnly(chain) || staffOfChain(chain)); },
     async reference(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) { if (typeof type === "string" && KEEPERS[type] && !mayKeep(chain, type)) return null; if ((await privateType(type)) && !(await mayView(chain, type, await api.get(chain, type, id).catch(() => null)))) return null; return api.reference(chain, type, id); },
     async get(/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ id) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) ? r : null; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return null; const r = await api.get(chain, type, id); return r && madeByTrusted(urn(type, id)) && (!(await privateType(type)) || await mayView(chain, type, r)) ? r : null; }
       const r = await api.get(chain, type, id);
       return r && (await privateType(type)) && !(await mayView(chain, type, r)) ? null : r;
     },
     async query(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
-      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); return { ...r, rows: r.rows.filter((/** @type {any} */ x) => madeByTrusted(urn(type, x.id))) }; }
+      if (typeof type === "string" && await isProtectedType(type)) { if (!mayKeep(chain, type)) return { rows: [] }; const r = await api.query(chain, type, spec); const priv = await privateType(type); const rows = []; for (const x of r.rows) if (madeByTrusted(urn(type, x.id)) && (!priv || await mayView(chain, type, x))) rows.push(x); return { ...r, rows }; }
       if (!(await privateType(type))) return api.query(chain, type, spec);
       // a type whose rows read by a rule of their own (a built-in rule, or a link to a project): pages are cut to the rows she may read, and a cursor is given only when a row she may read is still ahead (a cursor that promised only hidden rows would say more than the reader may know)
       return visiblePage(spec = checkPage(spec), page => api.query(chain, type, { ...spec, page }), x => mayView(chain, type, x));
     },
     async aggregate(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ spec) {
       if (typeof type === "string" && await isProtectedType(type) && !mayKeep(chain, type)) return [];
-      if (PRIVATE_READS[type] && !serviceOnly(chain) && !staffOfChain(chain)) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
+      if (PRIVATE_READS[type] && (type !== "note" || await isProtectedType(type)) && !serviceOnly(chain) && !(staffOfChain(chain) && !OWN_ONLY.has(type))) throw new KernelError("not_allowed", `A total over ${type} would count rows you may not see. Open the ones you may, or ask an owner or admin.`);
       return api.aggregate(chain, type, spec, await privRows.rowsMayView(chain, type));
     },
     async search(/** @type {any} */ chain, /** @type {any} */ spec) {

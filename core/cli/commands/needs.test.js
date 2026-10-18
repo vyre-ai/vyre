@@ -150,14 +150,25 @@ async function world(t) {
   // The started threads are live fake sessions that keep writing to the store. Stop them and wait until they are stopped BEFORE the daemon closes (hooks run last-in first-out, so this runs ahead of the
   // daemon's stop): otherwise one can still be writing when the database is shut, which fails the file as "database is not open" after the test ended.
   t.after(async () => {
-    const end = Date.now() + 20_000;
     for (const id of threads) {
+      // each thread gets its own wait: on a loaded shard (this file took 150 s there) a shared 20 s ran out and the daemon closed under a session still writing
+      const end = Date.now() + 60_000;
       await tool("threads.stop", { thread: id }).catch(() => {});
       for (;;) {
         const r = await tool("threads.get", { thread: id }).catch(() => null);
         const st = r && r.data && r.data.thread && r.data.thread.status;
         if (!st || st === "stopped" || Date.now() > end) break;
         await new Promise(res => setTimeout(res, 200));
+      }
+    }
+    // "stopped" is the status; the session's last writes and the daemon's handlers for them can still be on their way on a loaded shard. Wait until nothing more is added to any thread (three reads in a row the same).
+    for (const id of threads) {
+      let last = -1, same = 0;
+      for (const end = Date.now() + 20_000; same < 3 && Date.now() < end;) {
+        const r = await tool("threads.get", { thread: id, limit: 1000 }).catch(() => null);
+        const n = r && r.data && Array.isArray(r.data.events) ? r.data.events.length : -1;
+        if (n === last) same++; else { same = 0; last = n; }
+        await new Promise(res => setTimeout(res, 250));
       }
     }
   });

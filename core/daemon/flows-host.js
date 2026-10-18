@@ -17,6 +17,7 @@ import { createAgentWake } from "./agent-wake.js";
 import { lendConnections, endConnections } from "./connection-lend.js";
 import { hold as holdFiles } from "../../lib/connectors/attachments.js";
 import { teammateNames } from "./teammate-names.js";
+import { teammatePort } from "./kit-teammates.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
@@ -105,6 +106,9 @@ export function createFlowsHost(o) {
     const gw = k.gateway;
     // An agent may approve another agent's work only while the person who made it is an owner or an admin: the kernel asks the agents module, live, who made the agent.
     if (typeof k.setAgentMaker === "function" && typeof o.callModule === "function") k.setAgentMaker(async (/** @type {string} */ id) => { const r = await o.callModule("agents.maker", { agent: id }, space); return r && typeof r.made_by === "string" ? r.made_by : null; });
+    // A task pins a Space skill as the chain asking: the daemon's one path into skills.pin, with that chain as the call's proven chain. Set once; a Space with no skill library answers "not one of this Space's skills".
+    // The skill a task pins is judged as the chain that asked: skills.pin runs in the task's Space with that chain as its proven chain (callInSpace authorizes it first). Any refusal is no skill.
+    if (typeof k.setSkillPin === "function" && o.registry) { try { k.setSkillPin(async (/** @type {string} */ id, /** @type {any} */ chain, /** @type {boolean} */ spaceOnly) => { try { const r = await o.registry.callInSpace({ name: "vyred" }, space, { gateway: k.gateway }, "skills.pin", { id, ...(spaceOnly ? { space_only: true } : {}) }, chain); return r && !r.error && r.data ? r.data : null; } catch { return null; } }); } catch (e) { o.log(`the skill pin was already set for ${space}; kept as it was`); } }
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space });
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
@@ -142,9 +146,8 @@ export function createFlowsHost(o) {
       const lights = o.lights ? await o.lights().catch(() => ({})) : {};
       return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: await teammateNames(o.callModule, space, log), templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
-    const roleHolders = async (/** @type {string} */ role) => {
-      try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
-    };
+    // The kernel's own reading of a role (kernel/index.js roleHolders), the same one task slots use: a member whose role is that name.
+    const roleHolders = async (/** @type {string} */ role) => { try { return k.roleHolders(role); } catch { return []; } };
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
@@ -410,6 +413,8 @@ export function createFlowsHost(o) {
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
     guardUntilReady(flows.tools, () => typesReady, () => exhausted);
+    // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).
+    if (typeof o.callAs === "function") ports.teammates = teammatePort({ callAs: o.callAs, session: async (/** @type {string} */ id) => (await k.surfaces.open(personChain(id), { ttl_ms: 60_000 })).token, log, space });
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);
       const live = await store.active(x.flow).catch(() => null);
