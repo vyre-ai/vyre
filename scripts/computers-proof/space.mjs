@@ -53,9 +53,16 @@ try {
   check(/^ag2\d{4}:/m.test(user), "agent users exist in the Space's computer (ag2xxxx)", user.split("\n")[0]);
   const ep = await d.registry.call("computers.helper", { agent: AGENT }, "module:vyred");
   check(!ep.error && ep.data.url && ep.data.token, "computers.helper names the agent's own Chrome link", ep.error || { url: ep.data.url });
-  const c = new Cdp({ cdpUrl: `${String(ep.data.url).replace(/\/+$/, "")}/cdp`, token: ep.data.token });
-  let ok = false, lastErr = "";
-  for (let i = 0; i < 30 && !ok; i++) { try { await c.connect(); ok = true; } catch (e) { lastErr = String(e.message); await new Promise(r => setTimeout(r, 2000)); } }
+  // Chrome is still starting for a few seconds after the wake; the hands ask computers.endpoint again on every call, so each try asks again
+  let c = null, ok = false, lastErr = "";
+  for (let i = 0; i < 30 && !ok; i++) {
+    try {
+      const e2 = await d.registry.call("computers.helper", { agent: AGENT }, "module:vyred");
+      if (e2.error) throw new Error(e2.error.message);
+      c = new Cdp({ cdpUrl: `${String(e2.data.url).replace(/\/+$/, "")}/cdp`, token: e2.data.token });
+      await c.connect(); ok = true;
+    } catch (e) { lastErr = String(e.message); await new Promise(r => setTimeout(r, 2000)); }
+  }
   check(ok, "the agent's Chrome answers over the link", lastErr || undefined);
   const procs = shOk(["exec", "-u", "0", SHARED, "sh", "-c", "ps -eo user,args | grep -E 'agentd-chrome|^agb2' | grep -v grep | cut -c1-120 | head -5"]);
   check(/agb2\d{4}/.test(procs), "that Chrome runs as the agent's own browser uid (agb2xxxx), not as the shared browser's uid", procs.split("\n")[0]);
