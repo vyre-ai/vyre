@@ -424,7 +424,7 @@ test("member access to a request: only the sender (and the owner) may open it; a
 
   const owner = rig({ call, made, db: mia.db });
   assert.equal((await owner.run("documents.signing.status", { submission: 41 }, { caller: "cli" })).status.submission, 41, "the owner sees the request");
-  assert.equal((await code(owner.run("documents.signing.status", { submission: 99 }, { caller: "cli" })))?.message, bobStatus?.message, "an id that does not exist gets the same answer");
+  assert.equal((await code(bob.run("documents.signing.status", { submission: 99 }, { caller: "cli" })))?.message, bobStatus?.message, "for a member an id that does not exist gets the same answer as someone else's request");
 
   const oldMember = rig({ chain: { hops: [{ actor: { kind: "person", id: "per_old", space: SPACE } }] }, call, made, db: mia.db });
   assert.equal((await code(oldMember.run("documents.signing.status", { submission: 7 }, { caller: "cli" })))?.code, "not_found", "a member with no record for an old request gets not_found");
