@@ -105,13 +105,13 @@ await walk("new person joins a space", async (t) => {
   await t.at("You are invited");
   await t.sees("juniper");
   await t.press("Join");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.press("Invite someone");
   await t.at("Invite someone");
   await t.press("Create link");
   await t.sees("https://vyre.run/i/sampletoken");
   await t.press("Done");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.sees("juniper");
   await t.pick("Join another space");
   await t.at("Join a space");
@@ -120,7 +120,7 @@ await walk("new person joins a space", async (t) => {
   await t.type("Invite link", "https://vyre.run/i/secondtok");
   await t.press("Continue");
   await t.press("Join");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.sees("juniper");
   await t.sees("studio");
 });
@@ -149,7 +149,7 @@ await walk("ready tells a phone or another computer how to sign in, and offers n
   await t.type("Invite link", "https://vyre.run/i/abcdefgh");
   await t.press("Continue");
   await t.press("Join");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.sees("On your phone or another computer, open Vyre and sign in with");
   await t.absent("Add a computer");
   await t.absent("Add your computer");
@@ -191,7 +191,7 @@ await walk("sign in from any device with a space address, a username and the pas
   await t.type("Username", "alex");
   await t.type("Password", PASS);
   await t.press("Sign in");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.sees("juniper");
 });
 
@@ -207,7 +207,7 @@ await walk("sign in with GitHub shows the spaces it found, then asks the passwor
   if (await t.enabled("Unlock")) throw new Error("Unlock should wait for the password");
   await t.type("Password", PASS);
   await t.press("Unlock");
-  await t.at("You're in");
+  await t.at("You're all set");
   await t.sees("juniper");
 });
 

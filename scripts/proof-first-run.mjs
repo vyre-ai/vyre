@@ -329,31 +329,31 @@ try {
     await drv.click("Continue");
     // The AI sign-in comes after the space is online, on a page with no daemon: it shows, it does not let the person through by itself, and Skip for now is the explicit way on.
     const ai = await drv.waitFor("Connect your AI.", 30_000);
-    if (/You're in/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
+    if (/You're all set/.test(ai)) throw new Error("the AI sign-in step was jumped over: Ready showed with it");
     await drv.shot("04b-ai-signin");
     // Continue with nothing signed in does not leave the step (it starts the sign-in on the paired server and shows what came back, or says why not); only Skip for now goes on.
     await drv.click("Continue");
     await new Promise((r) => setTimeout(r, 5000));
     const still = await drv.text();
-    if (/You're in/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
+    if (/You're all set/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
     await drv.click("Skip for now");
     // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
     const as = await drv.waitFor("Name your Assistant.", 60_000);
-    if (/You're in/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
+    if (/You're all set/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
     await drv.fill("Name", ASSISTANT);
     await drv.shot("04c-assistant");
     await drv.click("Continue");
     // The model step lists each connected account's own models (none here: nothing was signed in), and Continue goes on to Ready.
     const md = await drv.waitFor(`How should ${ASSISTANT} think?`, 60_000);
-    if (/You're in/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
+    if (/You're all set/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
     await drv.shot("04d-model");
     await drv.click("Continue");
-    const ready = await drv.waitFor("You're in", 60_000);
+    const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");
     // The list of the person's spaces is asked for when Ready opens and arrives a moment after the heading: wait for it.
     await until(async () => /owner/i.test(await drv.text()), 30_000, "Ready listing the space with the owner role").catch(() => { throw new Error(`Ready does not list the space with the owner role: ${ready.slice(0, 200)}`); });
-    await drv.click("Open Vyre");
-    await until(async () => !(await drv.text()).includes("You're in"), 30_000, "Open Vyre leaving the first run");
+    // Nothing is pressed: with one space the first run ends by itself and opens it.
+    await until(async () => !(await drv.text()).includes("You're all set"), 30_000, "the space opening by itself after \"You're all set.\"");
   }, { needs: [S("the real installer runs the command on a server")] });
 
   await run.step(S("the server names this identity its owner"), async () => {

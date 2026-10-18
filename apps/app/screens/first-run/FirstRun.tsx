@@ -90,6 +90,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [asName, setAsName] = useState("");
   const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(null);
   const [modelPick, setModelPick] = useState("");
+  const [holdOpen, setHoldOpen] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [asLook, setAsLook] = useState({ shape: 0, color: 0, seed: "" });
@@ -145,6 +146,15 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     });
     return () => { live = false; };
   }, [shot, screen]);
+
+  // "You're all set." is the last word: with one space and nothing the person is doing on it, the space opens by itself a moment after its list shows.
+  useEffect(() => {
+    if (shot || screen !== "ready" || holdOpen || failure || spaces.length !== 1) return;
+    const t = setTimeout(() => {
+      void finishFirstRun().then((r) => { if (r.ok) router.replace("/u/now" as never); else setFailure(r.message); });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [shot, screen, holdOpen, failure, spaces.length, router]);
 
   useEffect(() => {
     if (shot || screen !== "setup.model") return;
@@ -584,16 +594,17 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
 
   const showing = spaces.find((s) => s.id === current) || spaces[0];
   return (
-    <FlowStep steps={steps} hero mark="done" title="You're in"
+    <FlowStep steps={steps} hero mark="done" title="You're all set."
       lead={spaces.length > 1 ? "One identity, in every space below. Each space has its own server." : space ? `${space} is ready. You can join or create another with this identity.` : "Your identity is ready."}
-      primary={{ label: "Open Vyre", loading: busy, onPress: () => void run(async () => {
+      primary={{ label: "Open now", loading: busy, onPress: () => void run(async () => {
         const r = await finishFirstRun();
         if (!r.ok) { setFailure(r.message); return; }
         router.replace("/u/now" as never);
       }) }}
-      secondary={{ label: "Invite someone", onPress: () => go("invite.share") }}>
+      secondary={{ label: "Invite someone", onPress: () => { setHoldOpen(true); go("invite.share"); } }}>
       {spaces.length > 1 ? (
         <SpaceSwitcherTitle spaces={spaces.map((s) => ({ id: s.id, name: s.name }))} space={showing?.id || spaces[0].id} onSpace={(id) => void run(async () => {
+          setHoldOpen(true);
           const r = await chooseSpace(id);
           if (!r.ok) { setFailure(r.message); return; }
           setCurrent(String(r.current || id));
