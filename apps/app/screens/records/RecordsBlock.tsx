@@ -29,14 +29,15 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
 
 type ViewKind = "list" | "gallery" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
-const TABS_MAX = 5;
+/** A tab says its type and how many records it holds ("People 14"); no count when the list is cut to a scope, because the number would not be the type's. */
+const tabLabel = (plural: string, n: number | undefined) => (n === undefined ? plural : `${plural} ${n}`);
 const LABEL: Record<ViewKind, string> = { list: "List", gallery: "Gallery", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /**
@@ -194,12 +195,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         )}
       </View>
       <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
-      {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one. */}
+      {/* Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one. */}
       <View className="flex-row items-center gap-s2">
         <View className="min-w-0 flex-1">
-          {tabTypes.length > TABS_MAX
-            ? <Select label="Type" value={type} options={tabTypes.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} onChange={(t) => router.replace(`/u/records/${t}` as never)} />
-            : <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, viewDefOf(t).plural] as [string, string])} />}
+          <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
         </View>
         <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
       </View>

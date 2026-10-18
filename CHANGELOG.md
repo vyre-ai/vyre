@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): Records. Every type is a tab with its count ("People 14") in a strip that scrolls sideways, as in the approved design, instead of a Type dropdown once a Space has more than five; the plus at the end still adds a type.
 - fix(app): Records. The Mine / Shared with me / Space, Mine / On records I can see and Mine / Team / Everyone tabs are cut on the box (records.list owner eq or ne "$me", visibility eq space) through a new filters argument of the records world loader, so they stay right once a list pages; Notes and Communications open on Mine, Events on Team. The loader reads every other type whole, as before.
 - feat(app): Records. A board's column counts and totals, and the forecast line ("$X weighted, $Y closing this month"), come from records.stats across every record, not only the cards loaded; a box without the tool keeps the loaded rows' answer (ui/views/board-stats.js).
 - feat(app): Records. Notes show Mine, Shared with me and Space; Communications show Mine and On records I can see; Events show Mine, Team and Everyone, by each row's owner (screens/records/scope-views.js). The box already cuts every list to what the person may read.
