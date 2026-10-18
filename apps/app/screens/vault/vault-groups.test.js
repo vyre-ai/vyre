@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { groupsOf, groupOf, breachBanner, GROUP_LABEL } from "./vault-groups.js";
+import { groupsOf, groupOf, breachBanner, GROUP_LABEL, sectionOf, SECTIONS } from "./vault-groups.js";
 
 test("vault groups: keys go to AI and apps, sign-ins to Logins, and every other kind to Notes and other", () => {
   const items = [
@@ -24,4 +24,15 @@ test("vault breach banner: only when one of the person's own items is breached, 
   assert.equal(breachBanner([{ breached: true }]), "1 password showed up in a known breach. Change it now. It takes about a minute each.");
   assert.match(breachBanner([{ breached: true }, { breached: true }]), /^2 passwords showed up/);
   assert.equal(breachBanner([{ breached: true, mine: false }]), null, "a breached item that is someone else's is not the person's to fix here");
+});
+
+test("vault sections: a card, a note or an identity is Notes and other; a login is Logins; the rest is AI and apps", () => {
+  assert.equal(sectionOf("Logins", "card"), "Notes and other", "a card is not a login, whatever its group says");
+  assert.equal(sectionOf("Secure notes", "note"), "Notes and other");
+  assert.equal(sectionOf("Logins", "login"), "Logins");
+  assert.equal(sectionOf("Logins"), "Logins");
+  assert.equal(sectionOf("AI models", "key"), "AI and apps");
+  assert.equal(sectionOf("Apps you connected", "connection"), "AI and apps");
+  assert.equal(sectionOf("SSH keys", "ssh-key"), "AI and apps");
+  assert.deepEqual(SECTIONS, ["AI and apps", "Logins", "Notes and other"]);
 });

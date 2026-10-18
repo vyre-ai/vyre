@@ -36,3 +36,18 @@ export function breachBanner(items) {
   if (!n) return null;
   return `${n === 1 ? "1 password showed up" : `${n} passwords showed up`} in a known breach. Change ${n === 1 ? "it" : "them"} now. It takes about a minute each.`;
 }
+
+/** The three sections the list shows (the prototype's words). */
+export const SECTIONS = ["AI and apps", "Logins", "Notes and other"];
+
+/**
+ * The section an item of the Vault's own groups goes under. A card, a note, an identity and anything with no group go under Notes and
+ * other; a login, a passkey or an authenticator goes under Logins; the rest (AI models, apps you connected, code, mail and so on) under AI and apps.
+ * @param {string} group the item's group, as redesign.js names it
+ * @param {string} [kind] the item's kind (login, card, note, ...)
+ */
+export function sectionOf(group, kind = "") {
+  if (["card", "note", "identity"].includes(kind) || group === "Secure notes" || !group) return "Notes and other";
+  if (["login", "passkey", "authenticator"].includes(kind) || group === "Logins") return "Logins";
+  return "AI and apps";
+}
