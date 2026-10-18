@@ -7,6 +7,7 @@ import { world, install, settle, ALEX } from "./testing/world.js";
 import { createFlows } from "./index.js";
 import { sourceHash, checkFlow } from "./schema.js";
 import { printFlow, parseFlowText } from "./text.js";
+import { hideRun } from "./redact.js";
 
 const sourceOf = (/** @type {string} */ id) => `return { n: "${id}" };`;
 const fn = (/** @type {string} */ id, extra = {}) => ({ id, kind: "fn", language: "js", source: sourceOf(id), hash: sourceHash(sourceOf(id)), inputs: {}, outputs: ["n"], ...extra });
@@ -138,4 +139,38 @@ test("(g) flows.runs filters on the server: state, a search word, and a window o
   assert.equal((await t(chainOf(), { id: f.id, before: bad.started_at })).length, 1, "paged back from a start time");
   assert.equal((await t(chainOf(), { id: f.id, limit: 1 })).length, 1);
   await assert.rejects(() => t(chainOf(), { id: f.id, since: "yesterday" }), /since is a time/);
+});
+
+test("(d) a viewer who may not see a step's output may not see its input either, and the starter and author see both", async () => {
+  const sb = sandbox();
+  const w = await world({ ports: { sandbox: sb.port } });
+  await install(w, flowOf([fn("a", { inputs: { who: { expr: "trigger.who" } } })]));
+  const run = await fire(w, "payment.received", { n: 1, who: "Dana" });
+  assert.equal(run.steps.a.input.who, "Dana", "shown whole to the person it ran as");
+  const hidden = hideRun(run, "per_alex");
+  assert.equal(hidden.steps.a.input, undefined);
+  assert.equal(hidden.steps.a.output, undefined);
+  assert.ok(hidden.steps.a.output_hidden);
+  assert.ok(!JSON.stringify(hidden).includes("Dana"), "nothing of what it was given is left");
+  const viaTool = await toolsOf(w).tools["flows.timeline"](chainOf(), { run: run.id, hide_for: "per_alex", step: "a" });
+  assert.ok(!JSON.stringify(viaTool).includes("Dana"), "the timeline's step detail hides it too");
+});
+
+test("(c) a retry from a step runs the version the run started on, not a newer one, and an outward act keeps the same idempotency key", async () => {
+  const sb = sandbox();
+  const idems = /** @type {string[]} */ ([]);
+  const w = await world({ ports: { sandbox: sb.port, call: async (/** @type {any} */ _c, /** @type {string} */ _a, /** @type {string} */ _r, /** @type {any} */ _i, /** @type {any} */ o) => { idems.push(o.idem); return { ok: true }; } } });
+  const d1 = await install(w, flowOf([{ id: "draft", kind: "call", action: "email.draft", resource: `vyre://${(await import("./testing/fixtures.js")).SPACE}/mail/*`, input: { to: "a@example.com" } }, fn("a")]));
+  const run = await fire(w);
+  assert.equal(run.state, "done");
+  assert.equal(idems.length, 1);
+  // a newer version goes live whose code step is different
+  const v2 = await w.runner.define(d1.id, flowOf([{ id: "draft", kind: "call", action: "email.draft", resource: `vyre://${(await import("./testing/fixtures.js")).SPACE}/mail/*`, input: { to: "changed@example.com" } }, fn("z")]), ALEX);
+  assert.ok(v2.ok, JSON.stringify(v2.errors));
+  await w.runner.approve(d1.id, v2.version, ALEX, v2.hash);
+  sb.calls.length = 0;
+  await w.runner.retry(run.id, { from: "draft" }); await settle(w);
+  assert.deepEqual(sb.calls, ["a"], "version 1's code ran, not version 2's");
+  assert.equal(idems.length, 2);
+  assert.equal(idems[0], idems[1], "the same key, so the receiving side can see it is the same act");
 });

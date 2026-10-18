@@ -14,8 +14,9 @@
 import { KernelError } from "../../kernel/core/errors.js";
 
 /** How a Flow starts, for the member rule: "manual" only when every trigger it has is manual; else the first that is not (a Flow with a list of triggers starts by itself if any of them does). @param {any} flow */
-function startsBy(flow) {
-  const list = flow && Array.isArray(flow.triggers) ? flow.triggers : flow && flow.trigger ? [flow.trigger] : [];
+export function startsBy(flow) {
+  // the union: a stored Flow is not guaranteed to have passed the schema, so a list and a single trigger together are both read
+  const list = [...(flow && Array.isArray(flow.triggers) ? flow.triggers : []), ...(flow && flow.trigger ? [flow.trigger] : [])];
   const word = (/** @type {any} */ t) => (t && typeof t === "object" ? String(t.on || t.kind || "manual") : t ? String(t) : "manual");
   return list.map(word).find((/** @type {string} */ w) => w !== "manual") || "manual";
 }
