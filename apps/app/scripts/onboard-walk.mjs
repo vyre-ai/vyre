@@ -121,7 +121,7 @@ await walk("new person creates a space and waits", async (t) => {
   await t.sees("Name your space");
   await t.type("Space name", "alex-studio");
   await t.sees("alex-studio.vyre.run");
-  await t.sees("VYRE_CODE=");
+  await t.sees("curl -fsSL vyre.run/i");
   await t.press("Continue");
   await t.at("Waiting for it to come online");
   await t.sees("curl -fsSL vyre.run/i | sh");
