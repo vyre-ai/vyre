@@ -1280,6 +1280,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads events the caller may see; the kernel decides"
  },
  {
+  "tool": "records.field.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a type's fast fields and where each is; no record data"
+ },
+ {
   "tool": "records.forget.propose",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to forget a record: it reads the record under the caller's own chain and makes a task for the person, who decides with their presence; nothing is forgotten here"
  },
@@ -1300,6 +1304,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Kits the library offers: public text, no data"
  },
  {
+  "tool": "records.layout.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads how a type is shown to the caller; no record data"
+ },
+ {
   "tool": "records.linked",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the records linked to one, under the caller's own chain; the kernel decides each"
  },
@@ -1312,8 +1320,24 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
  },
  {
+  "tool": "records.move",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): moves a record to a stage under the caller's own chain; the kernel enforces the stage's entry condition"
+ },
+ {
   "tool": "records.reference",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
+ },
+ {
+  "tool": "records.relationship.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): relates two records under the caller's own chain; the kernel decides who may write and read them"
+ },
+ {
+  "tool": "records.relationship.kinds",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the relationship kinds; no record data"
+ },
+ {
+  "tool": "records.relationship.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a record's relationships under the caller's own chain; only rows the caller may read"
  },
  {
   "tool": "records.roles",

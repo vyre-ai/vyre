@@ -105,6 +105,9 @@ export function createFlowsHost(o) {
     const gw = k.gateway;
     // An agent may approve another agent's work only while the person who made it is an owner or an admin: the kernel asks the agents module, live, who made the agent.
     if (typeof k.setAgentMaker === "function" && typeof o.callModule === "function") k.setAgentMaker(async (/** @type {string} */ id) => { const r = await o.callModule("agents.maker", { agent: id }, space); return r && typeof r.made_by === "string" ? r.made_by : null; });
+    // A task pins a Space skill as the chain asking: the daemon's one path into skills.pin, with that chain as the call's proven chain. Set once; a Space with no skill library answers "not one of this Space's skills".
+    // The skill a task pins is judged as the chain that asked: skills.pin runs in the task's Space with that chain as its proven chain (callInSpace authorizes it first). Any refusal is no skill.
+    if (typeof k.setSkillPin === "function" && o.registry) { try { k.setSkillPin(async (/** @type {string} */ id, /** @type {any} */ chain, /** @type {boolean} */ spaceOnly) => { try { const r = await o.registry.callInSpace({ name: "vyred" }, space, { gateway: k.gateway }, "skills.pin", { id, ...(spaceOnly ? { space_only: true } : {}) }, chain); return r && !r.error && r.data ? r.data : null; } catch { return null; } }); } catch (e) { o.log(`the skill pin was already set for ${space}; kept as it was`); } }
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space });
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
@@ -142,9 +145,8 @@ export function createFlowsHost(o) {
       const lights = o.lights ? await o.lights().catch(() => ({})) : {};
       return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: await teammateNames(o.callModule, space, log), templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
-    const roleHolders = async (/** @type {string} */ role) => {
-      try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
-    };
+    // The kernel's own reading of a role (kernel/index.js roleHolders), the same one task slots use: a member whose role is that name.
+    const roleHolders = async (/** @type {string} */ role) => { try { return k.roleHolders(role); } catch { return []; } };
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
@@ -259,6 +261,17 @@ export function createFlowsHost(o) {
         const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");
         if (seat && wantSeat && wantSeat.fields.some((/** @type {any} */ f) => !seat.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantSeat] });
       } catch (e) { log(`flows: the team-member type for ${space} did not gain its level field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before an event could be shared has the old Event type: it gains `visibility` (the core definition is additive; a synced event with none is private to its owner).
+      try {
+        const ev = (await k.store.types()).find((/** @type {any} */ t) => t.name === "event"), wantEv = CORE_TYPES.find((/** @type {any} */ t) => t.name === "event");
+        if (ev && wantEv && wantEv.fields.some((/** @type {any} */ f) => !ev.fields.some((/** @type {any} */ x) => x.name === f.name))) await gw.records.define(owner(), { change_types: [wantEv] });
+      } catch (e) { log(`flows: the event type for ${space} did not gain its visibility field: ${e && /** @type {Error} */ (e).message}`); }
+      // A Space made before types carried their own presentation has core types without `hidden_in_records` (Templates, Playbooks, team seats and the like have screens of their own): they gain the flag.
+      try {
+        const now = await k.store.types();
+        const flagged = CORE_TYPES.filter((/** @type {any} */ w) => w.hidden_in_records === true).map((/** @type {any} */ w) => now.find((/** @type {any} */ t) => t.name === w.name)).filter((/** @type {any} */ t) => t && t.hidden_in_records !== true);
+        if (flagged.length) await gw.records.define(owner(), { change_types: flagged.map((/** @type {any} */ t) => ({ ...t, hidden_in_records: true })) });
+      } catch (e) { log(`flows: the core types for ${space} did not gain hidden_in_records: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before the Communication kept who was on it as text and as its own `contacts` link has the old Communication type: add the fields (the definition is the core one, additive), then
       // move its participant records onto them once (records/comms/migrate.js). Both are best effort and say so in the log.
       try {

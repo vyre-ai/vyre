@@ -220,3 +220,22 @@ export function triggerScope(t, env) {
   if (t.on === "event" && t.where) { try { if (!truthy(evaluate(parse(t.where), scope))) return null; } catch { return null; } }
   return scope;
 }
+
+/** The triggers a stored Flow has: its `triggers` list, else its single `trigger` as a list of one. @param {any} flow @returns {any[]} */
+export const triggersOf = flow => (flow && Array.isArray(flow.triggers) ? flow.triggers : flow && flow.trigger ? [flow.trigger] : []);
+
+/**
+ * A Flow with several triggers is armed once per trigger: each entry here is the same Flow with that one trigger as its `trigger` and its place in the list as `tIndex`, so everything that starts, wakes or
+ * schedules a run reads one trigger as it always did. A Flow with one trigger comes back as it is. @template {{ flow: any }} T @param {T[]} list @returns {T[]}
+ */
+export function expandTriggers(list) {
+  /** @type {T[]} */ const out = [];
+  for (const f of list) {
+    if (!f.flow || !Array.isArray(f.flow.triggers)) { out.push(f); continue; }
+    f.flow.triggers.forEach((/** @type {any} */ t, /** @type {number} */ i) => { const { triggers: _l, ...rest } = f.flow; out.push({ ...f, flow: { ...rest, trigger: t }, tIndex: i }); });
+  }
+  return out;
+}
+
+/** The trigger(s) of a Flow in plain words: one, or each joined by "or". @param {any} flow */
+export function describeTriggers(flow) { const list = triggersOf(flow); return list.length ? list.map(describeTrigger).join(", or ") : "Not started by anything"; }

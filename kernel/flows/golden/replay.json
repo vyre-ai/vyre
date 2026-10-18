@@ -43,6 +43,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -68,6 +72,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -136,6 +152,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -161,6 +181,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -243,6 +275,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -270,6 +306,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -304,6 +352,17 @@
       "label": "T",
       "state": "waiting",
       "steps": {
+        "c": {
+          "input": {
+            "action": "email.send",
+            "input": {
+              "body": "Hi",
+              "subject": "Hello",
+              "to": "a@example.com"
+            },
+            "resource": "vyre://spc_harlow000001/mail/*"
+          }
+        },
         "c?ask": {
           "status": "waiting",
           "wait": {
@@ -337,6 +396,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -362,6 +425,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -394,6 +469,13 @@
       "state": "done",
       "steps": {
         "c": {
+          "input": {
+            "input": "help!",
+            "labels": [
+              "urgent",
+              "normal"
+            ]
+          },
           "output": {
             "label": "urgent",
             "raw_ok": true
@@ -444,6 +526,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -471,6 +557,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -508,18 +606,29 @@
           "status": "done"
         },
         "d@0": {
+          "input": {
+            "if": "n == \"b\"",
+            "value": false
+          },
           "output": {
             "branch": "else"
           },
           "status": "done"
         },
         "d@1": {
+          "input": {
+            "if": "n == \"b\"",
+            "value": true
+          },
           "output": {
             "branch": "then"
           },
           "status": "done"
         },
         "each": {
+          "input": {
+            "over": "trigger.names"
+          },
           "output": {
             "count": 2,
             "items": [
@@ -590,6 +699,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -618,6 +731,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -685,6 +810,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -712,6 +841,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -789,6 +930,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -816,6 +961,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -880,6 +1037,10 @@
           "status": "done"
         },
         "d": {
+          "input": {
+            "if": "trigger.n > 1",
+            "value": true
+          },
           "output": {
             "branch": "then"
           },
@@ -909,6 +1070,10 @@
         ],
         [
           "contact_point",
+          []
+        ],
+        [
+          "deal",
           []
         ],
         [
@@ -943,6 +1108,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -970,6 +1147,19 @@
       "state": "done",
       "steps": {
         "e": {
+          "input": {
+            "fields": [
+              {
+                "kind": "text",
+                "name": "client"
+              },
+              {
+                "kind": "number",
+                "name": "amount"
+              }
+            ],
+            "input": "Rivera owes 1,250.50"
+          },
           "output": {
             "fields": {
               "amount": 1250.5,
@@ -1029,6 +1219,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1059,6 +1253,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -1086,6 +1292,16 @@
       "state": "done",
       "steps": {
         "f": {
+          "input": {
+            "limit": 10,
+            "sort": [
+              {
+                "dir": "asc",
+                "field": "client"
+              }
+            ],
+            "type": "matter"
+          },
           "output": {
             "count": 2,
             "rows": [
@@ -1120,6 +1336,10 @@
           "status": "done"
         },
         "g": {
+          "input": {
+            "from": "steps.f.rows",
+            "where": "record.fee.amount > 250"
+          },
           "output": {
             "count": 1,
             "rows": [
@@ -1186,6 +1406,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1219,6 +1443,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -1246,6 +1482,16 @@
       "state": "done",
       "steps": {
         "f": {
+          "input": {
+            "limit": 10,
+            "sort": [
+              {
+                "dir": "asc",
+                "field": "client"
+              }
+            ],
+            "type": "matter"
+          },
           "output": {
             "count": 2,
             "rows": [
@@ -1325,6 +1571,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1358,6 +1608,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -1385,6 +1647,7 @@
       "state": "done",
       "steps": {
         "f": {
+          "input": {},
           "output": {
             "n": 1
           },
@@ -1436,6 +1699,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1463,6 +1730,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -1580,6 +1859,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1609,6 +1892,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -1656,6 +1951,10 @@
           "status": "done"
         },
         "p": {
+          "input": {
+            "type": "matter",
+            "where": "record.client == \"C\""
+          },
           "output": {
             "found": true,
             "record": {
@@ -1697,6 +1996,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1729,6 +2032,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -1756,6 +2071,10 @@
       "state": "done",
       "steps": {
         "r": {
+          "input": {
+            "record": "<id>",
+            "type": "matter"
+          },
           "output": {
             "record": {
               "data": {
@@ -1797,6 +2116,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1822,6 +2145,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -1852,6 +2187,9 @@
       "state": "done",
       "steps": {
         "each": {
+          "input": {
+            "over": "trigger.names"
+          },
           "output": {
             "count": 3,
             "items": [
@@ -1940,6 +2278,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -1969,6 +2311,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -2058,6 +2412,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2088,6 +2446,18 @@
           []
         ],
         [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
+          []
+        ],
+        [
           "skill",
           []
         ],
@@ -2115,6 +2485,11 @@
       "state": "done",
       "steps": {
         "s": {
+          "input": {
+            "record": "<id>",
+            "to": "Engagement",
+            "type": "matter"
+          },
           "output": {
             "record": {
               "data": {
@@ -2156,6 +2531,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2183,6 +2562,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -2232,6 +2623,9 @@
           "status": "done"
         },
         "s": {
+          "input": {
+            "flow": "inner"
+          },
           "output": {
             "result": {
               "n": 5
@@ -2271,6 +2665,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2299,6 +2697,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -2373,6 +2783,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2400,6 +2814,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -2494,6 +2920,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2521,6 +2951,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [
@@ -2568,6 +3010,9 @@
           "status": "done"
         },
         "w": {
+          "input": {
+            "for_ms": 60000
+          },
           "output": {
             "waited_ms": 61000
           },
@@ -2603,6 +3048,10 @@
           []
         ],
         [
+          "deal",
+          []
+        ],
+        [
           "event",
           []
         ],
@@ -2630,6 +3079,18 @@
         ],
         [
           "project-template",
+          []
+        ],
+        [
+          "quick-field",
+          []
+        ],
+        [
+          "record-layout",
+          []
+        ],
+        [
+          "relationship",
           []
         ],
         [

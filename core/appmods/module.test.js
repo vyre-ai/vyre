@@ -114,6 +114,7 @@ test("a model cannot install, start, stop or remove an app", async t => {
 test("install: keys in the Vault, the app started with them, set up by its bootstrap, webhooks become events; no secret anywhere", async t => {
   const w = await world(t);
   const r = await w.cli("appmods.install", { name: "documents" });
+  assert.ok(r.data, `install returns no data: ${JSON.stringify(r)}`);
   assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "documents", state: "running", connection: "documents", kit: "string" }, JSON.stringify(r));
   assert.match(w.log[0][1], /^spc_[a-z2-7]{12}$/);
   assert.deepEqual([w.log[0][0], w.log[0][2]], ["up", "documents"]);

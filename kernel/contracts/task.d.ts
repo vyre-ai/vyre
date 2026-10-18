@@ -4,7 +4,7 @@
 import type { SpaceId, Uuid, Ms, Urn, Labels } from './common.js';
 import type { Actor } from './chain.js';
 
-export type TaskState = 'waiting' | 'ready' | 'working' | 'needs_check' | 'stuck' | 'done' | 'skipped';
+export type TaskState = 'waiting' | 'ready' | 'working' | 'in_review' | 'changes_requested' | 'needs_check' | 'declined' | 'stuck' | 'done' | 'skipped';
 
 export type TaskOutputKind = 'fields' | 'note' | 'draft' | 'sent' | 'decision' | 'file';
 

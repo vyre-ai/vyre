@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 47 | 5 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 31 | 9 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 29 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 15 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -79,7 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 26 | 10 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 28 | 0 | cli |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 40 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 32 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
@@ -159,7 +159,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [31](tools.md#appmods), 12 of them only for other modules
+- Tools: [29](tools.md#appmods), 10 of them only for other modules
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
@@ -838,7 +838,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [28](tools.md#records), 4 of them only for other modules
+- Tools: [40](tools.md#records), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`

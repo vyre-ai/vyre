@@ -34,6 +34,7 @@ export function shape(r) {
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
     waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null, paused: Boolean(r.paused),
     waits_on_fired: r.waits_on_fired ?? null, assignee: r.assignee ?? null,
+    ...(r.kind === "note" ? { visibility: r.visibility ?? "private", record: r.record ?? null, owner: r.by ? `person:${r.by}` : null } : {}),
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,

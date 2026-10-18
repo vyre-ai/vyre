@@ -44,6 +44,15 @@ async function handle(line) {
     fs.writeFileSync(path.join(process.cwd(), "half.txt"), "half-done " + arg);
     out({ type: "assistant", text: "half " + arg });
     process.exit(3);
+  } else if (cmd === "environ") {
+    // Can this session read another process's environment? Asks for one pid by number and looks through every /proc entry for a marker (a key held only by a daemon-side child).
+    const r = { type: "environ" };
+    try { r.byPid = fs.readFileSync(`/proc/${Number(arg.split(" ")[0])}/environ`, "utf8").includes(arg.split(" ")[1]) ? "READ" : "EMPTY"; } catch (e) { r.byPid = e.code; }
+    r.anywhere = false;
+    try { for (const p of fs.readdirSync("/proc").filter(x => /^\d+$/.test(x))) { try { if (fs.readFileSync(`/proc/${p}/environ`, "utf8").includes(arg.split(" ")[1]) && Number(p) !== process.pid) r.anywhere = true; } catch { /* not readable */ } } } catch { /* no /proc */ }
+    r.ownEnvHasIt = Object.values(process.env).some(v => String(v).includes(arg.split(" ")[1]));
+    out(r);
+    out({ type: "result" });
   } else if (cmd === "probe") {
     const r = { type: "probe" };
     try { fs.readFileSync(process.env.VYRE_PROBE_FILE); r.outside = "READ"; } catch (e) { r.outside = e.code; }

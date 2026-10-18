@@ -41,6 +41,9 @@ test("expr: only the fixed functions can be called, and bad input is an error wi
 test("expr: limits hold: size, nesting and steps", () => {
   assert.throws(() => parse("1+".repeat(1200) + "1"), /at most/);
   assert.throws(() => parse("(".repeat(60) + "1" + ")".repeat(60)), /nested too deeply/);
+  // depth counts nesting (a call inside a call, a bracket in a bracket), not the grammar's precedence levels
+  assert.doesNotThrow(() => parse('"Hello " + text(coalesce(steps.other.output.id, lower("x" + "y"))) + "!"'));
+  assert.doesNotThrow(() => parse("(".repeat(20) + "1" + ")".repeat(20)));
   const big = "[" + Array(300).fill("1 + 1").join(",") + "]";
   assert.throws(() => parse(big), /too large/);
   const list = Array.from({ length: 6000 }, (_, i) => i);

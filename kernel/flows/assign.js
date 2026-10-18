@@ -33,3 +33,19 @@ export function chooseDoer({ candidates, skills = [], involvement = {}, load = {
   const why = `${nameOf(best.c)}: ${bits.join("; ")}${fit.length > 1 ? ` (chosen from ${fit.length})` : ""}`;
   return { pick: best.c, why, ranking: fit.map(r => ({ id: r.c.actor.id, history: r.history, open: r.open })) };
 }
+
+/**
+ * The slots a step gives its task (tasks v2): a reviewer, an approver, and their instructions and Space skills, as the author wrote them (the schema has checked the shape). The kernel pins the skills and refuses what the Flow's person may not use.
+ * @param {any} s the step @param {(ref: string) => Promise<any>} who a person, teammate or role reference as the kernel names it
+ */
+export async function slotsOf(s, who) {
+  const rv = s.reviewer && typeof s.reviewer === "object" ? s.reviewer : null, ap = s.approver && typeof s.approver === "object" ? s.approver : null;
+  const per = (/** @type {string} */ k) => ({ ...(rv && rv[k] ? { reviewer: rv[k] } : {}), ...(ap && ap[k] ? { approver: ap[k] } : {}) });
+  return {
+    ...(typeof s.to === "string" && s.to.startsWith("group:") ? { doer: undefined, pool: { role: s.to.slice(6) } } : {}),
+    ...(rv ? { reviewer: await who(rv.who) } : {}), ...(ap ? { approver: await who(ap.who) } : {}),
+    ...(rv && rv.quorum === "all" ? { reviewer_quorum: "all" } : {}), ...(ap && ap.quorum === "all" ? { quorum: "all" } : {}),
+    ...((rv && rv.due) || (ap && ap.due) ? { escalation: { ...(rv && rv.due ? { reviewer: { due_ms: rv.due, to: { role: String(rv.escalate_to).slice(5) } } } : {}), ...(ap && ap.due ? { approver: { due_ms: ap.due, to: { role: String(ap.escalate_to).slice(5) } } } : {}) } } : {}),
+    ...(Object.keys(per("instructions")).length ? { instructions: per("instructions") } : {}), ...(Object.keys(per("skills")).length ? { skills: per("skills") } : {}),
+  };
+}
