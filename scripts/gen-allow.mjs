@@ -322,8 +322,6 @@ export const DECLARED_SINCE = Object.freeze({
   "documents.signing.waiting": "e9c422518@10 Oct 2026",
   // read only, no page code: the same data class as waiting; the audit link is for a person's own surface only (18 Oct, sec53)
   "documents.signing.status": "8b6d68bd3@18 Oct 2026",
-  // writes the signed audit file to the caller's Files > Signed, from the app's own https origin only; a person's own surface only (18 Oct, the ruling; the reviewer checks the file write)
-  "documents.signing.audit": "87a29bd01@18 Oct 2026",
   "documents.template.add": "613f5aad8@10 Oct 2026",
   "documents.template.get": "613f5aad8@10 Oct 2026",
   "documents.template.list": "613f5aad8@10 Oct 2026",

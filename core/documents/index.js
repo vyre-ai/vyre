@@ -247,13 +247,15 @@ export function registerDocuments(ctx) {
   ctx.tool("documents.signing.audit", {
     description: "Download a request's audit file: { submission } -> { path } in Files > Signed. A person's own surface only.",
     input: obj({ space: str, submission: { type: "integer" } }, ["submission"]),
-    callers: CALLERS, effect: "read",
+    callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open(i || {}, meta);
       if (!["cli", "local", "deck", "capsule", "device"].includes(String(meta && meta.caller || ""))) throw refuse("the audit file is for a person's own surface", "denied");
       const r = await ctx.call("appmods.signing.audit", { name: "documents", submission: Number(i.submission) });
       if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
       const bytes = Buffer.from(String(r.data.bytes), "base64");
+      // An error page from the app is not an audit file: the bytes must start with the PDF signature before they are saved as one.
+      if (bytes.subarray(0, 4).toString("latin1") !== "%PDF") throw refuse("the app did not send an audit PDF", "app_refused");
       const path = pathOf(`Signed/audit-${Number(i.submission)}.pdf`);
       const put = await d.gateway.drive.put(d.chain, path, new Uint8Array(bytes), { base: null });
       return { path, bytes: bytes.length, ...(put && put.version ? { version: put.version } : {}) };

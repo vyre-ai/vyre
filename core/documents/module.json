@@ -59,7 +59,7 @@
       {
         "name": "documents.signing.audit",
         "effect": "write",
-        "reach": "anyone"
+        "reach": "person"
       },
       {
         "name": "documents.signing.remind",
