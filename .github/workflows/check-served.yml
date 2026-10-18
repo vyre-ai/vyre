@@ -1,0 +1,55 @@
+# Release checklist step 5b (docs/releases/checklist.md), without node on anyone's Mac: is what an origin serves for the setup page and the install line the file the signed release lists?
+#   gh workflow run check-served.yml -f tag=v0.6.2
+#   gh workflow run check-served.yml -f tag=v0.6.2 -f origin=https://vyre.run
+# It downloads the release's SHA256SUMS, SHA256SUMS.sig and setup.json, takes the pinned release key and scripts/check-served.mjs from that same tag (so the check is the release's own), verifies the signature,
+# and fetches every path setup.json lists from the origin and hashes it. One mismatch, or a path that does not answer 200, fails the run. It is a tamper check for what THIS runner's request gets: an origin can
+# answer another client or network differently, so run it from more than one place (the checklist says so; a second run from the owner's own machine is the second place).
+name: check-served
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag (v0.6.2)"
+        required: true
+      origin:
+        description: "The origin to check"
+        required: true
+        default: https://vyre.run
+permissions:
+  contents: read
+concurrency:
+  group: check-served-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  served:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # What was asked for, checked before anything is checked out: a tag that looks like a release tag, and an https origin that is a host name only.
+      - name: Check the inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          ORIGIN: ${{ inputs.origin }}
+        run: |
+          set -eu
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::the tag is a release tag like v0.6.2"; exit 1; }
+          printf '%s' "$ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$' || { echo "::error::the origin is https://host with no path"; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The release's signed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -eu
+          mkdir rel
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir rel --pattern SHA256SUMS --pattern SHA256SUMS.sig --pattern setup.json
+          ls -l rel
+      - name: What the origin serves matches what the release signed
+        env:
+          ORIGIN: ${{ inputs.origin }}
+        run: node scripts/check-served.mjs --origin "$ORIGIN" --release rel
