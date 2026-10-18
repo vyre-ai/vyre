@@ -88,12 +88,12 @@ export function createHost(o) {
   const waits = new Map();
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
-  /** The server this onboarding just made (or joined) is where the Space's own steps go: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one. @param {string} none what to say when there is none yet */
-  const serverOfThisRun = async (none) => {
+  /** The server this onboarding just made (or joined) is where the Space's own steps go: not the first one an identity with several servers happens to list. Without one made here, the current space's server, then the only one. @param {string} none what to say when there is none yet @param {boolean} [strict] a tool that WRITES (the Assistant, its model) never falls back to the current space's server, which may be a team's: it takes the one made in this run, else the only paired server, else refuses */
+  const serverOfThisRun = async (none, strict = false) => {
     const k = await o.store.load();
     if (!k) throw bad("Make your username first.", "no_identity");
     const paired = /** @type {any[]} */ ((k.spaces || []).filter((s) => s && s.paired && s.paired.box));
-    const here = paired.find((s) => s.paired.box === madeHere) || paired.find((s) => s.id === k.current) || (paired.length === 1 ? paired[0] : null);
+    const here = paired.find((s) => s.paired.box === madeHere) || (strict ? null : paired.find((s) => s.id === k.current)) || (paired.length === 1 ? paired[0] : null);
     if (!here) throw bad(`Your server is not set up yet. ${none}`, "no_server");
     return { box: String(here.paired.box), k };
   };
@@ -523,7 +523,7 @@ export function createHost(o) {
     // sent to the server this onboarding made, with nothing but the name and a look seed that names a real shape and colour.
     "onboard.assistant.set": async (input) => {
       if (!o.space) throw unsupported();
-      const { box, k } = await serverOfThisRun("Name your Assistant once your space is online.");
+      const { box, k } = await serverOfThisRun("Name your Assistant once your space is online.", true);
       const display = String((input && input.name) || "").trim();
       if (!display || display.length > 40 || /[\u0000-\u001f]/.test(display)) throw bad("An Assistant's name is one line of up to 40 characters.", "bad_name");
       const look = input && input.look ? String(input.look) : "";
@@ -543,7 +543,7 @@ export function createHost(o) {
     // (sessions.accounts.models, else the provider's own list), and keeps the pick with agents.update. Only ids, labels and names come back: never a credential.
     "onboard.assistant.models": async () => {
       if (!o.space) throw unsupported();
-      const { box } = await serverOfThisRun("Pick a model once your space is online.");
+      const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
       const ports = await o.space.load();
       const list = /** @type {any} */ (await ports.call("sessions.accounts.list", {}, box));
       const rows = (Array.isArray(list) ? list : list && Array.isArray(list.accounts) ? list.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
@@ -560,7 +560,7 @@ export function createHost(o) {
     },
     "onboard.assistant.model": async (input) => {
       if (!o.space) throw unsupported();
-      const { box } = await serverOfThisRun("Pick a model once your space is online.");
+      const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
       const model = String((input && input.model) || "").trim();
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw bad("That is not a model name.", "bad_model");
       const ports = await o.space.load();

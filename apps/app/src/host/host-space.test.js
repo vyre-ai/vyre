@@ -449,6 +449,20 @@ test("the Assistant step names the Assistant and keeps its look on the server th
   assert.deepEqual(sent[2].input, { name: "juno", look });
 });
 
+test("a tool that writes the Assistant never lands on the current space's server when none was made in this run and several are paired", async (t) => {
+  const { pp, host, store } = await ready(t);
+  { const k = await store.load(); await store.save({ ...k, current: "spc_aaaaaaaaaaaa", spaces: [
+    { id: "spc_aaaaaaaaaaaa", name: "team", role: "member", server: null, paired: { box: "boxTEAM", route: "r", relay: "x" } },
+    { id: "spc_bbbbbbbbbbbb", name: "older", role: "owner", server: null, paired: { box: "boxOLD", route: "r", relay: "x" } }] }); }
+  const sent = [];
+  const first = pp.call;
+  pp.call = async (name, input, box) => { sent.push({ name, box }); return first(name, input, box); };
+  for (const [tool, input] of [["onboard.assistant.set", { name: "Juno", look: "s1~c2" }], ["onboard.assistant.models", {}], ["onboard.assistant.model", { model: "opus" }]]) {
+    await assert.rejects(() => host.call(tool, input), (e) => e.code === "no_server", tool);
+  }
+  assert.deepEqual(sent, [], "nothing was sent to either server");
+});
+
 test("the model step lists what each signed-in account offers (its own list, else its provider's) and keeps the Assistant's model, sending nothing but names and ids", async (t) => {
   const { pp, host } = await ready(t);
   await assert.rejects(() => host.call("onboard.assistant.models", {}), (e) => e.code === "no_server");
