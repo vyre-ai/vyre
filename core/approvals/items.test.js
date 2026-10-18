@@ -179,8 +179,8 @@ test("a plugin server that waits for a key is one `access` card per missing vari
     { plugin: "no name", waiting: [] },
   ]});
   assert.deepEqual(rows.map((/** @type {any} */ r) => [r.id, r.kind, r.title, r.detail]), [
-    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key Item \"notes-key\". Runs npx -y notes-mcp@1.2.3. Approved by an admin (per_ana). Everyone who can use this plugin acts with this key."],
-    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id No item chosen yet. Runs npx -y notes-mcp@1.2.3. Approved by an admin (per_ana). Everyone who can use this plugin acts with this key."],
+    ["mcp:p-notes-notes:NOTES_API_KEY", "access", "notes needs a key: NOTES_API_KEY", "Notes API key · item \"notes-key\" · npx -y notes-mcp@1.2.3 · approved by an admin (per_ana)"],
+    ["mcp:p-notes-notes:NOTES_WORKSPACE", "access", "notes needs a key: NOTES_WORKSPACE", "Workspace id · no item chosen yet · npx -y notes-mcp@1.2.3 · approved by an admin (per_ana)"],
   ]);
   assert.deepEqual(rows[0].answers.map((/** @type {any} */ a) => [a.label, a.open || a.tool]), [["Give it a key", "/u/vault"], ["Check again", "mcp.test"]]);
   assert.equal(rows[0].facts.watcher, "p-notes-notes.NOTES_API_KEY.0a1b2c3d", "the watcher the hub names, which follows the code");
