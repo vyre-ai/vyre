@@ -2,6 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SPACE_TOOLS, withSpace } from "./with-space.js";
+import { TOOLS_WITH_SPACE } from "./space-tools.generated.js";
 
 const A = "spc_abcdefghijkl", B = "spc_mnopqrstuvwx";
 
@@ -19,8 +20,16 @@ test("a screen's own space wins, and All spaces or no space adds nothing", () =>
 
 test("a tool that does not take a space is left alone", () => {
   for (const t of ["records.get", "records.update", "files.drive.list", "spaces.list", "vault.list"]) assert.deepEqual(withSpace(t, { id: "x" }, A), { id: "x" }, t);
-  assert.equal(SPACE_TOOLS.size, 53, "the 34 the app named by hand, plus records.holders, files.drive.link.create and records.audit, which the tool reference says take a space too (a routing parameter only: the server decides who runs the audit), plus files.drive.space.delete, .move and .rename, whose schemas take { space? }, plus tasks.update and tasks.review (tasks v2: like every tasks.* call they take { space? } and the kernel judges the caller), plus the eleven records tools of the records backend (records.field.add, .promote and .status, records.layout.get and .set, records.pipeline.set, records.relationship.add, .kinds, .kinds.set and .list, records.rollup.add), each of which takes { space } in its schema");
-  for (const t of ["records.field.add", "records.field.promote", "records.field.status", "records.layout.get", "records.layout.set", "records.pipeline.set", "records.relationship.add", "records.relationship.kinds", "records.relationship.kinds.set", "records.relationship.list", "records.rollup.add"]) assert.ok(SPACE_TOOLS.has(t), t);
+  // Derived, not counted: the generated reference (scripts/gen-surface-lists.mjs) says which tools take { space }; the app names the showing space in exactly the families it names it in. A signed branch that adds
+  // a row to the reference changes both sides and needs no edit here; a tool that takes a space and is left out, or one named here that does not take one (the server would refuse the extra key), fails by name.
+  const FAMILIES = ["files.drive.", "records.", "rules.", "tasks.", "runner.places"];
+  const inFamily = (/** @type {string} */ t) => FAMILIES.some((f) => t.startsWith(f));
+  const missing = TOOLS_WITH_SPACE.filter((t) => inFamily(t) && !SPACE_TOOLS.has(t));
+  const extra = [...SPACE_TOOLS].filter((t) => !TOOLS_WITH_SPACE.includes(t));
+  assert.deepEqual(missing, [], "tools of the app's families that take a space but are not named with it");
+  assert.deepEqual(extra, [], "tools named with a space that the reference says do not take one");
+  assert.ok(SPACE_TOOLS.size >= 42, "a tripwire: the list never shrinks below the 42 of v0.6.1");
+  for (const t of ["records.holders", "files.drive.link.create", "records.audit", "files.drive.space.delete", "tasks.update", "tasks.review"]) assert.ok(SPACE_TOOLS.has(t), t);
   assert.ok(SPACE_TOOLS.has("records.audit"), "records.audit names the showing space");
   assert.deepEqual(withSpace("records.audit", { type: "x" }, A), { type: "x", space: A });
 });

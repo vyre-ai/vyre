@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2 (join by address)
 
+- test: with-space.test.js no longer counts the space tools. It checks, by name, that every tool of the app's families that the generated reference says takes a space is named with it, and that nothing is named with a space that the reference says it does not take; the 42 of v0.6.1 stay as a floor.
+
 - test: the first-run order guard reads code, not trailing comments (a comment naming `path` on the `shot` line failed it); the space-tool count is 53, naming the eleven records tools the records backend added.
 
 - fix(join): the app's typecheck: the ask screens' links and words are strings where the model may answer none, resolveSpace is given null for no pin, and the merge with the train had left the catalogue's `partial` entry twice.
