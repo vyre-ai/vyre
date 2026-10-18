@@ -17,7 +17,7 @@ test("a failed start closes what ctx.own registered, newest first, and still thr
   assert.equal(server.listening, false);
 });
 
-test("a closer that throws is logged and the rest still run; a closer that never settles is given up on", async () => {
+test("a closer that throws is logged and the rest still run", async () => {
   const said = [], ran = [];
   const mod = { async start(/** @type {any} */ c) { c.own(() => ran.push("a")); c.own(() => { throw new Error("stuck"); }); throw new Error("boom"); } };
   await assert.rejects(startWithCleanup(mod, {}, m => said.push(m), "demo"), /boom/);
