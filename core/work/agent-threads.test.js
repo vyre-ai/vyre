@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { start } from "../daemon/index.js";
+import { start, callerFacts } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { newDeviceKey } from "../../lib/keywrap.js";
@@ -32,7 +32,8 @@ test("two threads with one agent, newest first; a group chat, another agent's ch
   const K = d.kernel, OWNER = K.id.owner;
   const ownerChain = K.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
   await K.gateway.grants.setRole(ownerChain, { person: BEN, role: "member" }, { presence: proof() });
-  const tok = async (/** @type {string} */ p) => ({ token: (await K.surfaces.open(p === OWNER ? ownerChain : K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: p, path: "direct", session: "sb" }), {})).token });
+  // the owner acts directly, as the CLI does (a chat is started by a person acting directly); Ben is a member with a session of his own
+  const tok = async (/** @type {string} */ p) => (p === OWNER ? { kernelFacts: callerFacts("cli", {}, {}, K, false, null, { inside: false, outside: true }) } : { token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-ben", person: p, path: "direct", session: "sb" }), {})).token });
   const as = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await tok(who));
   const ok = async (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(who, tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   for (const name of ["juno", "kit"]) await ok(OWNER, "agents.create", { name, kind: "agent" });
