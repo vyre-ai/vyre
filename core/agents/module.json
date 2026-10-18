@@ -228,7 +228,7 @@
       },
       {
         "name": "agents.level",
-        "reach": "person",
+        "reach": "anyone",
         "effect": "read"
       },
       {

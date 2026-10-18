@@ -21,6 +21,10 @@
    "module": "agents",
    "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
+  "agents.level": {
+   "module": "agents",
+   "reason": "read-only: what the caller may do with one agent (edit, use or none); the code refuses any caller that is not a person's own surface (only(meta)), and Files asks it as the person when it lists the agents they are on"
+  },
   "agents.list": {
    "module": "agents",
    "reason": "read-only: names, kinds and project grants; guard() refuses non-assistant agent labels"
