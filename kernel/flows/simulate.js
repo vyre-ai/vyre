@@ -1,7 +1,7 @@
 // kernel/flows/simulate: what a Flow would have done over a window of past events, with its actions stubbed (the runner's `simulate`). It reads through the runner's own catalog, chains and event log and
 // walks the steps with the runner's own `walk`, so a simulated step goes through the same code as a real one; nothing here stores or emits anything.
 import { compileFlow, deriveCaps } from "./compile.js";
-import { triggerScope } from "./triggers.js";
+import { triggerScope, triggersOf } from "./triggers.js";
 import { dueTimes } from "./schedule.js";
 import { describeSpan, slim, OUTWARD } from "./runner-util.js";
 import { Suspend, PauseFlow } from "./runner-faults.js";
@@ -23,25 +23,31 @@ export async function simulate(deps, flow, o) {
   /** @type {{ trigger: string, key: string, scope: any, env: any, at: number }[]} */
   const hits = [];
   let seen = 0;
-  const t = flow.trigger;
-  if (t.on === "event" || t.on === "stage") {
-    let evs = o.events;
-    if (!evs) {
-      const chain = deps.chains.forFlow({ flow: "simulation", space: cat.space, approver: o.approver, tainted: false, run: "sim", source_spaces: [cat.space] });
-      evs = await deps.k.events.read(chain, { type: "*", limit: 20_000 });
-    }
-    for (const env of evs) {
-      if (o.since && env.received_at !== undefined && env.received_at < o.since) continue;
-      if (o.until && env.received_at !== undefined && env.received_at > o.until) continue;
-      seen++;
-      const scope = triggerScope(t, env);
-      if (scope && hits.length < limit) hits.push({ trigger: t.on, key: String(env.id), scope, env, at: env.received_at ?? env.time });
-    }
-  } else if (t.on === "time" && (t.cron !== undefined || t.every_ms !== undefined) && o.since !== undefined && o.until !== undefined) {
-    // the schedule's real times: in its zone, inside its hours, off holidays (an interval counts from the window that opens, as it does live)
-    const first = t.cron !== undefined ? o.since - 1 : o.since;
-    for (const at of dueTimes(t, first, o.until, deps.zone(t, cat), deps.holidays, Math.min(limit, 1000)).times) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
-  } else for (const [i, sample] of (o.samples || []).entries()) hits.push({ trigger: t.on, key: `sample${i}`, scope: { trigger: sample }, env: null, at: deps.now() });
+  // a Flow with several triggers is tried against each; an event that two of them match is one run, as it is live (the run's id is the Flow's and the event's)
+  /** @type {Set<string>} */ const taken = new Set();
+  let events = o.events;
+  for (const t of triggersOf(flow)) {
+    const before = hits.length;
+    if (t.on === "event" || t.on === "stage") {
+      let evs = events;
+      if (!evs) {
+        const chain = deps.chains.forFlow({ flow: "simulation", space: cat.space, approver: o.approver, tainted: false, run: "sim", source_spaces: [cat.space] });
+        evs = await deps.k.events.read(chain, { type: "*", limit: 20_000 }); events = evs;
+      }
+      for (const env of evs) {
+        if (o.since && env.received_at !== undefined && env.received_at < o.since) continue;
+        if (o.until && env.received_at !== undefined && env.received_at > o.until) continue;
+        seen++;
+        const scope = triggerScope(t, env);
+        if (scope && hits.length < limit) hits.push({ trigger: t.on, key: String(env.id), scope, env, at: env.received_at ?? env.time });
+      }
+    } else if (t.on === "time" && (t.cron !== undefined || t.every_ms !== undefined) && o.since !== undefined && o.until !== undefined) {
+      // the schedule's real times: in its zone, inside its hours, off holidays (an interval counts from the window that opens, as it does live)
+      const first = t.cron !== undefined ? o.since - 1 : o.since;
+      for (const at of dueTimes(t, first, o.until, deps.zone(t, cat), deps.holidays, Math.min(limit, 1000)).times) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
+    } else for (const [i, sample] of (o.samples || []).entries()) hits.push({ trigger: t.on, key: `sample${i}`, scope: { trigger: sample }, env: null, at: deps.now() });
+    for (let k = hits.length - 1; k >= before; k--) { if (taken.has(hits[k].key)) hits.splice(k, 1); else taken.add(hits[k].key); }
+  }
 
   const runs = [];
   /** @type {Record<string, number>} */ const writes = {};
