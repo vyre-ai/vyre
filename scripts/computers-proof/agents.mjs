@@ -106,6 +106,8 @@ try {
   const before = (await cookiesOf(a)).map(c => c.name);
   check(before.includes("proof_login"), "a persistent cookie is set in A's Chrome", before);
   await a.close(); adapter.drop("a");
+  // Chrome commits cookies to disk in batches every 30 s (a login is that old by the time a screen has been idle for 5 minutes); a cookie set a second ago is not on disk yet, whatever the shutdown does.
+  await sleep(35_000);
   // where the cookie lives on disk (printed for the log; the check is the cookie after waking)
   const cookieDb = when => console.log(`--- cookie files ${when}\n` + shOk(["exec", "-u", "21000", CONTAINER, "python3", "-c",
     "import sqlite3,glob,os\nfor f in glob.glob('/var/lib/vyre/browsers/agb21000/profile/**/Cookies', recursive=True):\n    print(f, os.path.getsize(f))\n    try:\n        c=sqlite3.connect('file:'+f+'?mode=ro', uri=True)\n        print(c.execute('select host_key,name,length(value),length(encrypted_value),expires_utc,is_persistent from cookies').fetchall())\n    except Exception as e:\n        print('sqlite', e)"]));
