@@ -20,7 +20,9 @@
     {"name": "planner.parse", "effect": "read", "reach": "anyone"},
     {"name": "planner.settings", "effect": "write", "reach": "person"},
     {"name": "planner.calendar.sync", "effect": "write", "reach": "anyone"},
-    {"name": "planner.calendar.create", "effect": "write", "projectArg": "project", "reach": "anyone"}
+    {"name": "planner.calendar.create", "effect": "write", "projectArg": "project", "reach": "anyone"},
+    {"name": "planner.serve", "effect": "read", "reach": "modules", "crossSpace": "records.read", "summary": "a team member's reads of the team's notes, as that member in that Space (the daemon's member door only)"},
+    {"name": "planner.serve-write", "effect": "write", "reach": "modules", "crossSpace": "records.create", "summary": "a team member writes a note of hers on the team's server, as that member in that Space (the daemon's member door only)"}
   ] },
   "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule", "planner.task-run", "planner.escalated"] },
   "shows": { "deck": ["panel:planner"], "capsule": [], "cli": ["alarm", "remind", "todo", "notes", "agenda"] },

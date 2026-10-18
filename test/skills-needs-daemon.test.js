@@ -25,6 +25,7 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   asOwner(d, root);
   t.after(() => d.stop());
   const ROW = keyRowName({ plugin: "notes", server: "notes", level: "personal", scope: d.kernel.id.owner });
+  const asApprovals = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await d.registry.call(tool, input, "module:approvals"); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "cli") => { const r = await d.registry.call(tool, input, caller); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code, error: r.error }); return r.data; };
   const draft = (/** @type {any} */ p, name = "notes") => call("skills.draft", { name, level: "personal", kind: "plugin", body: JSON.stringify(p) });
   const refused = async (/** @type {Promise<any>} */ p) => p.then(() => assert.fail("was not refused"), (/** @type {Error} */ e) => e.message);
@@ -60,8 +61,13 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.equal(sv.state, "needs_key", "no grant to this one server and variable: it waits and was never started");
   assert.deepEqual(sv.env, { NOTES_API_KEY: "notes-key" }, "the row names the item");
 
+  // nobody else reads the list: not an agent, not a person's surface, not another module
+  for (const [who, meta] of /** @type {[string, any][]} */ ([["mcp:agent:kit", { thread: "t1", agent: "kit", agentKind: "agent" }], ["mcp", {}], ["cli", undefined], ["module:vault", undefined]])) {
+    const r = await d.registry.call("mcp.keys.waiting", {}, who, meta);
+    assert.ok(r.error, `${who} is refused: ${JSON.stringify(r).slice(0, 200)}`);
+  }
   // the Needs-you queue shows the waiting key as one card per variable, in plain words
-  const keys = await call("mcp.keys.waiting", {});
+  const keys = await asApprovals("mcp.keys.waiting", {});
   assert.deepEqual(keys.servers.map((/** @type {any} */ x) => [x.name, x.plugin, x.waiting.map((/** @type {any} */ w) => w.var)]), [[ROW, "notes", ["NOTES_API_KEY"]]]);
   const queue = await call("approvals.items", {}).catch(() => null);
   if (queue) assert.ok(queue.items.some((/** @type {any} */ c) => c.id === `mcp:${ROW}:NOTES_API_KEY` && c.title === "notes needs a key: NOTES_API_KEY"), "and it is a card");
@@ -93,7 +99,7 @@ test("a plugin server with needs: refused when unpinned or when a variable is un
   assert.equal(sv2.state, "needs_key");
 
   // the card carries the watcher the grant is made to (it names the code), and the grant's words say what is being given and to what
-  const waiting = await call("mcp.keys.waiting", {});
+  const waiting = await asApprovals("mcp.keys.waiting", {});
   const w = waiting.servers[0].waiting.find((/** @type {any} */ x) => x.var === "NOTES_API_KEY");
   assert.match(w.watcher, new RegExp(`^${ROW}\\.NOTES_API_KEY\\.[0-9a-f]{8}$`));
   const summary = await /** @type {any} */ (d.registry).tools.get("vault.grant").presence.summary({ name: "notes-key-2", module: "mcp", watcher: w.watcher });
