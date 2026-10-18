@@ -8,15 +8,15 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BlockScreen, BoardView, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { BlockScreen, BoardView, GalleryView, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
 
-type ViewKind = "list" | "board" | "calendar" | "dashboard";
+type ViewKind = "list" | "gallery" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
 const TABS_MAX = 5;
-const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
+const LABEL: Record<ViewKind, string> = { list: "List", gallery: "Gallery", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /**
  * The `records` block (design language, data source: records): every record of one type, as a list, a board, a calendar or a dashboard, drawn from the type's definition. Nothing here knows Contact
@@ -76,7 +76,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
-  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
+  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
   const table = tableFromRecords(drawn, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } });
@@ -137,6 +137,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </Card>
       ) : null}
       {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: () => switcher }} /> : switcher}
+      {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardView def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={drawn} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}

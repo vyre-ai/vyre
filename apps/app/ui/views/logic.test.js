@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
-import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
+import { galleryCards, barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -268,5 +268,14 @@ test("the four starting types open as they should: People and Companies as table
   assert.equal(viewDefOf(of("contact")).open, undefined, "People open as the table");
   assert.deepEqual(viewsOf(of("task"), viewDefOf(of("task"))), ["list", "board", "calendar"], "Tasks offer a board and a calendar: they have a status and a due date");
   assert.deepEqual(viewsOf(of("note"), viewDefOf(of("note"))), ["list"], "Notes have nothing to group or date by: only the list");
-  assert.deepEqual(viewsOf(of("organization"), viewDefOf(of("organization"))), ["list"]);
+  assert.deepEqual(viewsOf(of("organization"), viewDefOf(of("organization"))), ["list", "gallery"], "Companies offer the gallery");
+  assert.equal(viewDefOf(of("organization")).open, "gallery", "Companies open as cards");
+});
+
+test("gallery cards: a title, one line under it, and a picture only from an https address in an image field", async () => {
+  const { viewDefOf } = await import("./view-defs.js");
+  const def = { name: "organization", label: "Organization", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "domain", kind: "text", label: "Domain" }, { name: "logo", kind: "url", label: "Logo" }] };
+  const rows = [{ id: "o1", data: { name: "Juniper Studio", domain: "juniper.example", logo: "https://juniper.example/l.png" } }, { id: "o2", data: { name: "Kit & Co", domain: "kit.example", logo: "http://x.example/l.png" } }, { id: "o3", data: { name: "Plain" } }];
+  const cards = galleryCards(def, rows, viewDefOf(def));
+  assert.deepEqual(cards.map((c) => [c.key, c.title, c.subtitle, c.image ?? null]), [["o1", "Juniper Studio", "juniper.example", "https://juniper.example/l.png"], ["o2", "Kit & Co", "kit.example", null], ["o3", "Plain", "", null]], "an http picture is not used");
 });
