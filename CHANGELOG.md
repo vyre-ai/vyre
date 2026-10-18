@@ -9,6 +9,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: owner-walk-daemon also walks an agent reviewer woken for a hand-in and passing, an agent doer woken again when changes are requested, and a joined member's planner notes and records history through the member door.
+
 - refactor(daemon): the flows host's callAs and its comment share a line, so core/daemon/index.js is back at its listed 2009 lines. No change in behaviour.
 - refactor(daemon): the three request-body readers (rawBody, rawBinary, body) move from core/daemon/index.js to core/daemon/request-body.js, so index.js is under its size cap again. No change in behaviour; test/file-size.json is lowered to the new size.
 
