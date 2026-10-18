@@ -39,6 +39,11 @@
         "reach": "anyone"
       },
       {
+        "name": "skills.import",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
         "name": "skills.draft.learned",
         "effect": "write",
         "reach": "modules"

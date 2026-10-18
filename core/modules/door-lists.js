@@ -206,7 +206,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "sidebar.edit", "sidebar.get", "sidebar.pin", "sidebar.stored", "sidebar.team", "sidebar.unpin",
   "sight.frame", "sight.now", "sight.steps", "sight.targets", "sight.watch",
   "signin.answer", "signin.ask", "signin.dev", "signin.end", "signin.pending", "signin.status",
-  "skills.approve", "skills.decline", "skills.rollback", "skills.versions",
+  "skills.approve", "skills.decline", "skills.import", "skills.rollback", "skills.versions",
   "spaces.assess-computer", "spaces.bundle.enrol", "spaces.bundle.export", "spaces.bundle.status", "spaces.cancel", "spaces.code.submit", "spaces.compute.accept",
   "spaces.compute.allow", "spaces.compute.status", "spaces.create", "spaces.devices.enrol", "spaces.devices.lend", "spaces.devices.lend.status", "spaces.devices.list",
   "spaces.devices.remove", "spaces.devices.restore", "spaces.devices.set", "spaces.devices.spaces", "spaces.get", "spaces.host-here", "spaces.identity.alias",

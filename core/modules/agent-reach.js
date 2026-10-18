@@ -12,6 +12,7 @@ import { SETUP_REASONS } from "../../lib/setup-gate.js";
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["skills.import", "uploads a skill or plugin file into the person's own approval queue: a model has no file of the person's to upload; it writes a skill with skills.draft"],
   ["documents.signing.audit", "saves a signed request's audit file into the person's own Files: the person's own act, never a model's"],
   ["onboard.first.done", "marks first run finished on the person's own surface: the person's own act"],
   ["onboard.first.progress.save", "saves first-run progress on the person's own surface: the person's own act"],

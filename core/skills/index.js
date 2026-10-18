@@ -32,6 +32,7 @@ import { identityKernel, personalSkillsOnHome } from "./home-kernel.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 import { resolveApproved } from "../../lib/skill-resolve.js";
 import { runBrowse, roleOf } from "./browse-lib.js";
+import { parseUpload, IMPORT_LIMITS } from "./import.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -317,6 +318,19 @@ export default {
       description: "Draft a skill or plugin into the library; nothing uses it until the level's owner approves. Body: SKILL.md, or plugin JSON for kind plugin.",
       input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string", description: "kind skill: a SKILL.md with name and description in its front matter. kind plugin: JSON { name, description, skills?, commands?, hooks?, mcp? }; a hook or MCP server is code and the draft says what it declares" }, note: { type: "string" } }, ["name", "level", "body"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => libraryFor(i.level).draft(await need(meta), i) });
+    // An uploaded file (a SKILL.md, a .md, or a .zip of a skill folder or a plugin) goes through the SAME draft as skills.draft: the level's owner approves it and nothing runs on upload (core/skills/import.js checks it strictly).
+    const filenameOf = (/** @type {any} */ i) => (typeof i.filename === "string" && i.filename ? ` (${i.filename.replace(/[^\w .-]/g, "").slice(0, 80)})` : "");
+    ctx.tool("skills.import", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
+      description: "Upload a skill or plugin file: a SKILL.md, a .md, or a .zip of a skill folder or a plugin. It becomes a draft the level's owner approves, exactly like skills.draft; nothing runs on upload. Says which AI (Claude, Codex, Grok) can use each part and what was left out.",
+      input: obj({ ...common, file: { type: "string", description: "the file's bytes, base64" }, filename: { type: "string" } }, ["level", "file"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const c = await need(meta);
+        const raw = String(i.file || "");
+        if (raw.length > Math.ceil(IMPORT_LIMITS.zip * 4 / 3) + 8 || !/^[A-Za-z0-9+/=\s]*$/.test(raw)) throw err("bad_input", `the file is not base64, or is larger than ${IMPORT_LIMITS.zip / 1024 / 1024} MB`);
+        const up = parseUpload({ file: Buffer.from(raw, "base64"), filename: typeof i.filename === "string" ? i.filename.slice(0, 200) : "" });
+        const draft = await libraryFor(i.level).draft(c, { name: up.name, level: i.level, ...(i.scope ? { scope: i.scope } : {}), kind: up.kind, body: up.body, note: `Uploaded${filenameOf(i)}.${up.leftOut.length ? ` Not taken: ${up.leftOut.join("; ")}.` : ""}${up.code ? " It has code (MCP servers): approving needs the owner's ack." : ""} Hooks aren't run by Vyre.`.slice(0, 490) });
+        return { ...draft, kind: up.kind, name: up.name, worksWith: up.worksWith, leftOut: up.leftOut, code: up.code };
+      } });
     // A lesson (a procedure the person keeps repeating, learn's proposal) is drafted for the install's owner, at the project level when it is a project's, else their own. A draft only: approving is the person's.
     ctx.tool("skills.draft.learned", { effect: "write", internal: true, callers: ["module"],
       description: "Draft a skill learn proposed from a repeated procedure: at the agent's own level when one agent repeated it, else the project's, else the owner's own. A draft; its level's owner approves it.",

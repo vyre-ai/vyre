@@ -22,10 +22,10 @@ const LOCAL = 0x04034b50;
 /**
  * Read every file entry of a zip archive. Directory entries are left out.
  * @param {Uint8Array} buffer
- * @param {{ maxEntries?: number, maxBytes?: number }} [opts]
+ * @param {{ maxEntries?: number, maxBytes?: number, noLinks?: boolean }} [opts] noLinks: refuse an entry that a Unix zip marks as a symbolic link
  * @returns {Map<string, Buffer>}
  */
-export function unzip(buffer, { maxEntries = 10000, maxBytes = 200 * 1024 * 1024 } = {}) {
+export function unzip(buffer, { maxEntries = 10000, maxBytes = 200 * 1024 * 1024, noLinks = false } = {}) {
   if (!(buffer instanceof Uint8Array)) throw new Error("zip: expected the archive as bytes");
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 
@@ -59,6 +59,7 @@ export function unzip(buffer, { maxEntries = 10000, maxBytes = 200 * 1024 * 1024
     const extraLen = buf.readUInt16LE(p + 30);
     const commentLen = buf.readUInt16LE(p + 32);
     const local = buf.readUInt32LE(p + 42);
+    const unixMode = (buf.readUInt16LE(p + 4) >> 8) === 3 ? (buf.readUInt32LE(p + 38) >>> 16) & 0o170000 : 0;
     if (p + 46 + nameLen > cdOffset + cdSize) throw new Error(`zip: central directory entry ${n + 1} is damaged`);
     const name = buf.subarray(p + 46, p + 46 + nameLen).toString(flags & 0x800 ? "utf8" : "latin1");
     p += 46 + nameLen + extraLen + commentLen;
@@ -66,6 +67,7 @@ export function unzip(buffer, { maxEntries = 10000, maxBytes = 200 * 1024 * 1024
     const label = printable(name);
     checkName(name, label);
     if (flags & 0x1) throw new Error(`zip: entry "${label}" is encrypted`);
+    if (noLinks && unixMode === 0o120000) throw new Error(`zip: entry "${label}" is a link`);
     if (csize === 0xffffffff || usize === 0xffffffff || local === 0xffffffff) throw new Error("zip: zip64 archives are not supported");
     if (out.has(name)) throw new Error(`zip: entry "${label}" appears more than once`);
     declared += usize;
