@@ -55,13 +55,13 @@ test("link: box events stream to the Mac, tagged with their source", async t => 
   const s = await pair(t);
   const seen = [];
   const sock = (await import("../core/config/index.js")).paths(s.macRoot).socket;
-  const req = http.get({ socketPath: sock, path: "/v1/link/events?type=system.*&since=latest" }, res => {
+  // since=0 replays what the box already logged, so an event emitted before the stream has connected is still seen: no fixed wait for the connection.
+  const req = http.get({ socketPath: sock, path: "/v1/link/events?type=system.*&since=0" }, res => {
     res.setEncoding("utf8");
     let buf = "";
     res.on("data", c => { buf += c; for (const b of buf.split("\n\n").slice(0, -1)) { const d = b.split("\n").find(l => l.startsWith("data: ")); if (d) seen.push(JSON.parse(d.slice(6))); } buf = buf.slice(buf.lastIndexOf("\n\n") + 2); });
   });
   t.after(() => req.destroy());
-  await wait(200);
   // A box event appears on the Mac's stream with source "box".
   s.box.events.emit("system", "system.started", { again: true });
   const e = await until(() => seen.find(x => x.payload && x.payload.again));
