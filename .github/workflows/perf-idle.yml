@@ -23,5 +23,5 @@ jobs:
         run: |
           for i in 1 2 3; do
             echo "== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
-            node scripts/perf-check 2>&1 | grep -E "CPU \(|FAIL|host load" || true
+            node scripts/perf-check 2>&1 | grep -E "CPU \(|FAIL|host load|heap used" || true
           done

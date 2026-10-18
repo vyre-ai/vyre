@@ -36,6 +36,9 @@ import { createUsage } from "./usage.js";
 import { signalTree, pidsUnder, portIsSessions } from "./proctree.js";
 import { endOrphans, startedOf } from "./orphans.js";
 import { SANDBOX_PORTS } from "./homesandbox.js";
+/** What the workspace says it is: "locked" or "revoked" only once nothing can read it. While the lease has ended but the key is still on the filesystem (the removal is not finished, or a process still holds a file), it is "locking". @param {string} leaseState @param {boolean} mounted */
+export function reportedState(leaseState, mounted) { return (leaseState === "locked" || leaseState === "revoked") && mounted ? "locking" : leaseState; }
+
 export { endOrphans };
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
@@ -480,7 +483,7 @@ export function createRunner(o) {
     get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
     async fence(session) { const h = live.get(session); if (!h || h.released) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
-    status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: reportedState(lease.state, driver.isMounted(dir)), expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     /** The lease is not open and the workspace key is off the filesystem (including after lock-pending retries). */
     async whenSecured(timeoutMs = 120_000) {
       const t0 = now();
