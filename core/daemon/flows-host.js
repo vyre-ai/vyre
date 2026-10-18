@@ -145,9 +145,8 @@ export function createFlowsHost(o) {
       const lights = o.lights ? await o.lights().catch(() => ({})) : {};
       return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: await teammateNames(o.callModule, space, log), templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
-    const roleHolders = async (/** @type {string} */ role) => {
-      try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
-    };
+    // The kernel's own reading of a role (kernel/index.js roleHolders), the same one task slots use: a member whose role is that name.
+    const roleHolders = async (/** @type {string} */ role) => { try { return k.roleHolders(role); } catch { return []; } };
     /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
     const standingReceipts = new Set();
     const ports = {
