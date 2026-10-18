@@ -259,8 +259,10 @@ try {
     await drv.fill("Last name", "Walker");
     await drv.shot("01b-name");
     await drv.click("Continue");
-    await drv.waitFor("Create your identity");
+    await drv.waitFor("Pick a username.");
     await drv.fill("Username", USERNAME);
+    await drv.click("Continue");
+    await drv.waitFor("Make your password.");
     await drv.fill("Password", PASSWORD);
     await drv.fill("Confirm password", PASSWORD);
     await drv.click("Create");

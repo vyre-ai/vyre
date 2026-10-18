@@ -63,6 +63,8 @@ const CALLS = {
   // a member adds an AI key to their OWN vault (core/vault/member-service.js): one presence for the whole act. The proof covers the label and the HASH of the value, never the value or the password, and is signed
   // as `grant.add_key` (opOf: the second part of the action), which the sealing process already accepts for a person's own device.
   vaultAddKey: (s, i) => ({ action: "vault.add_key", resource: urn(s, "vault-me", "self"), input: { label: String(i && i.label), kind: "api-key", value_sha256: sha256(String(i && i.value)) } }),
+  // a member copies a set of AI keys into their OWN vault (core/vault/member-service.js addkeys): ONE proof over the whole set, sorted by label then hash, so no key can be added, dropped or swapped after the person saw the list; only hashes of the values
+  vaultAddKeys: (s, i) => ({ action: "vault.add_keys", resource: urn(s, "vault-me", "self"), input: { items: (Array.isArray(i && i.items) ? i.items : []).map(x => ({ label: String(x && x.label), kind: "api-key", value_sha256: sha256(String(x && x.value)) })).sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : a.value_sha256 < b.value_sha256 ? -1 : a.value_sha256 > b.value_sha256 ? 1 : 0)) } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 
@@ -85,7 +87,7 @@ export const proofNameOf = (call) => {
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
 /** Gateway paths whose proof request has another name (the wire says `grants.offers.lend`, the request is `lend`). */
-export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "grants.invites.revoke": "inviteRevoke", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend", "myvault.addkey": "vaultAddKey" });
+export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "grants.invites.revoke": "inviteRevoke", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend", "myvault.addkey": "vaultAddKey", "myvault.addkeys": "vaultAddKeys" });
 
 /**
  * What a surface shows and signs for one grants call: `{ op, space, fields, payload_hash }`. The signer signs `payload_hash` (and the rest of the PresenceProof

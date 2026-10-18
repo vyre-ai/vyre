@@ -51,7 +51,7 @@ export function SpacesScreen() {
 
   return (
     <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
-      actions={<Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add a space" />} items={[{ label: "Create a space", onPress: () => router.push("/onboard?path=create" as never) }, { label: "Join a space", onPress: () => router.push("/onboard?path=join" as never) }]} />}>
+      actions={<Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add a space" />} items={[{ label: "Make a new Space", onPress: () => router.push("/onboard?path=create" as never) }, { label: "Join a Space", onPress: () => router.push("/onboard?path=join" as never) }]} />}>
       {MOCK ? null : <MyCloudCard />}
       {ELSEWHERE ? (
         <Banner icon="refresh">
