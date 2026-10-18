@@ -667,7 +667,11 @@ export function createHost(o) {
           if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) { done.push({ id: String(a.id), label, ok: false, why: "That key could not be read." }); continue; }
           const base = typeof a.base_url === "string" && a.base_url === "https://api.x.ai/v1" ? a.base_url : "";
           keys.push({ id: String(a.id), label, kind, key, ...(base ? { base_url: base } : {}) });
-        } catch (e) { done.push({ id: String(a.id), label, ok: false, why: String((e && /** @type {any} */ (e).code) === "held_for_approval" ? "Waiting for your approval." : "That key could not be read.") }); }
+        } catch (e) {
+          // the read is the person's own act (vault.reveal): the app's one call path (src/real/box.ts tool, the same the Vault screen uses) asks for the yes on this exact call; what it answers is said, never swallowed
+          const code = String(e && /** @type {any} */ (e).code || "");
+          done.push({ id: String(a.id), label, ok: false, why: code === "cancelled" || code === "not_approved" ? "Not approved. Sign in again on the new Space, or try the copy again." : code === "held_for_approval" || code === "needs_presence" || code === "presence_required" ? "Waiting for your approval. Try again once you have approved." : "That key could not be read. Sign in again on the new Space." });
+        }
       }
       try {
         if (dest.role && dest.role !== "owner") {

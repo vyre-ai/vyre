@@ -627,6 +627,10 @@ test("copying AI accounts to a new Space: only key accounts are copyable, each k
   assert.ok(!JSON.stringify(r).includes("OLDKEY"), "no key in the answer or the failure words");
   assert.deepEqual(sent.filter((x) => x.name === "vault.reveal").map((x) => x.box), ["boxFIRST", "boxFIRST"], "each key is read from the OTHER server, one call each");
   assert.deepEqual(sent.filter((x) => x.name === "sessions.accounts.key").map((x) => [x.box, x.kind]), [["boxA", "anthropic-compatible"], ["boxA", "openrouter"]], "and added to the new Space's server");
+  // a read the person does not approve is said, per account, with the way on: never silent
+  pp.call = async (name, input, box) => { if (name === "vault.reveal") throw Object.assign(new Error("Nothing was approved."), { code: "cancelled" }); if (name === "sessions.accounts.list" && box === "boxFIRST") return [{ id: "a1", provider: "claude", label: "Work", kind: "api-key", vault_item: "ai-key-claude-1" }]; return first(name, input, box); };
+  const no = await host.call("onboard.accounts.copy", { ids: ["a1"] });
+  assert.deepEqual([no.copied[0].ok, /Not approved.*Sign in again/.test(no.copied[0].why)], [false, true]);
   await assert.rejects(() => host.call("onboard.accounts.copy", { ids: [] }), (e) => e.code === "bad_input");
 });
 
