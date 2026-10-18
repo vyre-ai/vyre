@@ -11,7 +11,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { peerSession, streamPipe, T } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
-import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
+import { ASK_CALLS, INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
 import { youngAt, verifyWebAuthn } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
@@ -93,6 +93,20 @@ export function createPeerDoor(o) {
   // A team member's app opens one stream per call and a screen load makes 8 to 15 calls (apps/app, one stream per team call), so a member needs 120 a minute per Space and 240 across Spaces; the box-wide directory lookups rise with them (480)
   const lim = { perInvite: 120, perIdentity: 240, perMinute: 60_000, perBox: 480, nonceMax: 5000, idleMs: 30_000, presenceMs: 120_000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
   const perChannel = lim.perChannel ?? lim.perIdentity;
+  // Asking to join (v3 hello, purpose "ask"). THE CAPS THAT HOLD: per identity (the request store, five an hour), Space-wide per hour (here), the open-request cap and the 24-hour newcomer device rule (a fresh identity costs a
+  // day). The per-channel cap below is NOT a defence: a relay channel key is free to mint. Caps by network address are the relay's job and are a dependency of this feature, not something the home can see.
+  const askLim = { perChannelHour: 20, perSpaceHour: 120, hourMs: 3_600_000, ...(o.askLimits || {}) };
+  /** @type {Map<string, number[]>} */ const askUses = new Map();
+  const overAsk = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
+    const a = (askUses.get(key) || []).filter(t => now - t < askLim.hourMs);
+    askUses.set(key, a);
+    if (a.length >= max) return true;
+    a.push(now);
+    if (askUses.size > 5000) for (const [k, v] of askUses) if (!v.length || now - v[v.length - 1] > askLim.hourMs) askUses.delete(k);
+    return false;
+  };
+  // The signed ask names the purpose, the box, the space, the identity, its entry, the time, the nonce and the channel's key id: a v2 verifier cannot take it as an invite hello and the reverse
+  const askMessage = (/** @type {string} */ box, /** @type {any} */ h) => Buffer.from(`vyre-invitee-hello-v3\nask\n${box}\n${h.space}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`, "utf8");
   const over = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
     const a = (uses.get(key) || []).filter(t => now - t < lim.perMinute);
     uses.set(key, a);
@@ -110,10 +124,46 @@ export function createPeerDoor(o) {
    * an entry it just said it did not know; the signature is checked next; and only a hello that VERIFIED is counted against its invite and its identity, so nobody can use up a victim's allowance
    * by naming them. A channel's own allowance is its own key's, so spending it hurts no one else. @param {any} h @param {string} inviteeId
    */
+  /**
+   * The ask hello (v3). Order: shape, freshness, nonce, the channel's own key, THEN the rate checks (per channel, Space-wide) BEFORE the directory is asked, so a flood cannot spend lookups; then the identity's entry from the
+   * directory, the signature over the ask text, and the newcomer rule (a device under 24 hours on the list asks for nothing, unless it founded the list). The invite field does not exist on an ask.
+   * @param {any} h @param {string} inviteeId @param {number} now @param {(v: any, re: RegExp) => boolean} str
+   */
+  const checkAsk = async (h, inviteeId, now, str) => {
+    if (h.purpose !== "ask" || h.invite !== undefined || Object.keys(h).some(k => !["v", "purpose", "space", "identity", "entry", "name", "ts", "nonce", "channel", "sig"].includes(k))) return { why: "bad_input" };
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,1500}$/)) return { why: "bad_input" };
+    if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
+    if (h.channel !== inviteeId) return { why: "wrong_channel" };
+    if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
+    for (const [n, exp] of nonces) { if (exp > now) break; nonces.delete(n); }
+    if (nonces.has(h.nonce)) return { why: "replayed" };
+    if (overAsk(`c:${inviteeId}`, askLim.perChannelHour, now) || overAsk(`s:${h.space}`, askLim.perSpaceHour, now)) return { why: "rate_limited" };
+    if (typeof o.identityEntry !== "function" || typeof o.boxId !== "function") return { why: "cannot_check" };
+    let box = null;
+    try { box = await o.boxId(); } catch { box = null; }
+    if (!box) return { why: "cannot_check" };
+    const missKey = `${h.identity}/${h.entry}/${h.name || ""}`;
+    const missed = misses.get(missKey);
+    if (missed !== undefined && now - missed < MISS_MS) return { why: "unknown_identity" };
+    lookups = lookups.filter(t => now - t < lim.perMinute);
+    if (lookups.length >= lim.perBox) return { why: "rate_limited" };
+    lookups.push(now);
+    /** @type {any} */ let entry = null;
+    try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
+    if (!entry || typeof entry.pub !== "string" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
+    if (entry.alg === "webauthn-es256" ? !(await verifyWebAuthn(entry.pub, String(entry.rp || ""), askMessage(box, h), h.sig)) : !verifyDevice(entry.pub, askMessage(box, h), h.sig)) return { why: "bad_proof" };
+    if (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since) || youngAt({ founder: entry.founder, since: /** @type {number} */ (entry.since) }, now)) return { why: "young_device" };
+    if (nonces.has(h.nonce)) return { why: "replayed" };
+    nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
+    trim(nonces, lim.nonceMax);
+    return { identity: h.identity, pub: entry.pub };
+  };
   const checkHello = async (h, inviteeId) => {
     const now = (o.now || Date.now)();
     if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
     const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
+    if (h.v === 3) return checkAsk(h, inviteeId, now, str);
+    if (h.v !== undefined) return { why: "bad_input" };
     if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^(inv_[0-9a-f]{32}|member)$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,1500}$/)) return { why: "bad_input" };
     if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
     if (h.channel !== inviteeId) return { why: "wrong_channel" };
@@ -190,6 +240,8 @@ export function createPeerDoor(o) {
         if (!c.identity) { log(`peer door: invitee ${inviteeId} refused (${String(c.why)})`); return { ok: false, why: String(c.why) }; }
         const server = serverFor(head.space);
         if (!server) { log(`peer door: invitee ${inviteeId} refused (not_found)`); return { ok: false, why: "not_found" }; }
+        // An ask (v3): admitted for the two ask calls only; the Space decides in the request service whether it takes requests at all
+        if (head.v === 3) return { ok: true, ask: true, identity: c.identity, space: head.space, invite: "", entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
         // A MEMBER's stream (the hello names `member` where an invitee's names its invite): the person joined this space before and reaches it from a device on their own identity list. The space's own kernel decides whether they
         // are a member (its member read answers only for one); from then on the stream carries kernel calls under the member's own chain, which the home builds from this channel's proved facts like any member device's.
         if (head.invite === "member") {
@@ -287,6 +339,13 @@ export function createPeerDoor(o) {
           const sv = serverFor(a.space);
           if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
           return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(memberPeerStream ? { peerStream: memberPeerStream } : {}) });
+        }
+        if (a.ask === true) {
+          // an ask stream: requests.ask and requests.status of THIS space, nothing else (never an invite call); the caller is the verified identity, no argument names one
+          if (input.space !== a.space || !ASK_CALLS.has(String(input.call))) throw err("denied", "an ask opens two calls and nothing else");
+          const sv = serverFor(a.space);
+          if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
+          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry, ...(a.name ? { name: a.name } : {}) });
         }
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
