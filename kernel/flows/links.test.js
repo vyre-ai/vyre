@@ -3,7 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "./testing/world.js";
-import { linksFor, withLinks } from "./links.js";
+import { linksFor, withLinks, byPerson } from "./links.js";
 
 const KIN = { name: "kin", label: "Kin", fields: [
   { name: "name", kind: "text", label: "Name" },
@@ -97,21 +97,21 @@ test("links.js: a path that follows no link reads nothing", async () => {
 
 test("a linked record is read under the lesser of the Flow's chain and the chain of whoever started the run", async () => {
   const { w, chain, urn } = await setup();
-  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   // the Flow's own chain may read every kin; the member who starts it may not read Sam
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
-  w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
+  // Bob's chain is the stand-in whose reads are cut off above; anyone else (Alex) is a real member of the Space and reads as the kernel says
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
   const flow = { format: 1, name: "read_kin", label: "Read kin", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "put", kind: "create", type: "payment", set: { amount: 1, client: { expr: "trigger.kin.name" } } }] };
   const { id } = await install(w, flow);
-  const asAlex = w.kernel.as(ALEX), asBob = w.kernel.as("per_bob");
+  const asAlex = w.kernel.as(ALEX), asBob = w.kernel.as({ kind: "person", id: "per_bob" });
   await w.runner.start(id, { kin: urn(sam) }, asAlex);
   await settle(w);
   await w.runner.start(id, { kin: urn(sam) }, asBob);
   await settle(w);
   const runs = (await w.runner.listRuns()).sort((a, b) => (a.started_at ?? 0) - (b.started_at ?? 0));
-  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], "one run read it, the other did not");
+  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], `one run read it, the other did not: ${JSON.stringify(runs.map(r => ({ state: r.state, by: r.started_by, error: r.error })))}`);
   const failed = runs.find(r => r.state === "failed");
   assert.match(String(failed && failed.error.message), /not there, or is not yours to see/, "the starter could not read it, so neither can the Flow for them");
   assert.deepEqual(await payments(w, chain), ["Sam"], "only the run that Alex started wrote it");
@@ -119,19 +119,64 @@ test("a linked record is read under the lesser of the Flow's chain and the chain
 
 test("an event-triggered run reads a linked record under the lesser of the Flow's chain and the chain of the person whose change fired it", async () => {
   const { w, chain, urn } = await setup();
-  w.kernel.addActor({ kind: "person", id: "per_bob" });   // Bob is a member: the kernel now refuses a run from someone who is not, and this test is about what he may read
   const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
   const real = w.kernel.records.get;
   w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
-  w.runner.ports.actorChain = (/** @type {string} */ id) => ({ theirs: id, hops: [{ actor: { kind: "person", id } }] });
+  // Bob's chain is the stand-in whose reads are cut off above; anyone else (Alex) is a real member of the Space and reads as the kernel says
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
   await install(w, copyFlow("trigger.after.spouse.name"));
   // a change by Bob, who may not read Sam, fires the Flow: it stops; the same change by Alex goes through
-  await w.kernel.records.create(w.kernel.as("per_bob"), "kin", { name: "Main", spouse: urn(sam) });
+  await w.kernel.records.create(w.kernel.as({ kind: "person", id: "per_bob" }), "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
   await w.kernel.records.create(w.kernel.as(ALEX), "kin", { name: "Main", spouse: urn(sam) });
   await settle(w);
   const runs = await w.runner.listRuns();
-  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"]);
+  assert.deepEqual(runs.map(r => r.state).sort(), ["done", "failed"], JSON.stringify(runs.map(r => ({ state: r.state, started_by: r.started_by, actor: r.trigger && r.trigger.event && r.trigger.event.actor, kind: r.trigger && r.trigger.kind }))));
   assert.match(String(runs.find(r => r.state === "failed")?.error.message), /not there, or is not yours to see/);
   assert.deepEqual(await payments(w, chain), ["Sam"], "only Alex's change wrote it");
+});
+
+test("a manual start with a person on its chain records who started the run (run.started_by), which is what the linked-record read and the file preview compare against", async () => {
+  const { w, urn, chain } = await setup();
+  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
+  const flow = { format: 1, name: "read_kin2", label: "Read kin", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "put", kind: "create", type: "payment", set: { amount: 1, client: { expr: "trigger.kin.name" } } }] };
+  const { id } = await install(w, flow);
+  await w.runner.start(id, { kin: urn(sam) }, w.kernel.as({ kind: "person", id: "per_bob" }));
+  await settle(w);
+  const runs = await w.runner.listRuns();
+  assert.deepEqual(runs.map(r => r.started_by), ["per_bob"], "the starter is recorded on the run, not on the trigger");
+  assert.equal(runs[0].trigger.by, undefined, "and the trigger does not carry it");
+});
+
+test("byPerson: the person whose change fired a Flow is its starter, even when a service emitted the event; a service-first chain and a schedule have none", () => {
+  assert.deepEqual(byPerson("person:per_bob", []), { by: "per_bob" }, "the actor names a person");
+  assert.deepEqual(byPerson("person:per_bob@spc_harlow000001", []), { by: "per_bob" }, "as the log writes it, with the Space");
+  assert.deepEqual(byPerson("service:records", [{ actor: { kind: "person", id: "per_bob" } }, { actor: { kind: "service", id: "records" } }]), { by: "per_bob" }, "a person's change the records service emitted");
+  assert.deepEqual(byPerson("agent:kit", [{ actor: { kind: "person", id: "per_bob" } }, { actor: { kind: "agent", id: "kit" } }]), { by: "per_bob" }, "an assistant's change is its person's");
+  assert.deepEqual(byPerson("service:automation", [{ actor: { kind: "service", id: "automation" } }, { actor: { kind: "person", id: "per_alex" } }]), {}, "a Flow's own change has no starter");
+  assert.deepEqual(byPerson("service:cron", undefined), {}, "a schedule has none");
+  assert.deepEqual(byPerson(undefined, []), {});
+});
+
+test("a Flow-written change carries the starter of the run that wrote it: Bob's run of Flow A makes Flow B read as Bob (and stop), Alex's run goes through", async () => {
+  const { w, chain, urn } = await setup();
+  const sam = await w.kernel.records.create(chain, "kin", { name: "Sam" });
+  const real = w.kernel.records.get;
+  w.kernel.records.get = async (/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id) => (c && c.theirs === "per_bob" && id === sam.id ? null : real.call(w.kernel.records, c, t, id));
+  w.runner.ports.actorChain = (/** @type {string} */ id) => (id === "per_bob" ? { theirs: id, hops: [{ actor: { kind: "person", id } }] } : w.kernel.as({ kind: "person", id }));
+  await install(w, copyFlow("trigger.after.spouse.name"));
+  // Flow A (approved by Alex) writes the "Main" record that links to Sam: its change fires Flow B, which reads Sam through the link
+  const a = await install(w, { format: 1, name: "make_main", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "mk", kind: "create", type: "kin", set: { name: "Main", spouse: { expr: "trigger.kin" } } }] });
+  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as({ kind: "person", id: "per_bob" }));
+  await settle(w);
+  await w.runner.start(a.id, { kin: urn(sam) }, w.kernel.as(ALEX));
+  await settle(w);
+  const all = await w.runner.listRuns();
+  const bRuns = all.filter(r => r.flow !== a.id);
+  const diag = JSON.stringify(all.map(r => ({ flow: r.flow === a.id ? "A" : "B", state: r.state, started_by: r.started_by, error: r.error && r.error.message, corr: r.trigger && r.trigger.event && r.trigger.event.corr, chain: r.trigger && r.trigger.event && (r.trigger.event.chain || []).map((/** @type {any} */ h) => `${h.actor.kind}:${h.actor.id}`) })));
+  assert.deepEqual(all.filter(r => r.flow === a.id).map(r => r.state), ["done", "done"], diag);
+  assert.deepEqual(bRuns.map(r => r.state).sort(), ["done", "failed"], `B read as the person who started A: ${diag}`);
+  assert.equal(bRuns.find(r => r.state === "failed")?.started_by, "per_bob", "B's starter is Bob, not the approver of A");
+  assert.match(String(bRuns.find(r => r.state === "failed")?.error.message), /not there, or is not yours to see/);
+  assert.deepEqual(await payments(w, chain), ["Sam"], "only the chain Alex started wrote it");
 });

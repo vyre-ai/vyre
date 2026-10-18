@@ -16,6 +16,7 @@ import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { personCallOpts } from "../../lib/person-relay.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { once } from "../../lib/once.js";
 import { loadSnapshot, snapshotCatalog } from "../../lib/connector-presets/from-catalog.js";
 import { createWho } from "./who.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
@@ -39,13 +40,17 @@ export default {
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
 
-    const curated = catalogFrom(ctx.config);
+    // The shipped presets and the reviewed snapshot are built when a connector is first asked about, not at boot: a catalog facade resolves its real catalog on first call.
+    const curatedOf = once(() => catalogFrom(ctx.config)), snapshotOf = once(() => snapshotCatalog(loadSnapshot(ctx.config), curatedOf()));
+    /** @param {() => ReturnType<typeof catalogFrom>} get */
+    const lazyCatalog = (get) => ({ presets: () => get().presets(), unavailable: () => get().unavailable(), preset: (/** @type {string} */ id) => get().preset(id), checked: () => get().checked(), presetOfName: (/** @type {string} */ n) => get().presetOfName(n), boundFor: (/** @type {string} */ i) => get().boundFor(i) });
+    const curated = lazyCatalog(curatedOf);
     // Who is asking (core/connectors/who.js): a member's id when the Vault names the caller as one, "" for the owner and for work with no claim.
     const { memberOf, viewerOf } = createWho(ctx);
     const conn = connections({
       db: ctx.store.db,
       catalog: curated,
-      snapshot: snapshotCatalog(loadSnapshot(ctx.config), curated),
+      snapshot: lazyCatalog(snapshotOf),
       fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
       // The vault item is this module's own: one it did not make is never replaced.
       save: async (item, fields, { kind, description, hosts, grants }) => {
