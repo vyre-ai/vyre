@@ -114,6 +114,10 @@ jobs:
         run: |
           if grep -rl "vyre-peer-fake-enabled" dist; then echo "the release export carries the proof's fake wire"; exit 1; fi
           echo "release export: no fake wire"
+      - name: "No proof yes in the release export (the proof build's software yes is compiled out unless the build is made for the proof)"
+        run: |
+          if grep -rlE "vyre-proof-yes-enabled|EXPO_PUBLIC_VYRE_PROOF_YES" dist; then echo "the release export carries the proof's software yes"; exit 1; fi
+          echo "release export: no proof yes"
       - name: "Two-server proof (one identity paired to two servers: Servers, tags, refusals under All spaces, an approval answered on its own server, a boxless window offers Add a server), on its own export made for the proof"
         run: |
           EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p web --output-dir dist-proof --clear
@@ -122,9 +126,10 @@ jobs:
       - name: "Positive control: Hermes bytecode keeps the marker as plain bytes (so the APK and iOS greps cannot pass because the string is hidden)"
         run: |
           for os in android ios; do
-            EXPO_PUBLIC_VYRE_PROOF=1 npx expo export -p $os --output-dir "dist-hermes-$os" --clear
+            EXPO_PUBLIC_VYRE_PROOF=1 EXPO_PUBLIC_VYRE_PROOF_YES=1 npx expo export -p $os --output-dir "dist-hermes-$os" --clear
             test -n "$(find "dist-hermes-$os" -name '*.hbc' | head -1)" || { echo "the $os export is not Hermes bytecode, so this control proves nothing"; ls -R "dist-hermes-$os" | head -20; exit 1; }
             grep -rl "vyre-peer-fake-enabled" "dist-hermes-$os" > /dev/null || { echo "a flagged $os Hermes bundle does not show the marker: the release greps could pass vacuously"; exit 1; }
+            grep -rl "vyre-proof-yes-enabled" "dist-hermes-$os" > /dev/null || { echo "a flagged $os Hermes bundle does not show the proof yes marker: the release greps could pass vacuously"; exit 1; }
             echo "$os: a flagged Hermes bundle shows the marker, so the release check can find it"
           done
       - name: "Render check (the sample world, every main screen draws at phone and desktop width)"
@@ -262,6 +267,9 @@ jobs:
           test -n "$(find "$RUNNER_TEMP/apk" -name 'index.android.bundle' | head -1)" || { echo "no JS bundle in the release APK"; exit 1; }
           if grep -rl "vyre-peer-fake-enabled" "$RUNNER_TEMP/apk"; then echo "the release APK carries the proof's fake wire"; exit 1; fi
           echo "release APK: no fake wire"
+          # the proof build's software yes (real/proof-yes.ts) is web-only in use, but Metro bundles its module on every platform: constant folding removes the body, and this proves it did. Its positive control is the Hermes step above
+          if grep -rlE "vyre-proof-yes-enabled" "$RUNNER_TEMP/apk"; then echo "the release APK carries the proof's software yes"; exit 1; fi
+          echo "release APK: no proof yes"
       - name: Name the release and write android.json
         run: |
           out=android/app/build/outputs/apk
@@ -347,6 +355,8 @@ jobs:
           test -n "$app" || { echo "no .app built"; exit 1; }
           if grep -rl "vyre-peer-fake-enabled" "$app"; then echo "the iOS release build carries the proof's fake wire"; exit 1; fi
           echo "iOS release build: no fake wire"
+          if grep -rl "vyre-proof-yes-enabled" "$app"; then echo "the iOS release build carries the proof's software yes"; exit 1; fi
+          echo "iOS release build: no proof yes"
         working-directory: apps/app/ios
       - uses: actions/upload-artifact@v4
         with:

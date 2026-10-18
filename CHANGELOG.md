@@ -2,6 +2,36 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+
+## 0.6.2 (join by address)
+
+- test: with-space.test.js no longer counts the space tools. It checks, by name, that every tool of the app's families that the generated reference says takes a space is named with it, and that nothing is named with a space that the reference says it does not take; the 42 of v0.6.1 stay as a floor.
+
+- test: the first-run order guard reads code, not trailing comments (a comment naming `path` on the `shot` line failed it); the space-tool count is 53, naming the eleven records tools the records backend added.
+
+- fix(join): the app's typecheck: the ask screens' links and words are strings where the model may answer none, resolveSpace is given null for no pin, and the merge with the train had left the catalogue's `partial` entry twice.
+
+- test(join): the group walk's last step expected "You're all set" straight after Join; a member goes on to "Connect your AI" first, so the walk skips it and then expects the last screen.
+
+- fix(join): Approve made the invite for the Space's display name ("proof's Cloud") and the directory could not verify it; it now uses the Space's address label.
+
+- test(join): the first-run proof gives its browsers a software yes (apps/app/src/real/proof-yes.ts) so the group walk can approve an ask and join: the page's own person key signs the proof body a phone would sign. It exists only in a build made with EXPO_PUBLIC_VYRE_PROOF_YES=1 (the first-run proof export); in every other build it is compiled out, the app workflow fails if a release web export holds its marker or flag name, and the proof export must show the marker. A development-kind server takes the software key; a release-kind one refuses it (kernel/seal/seal.test.js SW-2). A real browser yes (a passkey) is in team/BACKLOG.md.
+
+- fix(join): the 15-second refresh of the asks cleared the reason an Approve or Decline had just failed, so a refused approval showed nothing. The refresh now keeps its own message apart.
+
+- feat(join): Approve shows where it is ("Making their invite.", then "Letting them in."), so a slow approval is not a blank wait.
+
+- test(join): the walk pressed "Approve" by a loose name, and the ask's own row ("before you approve") matched first, so the press only folded the row away. The browser driver takes an exact name and the walk uses it for Approve.
+
+- fix(join): the first-run group walk (run 39143779793) failed all four steps. The requests module named its tables join_requests and join_settings, but a module's tables must start with its own name, so the module never started on the real server and every call to it answered "no such call" (now requests_asks and requests_settings). And a page with no daemon (the hosted web app) keeps the person's name in its own host, so the Settings screen answered "Choose your Vyre name first." and showed nothing: the door's list, decline and clear need no name there, and turning asking on and making the invite for an approval go through the paired server's own tools.
+
+- fix(welcome): FirstRun read `shot` one line before it was made ("Cannot access 'shot' before initialization" on the real first screen); the order is fixed and a test (first-run-order.test.js) fails if the first screens' function reads any constant before its line.
+
+- feat(join): the owner's setting "Let people ask to join" now goes through the Space's door with one presence proof over the new value (requests.setting, signed as grant.setting by the owner's device), so it needs no phone and an admin cannot switch it; the Settings screen reads and answers asks through the door too. The first-run proof gains a group walk: a second person makes an identity and asks by the Space's address over the real relay, the owner turns asking on, sees the ask with the same four words, approves, and the second person joins and lands in the Space.
+
+- fix(join): sec53's review of the join commits. The ask door counts the Space-wide hourly allowance only for a hello whose signature stood (forged hellos from fresh channels cannot use it up; the directory lookups stay under their cap). requests.status is limited per identity (30 a minute). Approving is checked in the Space's door under the approver's own chain: the invite must exist, be theirs, be unused and unexpired, give a role they may give, be made for this asker and not be linked to another ask; the owner's registry tool declines and clears but never approves. decided_by is the person's id. requests.attention answers module:approvals and the box's owner only. A declined or expired asker may ask again after 24 hours (the same row, the same caps). inviteList answers who made each invite (issued_by) so the door can check it.
+
+- feat(join): asking to join a Space by its address, to sec53's seven conditions. (1) The ask door: a person with no invite signs a v3 hello with the purpose "ask" (vyre-invitee-hello-v3, the box, the Space, their identity and device key, the channel's key) and may call only requests.ask and requests.status; the old invite hello cannot call them and an ask hello cannot be taken as an invite one. Rates run before the directory is asked (per channel and Space-wide per hour; a relay channel key is free to mint, so the caps that hold are per identity, the open cap and the 24-hour newcomer device rule; address caps are the relay's job, a dependency of this feature). (2) The requests module (core/requests): one row per Space and identity, the note as plain text (200 characters, never on a card, never read by a model), five asks an hour per identity, 20 open per Space, 14 days; off by default for every Space and turned on only by the owner at their own device with presence; when off, full, already a member or unknown, the asker gets the same fixed words ("This Space only takes invites."); declined and expired read "Not accepted."; approval is only by naming the invite made through the ordinary invite path with the approver's presence. (3) A Needs-you card per ask in fixed words with the fingerprint reminder (never the note), and one notice with Clear all when the list is full. (4) The app: the join screen accepts a Space's address and waits on a screen that shows the asker's four words; Settings, People has \"Let people ask to join\" and the asks to review (their four words, their note as plain text, Approve and Decline).
 ## Unreleased (0.6.2: tasks v2, slice 1)
 
 - fix(app): apps/app/ui/flows/expr.js is the kernel's expression engine again, byte for byte after the type-check pragma on line 1 (the kernel's depth counting changed in the signed editor-backend merge; expr-copy.test.js).

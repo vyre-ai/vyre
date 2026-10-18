@@ -770,7 +770,7 @@ export function createGrantsStore(cfg) {
       const mine = roleOf(me), all = mine === "owner" || mine === "admin" || mine === "manager";
       return [...invites.values()].filter(v => all || sameActor(v.issuer, me)).map(v => {
         const status = v.status === "pending" && !(v.valid_until > clock()) ? "expired" : v.status;
-        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), ...(v.seats ? { seats: v.seats } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status });
+        return freeze({ id: v.id, role: v.role, ...(v.custom ? { custom: v.custom.id } : {}), ...(v.seats ? { seats: v.seats } : {}), scope: v.scope, expires: v.expires, invitee: v.invitee, needs_confirm: v.needs_confirm, confirmed: v.confirmed, valid_until: v.valid_until, status, issued_by: v.issuer && v.issuer.id ? String(v.issuer.id) : null });
       });
     },
     /** The inviter confirms the invitee's fingerprint words (an admin or owner invite stays pending until they do): a second presence act, bound to the words. */

@@ -153,6 +153,20 @@ export async function currentAssistant() {
   catch (e) { return fail(e); }
 }
 
+/** Ask to join a Space by its address. @param {{ address: string, note?: string }} input */
+export async function askJoin(input) {
+  if (MOCK) return mock.askJoin(input);
+  try { return done(await tool("onboard.space.ask", input)); }
+  catch (e) { return fail(e); }
+}
+
+/** Where the ask stands. @param {{ address: string }} input */
+export async function askJoinStatus(input) {
+  if (MOCK) return mock.askJoinStatus(input);
+  try { return done(await tool("onboard.space.ask.status", input)); }
+  catch (e) { return fail(e); }
+}
+
 /** The other Space's AI accounts, for the copy sheet. */
 export async function listCopyable() {
   if (MOCK) return mock.listCopyable();

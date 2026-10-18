@@ -3,6 +3,7 @@
 
 export const SHOT_TABLE = {
   "id.create": { screen: "id.create", username: "alex" },
+  "join.ask": { screen: "join.ask", username: "ada", askAddr: "juniper", askWords: "tide maple otter river" },
   "id.recovery": { screen: "id.recovery", username: "alex", recovery: "R1-SAMPLE-KEY-SHOWN-ONCE" },
   "id.ai": { screen: "id.ai", username: "alex" },
   "space.choice": { screen: "space.choice", username: "alex" },

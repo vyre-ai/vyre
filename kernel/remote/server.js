@@ -7,7 +7,7 @@
 import { guardRecordsCall } from "./member-guard.js";
 import { KernelError } from "../core/errors.js";
 import crypto from "node:crypto";
-import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
+import { ASK_CALLS, CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
 import { proofRequest, PROOF_CALLS, proofNameOf } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { remoteBinding, payloadHash } from "../core/presence.js";
@@ -126,7 +126,7 @@ export function createRemoteServer(cfg) {
     if (k.gateway.members.roleOf({ kind: "person", id: peer.person, space: cfg.space }) !== null) {
       return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session, ...(peer.software === true ? { software: true } : {}) } : {}) }) };
     }
-    if (!INVITEE_CALLS.has(call)) throw new KernelError("not_a_member", "no chain for this connection");
+    if (!INVITEE_CALLS.has(call) && !ASK_CALLS.has(call)) throw new KernelError("not_a_member", "no chain for this connection");
     return { member: false, chain: await k.chains.fromFacts({ kind: "invitee", person: peer.person, vouched: true }) };
   }
 

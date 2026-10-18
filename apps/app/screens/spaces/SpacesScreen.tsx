@@ -1,6 +1,7 @@
 import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
+import { JoinRequests } from "./JoinRequests";
 import WorkEmail from "./WorkEmail";
 import { ComputersSection } from "./ComputersSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
@@ -53,6 +54,7 @@ export function SpacesScreen() {
     <Page title="Spaces and members" sub="Where your things live, and who is in them." back="/u/settings"
       actions={<Menu trigger={<Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label="Add a space" />} items={[{ label: "Make a new Space", onPress: () => router.push("/onboard?path=create" as never) }, { label: "Join a Space", onPress: () => router.push("/onboard?path=join" as never) }]} />}>
       {MOCK ? null : <MyCloudCard />}
+      {!MOCK && MY_ROLE === "owner" && space ? <JoinRequests space={space} label={cur?.address ? cur.address.replace(/\.vyre\.run$/, "") : spaceName} /> : null}
       {ELSEWHERE ? (
         <Banner icon="refresh">
           <View className="gap-s2">

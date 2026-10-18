@@ -43,12 +43,15 @@ jobs:
         working-directory: apps/app
         env:
           EXPO_PUBLIC_VYRE_HOST: "1"
+          EXPO_PUBLIC_VYRE_PROOF_YES: "1"
           EXPO_PUBLIC_VYRE_NAMES_DIRECTORY: http://127.0.0.1:${{ env.FIRST_RUN_NAMES_PORT }}
           EXPO_PUBLIC_VYRE_RELAY: ws://${{ env.PROOF_HOST_IP }}:${{ env.FIRST_RUN_RELAY_PORT }}
         run: |
           npm ci --no-audit --no-fund --ignore-scripts
           npx expo export -p web --output-dir "$RUNNER_TEMP/proof-web"
           test -f "$RUNNER_TEMP/proof-web/index.html"
+          # positive control: the flagged export shows the marker, so the release export's grep (app.yml) can find it
+          grep -rl "vyre-proof-yes-enabled" "$RUNNER_TEMP/proof-web" > /dev/null || { echo "the proof export has no software yes, so the group walk cannot run"; exit 1; }
       - name: A browser (the one pinned version; Chromium 137 or newer, which has Ed25519 in WebCrypto, as the identity chain needs)
         run: |
           mkdir -p "$RUNNER_TEMP/pw" && npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund --ignore-scripts playwright@1.55.0
