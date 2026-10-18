@@ -1124,3 +1124,31 @@ test("declined: the doer or the approver says no with a reason; it stops that ta
   const sk = await r.tasks.skip(owner(), t.id, "dropped");
   assert.ok(sk.proposal, "the skip waits for a person's yes");
 });
+
+test("reviewer quorum all on a role: every holder must pass, a pass is kept per person, the last one completes the review with the others beside it; one asking for changes ends the round; a holder removed from the role is no longer waited for", async () => {
+  const r = rig();
+  r.state.roles.editors = [actor("person", ALICE), actor("person", BOB)];
+  await assert.rejects(r.tasks.request(owner(), noteTask({ reviewer: actor("person", ALICE), reviewer_quorum: "all" })), { code: "bad_input" }, "all needs a role");
+  const t = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  assert.equal(t.reviewer_quorum, "all");
+  await r.tasks.start(asIntake(), t.id);
+  await r.tasks.complete(asIntake(), t.id, noteEvidence());
+  const first = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(first.state, "in_review", "one pass is not enough");
+  assert.equal(first.review_passes.length, 1);
+  const again = await r.tasks.review(alice(), t.id, { result: "pass" });
+  assert.equal(again.review_passes.length, 1, "the same person's pass is kept once");
+  const done = await r.tasks.review(bob(), t.id, { result: "pass" });
+  assert.equal(done.state, "done");
+  assert.equal(done.review.also.length, 1);
+  // one asking for changes ends the round
+  const u = await r.tasks.request(owner(), noteTask({ reviewer: { role: "editors" }, reviewer_quorum: "all" }));
+  await r.tasks.start(asIntake(), u.id);
+  await r.tasks.complete(asIntake(), u.id, noteEvidence());
+  await r.tasks.review(alice(), u.id, { result: "pass" });
+  assert.equal((await r.tasks.review(bob(), u.id, { result: "changes", note: "no" })).state, "changes_requested");
+  assert.equal((await r.tasks.complete(asIntake(), u.id, noteEvidence())).review_passes.length, 0, "a new hand-in starts a new round");
+  // a holder removed from the role is no longer waited for
+  r.state.roles.editors = [actor("person", ALICE)];
+  assert.equal((await r.tasks.review(alice(), u.id, { result: "pass" })).state, "done");
+});

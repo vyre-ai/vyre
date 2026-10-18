@@ -29,7 +29,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.withdraw", resource_type: "task", risk: "write", label: "withdraw a task past its due time", gloss: "The Flows service ends a task its step gave when the step's due time has passed." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills", "space_skills"]);
+const REQUEST_KEYS = new Set(["fields", "project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "approver", "reviewer", "quorum", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form", "instructions", "skills", "space_skills", "reviewer_quorum"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -413,6 +413,7 @@ export function createTasks(cfg) {
       if (spec.approver !== undefined && spec.checker !== undefined) throw new KernelError("bad_input", "a task has one approver: give approver, or checker (the old name), not both");
       let checker = spec.approver !== undefined ? spec.approver : spec.checker;
       if (spec.quorum !== undefined && spec.quorum !== "any") throw new KernelError("bad_input", "quorum is any for now: one yes or pass is enough");
+      if (spec.reviewer_quorum !== undefined && (!["any", "all"].includes(spec.reviewer_quorum) || (spec.reviewer_quorum === "all" && !(spec.reviewer && spec.reviewer.role)))) throw new KernelError("bad_input", "reviewer_quorum is any, or all for a reviewer that is a role");
       // The reviewer slot: a person, an agent or a role. An agent reviewer must be another agent than the doer (compared by uid), and a reviewer who could only be the doer's own person is skipped in a Space with no one else.
       let reviewer = spec.reviewer, reviewSkipped = false, reviewMembers = 0;
       if (reviewer !== undefined) {
@@ -473,7 +474,7 @@ export function createTasks(cfg) {
       const t = freeze({
         id, space: cfg.space, title: spec.title.trim().slice(0, 200), ...(spec.record ? { record: spec.record } : {}), ...(spec.stage ? { stage: spec.stage } : {}),
         source: spec.source || "manual", doer: freeze({ ...doer }), ...(spec.helpers ? { helpers: freeze([...spec.helpers]) } : {}),
-        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
+        ...(checker ? { checker: freeze({ ...checker }) } : {}), ...(reviewer && !reviewSkipped ? { reviewer: freeze({ ...reviewer }) } : {}), ...(spec.reviewer_quorum === "all" && reviewer && !reviewSkipped ? { reviewer_quorum: "all" } : {}), ...(reviewSkipped ? { review_skipped: freeze({ why: "No one else to check this", members: reviewMembers }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
         ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
@@ -591,7 +592,7 @@ export function createTasks(cfg) {
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       // A review belongs to one hand-in: coming back In review drops the last result and its note from the task (they stay in the log), so no card or approver sees a stale pass.
-      const { review: _rv, review_note: _rvn, ...kept } = t;
+      const { review: _rv, review_note: _rvn, review_passes: _rps, ...kept } = t;
       const n = to === "in_review" ? stage(id, freeze({ ...kept, state: to, payload, activity: moreActivity(t, acting(chain), "submit"), updated_at: clock() })) : put(t, { state: to, payload });
       note(chain, to === "in_review" ? "task.in-review" : "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
@@ -659,17 +660,29 @@ export function createTasks(cfg) {
         note(chain, "task.changes-requested", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
         return n;
       }
+      // Quorum "all" on a role: every person who holds the role now must pass; one pass is kept per person, and the last pass completes the review with the others recorded beside it. A person taken out of the role is no longer waited for.
+      let reviewOut = review;
+      if (t.reviewer_quorum === "all") {
+        const passes = [...(t.review_passes || []).filter((/** @type {any} */ p) => !same(p.by, who)), freeze({ by: review.by, review })];
+        const waiting = reviewersOf(t).filter((/** @type {any} */ h) => !passes.some((/** @type {any} */ p) => same(p.by, h)));
+        if (waiting.length) {
+          const n = put(t, { review_passes: freeze(passes), activity: moreActivity(t, who, "review:pass") });
+          note(chain, "task.review-pass-kept", n, { by: { kind: who.kind, id: who.id }, waiting: waiting.length }, d.decision);
+          return n;
+        }
+        reviewOut = freeze({ ...review, also: freeze(passes.filter((/** @type {any} */ p) => !same(p.by, who)).map((/** @type {any} */ p) => p.review)) });
+      }
       const to = needsCheck(t) ? "needs_check" : "done";
       rule(t, to, "reviewer_pass");
       if (to === "done") {
         const body = bodies.get(id);
         const answer = body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
-        const n = put(t, { state: "done", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass"), ...(answer !== undefined ? { answer } : {}) });
+        const n = put(t, { state: "done", review: reviewOut, review_passes: freeze([]), ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass"), ...(answer !== undefined ? { answer } : {}) });
         note(chain, "task.completed", n, { reviewed_by: { kind: who.kind, id: who.id }, output: t.output.kind, ...(answer !== undefined ? { answer } : {}) }, d.decision);
         promote(chain);
         return n;
       }
-      const n = put(t, { state: "needs_check", review, ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass") });
+      const n = put(t, { state: "needs_check", review: reviewOut, review_passes: freeze([]), ...(text ? { review_note: text } : {}), activity: moreActivity(t, who, "review:pass") });
       note(chain, "task.review-passed", n, { by: { kind: who.kind, id: who.id }, note: text, checklist: review.checklist.length }, d.decision);
       return n;
     },
