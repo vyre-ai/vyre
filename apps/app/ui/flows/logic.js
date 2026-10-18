@@ -123,6 +123,7 @@ export function whoWords(who, o) {
   if (who === "owner") return "the owner";
   const [kind, id] = who.split(":");
   if (kind === "role") return `the ${named(o.roles, id)} team`;
+  if (kind === "group") return `whoever on the ${named(o.roles, id)} team takes it first`;
   if (kind === "agent") return `the ${named(o.agents, id)} agent`;
   if (kind === "person") return named(o.people, id);
   return who;
@@ -746,6 +747,14 @@ export function newStep(kind, d, o) {
 /** Who a task can go to, as [value, label] for a Select. @param {Options} o @returns {[string, string][]} */
 export function whoChoices(o) {
   return [...[{ name: "owner", label: "Owner" }, ...o.roles.filter((r) => r.name !== "owner")].map(/** @returns {[string, string]} */ (r) => [`role:${r.name}`, `A team or role: ${r.label}`]), ...o.agents.map(/** @returns {[string, string]} */ (a) => [`agent:${a.name}`, `Agent: ${a.label}`]), ...o.people.map(/** @returns {[string, string]} */ (p) => [`person:${p.name}`, p.label])];
+}
+
+/** Who an Assign step can go to: everything whoChoices offers, plus "whoever on a team takes it first" (the task belongs to the team until one member starts it). @param {Options} o @returns {[string, string][]} */
+export function assignChoices(o) {
+  const base = whoChoices(o);
+  const groups = /** @type {[string, string][]} */ ([{ name: "owner", label: "Owner" }, ...o.roles.filter((r) => r.name !== "owner")].map((r) => [`group:${r.name}`, `Whoever on the team takes it first: ${r.label}`]));
+  const i = base.findIndex(([v]) => v.startsWith("agent:"));
+  return i < 0 ? [...base, ...groups] : [...base.slice(0, i), ...groups, ...base.slice(i)];
 }
 
 /** Move a step up or down (dir -1 or 1). @template T @param {T[]} list @param {number} i @param {number} dir */

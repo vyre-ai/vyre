@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkFlow } from "../../../../kernel/flows/schema.js";
-import { fromDefinition, toDefinition, eventChoices, EVENT_CHOICES, flowSentence, draftProblems } from "./logic.js";
+import { fromDefinition, toDefinition, eventChoices, EVENT_CHOICES, flowSentence, draftProblems, assignChoices, whoWords } from "./logic.js";
 import { SAMPLE_OPTIONS as O } from "../../screens/flows/starters.js";
 
 const flowOf = (trigger) => ({ format: 1, name: "t", label: "T", authorship: "builder", trigger, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] });
@@ -122,4 +122,12 @@ test("an assign step keeps its reviewer and approver slots in the engine's shape
   assert.equal(both.steps[0].kind, "advanced", "both approver and checker stays whole");
   const bare = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ ...base, reviewer: "person:per_bo" }] });
   assert.equal(bare.steps[0].kind, "advanced", "a string reviewer is not the shape");
+});
+
+test("an Assign step can go to whoever on a team takes it first", () => {
+  const d = fromDefinition({ format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "manual" }, steps: [{ id: "a1", kind: "assign", to: "group:attorney", title: "Pick it up" }] });
+  assert.equal(d.steps[0].kind, "assign");
+  assert.equal(toDefinition(d, O).steps[0].to, "group:attorney");
+  assert.ok(assignChoices(O).some(([v]) => v === "group:owner"));
+  assert.match(whoWords("group:owner", O), /takes it first/);
 });

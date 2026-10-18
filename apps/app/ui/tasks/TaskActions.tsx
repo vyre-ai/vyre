@@ -47,6 +47,7 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
     if (!world) return;
     const rec = world.records.get(task.record);
     try {
+      if (id === "claim") { await store.move(task.id, "working", world.me); haptic.selection(); showToast(`${task.title} is yours.`); return; }
       if (id === "open") { setOpen({ kind: "task", task }); return; }
       if (id === "yes" && isQuestions(task.form) && !extra) { showToast("Answer its questions on the card first."); return; }
       if (id === "send" || id === "approve" || id === "yes") { setOpen({ kind: "proof", task, id, ...(id === "yes" && extra && typeof extra === "object" ? { values: extra as Record<string, string | boolean> } : {}) }); return; }

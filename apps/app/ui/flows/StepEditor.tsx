@@ -18,7 +18,7 @@ import { DateTimeField } from "../components/DateTimeField";
 import { DateValue } from "./DateValue";
 import { FailurePanel } from "./FailurePanel";
 import { DocumentFields } from "./DocumentFields";
-import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
+import { FORM_KINDS, HOWS, OUTPUTS, TARGETED, dateChoices, fieldChoices, fieldValue, stageChoices, stagesOf, OPERATORS, UNIT_CHOICES, WAIT_MODES, WHEN_CHOICES, approverChoices, askChoices, assignChoices, condExpr, firstStageTasks, isRecordTrigger, whoChoices, whoWords, actionChoices, actionPick, dateKindOf } from "./logic.js";
 import { flat } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 
@@ -137,7 +137,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
               ) : null}
               {s.kind === "assign" ? (
                 <>
-                  <Select label="Who gets the task (a person, a team or role, or an agent)" value={s.to ?? ""} options={whoChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
+                  <Select label="Who gets the task (a person, a team or role, or an agent)" value={s.to ?? ""} options={assignChoices(options)} placeholder="Choose" onChange={(to) => setStep(s.id, { to })} />
                   <Field label="The task" value={s.title ?? ""} onChangeText={(title) => setStep(s.id, { title })} placeholder="For example Call the client back" />
                   <ContextBox label="Brief for them" value={s.brief ?? ""} onChange={(brief) => setStep(s.id, { brief })} options={options} placeholder="What they need to know" />
                   <Select label="The record to attach (optional)" value={s.record ?? ""} options={[["", "Nothing"], ...links]} onChange={(record) => setStep(s.id, { record: record || undefined })} />
@@ -145,7 +145,7 @@ export function StepEditor({ s, setStep, draft, options, inHandler }: { s: Draft
                   {s.how === "template" || s.how === "tailor" ? <ContextBox label="Template" value={s.template ?? ""} onChange={(template) => setStep(s.id, { template })} options={options} placeholder="The text they start from" /> : null}
                   <Switch label="The Flow waits until the task is done" on={s.await === true} onChange={(on) => setStep(s.id, { await: on ? true : undefined })} />
                   <Field label="Skills it needs (optional)" value={s.skills ?? ""} onChangeText={(skills) => setStep(s.id, { skills })} placeholder="For example intake, billing" help="Words separated by commas, up to 20." />
-                  <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up.</Text>
+                  <Text size="caption" tone="label">A team or role is everyone who holds that role. Any of them can pick it up. With "whoever on the team takes it first", the task belongs to the team until one member starts it.</Text>
                 </>
               ) : null}
               {s.kind === "agent" || s.kind === "assign" ? (
