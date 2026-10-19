@@ -281,11 +281,12 @@ try {
   check(["Inbox", "Work", "Done", "Downloads", "Scripts", "Notes"].every(n => desk.split("\n").includes(n)) && desk.includes("/var/lib/vyre/downloads/ag20000") && /writable$/.test(desk), "the agent's folder has Inbox, Work, Done, Downloads, Scripts and Notes, its own to write, and Downloads is Chrome's download folder", desk.replace(/\n/g, " "));
   const dockPid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 20000 -f 'agentd-dock.py$' | head -1"]);
   check(/^\d+$/.test(dockPid), "the dock runs as the agent's uid", dockPid);
-  const dockEnv = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", `tr '\\0' '\\n' < /proc/${dockPid}/environ | grep XAUTHORITY`]);
+  // read as the agent itself: root in the computer has no DAC_OVERRIDE
+  const dockEnv = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `tr '\\0' '\\n' < /proc/${dockPid}/environ | grep XAUTHORITY`]);
   check(dockEnv === "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth", "the dock holds the agent's untrusted cookie, not the screen's", dockEnv);
   const wm = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 21000 -o args= | grep -m1 '^/usr/bin/fluxbox'"]);
   check(/-rc \/etc\/vyre-desk\/fluxbox\/init/.test(wm), "the window manager runs with the desk's settings (no toolbar, no desktop menu, no key that starts a program)", wm);
-  const fifo = shOk(["exec", "-u", "0", CONTAINER, "stat", "-c", "%F %a %U %G", "/var/lib/vyre/x/ag20000/show-chrome"]);
+  const fifo = shOk(["exec", "-u", "21000", CONTAINER, "stat", "-c", "%F %a %U %G", "/var/lib/vyre/x/ag20000/show-chrome"]);
   check(fifo === "fifo 620 agb21000 ag20000", "the dock's Chrome button is a FIFO the browser uid owns, which only the agent's group may write", fifo);
   const otherWrite = shOk(["exec", "-u", "20001", CONTAINER, "sh", "-c", "echo 1 > /var/lib/vyre/x/ag20000/show-chrome"]);
   check(denied(otherWrite), "another agent cannot press this agent's Chrome button", otherWrite.slice(-80));
@@ -298,6 +299,9 @@ try {
   shOk([...asOwner, CONTAINER, "sh", "-c", `xdotool windowkill ${wid} 2>/dev/null; true`]);
   await sleep(1000);
   check((await shoot("agent-desk.png")) > 1000, "a picture of agent A's desk is saved (agent-desk.png)");
+  // the wallpaper itself (Chrome's window covers the middle of the screen in the picture)
+  shOk(["cp", `${CONTAINER}:/var/lib/vyre/browsers/agb21000/wallpaper.png`, path.join(OUT, "agent-wallpaper.png")]);
+  check(fs.existsSync(path.join(OUT, "agent-wallpaper.png")), "the wallpaper was made at the screen's size (agent-wallpaper.png)");
   // press the dock as a person would: it is centred at the bottom, three 76 px tiles (agentd-dock.py), on a 1440x900 screen
   const pages = async () => (await a2.send("Target.getTargets", {})).targetInfos.filter(t => t.type === "page").length;
   const tabsBefore = await pages().catch(e => `ERR ${e.message}`);
@@ -305,6 +309,7 @@ try {
   press(720); await sleep(3000);
   const term = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 '^/usr/bin/xterm'"]);
   check(/tmux -S \/var\/lib\/vyre\/agents\/ag20000\/tmux\.sock new-session -A -s desk -c \/var\/lib\/vyre\/agents\/ag20000\/home/.test(term), "Terminal opens a terminal as the agent, in its folder, on its own tmux", term);
+  console.log("--- what the dock's terminal shows\n" + shOk(["exec", "-u", "20000", CONTAINER, "/usr/bin/tmux", "-S", "/var/lib/vyre/agents/ag20000/tmux.sock", "capture-pane", "-p", "-t", "desk"]).slice(0, 600));
   const sessions = await ctl.terminals(A).catch(e => `ERR ${e.message}`);
   check(Array.isArray(sessions) && sessions.some(s => s.name === "desk"), "the dock's terminal is one of the agent's terminals in Vyre", sessions);
   press(802); await sleep(4000);

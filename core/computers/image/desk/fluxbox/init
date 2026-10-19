@@ -13,6 +13,7 @@ session.screen0.slit.autoHide:	true
 session.screen0.workspaces:	1
 session.screen0.workspaceNames:	Desk,
 session.screen0.workspacewarping:	false
+session.screen0.windowPlacement:	CascadePlacement
 session.screen0.focusModel:	ClickFocus
 session.screen0.clickRaises:	true
 session.screen0.focusNewWindows:	true
