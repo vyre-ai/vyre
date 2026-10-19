@@ -240,22 +240,31 @@ test("an artifact that is a picture tells the chat its type, so the chat can sho
   assert.equal(doc[0].data.result.mime, undefined);
 });
 
-test("adapter: a failed turn says so in the thread, with the reason and the next step, and never a key; a good turn says nothing more", () => {
+test("adapter: a failed turn's status carries its reason as one short redacted line, said once; with no reason on the status the thread says it; a good turn says nothing more", () => {
   const KEY = "sk-or-v1-" + "a".repeat(40);
   const a = createAdapter();
-  const out = a.event(ev("thread.finished", { ok: false, error: `OpenRouter answered 401: bad key ${KEY}\nsecond line` }));
+  const out = a.event(ev("thread.finished", { ok: false, error: `OpenRouter answered 401: bad key ${KEY}\nsecond line ${"x".repeat(300)}` }));
+  assert.equal(out[0].kind, "status");
   assert.equal(out[0].data.state, "failed");
-  const words = out.filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
-  assert.match(words, /^The AI could not answer: OpenRouter answered 401/);
-  assert.match(words, /Check AI accounts\.$/);
-  const dotted = createAdapter().event(ev("thread.finished", { ok: false, error: "none connected, so this was not sent." })).filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
-  assert.ok(!dotted.includes(".."), "no double period when the reason ends in one");
-  assert.ok(!words.includes(KEY), "no key in the words");
-  assert.ok(!/\n/.test(words), "one line");
-  assert.ok(out.some(x => x.kind === "text-delta" && x.data.notice === true), "Vyre's own words, shown with no turn open");
+  const note = String(out[0].data.note);
+  assert.match(note, /^OpenRouter answered 401: bad key/);
+  assert.ok(!note.includes(KEY), "no key in the note");
+  assert.ok(!/\n/.test(note), "one line");
+  assert.ok(note.length <= 160, "at most 160 characters");
+  assert.equal(out.filter(x => x.kind === "text-delta").length, 0, "the reason is said once, on the status");
+  assert.equal(createAdapter().event(ev("thread.finished", { ok: false, error: "none connected, so this was not sent." }))[0].data.note, "none connected, so this was not sent", "no closing full stop");
   assert.equal(createAdapter().event(ev("thread.finished", { ok: true })).filter(x => x.kind === "text-delta").length, 0);
-  // with a status already said by thread.status, the words still come
+  assert.equal(createAdapter().event(ev("thread.finished", { ok: true }))[0].data.note, undefined);
+  // the switchboard's order: a failed status with the error, then thread.finished: one note, no second line
+  const s = createAdapter();
+  const st = s.event(ev("thread.status", { status: "failed", turn: "t:2", error: `bad key ${KEY}` }));
+  assert.ok(String(st[0].data.note).startsWith("bad key"));
+  assert.ok(!String(st[0].data.note).includes(KEY));
+  assert.deepEqual(s.event(ev("thread.finished", { ok: false, error: `bad key ${KEY}` })), [], "said once");
+  // a status that said failed with no reason: the thread still says why
   const b = createAdapter();
   b.event(ev("thread.status", { status: "failed" }));
-  assert.ok(b.event(ev("thread.finished", { ok: false, error: "boom" })).some(x => x.kind === "text-delta"));
+  const words = b.event(ev("thread.finished", { ok: false, error: `boom ${KEY}` })).filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
+  assert.match(words, /^The AI could not answer: boom/);
+  assert.ok(!words.includes(KEY));
 });

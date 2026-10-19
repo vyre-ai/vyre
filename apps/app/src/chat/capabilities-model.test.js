@@ -30,3 +30,18 @@ test("secondOpinionTargets skips the author", () => {
   assert.equal(t.length, 1);
   assert.equal(t[0].id, "assistant:kit");
 });
+
+test("secondOpinionTargets in a one-to-one chat: one per connected provider the chat does not have, by its default model; never the answer's own provider", () => {
+  const rows = [
+    { id: "claude", label: "Claude", accounts: [], models: [{ id: "opus", label: "Opus" }] },
+    { id: "codex", label: "Codex", accounts: [{ id: "c1", label: "Work", signed_in: true }, { id: "c2", label: "Home", signed_in: true }], models: [] },
+    { id: "grok", label: "Grok", accounts: [{ id: "g1", label: "Mine", signed_in: false }], models: [] },
+    { id: "openrouter", label: "OpenRouter", accounts: [{ id: "o1", label: "Key", signed_in: true }], models: [] },
+  ];
+  const t = secondOpinionTargets([{ id: "model:claude/default#100001", name: "Claude", family: "model" }], "model:claude/default#100001", rows);
+  assert.deepEqual(t.map((x) => [x.id, x.label]), [["codex", "Codex"], ["openrouter", "OpenRouter"]], "no 'No other model here': a signed-in provider joins; two Codex accounts are one target; signed out is not offered");
+  assert.ok(t.every((x) => x.sub === "Joins this chat"));
+  const withCodex = secondOpinionTargets([{ id: "assistant:juno", name: "Juno", family: "assistant" }, { id: "model:codex/default#2", name: "Codex", family: "model" }], "assistant:juno", rows);
+  assert.deepEqual(withCodex.map((x) => x.id), ["model:codex/default#2", "claude", "openrouter"], "a provider already in the chat is offered as it is, not again");
+  assert.deepEqual(secondOpinionTargets([], "assistant:juno").length, 0, "no accounts known: nothing to offer");
+});

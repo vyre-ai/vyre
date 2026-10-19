@@ -46,6 +46,27 @@ test("MessageBar exposes rewind and second opinion actions", () => {
   assert.match(menu, /Second opinion/);
 });
 
+test("chat UX wiring: rewind forks first, actions follow the driver's caps, a failed reply offers Try again, Retry sits on answers, Tab queues", () => {
+  const chrome = fs.readFileSync(path.join(root, "ChatCapabilityChrome.tsx"), "utf8");
+  const rewind = chrome.slice(chrome.indexOf("const doRewind"), chrome.indexOf("const doOpinion"));
+  assert.ok(rewind.indexOf('branch("")') > 0 && rewind.indexOf('branch("")') < rewind.indexOf("/rewind "), "the later messages are forked before going back");
+  assert.match(chrome, /secondOpinionTargets\(faces, opinionAuthor, provRows\)/, "second opinion offers connected accounts");
+  const screen = fs.readFileSync(path.join(root, "ChatScreen.tsx"), "utf8");
+  assert.match(screen, /setMay\(threadMay\(d\?\.thread\)\)/, "caps come from threads.get");
+  assert.match(screen, /\.\.\.\(may\.rewind \? \{\s*onEditMessage[\s\S]*onRetryMessage[\s\S]*onRewindTo[\s\S]*\} : \{\}\)/, "Edit, Retry and Rewind only when the driver can go back");
+  assert.match(screen, /\(forkAsThread\.current \? may\.fork : may\.branch\) \? \{ onBranchFrom/, "Fork only when the driver can fork");
+  assert.match(screen, /onTryAgain:/);
+  const rows = fs.readFileSync(path.join(root, "ChatRows.tsx"), "utf8");
+  assert.match(rows, /it\.retry[\s\S]{0,400}label="Try again"/);
+  const bar = fs.readFileSync(path.join(root, "MessageBar.tsx"), "utf8");
+  assert.match(bar, /!mine && uuid && done && ctx\.onRetryMessage \? ctx\.askedBefore/, "Retry on an answer retries the person's message before it");
+  assert.match(bar, /id === "copy-text"/);
+  const composer = fs.readFileSync(path.join(root, "ChatComposer.tsx"), "utf8");
+  assert.match(composer, /tabQueues\(ev,[\s\S]{0,120}send\("queue"\)/);
+  assert.match(composer, /whileWorking\(mode, !!p\.phone\)\.placeholder/);
+  assert.match(composer, /whileWorking\(mode, !!p\.phone\)\.button/);
+});
+
 test("ChatCapabilityChrome uses design-library sheets and cards", () => {
   const chrome = fs.readFileSync(path.join(root, "ChatCapabilityChrome.tsx"), "utf8");
   assert.match(chrome, /@vyre\/ui/);

@@ -263,6 +263,7 @@ test("branch and edit-retry: a provider that cannot fork or go back says unsuppo
     const r = await w.tool(tool, input, "deck");
     assert.equal(r.error && r.error.code, "unsupported", `${tool}: ${JSON.stringify(r)}`);
     assert.match(r.error.message, /can't .* yet: nothing was changed/);
+    assert.doesNotMatch(r.error.message, /threads\.|\(/, "plain words: no internal tool name");
   }
   assert.deepEqual(await w.said(th.id), ["echo: hello"]);
   assert.equal((await w.tool("threads.list", {})).data.length, 1, "no thread was made");

@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel, peopleOnly } from "./composer-model.js";
+import { triggerAt, rankByName, sealedChip, pick, sendIntent, runsOnLabel, peopleOnly, whileWorking, tabQueues } from "./composer-model.js";
 
 test("@, # and / open their pickers at the caret", () => {
   assert.equal(triggerAt("ask @ju", 7)?.kind, "person");
@@ -78,4 +78,19 @@ test("a chat between people sends to the people: shared and set to mention, or s
   assert.equal(peopleOnly({ shared: true, replyMode: "every", ais: 0 }), false);
   assert.equal(peopleOnly({ shared: true, replyMode: null, ais: 2 }), false, "unset with an AI in it is unchanged");
   assert.equal(peopleOnly({ shared: false, replyMode: "mention", ais: 0 }), false, "one person alone keeps their AI");
+});
+
+test("while the agent works: the words follow the mode (Enter steers now, Tab queues), and Tab queues only words, with no list open", () => {
+  assert.match(whileWorking("steer", false).placeholder, /steers it now, Tab queues/);
+  assert.equal(whileWorking("steer", false).button, "Send");
+  assert.doesNotMatch(whileWorking("steer", true).placeholder, /queues/);
+  assert.match(whileWorking("queue", true).placeholder, /queues/);
+  assert.equal(whileWorking("queue", false).button, "Queue message");
+  const on = { working: true, hasText: true, listOpen: false };
+  assert.equal(tabQueues({ key: "Tab" }, on), true);
+  assert.equal(tabQueues({ key: "Tab", shiftKey: true }, on), false, "Shift-Tab moves focus as ever");
+  assert.equal(tabQueues({ key: "Tab" }, { ...on, working: false }), false, "not working: Tab is Tab");
+  assert.equal(tabQueues({ key: "Tab" }, { ...on, hasText: false }), false, "nothing to queue");
+  assert.equal(tabQueues({ key: "Tab" }, { ...on, listOpen: true }), false, "an open list takes Tab");
+  assert.equal(tabQueues({ key: "Enter" }, on), false);
 });

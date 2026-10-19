@@ -83,6 +83,10 @@ export type BlockCtx = {
   /** A person's own message: edit it and run again, run it again as it was, or branch the session from before it. */
   onEditMessage?: (uuid: string, text: string) => void;
   onRetryMessage?: (uuid: string) => void;
+  /** An answer's own message id: the person's own message it answers (its id), or null when it answers someone else or nothing. */
+  askedBefore?: (uuid: string) => string | null;
+  /** A reply that failed (the notice row's key): send the person's message before it again. */
+  onTryAgain?: (key: string) => void;
   onBranchFrom?: (uuid: string) => void;
   /** Go back to before this message (threads.rewind). */
   onRewindTo?: (uuid: string) => void;

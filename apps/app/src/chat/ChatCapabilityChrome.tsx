@@ -6,6 +6,7 @@ import { BackgroundTasksCard, LaterPlannerNote, RewindSheet, SecondOpinionSheet,
 import { chatTools } from "../../screens/chat-tools/instance";
 import { taskLive } from "../../screens/chat-tools/model.ts";
 import { tool } from "../real/box";
+import { providers } from "../../screens/settings/real";
 import { laterNoteFromLine, rewindPointsFromStore, secondOpinionTargets } from "./capabilities-model.js";
 import type { ChatStore } from "./store";
 
@@ -39,7 +40,15 @@ export function useChatCapabilityChrome({
   const [tasks, setTasks] = useState<{ id: string; title: string; status: string; live: boolean }[]>([]);
 
   const points = useMemo(() => rewindPointsFromStore(store), [store, store.meta().rev]);
-  const opinionTargets = useMemo(() => (opinionMsg ? secondOpinionTargets(faces, opinionAuthor) : []), [faces, opinionMsg, opinionAuthor]);
+  // The person's connected accounts (providers.list): a model the chat does not have yet can give the second opinion, joining in the same step.
+  const [provRows, setProvRows] = useState<unknown[]>([]);
+  useEffect(() => {
+    if (!real || !opinionOpen) return;
+    let live = true;
+    providers().then((r) => { if (live) setProvRows(r); }).catch(() => {});
+    return () => { live = false; };
+  }, [real, opinionOpen]);
+  const opinionTargets = useMemo(() => (opinionMsg ? secondOpinionTargets(faces, opinionAuthor, provRows) : []), [faces, opinionMsg, opinionAuthor, provRows]);
 
   useEffect(() => {
     if (!real) return;
@@ -52,10 +61,16 @@ export function useChatCapabilityChrome({
 
   const doRewind = async (uuid: string) => {
     setRewindBusy(true); setRewindProblem("");
+    // Later messages move to a fork (spec): a copy of the whole thread is made first (threads.branch at the live end), then this one goes back.
+    const branch = store.actions?.branch;
+    if (branch) {
+      const b = await branch("");
+      if (!b.ok) { setRewindBusy(false); setRewindProblem(b.reason); return; }
+    }
     const why = await store.send(`/rewind ${uuid}`);
     setRewindBusy(false);
     if (why) setRewindProblem(why);
-    else { setRewindOpen(false); showToast("Went back."); }
+    else { setRewindOpen(false); showToast(branch ? "Went back. The later messages are in a new thread." : "Went back."); }
   };
 
   const doOpinion = async (to: string) => {

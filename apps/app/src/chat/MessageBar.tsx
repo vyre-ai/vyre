@@ -31,7 +31,9 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   const doCopy = (md: boolean) => { void copy(md ? forms.markdown : forms.plain, ctx); setSaid(true); setTimeout(() => setSaid(false), 1500); };
   const ask = () => ctx.onHighlight?.({ from, text, selected: readSelection() });
   const edit = mine && uuid && ctx.onEditMessage ? () => ctx.onEditMessage?.(uuid, text) : undefined;
-  const retry = mine && uuid && ctx.onRetryMessage ? () => ctx.onRetryMessage?.(uuid) : undefined;
+  // Retry sits on an answer: it sends the person's own message before it again (spec: Retry, agent answers).
+  const asked = !mine && uuid && done && ctx.onRetryMessage ? ctx.askedBefore?.(uuid) ?? null : null;
+  const retry = asked ? () => ctx.onRetryMessage?.(asked) : undefined;
   const branch = uuid && ctx.onBranchFrom ? () => ctx.onBranchFrom?.(uuid) : undefined;
   const rewind = uuid && ctx.onRewindTo ? () => ctx.onRewindTo?.(uuid) : undefined;
   const second = uuid && ctx.onSecondOpinion && !mine ? () => ctx.onSecondOpinion?.(uuid) : undefined;
@@ -46,6 +48,7 @@ export function MessageBar({ text, from, ctx, uuid, mine, done = true, group }: 
   const pickItem = (id: string) => {
     if (id === "reply") group?.onReply?.();
     else if (id === "forward") { if (uuid) ctx.onForward?.(uuid, text, from); }
+    else if (id === "copy-text") doCopy(false);
     else if (id === "copy-md") doCopy(true);
     else if (id.startsWith("copy-code-")) { const b = blocks[Number(id.slice(10))]; if (b) void copy(b.code, ctx); }
     else if (id === "fork") branch?.();

@@ -1,6 +1,6 @@
 // @ts-check
 // Reply mode (0.3.3 G04): each shared chat says when the AI answers. "every": the default assistant answers every person's message. "mention": only an @mention, or a reply to an assistant's message answers.
-// Unset keeps the older rule (the default assistant answers unless the chat is two people talking). Anyone in the chat changes it; the change is a logged frame, so every participant sees it as a line.
+// A chat of two or more people starts on mention; unset (a one-to-one chat) keeps the older rule (the default assistant answers unless the chat is two people talking). Anyone in the chat changes it; the change is a logged frame, so every participant sees it as a line.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,13 +43,14 @@ test("a chat's reply mode: anyone in it sets it, it is a logged frame everyone h
   r.fk.create("c1", ["bob", "carol"], ["kit"]);
   let m = await r.call("c1", "bob");
   const first = await r.groups.send({ chat: "c1", text: "hello", message: "m1", default: "assistant:kit", cwd: "/tmp" }, m);
-  assert.deepEqual(first.routed, [], "unset, two people in the chat: the older rule, nobody answers a plain message");
+  assert.deepEqual(first.routed, [], "a group of two people starts on mention: nobody answers a plain message");
   await r.groups.idle();
-  // carol sets the mode to "mention": a plain message no longer wakes the AI
+  // carol sets the mode to "every" and back to "mention": each change is a frame with who made it
   m = await r.call("c1", "carol");
+  assert.equal((await r.groups.replyMode({ chat: "c1", mode: "every" }, m)).mode, "every");
   const set = await r.groups.replyMode({ chat: "c1", mode: "mention" }, m);
   assert.equal(set.mode, "mention");
-  const frame = r.logs.get("c1").read(0).find((/** @type {any} */ f) => f.type === "chat.reply-mode");
+  const frame = r.logs.get("c1").read(0).filter((/** @type {any} */ f) => f.type === "chat.reply-mode").pop();
   assert.ok(frame && frame.data.mode === "mention" && frame.author === "person:carol", "the change is a frame with who made it");
   m = await r.call("c1", "bob");
   assert.deepEqual((await r.groups.send({ chat: "c1", text: "plain words", message: "m2", cwd: "/tmp" }, m)).routed, [], "mention mode: nobody answers a plain message");
@@ -65,7 +66,7 @@ test("a chat's reply mode: anyone in it sets it, it is a logged frame everyone h
   await assert.rejects(async () => r.groups.replyMode({ chat: "c1", mode: "mention" }, outsider));
 });
 
-test("a chat made with people and no AI starts on mention, as a default frame; a chat with an AI, or of one person, starts unset", async t => {
+test("a chat made with two or more people starts on mention, as a default frame, with an AI in it or not; a chat of one person (with its agent) starts unset", async t => {
   const r = rig(t);
   const modes = (/** @type {string} */ grp) => r.logs.get(grp).read(0).filter((/** @type {any} */ f) => f.type === "chat.reply-mode");
   r.fk.create("p1", ["bob", "carol"], []);
@@ -75,9 +76,15 @@ test("a chat made with people and no AI starts on mention, as a default frame; a
   assert.equal(modes("p1")[0].data.mode, "mention");
   assert.equal(modes("p1")[0].data.default, true, "marked as a default so the chat shows no line for it");
   r.fk.create("p2", ["bob", "carol"], ["kit"]);
-  await r.call("p2", "bob");
-  assert.equal(modes("p2").length, 0, "an AI-centred chat is unset");
+  const m2 = await r.call("p2", "bob");
+  assert.deepEqual(modes("p2").map((/** @type {any} */ f) => [f.data.mode, f.data.default]), [["mention", true]], "a group with an agent: the agent answers only when mentioned");
+  assert.deepEqual((await r.groups.send({ chat: "p2", text: "plain words", message: "g1", default: "assistant:kit", cwd: "/tmp" }, m2)).routed, [], "unmentioned, the default agent stays quiet");
+  assert.deepEqual((await r.groups.send({ chat: "p2", text: "@kit your view?", message: "g2", cwd: "/tmp" }, m2)).routed, ["assistant:kit"], "mentioned, it answers");
   r.fk.create("p3", ["bob"], []);
   await r.call("p3", "bob");
   assert.equal(modes("p3").length, 0, "a chat of one person is unset");
+  r.fk.create("p4", ["bob"], ["kit"]);
+  const m4 = await r.call("p4", "bob");
+  assert.equal(modes("p4").length, 0, "a one-to-one chat with an agent is unset");
+  assert.deepEqual((await r.groups.send({ chat: "p4", text: "plain words", message: "o1", default: "assistant:kit", cwd: "/tmp" }, m4)).routed, ["assistant:kit"], "and its agent answers every message");
 });

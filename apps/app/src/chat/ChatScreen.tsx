@@ -75,6 +75,7 @@ import { useRouter } from "expo-router";
 import { useChats } from "../state/chats";
 import { canFork } from "../../screens/chats/chats-model.js";
 import { findLabel, findMatches, headerParts, keyAction, lastOwnMessage, stepMatch } from "./polish.js";
+import { askedBefore, threadMay } from "./message-menu-model.js";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -202,6 +203,15 @@ export function ChatScreen(p: ChatScreenProps) {
       .catch(() => { if (live) setThreadState(undefined); });
     return () => { live = false; };
   }, [toolsOpen, here.thread, p.sessionId]);
+  // What this chat's driver can do (threads.get: provider and caps): Retry, Edit and Rewind go back, Fork needs a fork. Until it is known, everything is offered.
+  const [may, setMay] = useState(() => threadMay(null));
+  useEffect(() => {
+    const thread = here.thread ?? p.sessionId;
+    if (allowsMock() || !thread) return;
+    let live = true;
+    tool<{ thread?: { provider?: string; caps?: unknown } }>("threads.get", { thread, limit: 1 }).then((d) => { if (live) setMay(threadMay(d?.thread)); }).catch(() => {});
+    return () => { live = false; };
+  }, [here.thread, p.sessionId]);
   useEffect(() => {
     if (!toolsOpen || allowsMock()) return;
     let live = true;
@@ -254,8 +264,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const [modelNudge, setModelNudge] = useState<"model" | null>(null);
   // The keyboard (12.3), on the web and the desktop windows: Cmd/Ctrl-F find, Esc stops (or closes find), Up in an empty composer edits the last message, Cmd-K switches, Cmd-1..9 open the nth chat.
   // Cmd-Enter (steer) is the composer's own. The decision is polish.js keyAction; this only reads the event and does the thing.
-  const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null });
-  keyRef.current = { findOpen, busy: meta.busy, rows, store, actions, p, panel: panel !== null };
+  const keyRef = useRef({ findOpen, busy: meta.busy, rows, store, actions: may.rewind ? actions : null, p, panel: panel !== null });
+  keyRef.current = { findOpen, busy: meta.busy, rows, store, actions: may.rewind ? actions : null, p, panel: panel !== null };
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const onKey = (e: KeyboardEvent) => {
@@ -297,17 +307,29 @@ export function ChatScreen(p: ChatScreenProps) {
       hideVaultNames: Math.max(store.group.participants().filter((f) => f.family !== "assistant").length, (here.members ?? []).filter((f) => f.family !== "assistant").length) > 1,
       ...(actions
         ? {
-            onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
-            onRetryMessage: async (uuid: string) => { setNote(null); const r = await actions.retry!(uuid); if (!r.ok) setNote(r.reason); },
-            onBranchFrom: async (uuid: string) => {
+            // Only what the chat's driver can do is offered (threadMay): a driver that cannot go back has no Edit, Retry or Rewind, one that cannot fork no Fork.
+            ...(may.rewind ? {
+              onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
+              onRetryMessage: async (uuid: string) => { setNote(null); const r = await actions.retry!(uuid); if (!r.ok) setNote(r.reason); },
+              onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
+            } : {}),
+            askedBefore: (uuid: string) => askedBefore(rowsRef.current, `a:${uuid}`, (k) => store.item(k), (k) => store.group.isMine(k))?.uuid ?? null,
+            // A failed reply: go back and send the message again where the driver can, else send its words again.
+            onTryAgain: async (key: string) => {
+              setNote(null);
+              const m = askedBefore(rowsRef.current, key, (k) => store.item(k), (k) => store.group.isMine(k));
+              if (!m) { setNote("There is no message of yours to send again."); return; }
+              if (may.rewind) { const r = await actions.retry!(m.uuid); if (!r.ok) setNote(r.reason); }
+              else void sendRef.current?.(m.text);
+            },
+            ...((forkAsThread.current ? may.fork : may.branch) ? { onBranchFrom: async (uuid: string) => {
               setNote(null);
               // an agent chat forks as a new thread of the same agent (work.thread.fork); the new chat opens
               if (forkAsThread.current) { const f = await agentThreads.fork(threadRef.current, uuid); if ("problem" in f) setNote(f.problem); else openThreadRef.current(f.thread); return; }
               const r = await actions.branch!(uuid);
               if (!r.ok) setNote(r.reason);
               else if (r.thread) onBranched?.(r.thread);
-            },
-            onRewindTo: (uuid: string) => caps.api.rewindTo(uuid),
+            } } : {}),
             onSecondOpinion: (uuid: string) => caps.api.openSecondOpinion(uuid),
             onForward: (_uuid: string, text: string) => setForward({ text }),
             onSay: (text: string) => { void sendRef.current?.(text); },
@@ -335,7 +357,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
       ...p.handlers,
     }),
-    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api, solo, before],
+    [phone, threadW, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router, store, here.members, caps.api, solo, before, may],
   );
   const onSend = useCallback(
     async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {

@@ -42,6 +42,8 @@ export function stoppedState(reason) {
 
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const turnNo = (/** @type {unknown} */ t) => { const m = /:(\d+)$/.exec(String(t ?? "")); return m ? m[1] : null; };
+/** Why a turn failed, as one short line a person can read: redacted (never a key), one line, at most 160 characters, no closing full stop. @param {unknown} err */
+export const failNote = (err) => redact(String(err || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160).replace(/[.\s]+$/, "");
 
 /**
  * @typedef {{ kind: string, data: any, turn?: string|null, author?: string }} Spec
@@ -50,6 +52,8 @@ const turnNo = (/** @type {unknown} */ t) => { const m = /:(\d+)$/.exec(String(t
 export function createAdapter() {
   /** @type {string|null} */ let turn = null;
   let statusSeen = false;
+  // A failed status that carried its reason (note): the thread.finished after it adds no second line saying the same.
+  let failNoted = false;
   /** message:block -> text already streamed @type {Set<string>} */ const streamed = new Set();
   /** call -> { tool, input, summary } @type {Map<string, any>} */ const tools = new Map();
   /** uuid -> text @type {Map<string, string>} */ const words = new Map();
@@ -138,10 +142,12 @@ export function createAdapter() {
         case "thread.status":
           if (typeof p.status !== "string") return [];
           statusSeen = true;
-          return [spec("status", { state: p.status, ...(turnNo(p.turn) ? { turn: turnNo(p.turn) } : {}), ...(p.stopping ? { stopping: true } : {}) })];
+          if (p.status === "failed" && p.error) failNoted = true;
+          return [spec("status", { state: p.status, ...(turnNo(p.turn) ? { turn: turnNo(p.turn) } : {}), ...(p.stopping ? { stopping: true } : {}), ...(p.status === "failed" && p.error ? { note: failNote(p.error) } : {}) })];
         case "thread.state":
           if (statusSeen || typeof p.state !== "string") return [];
-          return [spec("status", { state: stateWord(p.state), ...(turnNo(p.turn) ? { turn: turnNo(p.turn) } : {}) })];
+          if (p.state === "failed" && p.error) failNoted = true;
+          return [spec("status", { state: stateWord(p.state), ...(turnNo(p.turn) ? { turn: turnNo(p.turn) } : {}), ...(p.state === "failed" && p.error ? { note: failNote(p.error) } : {}) })];
         case "thread.turn": {
           const n = turnNo(p.turn);
           if (n) turn = n;
@@ -213,9 +219,11 @@ export function createAdapter() {
           return p.ask ? [spec("ask-answered", { ask_id: String(p.ask), decision: e.type === "ask.cancelled" ? "cancelled" : p.decision ?? null })] : [];
         case "thread.finished": {
           const failed = p.ok === false || Boolean(p.error);
-          /** @type {Spec[]} */ const out = statusSeen ? [] : [spec("status", { state: failed ? "failed" : "waiting", ...(turn ? { turn } : {}) })];
-          // A turn that failed says so in the thread, in plain words with the reason (never a key: redacted), so the person is not left looking at a message that was never answered.
-          if (failed) out.push(...text({ message: `vyre-failed-${turn ?? e.id ?? "turn"}`, text: `The AI could not answer: ${redact(String(p.error || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200).replace(/[.\s]+$/, "")}. Check AI accounts.`, done: true, notice: true }));
+          // A failed turn's status carries its reason as a short note (the app shows "Couldn't answer: <reason>" with Try again).
+          /** @type {Spec[]} */ const out = statusSeen ? [] : [spec("status", { state: failed ? "failed" : "waiting", ...(turn ? { turn } : {}), ...(failed ? { note: failNote(p.error) } : {}) })];
+          // When no status said why, the thread says it in plain words (never a key: redacted), so the person is not left looking at a message that was never answered.
+          if (failed && statusSeen && !failNoted) out.push(...text({ message: `vyre-failed-${turn ?? e.id ?? "turn"}`, text: `The AI could not answer: ${failNote(p.error)}. Check AI accounts.`, done: true, notice: true }));
+          failNoted = false;
           return out;
         }
         case "thread.stopped":

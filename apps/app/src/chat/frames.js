@@ -22,7 +22,7 @@ const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped",
 /** Status changes that leave a quiet line in the transcript. */
 /** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
 const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again." };
-const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "This chat failed." };
+const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "Couldn't answer." };
 
 /** The states in which a message you send is queued, not taken. @param {string} state */
 export const busyState = (state) => state === "working" || state === "asking" || state === "starting";
@@ -412,10 +412,12 @@ export function createFolder() {
         status.turn = d.turn ?? status.turn;
         status.stopping = Boolean(d.stopping);
         bump("@status");
-        const notice = (state === "failed" && typeof d.note === "string" && /** @type {Record<string, string>} */ (FAILED_NOTES)[d.note]) || /** @type {Record<string, string>} */ (NOTICE_STATES)[state];
+        // A failed turn says why when the status carries a reason (one short line), and offers Try again.
+        const why = state === "failed" && typeof d.note === "string" ? d.note.replace(/\s+/g, " ").trim().slice(0, 160) : "";
+        const notice = (why && (/** @type {Record<string, string>} */ (FAILED_NOTES)[d.note] || `Couldn't answer: ${why}`)) || /** @type {Record<string, string>} */ (NOTICE_STATES)[state];
         if (notice) {
           const key = "s:" + f.cur;
-          put(key, "notice", { key, kind: "notice", text: notice });
+          put(key, "notice", { key, kind: "notice", text: notice, ...(state === "failed" ? { retry: true } : {}) });
           out.layout = true;
           touch(key);
         }
