@@ -6,7 +6,7 @@ import { useSpaces } from "../shell/state";
 import { tool } from "../../src/real/box";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Switch, Tabs, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Field, Row, Segmented, Switch, Tabs, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { StoredFlowEditor } from "./BuilderScreens";
 import { sentenceParts } from "./sentence.js";
@@ -18,12 +18,12 @@ import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
-import { cancelReal, retryReal, startReal } from "./run";
+import { cancelReal, retryFromReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
 import { listReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
-import { APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -58,6 +58,8 @@ export function RealFlow({ id }: { id: string }) {
   const [mapOn, setMapOn] = useState(false);
   const [tryOpen, setTryOpen] = useState(false);
   const phone = usePhone();
+  const [runFilter, setRunFilter] = useState<"all" | "failed" | "waiting">("all");
+  const [runQuery, setRunQuery] = useState("");
   const [tab, setTab] = useState<"steps" | "runs" | "settings">("steps");
   const [row, setRow] = useState<RealFlowRow | null>(null);
 
@@ -120,6 +122,7 @@ export function RealFlow({ id }: { id: string }) {
     finally { setBusy(false); }
   };
   const picked_run = runs.find((r) => r.id === runId);
+  const shownRuns = filterRuns(runs.map((r) => ({ ...r, when: when(r.started_at) })), runFilter, runQuery);
   const hb = healthBanner(health);
 
   return (
@@ -168,9 +171,14 @@ export function RealFlow({ id }: { id: string }) {
       {tab === "runs" ? (
         <View className="gap-s4 pt-s3">
       <Sec title="Run history">
+        <View className="flex-row flex-wrap items-center gap-s2 pb-s2">
+          <Segmented options={[["all", "All"], ["failed", "Failed"], ["waiting", "Waiting"]]} value={runFilter} onChange={setRunFilter} label="Show" />
+          <View className="min-w-0 flex-1"><Field label="Search runs" value={runQuery} onChangeText={setRunQuery} placeholder="A name, a date or a word from the error" /></View>
+        </View>
+        {runs.length && !shownRuns.length ? <Card><EmptyState title="No runs match" body="Change the filter or the search." /></Card> : null}
         {runs.length ? (
           <Card flush>
-            {runs.map((r, i) => {
+            {shownRuns.map((r, i) => {
               const s = STATE[r.state] ?? { note: r.state, tone: "plain" as const };
               return (
                 <View key={r.id}>{i ? <Divider /> : null}
@@ -185,7 +193,7 @@ export function RealFlow({ id }: { id: string }) {
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
           <ExplainCard text={explain} />
           <Card flush>
-            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
+            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : <RunSteps onFrom={picked_run ? { refusal: (id) => retryFromRefusal(def, ledger, id), go: async (id) => { setBusy(true); try { await retryFromReal(picked_run.id, id); showToast("Retrying from that step."); setN((x) => x + 1); } catch (e) { showToast(e instanceof Error ? e.message : "That did not work."); } finally { setBusy(false); } } } : undefined} painted={painted} steps={ledger} max={retryLimits(def)} fmt={when} />}
           </Card>
           <View className="self-start pt-s2"><Button kind="ghost" size="sm" label="Open this run" onPress={() => router.push(`/u/flows/${id}/runs/${picked_run.id}` as never)} /></View>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}

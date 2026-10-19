@@ -9,6 +9,12 @@ import { Frame, Sec } from "../places/Frame";
 import { useFlowsState } from "./store";
 import { ShareFlow } from "./FlowShare";
 import { useFlowOptions, defineReal } from "./builder-source";
+import { runsReal } from "./real";
+import { stepTestSource } from "./step-test-source";
+import { testLines } from "./step-test-model.js";
+import { callT } from "../../src/real/call-tool";
+import { useMembers } from "../spaces/state";
+import { useSpaces } from "../shell/state";
 
 const BLANK: FlowDraft = { name: "", trigger: { kind: "created" }, steps: [] };
 
@@ -94,6 +100,9 @@ export function MadeFlowScreen({ id }: { id: string }) {
 /** A Flow stored on the box, opened in the builder. Saving writes a new version (the box asks for the person's yes again); steps the builder cannot show are kept as they were. */
 export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
   const options = useFlowOptions();
+  const showing = useSpaces((s) => s.space);
+  const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
+  const staff = role === "owner" || role === "admin" || allowsMock();
   const [draft, setDraft] = useState<FlowDraft>(() => flowFromDefinition(flow));
   useEffect(() => { setDraft(flowFromDefinition(flow)); }, [flow]);
   const [busy, setBusy] = useState(false);
@@ -109,7 +118,11 @@ export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unkn
   return (
     <>
       <ShareFlow id={id} options={options} />
-      <FlowBuilder draft={draft} onChange={setDraft} options={options} />
+      <FlowBuilder draft={draft} onChange={setDraft} options={options} onTestStep={!staff ? undefined : async (stepId, d) => {
+        const runs = await runsReal(id).catch(() => []);
+        const r = await stepTestSource(callT).test(flowDefinition(d, options) as Record<string, unknown>, stepId, runs[0] ? { run: runs[0].id } : {});
+        return "problem" in r ? r : testLines(r.result);
+      }} />
       {problems.length ? <Banner tone="warn" icon="warning"><View className="gap-s1">{problems.map((p) => <Text key={p}>{p}</Text>)}</View></Banner> : null}
       {err ? <Banner tone="err">{err}</Banner> : null}
       <View className="self-start"><Button kind="primary" label="Save changes" loading={busy} disabled={!!problems.length} onPress={save} /></View>

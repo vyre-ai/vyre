@@ -1,6 +1,8 @@
 // The template studio's words and shapes, pure (no React, no calls): what a list of templates, one version's tree, a test run and the editor's text say. Tested by templates.test.js.
 export type Version = { template: string; version: number; name: string; state: "draft" | "live" | "retired"; owner: string | null; kit?: string; note?: string; tags: string[]; body?: Body };
-export type Task = { title: string; doer: string; checker?: string; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number; group?: string; followers?: string[]; notes?: { approver?: string; followers?: string } };
+/** A reviewer or approver of a to-do: who, the Space skills it checks against, what to look for, whether everyone must answer, and a time limit (ms) with the role the to-do passes to when it runs late. */
+export type Slot = { who: string; skills?: string[]; instructions?: string; quorum?: "any" | "all"; due?: number; escalate_to?: string };
+export type Task = { title: string; doer: string; checker?: string; reviewer?: Slot; approver?: Slot; output: { kind: string }; required?: boolean; depends_on?: string[]; brief?: string; checklist?: { say: string }[]; credentials?: string[]; needs_yes?: string[]; ask?: string; context?: string[]; due_offset_ms?: number; group?: string; followers?: string[]; notes?: { approver?: string; followers?: string } };
 export type Group = { name: string; collapsed?: boolean };
 export type Stage = { name: string; owner?: string; groups?: Group[]; done_when?: "all" | "needed" | "sign_off"; sign_off?: string; moves_on_when?: string; tasks?: Task[] };
 export type Noun = { one: string; many: string };

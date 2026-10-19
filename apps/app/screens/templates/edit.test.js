@@ -241,3 +241,49 @@ test("a task is dropped at a place in a stage, in its own or another; a stage is
   assert.deepEqual(moveStageTo(b, 0, 3).stages.map((s) => s.name), ["Done", "Stage 3", "Stage 4", "Start"]);
   assert.equal(moveStageTo(b, 2, 2), b);
 });
+
+test("a to-do's reviewer and approver slots are set, replace the older checker, and carry a time limit with a fallback role", async () => {
+  const { setSlot, approverOf, slotProblems, lateWords } = await import("./edit.ts");
+  let b = base();
+  b = setTask(b, 0, 0, { checker: "role:attorney" });
+  assert.deepEqual(approverOf(b.stages[0].tasks[0]), { who: "role:attorney" });
+  b = setSlot(b, 0, 0, "reviewer", { who: "role:researcher", skills: ["voice"], instructions: "Plain words", due: 172800000, escalate_to: "role:attorney" });
+  b = setSlot(b, 0, 0, "approver", { who: "role:attorney", quorum: "any" });
+  const t = b.stages[0].tasks[0];
+  assert.equal(t.checker, undefined, "an approver slot replaces the checker");
+  assert.deepEqual(t.approver, { who: "role:attorney" });
+  assert.deepEqual(t.reviewer.skills, ["voice"]);
+  assert.equal(lateWords(t), "Reviewer passes to the attorney after 2 days");
+  assert.deepEqual(slotProblems({ who: "x", due: 1000 }, "reviewer"), ["Set both the time limit and who it passes to for the reviewer, or neither."]);
+  assert.equal(slotProblems({ who: "role:x", quorum: "all", due: 60000, escalate_to: "role:a" }, "approver").length, 1);
+  b = setSlot(b, 0, 0, "reviewer", null);
+  assert.equal(b.stages[0].tasks[0].reviewer, undefined);
+  assert.deepEqual(b.stages[0].tasks[0].approver, { who: "role:attorney" }, "taking one slot away leaves the other");
+});
+
+test("slot problems: everyone-must-approve needs a team, and the doer cannot review or approve their own to-do", async () => {
+  const { slotProblems, approverOf } = await import("./edit.ts");
+  assert.deepEqual(slotProblems({ who: "person:p1", quorum: "all" }, "approver"), ["Everyone must approve only works when the approver is a team."]);
+  assert.deepEqual(slotProblems({ who: "role:admins", quorum: "all" }, "approver"), []);
+  assert.deepEqual(slotProblems({ who: "role:attorney" }, "reviewer", "role:attorney"), ["The reviewer is also the one assigned. Choose someone else."]);
+  assert.deepEqual(approverOf({ title: "t", doer: "role:a", checker: "owner", output: { kind: "note" } }), { who: "role:owner" });
+});
+
+test("a to-do can be assigned to a role, the lead, a person, an agent or whoever on a team takes it first", async () => {
+  const { doerPickChoices } = await import("./edit.ts");
+  const b = base();
+  const c = doerPickChoices(b, [{ id: "p1", name: "Ana" }], [{ id: "scout", name: "Scout" }]).map(([v]) => v);
+  assert.ok(["role:attorney", "lead", "group:attorney", "group:owner", "person:p1", "teammate:scout"].every((v) => c.includes(v)));
+  assert.equal(c.indexOf("group:attorney") > c.indexOf("lead"), true);
+  assert.equal(setTask(b, 0, 0, { doer: "group:attorney" }).stages[0].tasks[0].doer, "group:attorney");
+});
+
+test("reviewers, approvers and fallbacks are chosen from Space roles, people and agents; a stored template role stays but is marked", async () => {
+  const { slotWhoChoices, SPACE_ROLES } = await import("./edit.ts");
+  const c = slotWhoChoices([{ id: "p1", name: "Ana" }], [{ id: "scout", name: "Scout" }]);
+  assert.deepEqual(c.slice(0, 4), SPACE_ROLES);
+  assert.ok(c.some(([v]) => v === "person:p1") && c.some(([v]) => v === "teammate:scout"));
+  assert.equal(c.some(([v]) => v === "role:attorney"), false, "a template role is not offered");
+  const kept = slotWhoChoices([], [], "role:attorney");
+  assert.equal(kept[kept.length - 1][1], "The attorney (not a Space role)");
+});

@@ -118,3 +118,11 @@ test("handing in a task that is still ready starts it first, so Mark done works 
   await createGatewayStore({ rpc: g.rpc }).submit("t2", {});
   assert.deepEqual(g.calls.filter((c) => c.kind === "write").map((c) => c.tool), [TOOLS.submit], "a task already started is not started again");
 });
+
+test("review sends the reviewer's result, checklist and note to tasks.review", async () => {
+  const f = fake({ [TOOLS.review]: { task: { id: "t1", state: "needs_check" } } });
+  const s = createGatewayStore({ rpc: f.rpc });
+  const t = await s.review("t1", { result: "pass", checklist: [{ skill: "voice", item: "Plain words", ok: true }], note: "ok" });
+  assert.equal(t.state, "needs_check");
+  assert.deepEqual(f.calls.filter((c) => c.kind === "write").map((c) => [c.tool, c.input]), [[TOOLS.review, { id: "t1", result: "pass", checklist: [{ skill: "voice", item: "Plain words", ok: true }], note: "ok" }]]);
+});

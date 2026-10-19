@@ -8,7 +8,7 @@
 /** The lanes a step holds, in the order they are drawn. @param {Step} s @returns {{ key: string, label: string }[]} */
 export function lanesOf(s) {
   /** @type {{ key: string, label: string }[]} */ let own = [];
-  if (s.kind === "decide") own = [{ key: "then", label: "Then" }, { key: "else", label: "Else" }];
+  if (s.kind === "decide") own = [{ key: "then", label: "Then" }, { key: "else", label: "Otherwise" }];
   else if (s.kind === "repeat") own = [{ key: "steps", label: "For each" }];
   else if (s.kind === "parallel") own = (s.lanes || []).map((/** @type {any} */ _l, /** @type {number} */ i) => ({ key: `lane:${i}`, label: `Side ${i + 1}` }));
   return s.on_fail ? [...own, { key: "on_fail", label: "If this fails" }] : own;
@@ -96,4 +96,24 @@ export function canMove(steps, id) {
   if (!here) return { up: false, down: false };
   const l = stepsIn(steps, here.lane);
   return { up: here.index > 0, down: here.index < l.length - 1 };
+}
+
+/** A copy of a step (and any steps in its lanes) with ids nobody uses yet, as many as the Flow already has plus one each. @param {Step} s @param {Set<string>} used the ids in the whole Flow, added to as ids are made @returns {Step} */
+function cloneFresh(s, used) {
+  let n = used.size + 1;
+  while (used.has(`${s.kind}${n}`)) n++;
+  const id = `${s.kind}${n}`;
+  used.add(id);
+  let c = { ...s, id };
+  for (const l of lanesOf(s)) c = withLane(c, l.key, laneSteps(s, l.key).map((x) => cloneFresh(x, used)));
+  return c;
+}
+
+/** Put a copy of a step right after it in its own lane. The copy has fresh ids; its words are the original's. @param {Step[]} steps @param {string} id @param {string[]} usedIds every step id in the Flow (including its failure steps) @returns {{ steps: Step[], id: string | null }} */
+export function duplicateDeep(steps, id, usedIds) {
+  const here = locate(steps, id);
+  const orig = findStep(steps, id);
+  if (!here || !orig) return { steps, id: null };
+  const copy = cloneFresh(orig, new Set(usedIds));
+  return { steps: editLane(steps, here.lane, (l) => { const i = l.findIndex((s) => s.id === id); return [...l.slice(0, i + 1), copy, ...l.slice(i + 1)]; }), id: copy.id };
 }

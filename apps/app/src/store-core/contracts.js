@@ -114,6 +114,7 @@
  *   request(task: NewTask, by?: string): Promise<DeckTask>,
  *   decide(id: Uuid, approval: { outcome: "approved"|"rejected", reason?: string, proof: PresenceProof }): Promise<DeckTask>,
  *   submit(id: Uuid, evidence: Evidence, by?: string): Promise<DeckTask>,
+ *   review(id: Uuid, input: { result: "pass"|"changes", checklist?: { skill: string, item: string, ok: boolean }[], note?: string }, by?: string): Promise<DeckTask>,
  *   move(id: Uuid, to: TaskState, by?: string, o?: { reason?: string, suggested_fix?: string }): Promise<DeckTask>,
  *   reassign(id: Uuid, doer: string, by?: string): Promise<DeckTask>,
  *   editTask(id: Uuid, patch: { how?: TaskHow, due?: number, title?: string }, by?: string): Promise<DeckTask>,
