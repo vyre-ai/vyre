@@ -11,6 +11,7 @@ import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { SURFACE, refresh } from "../../src/state/live";
 import { tool } from "../../src/real/box";
 import { deviceReadiness } from "../../src/state/chat-start";
+import { sendFirst, watchReadiness } from "./new-thread-model.js";
 
 /**
  * /u/chats/new-thread: what pressing Chat opens. A new thread with your Assistant, the composer ready to type, like a chat app opens on a new conversation. Nothing is made on the server until you send the
@@ -39,20 +40,27 @@ export default function NewThreadScreen() {
     })();
     return () => { on = false; };
   }, [st]);
-  const check = useCallback(async () => { if (allowsMock()) { setGap(null); return; } const g = await deviceReadiness(); if (live.current) setGap(g); }, []);
-  // again when the person comes back to the page, and every few seconds while the device is not ready
+  // The device is asked now, when the person comes back to the page, and every few seconds while it is not ready.
+  const watch = useRef<ReturnType<typeof watchReadiness> | null>(null);
+  useEffect(() => {
+    const w = watchReadiness({ check: () => (allowsMock() ? Promise.resolve(null) : deviceReadiness()), on: (g) => { if (live.current) setGap(g); }, every: 5000 });
+    watch.current = w;
+    return () => w.stop();
+  }, []);
+  const check = useCallback(() => watch.current?.again() ?? Promise.resolve(), []);
   useFocusEffect(useCallback(() => { void check(); }, [check]));
-  useEffect(() => { if (!gap) return; const t = setInterval(() => void check(), 5000); return () => clearInterval(t); }, [gap, check]);
   const send = async () => {
-    if (!text.trim() || !name) return;
     setBusy(true); setErr("");
     try {
-      const made = await agentThreads.start(name);
-      if ("problem" in made) { setErr(made.problem); return; }
-      const first = await tool("stream.send", { chat: made.thread, text: text.trim(), message: newUuid(), surface: SURFACE }).then(() => null).catch((e: Error) => e);
-      if (first) writeDraft(made.thread, text.trim());
+      const r = await sendFirst({ name: name ?? "", text }, {
+        start: (agent) => agentThreads.start(agent),
+        send: async (chat, words) => { await tool("stream.send", { chat, text: words, message: newUuid(), surface: SURFACE }); },
+        keep: (chat, words) => writeDraft(chat, words),
+      });
+      if (!r) return;
+      if ("problem" in r) { setErr(r.problem); return; }
       refresh();
-      router.replace({ pathname: "/u/chats/[id]", params: { id: made.thread } });
+      router.replace({ pathname: "/u/chats/[id]", params: { id: r.thread } });
     } catch (e) { setErr(e instanceof Error && e.message ? e.message : "The thread did not start."); } finally { setBusy(false); }
   };
   return (
