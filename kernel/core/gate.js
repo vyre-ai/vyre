@@ -8,10 +8,10 @@ import { VIEWER_WORDS } from "../../lib/seat-levels.js";
 /** @param {{ authorizer: { authorize(i: any): Promise<any> }, log: any, enforce?: (chain: any, d: any) => void }} cfg */
 export function createGate(cfg) {
   const { authorizer, log } = cfg;
-  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any, input_hash?: string, probe?: boolean }} [opts] */
+  /** @param {any} chain @param {string} action @param {string} resource @param {{ quiet?: boolean, presence?: any, input_hash?: string, payload?: any, probe?: boolean }} [opts] */
   async function gate(chain, action, resource, opts = {}) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
-    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.waiver ? { waiver: opts.waiver } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}), ...(opts.probe ? { probe: true } : {}) });
+    const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.waiver ? { waiver: opts.waiver } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}), ...(opts.payload !== undefined ? { payload: opts.payload } : {}), ...(opts.probe ? { probe: true } : {}) });
     // An act that was allowed is counted now (once, rate, meter), before anything runs. A probe (quiet) never counts.
     if (d.effect === "allow") { if (!opts.quiet && cfg.enforce) cfg.enforce(chain, d); return d; }
     if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations, ...(d.presence_reason ? { detail: { reason: d.presence_reason } } : {}) });
