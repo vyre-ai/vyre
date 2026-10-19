@@ -196,6 +196,7 @@ export async function ownerWalkReal(c) {
         inviteLink = String([r?.link, r?.url, r?.invite?.link, r?.data?.link, ...Object.values(r ?? {})].find((v) => typeof v === "string" && /^(https?|vyre):\/\//.test(v)) ?? "");
       } catch (e2) { facts.push(`onboard.member.link: ${errOf(e2)}`); }
       console.log(`owner walk 4 box facts: ${facts.join(" | ")}`);
+      console.log(`owner walk 4 refused calls: ${(drv.refused?.() || []).join(" || ") || "none seen"}`);
       throw new Error(`${said} (link made from the box instead: ${inviteLink ? "yes" : "no"}; box facts: ${facts.join(" | ").slice(0, 900)})`);
     }
     inviteLink = String(/(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
@@ -340,6 +341,7 @@ export async function ownerWalkReal(c) {
     try { await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening"); }
     catch (e) {
       await shot("failed-08-open");
+      console.log(`owner walk 8 refused calls: ${(drv.refused?.() || []).join(" || ") || "none seen"}`);
       const said = `${/** @type {Error} */ (e).message}. The screen says: ${await show(900)}`;
       // A phone approval sheet stays over every later screen for five minutes: close it so walks 9 and 10 are not blocked by it.
       const phone = /Approve on your phone/.test(await text());

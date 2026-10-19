@@ -88,11 +88,16 @@ async function browserDriver(shared = null) {
   const pageErrors = /** @type {string[]} */ ([]);
   const consoleErrors = /** @type {string[]} */ ([]);
   const stageTrail = /** @type {string[]} */ ([]);
+  // Refused calls the page makes: the error code and message of a /v1 answer of 400 or more, or of an error frame on a peer stream, cut to 300 characters. Never a request, a header or a token.
+  const refusedCalls = /** @type {string[]} */ ([]);
+  const noteRefusal = (/** @type {string} */ where, /** @type {any} */ j) => { const e = j && typeof j === "object" ? (j.error ?? j) : null; if (!e || typeof e !== "object" || !(e.code || e.message)) return; refusedCalls.push(`${where} ${String(e.code ?? "")} ${String(e.message ?? "")}`.slice(0, 300)); if (refusedCalls.length > 20) refusedCalls.shift(); };
   const body = async () => (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
   const d = {
     async open() {
       if (page) await page.close().catch(() => {});
       page = await ctx.newPage();
+      page.on("response", (/** @type {any} */ r) => { const u = String(r.url()); if (r.status() < 400 || !/\/v1\//.test(u)) return; void r.json().then((/** @type {any} */ j) => noteRefusal(`${r.status()} ${new URL(u).pathname}`, j)).catch(() => refusedCalls.push(`${r.status()} ${new URL(u).pathname}`)); });
+      page.on("websocket", (/** @type {any} */ ws) => ws.on("framereceived", (/** @type {{ payload: any }} */ f) => { const t = typeof f.payload === "string" ? f.payload : ""; if (!t.includes('"error"')) return; try { noteRefusal("peer", JSON.parse(t)); } catch { /* not JSON */ } }));
       page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200)));
       // A worker's error and a console error never reach pageerror: keep them, and print them when something fails.
       page.on("console", (/** @type {any} */ m) => {
@@ -131,6 +136,8 @@ async function browserDriver(shared = null) {
     // A browser on a static file server has no daemon of any kind: nothing answers /v1 here.
     async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
     /** Another person: a new browser profile on the same server and page (the second identity of the group walk). */
+    /** The last refused calls the page saw (code and message only). */
+    refused() { return refusedCalls.slice(-8); },
     async second() { return browserDriver({ browser, srv }); },
     /** Press a button that opens a file chooser and give it one file (the web app\'s Upload). */
     async upload(/** @type {string} */ button, /** @type {string} */ name, /** @type {string} */ content) {
