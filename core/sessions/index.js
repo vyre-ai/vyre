@@ -287,10 +287,12 @@ export default {
     // Every model call goes through the inference door (contract 8.4): ctx.model is the door, ctx.chainFor(o) the kernel chain of a session. With no door a
     // API-key provider refuses to run unless VYRE_LEGACY_DIRECT_MODEL=1 (one warning per provider); Codex and Grok run on the own login of the person, direct with the prompt scrubbed (loginDirect); see lib/door-bridge.js and team/archive/work-journals/door-retrofit.md.
     const doorCfg = { door: /** @type {any} */ (ctx).model, legacyDirect: process.env.VYRE_LEGACY_DIRECT_MODEL === "1", chainFor: /** @type {any} */ (ctx).chainFor, warn: m => { try { ctx.log ? ctx.log(m) : process.stderr.write(m + "\n"); } catch {} } };
+    // The API-key chat drivers use the kernel's inference door when this home has one (daemon: modelDoor), called as the person the turn is for (doorChain, awaited by the driver). Codex and Grok keep doorCfg as it was.
+    const apiDoor = { door: () => (typeof /** @type {any} */ (ctx).modelDoor === "function" ? /** @type {any} */ (ctx).modelDoor() : undefined), chainFor: (/** @type {any} */ o) => (typeof /** @type {any} */ (ctx).doorChain === "function" ? /** @type {any} */ (ctx).doorChain(o && o.asker) : undefined) };
     const drivers = { codex: loginDirect(codexProvider({ sessions: acpSessions("codex") }), doorCfg, ["OPENAI_API_KEY", "CODEX_API_KEY"]), grok: loginDirect(grokProvider({ sessions: acpSessions("grok") }), doorCfg, ["XAI_API_KEY"]),
       // The last rung: a plain API-key driver.
-      openrouter: openrouterProvider({ ...doorCfg, ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
-      "openai-compatible": openrouterProvider({ ...doorCfg, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
+      openrouter: openrouterProvider({ ...doorCfg, ...apiDoor, ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
+      "openai-compatible": openrouterProvider({ ...doorCfg, ...apiDoor, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
     const providerModels = provider => {

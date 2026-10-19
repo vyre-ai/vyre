@@ -253,7 +253,7 @@
   "shows": {
     "cli": []
   },
-  "needs": { "kernel": { "actions": [] } },
+  "needs": { "kernel": { "actions": [] }, "daemon": ["modelDoor", "doorChain"] },
   "teaches": {
     "tips": [
       {
