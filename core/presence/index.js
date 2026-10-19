@@ -905,9 +905,9 @@ export class Presence {
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
-  /** The ids of the presence keys a browser made when it paired (a relay device whose key is software): they are not phones. Empty when there is no relay table. */
+  /** The ids of the device keys a browser made when it paired (a relay device whose hello said web): the browser's own WebCrypto key, which is not a phone. A phone's key, a passkey and a Lumen key are never here. Empty when there is no relay table. */
   softwareKeyIds() {
-    try { return new Set(this.db.prepare("SELECT presence_key AS id FROM relay_devices WHERE key_storage = 'software' AND presence_key IS NOT NULL").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+    try { return new Set(this.db.prepare("SELECT r.presence_key AS id FROM relay_devices r JOIN presence_keys k ON k.id = r.presence_key WHERE r.from_browser = 1 AND k.kind = 'device'").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
   }
 
   keys() {
@@ -1056,7 +1056,7 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
       const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
       if (!owner || String(meta.person.id) !== String(owner)) return false;
     }
-    // A browser's own WebCrypto key (a relay device whose key is software, made when the browser paired) is not a phone: it does not turn approvals on. A paired phone's hardware key does.
+    // A browser's own WebCrypto key (a relay device that paired from a browser) is not a phone: it does not turn approvals on. Any phone's key does, whatever its storage.
     const soft = typeof presence.softwareKeyIds === "function" ? presence.softwareKeyIds() : new Set();
     return (await presence.keys()).filter((/** @type {any} */ k) => !soft.has(k.id)).length === 0;
   } catch { return false; }
