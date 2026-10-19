@@ -273,13 +273,19 @@ export function createHost(o) {
     try {
       const k = await o.store.load();
       if (!k) return;
-      const rows = (k.spaces || []).filter((r) => r && r.role === "owner" && r.paired && r.paired.route && r.name);
+      const rows = (k.spaces || []).filter((r) => r && r.role === "owner" && r.paired && (r.paired.route || r.paired.box) && r.name);
       if (!rows.length) return;
       const key = await fromSeed(seed);
       const listed = { ...(k.listed || {}) };
       let changed = false;
       for (const r of rows) {
-        const label = String(r.name).toLowerCase().replace(/\.vyre\.run$/, ""), route = String(/** @type {any} */ (r.paired).route);
+        const label = String(r.name).toLowerCase().replace(/\.vyre\.run$/, "");
+        let route = String(/** @type {any} */ (r.paired).route || "");
+        // No route kept beside the row: ask the paired server itself, over the pairing's own channel (the box is the one the pairing pinned, never a typed value). Only a well-formed route is taken.
+        if (!route && /** @type {any} */ (r.paired).box && o.space) {
+          try { const st = /** @type {any} */ (await (await o.space.load()).call("relay.status", {}, String(/** @type {any} */ (r.paired).box))); if (st && typeof st.route === "string" && /^[a-z2-7]{26}$/.test(st.route)) route = st.route; } catch { route = ""; }
+        }
+        if (!route) { trail(`server listing for ${label}: the server's route is not known`); continue; }
         if (listed[label] === route) continue;
         const ts = o.now ? o.now() : Date.now();
         const act = { by: String(k.id), via: key.eid, ts, sig: b64u(await key.sign(actMessage({ action: "server-add", name: label, domain: route, ts }))) };
