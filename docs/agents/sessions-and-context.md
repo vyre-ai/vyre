@@ -4,7 +4,7 @@ summary: What a session is, what Vyre tells you at the start, the memory layers,
 audience: agents
 owner: docs
 status: stable
-tokens: 800
+tokens: 1000
 when: You start or continue a session, need to know what was done before, or want to remember something for later.
 ---
 
