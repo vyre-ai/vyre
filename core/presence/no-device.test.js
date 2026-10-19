@@ -67,6 +67,13 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     const r = await d.registry.call(tool, input, "cli", await meta());
     assert.ok(r.error && ["presence_required", "needs_presence", "held_for_approval", "person_session_required"].includes(String(r.error.code)), `${tool} still asks for presence: ${JSON.stringify(r).slice(0, 200)}`);
   }
+  // 4d. the owner's web browser never pairs a device on the no-device pass; the app device does (the first phone is paired from the app)
+  for (const tool of ["relay.pair.ticket", "link.pair.approve", "wink.approve", "presence.enroll"]) {
+    const web = await d.registry.call(tool, {}, "device:abcdefghijklmnop", { kernelFacts: { ...devFacts, web: true } });
+    assert.ok(web.error && ["presence_required", "person_session_required", "needs_presence", "denied", "held_for_approval"].includes(String(web.error.code)), `${tool}: a web browser asks: ${JSON.stringify(web).slice(0, 200)}`);
+    const app = await d.registry.call(tool, {}, "device:abcdefghijklmnop", { kernelFacts: devFacts });
+    assert.ok(!app.error || !["presence_required", "person_session_required", "needs_presence"].includes(String(app.error.code)), `${tool}: the app device is not asked: ${JSON.stringify(app).slice(0, 200)}`);
+  }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
   const was = presence.keys;
   presence.keys = () => [{ id: "k1", kind: "device", name: "phone" }];
