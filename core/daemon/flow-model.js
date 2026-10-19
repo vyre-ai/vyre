@@ -7,7 +7,7 @@
 // The door can call the API-key providers only (openrouter, openai-compatible): a sign-in account (Claude, Codex, Grok) cannot run a Flow's AI step yet, and is refused in words.
 
 import { isLoopbackHost } from "../../lib/api-endpoint.js";
-import { OPENROUTER_DEFAULT_MODEL } from "../sessions/account-model.js";
+import { modelFor } from "../sessions/drivers/openrouter.js";   // the chat driver's own pick of an OpenRouter model (its default when the account names none)
 
 /** The providers the inference door has a driver for, in the order a default is looked for. */
 export const DOOR_PROVIDERS = Object.freeze(["openrouter", "openai-compatible"]);
@@ -68,7 +68,7 @@ export function flowModel(o) {
       }
       if (typeof key !== "string" || !key) throw refuse(`${a.label} gave no key to this Flow: add it again under Settings, AI accounts`, "no_credential");
       const base = a.base_url ? String(a.base_url) : a.provider === "openrouter" ? testBase() : null;
-      const model = a.model ? String(a.model) : a.provider === "openrouter" ? OPENROUTER_DEFAULT_MODEL : null;
+      const model = a.provider === "openrouter" ? modelFor({ model: a.model ? String(a.model) : "" }, {}) : a.model ? String(a.model) : null;
       if (!model) throw refuse(`${a.label} has no model chosen: choose one for it under Settings, AI accounts`, "no_account");
       return q.door.call({ chain: await q.chainFor(q.person), purpose: q.purpose, provider: String(a.provider), model, max_output_tokens: q.max_tokens, messages: q.messages, credential: { key, ...(base ? { base } : {}) } });
     },
