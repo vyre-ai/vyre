@@ -162,9 +162,12 @@ export default {
 
     ctx.tool("hooks.open", {
       description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. It is stored and verified here; it is reachable from the internet at the box's public address once that is up (hooks.status says when).",
-      input: obj({ name: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme"]) }, ["name", "verify"]),
-      presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && i.verify && i.verify.scheme} signature${i && i.verify && !i.verify.secret ? `; make a signing secret for it in your Vault (hooks-${i.name}) and let the hooks module use it` : ""}` },
-      run: async ({ name, verify: v }, { caller }) => {
+      // The scheme, header and secret are plain top-level fields, so the person's card carries them as they are; `verify: { scheme, header, secret }` is the same thing in the older nested form and is still taken.
+      input: obj({ name: str, scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme"]) }, ["name"]),
+      presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && (i.verify || i).scheme} signature${i && !(i.verify || i).secret ? `; make a signing secret for it in your Vault (hooks-${i.name}) and let the hooks module use it` : ""}` },
+      run: async (input, { caller }) => {
+        const { name } = input;
+        const v = input.verify && typeof input.verify === "object" ? input.verify : { scheme: input.scheme, header: input.header, secret: input.secret };
         owner(caller, "opening a webhook route");
         if (!NAME.test(name) || name.length > 40) throw refuse(`"${name}" is not a route name: lowercase words joined by dashes, like northwind-orders`, "bad_input");
         const scheme = /** @type {keyof typeof SCHEMES} */ (v && v.scheme);
