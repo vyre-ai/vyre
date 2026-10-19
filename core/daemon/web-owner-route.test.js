@@ -47,10 +47,9 @@ test("with no presence key, the owner's web and app devices pass; a member's, a 
   pair("memberdev0000000", "app", MEMBER);
   pair("removeddev000000", "web", owner, true);
   const invite = (/** @type {string} */ id) => call(`device:${id}`, "spaces.invites.create", { space: SPACE(d), role: "member" });
-  for (const id of ["webowner0000000a", "appowner0000000a"]) {
-    const r = await invite(id);
-    assert.ok(!asks(r), `${id}: the owner's device makes an invite with no prompt: ${JSON.stringify(r).slice(0, 240)}`);
-  }
+  const outs = {};
+  for (const id of ["webowner0000000a", "appowner0000000a"]) outs[id] = await invite(id);
+  assert.deepEqual(Object.entries(outs).filter(([, r]) => asks(r)).map(([id, r]) => `${id}: ${JSON.stringify(r).slice(0, 200)}`), [], "the owner's devices make an invite with no prompt");
   for (const id of ["memberdev0000000", "removeddev000000"]) {
     const r = await invite(id);
     assert.ok(asks(r) || (r.error && r.status >= 400), `${id}: refused: ${JSON.stringify(r).slice(0, 240)}`);
