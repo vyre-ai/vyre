@@ -2,7 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, enrolDevice } from "../../test/helpers.js";
 
 test("rules.*: the owner's device lists, tries and reads rules under its own chain; defining or switching one needs presence; a model, a guest and anonymous are refused", async t => {
   process.env.VYRE_SEAL_DEV = "1";
@@ -11,6 +11,7 @@ test("rules.*: the owner's device lists, tries and reads rules under its own cha
   const root = tempHome(t);
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
+  enrolDevice(d); // a phone is paired, so the owner's act needs their presence (with none the owner's own acts pass)
   const { call } = await import("../daemon/client.js");
   const ok = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
   const refused = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(r.error, `${tool} should be refused: ${JSON.stringify(r)}`); return r.error; };

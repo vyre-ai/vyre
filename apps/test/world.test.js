@@ -80,6 +80,7 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   const enroll = await w.tool("presence.enroll", { kind: "device", name: "alex-phone", public_key: k.pub, alg: -7 }, { "x-vyre-presence": `code code=${code.body.data.code}` });
   assert.equal(enroll.status, 200, JSON.stringify(enroll.body));
   const keyId = enroll.body.data.id;
+  await w.post("/__test/phone", { key: keyId }); // the phone is paired: its key counts, so the owner's own acts need the person's session and a proof again
 
   const item = held.body.data.find(x => x.via === "mail");
   // The person's own action wants the person's session first (ADR 0032); the device key signs it in.

@@ -305,11 +305,11 @@ export function createGrantsStore(cfg) {
     if (s.kind === "group" && String(s.id).startsWith("surface:") && i.actions.some((/** @type {string} */ a) => !ACCESS_LEVELS.use.includes(a))) throw new KernelError("bad_input", "a grant to a surface is use of a credential and nothing more");
   }
 
-  async function gate(/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {any} */ presence) {
+  async function gate(/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {any} */ presence, /** @type {any} */ payload = input) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
     // One authorize call, one proof: the proof is bound to this exact input.
-    return bound.gate(chain, action, resource, { presence, input_hash: sha256(canonical({ action, input })), payload: input });
+    return bound.gate(chain, action, resource, { presence, input_hash: sha256(canonical({ action, input })), payload });
   }
   const person = (/** @type {any} */ chain) => { if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own gives or takes access"); return chain.hops[0].actor; };
 
@@ -777,7 +777,8 @@ export function createGrantsStore(cfg) {
     async inviteConfirm(chain, /** @type {string} */ id, /** @type {{ words: string }} */ c, o = {}) {
       const issuer = person(chain);
       const inv = invites.get(id);
-      const d = await gate(chain, "grants.invite", urn("invite", id), { confirm: id, words: c && c.words, ...(inv && typeof inv.role === "string" ? { role: inv.role } : {}) }, o.presence); // role: the STORED invite's, read here, for the home's presenceNotNeeded
+      // the proof covers { confirm, words } as the surface signed it; the payload the home's presenceNotNeeded reads also names the STORED invite's role, read here
+      const d = await gate(chain, "grants.invite", urn("invite", id), { confirm: id, words: c && c.words }, o.presence, { confirm: id, words: c && c.words, ...(inv && typeof inv.role === "string" ? { role: inv.role } : {}) });
       if (!inv || inv.status !== "pending" || !sameActor(inv.issuer, issuer)) throw new KernelError("not_found", "no such invite");
       if (typeof c.words !== "string" || !c.words.trim()) throw new KernelError("bad_input", "confirm the invitee's fingerprint words");
       const n = freeze({ ...inv, confirmed: true, confirmed_words_hash: sha256(c.words.trim().toLowerCase()) });

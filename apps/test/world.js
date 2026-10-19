@@ -16,6 +16,7 @@
 //   POST /__test/code   a one-time presence code, minted as a module would, for enrolling a device key
 //   POST /__test/hold   holds another Gate item (the body, or a fictional email to Dana)
 //   POST /__test/ask    starts a thread on a fake claude that asks to write a file: an open ask
+//   POST /__test/phone  { key }: a hardware relay row for an enrolled device key, so it counts as a paired phone
 //   POST /__test/outbox what the Gate sent, as the local fake mail and billing servers got it
 //
 // Nothing leaves the machine. Both Gate senders point at a fake server on 127.0.0.1, with fake
@@ -144,6 +145,8 @@ const reply = (res, r) => json(res, r.error ? 400 : 200, r);
 const TEST = {
   // presence.code is no longer open to module callers (it needs the person), so the world mints the code on the presence store itself, as a test helper.
   "/__test/code": async () => ({ data: await d.registry.deps.presence.mintCode() }),
+  // a paired phone: the relay row that makes an enrolled device key count as a phone (Presence.notPhoneKeyIds); without it a bare device key is ignored and the owner needs no proof
+  "/__test/phone": async body => { d.registry.deps.db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, presence_key, paired_at, kind, trusted, removed_at, key_storage, from_browser) VALUES (?, 'phone', 'p', ?, 1, 'app', 0, NULL, 'hardware', 0)").run("phone" + String(body.key).slice(0, 10), String(body.key)); return { data: { ok: true } }; },
   "/__test/outbox": async () => ({ data: sent }),
   "/__test/hold": async body => {
     const item = body && body.kind ? body : { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], project: "harlow-legal",
