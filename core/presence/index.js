@@ -905,9 +905,13 @@ export class Presence {
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
-  /** The ids of the device keys that are not a phone's secure key: a browser's own WebCrypto key (a relay device whose hello said web), and any device recorded with a software key, which is how the rows 0.6.1 made for an ad-hoc Mac app or a browser look. A hardware phone key, a passkey and a Lumen key are never here. Empty when there is no relay table. */
-  softwareKeyIds() {
-    try { return new Set(this.db.prepare("SELECT r.presence_key AS id FROM relay_devices r JOIN presence_keys k ON k.id = r.presence_key WHERE (r.from_browser = 1 OR r.key_storage = 'software') AND k.kind = 'device'").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+  /**
+   * The ids of the device keys that are not a paired phone's: a device key counts only while a relay row (not removed) names it, paired from a phone's app (not from a browser) with a key not held in software. The
+   * first-run browser's own key and the in-page host's are enrolled with no relay row, a browser's through its hello, and the 0.6.1 rows of an ad-hoc Mac app keep their key in software: none of them is a phone.
+   * A passkey and a Lumen key are never here. A table that cannot be read gives an empty set, so every key counts.
+   */
+  notPhoneKeyIds() {
+    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND NOT EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage != 'software')").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
   }
 
   keys() {
@@ -1056,8 +1060,8 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
       const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
       if (!owner || String(meta.person.id) !== String(owner)) return false;
     }
-    // A browser's own WebCrypto key, or any device key held in software, is not a secure phone key: it does not turn approvals on. A hardware phone key, a passkey and a Lumen key do.
-    const soft = typeof presence.softwareKeyIds === "function" ? presence.softwareKeyIds() : new Set();
+    // Only a paired phone's key, a passkey or a Lumen key turns approvals on (Presence.notPhoneKeyIds says which device keys are not a phone's).
+    const soft = typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
     return (await presence.keys()).filter((/** @type {any} */ k) => !soft.has(k.id)).length === 0;
   } catch { return false; }
 }
@@ -1069,8 +1073,8 @@ export async function noPresenceWhy(d, caller, meta) {
   try {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
-    const soft = presence && typeof presence.softwareKeyIds === "function" ? presence.softwareKeyIds() : new Set();
+    const soft = presence && typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
     const kind = f && f.web === true ? "web" : String(caller).startsWith("device:") ? "app" : String(caller).startsWith("tailnet:") ? "tailnet" : "other";
-    return `(keys enrolled: ${keys.length}, browser keys ignored: ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
+    return `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
   } catch { return "(reason unavailable)"; }
 }

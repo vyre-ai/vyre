@@ -387,5 +387,8 @@ export async function mailFixture(t, cli, { user = "alex@harlow.example", passwo
  */
 export function enrolDevice(d) {
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  return d.registry.deps.presence.enroll({ kind: "device", name: "test phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  const key = d.registry.deps.presence.enroll({ kind: "device", name: "test phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+  // a paired phone: its relay row (not from a browser, a hardware key) is what makes the key count (Presence.notPhoneKeyIds)
+  try { d.registry.deps.db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, presence_key, paired_at, kind, trusted, removed_at, key_storage, from_browser) VALUES (?, 'test phone', 'p', ?, 1, 'app', 0, NULL, 'hardware', 0)").run("testphone" + key.id.slice(0, 7), key.id); } catch { /* a rig with no relay table: every key counts */ }
+  return key;
 }
