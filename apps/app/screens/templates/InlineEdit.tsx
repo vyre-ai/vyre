@@ -6,9 +6,9 @@ import { Button, Field, Icon, Text } from "@vyre/ui";
  * A name shown as text that turns into a field when pressed (Enter or Save keeps it, Escape or Cancel leaves it). `size` is the text size it is drawn in: "page" for a page title, "body" for a card's own name.
  * A name that is empty or unchanged is not saved. Not editable: just the text.
  */
-export function InlineName({ value, placeholder, size = "body", strong = true, editable = true, label, onCommit }: { value: string; placeholder?: string; size?: "page" | "body"; strong?: boolean; editable?: boolean; label?: string; onCommit: (v: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(value);
+export function InlineName({ value, placeholder, size = "body", strong = true, editable = true, label, onCommit, startEmpty = false }: { value: string; placeholder?: string; size?: "page" | "body"; strong?: boolean; editable?: boolean; label?: string; onCommit: (v: string) => void; /** A thing just made, still on its placeholder name: it opens ready to type, with the field empty. Nothing is ever selected for an existing name. */ startEmpty?: boolean }) {
+  const [editing, setEditing] = useState(startEmpty);
+  const [text, setText] = useState(startEmpty ? "" : value);
   const shown = value.trim() || placeholder || "";
   if (!editable) return <Text size={size} strong={strong} accessibilityRole={size === "page" ? "header" : undefined}>{shown}</Text>;
   if (!editing) {

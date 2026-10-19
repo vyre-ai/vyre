@@ -11,6 +11,7 @@ import { useMembers } from "../spaces/state";
 import { openEngineer } from "../engineer/openEngineer";
 import { errWords, projectIdOf, startWords, type Body, type Version } from "./model";
 import { playbookPath } from "./board";
+import { DEFAULT_NAME } from "./compose";
 import { PAGE_TABS, metaParts, ownerWords, sentenceOf, stageCards, waitingForYes } from "./page";
 import { callT } from "../../src/real/call-tool";
 import { useMayMakeTemplates } from "./role";
@@ -94,7 +95,7 @@ export default function PlaybookScreen() {
   const made = shown ? ownerWords(shown.owner, members, selfId) : null;
   return (
     <Frame back={playbookPath()} onBack={() => router.push(playbookPath() as never)} title={body ? body.name.trim() || "Untitled playbook" : "Playbook"} sub={body ? sentenceOf(body) : undefined} actions={actions}
-      titleNode={body ? <InlineName value={body.name} placeholder="Untitled playbook" size="page" label="the playbook" editable={mayMake} onCommit={(v) => void commit(setName(body, v), "renamed")} /> : undefined}>
+      titleNode={body ? <InlineName value={body.name} placeholder="Untitled playbook" size="page" label="the playbook" editable={mayMake} startEmpty={mayMake && template.startsWith("tpl_untitled-") && body.name === DEFAULT_NAME} onCommit={(v) => void commit(setName(body, v), "renamed")} /> : undefined}>
       {shown ? <Text size="caption" tone="label">{metaParts({ name: body?.name || shown.name, version: shown.version, by: made, live: shown.state === "live" }).slice(1).join(" · ")}</Text> : null}
       {err ? <Card flush><ErrorState title="That playbook did not load" reason={err} retry={load} /></Card> : null}
       {!err && !shown ? <LoadingState rows={3} /> : null}
