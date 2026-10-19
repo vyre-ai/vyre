@@ -9,7 +9,7 @@ import fs from "node:fs";
 import { createFolder } from "./frames.js";
 import { createUnsent, NOT_SENT } from "./unsent.js";
 import { reason } from "./reason.js";
-import { callAgainOnce, retriesOnce } from "../real/peer-retry.js";
+import { afterNoAnswer } from "../real/peer-retry.js";
 
 let cur = 0;
 /** @param {string} type @param {any} data */
@@ -37,7 +37,7 @@ function rig(answers) {
   const perform = async (/** @type {import("./unsent.js").SendSpec} */ s) => {
     const call = () => streamSend({ text: s.text, message: s.message });
     try {
-      try { await call(); } catch (e) { if (!retriesOnce(e)) throw e; await callAgainOnce({ stuck: "s1", drop: () => {}, reopen: async () => "s2", call }); }
+      try { await call(); } catch (e) { await afterNoAnswer({ error: e, tool: "stream.send", input: { chat: "c1", text: s.text, message: s.message }, stuck: "s1", drop: () => {}, reopen: async () => "s2", call }); }
       return null;
     } catch (e) { return reason(/** @type {any} */ (e)); }
   };
