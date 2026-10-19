@@ -10892,10 +10892,10 @@ Whether a Space takes requests to join, and how many are waiting.
 
 ### `requests.attention`
 
-The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused.
+The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused. Only the approvals queue asks.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `requests.decide`
 
