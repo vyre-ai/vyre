@@ -239,9 +239,9 @@ export default {
 
     // ---- the owner's yes
     ctx.tool("appmods.install", {
+      // No presence proof: the owner's signed-in session is enough to install a catalog app on their own server (OWNER_ONLY and person-only, the name must be one of this build's catalog apps). The owner's rule: a proof is for pairing, the Vault and sending to the outside.
       description: "Install an app module. The owner's yes: it makes the app's keys in the Vault, starts the container on this server, sets the app up and connects its events. Takes a minute or two.",
       input: obj({ name: str }, ["name"]),
-      presence: { summary: async (/** @type {any} */ i) => `Install ${i && i.name} on this server` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const m = known(i.name);
         if (m["x-publish"]) throw refuse(`${m.name} is a site Publish runs; publish it again to change it`, "unsupported");
@@ -333,7 +333,8 @@ export default {
     ctx.tool("appmods.remove", {
       description: "Remove an installed app: the container and its network. Its data stays unless you say data: true.",
       input: obj({ name: str, data: { type: "boolean" } }, ["name"]),
-      presence: { summary: async (/** @type {any} */ i) => `Remove ${i && i.name} from this server${i && i.data ? " and delete its data" : ""}` },
+      // Removing the container keeps the app's data and needs no proof; deleting the data (signed documents, say) cannot be undone, so only that asks the person.
+      presence: { when: (/** @type {any} */ i) => Boolean(i && i.data), summary: async (/** @type {any} */ i) => `Remove ${i && i.name} from this server${i && i.data ? " and delete its data" : ""}` },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
         if (known(r.name)["x-publish"]) throw refuse(`${r.name} is a site Publish runs; retire it in Publish`, "unsupported");
