@@ -26,3 +26,5 @@ export function claudeProvider(o) {
 }
 export { rememberTool, screenshotsOf } from "./drivers/claude-shots.js";   // a screenshot tool's picture, for the Switchboard's translator: reached through this one file the Switchboard may import
 export { carriesPickedCredential } from "./drivers/credential.js";
+
+export { OPENROUTER_DEFAULT_MODEL, accountModel } from "./account-model.js";

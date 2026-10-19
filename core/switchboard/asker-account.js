@@ -1,5 +1,5 @@
 // @ts-check
-import { carriesPickedCredential } from "../sessions/providers.js";
+import { carriesPickedCredential, OPENROUTER_DEFAULT_MODEL } from "../sessions/providers.js";
 // A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
 // accounts that serve that person), so a turn is never run on another member's sign-in:
 //   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
@@ -32,9 +32,6 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   throw Object.assign(new Error("This chat runs on another member's sign-in, and you have none of your own here. Add your own sign-in to use it. Nothing was sent."), { code: "account_required" });
 }
 
-/** The model an OpenRouter account with none of its own is started with (first run saves the same; the OpenRouter driver never picks one). */
-export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
-
 /**
  * The provider a NEW thread runs on when its start names none and no agent brings its own: Claude when Claude can run for the person, else the provider of the AI account they do have. A box whose sessions
  * are sandboxed has no Claude login of its own, so a person who added only an OpenRouter key (the first-run way) would otherwise get a Claude thread that refuses "Connect an AI account to start a session".
@@ -45,7 +42,7 @@ export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
 export async function accountProviderFor(sb, o) {
   // an agent that is not the person's Assistant brings its own sign-in; an Assistant's own Claude credentials (a token or key in its env, or a named auth) keep it on Claude
   if (o.provider || o.account || !sb.deps.requireAccount || (o.agent && o.agent_kind !== "assistant")) return null;
-  if (o.agent && ((o.auth && o.auth !== "ambient") || (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) || o.fallback)) return null;
+  if (o.agent && ((o.auth && o.auth !== "ambient") || carriesPickedCredential(o) || o.fallback)) return null;
   const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
   const who = asker ? { person: asker } : {};
   const claude = await sb.accountFor({ provider: "claude", ...who }).catch(() => null);
@@ -58,6 +55,12 @@ export async function accountProviderFor(sb, o) {
     if (acct && acct.id) return { provider: String(provider), account: String(acct.id), ...(provider === "openrouter" && !acct.model && !o.model ? { model: OPENROUTER_DEFAULT_MODEL } : {}) };
   }
   return null;
+}
+
+/** A NEW thread's launch options with the provider and account it should run on (accountProviderFor), or as they were. @param {any} sb @param {any} o */
+export async function withAccountProvider(sb, o) {
+  const own = await accountProviderFor(sb, o);
+  return own ? { ...o, provider: own.provider, account: own.account, ...(own.model ? { model: own.model } : {}) } : o;
 }
 
 /** Is a turn running on this thread (so another person's one-turn must wait)? @param {any} sb @param {string} id */
