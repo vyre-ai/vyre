@@ -58,7 +58,7 @@ function pickSignin(r) {
   const src = r && typeof r === "object" ? r : {};
   const plain = (/** @type {any} */ v) => (typeof v === "string" ? v.slice(0, 500) : typeof v === "number" || typeof v === "boolean" ? v : undefined);
   /** @type {Record<string, any>} */ const out = {};
-  for (const key of ["flow", "step", "state", "status", "url", "code", "account", "id", "label", "provider", "message"]) { const v = plain(src[key]); if (v !== undefined) out[key] = v; }
+  for (const key of ["flow", "step", "state", "status", "url", "code", "paste", "account", "id", "label", "provider", "message"]) { const v = plain(src[key]); if (v !== undefined) out[key] = v; }
   if (src.error && typeof src.error === "object") out.error = { ...(plain(src.error.code) !== undefined ? { code: plain(src.error.code) } : {}), ...(plain(src.error.message) !== undefined ? { message: plain(src.error.message) } : {}) };
   else if (plain(src.error) !== undefined) out.error = plain(src.error);
   return out;

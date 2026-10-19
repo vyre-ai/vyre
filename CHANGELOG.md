@@ -39,6 +39,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(first run): the paste field also shows when the home says `paste: true` (core/sessions/signin.js sends step "url" and paste true for Claude's login), not only on the step word; the in-page host passes `paste` through its sign-in answer.
 - fix(first run): Connect your AI, Claude sign-in. The provider's page shows a code to paste back, and the screen had no field for it ("I signed in" sent the home's own code instead). When the home answers step url the screen now shows "The code the page showed" with Continue, and sends the pasted code with the flow, as Settings does; "I signed in" sends the flow only. A Cancel clears the flow, link and code so the provider tiles and the API key tile work again.
 - docs(known-gaps): the Vyre Computer entry says it is about the person's own Chrome, not the agents' browsers on the Space computer (lint6).
 ## 0.6.1 (polish train)
