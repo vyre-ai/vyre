@@ -5,7 +5,7 @@ audience: agents
 owner: docs
 status: stable
 tokens: 700
-when: You were started for a task, a review or an approval, or a reviewer asked for changes, and you need to know how to finish it or what to do when you are stuck.
+when: You were woken for a task, a review or an approval, or a reviewer asked for changes, and you need to hand it in, finish it or flag it stuck.
 ---
 
 # When a Flow, a task or a chat starts you
