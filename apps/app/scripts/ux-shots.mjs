@@ -16,7 +16,7 @@ const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME,
 const { chromium } = require("playwright");
 
 const ROUTES = ["u/apps", "u/settings/customize", "u/settings/customize/contact", "u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/note", "u/records/matter", "u/calendar", "u/drive", "u/sites",
-  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=kit", "u/flows/shot?k=watchers", "u/flows/shot?k=newwatcher", "u/flows/shot?k=webhook", "u/flows/shot?k=watcherpick", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
+  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=kit", "u/flows/shot?k=watchers", "u/flows/shot?k=newwatcher", "u/flows/shot?k=webhook", "u/flows/shot?k=watcherpick", "u/chats", "u/chats/new-thread", "u/chats?list=1", "u/chats/new", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules", "u/settings/audit",
   "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard",
   // the welcome flow's newer screens, from the sample world's fixtures (screens/first-run/mock.js SHOT_TABLE)
@@ -130,6 +130,20 @@ try {
           }
         }
       }
+    }
+    await ctx.close();
+  }
+
+  // Chat at 1400: pressing Chat opens the Assistant's chat; ?list=1 is the list; New chat is the picker. Phone (390) is in the main pass above.
+  for (const theme of THEMES) {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, colorScheme: theme === "paper" ? "light" : "dark" });
+    const page = await ctx.newPage();
+    for (const r of ["u/chats", "u/chats/new-thread", "u/chats?list=1", "u/chats/new"]) {
+      await page.goto(base + r, { waitUntil: "load" }).catch(() => {});
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: path.join(out, `wide-${theme}-${name(r)}.png`), fullPage: true }).catch(() => {});
+      report.shots++;
     }
     await ctx.close();
   }

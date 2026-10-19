@@ -37,7 +37,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `github` | `{ start?: string, clientId?: string, clientSecret?: string, redirect?: string }` | unset | Not described yet. |
 | `glass` | `{ roots?: string[] }` | none | Not described yet. |
 | `computers` | `{ [k: string]: any }` | none | Not described yet. |
-| `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
+| `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string, space?: string }> }` | none | Not described yet. |
 | `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
 | `app` | `{ root: boolean }` | none | Not described yet. |
 | `term` | `{ keep_hours: number, max?: number, shell?: string }` | none | Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell. |
@@ -187,7 +187,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
 | `VYRE_WINDOWS_LENDING` | Not described yet. | `core/runner/sandbox.js`, `core/runner/workspace.js` |
 | `VYRE_WINK_FORWARDER_BIN` | Not described yet. | `core/wink/netd.js` |
+| `VYRE_WINK_INGRESS_PORT` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WINK_NET` | Not described yet. | `core/wink/index.js` |
+| `VYRE_WINK_PUBLISH` | Not described yet. | `core/wink/index.js` |
 | `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js`, `core/wink/netd.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |

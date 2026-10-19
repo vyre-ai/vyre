@@ -5,14 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
 import { AssistantLookCard } from "./AssistantLookCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
-import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
+import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, chatSetupProblem, needsPasswordForCode, removeEntry, retryChatSetup, replaceCode, types as loadTypes } from "./real";
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
@@ -30,27 +30,32 @@ export function RealAccount() {
   const [err, setErr] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pw, setPw] = useState("");
+  const [chatProblem, setChatProblem] = useState("");
   const [autoLock, setAutoLock] = useState("15");
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
   const lockNow = () => { void lockIdentity().then((r) => { if (r.ok) lockChanged(); else showToast(r.message); }); };
-  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); }, []);
+  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); void chatSetupProblem().then(setChatProblem).catch(() => {}); }, []);
   useEffect(load, [load]);
-  const newCode = () => { setBusy(true); replaceCode().then((r) => { const c = codeOf(r); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
+  const newCode = () => { setBusy(true); replaceCode(pw).then((r) => { const c = codeOf(r); setPw(""); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const remove = (e: Entry) => removeEntry(e.eid).then(() => { showToast(`${entryTitle(e)} is off your list.`); load(); }).catch((x) => showToast(say(x)));
+  const ro = id?.readOnly === true;
   const ways = es ? devices(es) : [];
   const cons = es ? contacts(es) : [];
   return (
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
+      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This Mac could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
       {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
+      {id?.readOnly ? <Banner><Text>{READ_ONLY_LINE}</Text></Banner> : null}
       {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
       {id?.exists ? <AssistantLookCard person={id.label || id.name || "You"} /> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
             <Card flush>
-              {ways.length ? ways.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={e.self ? <Chip tone="ok">This device</Chip> : removable(e) ? <Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} /> : undefined} /></View>) : <EmptyState title="No devices on your list" body="Pair a device and it appears here." />}
+              {ways.length ? ways.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={e.self ? <Chip tone="ok">This device</Chip> : removable(e) && !ro ? <Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} /> : undefined} /></View>) : <EmptyState title="No devices on your list" body="Pair a device and it appears here." />}
             </Card>
           </Group>
           <GithubCard />
@@ -72,14 +77,15 @@ export function RealAccount() {
               ) : (
                 <>
                   <Text tone="muted">{hasCode(es) ? "A recovery code is on your list. With it you are back in at once if you lose every device." : "You have no recovery code. Make one so you can get back in if you lose every device."}</Text>
-                  <View className="flex-row"><Button size="sm" icon="face" label={hasCode(es) ? "Make a new recovery code" : "Make a recovery code"} disabled={busy} onPress={newCode} /></View>
+                  {ro ? null : needsPasswordForCode() ? <PasswordField label="Your password, to make the code" value={pw} onChangeText={setPw} /> : null}
+                  {ro ? null : <View className="flex-row"><Button size="sm" icon="face" label={hasCode(es) ? "Make a new recovery code" : "Make a recovery code"} disabled={busy || (needsPasswordForCode() && !pw)} onPress={newCode} /></View>}
                 </>
               )}
             </Card>
           </Group>
           <Group title="Recovery contacts" note="Optional. Two of them approve to bring you back if you lose everything.">
             <Card flush>
-              {cons.length ? cons.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("person", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} />} /></View>) : <EmptyState title="No recovery contacts" body="A contact makes an approval key and gives you its public half." />}
+              {cons.length ? cons.map((e, i) => <View key={e.eid}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("person", entryTitle(e))} />} title={entryTitle(e)} sub={entryLine(e)} end={ro ? undefined : <Button kind="holdText" size="sm" label="Remove" onPress={() => remove(e)} />} /></View>) : <EmptyState title="No recovery contacts" body="A contact makes an approval key and gives you its public half." />}
             </Card>
           </Group>
         </>

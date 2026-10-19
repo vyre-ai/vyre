@@ -624,6 +624,13 @@ export const PRESENCE_RULINGS = Object.freeze({
     note: "hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof",
   }),
   "appmods.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "appmods.install": Object.freeze({
+    ruling: "team/ROADMAP.md R062-01, owner ruling 19 Oct 2026 (make it work first): appmods.install asks for no presence proof",
+    commit: "e50b46b83",
+    was: "presence_required",
+    callers: Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]),
+    note: "appmods.install: the door keeps it OWNER_ONLY and person-only, the name must be an app in this build's catalog (known(name)), and agents, models, modules and guests stay refused; core/appmods/presence.test.js",
+  }),
   "flows.approve": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
   "learn.skill-retire": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
   "names.domain.check": S("person_session_required", Object.freeze(["device", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),

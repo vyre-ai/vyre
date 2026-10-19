@@ -16,7 +16,7 @@ test("one list: chats, group chats, agents and people; a chat with two or more o
   const kinds = Object.fromEntries(items.map((i) => [i.title, i.kind]));
   assert.equal(kinds.Lease, "group");
   assert.equal(kinds.Solo, "chat");
-  assert.equal(kinds.ads, "agent");
+  assert.equal(kinds.Ads, "agent");
   assert.equal(kinds.Dee, "person");
 });
 
@@ -25,7 +25,7 @@ test("newest first; your assistant's pinned chat is first; agents and people wit
     chats: [chat({ id: "old", title: "Old", last: 1 }), chat({ id: "new", title: "New", last: 9 }), chat({ id: "asst", title: "Assistant", pinned: "assistant", last: 0 })],
     agents: [agent({ name: "ads" })], people: [],
   });
-  assert.deepEqual(items.map((i) => i.title), ["Assistant", "New", "Old", "ads"]);
+  assert.deepEqual(items.map((i) => i.title), ["Assistant", "New", "Old", "Ads"]);
 });
 
 test("an agent or person you already talk to alone is not listed twice", () => {
@@ -33,8 +33,8 @@ test("an agent or person you already talk to alone is not listed twice", () => {
     chats: [chat({ id: "k", title: "kit", agents: ["kit"], last: 3 }), chat({ id: "s", title: "Sam", people: ["Sam"], last: 4 })],
     agents: [agent({ name: "kit" }), agent({ name: "ads" })], people: [person()],
   });
-  assert.deepEqual(items.map((i) => i.title).sort(), ["Sam", "ads", "kit"]);
-  assert.equal(items.find((i) => i.title === "kit").chat, "k");
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads", "Kit", "Sam"]);
+  assert.equal(items.find((i) => i.title === "Kit").chat, "k");
 });
 
 test("a chat you are not in stays greyed and cannot open", () => {
@@ -52,7 +52,7 @@ test("project chips: All, each project once, No project; search spans title, lin
   assert.deepEqual(convosShown(items, { project: "Northwind", query: "" }).map((i) => i.title), ["Lease", "Other"]);
   assert.deepEqual(convosShown(items, { project: "none", query: "" }).map((i) => i.title), ["Intake"]);
   assert.deepEqual(convosShown(items, { project: "all", query: "ready" }).map((i) => i.title), ["Lease"]);
-  assert.deepEqual(convosShown(items, { project: "Okafor", query: "" }).map((i) => i.title), ["ads"]);
+  assert.deepEqual(convosShown(items, { project: "Okafor", query: "" }).map((i) => i.title), ["Ads"]);
 });
 
 test("a word for each kind, for the row's second line and screen readers", () => {
@@ -77,8 +77,8 @@ test("a row carries one dot: needs-you wins over unread; the preview is the last
 
 test("an agent row carries the look the agent was given, and none when it has none", () => {
   const items = convosFrom({ chats: [], agents: [agent({ name: "rex", look: "s3~c5" }), agent({ name: "kit" })], people: [] });
-  assert.equal(items.find((i) => i.title === "rex").look, "s3~c5");
-  assert.equal(items.find((i) => i.title === "kit").look, "");
+  assert.equal(items.find((i) => i.title === "Rex").look, "s3~c5");
+  assert.equal(items.find((i) => i.title === "Kit").look, "");
 });
 
 test("sections follow where a chat lives: Pinned, Personal, Space chats, Projects, Flows; an empty one is left out; the filter row lists the five", () => {
@@ -131,6 +131,37 @@ test("the Engineer's Space chat is the first row of Space chats, called Engineer
   const space = convoSections(items).find((s) => s.id === "space");
   assert.deepEqual(space?.rows.map((r) => r.title), ["Engineer", "Hiring"]);
   assert.equal(space?.rows[0].pinned, true);
+});
+
+test("an agent is listed by its display name, and the second line never repeats the name", async () => {
+  const { convosFrom, displayName } = await import("./convo-model.js");
+  assert.equal(displayName("engineer"), "Engineer");
+  assert.equal(displayName("desk-helper"), "Desk Helper");
+  const rows = convosFrom({ chats: [], agents: [{ name: "engineer", role: "engineer" }, { name: "scout", role: "Finds leads" }], people: [] });
+  const eng = rows.find((r) => r.agent === "engineer");
+  assert.equal(eng.title, "Engineer");
+  assert.equal(eng.sub, "Agent");
+  assert.equal(rows.find((r) => r.agent === "scout").sub, "Finds leads");
+});
+
+test("the assistant's pinned chat is listed under the assistant's own name, first", async () => {
+  const { convosFrom } = await import("./convo-model.js");
+  const chat = (o) => ({ id: "c1", title: "Assistant", project: "", people: [], agents: [], status: "idle", last: 1, line: "", asks: 0, unread: 0, open: true, ...o });
+  const rows = convosFrom({ assistantName: "Qi", chats: [chat({ id: "c2", title: "Lease", last: 99 }), chat({ pinned: "assistant" })], agents: [], people: [] });
+  assert.equal(rows[0].title, "Qi");
+  assert.equal(rows[0].sub, "Your assistant");
+  assert.equal(rows[0].pinned, true);
+  assert.equal(convosFrom({ assistantName: "juno", chats: [], agents: [], people: [] })[0].title, "Juno", "the assistant is listed by its display name too");
+});
+
+test("the assistant is always first: with no chat of its own yet, a row that starts a new thread with it", async () => {
+  const { convosFrom } = await import("./convo-model.js");
+  const rows = convosFrom({ assistantName: "Qi", chats: [{ id: "c2", title: "Lease", project: "", people: [], agents: [], status: "idle", last: 99, line: "", asks: 0, unread: 0, open: true }], agents: [{ name: "engineer", role: "engineer" }], people: [] });
+  assert.equal(rows[0].id, "assistant:new");
+  assert.equal(rows[0].title, "Qi");
+  assert.equal(rows[0].sub, "Your assistant");
+  assert.equal(rows[0].chat, "", "nothing is made until the first message");
+  assert.equal(convosFrom({ chats: [], agents: [], people: [] }).some((r) => r.id === "assistant:new"), false, "no assistant known, no row");
 });
 
 test("an agent is said as its title, in the list and in a chat that is only with it; a chat with its own title keeps it", () => {

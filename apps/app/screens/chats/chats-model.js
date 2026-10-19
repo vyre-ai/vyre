@@ -161,3 +161,12 @@ export function byTag(rows, tag) {
   const tags = [...n].map(([t, count]) => ({ tag: t, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
   return { rows: tag ? rows.filter((r) => (r.tags || []).includes(tag)) : rows, tags };
 }
+
+/**
+ * What pressing Chat does: open a new thread with the Assistant (its composer ready; nothing is made on the server until the first message), or stay on the list when asked for with ?list=1 or while the box
+ * has not answered. @param {{ from: string, list?: string }} o @returns {"new" | "list"}
+ */
+export function chatsLanding(o) {
+  if (o.list === "1") return "list";
+  return o.from === "chats" || o.from === "sample" ? "new" : "list";
+}

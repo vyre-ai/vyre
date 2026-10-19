@@ -5,7 +5,17 @@ import { ringForNewChat } from "./chat-start";
 export type Persistent = { kind: "assistant" | "engineer"; chat: string | null; allowed: boolean };
 
 /** The person's one chat of this kind (R031-94): the pinned one, else it is started now (the assistant's with nobody listed: it acts as the person; the Engineer's with the engineer agent) and pinned. */
-export async function ensurePersistent(kind: "assistant" | "engineer"): Promise<{ chat: string } | { say: string }> {
+export function ensurePersistent(kind: "assistant" | "engineer"): Promise<{ chat: string } | { say: string }> {
+  // Two screens may ask at once (the Chat page and the list beside it): one call is made, both get its answer, so no second chat is started.
+  const running = inflight.get(kind);
+  if (running) return running;
+  const p = ensure(kind).finally(() => inflight.delete(kind));
+  inflight.set(kind, p);
+  return p;
+}
+const inflight = new Map<string, Promise<{ chat: string } | { say: string }>>();
+
+async function ensure(kind: "assistant" | "engineer"): Promise<{ chat: string } | { say: string }> {
   const have = await tool<Persistent>("work.chat.persistent", { kind });
   if (!have.allowed) return { say: "You cannot have that chat." };
   if (have.chat) return { chat: have.chat };

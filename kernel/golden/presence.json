@@ -1,5 +1,19 @@
 [
  {
+  "tool": "appmods.install",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R062-01, owner ruling 19 Oct 2026 (make it work first): appmods.install asks for no presence proof",
+  "reason": "team/ROADMAP.md R062-01, owner ruling 19 Oct 2026 (make it work first): appmods.install asks for no presence proof; appmods.install changed in e50b46b83: appmods.install: the door keeps it OWNER_ONLY and person-only, the name must be an app in this build's catalog (known(name)), and agents, models, modules and guests stay refused; core/appmods/presence.test.js"
+ },
+ {
   "tool": "appmods.remove",
   "was": "presence_required",
   "callers": [

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, EmptyState, LoadingState, Text, useUiTheme } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
@@ -8,22 +8,24 @@ import { useGap } from "../../src/state/setup-gap";
 import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
 import { ChatsSidebar, ChatsSidebarHeader } from "./ChatsSidebar";
-import { UNSUPPORTED, chatsShown, chatsView } from "./chats-model.js";
+import { UNSUPPORTED, chatsLanding, chatsView } from "./chats-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
 
 /**
- * /u/chats. The list of chats lives in the sidebar, so on a wide screen this page opens the most recent chat (or says there is none yet). A phone has no sidebar, so there this page is the list.
+ * /u/chats. Pressing Chat opens a new thread with your Assistant, ready to type (/u/chats/new-thread), the way a chat app opens on a new conversation; your earlier threads are in the list. ?list=1 is the list itself
+ * (a phone's Chat list button). This page shows only while the box has not answered, or says what is wrong with it.
  */
 export default function ChatsScreen() {
   const router = useRouter();
+  // ?list=1 is "show me the list" (the chat's own Chat list button on a phone): this page then stays the list
+  const { list } = useLocalSearchParams<{ list?: string }>();
   const { phone } = useUiTheme();
   const chats = useChats();
   const gap = useGap();
   const status = useConnection();
   const go = (p: string) => router.push(p as never);
-  const rows = chatsShown(chats.rows).filter((c) => c.open);
-  const latest = [...rows].sort((a, b) => b.last - a.last)[0];
-  useEffect(() => { if (!phone && latest) router.replace({ pathname: "/u/chats/[id]", params: { id: latest.id } }); }, [phone, latest?.id]);
+  const landing = chatsLanding({ from: chats.from, list });
+  useEffect(() => { if (landing === "new") router.replace("/u/chats/new-thread" as never); }, [landing]);
   const view = chatsView({ from: chats.from, gap, rows: chats.rows, live: status === "live" });
   return (
     <Page top title="Chat">

@@ -7,6 +7,7 @@
 // app already uses, whose bytes lib/pair-code.js verifies), the server is found and paired through src/real/add-server.js over the relay, and what is kept is the space row and the paired server's
 // name, never a key. Steps not in a stage answer `host_unsupported`.
 import { claimIdentity } from "../identity/claim.js";
+import { codeKey, newCode } from "../identity/recovery.js";
 import { fromSeed } from "../identity/keys.js";
 import { AIS } from "../../../../lib/ai-ids.js";
 import { scrub } from "../../../../lib/scrub.js";
@@ -238,30 +239,38 @@ export function createHost(o) {
     return { ops: d.ops, pin: C.pinOf(state), entries: /** @type {any[]} */ (state.entries || []) };
   }
 
+  /** What the last agree repair came to, for Account to say plainly: "" (nothing to do or done), or why it could not finish. @type {{ failed: string }} */
+  const agreeNote = { failed: "" };
+
   /**
    * Repair an identity whose device entry has no key-agreement point (v0.6.1 made them so): the device signs the chain's own `agree` op for ITS OWN entry (kernel/identity/chain.js: once, only for itself) and the
-   * directory appends it. Best effort and quiet: a page with no agree key, an entry that already has one, a chain that cannot be read, or a refusal leaves everything as it was. @param {Uint8Array} seed
+   * directory appends it. Never a silent failure: what stopped it is kept in agreeNote (and one trail line), and Account shows it with a retry. @param {Uint8Array} seed
    */
   async function ensureAgree(seed) {
+    agreeNote.failed = "";
     try {
       if (!o.agreePoint) return;
       const point = await o.agreePoint();
-      if (!point) return;
+      if (!point) { agreeNote.failed = "this page has no key for private chats"; trail("agree repair: no key on this page"); return; }
       const k = await o.store.load();
       if (!k) return;
       const key = await fromSeed(seed);
       const chain = await chainOf(String(k.id));
       const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
-      // the chain's Entry type does not list `agree` (the point the device's identity entry carries), so the entry is read as any here
       const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
-      if (!entry || entry.agree !== undefined) return;
+      if (!entry) { agreeNote.failed = "this Mac's key is not on your list"; trail("agree repair: this device is not on the chain"); return; }
+      if (entry.agree !== undefined) return;
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
       const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
-      if (!res.ok) { trail(`agree repair refused ${res.status}`); return; }
+      if (!res.ok) { agreeNote.failed = `the directory said no (${res.status})`; trail(`agree repair refused ${res.status}`); return; }
       await o.store.save({ ...k, ops: [...chain.ops, op], pin: C.pinOf(next) });
       trail("agree repair done");
-    } catch (e) { trail(`agree repair failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+    } catch (e) {
+      const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error");
+      agreeNote.failed = code === "unreachable" ? "the names directory could not be reached" : `it did not go through (${code})`;
+      trail(`agree repair failed ${code}`);
+    }
   }
 
   /**
@@ -421,6 +430,64 @@ export function createHost(o) {
       // A Space named before the first run listed its server gets that listing now, once, in the background.
       void ensureServers(held);
       return { unlocked: true, username: k.username, id: k.id };
+    },
+
+    // The person's list as the directory holds it (what Settings, Account shows): the box of a page like this one holds no identity, so the page's own host answers. `self` is this device's entry, known once the key is unlocked.
+    // What the unlock-time repair of private chats came to: `failed` is "" or the reason in words, so Account says so with a retry instead of staying silent.
+    "identity.agree.status": async () => ({ failed: agreeNote.failed, unlocked: held !== null }),
+    "identity.agree.retry": async () => {
+      if (!held) throw bad("Unlock with your password first.", "locked");
+      await ensureAgree(held);
+      return { failed: agreeNote.failed };
+    },
+
+    "identity.entries": async () => {
+      const k = await o.store.load();
+      if (!k) return { entries: [] };
+      const chain = await chainOf(String(k.id));
+      const mine = held ? (await fromSeed(held)).eid : null;
+      const now = o.now ? o.now() : Date.now();
+      return { entries: chain.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, label: typeof e.label === "string" ? e.label : null, since: e.since, self: e.eid === mine, newcomer: C.youngAt(e, now), agree: typeof e.agree === "string" })) };
+    },
+
+    // A new recovery code, for a page whose box holds no identity: the password opens the master record (and is the person's yes here), the device signs the chain's own replace-code op, the directory appends it, and the
+    // record is wrapped again under the new code so it opens this device later. The old code stops working. The new one comes back once.
+    "identity.code.replace": async ({ password }) => {
+      const k = await o.store.load();
+      if (!k) throw bad("There is no identity on this page yet.", "no_identity");
+      if (!held) throw bad("Unlock with your password first.", "locked");
+      if (!password) throw bad("Enter your password to make a new recovery code.", "person_enters");
+      const keys = await openMasterRecord(k.master, { password: String(password) });
+      const key = await fromSeed(held);
+      const code = newCode(o.random);
+      const ck = await codeKey(code, "");
+      const chain = await chainOf(String(k.id));
+      const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
+      const op = await C.makeOp(state, { type: "replace-code", entry: { eid: ck.eid, kind: "code", pub: ck.publicKey } }, { by: key.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
+      const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
+      const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
+      if (!res.ok) throw bad("The directory did not take the new code. Nothing changed. Try again.", "unreachable");
+      const master = await createMasterRecord({ username: k.username, id: k.id, password: String(password), recoveryCode: code, privateKey: keys.privateKey, agreePrivate: keys.agreePrivate, ...(o.kdf ? { kdf: o.kdf } : {}) });
+      await o.store.save({ ...k, master, ops: [...chain.ops, op], pin: C.pinOf(next) });
+      return { recoveryCode: code, seq: next.seq };
+    },
+
+    // Take another device off the person's list (not this one): the device signs the chain's own remove op.
+    "identity.entry.remove": async ({ eid }) => {
+      const k = await o.store.load();
+      if (!k) throw bad("There is no identity on this page yet.", "no_identity");
+      if (!held) throw bad("Unlock with your password first.", "locked");
+      const key = await fromSeed(held);
+      if (String(eid) === key.eid) throw bad("This device cannot take itself off the list.", "bad_input");
+      const chain = await chainOf(String(k.id));
+      const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
+      if (!(state.entries || []).some((/** @type {any} */ e) => e.eid === String(eid))) throw bad("That is not on your list.", "not_found");
+      const op = await C.makeOp(state, { type: "remove", target: String(eid) }, { by: key.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
+      const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
+      const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
+      if (!res.ok) throw bad("The directory did not take that. Nothing changed. Try again.", "unreachable");
+      await o.store.save({ ...k, ops: [...chain.ops, op], pin: C.pinOf(next) });
+      return { eid: String(eid), seq: next.seq };
     },
 
     // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.

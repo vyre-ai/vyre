@@ -36,6 +36,8 @@ type Term = { id: string; reason: string | null };
 
 function BoxSession({ thread }: { thread: string }) {
   const router = useRouter();
+  // /u/chats opens the Assistant with ?focus=1: the composer is ready to type
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
   const { phone } = useUiTheme();
   const listed = useThread(thread);
   const chats = useChats();
@@ -73,9 +75,10 @@ function BoxSession({ thread }: { thread: string }) {
       sessionId={thread}
       title={title}
       belowHeader={guts}
+      autoFocusComposer={focus === "1"}
       onBack={() => router.back()}
       project={listed?.projectName ?? null}
-      onSwitch={() => router.push("/u/chats" as never)}
+      onSwitch={() => router.push("/u/chats?list=1" as never)}
       onJumpSession={(n) => { const row = chats.rows[n - 1]; if (row) router.push({ pathname: "/session/[id]", params: { id: row.id } } as never); }}
       onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
       onOpenTerminal={() => void openTerminal()}

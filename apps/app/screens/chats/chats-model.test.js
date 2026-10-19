@@ -160,3 +160,12 @@ test("the Engineer's Space chat carries engineer_chat through to the row", () =>
   assert.equal(a.engineer, true);
   assert.equal(b.engineer, false);
 });
+
+test("pressing Chat opens a new thread with the Assistant, and stays on the list when asked or while the box is silent", async () => {
+  const { chatsLanding } = await import("./chats-model.js");
+  assert.equal(chatsLanding({ from: "chats" }), "new");
+  assert.equal(chatsLanding({ from: "sample" }), "new");
+  assert.equal(chatsLanding({ from: "none" }), "list");
+  assert.equal(chatsLanding({ from: "unsupported" }), "list");
+  assert.equal(chatsLanding({ from: "chats", list: "1" }), "list");
+});
