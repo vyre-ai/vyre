@@ -84,7 +84,8 @@ test("each onboarding door calls an onboard tool, and the native shells open tha
   const doors = [
     "apps/app/screens/first-run/real.js",
     "apps/app/src/real/install.ts",
-    "apps/app/screens/devices/RealInvite.tsx",
+    // the invite form is InviteBody (Settings > People and roles and the Wink page share it; RealInvite only wraps it)
+    "apps/app/screens/devices/InviteBody.tsx",
   ];
   for (const rel of doors) {
     const names = clientCalls(path.join(ROOT, rel)).filter((n) => onboard.has(n));
