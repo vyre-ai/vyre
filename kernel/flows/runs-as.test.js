@@ -54,7 +54,7 @@ test("every way a run starts carries the runs-as person: by hand, a webhook, a s
   const bobs = await install(w, { ...classify(), name: "bobs" }, BOB);
   await w.runner.start(hand.id, {}, w.kernel.as(ALEX), "by-hand").catch(() => null);
   await w.runner.handleWeb("hook-orders", { body: { a: 1 }, trust: "untrusted", key: "d1" });
-  w.advance(2 * 3_600_000); await w.runner.tick();
+  await w.runner.tick(); await settle(w); w.advance(2 * 3_600_000); await w.runner.tick();   // as kernel/flows/schedule.test.js: the first tick sets where the schedule counts from
   await w.runner.start(bobs.id, {}, w.kernel.as(BOB), "by-bob").catch(() => null);
   await settle(w);
   const first = async (/** @type {string} */ id) => (await w.runner.listRuns({ flow: id }))[0];

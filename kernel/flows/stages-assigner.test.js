@@ -24,22 +24,23 @@ const tpl = () => ({
 /** The world, and a stages module of its own that knows how a person assigns (the daemon's chainFor: [person, service:flows]). */
 async function setUp() {
   const w = await world({ cat: stagedCatalog() });
+  /** @type {any[]} */ const said = [];
   const k = w.kernel;
   const stages = createStages({ kernel: k, catalog: () => w.cat, chain: () => k.moduleChain({ module: "stages", approver: ALEX }),
-    chainFor: (/** @type {string} */ p) => k.moduleChain({ module: "flows", approver: { kind: "person", id: p, space: w.cat.space } }), clock: () => w.clock.t, emit: () => {},
+    chainFor: (/** @type {string} */ p) => k.moduleChain({ module: "flows", approver: { kind: "person", id: p, space: w.cat.space } }), clock: () => w.clock.t, emit: (/** @type {string} */ type, /** @type {any} */ data) => { said.push({ type, data }); },
     ports: { roles: (/** @type {string} */ _s, /** @type {string} */ role) => (role === "attorney" ? [ALEX, BOB] : []) } });
   const project = async () => k.records.create(k.sysChain(), "project", { name: "Rivera", slug: `r-${Math.random().toString(36).slice(2, 7)}`, status: "active", template: "tpl_matter", template_version: "1", template_stage: "Opening", template_snapshot: snapshotOf(tpl(), { id: "tpl_matter", version: 1 }) });
   const byTitle = async (/** @type {string} */ title, /** @type {string} */ urn) => (await k.allTasks()).find((/** @type {any} */ t) => t.title === title && t.record === urn);
-  return { w, k, stages, project, byTitle };
+  return { w, k, stages, project, byTitle, said };
 }
 
 test("a stage task given to an agent records the person who moved the record there as its assigner; a person's task stays the module's", async () => {
-  const { w, stages, project, byTitle } = await setUp();
+  const { w, stages, project, byTitle, said } = await setUp();
   const r = await project();
   await stages.enter({ urn: r.urn, type: "project", id: r.id, stage: "Opening", entry: "start", by: BOB.id });
   await settle(w); await stages.idle();
   const agent = await byTitle("Agent task", r.urn), person = await byTitle("Person task", r.urn), reviewed = await byTitle("Reviewed by an agent", r.urn);
-  assert.ok(agent && person && reviewed, "the tasks were made");
+  assert.ok(agent && person && reviewed, `the tasks were made: ${JSON.stringify([Boolean(agent), Boolean(person), Boolean(reviewed)])} ${JSON.stringify(said).slice(0, 800)}`);
   assert.equal(agent.assigned_by.id, BOB.id, "the agent's task is Bob's to have given");
   assert.equal(reviewed.assigned_by.id, BOB.id, "so is one an agent reviews");
   assert.equal(person.assigned_by.id, ALEX.id, "a person's task is the module's, as before");
