@@ -27,6 +27,7 @@ test("which keys turn approvals on: native biometric and a relay hardware phone 
   { const k = enrol("relay"); row("relayhard0000000", k.id, 0, "hardware"); counts(k); }     // a phone paired through the relay, key outside software
   { const k = enrol("relay"); row("relaysoft0000000", k.id, 0, "software"); await only(k, () => {}); }
   { const k = enrol("relay"); row("relaybrow0000000", k.id, 1, "hardware"); await only(k, () => {}); }
+  { const k = enrol("relay"); row("relayunknown0000", k.id, 0, "unknown"); await only(k, () => {}); }   // a browser admitted through the identity chain reports no storage: not a phone
   { const k = enrol("relay"); row("relayremoved0000", k.id, 0, "hardware", 5); await only(k, () => {}); }
   await only(enrol("setup"), () => {});
   await only(enrol("first-key"), () => {});

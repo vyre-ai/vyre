@@ -911,12 +911,12 @@ export class Presence {
   /**
    * The ids of the device keys that do NOT turn approvals on: this one place decides what counts as an enrolled phone (the module floor, the kernel's remote path and the cards all ask it). A passkey and a Lumen
    * key always count. A device key counts when it was enrolled by the native app (source native: the biometric key, hardware-bound), or when it came through the relay (source relay, or none: made before the source
-   * was recorded) AND a relay row that is not removed names it, was not paired from a browser and holds its key outside software. The setup page's key and a Mac server's first key (setup, first-key) never count
+   * was recorded) AND a relay row that is not removed names it, was not paired from a browser and holds its key in hardware (an app that reports no storage, or software, is not a phone: a browser admitted through the identity chain reports none). The setup page's key and a Mac server's first key (setup, first-key) never count
    * (BACKLOG: count first-key once the app records hardware storage), and neither does a device key with no source and no such relay row (the first-run browser's identity key, the in-page host's). A table that
    * cannot be read gives an empty set, so every key counts.
    */
   notPhoneKeyIds() {
-    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND COALESCE(k.source, '') <> 'native' AND NOT (COALESCE(k.source, 'relay') = 'relay' AND EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage <> 'software'))").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND COALESCE(k.source, '') <> 'native' AND NOT (COALESCE(k.source, 'relay') = 'relay' AND EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage = 'hardware'))").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
   }
 
   /** Counts only, for the sign-in refusal's reason and the home's log: the device keys by where they came from, and how many have a live relay row. No ids, no keys. */

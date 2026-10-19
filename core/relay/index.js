@@ -410,9 +410,9 @@ export default {
       }
       // the presence key enrolled at admission is part of the fact: a key put on this row by any other route later is not the one the entry key signed for, and gets no session
       const fact = JSON.stringify({ identity: r.identity, entry: r.entry, seq: r.seq, at: now(), ...(presenceKey ? { presenceKey } : {}) });
-      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain`)
-        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact);
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, trusted, join_grant, join_mints, key_storage, owner_paired, old_code, via_chain, from_browser) VALUES (?, ?, ?, ?, ?, ?, NULL, 'app', 0, 0, 0, ?, NULL, 0, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'app', owner_paired = NULL, old_code = 0, via_chain = excluded.via_chain, from_browser = excluded.from_browser`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", fact, hello.kind === "web" ? 1 : 0);
       ctx.events.emit("device.paired", { kind: "relay", id, name, via: "chain" });
       // the device opens its person session with its presence key, as any paired device does: the presence module makes the grant (it reads this row and the chain again)
       await ctx.call("presence.person.chain-grant", { device: id }).catch(e => ctx.log(`relay: no session grant for chain device ${id}: ${String(e && e.message || e).slice(0, 120)}`));
