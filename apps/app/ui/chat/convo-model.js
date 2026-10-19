@@ -65,7 +65,7 @@ export function convosFrom(i) {
     const place = placeOf(c);
     const ts = agentOnly ? infoOf.get(c.agents[0]) ?? [] : [];
     out.push({
-      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: eng ? "Engineer" : pinned && asst ? asst : aloneAgent.has(c.agents[0]) && agentOnly ? displayName(c.title) : c.title, sub: agentOnly ? (sumOf.get(c.agents[0]) ? summaryLine(sumOf.get(c.agents[0]), c.line) : agentLine(ts, c.line)) : c.line, last: Math.max(c.last, agentOnly ? sumOf.get(c.agents[0])?.at ?? 0 : 0), project: c.project,
+      id: `chat:${c.id}`, kind: others >= 2 ? "group" : "chat", title: eng ? "Engineer" : pinned && asst ? displayName(asst) : aloneAgent.has(c.agents[0]) && agentOnly ? displayName(c.title) : c.title, sub: agentOnly ? (sumOf.get(c.agents[0]) ? summaryLine(sumOf.get(c.agents[0]), c.line) : agentLine(ts, c.line)) : c.line, last: Math.max(c.last, agentOnly ? sumOf.get(c.agents[0])?.at ?? 0 : 0), project: c.project,
       projects: c.project ? [c.project] : [], chat: c.id, agent: "", person: "", open: c.open, asks: c.asks, unread: c.unread, pinned: pinned || eng, status: c.status, dot: c.asks > 0 ? "ask" : c.unread > 0 ? "unread" : "", names: [...c.people, ...c.agents], look: "", lone: agentOnly ? "agent" : others === 1 && c.people.length === 1 ? "person" : "",
       section: pinned ? "pinned" : place, threads: agentOnly ? Math.max(1, ts.length, sumOf.get(c.agents[0])?.count ?? 0) : 1,
     });
@@ -84,7 +84,7 @@ export function convosFrom(i) {
   }
   // Your assistant is always at the top: with no chat of its own yet, a row that starts a new thread with it.
   if (asst && !out.some((r) => r.pinned && r.section === "pinned" && r.chat)) {
-    out.push({ id: "assistant:new", kind: "agent", title: asst, sub: "Your assistant", last: Number.MAX_SAFE_INTEGER, project: "", projects: [], chat: "", agent: asst, person: "", open: true, asks: 0, unread: 0, pinned: true, status: "", dot: "", names: [asst], look: "", lone: "agent", section: "pinned", threads: 1 });
+    out.push({ id: "assistant:new", kind: "agent", title: displayName(asst), sub: "Your assistant", last: Number.MAX_SAFE_INTEGER, project: "", projects: [], chat: "", agent: asst, person: "", open: true, asks: 0, unread: 0, pinned: true, status: "", dot: "", names: [asst], look: "", lone: "agent", section: "pinned", threads: 1 });
   }
   // The second line never repeats the name above it: an agent says what it is, the assistant says whose it is.
   for (const r of out) {

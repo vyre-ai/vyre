@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Banner, Button, Card, Field, LoadingState, Text, allowsMock, useStore } from "@vyre/ui";
+import { Banner, Button, Card, Field, LoadingState, Text, allowsMock, displayName, useStore } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
 import { agentRow, visibleAgents } from "../agents/home-model.js";
@@ -64,7 +64,7 @@ export default function NewThreadScreen() {
     } catch (e) { setErr(e instanceof Error && e.message ? e.message : "The thread did not start."); } finally { setBusy(false); }
   };
   return (
-    <Page title={name ?? "Assistant"} sub="New thread" back="/u/chats?list=1">
+    <Page title={name ? displayName(name) : "Assistant"} sub="New thread" back="/u/chats?list=1">
       {name === null ? <LoadingState rows={2} /> : (
         <View className="gap-s3">
           {gap ? (
@@ -79,12 +79,12 @@ export default function NewThreadScreen() {
           ) : null}
           <Card>
             <View className="gap-s3">
-              <Field name={`Message ${name}`} value={text} onChangeText={setText} placeholder={`Message ${name}`} multiline lines={4} autoFocus />
+              <Field name={`Message ${name}`} value={text} onChangeText={setText} placeholder={`Message ${displayName(name)}`} multiline lines={4} autoFocus />
               {err ? <Text tone="warn">{err}</Text> : null}
               <View className="flex-row justify-end"><Button kind="primary" label={busy ? "Starting" : "Send"} disabled={busy || !text.trim() || !!gap} onPress={() => void send()} /></View>
             </View>
           </Card>
-          <Text size="caption" tone="label">Your earlier threads with {name} are in the list.</Text>
+          <Text size="caption" tone="label">Your earlier threads with {displayName(name)} are in the list.</Text>
         </View>
       )}
     </Page>

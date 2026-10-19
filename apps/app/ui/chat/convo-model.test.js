@@ -151,6 +151,7 @@ test("the assistant's pinned chat is listed under the assistant's own name, firs
   assert.equal(rows[0].title, "Qi");
   assert.equal(rows[0].sub, "Your assistant");
   assert.equal(rows[0].pinned, true);
+  assert.equal(convosFrom({ assistantName: "juno", chats: [], agents: [], people: [] })[0].title, "Juno", "the assistant is listed by its display name too");
 });
 
 test("the assistant is always first: with no chat of its own yet, a row that starts a new thread with it", async () => {
