@@ -1,6 +1,11 @@
 // The Files screen's real sources, from the same calls the Space Drive, linked folders and box shares already use (real.ts). `linkedNames` is filled by the screen as it learns the linked folders.
 import { filesLoader } from "./files-source.ts";
 import { linked, listReal, spaceList } from "./real";
+import { tool } from "../../src/real/box";
 
 export const linkedNames: Record<string, string> = {};
-export const loader = filesLoader({ space: { list: spaceList }, linked, box: { list: listReal }, linkedNames: () => linkedNames });
+/** A project's folder is named by its id (Projects/<id>); files.places has its name. Filled once, then used by the listing, the tree and the path above it. */
+export const folderNames: Record<string, string> = {};
+let named: Promise<void> | null = null;
+const learnNames = () => (named ??= tool<{ projects?: { name: string; path: string }[] }>("files.places", {}).then((r) => { for (const p of r?.projects ?? []) if (p.path && p.name) folderNames[p.path] = p.name; }).catch(() => {}));
+export const loader = filesLoader({ space: { list: spaceList }, linked, box: { list: listReal }, linkedNames: () => linkedNames, names: async () => { await learnNames(); return folderNames; } });

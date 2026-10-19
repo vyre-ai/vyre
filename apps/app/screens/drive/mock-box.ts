@@ -48,6 +48,13 @@ export function mockBox(now: () => number = () => SAMPLE_NOW) {
         for (const f of hit) f.path = to + f.path.slice(from.length);
         return { data: { from, to, kind: hit.length === 1 && hit[0].path === to ? "file" : "folder", moved: hit.length } };
       }
+      case "files.drive.space.mkdir": {
+        const up = String(i.parent ?? ""), name = String(i.name ?? ""), at0 = up ? `${up}/${name}` : name;
+        if (!name || /[\\/]/.test(name) || name.startsWith(".")) return err("bad_input", "a folder name has no slash and does not start with a dot");
+        if (files.some((f) => f.path === at0 || f.path.startsWith(`${at0}/`))) return err("conflict", `${at0} already exists: pick another name`);
+        files.push({ path: `${at0}/.folder`, size: 0, ver: 1, at: now(), by: "you" });
+        return { data: { path: at0 } };
+      }
       case "files.drive.space.delete": {
         const p = String(i.path ?? ""), hit = files.filter((f) => f.path === p || f.path.startsWith(`${p}/`));
         if (!hit.length) return err("not_found", "there is nothing at that path");

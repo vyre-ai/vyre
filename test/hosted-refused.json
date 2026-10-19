@@ -29,6 +29,7 @@
   "files.drive.offer",
   "files.drive.restore",
   "files.drive.space.delete",
+  "files.drive.space.mkdir",
   "files.drive.space.move",
   "files.drive.space.rename",
   "files.drive.share",

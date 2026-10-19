@@ -14,7 +14,7 @@ import { Breadcrumb } from "./Breadcrumb";
 import { driveSource, linkedFileSource } from "./file-source";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { type Place, rootLabel, abilities, bulkActions, crumbsFor, moveFocus, nextSort, parentPlace, parsePlace, prune, selectAll, selectOnly, selectRange, selectToggle, sortRows, type FileRow, type Selection, type Sort } from "./files-model.ts";
-import { linkedNames, loader } from "./files-real";
+import { folderNames, linkedNames, loader } from "./files-real";
 import { detailLines, quickLook } from "./files-places.js";
 import { SitePage } from "./SitePage";
 import { startThread } from "./new-thread";
@@ -34,7 +34,7 @@ import { driveTool, linked, spaceRead, spaceRestore, spaceUpload, spaceVersions,
 import { bytesOf, sizeWord, textOf } from "./real-model";
 import { driveRefusal } from "./real-model";
 import { linkedRefusal, type LinkedVersion } from "./linked-model";
-import { dayOf, spaceDriveRefusal, toBase64, MAX_UPLOAD, type Version } from "./space-model";
+import { dayOf, newFolderName, spaceDriveRefusal, toBase64, MAX_UPLOAD, type Version } from "./space-model";
 
 const say = (e: unknown) => { const x = e as { code?: string }; const m = e instanceof Error ? e.message : ""; return x.code === "conflict" || x.code === "unsupported" ? linkedRefusal(x.code, m) : spaceDriveRefusal(x.code, m) || driveRefusal(x.code, m); };
 const ROW_H = 40;
@@ -70,6 +70,10 @@ function Manager({ wide }: { wide: boolean }) {
   // the search box looks in this folder (the default) or in all the files of the Space
   const [publishing, setPublishing] = useState<{ row: FileRow; name: string } | null>(null);
   const [scopeAll, setScopeAll] = useState(false);
+  // a new folder: null while closed, else the name being typed; the folder is selected once the listing has it
+  const [newName, setNewName] = useState<string | null>(null);
+  const [bgMenu, setBgMenu] = useState<{ x: number; y: number } | null>(null);
+  const selectAfter = useRef<string | null>(null);
   const [found, setFound] = useState<FileRow[] | null>(null);
 
   // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
@@ -184,7 +188,7 @@ function Manager({ wide }: { wide: boolean }) {
   const scroller = useRef<HTMLDivElement>(null);
   const virt = useVirtualRows({ count: shown.length, getScrollElement: () => scroller.current, estimateSize: () => ROW_H, overscan: 8 });
 
-  const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames }) : [];
+  const crumbs = parsed ? crumbsFor(parsed, { linked: linkedNames, space: folderNames }) : [];
   // The bar is for several at once; one row has its "..." and the detail panel, and a bar that appears on the first click would push the rows down before the second click of a double click.
   const bar = picked.length > 1 ? bulkActions(root, picked.length) : [];   // (the right-click menu offers the same and more)
   /** The "..." of a row: only what its source really does. */
@@ -243,8 +247,26 @@ function Manager({ wide }: { wide: boolean }) {
     input.click();
   };
   const canOpenFolder = !!parsed && (parsed.root === "space" || (parsed.root === "linked" && !!parsed.link));
+  /** A new folder is made in the Space's Drive (the box keeps a folder as the path its files share, so it holds an empty one with a hidden file). */
+  const canMakeFolder = !!parsed && parsed.root === "space" && ability.upload;
+  const makeFolder = async () => {
+    if (!parsed || newName === null) return;
+    const v = newFolderName(newName, (rows ?? []).map((x) => x.name));
+    if ("error" in v) { showToast(v.error); return; }
+    try {
+      await driveTool("files.drive.space.mkdir", { ...(parsed.path ? { parent: parsed.path } : {}), name: v.name });
+      selectAfter.current = v.name; setNewName(null); invalidate();
+    } catch (e) { showToast(say(e)); }
+  };
+  useEffect(() => {
+    const want = selectAfter.current;
+    if (!want || !rows) return;
+    const hit = rows.find((x) => x.dir && x.name === want);
+    if (hit) { selectAfter.current = null; setSel(selectOnly(hit.key)); setFocus(rows.indexOf(hit)); }
+  }, [rows]);
 
   const uploadButton = ability.upload && canOpenFolder ? <Button kind="primary" size="sm" icon="upload" label="Upload" onPress={pickUpload} /> : null;
+  const folderButton = canMakeFolder ? <Button kind="secondary" size="sm" icon="plus" label="New folder" onPress={() => setNewName("")} /> : null;
   // With the detail panel open the middle is narrower, so Kind (which the panel shows) steps aside and the rest keep their widths.
   const showDetail = !!one && (one.root === "space" || one.root === "linked" || one.root === "box");
   const GRID_COLS = showDetail ? "minmax(140px, 1fr) 104px 72px 36px" : "minmax(240px, 1fr) 120px 140px 80px 36px";
@@ -331,8 +353,11 @@ function Manager({ wide }: { wide: boolean }) {
   );
   const BIG = 200;
   const emptyState = (
+    <View className="gap-s3">
     <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Add a file, or drop one here." : "Nothing is here, or everything in it is kept away from you."}
       action={!q && !chips.length && uploadButton ? { label: "Upload", onPress: pickUpload } : undefined} /></Card>
+    {!q && !chips.length && folderButton ? <View className="flex-row">{folderButton}</View> : null}
+    </View>
   );
 
   const main = place.startsWith("site:") ? <SitePage name={place.slice(5)} onBack={() => go("space")} />
@@ -377,16 +402,25 @@ function Manager({ wide }: { wide: boolean }) {
               <View className="min-w-0 flex-1"><Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} wrap={(key, node) => <div {...crumbDrop(key, crumbs.find((c) => c.place === key)?.name ?? "")} style={{ borderRadius: 6, padding: "0 2px", outline: moveOver === `crumb:${key}` ? "2px solid var(--edge-strong)" : "none", background: moveOver === `crumb:${key}` ? "var(--surface-3)" : "transparent" }}>{node}</div>} /></View>
               <View className="flex-row items-center gap-s2">
                 {uploadButton}
+                {folderButton}
                 <IconButton icon="list" label="Show as a list" kind={view === "list" ? "secondary" : "ghost"} onPress={() => setView("list")} />
                 <IconButton icon="grid" label="Show as a grid" kind={view === "grid" ? "secondary" : "ghost"} onPress={() => setView("grid")} />
               </View>
             </View>
             {root === "space" || place === "recent" ? <View className="flex-row"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
+            {newName !== null ? (
+              <div onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void makeFolder(); } else if (e.key === "Escape") { e.stopPropagation(); setNewName(null); } }}>
+                <Card><View className="gap-s2">
+                  <Field label="Folder name" value={newName} onChangeText={setNewName} placeholder="New folder" autoFocus />
+                  <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Make folder" onPress={() => { void makeFolder(); }} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setNewName(null)} /></View>
+                </View></Card>
+              </div>
+            ) : null}
             <ListHeader onSearch={() => openFind("files")} noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
             ) : null}
-            <div onMouseDown={startBox} style={{ position: "relative", minHeight: 240, outline: dropping ? "2px solid var(--edge-strong)" : "none", outlineOffset: 4, borderRadius: 14, background: dropping ? "var(--surface-2)" : "transparent", transition: "background 120ms" }}>
+            <div onMouseDown={startBox} onContextMenu={(e) => { if (canMakeFolder && !(e.target as HTMLElement).closest("[role=row],[data-tile]")) { e.preventDefault(); setBgMenu({ x: e.clientX, y: e.clientY }); } }} style={{ position: "relative", minHeight: 240, outline: dropping ? "2px solid var(--edge-strong)" : "none", outlineOffset: 4, borderRadius: 14, background: dropping ? "var(--surface-2)" : "transparent", transition: "background 120ms" }}>
               {moveOver && dragRows && overName ? <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 2 }}><div style={{ padding: "6px 14px", borderRadius: 999, background: "var(--surface-3)", border: "1px solid var(--edge)" }}><Text size="caption" strong>{dragWords(dragRows, overName)}</Text></div></div> : null}
               {dropping ? <div style={{ position: "absolute", top: 8, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 2 }}><div style={{ padding: "6px 14px", borderRadius: 999, background: "var(--surface-3)", border: "1px solid var(--edge)" }}><Text size="caption" strong>{dropWords(targetNow(), (f) => (f.place === place ? crumbs[crumbs.length - 1]?.name ?? "this folder" : rows?.find((r) => r.key === overRow)?.name ?? f.path))}</Text></div></div> : null}
               {main}
@@ -408,6 +442,7 @@ function Manager({ wide }: { wide: boolean }) {
           </View>
         ) : null}
       </Sheet>
+      {bgMenu ? <FileContextMenu groups={[[{ id: "newfolder", label: "New folder" }]]} at={bgMenu} onPick={() => setNewName("")} onClose={() => setBgMenu(null)} /> : null}
       {menu ? <FileContextMenu groups={fileMenu(menuRows)} at={menu.at} onPick={(id) => doAction(id, menuRows)} onClose={() => setMenu(null)} /> : null}
       {box ? <div style={{ position: "fixed", left: Math.min(box.x1, box.x2), top: Math.min(box.y1, box.y2), width: Math.abs(box.x2 - box.x1), height: Math.abs(box.y2 - box.y1), border: "1px solid var(--edge-strong)", background: "var(--surface-3)", opacity: 0.5, pointerEvents: "none", zIndex: 50, borderRadius: 4 }} /> : null}
       <QuickLookSheet row={shown.find((r) => r.key === look.open) ?? null} shown={shown} onClose={() => setLook({ open: null })} />
