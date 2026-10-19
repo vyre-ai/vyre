@@ -1074,9 +1074,13 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
     // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open, and the daemon's ancestry measure can be dodged by a process that detaches from its
     // session, so those labels never get the no-device pass: it is the owner's signed-in session (the app) or the owner's vouched paired device, and nothing else.
     if (!d.ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
+    // Vouched device facts that name someone other than the owner (a member's chain device) never pass, with or without a session.
+    if (dev && dev.person && typeof d.ownerId === "function" && String(dev.person) !== String(d.ownerId())) return false;
     if (meta && meta.person && meta.person.id) {
+      // The session's id is the box's own session row (presence_people: a random id, never the owner's person id), so what counts is who makes such a session: only the owner's key, the owner's paired device or
+      // the owner's terminal (kind cookie, bearer, cli: set by the daemon from its own table, never from the call). A surface that names the owner itself passes too.
       const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
-      if (!owner || String(meta.person.id) !== String(owner)) return false;
+      if (!owner || (String(meta.person.id) !== String(owner) && !["cookie", "bearer", "cli"].includes(String(meta.person.kind)))) return false;
     }
     // Only a paired phone's key, a passkey or a Lumen key turns approvals on (Presence.notPhoneKeyIds says which device keys are not a phone's).
     if (typeof presence.hasPresenceDevice === "function") return !presence.hasPresenceDevice();
