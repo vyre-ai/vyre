@@ -17,12 +17,14 @@ export function accountsSource(call: Call) {
     follow: async (flow: string, provider: string): Promise<Flow> => flowOf(await ask("sessions.accounts.signin", { flow }), provider, flow),
     /** The code the provider's page showed. */
     paste: (flow: string, code: string) => ask("sessions.accounts.signin", { flow, code: code.trim() }),
-    /** An API key as an account (the owner's): the server checks it with the provider and keeps it in the Vault; only the account comes back. Throws the line to show when the key is not one. */
-    addKey: (key: string, label = "") => {
+    /** An API key as an account: the owner's goes to the server's key tool and the owner's Vault; a member's goes to HER OWN Vault through the member key path (the host's onboard.agent.key, which may ask for
+     * her Vault's password: code need_password) and becomes an account of hers alone. Only the account comes back. Throws the line to show when the key is not one. */
+    addKey: (key: string, label = "", member: { password?: string } | null = null) => {
       const k = keyAddInput(key, label);
       if ("problem" in k) return Promise.reject(new Error(k.problem));
+      const own: Record<string, string> = { ...k.input }; delete own.name;   // the member path names the item from the label
       // whatever the server or the provider said, the key is never in what is thrown
-      return ask<{ account?: string; provider?: string; label?: string }>("sessions.accounts.key", k.input)
+      return (member ? ask<{ account?: string; provider?: string; label?: string }>("onboard.agent.key", { ...own, ...(member.password ? { password: member.password } : {}) }) : ask<{ account?: string; provider?: string; label?: string }>("sessions.accounts.key", k.input))
         .catch((e) => { throw Object.assign(new Error(String((e as Error)?.message || "That key could not be added.").split(k.input.key).join("[key]")), { code: (e as { code?: string })?.code }); });
     },
     makeDefault: (id: string) => ask("sessions.accounts.bind", { id, is_default: true }),

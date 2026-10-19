@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { start } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import * as config from "../core/config/index.js";
 import { createDoor } from "../kernel/door/door.js";
@@ -77,14 +77,26 @@ test("a Code step that runs forever is stopped and the run fails with a reason t
 function stubDoor() {
   /** @type {any[]} */ const sent = [];
   const sealer = { detect: async (/** @type {any} */ i) => { const r = redact(i.text); return { text: r.text, found: r.found.map((/** @type {any} */ f) => ({ class: f.class, n: f.n })), ledger: [] }; }, endSession: async () => {} };
-  const door = createDoor({ sealer, isChain, sinks: [], drivers: { default: { call: async (/** @type {any} */ i) => { sent.push(i); const text = String(i.messages[i.messages.length - 1].content); if (/JSON object/.test(String(i.messages[0].content))) return { content: JSON.stringify({ client: "Jane", amount: 500 }), usage: { cost_micro: 0 } };
-      return { content: /quote|retain|hire|injur/i.test(text) ? "new_lead" : "other", usage: { cost_micro: 0 } }; } } } });
+  const model = { call: async (/** @type {any} */ i) => { sent.push(i); const text = String(i.messages[i.messages.length - 1].content); if (/JSON object/.test(String(i.messages[0].content))) return { content: JSON.stringify({ client: "Jane", amount: 500 }), usage: { cost_micro: 0 } };
+      return { content: /quote|retain|hire|injur/i.test(text) ? "new_lead" : "other", usage: { cost_micro: 0 } }; } };
+  // a Flow's AI step runs on the account of the person it runs as (kernel/flows/runs-as.js): here the owner's OpenRouter key account, so the door is asked for the openrouter driver
+  const door = createDoor({ sealer, isChain, sinks: [], drivers: { default: model, openrouter: model } });
   return { door, sent };
+}
+
+/** The owner's OpenRouter key account, kept the way first run keeps it: the item in the Vault (granted to the chat modules) and the api-key account naming it. @param {any} d */
+async function ownerAccount(d) {
+  const item = "ai-key-openrouter-" + "0a1b2c3d4e5f";
+  const put = await d.registry.call("vault.put", { name: item, kind: "api-key", description: "OpenRouter API key", value: "sk-or-v1-" + "a".repeat(40), hosts: ["https://openrouter.ai"], grants: ["threads", "agents"] }, "module:sessions");
+  assert.ok(put.data, JSON.stringify(put.error));
+  const acct = await d.registry.call("sessions.accounts.add", { provider: "openrouter", label: "OpenRouter", kind: "api-key", vault_item: item }, "cli", { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true }) });
+  assert.equal(acct.error, undefined, JSON.stringify(acct.error));
 }
 
 test("a classify step goes through the model door in a real daemon: sealed values reach the model as placeholders, the step offers no tools, and the label drives the Flow", { timeout: 120_000 }, async t => {
   const { door, sent } = stubDoor();
   const { d, host, admin, install } = await boot(t, { kernelDoor: door });
+  await ownerAccount(d);
   await d.kernel.gateway.records.define(admin, { add_types: [MESSAGE] });
   const triage = await install({ format: 1, name: "triage", label: "Triage inbound messages", authorship: "human", trigger: { on: "manual" }, steps: [
     { id: "c", kind: "classify", input: { expr: "trigger.body" }, labels: ["new_lead", "other"] },
@@ -119,8 +131,8 @@ test("a classify step in a home with no model door fails plainly instead of hang
     { id: "c", kind: "classify", input: { expr: "trigger.body" }, labels: ["new_lead", "other"] }] });
   await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: { body: "hello" } });
   const runs = await until(async () => { const r = await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }); return r.length && r[0].state === "failed" ? r : null; }, "the run to fail");
-  // a home with the door but no provider it may use answers through the door (residency); one with no door at all says so. Either way it fails, never hangs.
-  assert.match(runs[0].error.message, /no model door|residency/);
+  // a home with the door but no AI account for the person the Flow runs as says so plainly (nothing is sent); one with no door at all says that. Either way it fails, never hangs.
+  assert.match(runs[0].error.message, /no model door|residency|Connect an AI account to run this Flow/);
 });
 
 // ---- a real watcher ----
@@ -190,6 +202,7 @@ test("a task given to a pool in a real daemon goes to the team member with the s
 test("an extract step in a real daemon reads fields through the door: the SSN in the message is a placeholder, no tools are offered, the fields reach the record", { timeout: 120_000 }, async t => {
   const { door, sent } = stubDoor();
   const { d, host, admin, install } = await boot(t, { kernelDoor: door });
+  await ownerAccount(d);
   await d.kernel.gateway.records.define(admin, { add_types: [{ name: "intake", label: "Intake", fields: [{ name: "who", kind: "text", label: "Who" }, { name: "owed", kind: "number", label: "Owed" }] }] });
   const flow = await install({ format: 1, name: "read", label: "Read", authorship: "human", trigger: { on: "manual" }, steps: [
     { id: "e", kind: "extract", input: { expr: "trigger.body" }, fields: [{ name: "client", kind: "text" }, { name: "amount", kind: "number" }] },
