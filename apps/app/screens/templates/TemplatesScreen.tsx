@@ -54,7 +54,7 @@ export default function TemplatesScreen() {
     return (
       <MenuRow key={r.template} items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
         {(menu) => (
-          <Row lead={<IconTile icon="box" />} title={b ? sentenceOf(b, true) : c.name} sub={[c.counts, c.usedBy].filter(Boolean).join(" · ")} onPress={() => router.push(playbookPath(r.template) as never)}
+          <Row lead={<IconTile icon="box" />} title={c.name} sub={[b ? sentenceOf(b, true) : "", c.counts, c.usedBy].filter(Boolean).join(" · ")} onPress={() => router.push(playbookPath(r.template) as never)}
             end={<View className="flex-row items-center gap-s2"><Chip tone={r.live !== null ? "ok" : "plain"}>{r.live !== null ? "Live" : "Draft"}</Chip><Text size="caption" tone="label">{`v${r.live ?? r.latest}`}</Text>{menu}</View>} />
         )}
       </MenuRow>
