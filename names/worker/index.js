@@ -530,7 +530,10 @@ export class Directory {
       const id = await this.idLoad(v.name);
       if (!id) return { name: v.name, status: "ok", why: null };
       if (auth && Array.isArray(id.eids) && id.eids.includes(auth.route)) return { name: v.name, status: "mine", why: null };
-      return { name: v.name, status: "taken", why: "someone else has that name" };
+      // A Space says whether its address is live: a server is listed for it and its address was published. Public DNS says the same, so nothing new is told; the sign-in page reads it to say
+      // "not live yet" instead of "cannot reach" for a Space whose owner has not finished setting it up.
+      const live = id.kind === "space" ? { live: Array.isArray(id.servers) && id.servers.length > 0 && Boolean(id.pointedAt) } : {};
+      return { name: v.name, status: "taken", why: "someone else has that name", ...live };
     }
     if (auth && rec.route === auth.route) return { name: v.name, status: "mine", why: null };
     return { name: v.name, status: "taken", why: "someone else has that name" };

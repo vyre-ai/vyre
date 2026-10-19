@@ -17,12 +17,14 @@ import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/c
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
-import { returnWaiting } from "../../src/identity/github-return.js";
+import { clearAfter, readAfter, returnWaiting, saveAfter } from "../../src/identity/github-return.js";
+import { linkGithub, signInWithGithub, type GithubSession } from "../../src/real/github";
+import type { GithubUser } from "../../src/real/github-types";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import { openExternal } from "../../src/shell/open-external";
 import {
-  chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  chooseSpace, createPerson, finishFirstRun, joinSpace, listAgentProviders, listSpaces,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, unlockGithub,
 } from "./real.js";
 
 export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "join.ask" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
@@ -82,7 +84,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [invite, setInvite] = useState(shot?.link || "");
-  const [github, setGithub] = useState(false);
+  // Continue with GitHub on the new-person flow: who GitHub says this is, held until the identity exists, then linked through the relay (the same path as Settings > Account).
+  const [github, setGithub] = useState<{ session: GithubSession | null; user: GithubUser } | null>(null);
   const [space, setSpace] = useState(shot?.space || "");
   const [suggest, setSuggest] = useState("");
   const [taken, setTaken] = useState(false);
@@ -331,6 +334,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   // way back; while the tab leaves, the answer is "redirect" and nothing is shown as a failure.
   const page = () => { try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; } };
   const githubSignIn = (typed?: string) => run(async () => {
+    clearAfter(page());
     if (typed) rememberSpace(page(), typed);
     const r = await signInGithub(typed);
     if (!r.ok) { if (r.code !== "redirect") setFailure(r.message); return; }
@@ -341,32 +345,40 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     go("id.signin.spaces");
   });
 
-  // Back from GitHub: the sign-in this tab started carries on by itself, once.
+  // Continue with GitHub while making a new identity: the same relay sign-in as above (a same-tab redirect in a browser, the person's browser and a claim in the Mac app), never a
+  // popup and never a callback other than the relay's. The names typed so far are kept for the way back (never the password); the link itself is made once the identity exists.
+  const continueWithGithub = async (suggestName: boolean) => {
+    saveAfter(page(), { kind: "create", first, last, username });
+    const r = await signInWithGithub({ signin: false });
+    if (!r.ok) {
+      if ((r as { code?: string }).code !== "redirect") { clearAfter(page()); setFailure(r.say); }
+      return;
+    }
+    clearAfter(page());
+    if (r.user.linkedName) { setFailure(`This GitHub account already belongs to ${r.user.linkedName}. Go back and sign in with it instead.`); return; }
+    if (suggestName) {
+      const suggested = nameFromLogin(r.user.login);
+      if (suggested && !username) setUsername(suggested);
+    }
+    setGithub({ session: r.session, user: r.user });
+  };
+
+  // Back from GitHub: what this tab started carries on by itself, once. Sign in goes on to the spaces it found; the new-person flow comes back to its password step with the names kept.
   const githubResumed = useRef(false);
   useEffect(() => {
     if (shot || MOCK || githubResumed.current || (screen !== "id.choice" && screen !== "id.signin")) return;
     if (!returnWaiting(page(), Date.now())) return;
     githubResumed.current = true;
+    const after = readAfter(page());
+    if (after && after.kind === "create") {
+      setFirst(after.first); setLast(after.last); setUsername(after.username);
+      setStack(["id.choice", "id.name", "id.create", "id.password"]);
+      void run(() => continueWithGithub(!after.username));
+      return;
+    }
     void githubSignIn(lastSpace(page()) || undefined);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shot, screen]);
-
-  const continueWithGithub = async (suggestName: boolean) => {
-    const r = await startGithub();
-    if (!r.ok) { setFailure(r.message); return; }
-    const login = r.user && r.user.login ? String(r.user.login) : "";
-    if (typeof r.url === "string" && r.url) void openExternal(r.url, { name: "vyre-github", features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure(`The GitHub window did not open. Open this link in your browser: ${r.url}`); });
-    if (!login && !r.exchange) return;
-    const done = await finishGithub(login);
-    if (!done.ok) { setFailure(done.message); return; }
-    if (!done.linked) { setFailure("Approve GitHub in the window, then press Continue with GitHub again."); return; }
-    const who = String(done.login || login);
-    if (suggestName) {
-      const suggested = nameFromLogin(who);
-      if (suggested && !username) setUsername(suggested);
-    }
-    setGithub(true);
-  };
 
   const strength = passwordStrength(password);
   const nameOk = Boolean(usernameOf(username));
@@ -446,6 +458,11 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           setRecovery(typeof r.recoveryKey === "string" ? r.recoveryKey : "");
           setUsername(r.username || usernameOf(username));
           go("id.recovery");
+          if (github) {
+            const l = await linkGithub(github.session, github.user);
+            setGithub(null);
+            if (!l.ok) setFailure(`GitHub is not linked yet: ${l.say} You can link it later in Settings, Account.`);
+          }
         }) }}>
         <PasswordField label="Password" meter value={password} onChangeText={setPassword} />
         <PasswordField label="Confirm password" value={confirm} onChangeText={setConfirm} error={confirm && confirm !== password ? "Type the same password again." : undefined} />

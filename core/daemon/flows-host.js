@@ -11,6 +11,7 @@
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
 import { retryAfter } from "../../lib/store-away.js";
+import { within } from "../../lib/within.js";
 import { createWakeTimer } from "./wake-timer.js";
 import { createStageDeadlines } from "./stage-deadlines.js";
 import { createAgentWake } from "./agent-wake.js";
@@ -74,22 +75,29 @@ export async function defineWithRetry(o) {
 
 /** The words a Flow call gets while the Flow record types are not defined yet (instead of a raw "no type flow-state"). */
 export const FLOWS_WAITING = "Flows are waiting for the team's records. Try again in a minute.";
+/** What a Flow call gets while the Space's Records add the record types an update brought (stores/twenty/space-store.js openCore): how far, and that it ends by itself. @param {{ done: number, total: number }} u */
+export const flowsUpgrading = (u) => `Records are being upgraded (${u.done} of ${u.total} new types). This finishes on its own.`;
+/** How far the store's new record types are ({ done, total }), or null when nothing is being added. @param {any} store */
+export function upgradeOf(store) {
+  try { const u = store && typeof store.upgrade === "function" ? store.upgrade() : null; return u && Number.isFinite(u.done) && Number.isFinite(u.total) ? { done: u.done, total: u.total } : null; } catch { return null; }
+}
 /** What a Flow call gets once the quick tries are spent and the records still do not answer. */
 export const FLOWS_STUCK = "Flows cannot start yet: the team's records are not answering. They will start by themselves when the records are back; if this lasts, ask the owner to restart Vyre.";
 
 /**
- * Every Flow tool answers FLOWS_WAITING until `ready()` says the Flow record types exist. Wraps in place.
- * @param {Record<string, any>} tools @param {() => boolean} ready @param {() => boolean} [stuck] whether the quick tries are spent (the words say so)
+ * Every Flow tool answers FLOWS_WAITING until `ready()` says the Flow record types exist. Wraps in place. While the Space's Records are adding an update's new record types (`upgrading()` says how far),
+ * the words say that instead, since nobody has to try again: it finishes on its own.
+ * @param {Record<string, any>} tools @param {() => boolean} ready @param {() => boolean} [stuck] whether the quick tries are spent (the words say so) @param {() => ({ done: number, total: number } | null)} [upgrading]
  */
-export function guardUntilReady(tools, ready, stuck = () => false) {
+export function guardUntilReady(tools, ready, stuck = () => false, upgrading = () => null) {
   for (const name of Object.keys(tools)) {
     const orig = tools[name];
-    if (typeof orig === "function") tools[name] = async (/** @type {any[]} */ ...a) => { if (!ready()) throw Object.assign(new Error(stuck() ? FLOWS_STUCK : FLOWS_WAITING), { code: "unavailable" }); return orig(...a); };
+    if (typeof orig === "function") tools[name] = async (/** @type {any[]} */ ...a) => { if (!ready()) { const u = upgrading(); throw Object.assign(new Error(stuck() ? FLOWS_STUCK : u ? flowsUpgrading(u) : FLOWS_WAITING), { code: "unavailable" }); } return orig(...a); };
   }
 }
 
 /**
- * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
+ * @param {{ log?: (m: string) => void, clock?: () => number, restWaitMs?: number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
  * }} o
  */
 export function createFlowsHost(o) {
@@ -236,22 +244,32 @@ export function createFlowsHost(o) {
     };
 
     const store = new RecordsFlowStore({ kernel, chain: flowsChain(), space });
-    // Define the Flow record types the Space lacks (a new Space has none; an existing home gains `flow_schedule` here), by the owner: an admin act on the Space's own types.
-    const setupTypes = async () => {
+    // Define the Flow record types the Space lacks (a new Space has none; an existing home gains `flow_schedule` here), by the owner: an admin act on the Space's own types. Only the Flow and Kit
+    // types hold Flows up (setupFlowTypes); the rest (core and Kit-storage types, field upgrades, the communications move) runs after, in the background (setupRest), so an update that brings new
+    // types to a slow store never keeps Flows and Kits answering "waiting" for its whole length.
+    const setupFlowTypes = async () => {
       const { FLOW_TYPES } = await import("../../kernel/flows/store.js");
       const haveTypes = await k.store.types();
       const have = new Set(haveTypes.map((/** @type {any} */ t) => t.name));
-      // The record types a Kit's non-type parts are stored in (templates, role and view definitions) are defined here by the owner with the Flow types, so installing a Kit later never needs a
-      // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
-      const { CORE_TYPES } = await import("../../records/core-types.js");
-      // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
-      const { KIT_STORAGE_TYPES } = await import("../../lib/kit-storage-types.js");
-      const kitStorage = [...CORE_TYPES, ...KIT_STORAGE_TYPES.map(t => JSON.parse(JSON.stringify(t)))].filter(Boolean);
-      const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
+      const missing = [...FLOW_TYPES, ...KIT_TYPES].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
       // A Flow type that gained a field since this Space made it (flow-run.record, the run's link to its record) gets the field: the definition is additive.
       const grown = FLOW_TYPES.filter(want => { const had = haveTypes.find((/** @type {any} */ t) => t.name === want.name); return had && (want.protected === true && had.protected !== true || want.fields.some(f => !had.fields.some((/** @type {any} */ x) => x.name === f.name))); });
       if (grown.length) await gw.records.define(owner(), { change_types: grown.map(t => ({ ...t })) }).catch((/** @type {any} */ e) => { log(`flows: could not add the new fields to the Flow record types for ${space}: ${e && e.message}`); });
+    };
+    const setupRest = async () => {
+      const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name));
+      // The record types a Kit's non-type parts are stored in (templates, role and view definitions) are defined here by the owner with the Flow types, so installing a Kit later never needs a
+      // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
+      const { CORE_TYPES } = await import("../../records/core-types.js");
+      // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
+      // The ones the Space's Records are adding in the background (an update brought them: stores/twenty/space-store.js openCore) are left to it, so they are not made twice in one long define.
+      const { KIT_STORAGE_TYPES } = await import("../../lib/kit-storage-types.js");
+      const u = k.store && typeof k.store.upgrade === "function" ? (() => { try { return k.store.upgrade(); } catch { return null; } })() : null;
+      const adding = new Set(u && Array.isArray(u.pending) ? u.pending : []);
+      const kitStorage = [...CORE_TYPES, ...KIT_STORAGE_TYPES.map(t => JSON.parse(JSON.stringify(t)))].filter(Boolean);
+      const missing = kitStorage.filter(t => !have.has(t.name) && !adding.has(t.name));
+      if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the core and Kit storage record types for ${space}: ${e && e.message}`); });
       // A new Space (one with no contact type yet) also starts with the base Kit's types: the owner's setup act, no card, once. A Space on its own Records store has had them since its store was made.
       if (!have.has("contact")) {
         try {
@@ -286,6 +304,14 @@ export function createFlowsHost(o) {
         await migrateParticipants({ records: gw.records }, owner(), log);
       } catch (e) { log(`flows: communications for ${space} were not brought up to date: ${e && /** @type {Error} */ (e).message}`); }
     };
+    /** The rest, started once the Flow types are there. Flow calls never wait for it; the attach waits a bounded while (`restWaitMs`, 5 s) so a quick store is whole when the host is handed out. */
+    /** @type {Promise<void> | null} */ let rest = null;
+    const startRest = () => {
+      if (rest) return rest;
+      const t0 = clock();
+      rest = setupRest().then(() => log(`flows: the other record types for ${space} are up to date (${((clock() - t0) / 1000).toFixed(1)}s)`), (/** @type {any} */ e) => log(`flows: the other record types for ${space} were not brought up to date: ${e && e.message}`));
+      return rest;
+    };
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
     // The types are defined again if the first try met a store that was not answering yet; Flow calls made before they exist answer in words (see typesReady below).
     let typesReady = false, stopping = false, tries = 0, exhausted = false;
@@ -293,7 +319,7 @@ export function createFlowsHost(o) {
     const { FLOW_TYPES: WANT_FLOW_TYPES } = await import("../../kernel/flows/store.js");
     const ensureTypes = () => defineWithRetry({ log, label: `flows: the Flow record types for ${space}`, stopped: () => stopping, timers: retryTimers, ...(o.retryMs ? { baseMs: o.retryMs, maxMs: o.retryMs } : {}),
       onExhausted: () => { exhausted = true; }, onDone: ok => { if (ok) exhausted = false; if (ok && tries > 1) { void recover(); void wake.arm(); } },
-      run: async () => { tries++; await setupTypes(); const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name)); const lacking = WANT_FLOW_TYPES.filter((/** @type {any} */ t) => !have.has(t.name)).map((/** @type {any} */ t) => t.name); if (lacking.length) throw new Error(`still missing ${lacking.join(", ")}`); typesReady = true; } });
+      run: async () => { tries++; await setupFlowTypes(); const have = new Set((await k.store.types()).map((/** @type {any} */ t) => t.name)); const lacking = WANT_FLOW_TYPES.filter((/** @type {any} */ t) => !have.has(t.name)).map((/** @type {any} */ t) => t.name); if (lacking.length) throw new Error(`still missing ${lacking.join(", ")}`); typesReady = true; await within(startRest(), o.restWaitMs ?? 5_000); } });
     await whenStoreReady(k.store, ensureTypes);
 
     // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
@@ -416,7 +442,7 @@ export function createFlowsHost(o) {
       const orig = flows.tools[name];
       if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
-    guardUntilReady(flows.tools, () => typesReady, () => exhausted);
+    guardUntilReady(flows.tools, () => typesReady, () => exhausted, () => upgradeOf(k.store));
     // A Kit's assistants (its `teammates` part): made and removed as the person who approved, on their own session (core/daemon/kit-teammates.js).
     if (typeof o.callAs === "function") ports.teammates = teammatePort({ callAs: o.callAs, session: async (/** @type {string} */ id) => (await k.surfaces.open(personChain(id), { ttl_ms: 60_000 })).token, log, space });
     ports.standing = async (/** @type {any} */ x) => {

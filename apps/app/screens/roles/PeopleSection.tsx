@@ -1,6 +1,6 @@
 // People on Settings > People and roles: who is in the space with their role (open one to change it), and the invitations waiting to be used with Revoke.
 // Inviting is InviteBody's form, opened from the page's "Invite someone" button; this section only lists.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, markRef, showToast } from "@vyre/ui";
@@ -9,6 +9,10 @@ import { useMembers } from "../spaces/state";
 import { ROLES, assignable, canManage, roleLabel, type Role } from "../spaces/roles.js";
 import { joinedLine } from "../devices/invite.js";
 import { MOCK, said, tool } from "../../src/real/box";
+import { useProfiles } from "../../src/state/profiles";
+
+/** A member's line: their role, and under it what they wrote About me in this Space. */
+const withAbout = (role: string, about: string | undefined) => (about ? <View className="gap-s1"><Text size="secondary" tone="label" numberOfLines={1}>{role}</Text><Text size="secondary" tone="muted" numberOfLines={2}>{about}</Text></View> : role);
 import type { useInviteList } from "../devices/InviteBody";
 
 type Invites = ReturnType<typeof useInviteList>;
@@ -37,6 +41,11 @@ export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { 
   };
   const self = MOCK ? "alex" : selfId ?? "";
   const { open, joined, revoke } = invites;
+  // Each person's profile in this Space (their own name, look and About me), when they made one.
+  const profiles = useProfiles((s) => (space ? s.bySpace[space]?.byPerson : undefined));
+  const loadProfiles = useProfiles((s) => s.load);
+  useEffect(() => { if (space) void loadProfiles(space); }, [space, loadProfiles]);
+  const shownName = (m: { id: string; name: string }) => (m.id === self ? m.name : profiles?.[m.id]?.name || m.name);
   return (
     <>
       <Sec title="People" meta={members.length ? String(members.length) : undefined}>
@@ -47,8 +56,9 @@ export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { 
               return (
                 <View key={m.id}>
                   {i ? <Divider inset={68} /> : null}
-                  <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name} sub={m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : m.role === "temp" ? roleLabel(m.role) : custom.find((c) => c.id === m.custom)?.name ?? roleLabel(m.role)}
-                    chevron={can} onPress={can ? () => setPick({ id: m.id, role: heldId(m) }) : undefined} accessibilityLabel={`${m.name}, ${roleLabel(m.role)}${can ? ", change role" : ""}`} />
+                  <Row dense lead={<Avatar of={markRef("person", shownName(m), m.id, profiles?.[m.id]?.look || undefined)} size={40} />} title={shownName(m)}
+                    sub={withAbout(m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : m.role === "temp" ? roleLabel(m.role) : custom.find((c) => c.id === m.custom)?.name ?? roleLabel(m.role), profiles?.[m.id]?.about)}
+                    chevron={can} onPress={can ? () => setPick({ id: m.id, role: heldId(m) }) : undefined} accessibilityLabel={`${shownName(m)}, ${roleLabel(m.role)}${can ? ", change role" : ""}`} />
                 </View>
               );
             })}

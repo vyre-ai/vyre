@@ -16,7 +16,8 @@ import { recentChats } from "./recent.js";
 import { gatedPath } from "./basic.js";
 import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
-import { call, listen, signIn } from "../../src/api/box";
+import { call, listen, signIn, signOut } from "../../src/api/box";
+import { useProfiles } from "../../src/state/profiles";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
@@ -102,11 +103,15 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     setRecentAt(Date.now());
     void call<unknown>("threads.list", { all: true }).then((r) => { if (!r.error) setRecent(recentChats(r.data)); }).catch(() => {});
   }, [gate, path, recentAt]);
+  // The showing Space's profiles: your face here is the look you chose in this Space's profile, and the people of the Space are drawn with theirs.
+  const loadProfiles = useProfiles((x) => x.load);
+  const ownLook = useProfiles((x) => { const e = x.bySpace[space]; return e && e.me ? e.byPerson[e.me]?.look ?? "" : ""; });
+  useEffect(() => { if (!allowsMock() && gate === "in") void loadProfiles(space); }, [gate, space, loadProfiles]);
   const go = (href: string) => router.push(href as never);
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: myLook || undefined }}>
+    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} onSignOut={allowsMock() ? undefined : () => { void signOut(); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: ownLook || myLook || undefined }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />

@@ -85,6 +85,10 @@ test("names: the status says what the public gate says (serving, waiting, gettin
   assert.match(waiting.why, /does not point/);
   assert.equal(withIngress(named, { state: "getting-cert" }).phase, "getting-cert");
   assert.deepEqual([withIngress(named, { state: "failed", why: "dns" }).phase, withIngress(named, { state: "failed", why: "dns" }).why], ["failed", "dns"]);
+  const notListed = withIngress(named, { state: "not-listed", why: "open the Vyre app as the owner to put this server on your Space's address" });
+  assert.deepEqual([notListed.phase, notListed.listening], ["not-listed", false], "its own phase, so the owner's app can tell it from any other failure");
+  assert.match(notListed.why, /open the Vyre app as the owner/);
+  assert.match(withIngress(named, { state: "not-listed" }).why, /open the Vyre app as the owner/, "the words are there even when the gate gives none");
   for (const state of ["off", "no-name", "unknown", "mystery"]) assert.equal(withIngress(named, { state }).phase, "named", state);
   assert.equal(withIngress(named, null), named);
   const unnamed = { ...named, name: null };

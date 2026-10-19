@@ -47,7 +47,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  * The outside things the space steps need (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
- * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void> }} SpacePorts
+ * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void>, pairings?: () => Promise<{ box: string, route: string, relay?: string, name?: string }[]> }} SpacePorts
  */
 
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
@@ -69,7 +69,7 @@ function pickSignin(r) {
 
 /**
  * `agreePoint` answers this device's key-agreement point (base64url, the raw uncompressed P-256 point), or null where this page has none: it goes in the genesis device entry, and is added to an entry that lacks it (ensureAgree).
- * @param {{ store: KeptStore, directory: string, agreePoint?: () => Promise<string | null>, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
+ * @param {{ store: KeptStore, directory: string, agreePoint?: () => Promise<string | null>, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string, resolves?: (space: string) => Promise<boolean | null> }, github?: GithubPorts,
  *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeyPath?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
@@ -216,12 +216,31 @@ export function createHost(o) {
     return { ...(/^[A-Za-z0-9_-]{8,64}$/.test(String(id)) ? { id: String(id) } : {}), label: (o.signin && o.signin.label) || "This browser" };
   }
 
+  /**
+   * Is a Space's address live? Asked of the names directory (GET /v1/names/check, public and read-only: a Space says `live`, a server listed and its address published), only after the door did not answer:
+   * true or false, or null when it cannot tell (an older directory, or the question itself failed). @param {string} space
+   */
+  async function spaceLive(space) {
+    if (o.signin && o.signin.resolves) { try { return await o.signin.resolves(space); } catch { return null; } }
+    try {
+      const res = await f(`${base}/v1/names/check?name=${encodeURIComponent(space)}`, { headers: { accept: "application/json" } });
+      if (!res.ok) return null;
+      const body = /** @type {any} */ (await res.json());
+      const live = body && body.data ? body.data.live : undefined;
+      return typeof live === "boolean" ? live : null;
+    } catch { return null; }
+  }
+
   /** POST one step of the space's sign-in door: https://<space>.vyre.run/login, text/plain so the browser sends no preflight. The answer is the door's own JSON (kernel/identity/space-login.js shapes). */
   async function door(/** @type {string} */ space, /** @type {any} */ body) {
-    const base = (o.signin && o.signin.base ? o.signin.base(space) : `https://${space}.vyre.run`).replace(/\/+$/, "");
+    const at = (o.signin && o.signin.base ? o.signin.base(space) : `https://${space}.vyre.run`).replace(/\/+$/, "");
     let res;
-    try { res = await f(`${base}/login`, { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify(body) }); }
-    catch { throw bad("Cannot reach that space right now. Check the address and try again.", "unreachable"); }
+    try { res = await f(`${at}/login`, { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify(body) }); }
+    catch {
+      // A Space whose address is not live yet is not down: its owner's app has not finished putting the server on it. Say that, not "cannot reach".
+      if ((await spaceLive(space)) === false) throw bad(`The address ${space}.vyre.run isn't live yet. Open the Vyre app as the owner to finish setting it up.`, "unreachable");
+      throw bad("Cannot reach that space right now. Check the address and try again.", "unreachable");
+    }
     /** @type {any} */ let out = null;
     try { out = await res.json(); } catch { /* not JSON */ }
     if (!out || typeof out !== "object") throw bad("That address did not answer like a Vyre space. Check it and try again.", "unreachable");
@@ -262,7 +281,12 @@ export function createHost(o) {
       const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
       const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
       if (!entry) { agreeNote.failed = "this Mac's key is not on your list"; trail("agree repair: this device is not on the chain"); return; }
-      if (entry.agree !== undefined) return;
+      if (entry.agree !== undefined) {
+        // The list keeps one point per device, set once. An older build that lost its key on every launch (the ad-hoc Mac window, v0.6.1) may have put a point there this device no longer holds:
+        // say so, because chats on this device cannot open until the device is added again with the key it keeps now.
+        if (entry.agree !== point) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; take this device off your list from another device, then sign in here again"; trail("agree repair: the list holds another point"); }
+        return;
+      }
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
       const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
@@ -271,43 +295,121 @@ export function createHost(o) {
       trail("agree repair done");
     } catch (e) {
       const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error");
-      agreeNote.failed = code === "unreachable" ? "the names directory could not be reached" : `it did not go through (${code})`;
+      // No store kept the key: the page's agreePoint says which refused and why, in words the person reads as is.
+      agreeNote.failed = code === "no_agree_key" ? String(/** @type {any} */ (e).message) : code === "unreachable" ? "the names directory could not be reached" : `it did not go through (${code})`;
       trail(`agree repair failed ${code}`);
     }
   }
 
+  /** What the last server listing came to, per Space name, and anything that stopped it before any Space, for Account to say plainly with a retry: "" when nothing is wrong. @type {{ spaces: Record<string, string>, general: string }} */
+  const serversNote = { spaces: {}, general: "" };
+  /** The listing problems, one per Space, for Account. */
+  const serversFailed = () => [...(serversNote.general ? [serversNote.general] : []), ...Object.entries(serversNote.spaces).filter(([, why]) => why).map(([label, why]) => `${label}.vyre.run: ${why}`)].join("; ");
+  /** One reason, kept for Account and written to the trail. @param {string} label @param {string} why */
+  const noteServer = (label, why) => { serversNote.spaces[label] = why; if (why) trail(`server listing for ${label}: ${why}`); };
+
   /**
    * A Space this person owns on a paired server is listed with the directory as served by that server's route (POST /v1/ids/server, the owner's signed act). The first run does it right after the claim (identity/claim-space.js);
-   * a Space named before that step existed (v0.6.1) has an empty list, and the directory then refuses the server's certificate and address ("that name is not served by this server"). Once per Space and route, kept in `listed`;
-   * quiet, and a refusal or an unreachable directory leaves it for the next unlock. @param {Uint8Array} seed
+   * a Space named before that step existed (v0.6.1) has an empty list, and the directory then refuses the server's certificate and address ("that name is not served by this server"). Once per Space and route, kept in `listed`.
+   * It runs whenever the owner's key is loaded (create, unlock, sign-in), when the app's connection comes back and on the app's own timer (identity.heal), and on a retry from Account. A refusal or an
+   * unreachable directory is kept in serversNote in plain words, so Account shows it with a Retry.
+   * `ask`: ask each paired server how its name stands (names.status) even when the listing is kept here; a server that says "not-listed" is listed again. `force`: list every Space again, kept or not.
+   * @param {Uint8Array} seed @param {{ ask?: boolean, force?: boolean }} [opt]
    */
-  async function ensureServers(seed) {
+  async function ensureServers(seed, opt = {}) {
+    serversNote.general = "";
     try {
       const k = await o.store.load();
-      if (!k) return;
-      const rows = (k.spaces || []).filter((r) => r && r.role === "owner" && r.paired && (r.paired.route || r.paired.box) && r.name);
-      if (!rows.length) return;
-      const key = await fromSeed(seed);
+      if (!k) { serversNote.general = "this app holds no identity yet"; trail("server listing: no identity kept on this app"); return; }
+      // Every Space this person owns, kept on this app. A row may carry no pairing (a Space signed in to, or one an older app kept without it): its server is then found among this app's pairings below.
+      const rows = (k.spaces || []).filter((r) => r && r.role === "owner" && r.name);
+      if (!rows.length) { trail(`server listing: no Space owned by this identity is kept on this app (${(k.spaces || []).length} kept)`); return; }
+      /** @type {Awaited<ReturnType<typeof fromSeed>>} */ let key;
+      try { key = await fromSeed(seed); }
+      catch { serversNote.general = "this app could not use your key to sign the listing; lock and unlock with your password, then retry"; trail("server listing: the identity key could not be used"); return; }
       const listed = { ...(k.listed || {}) };
+      /** @type {Record<string, any>} */ const found = {};
       let changed = false;
+      /** @type {any} */ let ports = null;
+      const portsOf = async () => (ports || (ports = o.space ? await o.space.load() : null));
+      /** What a paired server says about its name (names.status), or null. @param {string} box */
+      const nameOf = async (box) => { try { return /** @type {any} */ (await (await portsOf()).call("names.status", {}, box)); } catch { return null; } };
+      /**
+       * The server of a Space whose row carries no pairing: the one of this app's pairings that says it holds the Space's name (names.status `name`), else the only pairing when it holds no name. @param {string} label
+       */
+      const serverOf = async (label) => {
+        const p = await portsOf();
+        if (!p || typeof p.pairings !== "function") return null;
+        /** @type {any[]} */ let list = [];
+        try { list = (await p.pairings()) || []; } catch { list = []; }
+        /** @type {any[]} */ const unnamed = [];
+        for (const it of list) {
+          if (!it || !it.box) continue;
+          const st = await nameOf(String(it.box));
+          const n = st && typeof st.name === "string" ? st.name.toLowerCase().replace(/\.vyre\.run$/, "") : "";
+          if (n === label) return it;
+          if (!n) unnamed.push(it);
+        }
+        return list.length === 1 && unnamed.length === 1 ? unnamed[0] : null;
+      };
       for (const r of rows) {
         const label = String(r.name).toLowerCase().replace(/\.vyre\.run$/, "");
-        let route = String(/** @type {any} */ (r.paired).route || "");
-        // No route kept beside the row: ask the paired server itself, over the pairing's own channel (the box is the one the pairing pinned, never a typed value). Only a well-formed route is taken.
-        if (!route && /** @type {any} */ (r.paired).box && o.space) {
-          try { const st = /** @type {any} */ (await (await o.space.load()).call("relay.status", {}, String(/** @type {any} */ (r.paired).box))); if (st && typeof st.route === "string" && /^[a-z2-7]{26}$/.test(st.route)) route = st.route; } catch { route = ""; }
+        /** @type {any} */ let paired = r.paired && (r.paired.box || r.paired.route) ? r.paired : null;
+        if (!paired && o.space) {
+          const it = await serverOf(label);
+          if (it) { paired = { box: String(it.box), route: String(it.route || ""), relay: String(it.relay || ""), name: String(it.name || "") }; found[label] = paired; trail(`server for ${label} found among this app's pairings`); }
         }
-        if (!route) { trail(`server listing for ${label}: the server's route is not known`); continue; }
-        if (listed[label] === route) continue;
+        if (!paired) { noteServer(label, "this app is not paired with the server of this Space; pair it in Settings, Servers, then retry"); continue; }
+        const box = String(paired.box || "");
+        let route = String(paired.route || "");
+        // No route kept beside the row: ask the paired server itself, over the pairing's own channel (the box is the one the pairing pinned, never a typed value). Only a well-formed route is taken.
+        if (!route && box && o.space) {
+          try { const st = /** @type {any} */ (await (await portsOf()).call("relay.status", {}, box)); if (st && typeof st.route === "string" && /^[a-z2-7]{26}$/.test(st.route)) route = st.route; } catch { route = ""; }
+        }
+        if (!route) { noteServer(label, "your server has not said its network address yet"); continue; }
+        let again = Boolean(opt.force);
+        // The server's own word: it says "not-listed" when the directory refused its name (names.status, core/names/service.js withIngress). The listing kept here is then stale and is made again.
+        if (!again && opt.ask && listed[label] === route && box && o.space) {
+          const st = await nameOf(box);
+          // a server from before the not-listed phase says failed with the directory's own words
+          if (st && (st.phase === "not-listed" || (st.phase === "failed" && /not served by this server/.test(String(st.why || ""))))) { again = true; trail(`server for ${label} says it is not listed`); }
+        }
+        if (listed[label] === route && !again) { serversNote.spaces[label] = ""; continue; }
         const ts = o.now ? o.now() : Date.now();
         const act = { by: String(k.id), via: key.eid, ts, sig: b64u(await key.sign(actMessage({ action: "server-add", name: label, domain: route, ts }))) };
-        const res = await f(`${base}/v1/ids/server`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: label, route, act }) });
-        if (!res.ok) { trail(`server listing for ${label} refused ${res.status}`); continue; }
+        let res;
+        try { res = await f(`${base}/v1/ids/server`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: label, route, act }) }); }
+        catch { noteServer(label, "the names directory could not be reached"); continue; }
+        if (!res.ok) {
+          /** @type {any} */ let body = null;
+          try { body = await res.json(); } catch { /* not JSON */ }
+          const said = body && body.error && typeof body.error.message === "string" ? body.error.message.slice(0, 160) : "";
+          noteServer(label, `the names directory said no (${res.status}${said ? `: ${said}` : ""})`);
+          continue;
+        }
+        noteServer(label, "");
         listed[label] = route; changed = true;
         trail(`server listed for ${label}`);
       }
-      if (changed) { const fresh = await o.store.load(); if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), ...listed } }); }
-    } catch (e) { trail(`server listing failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+      // A server found among the pairings is kept beside its Space row, so the next run goes straight to it.
+      if (changed || Object.keys(found).length) {
+        const fresh = await o.store.load();
+        if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), ...listed }, spaces: (fresh.spaces || []).map((s) => (s && found[String(s.name).toLowerCase().replace(/\.vyre\.run$/, "")] && !(s.paired && (s.paired.box || s.paired.route)) ? { ...s, paired: found[String(s.name).toLowerCase().replace(/\.vyre\.run$/, "")] } : s)) });
+      }
+    } catch (e) {
+      const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error");
+      serversNote.general = `the listing did not go through (${code})`;
+      trail(`server listing failed ${code}`);
+    }
+  }
+
+  /** The repairs a loaded owner key runs in the background: private chats (ensureAgree), then the Space's server listing (ensureServers). One run at a time; nothing waits on it. */
+  let healing = /** @type {Promise<void> | null} */ (null);
+  /** @param {Uint8Array} seed @param {{ ask?: boolean }} [opt] */
+  function heal(seed, opt = {}) {
+    if (healing) return healing;
+    healing = (async () => { try { await ensureAgree(seed); await ensureServers(seed, opt); } finally { healing = null; } })();
+    return healing;
   }
 
   /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
@@ -413,6 +515,7 @@ export function createHost(o) {
       const given = displayOk(display);
       await o.store.save({ master, username: name, ...(given ? { display: given } : {}), id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
       held = seed;
+      void heal(seed);
       return { username: name, id: made.id, ...personRoutes(name), recoveryKey: made.recoveryCode, once: true, already: false };
     },
 
@@ -430,10 +533,9 @@ export function createHost(o) {
       held = unb64(keys.privateKey);
       // A record made before the device key existed gets one now, wrapped under the identity just opened.
       if (!k.device) await o.store.save({ ...k, device: makeDeviceKey(held, o.random) });
-      // An identity made without its key-agreement point (v0.6.1) is repaired now, in the background: nothing waits on it.
-      void ensureAgree(held);
-      // A Space named before the first run listed its server gets that listing now, once, in the background.
-      void ensureServers(held);
+      // An identity made without its key-agreement point (v0.6.1) is repaired now, and a Space named before the first run listed its server gets that listing, in the background: nothing waits on it.
+      // Each paired server is asked how its name stands too, so a listing the directory does not have is made again.
+      void heal(held, { ask: true });
       return { unlocked: true, username: k.username, id: k.id };
     },
 
@@ -444,6 +546,19 @@ export function createHost(o) {
       if (!held) throw bad("Unlock with your password first.", "locked");
       await ensureAgree(held);
       return { failed: agreeNote.failed };
+    },
+    // The Space's server listing (ensureServers): what the last try came to, and a retry that lists every owned Space again. `failed` is "" or the reason in words, per Space, so Account says so with a Retry.
+    "identity.servers.status": async () => ({ failed: serversFailed(), unlocked: held !== null }),
+    "identity.servers.retry": async () => {
+      if (!held) throw bad("Unlock with your password first.", "locked");
+      await ensureServers(held, { force: true });
+      return { failed: serversFailed() };
+    },
+    // The app's connection came back, or its timer fired (host/index.ts): the repairs run again while the key is loaded, and each paired server is asked how its name stands. Quiet when locked.
+    "identity.heal": async () => {
+      if (!held) return { healed: false };
+      await heal(held, { ask: true });
+      return { healed: true, failed: serversFailed() };
     },
 
     // The name shown for the person (first and last, as typed in first run), kept beside the username. One line with a letter, up to 60 characters; the same rule everywhere it is set.
@@ -552,6 +667,7 @@ export function createHost(o) {
       const row = rowFromReply(done, addr);
       await o.store.save({ master: done.bundle, username: name, id: String(done.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: addr.space }, spaces: [row], current: row.id });
       held = seed;
+      void heal(seed, { ask: true });
       return { username: name, id: String(done.bundle.id), spaces: [row] };
     },
 
@@ -616,6 +732,7 @@ export function createHost(o) {
       await o.store.save({ master: first.bundle, username: String(first.bundle.username), id: String(first.bundle.id), ops: chain.ops, pin: chain.pin, device: makeDeviceKey(seed, o.random), signin: { space: opened[0].space }, spaces: rows, current: rows[0].id });
       held = seed;
       pendingGithub = null;
+      void heal(seed, { ask: true });
       return { username: String(first.bundle.username), id: String(first.bundle.id), spaces: rows };
     },
 

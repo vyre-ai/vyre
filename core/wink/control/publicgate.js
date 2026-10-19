@@ -16,6 +16,8 @@
 //   getting-cert the certificate is being issued
 //   up           the TLS gate is listening and has a certificate
 //   failed       it did not come up; `why` says why, the relay carries everything and it is retried
+//   not-listed   the directory refused this server's certificate or address because the Space has not listed this server ("that name is not served by this server"). Only the owner's app can
+//                list it (the owner's signed server-add); `why` says so, the app reads it through names.status and lists the server by itself, and it is retried
 //
 // Every outside thing is a dependency (directory, ACME issue, the gate, the clock), so a test runs it all against fakes and a real run uses a test CA.
 
@@ -26,6 +28,10 @@ import { createGate as realGate, certPin } from "./gate.js";
 import { waitTxt } from "../../../lib/acme/dnswait.js";
 
 const DAY = 86_400_000;
+/** What the gate says while the Space has not listed this server: the one thing that fixes it is the owner's app. */
+export const NOT_LISTED_WHY = "open the Vyre app as the owner to put this server on your Space's address";
+/** Is this the directory's refusal of a name the Space has not listed this server for (names/worker/index.js `owned`: 403 not_yours)? @param {unknown} e */
+export const isNotListed = (e) => String((e && /** @type {any} */ (e).code) || "") === "not_yours" || /not served by this server/.test(String((e && /** @type {any} */ (e).message) || ""));
 
 /**
  * @param {{
@@ -58,7 +64,7 @@ export function createPublicGate(o) {
   const domain = o.domain || "vyre.run";
   const now = o.now || Date.now;
   const renewDays = o.renewDays ?? 30;
-  /** @type {{ state: "no-name" | "getting-cert" | "up" | "failed" | "stopped", why: string | null, since: number }} */
+  /** @type {{ state: "no-name" | "getting-cert" | "up" | "failed" | "not-listed" | "stopped", why: string | null, since: number }} */
   const st = { state: "no-name", why: "this box has no name yet", since: now() };
   const set = (/** @type {typeof st.state} */ state, /** @type {string | null} */ why = null) => { st.state = state; st.why = why; st.since = now(); };
   /** @type {any} */ let gate = null, timer = null;
@@ -158,7 +164,10 @@ export function createPublicGate(o) {
     // The wildcard goes into DNS only once the certificate that covers it is in hand: a name that resolves before it can be served would show a certificate error.
     const withApps = wantApps && certApps;
     try { await (viaTunnel ? o.directory.publish(name, { ...(withApps ? { apps: true } : {}), via: "tunnel", share: true }) : withApps ? o.directory.publish(name, { apps: true }) : o.directory.publish(name)); published = name; publishedApps = withApps; log(`wink net: ${name}.${domain} points at this box${withApps ? ", and so do its apps" : ""}`); told(); }
-    catch (e) { log(`wink net: could not publish the address: ${/** @type {Error} */ (e).message}`); }
+    catch (e) {
+      log(`wink net: could not publish the address: ${/** @type {Error} */ (e).message}`);
+      if (isNotListed(e)) { set("not-listed", NOT_LISTED_WHY); schedule(); }
+    }
   }
 
   /** Tell the owner of the public links the origin they use, once, whenever it changes. */
@@ -188,7 +197,8 @@ export function createPublicGate(o) {
       await publishIfReady();
       await syncHosts();
     } catch (e) {
-      set("failed", String((e && /** @type {Error} */ (e).message) || e).slice(0, 300));
+      if (isNotListed(e)) set("not-listed", NOT_LISTED_WHY);
+      else set("failed", String((e && /** @type {Error} */ (e).message) || e).slice(0, 300));
       log(`wink net: public gate: ${st.why}`);
     }
     schedule();

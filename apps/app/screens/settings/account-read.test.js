@@ -3,7 +3,17 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { personOfServer, readOnlyEntries, readOnlyIdentity } from "./account-read.js";
+import { listingLine, personOfServer, readOnlyEntries, readOnlyIdentity } from "./account-read.js";
+
+test("Account says in plain words when a Space's address could not be put on its server, and nothing when all is well", () => {
+  assert.equal(listingLine(""), "");
+  assert.equal(listingLine(null), "");
+  const line = listingLine("tess.vyre.run: the names directory could not be reached");
+  assert.match(line, /^Your Space's address is not live yet/);
+  assert.match(line, /tess\.vyre\.run: the names directory could not be reached/);
+  assert.match(line, /Press Retry/);
+  assert.doesNotMatch(line, /\u2014|vyre [a-z]+ /, "no dash and no command");
+});
 
 /** @param {Record<string, any>} answers */
 const fake = (answers) => { /** @type {string[]} */ const seen = []; const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { seen.push(`${tool} ${JSON.stringify(input ?? {})}`); const a = answers[tool]; return a instanceof Error ? { error: { code: "x", message: a.message } } : { data: a }; }; return { call, seen }; };

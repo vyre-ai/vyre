@@ -108,3 +108,32 @@ export async function claimTicket(ask, cv, o) {
   }
   return { code: "timeout" };
 }
+
+export const AFTER_KEY = "vyre.gh.after";
+/** @param {unknown} v */
+const shortText = (v) => String(v ?? "").replace(/[\u0000-\u001f]/g, "").slice(0, 60);
+
+/**
+ * What a first-run screen needs to pick up after the tab went to GitHub: which step started it, and the names the person typed (never a password). `create` is the new-person
+ * flow's Continue with GitHub; anything else is Sign in with GitHub. @param {Store | null} store @param {{ kind: "create" | "signin", first?: string, last?: string, username?: string }} v
+ */
+export function saveAfter(store, v) {
+  if (!store) return;
+  try { store.setItem(AFTER_KEY, JSON.stringify({ kind: v.kind === "create" ? "create" : "signin", first: shortText(v.first), last: shortText(v.last), username: shortText(v.username) })); } catch { /* nothing kept: the step starts over */ }
+}
+
+/** @param {Store | null} store @returns {{ kind: "create" | "signin", first: string, last: string, username: string } | null} */
+export function readAfter(store) {
+  if (!store) return null;
+  try {
+    const j = JSON.parse(store.getItem(AFTER_KEY) || "null");
+    if (!j || typeof j !== "object") return null;
+    return { kind: j.kind === "create" ? "create" : "signin", first: shortText(j.first), last: shortText(j.last), username: shortText(j.username) };
+  } catch { return null; }
+}
+
+/** @param {Store | null} store */
+export function clearAfter(store) {
+  if (!store) return;
+  try { store.removeItem(AFTER_KEY); } catch { /* gone */ }
+}

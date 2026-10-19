@@ -9,8 +9,10 @@ import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
 import { shellKind, shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
-import { getAgreeKey } from "../crypto/agree-key";
+import { agreeKeyResult, chatKeyProblem } from "../crypto/agree-key";
 import { installEd25519Fallback } from "../identity/webcrypto-web.js";
+import { onConnection } from "../state/connection";
+import { watchHeal } from "./heal-watch.js";
 
 // The page's WebCrypto may have no Ed25519 (a Mac window on an older WebKit, Chrome before 137): the identity chain verifies with it, so the fallback goes on before any first-run step asks (host-core's own check
 // then finds it working). The app's other identity code installs the same fallback when it loads; this page may never load that, so the host does not rely on it.
@@ -58,9 +60,22 @@ async function deviceId(): Promise<string> {
   return sessionDeviceId;
 }
 
+/** This device's chat-key point for its list entry. When no store kept a key it throws the reason (code no_agree_key), so the unlock repair (ensureAgree) shows it in Account instead of a vague line. */
+async function agreePoint(): Promise<string> {
+  const got = await agreeKeyResult();
+  if (got.key) return got.key.point;
+  throw Object.assign(new Error(chatKeyProblem(got.reason)), { code: "no_agree_key" });
+}
+
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
-  if (!host) host = createHost({ store: hostStore, directory: directory(), agreePoint: async () => (await getAgreeKey())?.point ?? null, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+  if (!host) {
+    const made = createHost({ store: hostStore, directory: directory(), agreePoint, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+    host = made;
+    // The repairs run again when the connection comes back and every ten minutes while the app is open (quiet when locked), so a Space's address the server cannot serve heals by itself.
+    const onOnline = typeof window !== "undefined" && typeof window.addEventListener === "function" ? (f: () => void) => { window.addEventListener("online", f); return () => window.removeEventListener("online", f); } : undefined;
+    watchHeal({ heal: () => made.call("identity.heal"), onConnection, ...(onOnline ? { onOnline } : {}) });
+  }
   return host;
 }
