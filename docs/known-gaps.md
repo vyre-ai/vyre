@@ -22,7 +22,7 @@ Each agent that has a computer gets its own, with its own screen and its own Chr
 
 ### Downloads in an agent's computer
 
-Fixed in 0.6.2, for an agent that has its own Linux user. Chrome's downloads land in a folder the browser's user owns and outside every folder the agent owns: the agent can read a download and cannot place or swap anything in it, and Files shows it read-only as Downloads. An agent that has its own desktop computer (the default) is not affected.
+Fixed in 0.6.2, for an agent that has its own Linux user. Chrome's downloads land in a folder the browser's user owns and outside every folder the agent owns: the agent can read a download and cannot place or swap anything in it, and Files shows it read-only as Downloads.
 
 ### A member's own AI account in chats
 
