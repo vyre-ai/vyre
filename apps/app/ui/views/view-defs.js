@@ -56,7 +56,7 @@ export const viewDefs = {
     list: { columns: ["ref", "state", "list"], sort: "title" },
   },
   matter: {
-    plural: "Matters", titleField: "title", holdsWork: true,
+    plural: "Jobs", titleField: "title", holdsWork: true,
     list: { columns: ["client", "stage", "fee", "owner"], sort: "closing" },
     board: { groupBy: "stage", card: ["title", "client", "fee", "owner"] },
     calendar: { date: "closing" },

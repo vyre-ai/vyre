@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { Avatar } from "../components/Avatar";
-import { IconButton } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { Menu, type MenuItem } from "../components/Menu";
@@ -16,6 +16,8 @@ import { fmtMoney, toDate } from "../fields/logic.js";
 import { renderField } from "../fields/registry";
 import { Stagger } from "../motion/Appear";
 import { useUiTheme } from "../theme";
+import { useTablePrefs } from "../../src/state/record-prefs";
+import { groupRows } from "../views/records-table.js";
 import { orderRows } from "../views/records-table.js";
 import type { Block, Handlers } from "./types";
 import { SpaceTag } from "../components/SpaceTag";
@@ -38,6 +40,7 @@ export function TypedCell({ col, cell, openLink }: { col: Col; cell: any; openLi
       </View>
     );
   }
+  if (cell.k === "roles") return <View className="flex-row flex-wrap items-center gap-s1">{(cell.v as { label: string; tone: string; ended: boolean }[]).map((c) => <Chip key={c.label} tone={(c.ended ? "plain" : c.tone) as "plain"}>{c.label}</Chip>)}</View>;
   if (cell.k === "sealed") return cell.on ? <Chip tone="sealed" icon="vault">{`${col.title} on file, sealed`}</Chip> : <Text tone="faint">Empty</Text>;
   const urn = cell.k === "link" || cell.k === "ref" ? String(cell.v ?? "") : "";
   const env = { links: urn && cell.link ? { [urn]: cell.link } : {}, actors: cell.who ? [cell.who] : [], ...(openLink ? { open: openLink } : {}) };
@@ -56,6 +59,11 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
   const sortable = cols.filter((c) => c.sort);
   const chipCols = cols.filter((c) => c.filter);
   const shown = useMemo(() => orderRows(all, { sort, desc, filters }), [all, filters, sort, desc]);
+  const prefs = useTablePrefs();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const tick = (id: string) => { const n = new Set(picked); if (n.has(id)) n.delete(id); else n.add(id); setPicked(n); };
+  const selection = { has: (id: string) => picked.has(id), toggle: tick, all: shown.length > 0 && shown.every((r) => picked.has(r.id)), some: shown.some((r) => picked.has(r.id)), toggleAll: () => setPicked(shown.length > 0 && shown.every((r) => picked.has(r.id)) ? new Set() : new Set(shown.map((r) => r.id))) };
+  const groups = groupRows(shown, cols, b.props?.group);
   const flip = (name: string, opt: string) => {
     const next = new Set(filters[name] || []);
     if (next.has(opt)) next.delete(opt); else next.add(opt);
@@ -120,7 +128,13 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
     <View className="gap-s3">
       {controls}
       {chips}
-      {phone ? phoneList : <Table columns={columns} rows={shown} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
+      {picked.size ? <View className="flex-row items-center gap-s3"><Text size="caption" tone="label">{`${picked.size} selected`}</Text><Button kind="ghost" size="sm" label="Clear" onPress={() => setPicked(new Set())} /></View> : null}
+      {phone ? phoneList : groups ? groups.map((g, i) => (
+        <View key={g.label} className="gap-s1">
+          <Text size="caption" strong tone="label">{`${g.label} \u00B7 ${g.rows.length}`}</Text>
+          <Table columns={columns} headerEnd={i === 0 ? h.slot?.(k, "header-end") : undefined} density={prefs.density} freezeFirst={prefs.freezeFirst} selection={selection} rows={g.rows} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty="" />
+        </View>
+      )) : <Table columns={columns} headerEnd={h.slot?.(k, "header-end")} density={prefs.density} freezeFirst={prefs.freezeFirst} selection={selection} rows={shown} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
       {shown.length ? <Text size="caption" tone="label">{shown.length} of {b.content?.total ?? all.length}</Text> : null}
     </View>
   );

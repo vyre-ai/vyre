@@ -15,7 +15,7 @@ fs.mkdirSync(out, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
 
-const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/matter", "u/calendar", "u/drive", "u/sites",
+const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/note", "u/records/matter", "u/calendar", "u/drive", "u/sites",
   "u/flows", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules", "u/settings/audit",
   "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard",
@@ -82,6 +82,12 @@ try {
     };
     for (const r of ROUTES) {
       await shoot(r, "");
+      // A record page: the first person of the Contacts list, by name (the generic click below may land on something else).
+      if (r === "u/records/contact") {
+        await page.getByText("Dana Reyes", { exact: true }).first().click({ timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(900);
+        if (!page.url().endsWith("/" + r)) { await shoot(page.url().replace(base, ""), "-record"); await page.goto(base + r, { waitUntil: "load" }).catch(() => {}); await page.waitForTimeout(500); }
+      }
       // One detail page per list: the first tall row that is a button.
       if (["u/now", "u/projects", "u/records/contact", "u/flows", "u/kits", "u/sites", "u/settings/devices"].includes(r)) {
         const rows = page.locator('[role="button"]');
