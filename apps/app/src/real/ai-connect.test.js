@@ -62,14 +62,3 @@ test("a computer with no owner says to make the name first", () => {
   assert.match(aiRefusal("not_a_server", "x", "mac"), /Make your Vyre name on this computer first/);
   assert.match(claudeState({ state: "todo" }, { pairFirst: true, ownerFirst: "name", surface: "browser" }).line, /Choose your Vyre name on your phone first/);
 });
-
-test("a code from another sign-in is named as that, by the state after the #", async () => {
-  const { codeMatchesFlow, WRONG_FLOW } = await import("./ai-connect.js");
-  const link = "https://claude.ai/oauth/authorize?client_id=x&state=abc123&code_challenge=y";
-  assert.equal(codeMatchesFlow("thecode#abc123", link), true);
-  assert.equal(codeMatchesFlow("thecode#zzz999", link), false);
-  assert.equal(codeMatchesFlow("thecode", link), true, "a code with no state is not judged");
-  assert.equal(codeMatchesFlow("thecode#abc", "https://claude.ai/oauth/authorize?client_id=x"), true, "a link with no state is not judged");
-  assert.equal(codeMatchesFlow("thecode#abc", null), true);
-  assert.equal(WRONG_FLOW, "That code is from a different sign-in. Open the sign-in again.");
-});

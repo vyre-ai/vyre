@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock, showToast } from "@vyre/ui";
 import { RealNotifications, RealUpdates } from "./RealMore";
@@ -8,7 +8,6 @@ import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
 import { useSettings } from "./state";
-import { openExternal } from "../../src/shell/open-external";
 
 function SampleNotificationsScreen() {
   const { notify, setNotify } = useSettings();
@@ -45,7 +44,7 @@ function SampleAboutScreen() {
     <Page title="About Vyre" back="/u/settings">
       <AboutCard version={VERSION} />
       <Group title="Open-source credits">
-        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void openExternal(c.href as string) } : {})} /></View>)}</Card>
+        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
     </Page>

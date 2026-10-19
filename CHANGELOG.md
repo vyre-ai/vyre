@@ -53,9 +53,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- fix(app): one way to open a link. In the Mac app window.open and Linking.openURL did nothing ("Open the sign-in" and Link GitHub said the popup was blocked); every link now goes through openExternal (src/shell/open-external.ts), which uses the shell's own open in the Mac app, a window in a browser and the system on a phone, and only opens web, mail and phone links. Where a sign-in link matters it is also shown as text to copy. The GitHub sign-in in the Mac app still waits on a return page that lands in the browser, not the window (not fixed here).
-- fix(settings): AI accounts has one Claude sign-in. The Claude card is the one place; the other accounts list no longer shows a second Claude row for the owner. A pasted Claude code whose state (the part after #) is not the open sign-in's says "That code is from a different sign-in. Open the sign-in again."
-- fix(app): a team Space on a server is shown by its own name ("tess", "Northwind"), not "tess's Cloud". My Home and My Cloud are unchanged.
 - fix(agents): an agent is said in words wherever a person reads it (Engineer, Ads Writer, and the assistant as typed): the Chats list and a chat only with it, the New chat picker, Home's agents, and the names on a task's slots. An @mention keeps the agent's id, because the id is what the mention resolves by.
 
 - fix(first run): a page with no daemon (the Mac window with no vyred, the hosted web app) made its identity's device entry with no key-agreement point (`agree`), so no chat could be wrapped to the device ("This device isn't ready for private chats yet") and the box listed no device. The genesis entry now carries the point, and an identity made the old way is repaired when it is unlocked: the device signs the chain's own `agree` op for its own entry and the directory appends it, once.

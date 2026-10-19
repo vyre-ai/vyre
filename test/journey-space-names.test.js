@@ -1,5 +1,5 @@
 // @ts-check
-// G18 on a real vyred: the names a person sees for their Spaces. A computer's own Space is "My Home"; on a server it is "My Cloud"; a team Space on a server is its name. The app draws every name with the
+// G18 on a real vyred: the names a person sees for their Spaces. A computer's own Space is "My Home"; on a server it is "My Cloud"; a team Space on a server is "<its name>'s Cloud". The app draws every name with the
 // one function (apps/app/src/state/space-name.js) from what spaces.list answers, so the names are read from a real daemon's own rows.
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -52,7 +52,7 @@ test("on a server the person's own Space reads My Cloud", async t => {
   assert.equal(spaceName(home), "My Cloud", JSON.stringify(home));
 });
 
-test("a team Space on a server reads as its name, as the person typed it", async t => {
+test("a team Space on a server reads <its name as the person typed it>'s Cloud", async t => {
   const { as } = await world(t, { machine: "server" });
   assert.ok(!(await as("spaces.identity.create", { name: "sam" })).error);
   const made = await as("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
@@ -60,5 +60,5 @@ test("a team Space on a server reads as its name, as the person typed it", async
   const rows = (await as("spaces.list")).data;
   const team = rows.find((/** @type {any} */ r) => r.label !== "personal");
   assert.ok(team, JSON.stringify(rows));
-  assert.equal(spaceName(team), "Northwind Bakery", JSON.stringify(team));
+  assert.equal(spaceName(team), "Northwind Bakery's Cloud", JSON.stringify(team));
 });

@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Pressable, Text as RNText, TextInput, View } from "react-native";
+import { Linking, Pressable, Text as RNText, TextInput, View } from "react-native";
 import { Appear, VyreMark, useAppearance, useUiTheme } from "@vyre/ui";
 import { hourOf } from "../../src/time/show.js";
 import { pickGreeting } from "./greetings.js";
 import { CONTENT_ID } from "./field-state.js";
 import { THEME_CHOICES, WELCOME_COPY, addressFrom, lastSpace } from "./welcome-model.js";
-import { openExternal } from "../../src/shell/open-external";
 
 const store = () => { try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; } };
 
@@ -38,7 +37,7 @@ export function Welcome({ phone, failure, onSignIn, onStart, onGithub }: { phone
     if (!a) { setBad(WELCOME_COPY.badSpace); return; }
     setBad(""); onSignIn(a.space);
   };
-  const open = (url: string) => { void openExternal(url); };
+  const open = (url: string) => { void Linking.openURL(url); };
   const picked = person.theme || "system";
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
