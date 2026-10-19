@@ -31,6 +31,17 @@ A short brief: who the person is (`about`), the project and its notes, anything 
 - `tools_call projects.context` gives a project's notes and state. `context.now` says where the person is right now.
 - `waiting.list` lists what waits on the person. Check it before you tell them something is stuck.
 
+## Memory: where it is, how it is found
+
+Memory is automatic. Vyre indexes every session turn by words and by meaning and learns facts about people and projects from what the person says and does. You get a few relevant lines with each prompt, marked as memory.
+
+- `memory_search` finds turns; a result names a session and a turn, and you can filter by `file` or `commit`.
+- `memory_turn` reads the turns around a hit word for word. Quote a past turn from it, not from a summary.
+- `memory_ask` answers a question about past work from past sessions and personal facts, with sources, or abstains. Ask before you claim not to remember.
+- `tools_call memory.decisions` lists what the person decided.
+- `memory_remember` records a lasting fact or decision you learned. `tools_call memory.correct` passes on a correction the person made.
+- Memory has layers: the project, the Space and the person's identity. `tools_call memory.markers` lists what you are granted and `tools_call memory.follow` reads one. Nothing learned in one Space or project is copied into another, so cite where you found a thing.
+
 Search before you ask the person something they may already have said. Do not paste a whole transcript into your reasoning: read the turn you need.
 
 ## When your window is rolled over

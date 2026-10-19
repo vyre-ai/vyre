@@ -4,7 +4,7 @@ summary: What a record is, how types, fields, stages and links work, how to addr
 audience: agents
 owner: docs
 status: stable
-tokens: 700
+tokens: 900
 when: You read, create or change a contact, matter, task, note, file or other record, or need to link one record to another.
 ---
 
@@ -41,6 +41,10 @@ A Kit is a package of types, Flows and views. You do not install one directly: y
 - A link field points at another record. Follow it with `records.get` on the URN.
 - A sealed field shows `{{field:<urn>#<name>}}`. Never ask for its value (read `sealed-and-secrets.md`).
 - A restricted field you may not read is also shown as a placeholder or left out. The record is still yours to use.
+
+## History
+
+`tools_call records.history` with the record's `urn` shows its history, newest first: each change with who made it, plus logged calls, meetings and notes. Read it before you change a record someone else touched.
 
 ## Stages
 
