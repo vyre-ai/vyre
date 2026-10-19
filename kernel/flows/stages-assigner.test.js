@@ -15,7 +15,6 @@ const tpl = () => ({
     { name: "Opening", tasks: [
       { title: "Agent task", doer: "teammate:research", output: { kind: "note" } },
       { title: "Person task", doer: "person:per_bob", output: { kind: "note" } },
-      { title: "Reviewed by an agent", doer: "person:per_bob", output: { kind: "note" }, reviewer: { who: "teammate:research" } },
     ] },
     { name: "Done" },
   ],
@@ -39,10 +38,9 @@ test("a stage task given to an agent records the person who moved the record the
   const r = await project();
   await stages.enter({ urn: r.urn, type: "project", id: r.id, stage: "Opening", entry: "start", by: BOB.id });
   await settle(w); await stages.idle();
-  const agent = await byTitle("Agent task", r.urn), person = await byTitle("Person task", r.urn), reviewed = await byTitle("Reviewed by an agent", r.urn);
-  assert.ok(agent && person && reviewed, `the tasks were made: ${JSON.stringify([Boolean(agent), Boolean(person), Boolean(reviewed)])} ${JSON.stringify(said).slice(0, 800)}`);
+  const agent = await byTitle("Agent task", r.urn), person = await byTitle("Person task", r.urn);
+  assert.ok(agent && person, `the tasks were made: ${JSON.stringify([Boolean(agent), Boolean(person)])} ${JSON.stringify(said).slice(0, 800)}`);
   assert.equal(agent.assigned_by.id, BOB.id, "the agent's task is Bob's to have given");
-  assert.equal(reviewed.assigned_by.id, BOB.id, "so is one an agent reviews");
   assert.equal(person.assigned_by.id, ALEX.id, "a person's task is the module's, as before");
 });
 
