@@ -183,7 +183,7 @@ test("4. an agent reviewer is woken once for a hand-in, holds that one task for 
   await ask.start(anaChain, task.id);
   assert.equal((await ask.complete(anaChain, task.id, { note: "done", sources: ["https://example.test/a"] })).state, "in_review");
   // the daemon's own wake: one job thread for the reviewer, counted as one review round
-  const row = await until(async () => { const r = wakes(d, task.id, "reviewer"); seen.v = r; return r.length ? r : null; }, "the reviewer agent to be woken");
+  const row = await until(async () => { const r = wakes(d, task.id, "reviewer"); seen.v = r; return r.length && r.every((/** @type {any} */ x) => x.thread) ? r : null; }, "the reviewer agent to be woken, and its job thread to be recorded");   // the claim row is written first and the thread after the launch: wait for both
   assert.equal(row.length, 1, "woken once for the hand-in");
   assert.equal(row[0].agent, "checker");
   assert.ok(row[0].thread, "it got a job thread");
@@ -210,7 +210,7 @@ test("5. changes requested on an agent doer's task wake the doer again, with the
   const asked = await ask.review(miaChain, task.id, { result: "changes", note: "Say who it is for." });
   assert.equal(asked.state, "changes_requested");
   // the doer is woken again, in a job of its own, for the changes
-  const again = await until(async () => { const r = wakes(d, task.id, "changes"); seen.v = r; return r.length ? r : null; }, "the doer agent to be woken for the changes");
+  const again = await until(async () => { const r = wakes(d, task.id, "changes"); seen.v = r; return r.length && r.every((/** @type {any} */ x) => x.thread) ? r : null; }, "the doer agent to be woken for the changes, and its job thread to be recorded");
   assert.equal(again.length, 1, "woken once for the changes");
   assert.equal(again[0].agent, "writer");
   assert.ok(again[0].thread, "in a job thread of its own");
