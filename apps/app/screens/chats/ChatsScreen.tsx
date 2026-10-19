@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, EmptyState, LoadingState, Text, useUiTheme } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
@@ -30,6 +30,9 @@ export default function ChatsScreen() {
   const [say, setSay] = useState("");
   const [making, setMaking] = useState(false);
   const tried = useRef(false);
+  const [again, setAgain] = useState(0);
+  // Each time the person comes back to this page it tries again: the device may have become ready (its key published, its name known) since the last refusal.
+  useFocusEffect(useCallback(() => { tried.current = false; setAgain((n) => n + 1); }, []));
   const openChat = (id: string) => router.replace({ pathname: "/u/chats/[id]", params: { id, focus: "1" } });
   const landing = chatsLanding({ assistant: !!assistant, from: chats.from, list });
   useEffect(() => { if (landing === "open" && assistant) openChat(assistant.id); }, [landing, assistant?.id]);
@@ -40,7 +43,7 @@ export default function ChatsScreen() {
       if ("chat" in r) { refresh(); openChat(r.chat); } else setSay(r.say);
     } catch (e) { setSay(e instanceof Error && e.message ? e.message : "Your Assistant's chat did not start."); } finally { setMaking(false); }
   };
-  useEffect(() => { if (landing === "make" && !tried.current) { tried.current = true; void make(); } }, [landing]);
+  useEffect(() => { if (landing === "make" && !tried.current) { tried.current = true; void make(); } }, [landing, again]);
   const view = chatsView({ from: chats.from, gap, rows: chats.rows, live: status === "live" });
   return (
     <Page top title="Chat">
