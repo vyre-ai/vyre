@@ -38,6 +38,13 @@ async function photoShots(ctx, page, shot, w, theme) {
   fs.writeFileSync(pic, await maker.screenshot({ type: "png" }));
   await maker.close();
   await page.goto(`${root}/u/profile`, { waitUntil: "networkidle" }); await page.waitForTimeout(2500);
+  // a profile is per Space: the sample opens on All spaces, so pick its first Space with the switcher (the sidebar is unfolded first if an earlier shot folded it)
+  const switcher = page.getByRole("button", { name: /Switch space/ }).first();
+  if (!(await switcher.isVisible().catch(() => false)) && w > 600) { await page.keyboard.press("Control+Backslash"); await page.waitForTimeout(600); }
+  await switcher.click().catch(() => console.log(`photo ${w} ${theme}: no Space switcher`));
+  await page.waitForTimeout(500);
+  await page.getByRole("menuitem", { name: /Juniper Studio/ }).first().click().catch(() => console.log(`photo ${w} ${theme}: no Juniper Studio in the switcher`));
+  await page.waitForTimeout(1500);
   await shot("p1-profile");
   const upload = page.getByRole("button", { name: /Upload photo|Change photo/ }).first();
   if (!(await upload.count())) { console.log(`photo ${w} ${theme}: no Upload photo button (the profile needs a Space showing)`); return; }
