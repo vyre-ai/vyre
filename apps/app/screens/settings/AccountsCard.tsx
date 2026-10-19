@@ -28,6 +28,9 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
   // "Use an API key": the key typed here goes once to the server's key tool and is cleared; it is never kept or shown again
   const [keyMode, setKeyMode] = useState(false);
   const [key, setKey] = useState("");
+  // a member's key goes to her own Vault: its password is asked for only when her Vault is locked or new (need_password)
+  const [pw, setPw] = useState("");
+  const [needPw, setNeedPw] = useState(false);
   const run = useRef(0);
   const load = useCallback(() => { setErr(""); accounts.list().then(setRows).catch((e) => { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); }); }, []);
   useEffect(() => { load(); return () => { run.current++; }; }, [load]);
@@ -131,8 +134,9 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
         <View className="gap-s2">
           <Field label={ACCOUNTS_COPY.keyLabel} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} />
           <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
+          {member && needPw ? <Field label="Your Vault password" value={pw} onChangeText={setPw} kind="password" help="The key goes to your own Vault, and only your own chats and Flows use it." /> : null}
           <View className="flex-row flex-wrap gap-s2">
-            <Button size="sm" label={busy === "key" ? "Adding" : "Add key"} disabled={busy === "key" || !key.trim()} onPress={() => void act("key", () => accounts.addKey(key, label).then(() => { setKey(""); setLabel(""); setKeyMode(false); setAdding(false); showToast("The account is added."); }))} />
+            <Button size="sm" label={busy === "key" ? "Adding" : "Add key"} disabled={busy === "key" || !key.trim()} onPress={() => void act("key", () => accounts.addKey(key, label, member ? { password: pw } : null).then(() => { setKey(""); setLabel(""); setPw(""); setNeedPw(false); setKeyMode(false); setAdding(false); showToast("The account is added."); }).catch((e) => { if ((e as { code?: string })?.code === "need_password") setNeedPw(true); throw e; }))} />
             <Button kind="ghost" size="sm" label="Sign in instead" onPress={() => { setKey(""); setKeyMode(false); }} />
             <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
           </View>
@@ -143,7 +147,7 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
           <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
           <View className="flex-row flex-wrap gap-s2">
             <Button size="sm" label="Sign in" onPress={() => void start(provider, label.trim())} />
-            {member ? null : <Button kind="ghost" size="sm" label="Use an API key" onPress={() => { setProblem(""); setKeyMode(true); }} />}
+            <Button kind="ghost" size="sm" label="Use an API key" onPress={() => { setProblem(""); setKeyMode(true); }} />
             <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
           </View>
         </View>

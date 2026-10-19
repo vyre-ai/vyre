@@ -98,3 +98,15 @@ test("Use an API key: the key's prefix picks the kind first run picks, the serve
   await assert.rejects(accountsSource(none.call).addKey("nope"), /does not look like an API key/);
   assert.deepEqual(none.seen, [], "a key that is not one is never sent");
 });
+
+test("a member's API key goes to her own Vault through the member key path, never the owner's key tool, with her Vault's password only when given", { skip: !strip }, async () => {
+  const { accountsSource } = await import("./accounts-source.ts");
+  const OR = "sk-or-v1-fake0000000000000000";
+  const b = box({ "onboard.agent.key": { data: { account: "ac_m", provider: "openrouter", label: "Mine" } } });
+  assert.deepEqual(await accountsSource(b.call).addKey(OR, "Mine", { password: "a long password" }), { account: "ac_m", provider: "openrouter", label: "Mine" });
+  assert.deepEqual(b.seen.map((x) => x.tool), ["onboard.agent.key"], "never sessions.accounts.key, which keeps keys in the owner's Vault");
+  assert.deepEqual(b.seen[0].input, { kind: "openrouter", key: OR, label: "Mine", password: "a long password" });
+  const locked = box({ "onboard.agent.key": { error: { code: "need_password", message: "Your password, to open your own Vault." } } });
+  await assert.rejects(accountsSource(locked.call).addKey(OR, "", {}), (e) => /** @type {any} */ (e).code === "need_password");
+  assert.equal(locked.seen[0].input.password, undefined, "no password is sent until she gives one");
+});
