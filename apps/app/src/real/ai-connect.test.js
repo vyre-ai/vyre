@@ -15,7 +15,7 @@ test("the moves are one onboard.claude input each, trimmed, and there is no Clau
 test("only an https sign-in link is offered, refusals are plain, and the assistant says where to connect", () => {
   assert.equal(safeLink("https://claude.ai/oauth/authorize?x=1"), "https://claude.ai/oauth/authorize?x=1");
   for (const bad of ["http://x.test", "javascript:alert(1)", "", null, "vyre://x"]) assert.equal(safeLink(bad), null, String(bad));
-  assert.match(aiRefusal("not_allowed", ""), /Only the owner/);
+  assert.match(aiRefusal("not_allowed", ""), /Add your own AI account/, "each person has their own AI accounts; a refusal never sends them to the owner");
   assert.equal(aiRefusal("x", "the box said"), "the box said");
   assert.match(NO_ACCOUNT_SAY, /no AI account yet.*Settings/);
 });

@@ -10,7 +10,7 @@ export function SampleAiScreen() {
   const source = useMemo(sampleAccounts, []);
   return (
     <Page title="AI accounts" back="/u/settings">
-      <Banner>Nobody's work runs on someone else's account. In a shared space, your chats still use your accounts and count against your budget.</Banner>
+      <Banner>Nobody's work runs on someone else's account. In a shared Space, your chats still use your own accounts and count against your budget.</Banner>
       <AiAccountsList source={source} />
     </Page>
   );

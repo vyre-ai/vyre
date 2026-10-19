@@ -18,15 +18,19 @@ export type AccountsApi = typeof realAccounts;
 /** The flow id of a sign-in this computer keeps itself (onboard.claude's setup token), not one of sessions.accounts.signin's. */
 const MACHINE = "machine";
 const surfaceNow = (): "browser" | "mac" | "phone" => (Platform.OS !== "web" ? "phone" : typeof window !== "undefined" && (window as any).__vyreShell ? "mac" : "browser");
-const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
+const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This computer has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
 const machineSay = (e: unknown) => aiRefusal((e as { code?: string })?.code, (e as Error)?.message || "", surfaceNow());
+
+/** The last list each source answered, kept for this run of the app only (names and states, never a key). */
+const LAST = new Map<AccountsApi, Account[]>();
 
 /** What is open under one provider: a sign-in, a key to add, or a key to replace. */
 type Open = { provider: string; mode: "key" } | { provider: string; mode: "replace"; account: Account } | null;
 
 export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi }) {
   const { color } = useUiTheme();
-  const [rows, setRows] = useState<Account[] | null>(null);
+  // the last list read draws at once on a return visit; the read below refreshes it
+  const [rows, setRows] = useState<Account[] | null>(() => LAST.get(source) ?? null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState("");
@@ -44,7 +48,8 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
   const run = useRef(0);
   const load = useCallback(() => {
     setErr("");
-    source.list().then(setRows).catch((e) => { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); });
+    source.list().then((r) => { LAST.set(source, r); setRows(r); })
+      .catch((e) => { const had = LAST.get(source); if (had) { setRows(had); setProblem(`This is the last list read. ${say(e, "It could not be refreshed.")}`); } else { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); } });
     source.assistant().then(setAssistant).catch(() => setAssistant(null));
   }, [source]);
   useEffect(() => { load(); return () => { run.current++; }; }, [load]);
@@ -158,25 +163,28 @@ export function AiAccountsList({ source = realAccounts }: { source?: AccountsApi
                 {here.code ? <Text mono>{`Code: ${here.code}`}</Text> : null}
                 {here.step === "url" ? (
                   <View className="gap-s2">
-                    <Field name="The code the page showed" value={code} onChangeText={setCode} placeholder="Paste the code here" />
+                    <Field name="The code the page showed" value={code} onChangeText={setCode} placeholder="Paste the code here" autoFocus onSubmit={() => { if (code.trim() && busy !== "code") void submit(here); }} onKey={(k) => { if (k === "Escape") cancel(); }} />
                     <View className="self-start"><Button size="sm" label={busy === "code" ? "Connecting" : "Continue"} disabled={!code.trim() || busy === "code"} onPress={() => void submit(here)} /></View>
                   </View>
                 ) : <Text size="caption" tone="muted">Waiting for you to approve it.</Text>}
                 <View className="self-start"><Button kind="ghost" size="sm" label="Cancel" onPress={cancel} /></View>
               </View>
             )
-          ) : keyOpen ? (
+          ) : keyOpen ? (() => {
+            const saveKey = () => void act("key", () => (keyOpen.mode === "replace" ? source.replaceKey(keyOpen.account, key) : source.addKey(p.id, key, label, base)).then(clear), keyOpen.mode === "replace" ? "The key is replaced." : `${p.name} is connected.`);
+            return (
             <View className="gap-s2">
-              <Field label={keyOpen.mode === "replace" ? `New key for ${keyOpen.account.label}` : `${p.name} API key`} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} />
+              <Field label={keyOpen.mode === "replace" ? `New key for ${keyOpen.account.label}` : `${p.name} API key`} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} autoFocus onSubmit={() => { if (key.trim() && busy !== "key") saveKey(); }} onKey={(k) => { if (k === "Escape") cancel(); }} />
               {keyOpen.mode === "key" ? <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" /> : null}
               {keyOpen.mode === "key" && p.key === "openai-compatible" ? <Field name="Address (optional)" value={base} onChangeText={setBase} placeholder="https://api.openai.com/v1" help="Where the key is sent. Leave it empty for OpenAI. An xAI key goes to xAI by itself." /> : null}
               <View className="flex-row flex-wrap gap-s2">
                 <Button size="sm" label={busy === "key" ? "Checking" : keyOpen.mode === "replace" ? "Replace key" : "Add key"} disabled={busy === "key" || !key.trim()}
-                  onPress={() => void act("key", () => (keyOpen.mode === "replace" ? source.replaceKey(keyOpen.account, key) : source.addKey(p.id, key, label, base)).then(clear), keyOpen.mode === "replace" ? "The key is replaced." : `${p.name} is connected.`)} />
+                  onPress={saveKey} />
                 <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
               </View>
             </View>
-          ) : p.signIn || p.key ? (
+            );
+          })() : p.signIn || p.key ? (
             <View className="flex-row flex-wrap gap-s2">
               {p.signIn ? <Button size="sm" kind={p.connected ? "ghost" : "primary"} label={p.connected ? "Sign in to another account" : "Sign in"} disabled={Boolean(flow)} onPress={() => void start(p.id)} /> : null}
               {p.key ? <Button size="sm" kind={p.connected || p.signIn ? "ghost" : "primary"} label={p.connected && !p.signIn ? "Add another key" : "Use an API key"} disabled={Boolean(flow)} onPress={() => { setProblem(""); clear(); setOpen({ provider: p.id, mode: "key" }); }} /> : null}

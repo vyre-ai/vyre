@@ -37,13 +37,13 @@ export const nameFirstLine = (surface = "mac") => (surface === "browser" ? "Choo
 
 /** @param {string | undefined} code @param {string} message @param {"browser" | "mac" | "phone"} [surface] */
 export function aiRefusal(code, message, surface) {
-  if (code === "not_allowed" || code === "denied") return "Only the owner of this space connects an AI account. Ask them to do it.";
+  if (code === "not_allowed" || code === "denied") return "This computer's own sign-in belongs to its owner. Add your own AI account with Sign in or Use an API key.";
   if (code === "not_a_server") return nameFirstLine(surface);
   if (code === "pair_first") return "Pair this server to your Vyre app first. Then connect an AI account.";
   if (code === "presence_required" || code === "needs_presence") return "That needs you. Approve on this device, then try again.";
   if (code === "expired" || code === "timeout") return "The sign-in ran out of time. Nothing was connected. Start over.";
   if (code === "bad_code" || code === "invalid_code") return "That code did not work. Copy it again from the sign-in page and paste it here. Nothing was connected.";
-  if (code === "offline") return "Your home did not answer, so nothing was saved. Try again.";
+  if (code === "offline") return "Your computer did not answer, so nothing was saved. Try again.";
   return message || "That did not connect. Nothing was saved. Try again.";
 }
 
