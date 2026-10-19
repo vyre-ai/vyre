@@ -24,6 +24,9 @@ import { githubSay } from "../identity/github-core.js";
 import { actMessage } from "../../../../names/worker/id-messages.js";
 import { acceptKdf, bundleHash, deriveLogin, loginMessage, registerMessage } from "./login-web.js";
 
+/** The model an OpenRouter key is saved with in first run (core/sessions/drivers/openrouter.js has no default of its own). */
+export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
+
 /**
  * Is this key a DEVICE key on the person's checked chain? A sign-in that opens a record whose identity key the chain does not list as a device is refused: the server (or a swapped record) cannot hand a device
  * a key the person never published. @param {Uint8Array} seed @param {{ eid: string, kind: string }[]} entries
@@ -794,7 +797,8 @@ export function createHost(o) {
       const ports = await o.space.load();
       /** @type {any} */ let r;
       if (role && role !== "owner") return memberKey(ports, box, space, { kind, key, label, password: input && input.password ? String(input.password) : "", ...(base ? { base_url: base } : {}) });
-      try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}) }, box); }
+      // The OpenRouter driver never picks a model for a person (it would spend on their behalf), so the account is kept with one: a Sonnet through OpenRouter, changed later in Settings or the model step.
+      try { r = await ports.call("sessions.accounts.key", { kind, key, label, name: label, ...(base ? { base_url: base } : {}), ...(kind === "openrouter" ? { model: OPENROUTER_DEFAULT_MODEL } : {}) }, box); }
       catch (e) {
         // whatever the server or the provider said, the key is never in what is thrown here
         const code = e && /** @type {any} */ (e).code ? String(/** @type {any} */ (e).code) : "failed";

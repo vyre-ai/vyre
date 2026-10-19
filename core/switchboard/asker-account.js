@@ -36,11 +36,13 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
  * The provider a NEW thread runs on when its start names none and no agent brings its own: Claude when Claude can run for the person, else the provider of the AI account they do have. A box whose sessions
  * are sandboxed has no Claude login of its own, so a person who added only an OpenRouter key (the first-run way) would otherwise get a Claude thread that refuses "Connect an AI account to start a session".
  * Claude can run when the person has a Claude account of their own, or the box holds a Claude credential (deps.auth), or an ambient login is allowed (no deps.requireAccount). null: keep the default.
- * @param {any} sb the Switchboard @param {{ provider?: string, agent?: string, account?: string, kernelTurn?: { asker?: string } | null, person?: string }} o
+ * @param {any} sb the Switchboard @param {{ provider?: string, agent?: string, agent_kind?: string, auth?: string, env?: Record<string, string>, fallback?: any, account?: string, kernelTurn?: { asker?: string } | null, person?: string }} o
  * @returns {Promise<{ provider: string, account: string } | null>}
  */
 export async function accountProviderFor(sb, o) {
-  if (o.provider || o.agent || o.account || !sb.deps.requireAccount) return null;
+  // an agent that is not the person's Assistant brings its own sign-in; an Assistant's own Claude credentials (a token or key in its env, or a named auth) keep it on Claude
+  if (o.provider || o.account || !sb.deps.requireAccount || (o.agent && o.agent_kind !== "assistant")) return null;
+  if (o.agent && ((o.auth && o.auth !== "ambient") || (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) || o.fallback)) return null;
   const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
   const who = asker ? { person: asker } : {};
   const claude = await sb.accountFor({ provider: "claude", ...who }).catch(() => null);

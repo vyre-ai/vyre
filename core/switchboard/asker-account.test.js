@@ -211,3 +211,11 @@ test("a person with no account of their own gets nothing from another person's: 
   const sb = sbFor({ accounts: [{ id: "bens", provider: "openrouter", person: "per_ben" }] });
   assert.equal(await accountProviderFor(sb, { kernelTurn: { asker: "per_cy" } }), null);
 });
+
+test("the person's Assistant, with no credentials of its own on a box with no Claude sign-in, runs on their account; an Assistant with Claude credentials, or any other agent, does not move", async () => {
+  const sb = sbFor({ accounts: [{ id: "acct_or", provider: "openrouter", person: null }] });
+  assert.deepEqual(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", auth: "ambient" }), { provider: "openrouter", account: "acct_or" });
+  assert.equal(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", auth: "subscription" }), null);
+  assert.equal(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", env: { ANTHROPIC_API_KEY: "x" } }), null);
+  assert.equal(await accountProviderFor(sb, { agent: "kit", agent_kind: "agent", auth: "ambient" }), null);
+});
