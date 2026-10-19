@@ -348,6 +348,8 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   // The fakes stand in for Vyre's own gate and chat, so they load as first party (ADR 0047).
   const reg = new Registry({ db, events, config: { role: "local" }, log: () => {}, presence, firstPartyRoots: [root] });
   await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "local" });
+  // a phone is enrolled: with none, the owner's own acts pass the floor (Registry.noPresenceDevice)
+  presence.enroll({ kind: "device", name: "phone", public_key: crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   for (const caller of ["cli", "capsule", "deck", "local", "mcp", "mcp:agent:assistant", "unknown"]) {
     const r = await reg.call("gate.approve", { id: "a1" }, caller);
     assert.equal(r.error && r.error.code, "presence_required", `${caller} approved without a proof`);

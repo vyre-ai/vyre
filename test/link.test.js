@@ -10,7 +10,7 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { request } from "../core/daemon/client.js";
-import { tempHome, writeModule, present } from "./helpers.js";
+import { tempHome, writeModule, present, enrolDevice } from "./helpers.js";
 import { OWNER, MAC, PHONE, wait, until, pair } from "./link-harness.js";
 
 test("link: pairing, box tools from the Mac, a federated search and a fetch", async t => {
@@ -217,6 +217,7 @@ test("link: approving a pairing needs the owner's presence, whoever calls, and t
   fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", transcripts: [] }));
   // The real presence check, not the stand-in the other tests use.
   const box = await start({ root: boxRoot, log: () => {} });
+  enrolDevice(box); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => box.stop());
   if (!box.registry.deps.presence) return t.skip("this vyred has no presence check yet");
   const MAC_PEER = { node: "test-mac", stableId: "nMAC", login: OWNER };

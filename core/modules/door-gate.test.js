@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
-import { tempHome, pairDevice } from "../../test/helpers.js";
+import { tempHome, pairDevice, enrolDevice } from "../../test/helpers.js";
 import { MEMBER_MAY, MEMBER_OUTWARD, OWNER_ONLY, PLUMBING, SELF_GATED } from "./door-lists.js";
 import { refusal, memberSees } from "./door-gate.js";
 import { request } from "../daemon/client.js";
@@ -25,6 +25,7 @@ async function rig(t, team = true, extra = {}) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box" }));
   const d = await start({ root, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...extra });
   t.after(() => d.stop());
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   const OWNER = d.kernel.id.owner;
   const chain = (/** @type {string} */ p) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-" + p.slice(4, 8), person: p, path: "direct", session: "s" });
   if (team) {

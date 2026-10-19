@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { Presence, inputHash } from "../core/presence/index.js";
-import { tempHome, kernelCaller } from "./helpers.js";
+import { tempHome, kernelCaller, enrolDevice } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BIN = path.join(ROOT, "bin", "vyre");
@@ -225,6 +225,7 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", vault: { keystore: "file" }, modules: { disable: ["names", "onboard", "link"] },
     network: { tailscale: true, owner: "me@example.com", address: "https://me.vyre.run" } }));
   const d = await start({ root, log: () => {} });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const key = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const enroll = rp_id => ({ kind: "passkey", name: "x", public_key: key, alg: -7, rp_id, credential_id: "cred-" + rp_id.replace(/\./g, "-") });
