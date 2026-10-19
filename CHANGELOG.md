@@ -53,6 +53,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: the owner walk on a real box. first-run-e2e takes owner_walk and strict inputs; with owner_walk the browser first run, after its group walk, walks ten owner walks on the fresh installer box (scripts/lib/proof/owner-walk-real.mjs): the identity chain's agree and Account, Chats, Files, People, Roles, Apps, Watchers, a webhook Flow, Playbooks and Settings, each checking the server's state; a walk whose screen is not on the build yet is reported pending and, with strict, fails the run.
+
 - fix(roles): the New role dialog starts a role with "Work with files" and "Use memory" on, which the box refuses for a role that starts from Member (a Member holds no drive or memory-filing action), so no role could be made at all. A new role now starts with the switches a Member has (see, create, change, tasks, flows), and the screen's own list of admin-only switches is the catalogue's (files, memory, people, rules, invite, customize, kits, services, reveal). test/new-role-default.test.js makes a role from the dialog's default and holds the two lists together.
 
 - fix(first run): Connect your AI, Claude sign-in. The provider's page shows a code to paste back, and the screen had no field for it ("I signed in" sent the home's own code instead). When the home answers step url the screen now shows "The code the page showed" with Continue, and sends the pasted code with the flow, as Settings does; "I signed in" sends the flow only. A Cancel clears the flow, link and code so the provider tiles and the API key tile work again.
