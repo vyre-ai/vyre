@@ -34,6 +34,8 @@ export async function seedIsDeviceOnChain(seed, entries) {
 }
 
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
+/** The name a person may show: one line, up to 60 characters, at least one letter. Returns it trimmed, or "". @param {unknown} v */
+export const displayOk = (v) => { const t = typeof v === "string" ? v.trim() : ""; return t && t.length <= 60 && /\p{L}/u.test(t) && !/[\u0000-\u001f]/.test(t) ? t : ""; };
 const b64u = (/** @type {Uint8Array} */ b) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(t + "=".repeat((4 - (t.length % 4)) % 4)), (c) => c.charCodeAt(0)); };
 
@@ -407,8 +409,7 @@ export function createHost(o) {
       const made = await claimIdentity({ name, code, base, key, fetch: f, ...(agree ? { agree } : {}), ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
       const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: null, ...(o.kdf ? { kdf: o.kdf } : {}) });
       // The name the person typed (first and last), kept beside the username: Account shows it, with the username under it. One line of letters and marks, up to 60.
-      const shown = typeof display === "string" ? display.trim() : "";
-      const given = shown && shown.length <= 60 && /\p{L}/u.test(shown) && !/[\u0000-\u001f]/.test(shown) ? shown : "";
+      const given = displayOk(display);
       await o.store.save({ master, username: name, ...(given ? { display: given } : {}), id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
       held = seed;
       return { username: name, id: made.id, ...personRoutes(name), recoveryKey: made.recoveryCode, once: true, already: false };
@@ -442,6 +443,32 @@ export function createHost(o) {
       if (!held) throw bad("Unlock with your password first.", "locked");
       await ensureAgree(held);
       return { failed: agreeNote.failed };
+    },
+
+    // The name shown for the person (first and last, as typed in first run), kept beside the username. One line with a letter, up to 60 characters; the same rule everywhere it is set.
+    "identity.display.set": async ({ display }) => {
+      const k = await o.store.load();
+      if (!k) throw bad("There is no identity on this page yet.", "no_identity");
+      const given = displayOk(display);
+      if (!given) throw bad("A name is one line of up to 60 characters, with at least one letter.", "bad_name");
+      await o.store.save({ ...k, display: given });
+      return { display: given };
+    },
+    // An identity made before the name was kept: read what the person's server already got at the Assistant step (its onboard.status says `person`) and keep it, so the name shows without typing. Quiet: nothing changes if the server has none or cannot be reached.
+    "identity.display.sync": async () => {
+      const k = await o.store.load();
+      if (!k) return { display: null };
+      if (k.display) return { display: k.display };
+      try {
+        const box = (k.spaces || []).map((/** @type {any} */ s) => s && s.paired && s.paired.box).find(Boolean);
+        if (!box || !o.space) return { display: null };
+        const ports = await o.space.load();
+        const st = /** @type {any} */ (await ports.call("onboard.status", {}, String(box)));
+        const given = displayOk(st && st.person);
+        if (!given || given === k.username) return { display: null };
+        await o.store.save({ ...k, display: given });
+        return { display: given };
+      } catch { return { display: null }; }
     },
 
     "identity.entries": async () => {

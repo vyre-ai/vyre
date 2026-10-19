@@ -502,3 +502,31 @@ test("the name typed in first run is kept beside the username, and identity.stat
     assert.equal((await h.call("identity.status")).display, undefined, JSON.stringify(bad));
   }
 });
+
+test("the name can be set in Account (one line, a letter, up to 60), and an older identity takes the name its server already holds", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  // made the old way: no name kept; the server was told the name at the Assistant step and says it in onboard.status
+  const asked = [];
+  const ports = { call: async (name, input, box) => { asked.push([name, box]); return name === "onboard.status" ? { person: "Ola Walker" } : {}; } };
+  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => ports } });
+  await host.call("onboard.person.create", { username: "ola", password: PASSWORD, confirm: PASSWORD });
+  assert.deepEqual(await host.call("identity.display.sync"), { display: null }, "no server paired yet: nothing to read");
+  store.peek().spaces = [{ id: "spc_aaaaaaaaaaaa", name: "ola-space", role: "owner", server: null, paired: { box: "box1", route: "r", relay: "ws://x", name: "ola" } }];
+  assert.deepEqual(await host.call("identity.display.sync"), { display: "Ola Walker" });
+  assert.deepEqual(asked.at(-1), ["onboard.status", "box1"]);
+  assert.equal((await host.call("identity.status")).display, "Ola Walker");
+  // a kept name is never replaced by the server's
+  ports.call = async () => ({ person: "Someone Else" });
+  assert.deepEqual(await host.call("identity.display.sync"), { display: "Ola Walker" });
+  // set it by hand
+  assert.deepEqual(await host.call("identity.display.set", { display: " Ola W. " }), { display: "Ola W." });
+  assert.equal((await host.call("identity.status")).display, "Ola W.");
+  for (const bad of ["", "   ", "1234", "a\nb", "x".repeat(61), 5]) await assert.rejects(() => host.call("identity.display.set", { display: bad }), (e) => e.code === "bad_name", JSON.stringify(bad));
+  // a server that answers with the username, or nothing sensible, gives no name
+  const store2 = memoryStore();
+  const h2 = createHost({ store: store2, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space: { load: async () => ({ call: async () => ({ person: "olb" }) }) } });
+  await h2.call("onboard.person.create", { username: "olb", password: PASSWORD, confirm: PASSWORD });
+  store2.peek().spaces = [{ id: "spc_bbbbbbbbbbbb", name: "olb-space", role: "owner", server: null, paired: { box: "box2", route: "r", relay: "ws://x", name: "olb" } }];
+  assert.deepEqual(await h2.call("identity.display.sync"), { display: null });
+});
