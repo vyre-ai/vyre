@@ -64,7 +64,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -985,7 +985,7 @@ export class Switchboard {
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? () => lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
-      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
+      o = { ...o, env: { ...(o.env || {}), ...c.env, ...(ownerDirect(this, o, acct) ? { VYRE_OWNER_ACCOUNT: "1" } : {}) }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
     // Project folders on a team server (core/switchboard/project-access.js): this session's folder goes to its project's group, and an account's session joins only its person's projects' groups.
@@ -4032,7 +4032,7 @@ export default {
       // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
       if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });
       if (a.base_url) { if (a.provider === "claude") own.ANTHROPIC_BASE_URL = String(a.base_url); else own.VYRE_API_BASE_URL = String(a.base_url); }
-      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model); if (!a.person && a.provider !== "claude") own.VYRE_OWNER_ACCOUNT = "1";   // the owner's own key: it may go direct with no inference door (the driver scrubs the prompt)
+      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model);
       return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v), ...own } };
     };
     // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that
