@@ -43,6 +43,7 @@ const DAY = 86_400_000;
  *   onIngress?: (base: string | null) => void,   told the https origin links and webhooks use when it appears (the gate is up and the name points here) and null when it goes
  *   reachable?: () => boolean,                  has the outside check proved the port answers
  *   tunnel?: () => boolean,                     the box reaches the public through the Publish tunnel (no inbound port): publish the name via the tunnel, declaring its apps and share hosts
+ *   rootRedirect?: string,                      where the bare root https://<name>.vyre.run/ is sent (a 302; the hosted app). Absent: the gate's plain 404 as before
  *   ingressPort?: number,                       the port the OUTSIDE reaches the gate on for links and webhooks, when it is not the one the gate listens on (a container publishes 443 onto it); 443 is written without a port. Devices still dial the gate's own port
  *   publish?: boolean,                          publish the address without waiting for the outside check (the person's word: this box is directly on the internet)
  *   log?: (m: string) => void,
@@ -179,7 +180,7 @@ export function createPublicGate(o) {
       const c = await ensureCert(name, fqdn, wantApps);
       expires = c.expires; certApps = Boolean(c.apps);
       if (!gate) {
-        gate = D.createGate({ listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port }, ...(o.ingress ? { ingress: o.ingress.apps ? { ...o.ingress, appsSuffix: `.${fqdn}` } : o.ingress } : {}),
+        gate = D.createGate({ ...(o.rootRedirect ? { rootRedirect: o.rootRedirect } : {}), listen: { host: (o.listen && o.listen.host) || "0.0.0.0", port: (o.listen && o.listen.port) || 0 }, tls: { cert: c.cert, key: c.key }, upstream: { port: o.upstream.port }, ...(o.ingress ? { ingress: o.ingress.apps ? { ...o.ingress, appsSuffix: `.${fqdn}` } : o.ingress } : {}),
           onEvent: (/** @type {any} */ e) => { if (e && e.type !== "accept") log(`public gate: ${e.type}${e.addr ? " " + e.addr : ""}`); } });
         at = await gate.listen();
       } else if (c.renewed) gate.setTls({ cert: c.cert, key: c.key });
