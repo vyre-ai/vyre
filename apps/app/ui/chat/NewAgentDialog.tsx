@@ -48,7 +48,7 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
             </Pressable>
           ))}
         </View>
-        <View accessibilityLabel="Colour" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
+        <View accessibilityLabel="Colour" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "center", maxWidth: 348, alignSelf: "center" }}>
           {(AGENT_COLORS as string[]).map((c, i) => (
             <Pressable key={c} accessibilityRole="radio" accessibilityLabel={`${COLOUR_NAMES[i] ?? `Colour ${i + 1}`}`} accessibilityState={{ selected: values.color === i }} onPress={() => onChange({ color: i })}
               style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, alignItems: "center", justifyContent: "center", borderWidth: values.color === i ? 3 : 0, borderColor: color.primary }}>
@@ -59,7 +59,7 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
         {parts && onPart ? (
           <View style={{ gap: 12 }}>
             <View style={{ alignItems: "center" }}>
-              <IconButton icon="face" label="Customize" kind={open ? "secondary" : "ghost"} onPress={() => setOpen((v) => !v)} />
+              <IconButton icon="spark" label="Customize" kind={open ? "secondary" : "ghost"} onPress={() => setOpen((v) => !v)} />
             </View>
             {open ? PARTS.map((p) => (
               <View key={p.key} accessibilityLabel={p.label} style={{ gap: 6 }}>

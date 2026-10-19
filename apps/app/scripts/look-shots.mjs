@@ -47,6 +47,15 @@ try {
     await shot("5-settings-sheet");
     await page.getByRole("button", { name: "Customize" }).last().click().catch(() => {});
     await shot("6-settings-sheet-customize");
+    // the sidebar's foot (a wide screen only: a phone has the tab bar): the profile row, its menu, and the rail folded to the face
+    if (w > 600) {
+      await page.goto(`${root}/u/now`, { waitUntil: "networkidle" }); await page.waitForTimeout(2500);
+      await shot("7-sidebar-foot");
+      await page.getByRole("button", { name: /profile, appearance, spaces, lock and the sidebar/ }).first().click().catch(() => console.log("no profile row"));
+      await shot("8-sidebar-menu");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Control+Backslash"); await shot("9-sidebar-folded");
+    }
     await ctx.close();
   }
 } finally { await browser.close(); server.close(); }

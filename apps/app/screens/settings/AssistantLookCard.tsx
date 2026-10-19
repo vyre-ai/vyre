@@ -20,7 +20,7 @@ export function AssistantLookCard({ person }: { person: string }) {
         <Row lead={<Avatar of={markRef("person", person)} size={48} />} title={person} sub="You. Drawn from your name." />
         {assistant ? (
           <Row lead={<Avatar of={markRef("agent", assistant.name, undefined, assistant.look || undefined)} size={48} />} title={assistant.name} sub="Your Assistant"
-            end={<Button size="sm" kind="ghost" icon="face" label="Change its look" onPress={() => setLooking(true)} />} />
+            end={<Button size="sm" kind="ghost" icon="spark" label="Change its look" onPress={() => setLooking(true)} />} />
         ) : assistant === null ? <View className="p-s3"><Text tone="muted">Your Assistant has not been made yet. It is made when you finish setup.</Text></View> : null}
       </Card>
       {assistant ? <LookSheet a={assistant} open={looking} onClose={() => setLooking(false)} onSaved={(look) => { setAssistant({ ...assistant, look }); setLooking(false); showToast("Saved. Your Assistant looks different now."); }} /> : null}

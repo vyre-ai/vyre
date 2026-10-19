@@ -10,7 +10,7 @@ import { markRef, spaceRef } from "../marks/useMark";
 import { Menu } from "../components/Menu";
 import { Row } from "../components/Row";
 import { Sheet } from "../components/Sheet";
-import { useUiTheme } from "../theme";
+import { useAppearance, useUiTheme } from "../theme";
 import { glass } from "../lib/glass";
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import { SpaceTile } from "../components/SpaceTile";
@@ -117,27 +117,52 @@ function MainNav({ p, folded }: { p: RailProps; folded: boolean }) {
   );
 }
 
-/** You at the foot: your face (28) and nothing else. A tap opens a popover above it with your name and the space, then Collapse and Lock (Vault, Build and Settings are rows above it). Every section's sidebar has this same foot. */
+/**
+ * You at the foot, as a profile row: your face, your name and a muted line (your name on the box, else the space), and a chevron. Pressing it opens a short menu above it: your profile and Assistant,
+ * Appearance, the theme, the other spaces, Lock, Collapse and About. Folded, only the face shows and the name is its tip. No name yet reads "You". Every section's sidebar has this same foot.
+ */
 function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle: () => void }) {
-  const { color } = useUiTheme();
+  const { color, resolved } = useUiTheme();
   const cur = p.spaces.find((s) => s.id === p.space) ?? p.spaces[0];
+  const name = (p.user.name || "").trim() || "You";
+  const sub = (p.user.sub || "").trim() || cur?.name || "";
+  const others = p.spaces.filter((s) => s.id !== p.space && s.id !== "all").slice(0, 5);
   const items = [
+    { label: "Your profile and Assistant", onPress: () => p.onNavigate("/u/settings/account") },
+    { label: "Appearance", onPress: () => p.onNavigate("/u/appearance") },
+    { label: resolved.scheme === "paper" ? "Use the dark theme" : "Use the light theme", onPress: () => useAppearance.getState().setPerson({ theme: resolved.scheme === "paper" ? "dark" : "paper" }) },
+    ...others.map((s) => ({ label: `Switch to ${s.name}`, onPress: () => p.onSpace(s.id) })),
+    ...(p.onLock ? [{ label: "Lock now", onPress: p.onLock }] : []),
     { label: folded ? "Expand sidebar" : "Collapse sidebar", onPress: toggle },
-    ...(p.onLock ? [{ label: "Lock", onPress: p.onLock }] : []),
+    { label: "Help and About", onPress: () => p.onNavigate("/u/about") },
   ];
   const header = (
     <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 2 }}>
-      <Text medium numberOfLines={1}>{p.user.name}</Text>
-      <Text size="caption" tone="label" numberOfLines={1}>{cur?.name ?? ""}</Text>
+      <Text medium numberOfLines={1}>{name}</Text>
+      <Text size="caption" tone="label" numberOfLines={1}>{sub}</Text>
     </View>
   );
+  const label = `${name}: profile, appearance, spaces, lock and the sidebar`;
+  const face = <Avatar of={markRef("person", name)} size={RAIL.face} />;
+  const trigger = folded ? (
+    <Tip label={name}>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} style={({ hovered, focused }: any) => [{ width: RAIL.foldedRow, height: RAIL.foldedRow, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>{face}</Pressable>
+    </Tip>
+  ) : (
+    <Pressable accessibilityRole="button" accessibilityLabel={label}
+      style={({ hovered, focused }: any) => [{ minHeight: RAIL.navRowH + 8, marginHorizontal: RAIL.rowInset, borderRadius: RAIL.rowRadius, paddingHorizontal: RAIL.gutter - RAIL.rowInset, flexDirection: "row", alignItems: "center", gap: RAIL.iconGap, backgroundColor: hovered || focused ? color.hover : "transparent",
+        ...(focused ? { outlineStyle: "solid", outlineWidth: 2, outlineColor: color.primary, outlineOffset: -2 } : {}), transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
+      {face}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text medium numberOfLines={1} style={{ fontSize: RAIL.labelSize, lineHeight: 18 }}>{name}</Text>
+        <Text tone="label" numberOfLines={1} style={{ fontSize: 12, lineHeight: 14 }}>{sub}</Text>
+      </View>
+      <Icon name="chevron-up" size={14} tone="faint" />
+    </Pressable>
+  );
   return (
-    <View style={{ height: RAIL.footH, justifyContent: "center", paddingHorizontal: folded ? 0 : RAIL.gutter - 4, alignItems: folded ? "center" : "flex-start" }}>
-      <Menu align="start" side="top" header={header} items={items} trigger={
-        <Pressable accessibilityRole="button" accessibilityLabel={`${p.user.name}: account, Settings, Build and the sidebar`} style={({ hovered, focused }: any) => [{ borderRadius: 20, padding: 4, backgroundColor: hovered || focused ? color.hover : "transparent", transitionProperty: "background-color", transitionDuration: `${RAIL.easeMs}ms` } as any]}>
-          <Avatar of={markRef("person", p.user.name)} size={RAIL.face} />
-        </Pressable>
-      } />
+    <View style={{ height: RAIL.footH, justifyContent: "center", alignItems: folded ? "center" : "stretch" }}>
+      <Menu align="start" side="top" header={header} items={items} trigger={trigger} />
     </View>
   );
 }
