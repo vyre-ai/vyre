@@ -146,5 +146,7 @@ test("while a team shows, only the Notes tab's marked planner note calls reach t
   const box = readFileSync(new URL("./box.ts", import.meta.url), "utf8");
   assert.match(box, /const routed = await teamRoute\(name, given, useSpaces\.getState\(\)\.space/);
   assert.match(box, /team\.teamCall\(routed\.space, routed\.wire, \[routed\.input\]\)/);
+  assert.match(box, /const planned = planWire\(name, given\);/);
+  assert.match(box, /given = planned\.given;/, "box.ts continues with the input planWire returns, marker off");
   assert.doesNotMatch(box, /memberChatWire\(/, "box.ts reaches the member table only through planWire and teamRoute");
 });
