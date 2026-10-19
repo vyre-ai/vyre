@@ -1371,7 +1371,10 @@ export class Registry {
       const label = String(caller);
       if (!isPerson(label)) return false;
       if (meta && meta.origin && !isPerson(String(meta.origin))) return false;
-      if (ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
+      // The owner's own paired device is the person without a signed-in session when the daemon vouched it (callerFacts: Wink's record says its person IS this home's owner, never a member's or limited device).
+      const dev = /** @type {any} */ (meta && meta.kernelFacts);
+      const ownersDevice = Boolean(dev && dev.kind === "device" && dev.limited !== true && typeof this.deps.ownerId === "function" && this.deps.ownerId() && String(dev.person) === String(this.deps.ownerId()));
+      if (ownerDevice(label) && !ownersDevice && !(meta && meta.person && meta.person.id)) return false;
       // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open. It is the person only when the daemon MEASURED what runs above the caller and found no
       // model or coding-agent session (callerFacts: `inside_model_process: false`), or when the call carries the owner's signed-in session. An agent's shell inside a session is relabelled a model's before it gets here,
       // and an ancestry the daemon could not read gives no facts, so both are refused.
@@ -1575,9 +1578,11 @@ export class Registry {
       // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
+      // With no presence device enrolled the owner's own paired device needs no passkey sign-in for their own acts (the owner's ruling, noPresenceDevice); an agent or another person's device never does.
       if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
-        return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
+        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))
+        && !(await this.noPresenceDevice(caller, meta))) {
+        return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
       }
     }
     // The tools that hand out credentials, names, access or devices check the ORIGINAL caller on a module hop whatever their callers list says (a module relaying for an agent is not the person).

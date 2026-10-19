@@ -50,6 +50,15 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
   const none = await reveal("device:abcdefghijklmnop", {});
   assert.equal(String(none.error && none.error.code), "person_session_required");
 
+  // 4b. the owner's paired device (the daemon vouched it as the owner's in kernelFacts) can make an invite with no passkey sign-in; a limited device, another person's, and an agent cannot
+  const devFacts = { kind: "device", device_key_id: "abcdefghijklmnop", person: owner, path: "relay" };
+  const invite = (/** @type {string} */ who, /** @type {any} */ m) => d.registry.call("spaces.invites.create", { role: "member" }, who, m);
+  const made = await invite("device:abcdefghijklmnop", { kernelFacts: devFacts });
+  assert.ok(!made.error || !["person_session_required", "presence_required", "denied"].includes(String(made.error.code)), "the owner's device makes an invite: " + JSON.stringify(made).slice(0, 240));
+  for (const [who, m] of /** @type {[string, any][]} */ ([["device:abcdefghijklmnop", {}], ["device:abcdefghijklmnop", { kernelFacts: { ...devFacts, limited: true } }], ["device:abcdefghijklmnop", { kernelFacts: { ...devFacts, person: "per_" + "z".repeat(26) } }], ["mcp:agent:kit", { kernelFacts: devFacts }]])) {
+    const r = await invite(who, m);
+    assert.ok(r.error && ["person_session_required", "presence_required", "denied", "approval_refused", "held_for_approval"].includes(String(r.error.code)), `${who} ${JSON.stringify(m).slice(0, 60)} cannot make an invite: ${JSON.stringify(r).slice(0, 200)}`);
+  }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
   const was = presence.keys;
   presence.keys = () => [{ id: "k1", kind: "device", name: "phone" }];
