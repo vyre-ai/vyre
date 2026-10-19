@@ -81,7 +81,9 @@ test("the agent's folder: Inbox, Work, Done, Scripts and Notes made when missing
   const H = "/var/lib/vyre/agents/ag20000/home";
   assert.match(mk.join(" "), new RegExp(`^/usr/bin/setpriv --reuid=20000 .* /usr/bin/mkdir -p ${H}/Inbox ${H}/Work ${H}/Done ${H}/Scripts ${H}/Notes$`));
   assert.match(ln.join(" "), new RegExp(`^/usr/bin/setpriv --reuid=20000 .* /usr/bin/ln -s -T /var/lib/vyre/downloads/ag20000 ${H}/Downloads$`), "-T: an existing Downloads (a file or a folder) is never entered or replaced");
-  assert.ok(!planFolders(U).flat().some(a => a === "-f" || a === "-n" || a === "--force"), "nothing is forced over what the agent already has");
+  // the command's own arguments, after the wrapper (whose `nice -n 5` is not a flag of mkdir or ln)
+  const own = (/** @type {string[]} */ s) => s.slice(s.findIndex(a => a === "/usr/bin/mkdir" || a === "/usr/bin/ln"));
+  assert.ok(!planFolders(U).flatMap(own).some(a => a === "-f" || a === "-n" || a === "--force"), "nothing is forced over what the agent already has");
   for (const s of planFolders(U)) assert.ok(tolerant(s), "a name that is already taken never fails the plan");
   // made on first use, when the home is emptied, and on every wake (a home made before this had none)
   for (const plan of [planCreate(U), planWipeHome(U), planStartScreen(U)]) assert.ok(plan.some(s => s.includes("/usr/bin/ln") && s.includes(`${H}/Downloads`)));
