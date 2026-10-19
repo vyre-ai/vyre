@@ -625,7 +625,7 @@ export const PRESENCE_RULINGS = Object.freeze({
   }),
   "appmods.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
   "appmods.install": Object.freeze({
-    ruling: "user ruling 19 Oct 2026 (make it work): installing a catalog app on the owner's own server asks for no presence proof",
+    ruling: "team/ROADMAP.md R062-01, owner ruling 19 Oct 2026 (make it work first): appmods.install asks for no presence proof",
     commit: "e50b46b83",
     was: "presence_required",
     callers: Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]),
