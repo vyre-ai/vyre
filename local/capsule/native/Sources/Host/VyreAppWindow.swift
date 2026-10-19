@@ -265,7 +265,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
                 id0.forget(); reply(id, ["ok": true])
             }
         case "agree.public":
-            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
+            // Never a quiet nil: the page falls back to its own storage on this error, and shows the reason when that fails too.
+            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac could not keep its chat key: \(agreement?.lastError ?? "it has no agreement key")."]) }
             reply(id, ["publicKey": MacIdentity.b64url(pt)])
         case "agree.agree":
             guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }

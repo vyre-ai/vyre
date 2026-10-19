@@ -21,15 +21,34 @@ protocol KeyBundleBacking: AnyObject {
     /// Replace the item. false when the Keychain would not keep it.
     @discardableResult func write(_ data: Data) -> Bool
     func delete()
+    /// Why the last write failed, in words a person can read (the Keychain's own message and OSStatus); nil after a write that worked.
+    var lastError: String? { get }
+}
+
+extension KeyBundleBacking {
+    var lastError: String? { nil }
 }
 
 /// The login Keychain: one generic-password item per Vyre home.
+///
+/// Which store, and why (the owner's ruling, 19 Oct 2026: make it work now; the stronger security comes back with Apple signing). The app ships signed ad hoc until it has a Developer ID: it has no
+/// keychain-access-groups entitlement, so the data-protection Keychain (and every "this device only" class, which lives there) refuses with errSecMissingEntitlement (-34018), and the Secure Enclave
+/// will not make keys for it either. The legacy file-based login Keychain needs no entitlement, so the item falls back to it. The stronger class is still tried first on every write, so a signed build
+/// keeps using it and the fallback is taken only on refusal.
+/// BACKLOG: when signed, migrate fallback keys into the Enclave or data-protection Keychain.
 final class KeychainBundleBacking: KeyBundleBacking {
     static let service = "sh.vyre.keys"
+    let service: String
     let account: String
-    init(home: String) { account = "bundle:" + home }
+    private(set) var lastError: String?
+    /// The accessibility classes a write tries, strongest first: this device only (the data-protection Keychain), then after first unlock, then none (the legacy login Keychain's own default).
+    static var classes: [CFString?] { [kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAttrAccessibleAfterFirstUnlock, nil] }
+    /// SecItemAdd and SecItemUpdate, a fake in the tests.
+    var addItem: ([String: Any]) -> OSStatus = { SecItemAdd($0 as CFDictionary, nil) }
+    var updateItem: ([String: Any], [String: Any]) -> OSStatus = { SecItemUpdate($0 as CFDictionary, $1 as CFDictionary) }
+    init(home: String, service: String = KeychainBundleBacking.service) { self.service = service; account = "bundle:" + home }
 
-    private var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.service, kSecAttrAccount as String: account] }
+    private var query: [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] }
 
     func read() -> Data? {
         var q = query
@@ -41,17 +60,27 @@ final class KeychainBundleBacking: KeyBundleBacking {
 
     @discardableResult func write(_ data: Data) -> Bool {
         SecItemDelete(query as CFDictionary)
-        var q = query
-        q[kSecValueData as String] = data
-        q[kSecAttrLabel as String] = "Vyre keys"
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let status = SecItemAdd(q as CFDictionary, nil)
-        if status == errSecSuccess { return true }
-        VyreAppWindow.log("key bundle save: OSStatus \(status)")
-        // An app signed ad hoc carries no keychain entitlement, so macOS refuses the "this device only" class (errSecMissingEntitlement); the login Keychain still keeps the item on this Mac.
-        guard status == errSecMissingEntitlement else { return false }
-        q.removeValue(forKey: kSecAttrAccessible as String)
-        return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+        var last = errSecSuccess
+        for cls in Self.classes {
+            var q = query
+            q[kSecValueData as String] = data
+            q[kSecAttrLabel as String] = "Vyre keys"
+            if let cls { q[kSecAttrAccessible as String] = cls }
+            var status = addItem(q)
+            // An item an earlier ad-hoc build left, which this build could not take away (each ad-hoc build is a new program to the Keychain): write over it in place.
+            if status == errSecDuplicateItem { status = updateItem(query, [kSecValueData as String: data]) }
+            if status == errSecSuccess { lastError = nil; return true }
+            last = status
+            VyreAppWindow.log("key bundle save (\(cls.map { $0 as String } ?? "login keychain default")): OSStatus \(status)")
+        }
+        lastError = Self.say(last)
+        return false
+    }
+
+    /// The Keychain's own words for a status, and the number support can look up.
+    static func say(_ status: OSStatus) -> String {
+        let words = (SecCopyErrorMessageString(status, nil) as String?) ?? "an error"
+        return "the Keychain said \(words) (OSStatus \(status))"
     }
 
     func delete() { SecItemDelete(query as CFDictionary) }
@@ -108,6 +137,9 @@ final class KeyBundle: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return loaded()[slot]
     }
+
+    /// Why the last write to the Keychain failed, or nil.
+    var lastError: String? { backing.lastError }
 
     /// Keep one key. The whole bundle is written again; false when the Keychain would not keep it (the key is then not held either, so nothing claims a key that was not kept).
     @discardableResult func set(_ slot: Slot, _ data: Data) -> Bool {

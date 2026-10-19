@@ -9,7 +9,7 @@ import { spacePorts } from "./space-ports";
 import { hostWantedFor } from "./wanted.js";
 import { shellKind, shellSetupDone } from "../shell/shell";
 import { relayUrl } from "../api/relay-url";
-import { getAgreeKey } from "../crypto/agree-key";
+import { agreeKeyResult, chatKeyProblem } from "../crypto/agree-key";
 import { installEd25519Fallback } from "../identity/webcrypto-web.js";
 
 // The page's WebCrypto may have no Ed25519 (a Mac window on an older WebKit, Chrome before 137): the identity chain verifies with it, so the fallback goes on before any first-run step asks (host-core's own check
@@ -58,9 +58,16 @@ async function deviceId(): Promise<string> {
   return sessionDeviceId;
 }
 
+/** This device's chat-key point for its list entry. When no store kept a key it throws the reason (code no_agree_key), so the unlock repair (ensureAgree) shows it in Account instead of a vague line. */
+async function agreePoint(): Promise<string> {
+  const got = await agreeKeyResult();
+  if (got.key) return got.key.point;
+  throw Object.assign(new Error(chatKeyProblem(got.reason)), { code: "no_agree_key" });
+}
+
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
-  if (!host) host = createHost({ store: hostStore, directory: directory(), agreePoint: async () => (await getAgreeKey())?.point ?? null, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), agreePoint, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
   return host;
 }

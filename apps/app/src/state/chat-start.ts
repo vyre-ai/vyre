@@ -1,4 +1,4 @@
-import { getAgreeKey } from "../crypto/agree-key";
+import { agreeKeyResult, chatKeyProblem } from "../crypto/agree-key";
 import { holdersFor, newChatRing } from "../crypto/chat-ring.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { tool } from "../real/box";
@@ -20,8 +20,10 @@ export async function deviceReadiness(): Promise<string | null> {
 }
 
 async function deviceGate(): Promise<{ holders: Record<string, any> } | { say: string }> {
-  const me = await getAgreeKey();
-  if (!me) return { say: "This device can't start private chats yet." };
+  // No store kept this device's key: say which store refused and why, not a vague "not ready" on a timer (the ad-hoc Mac app, v0.6.2).
+  const got = await agreeKeyResult();
+  if (!got.key) return { say: chatKeyProblem(got.reason) };
+  const me = got.key;
   const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
   if (!who?.person) return { say: "Vyre could not tell who you are, so the chat did not start." };
   const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
