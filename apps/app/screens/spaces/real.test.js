@@ -50,10 +50,10 @@ test("projects: id and name, nothing else", () => {
 
 test("a member who holds a role of the space's own: the box lists the built-in base and the role's id as `custom` (core/spaces/kernel-members.js shape)", () => {
   const list = { space: "spc_a", members: [
-    { space: "spc_a", person: "per_ben", role: "member", custom: "role_paralegal", scope: null, expires: null, added_by: "per_o", added_at: 5, role_label: "Member" },
+    { space: "spc_a", person: "per_ben", role: "member", custom: "role_designer", scope: null, expires: null, added_by: "per_o", added_at: 5, role_label: "Member" },
     { space: "spc_a", person: "per_mia", role: "member", scope: null, expires: null, added_by: "per_o", added_at: 6, role_label: "Member" },
   ], warnings: [] };
   const m = shapeMembers(list, null, 0, {});
-  assert.deepEqual([m[0].role, m[0].custom], ["member", "role_paralegal"]);
+  assert.deepEqual([m[0].role, m[0].custom], ["member", "role_designer"]);
   assert.deepEqual([m[1].role, m[1].custom], ["member", undefined]);
 });

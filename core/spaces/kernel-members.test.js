@@ -113,8 +113,8 @@ test("kernelTeamSpaces: the home's own Space is listed only when asked for with 
 
 test("shape: a person who holds a role of the Space's own is listed on its built-in base with the role's id as `custom`; a partial row and a plain member carry none", async () => {
   const { shape } = await import("./kernel-members.js");
-  const full = { space: "spc_a", person: "per_ben", role: "member", custom: "role_paralegal", added_by: "per_o", added_at: 5 };
-  assert.deepEqual(shape(full), { space: "spc_a", person: "per_ben", role: "member", custom: "role_paralegal", scope: null, expires: null, added_by: "per_o", added_at: 5 });
+  const full = { space: "spc_a", person: "per_ben", role: "member", custom: "role_designer", added_by: "per_o", added_at: 5 };
+  assert.deepEqual(shape(full), { space: "spc_a", person: "per_ben", role: "member", custom: "role_designer", scope: null, expires: null, added_by: "per_o", added_at: 5 });
   assert.equal("custom" in shape({ space: "spc_a", person: "per_ben", role: "member", partial: true }), false);
   assert.equal("custom" in shape({ space: "spc_a", person: "per_dana", role: "member" }), false);
 });
