@@ -9,7 +9,7 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented
 import { AboutCard } from "./AboutCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
-import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
+import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
 import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
 import { useUpdate } from "../../src/state/update";
@@ -18,6 +18,7 @@ import { CREDITS } from "./data";
 import { LOCK_CHOICES } from "../../src/shell/lock-gate.js";
 import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/lock-setting";
 import { lockIdentity } from "../unlock/real.js";
+import { callT } from "../../src/real/call-tool";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -101,10 +102,13 @@ export function RealSeeing() {
 export function RealPrivacy() {
   const [ts, setTs] = useState<TypeDef[] | null>(null);
   const [err, setErr] = useState("");
+  const [approvals, setApprovals] = useState<string | null>(null);
   useEffect(() => { loadTypes().then(setTs).catch((e) => setErr(say(e, "Types did not answer."))); }, []);
+  useEffect(() => { callT("presence.keys", {}).then((r) => setApprovals(approvalsLine(r.data))).catch(() => setApprovals(null)); }, []);
   const sealed = ts ? sealedFields(ts) : [];
   return (
     <Page title="Privacy and sealing" back="/u/settings">
+      {approvals ? <Banner>{approvals}</Banner> : null}
       {err ? <Card flush><ErrorState title="Types did not load" reason={err} /></Card> : null}
       {ts ? (
         <Group title="Sealed fields">
