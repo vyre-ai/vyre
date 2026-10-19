@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
 import AgentWork from "./AgentWork";
+import { displayName } from "../agents/home-model.js";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { AgentMemory } from "./AgentMemory";
 import { Page, Sec } from "../places/Frame";
@@ -31,7 +32,7 @@ export default function AgentPage() {
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={who} back="/u/assistants" marks={[markRef("agent", who)]}>
+    <Page title={a ? displayName(a) : who} back="/u/assistants" marks={[markRef("agent", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
       {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}
