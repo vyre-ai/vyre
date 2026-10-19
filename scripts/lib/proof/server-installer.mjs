@@ -103,6 +103,8 @@ export async function startInstallerServer(o) {
       for (let i = 0; i < 90; i++) { const r = exec("relay.setup.status"); const w = /"words":\s*"([a-z]+(?: [a-z]+){3})"/.exec(String(r.stdout || "")); if (w) return w[1]; await new Promise(res => setTimeout(res, 2000)); }
       throw new Error("the development box showed no check words in three minutes");
     },
+    /** Run a command inside the box's container as the vyre user (a signed delivery to the loopback hooks listener, for instance). @param {string[]} argv */
+    async shell(argv) { const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", ...argv], { encoding: "utf8" }); return { status: r.status, stdout: String(r.stdout || "").trim(), stderr: String(r.stderr || "").trim() }; },
     /** @param {string} tool @param {any} [input] */
     async operator(tool, input = {}) { const r = exec(tool, input); let j = null; try { j = JSON.parse(r.stdout); } catch { /* plain text */ } if (r.status !== 0) throw new Error(`${tool}: ${(r.stderr || r.stdout).slice(0, 200)}`); return j && j.data !== undefined ? j.data : j; },
     async stop() {

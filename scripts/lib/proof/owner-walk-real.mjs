@@ -255,9 +255,64 @@ export async function ownerWalkReal(c) {
   }, { needs: READY });
 
   // ---- 8. a webhook Flow
-  await run.step(W(8, "Webhook Flow: 'A webhook is called' with one step, a signed curl, a run and a record"), async () => {
-    pending("the 'A webhook is called' trigger is not on this build's Flow screen");
+  let hookSecret = "";
+  const ROUTE = "walk-orders";
+  await run.step(W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault"), async () => {
+    await screen("/u/flows/new", /Name|When|What starts/i, "the new Flow screen");
+    await press(["Choose what starts it", "When"]);
+    await drv.choose?.("What starts the Flow", "A webhook is called");
+    await until(async () => (await has(/Which route/)), 20_000, "the webhook fields");
+    await drv.choose?.("Which route", "Open a new route");
+    await drv.fillPlaceholder?.("northwind-orders", ROUTE);
+    try { await drv.fillPlaceholder?.("x-signature", "x-signature"); } catch { /* the scheme asks for no header */ }
+    await shot("08-open-route");
+    await press(["Open the route"]);
+    await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening");
+    if (await has(/Turn the listener on/)) { await press(["Turn the listener on"]); await until(async () => !(await has(/listener is off/)), 60_000, "the listener turning on"); }
+    await shot("08-route-open");
+    await press(["Reveal the secret"]);
+    await until(async () => (await has(/Reveal/)), 30_000, "the Vault item");
+    await press(["Reveal"]);
+    const found = await until(async () => { const m = (await drv.monospaces?.()) || []; const c = m.filter((x) => x.length >= 24 && !/\s/.test(x)).sort((a, b) => b.length - a.length)[0]; return c || ""; }, 30_000, "the revealed secret").catch(async (e) => { await shot("failed-08-secret"); throw new Error(`${e.message}. The screen says: ${await show(500)}`); });
+    hookSecret = found;
+    await shot("08-secret-revealed");
+    return `route ${ROUTE}, a ${hookSecret.length}-character secret read back`;
   }, { needs: READY });
+  const FLOW_MADE = W(8, "Webhook Flow: 'A webhook is called' with an If on trigger.amount and one record step, approved");
+  await run.step(FLOW_MADE, async () => {
+    await screen("/u/flows/new", /Name|When|What starts/i, "the new Flow screen");
+    await fillAny(["Name"], "Walk webhook");
+    await press(["Choose what starts it", "When"]);
+    await drv.choose?.("What starts the Flow", "A webhook is called");
+    await until(async () => (await has(/Which route/)), 20_000, "the webhook fields");
+    await drv.choose?.("Which route", `/hooks/${ROUTE}`);
+    await press(["Add the first step"]);
+    await press(["If / else"]);
+    await drv.choose?.("Field", "amount").catch(async () => { await fillAny(["Field"], "amount"); });
+    await drv.choose?.("Is", ">").catch(() => {});
+    await fillAny(["Value"], "50");
+    await press(["Add a step here"]);
+    await press(["Create a record"]);
+    await shot("08-flow-built");
+    pending(`the Create step's object and fields are not driven yet; the screen says: ${await show(500)}`);
+  }, { needs: [W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault")] });
+  await run.step(W(8, "Webhook: a delivery signed with the revealed secret is taken, a bad signature is refused (401) and starts nothing"), async () => {
+    if (!hookSecret) pending("no signing secret was read");
+    /** One delivery to the loopback listener inside the box, signed (or not) as the sender would. */
+    const post = async (/** @type {number} */ amount, /** @type {boolean} */ good) => {
+      const code = `const c=require("crypto"),h=require("http");const b=process.argv[1],good=process.argv[2]==="1",k=process.argv[3];const mac=good?c.createHmac("sha256",k).update(b).digest("hex"):"00".repeat(32);const r=h.request({host:"127.0.0.1",port:7310,path:"/hooks/${ROUTE}",method:"POST",headers:{"content-type":"application/json","x-signature":mac}},x=>{let d="";x.on("data",c=>d+=c);x.on("end",()=>console.log(x.statusCode));});r.on("error",e=>console.log("error "+e.message));r.end(b);`;
+      const r = await srv.shell(["node", "-e", code, JSON.stringify({ amount, email: `a${amount}-${Date.now()}@b.test` }), good ? "1" : "0", hookSecret]);
+      return r.stdout.split("\n").pop() || r.stderr.slice(0, 200);
+    };
+    const bad = await post(80, false);
+    if (bad !== "401") throw new Error(`a delivery with a bad signature answered ${bad}, not 401`);
+    const ok = await post(80, true);
+    if (ok !== "200") throw new Error(`a delivery signed with the revealed secret answered ${ok}, not 200`);
+    return "bad signature 401, signed delivery 200";
+  }, { needs: [W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault")] });
+  await run.step(W(8, "Webhook Flow: amount 80 starts a run and makes one record, amount 20 makes none"), async () => {
+    pending("the Flow's Create step (its object and fields) is not driven yet");
+  }, { needs: [FLOW_MADE] });
 
   // ---- 9. playbooks
   await run.step(W(9, "Playbooks: create, add a stage and a to-do, rename, Go live, start a project"), async () => {

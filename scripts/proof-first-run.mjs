@@ -145,6 +145,10 @@ async function browserDriver(shared = null) {
       await el.click({ timeout: 15_000 });
       await page.getByText(option, { exact: false }).first().click({ timeout: 15_000 });
     },
+    /** Fill the field that has this placeholder (two fields can share a label on one screen). */
+    async fillPlaceholder(/** @type {string} */ ph, /** @type {string} */ v) { await page.locator(`input[placeholder="${ph}"], textarea[placeholder="${ph}"]`).first().fill(v, { timeout: 15_000 }); },
+    /** The text of every monospace element (a revealed secret shows that way). */
+    async monospaces() { return page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => /mono/i.test(getComputedStyle(e).fontFamily) && e.children.length === 0 && (e.textContent || "").trim()).map((e) => (e.textContent || "").trim())); },
     async viewport(/** @type {number} */ w, /** @type {number} */ h) { await page.setViewportSize({ width: w, height: h }); },
     url() { return page.url(); },
     async rightClick(/** @type {string} */ t) { await page.getByText(t, { exact: false }).first().click({ button: "right", timeout: 15_000 }); },
