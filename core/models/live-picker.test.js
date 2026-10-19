@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { boot } from "../sessions/testing/boot.js";
+import { boot, until } from "../sessions/testing/boot.js";
 import { allowLoopbackForTests } from "../../lib/http.js";
 allowLoopbackForTests();
 
@@ -45,4 +45,37 @@ test("a keyed account's model list comes from the service itself, through the do
   assert.ok(mine, JSON.stringify(providers.map((/** @type {any} */ p) => p.id)));
   assert.deepEqual(mine.models.map((/** @type {any} */ m) => m.id).sort(), ["lab-large", "lab-small"], "the picker lists the live list");
   assert.ok(!JSON.stringify(providers).includes(GOOD));
+});
+
+test("an OpenRouter account lists OpenRouter's own models, looked at as soon as the account is added, with no eval card for each (#275)", async t => {
+  let asked = 0;
+  const srv = http.createServer((req, res) => {
+    asked++;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ data: [{ id: "acme/small-1", name: "Acme Small", context_length: 8000, pricing: { prompt: "0.000001", completion: "0.000002" } }, { id: "acme/large-2", name: "Acme Large" }] }));
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { srv.closeAllConnections?.(); srv.close(() => r(undefined)); }));
+  const saved = process.env.VYRE_OPENROUTER_API;
+  process.env.VYRE_OPENROUTER_API = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_API; else process.env.VYRE_OPENROUTER_API = saved; });
+  const w = await boot(t, { driver: "cli", vault: { "or-key": "sk-or-v1-test-1234567890" } });
+  assert.equal(asked, 0, "nothing is read before an account is added");
+  const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Router", kind: "api-key", vault_item: "or-key" });
+  assert.equal(acct.error, undefined, JSON.stringify(acct));
+  // no models.refresh here: adding the account is what makes the registry look
+  const ids = await until(async () => {
+    const l = (await w.tool("models.list", { provider: "openrouter" })).data;
+    return l && l.models.length >= 2 ? l.models.map((/** @type {any} */ m) => m.id).sort() : null;
+  }, "the registry to look after the account was added");
+  assert.deepEqual(ids, ["acme/large-2", "acme/small-1"]);
+  const small = (await w.tool("models.get", { id: "openrouter/acme/small-1" })).data;
+  assert.deepEqual([small.provider, small.label, small.context, small.price], ["openrouter", "Acme Small", 8000, { in: 1, out: 2 }]);
+  const offered = (await w.tool("sessions.accounts.models", { account: acct.data.id })).data;
+  assert.deepEqual(offered.models.map((/** @type {any} */ m) => m.id).sort(), ["acme/large-2", "acme/small-1"], "the account offers them");
+  const providers = (await w.tool("providers.list", {})).data;
+  const or = providers.find((/** @type {any} */ p) => p.id === "openrouter");
+  assert.ok(or, JSON.stringify(providers.map((/** @type {any} */ p) => p.id)));
+  assert.deepEqual(or.models.map((/** @type {any} */ m) => m.id).sort(), ["acme/large-2", "acme/small-1"], "and the pickers list them");
+  assert.deepEqual((await w.tool("models.evals", {})).data.evals, [], "a catalogue model proposes no eval card");
 });

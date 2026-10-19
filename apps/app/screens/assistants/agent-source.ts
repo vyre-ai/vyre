@@ -1,6 +1,7 @@
 // An assistant's page on the real box, over an injected `call` (the app's box connection, or a fake box in a test).
 import type { Call } from "../settings/real-source";
-import { limitsInput, projectsOf, type Computer, type UsageFull, type AgentFull } from "./agent-model.ts";
+import { limitsInput, projectsOf, type Computer, type ModelGroup, type UsageFull, type AgentFull } from "./agent-model.ts";
+import { accountRows, modelRows } from "../../src/chat/agent-new-model.js";
 
 export function agentSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -15,6 +16,14 @@ export function agentSource(call: Call) {
     },
     /** The box's one model list (sessions.models.get aliases). */
     models: async (): Promise<unknown> => (await ask<any>("sessions.models.get"))?.aliases,
+    /** What each AI account the person may use offers (sessions.accounts.list, then sessions.accounts.models), the same listing the new agent card reads. An account whose list fails offers none. */
+    accountModels: async (): Promise<ModelGroup[]> => {
+      const accts = accountRows(await ask<unknown>("sessions.accounts.list"));
+      return Promise.all(accts.slice(0, 8).map(async (a) => {
+        const r = await call<unknown>("sessions.accounts.models", { account: a.id });
+        return { account: a.id, label: a.label, models: r.error ? [] : modelRows(r.data) };
+      }));
+    },
     projects: async () => projectsOf(await ask("projects.list")),
     setJob: (name: string, instructions: string) => ask("agents.update", { name, instructions: instructions.trim() }),
     setModel: (name: string, model: string, effort: string) => ask("agents.update", { name, model, effort }),

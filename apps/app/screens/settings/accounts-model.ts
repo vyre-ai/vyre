@@ -1,4 +1,5 @@
 // AI accounts from sessions.accounts.list (the Deck's settings-accounts.js, ported): the rows as drawn, the one line for each state, and the sign-in flow's steps. Pure: no calls.
+import { ACCOUNTS_COPY, keyKindOf, keyShapeOk } from "../first-run/ai-accounts-model.js";
 
 export type Account = {
   id: string; provider: string; label: string; kind: string; isDefault: boolean; pending: boolean; needs: "sign-in" | "confirm" | null;
@@ -22,6 +23,20 @@ export const serverCannotWords = (message: string): string | null =>
 
 /** What a team member can add on the team's server: Claude too, since her own Claude login is a sign-in the server runs as her own account (accounts.signin, a pasted code back), and the owner's card is not hers. */
 export const addableFor = (member: boolean): readonly string[] => (member ? Object.freeze(["claude", ...ADDABLE]) : ADDABLE);
+
+/**
+ * "Use an API key": the input the server's key tool takes (sessions.accounts.key), from the key's own prefix (first run's keyKindOf and keyShapeOk), or the line to show. The name is the one typed, else
+ * the kind's own ("OpenRouter key"). The key is only passed on, never kept here.
+ */
+export function keyAddInput(key: string, label: string): { input: Record<string, string> } | { problem: string } {
+  const k = String(key || "").trim();
+  if (!keyShapeOk(k)) return { problem: "That does not look like an API key." };
+  const kind = keyKindOf(k);
+  if (!kind) return { problem: ACCOUNTS_COPY.keyUnknown };
+  const name = String(label || "").trim() || kind.label;
+  if (name.length > 80 || /[\u0000-\u001f]/.test(name)) return { problem: ACCOUNTS_COPY.tooLong };
+  return { input: { kind: kind.kind, key: k, label: name, name, ...(kind.base_url ? { base_url: kind.base_url } : {}) } };
+}
 
 /** sessions.accounts.list's rows, reduced to what is drawn. */
 export function accountsOf(d: any): Account[] {

@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SPACE_KEY, THEME_CHOICES, WELCOME_COPY, addressFrom, lastSpace, rememberSpace } from "./welcome-model.js";
+import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, WELCOME_COPY, addressFrom, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
 
 const store = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => void m.set(k, v), m }; };
 
@@ -42,4 +42,15 @@ test("a name and a full address are the same Space", () => {
   assert.equal(addressFrom(" Juniper.vyre.run ").address, "https://juniper.vyre.run");
   assert.equal(addressFrom(""), null);
   assert.equal(addressFrom("a b"), null);
+});
+
+test("the model step's Continue follows the models, not the accounts: an account with no models never leaves a dead button", () => {
+  const one = [{ models: [{ id: "m1" }] }];
+  assert.deepEqual(modelStep(null, false), { lead: MODEL_COPY.lead, count: 0, canContinue: false }, "still looking");
+  assert.equal(modelStep(one, false).canContinue, false, "a model to pick: Continue waits for the pick");
+  assert.equal(modelStep(one, true).canContinue, true);
+  const empty = modelStep([{ models: [] }, { models: [] }], false);
+  assert.deepEqual(empty, { lead: MODEL_COPY.noModels, count: 0, canContinue: true }, "accounts with no models: Continue goes on with the default and the line says so");
+  assert.deepEqual(modelStep([], false), { lead: MODEL_COPY.none, count: 0, canContinue: true }, "no account: the line says how to connect one");
+  for (const v of Object.values(MODEL_COPY)) if (typeof v === "string") assert.doesNotMatch(v, new RegExp("[\\u2014\\u00a7]"), "plain words: no long dash, no section sign");
 });

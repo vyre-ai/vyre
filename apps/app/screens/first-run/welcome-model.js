@@ -23,8 +23,19 @@ export const MODEL_COPY = Object.freeze({
   /** @param {string} name */
   title: (name) => `How should ${name} think?`,
   lead: "Its default. You can pick a different one in any chat.",
-  none: "No AI account is connected yet. You can pick a model later in Settings.",
+  none: "No AI account is connected yet. Go back to connect one, or continue and pick a model later in Settings.",
+  noModels: "Your AI account has not listed its models yet. Continue to use its default, and pick another later in Settings.",
 });
+
+/**
+ * The model step from what the accounts offer: the line under the title, and whether Continue works. Continue needs a pick only when there is a model to pick; with none it goes on with the default.
+ * @param {{ models: unknown[] }[] | null} accounts null while still looking @param {boolean} picked a model is chosen
+ */
+export function modelStep(accounts, picked) {
+  const count = (accounts || []).reduce((n, a) => n + (Array.isArray(a.models) ? a.models.length : 0), 0);
+  const lead = accounts === null || count ? MODEL_COPY.lead : accounts.length ? MODEL_COPY.noModels : MODEL_COPY.none;
+  return { lead, count, canContinue: accounts !== null && (count === 0 || picked) };
+}
 
 /** The Assistant step: its words, and the name offered until the person types one (the server's own fallback is the same). */
 export const ASSISTANT_COPY = Object.freeze({
