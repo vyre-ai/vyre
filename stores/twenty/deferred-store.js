@@ -12,11 +12,23 @@ import { typesChanged } from "../../kernel/store/types-signal.js";
 export const MAX_DEFS = 500;
 /** How long one definition may take on the replay before it is logged and left behind (a hung call must not hold the store from joining). */
 export const DEFINE_TIMEOUT_MS = 60_000;
+/**
+ * How long one replayed definition may take: the floor, or a third of the floor (20 s by default) for each field it adds or changes, whichever is more. Twenty rebuilds its cache for each field it adds
+ * (10 to 14 s apiece on a live server), so one definition of 67 fields took 73 s and a flat 60 s sent the whole setup round again. A definition the store expands (stores/twenty/space-store.js: new core
+ * types a definition links to are added with it) says its own count through `store.fieldsFor`. A function definition has no count and gets the floor.
+ * @param {any} d @param {any} store @param {number} floor @param {number} [perField]
+ */
+export function defineTimeout(d, store, floor, perField = floor / 3) {
+  if (typeof d === "function" || !d || typeof d !== "object") return floor;
+  const own = [...(d.add_types ?? []), ...(d.change_types ?? [])].reduce((n, t) => n + (Array.isArray(t && t.fields) ? t.fields.length : 0), 0);
+  const n = store && typeof store.fieldsFor === "function" ? Math.max(own, Number(store.fieldsFor(d)) || 0) : own;
+  return Math.max(floor, Math.round(n * perField));
+}
 const TIMED_OUT = Symbol("timed out");
 const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable", name: "StoreError" });
 
 /**
- * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean, onProgress?: (words: string) => void, defineTimeoutMs?: number }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `onProgress(words)` is called as the replay goes ("Applying definitions (n of m)"; m grows when a define is queued mid-replay); `defineTimeoutMs` (default 60 s) is the most one replayed definition may take; past it the store stays unattached and the setup is tried again. `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
+ * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean, onProgress?: (words: string) => void, defineTimeoutMs?: number, defineMsPerField?: number, upgrade?: () => any }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `onProgress(words)` is called as the replay goes ("Applying definitions (n of m)"; m grows when a define is queued mid-replay); `defineTimeoutMs` (default 60 s) is the least one replayed definition is given, and `defineMsPerField` (default a third of it) more for each field it adds or changes (defineTimeout); past it the store stays unattached and the setup is tried again. `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for); `upgrade()` is how far the Space's new record types are while the store is away ({ done, total } or null; once attached the real store's own `upgrade()` answers)
  * @returns {any} the store (a Proxy: it forwards to the real store once attached) with `attach(real)`, `bootDone()`, `attached()`, `kind: "twenty"`
  */
 export function createDeferredStore(o) {
@@ -27,6 +39,7 @@ export function createDeferredStore(o) {
   /** @type {any[]} definitions to play when the store attaches: a diff, or a function that is given the real store and defines on it (it reads what the store holds first, so it cannot be made before the store is there) */ const defs = [];
   let attaching = false;
   /** @type {Promise<void> | null} a replayed definition that timed out and may still be running on the store */ let abandoned = null;
+  let abandonedMs = 0;   // the time that definition was given: the retry waits for it as long again
   const refuse = () => unavailable(o.reason());
   const waitMs = o.waitMs ?? 4_000;   // a first start takes minutes: a call waits a few seconds for a store that is nearly there, then answers `unavailable` ("Records is setting up") so the app shows it and asks again, never a call that hangs
   /** After boot, a caller that needs the store waits for it a short while rather than failing on the first second. True once attached. */
@@ -50,6 +63,8 @@ export function createDeferredStore(o) {
     /** Run `f` when the real store is attached (now, if it already is). @param {() => any} f */
     whenReady: (f) => { if (real) return f(); ready.push(f); },
     attached: () => real !== null,
+    /** How far the Space's new record types are ({ done, total } or null): the real store's answer once attached, else the start's own. */
+    upgrade: () => (real ? (typeof real.upgrade === "function" ? real.upgrade() : null) : (o.upgrade ? o.upgrade() : null)),
     meta,
     bootDone: () => { booting = false; },
     /** The real store is ready: play the definitions the kernel made at start onto it, then forward everything. @param {any} store */
@@ -61,7 +76,7 @@ export function createDeferredStore(o) {
       try {
         // A definition left behind by the last try (it timed out) may still be running on the store. Nothing is applied beside it: wait for it a bounded while, else stay unattached.
         if (abandoned) {
-          const gone = await Promise.race([abandoned.then(() => true), new Promise((r) => setTimeout(() => r(false), limit))]);
+          const gone = await Promise.race([abandoned.then(() => true), new Promise((r) => setTimeout(() => r(false), Math.max(limit, abandonedMs)))]);
           if (!gone) throw retrying("a definition from the last try is still running");
           abandoned = null;
         }
@@ -74,13 +89,14 @@ export function createDeferredStore(o) {
           const run = Promise.resolve().then(() => typeof d === "function" ? d(store) : store.define(/** @type {any} */ (d)));
           run.catch(() => {});   // a call left behind by the timeout may fail later; nobody waits for it
           /** @type {any} */ let timer;
-          const late = new Promise((r) => { timer = setTimeout(() => r(TIMED_OUT), limit); });
+          const allowed = defineTimeout(d, store, limit, o.defineMsPerField);
+          const late = new Promise((r) => { timer = setTimeout(() => r(TIMED_OUT), allowed); });
           try {
             const got = await Promise.race([run, late]);
             if (got === TIMED_OUT) {
               // Never skipped: a definition that did not answer may be the one that seals a field or shapes access, and the store would take plain values for it. The store stays out and the whole setup is tried again.
-              abandoned = run.then(() => {}, () => {});
-              throw retrying(`a definition did not answer in ${Math.round(limit / 1000)} s`);
+              abandoned = run.then(() => {}, () => {}); abandonedMs = allowed;
+              throw retrying(`a definition did not answer in ${Math.round(allowed / 1000)} s`);
             } else log(`definition ${i + 1} applied in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
           } catch (e) {
             if (typeof d === "function" && !(/** @type {any} */ (e)?.retrying)) log(`a type definition made while the store was away was refused: ${/** @type {Error} */ (e).message}`);
