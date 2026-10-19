@@ -98,7 +98,7 @@ test("Cancel leaves no flow, link, code, step or pasted text, so the tiles are e
 test("FirstRun disables the tiles only while a flow is set, shows the paste field in paste mode, and Cancel clears it", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("./FirstRun.tsx", import.meta.url), "utf8");
-  assert.match(src, /signinMode\(agentFlow, agentStep\) === "paste" \? \(\s*<Field label=\{ACCOUNTS_COPY\.pasteLabel\}/);
+  assert.match(src, /signinMode\(agentFlow, agentStep, agentPaste\) === "paste" \? \(\s*<Field label=\{ACCOUNTS_COPY\.pasteLabel\}/);
   assert.match(src, /label=\{ACCOUNTS_COPY\.cancel\}[^\n]*setAgentFlow\(NO_SIGNIN\.flow\)/);
   assert.match(src, /signInAgent\(signinInput\(/);
   assert.ok(!/\.\.\.\(agentCode \? \{ code: agentCode \}/.test(src), "the home's own code is no longer sent as the person's");
