@@ -85,13 +85,21 @@ test("status sets the header state and leaves a line only for the ones that end 
   assert.equal(f.rows[0].kind, "notice");
 });
 
-test("a failed status that says it could not resume shows \"Couldn't resume. Ask again.\"; an unknown note changes nothing", () => {
+test("a failed status that says it could not resume shows \"Couldn't resume. Ask again.\"; any other note is the reason, one short line; each offers Try again", () => {
   cur = 0;
   const f = createFolder();
   f.apply(fr("status", { state: "failed", note: "couldn't resume, ask again" }));
   assert.equal(f.item(f.rows[0].key)?.text, "Couldn't resume. Ask again.");
-  f.apply(fr("status", { state: "failed", note: "something else" }));
-  assert.equal(f.item(f.rows[1].key)?.text, "This chat failed.");
+  assert.equal(f.item(f.rows[0].key)?.retry, true);
+  f.apply(fr("status", { state: "failed", note: "The provider answered 401:\n bad key" }));
+  assert.equal(f.item(f.rows[1].key)?.text, "Couldn't answer: The provider answered 401: bad key");
+  assert.equal(f.item(f.rows[1].key)?.retry, true);
+  f.apply(fr("status", { state: "failed", note: "x".repeat(400) }));
+  assert.equal(String(f.item(f.rows[2].key)?.text).length, "Couldn't answer: ".length + 160, "at most 160 characters of reason");
+  f.apply(fr("status", { state: "failed" }));
+  assert.equal(f.item(f.rows[3].key)?.text, "Couldn't answer.");
+  f.apply(fr("status", { state: "paused" }));
+  assert.equal(f.item(f.rows[4].key)?.retry, undefined, "only a failure offers Try again");
 });
 
 test("a reset clears the rows and takes its cursor", () => {

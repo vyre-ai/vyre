@@ -49,6 +49,19 @@ export function sendIntent({ text, attachments = 0, state }) {
   return { send: true, queue, label: queue ? "Queue" : "Send" };
 }
 
+/**
+ * While the agent works, a message steers it now (Enter, the default) or queues for after (Tab): the placeholder and the send button say the mode picked.
+ * @param {"steer" | "queue"} mode @param {boolean} phone @returns {{ placeholder: string, button: string }}
+ */
+export function whileWorking(mode, phone) {
+  return mode === "queue"
+    ? { placeholder: phone ? "Say more (it queues)" : "Say more. It queues for after this turn.", button: "Queue message" }
+    : { placeholder: phone ? "Say more (it steers now)" : "Say more. Enter steers it now, Tab queues.", button: "Send" };
+}
+
+/** Tab queues the message while the agent works: a plain Tab, words in the box, no list open. @param {{ key: string, shiftKey?: boolean, metaKey?: boolean, ctrlKey?: boolean, altKey?: boolean }} ev @param {{ working: boolean, hasText: boolean, listOpen: boolean }} o */
+export const tabQueues = (ev, o) => ev.key === "Tab" && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey && o.working && o.hasText && !o.listOpen;
+
 /** @param {"mac" | "server"} where */
 export const runsOnLabel = (where) => (where === "mac" ? "Runs on My Computer" : "Runs on Space's Cloud");
 

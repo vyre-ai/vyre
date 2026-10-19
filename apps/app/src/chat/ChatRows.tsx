@@ -501,8 +501,12 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     }
     case "reasoning":
       return <Frame wide={wide} indent dense><Reasoning text={String(it.text)} streaming={!it.done} /></Frame>;
-    case "notice":
-      return <Frame wide={wide}><Text size="caption" tone="label" style={{ textAlign: "center" }}>{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text></Frame>;
+    case "notice": {
+      const line = <Text size="caption" tone="label" style={{ textAlign: "center" }}>{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text>;
+      // A failed reply: Try again sends the message it failed on again.
+      if (!it.retry || !ctx.onTryAgain) return <Frame wide={wide}>{line}</Frame>;
+      return <Frame wide={wide}><View style={{ alignItems: "center", gap: 4 }}>{line}<Button size="sm" kind="ghost" label="Try again" onPress={() => ctx.onTryAgain?.(k)} /></View></Frame>;
+    }
     default:
       return null;
   }

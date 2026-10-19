@@ -19,7 +19,7 @@ import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, readDraftMentions, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
-import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
+import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, tabQueues, triggerAt, whileWorking } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant"; doing?: string };
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
@@ -205,7 +205,7 @@ export function ChatComposer(p: ComposerProps) {
       }
       if (working) {
         rows.push({ key: "steer", group: "While it works", label: "Send now, steering the reply", leading: <Icon name="bolt" size={18} />, checked: mode === "steer", hint: "Enter", run: () => { setMode("steer"); closePop(); } });
-        rows.push({ key: "queue", group: "While it works", label: "Queue for the end of the turn", leading: <Icon name="clock" size={18} />, checked: mode === "queue", hint: "Alt Enter", run: () => { setMode("queue"); closePop(); } });
+        rows.push({ key: "queue", group: "While it works", label: "Queue for the end of the turn", leading: <Icon name="clock" size={18} />, checked: mode === "queue", hint: "Tab", run: () => { setMode("queue"); closePop(); } });
       }
       if (p.onMenuCapability) {
         rows.push({ key: "export", group: "Chat", label: "Export conversation", leading: <Icon name="download" size={18} />, run: () => { closePop(); p.onMenuCapability?.("export"); } });
@@ -379,6 +379,8 @@ export function ChatComposer(p: ComposerProps) {
         if (r) { stop(); setText(r.text); setCaret(r.caret); return; }
       }
     }
+    // While it works, Enter steers it now and Tab queues the message for after.
+    if (tabQueues(ev, { working, hasText: !!text.trim(), listOpen: rows.length > 0 })) { stop(); send("queue"); return; }
     if (ev.key === "Enter" && !ev.shiftKey && !rows.length) { stop(); send(ev.altKey ? "queue" : ev.metaKey || ev.ctrlKey ? "steer" : undefined); }
   };
 
@@ -396,7 +398,7 @@ export function ChatComposer(p: ComposerProps) {
         multiline
         {...({ rows: 1 } as object)}
         {...aria}
-        placeholder={answering.length > 1 ? (p.phone ? "Ask everyone chosen" : "Ask the AIs you chose at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
+        placeholder={answering.length > 1 ? (p.phone ? "Ask everyone chosen" : "Ask the AIs you chose at once") : intent.queue || p.state === "working" ? whileWorking(mode, !!p.phone).placeholder : (p.phone ? "Message" : "Message, or / for commands")}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={onKey}
@@ -408,7 +410,7 @@ export function ChatComposer(p: ComposerProps) {
   const sendBtn = (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={stopShown ? "Stop" : intent.queue ? "Queue message" : "Send"}
+      accessibilityLabel={stopShown ? "Stop" : intent.queue ? whileWorking(mode, !!p.phone).button : "Send"}
       onPress={() => (stopShown ? p.onStop?.() : send())}
       style={{ width: ctl, height: ctl, borderRadius: ctl / 2, backgroundColor: intent.send || stopShown ? color.primary : "transparent", alignItems: "center", justifyContent: "center" }}
     >
