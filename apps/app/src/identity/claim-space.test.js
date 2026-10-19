@@ -45,10 +45,11 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   assert.equal(made.rootPublic, ROOT);
   assert.equal(made.rootKey, undefined, "the app holds no space key");
   assert.deepEqual(r.state.entries.map(e => [e.kind, e.subject]), [["owner", me.id]], "this person is the space's first owner");
-  // a route the directory does not take: the name stays claimed, the hosted space is NOT taken back, and the words say what to run
+  // a route the directory does not take: the first run is not stopped. The name stays claimed, the hosted space is NOT taken back, and the answer says the server is not listed yet
   const kept = [];
-  await assert.rejects(claimServerSpace({ identity, name: "badroute", base, route: { relay: "https://relay.example", route: "rt-srv", box: "bx" }, host: async () => ({ space: "spc_" + "cdefghijklmn", rootPublic: ROOT }), retire: async s => kept.push(s) }), e => e.code === "server_not_listed" && /spaces\.server\.list/.test(e.message));
-  assert.deepEqual(kept, [], "a claimed name is not unmade");
+  const badRoute = await claimServerSpace({ identity, name: "badroute", base, route: { relay: "https://relay.example", route: "rt-srv", box: "bx" }, host: async () => ({ space: "spc_" + "cdefghijklmn", rootPublic: ROOT }), retire: async s => kept.push(s) });
+  assert.deepEqual([badRoute.listed, kept], [false, []], "the claim stands and nothing is retired");
+  assert.ok(badRoute.listError, "and it says why");
   assert.equal((await dir.check("badroute")).status, "taken", "the name is the person's now");
   // a name that is taken: nothing is claimed and the hosted space is taken back
   const again = [];

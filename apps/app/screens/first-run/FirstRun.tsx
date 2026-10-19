@@ -78,6 +78,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [aiThen, setAiThen] = useState<string>("");
   const [paired, setPaired] = useState<{ id: string; name: string; address: string } | null>(null);
   const [noFingerprint, setNoFingerprint] = useState(false);
+  // The directory was not told yet that the server serves the name: the first run goes on, and the app tells it again on its own.
+  const [notReachable, setNotReachable] = useState("");
   const [role, setRole] = useState("member");
   const [days, setDays] = useState("7");
   const [invite, setInvite] = useState(shot?.link || "");
@@ -311,7 +313,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         if (r.failed) { setFailure(typeof r.message === "string" ? r.message : "The space could not be made."); return; }
         if (r.expired) { setFailure(typeof r.message === "string" ? r.message : "The install window ended. Go back and show a new command."); setOnline(false); return; }
         if (typeof r.expiresAt === "string") setExpiresAt(r.expiresAt);
-        if (r.online) { setOnline(true); setNoFingerprint(Boolean(r.noFingerprintYet)); if (r.server) setPaired({ id: String(r.space || ""), name: String(r.server.name || r.server.hostname || "Your server"), address: String(r.server.address || "") }); }
+        if (r.online) { setOnline(true); setNoFingerprint(Boolean(r.noFingerprintYet)); setNotReachable(typeof r.notReachableYet === "string" ? r.notReachableYet : ""); if (r.server) setPaired({ id: String(r.space || ""), name: String(r.server.name || r.server.hostname || "Your server"), address: String(r.server.address || "") }); }
       });
     };
     tick();
@@ -680,6 +682,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           </>
         ) : null}
         {online ? <Text tone="muted">Records keep setting up in the background, so you do not have to wait for them.</Text> : null}
+        {online && notReachable ? <Text tone="muted">{`${notReachable} isn't reachable yet. Vyre will finish this on its own.`}</Text> : null}
         {online && noFingerprint ? <Text tone="muted">Approvals that need your fingerprint are not available on this Mac yet.</Text> : null}
         {online && paired ? (
           <>

@@ -45,7 +45,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
  * The outside things the space steps need (host/space-ports.ts binds them in the app; a test binds fakes or a real server over a real relay): the relay client's setup module, the relay's url, the setup channel,
  * the pairing the app already does with a server's ticket (it returns the pairing it made), the claim of the space's name (the paired server names its own space and the directory gets the record, signed by this identity), a call to the paired server, reading and accepting a join link through the team's own server, and forgetting a pairing.
- * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void> }} SpacePorts
+ * @typedef {{ client: any, mintPairCode: typeof import("@vyre/relay-client/pair-install.js").mintPairCode, createSetupKey: typeof import("@vyre/relay-client/setup.js").createSetupKey, setupFingerprint: typeof import("@vyre/relay-client/setup.js").setupFingerprint, relay: string, connect: (o: any) => Promise<any>, pair: (qr: string, ctx: { pageKey?: unknown }, who: { id: string, name: string, pin: any, key: any }) => Promise<{ box: string, route: string, relay: string, name: string } | null>, claim: (who: { id: string, name: string, eid: string, ops: unknown[], key: any }, o: { name: string, route: { relay: string, route: string, box: string } }) => Promise<string>, listing?: (space: string) => Promise<{ listed: boolean, why: string } | undefined>, call: (name: string, input: any, box: string) => Promise<any>, join?: (link: string, who: { id: string, name: string, pin: any, key: any }) => Promise<{ card: any, accept: () => Promise<any>, close: () => void }>, ask?: (address: string, note: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, askStatus?: (address: string, who: { id: string, name: string, pin: any, key: any }) => Promise<any>, forget: (box: string) => Promise<void> }} SpacePorts
  */
 
 /** One stage-trail line per change (no code, no key, no name): what the first-run proof prints when the screen does not get where it should. */
@@ -87,7 +87,7 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
-  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean }>} */
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean, unreachable?: string }>} */
   const waits = new Map();
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
@@ -329,7 +329,13 @@ export function createHost(o) {
           if (!p || !p.box) { w.failed = { code: "pair", message: "Your server did not finish connecting. Start again." }; return { ...base, online: false, expired: false, failed: true, ...w.failed, canRemove: false }; }
           if (!w.space) {
             trace("poll: claiming the space name");
-            try { w.space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } }); }
+            try {
+              w.space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } });
+              // Was the server listed with the directory by the claim? Never a reason to stop: if not, the first run goes on, the page says so in one line, and ensureServers tries again now and on every unlock.
+              const seenListing = ports.listing ? await ports.listing(w.space).catch(() => undefined) : undefined;
+              if (seenListing && seenListing.listed) { const fresh = await o.store.load(); if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), [String(w.name).toLowerCase()]: String(p.route) } }); }
+              else if (seenListing) { w.unreachable = `${String(w.name).toLowerCase()}.vyre.run`; trace(`poll: the directory was not told this server serves ${w.name} (${seenListing.why || "no reason given"}); it will be tried again`); }
+            }
             catch (e) {
               const x = /** @type {any} */ (e);
               w.failed = { code: String((x && x.code) || "claim"), message: String((x && x.message) || "The space could not be made.").slice(0, 300) };
@@ -358,11 +364,13 @@ export function createHost(o) {
             return { ...base, online: false, expired: false, failed: true, code: String((x && x.code) || "directory"), message: String((x && x.message) || "The names directory did not take the space. Trying again.").slice(0, 300), canRemove: true, retrying: true };
           }
           await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
+          // The listing did not land at the claim: try it again now, quietly, and on every unlock; the page already says it is not reachable yet.
+          if (w.unreachable && held) void ensureServers(held);
           w.saved = true;
           madeHere = String(p.box);
         }
         const row = ((await o.store.load())?.spaces || []).find((s) => s.name === w.name);
-        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), ...(o.softwareKeyHere ? { noFingerprintYet: true } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
+        return { ...base, online: true, expired: false, ...(w.vaultPending ? { vaultPending: true } : {}), ...(o.softwareKeyHere ? { noFingerprintYet: true } : {}), ...(w.unreachable ? { notReachableYet: w.unreachable } : {}), space: row ? row.id : spaceKey("", w.name), server: { hostname, address: `https://${w.name}.vyre.run`, space: w.name, name: hostname, route: (p && p.route) || "", box: (p && p.box) || "" }, canRemove: true };
       }
       if (st.stage === "stopped") {
         const code = st.error ? st.error.code : "stopped";

@@ -42,6 +42,8 @@ export async function spacePorts(): Promise<SpacePorts> {
       const { makeServerSpace } = await import("../real/install");
       return makeServerSpace(name, name, { key: route.box, route }, who as never);
     },
+    // What the claim saw when it told the directory that the server serves the name (undefined: nothing to list). Read once, right after the claim.
+    listing: async (space: string) => (await import("../state/space-listing")).takeListing(space),
     call: async (name, input, box) => (await import("../real/box")).tool(name, input, { server: box }),
     // The person's yes to a join link, read and accepted through the team's own server (src/real/join-team.js), as the identity the page holds. The list in the vault is told in the same breath, as the app's own join does.
     join: async (link, who) => {

@@ -55,6 +55,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the first run is never stopped by the listing of the server with the names directory. If it does not land (the claim keeps the name), the page is online and says in one line "<name>.vyre.run isn't reachable yet. Vyre will finish this on its own.", the reason goes to the trail, and the app tries again at once and on every unlock (ensureServers); a listing that landed is remembered, so it is not posted twice.
 - fix(settings): Account and recovery on a page that holds no key of its own (a browser or phone on a server's address) shows who the server knows by name and the person's list from the names directory, checked (src/identity/public-list.js, settings/account-read.js), and says that changing it (a new recovery code, taking a device off) is done from the Mac or phone that holds the keys; those buttons are not offered there.
 
 - fix(names): the directory takes POST /v1/ids/server from the Vyre app's origins (APP_OPS), as it does the claim and the other owner-signed routes. Before, a browser (the hosted web app, the Mac window) was refused by CORS ("Failed to fetch"), so the first run's listing of the server failed with server_not_listed and the real-installer first run never reached "Your space is online". The signed act is what authenticates; a foreign origin is still refused. The names directory needs deploying with this release.
