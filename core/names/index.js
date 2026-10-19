@@ -50,6 +50,7 @@ export default {
       if (!ok) throw Object.assign(new Error("changing the box's name or owner is the person's own"), { code: "denied" });
     };
     const ownerOnly = steward([]);
+    const serveSteward = steward(["spaces"]);
     ctx.tool("names.status", {
       description: "This box's name and whether it is held: the name, its address once the built-in network publishes one, and why not when it cannot.",
       input: obj(),
@@ -64,7 +65,8 @@ export default {
       description: "Set the space this server serves: <name>.vyre.run. The directory points the name at this server only when the space listed this server's route, so a wrong name here publishes nothing.",
       input: obj({ name: { type: "string" } }, ["name"]),
       callers: WHO,
-      run: async ({ name }, meta = {}) => { ownerOnly(meta); return svc.serve(name); },
+      // The spaces module may serve a name too: it calls this only after the owner's own name-here call and the directory's answer for that very Space (core/spaces/index.js serveName).
+      run: async ({ name }, meta = {}) => { serveSteward(meta); return svc.serve(name); },
     });
     ctx.tool("names.domain.check", {
       description: "Live DNS check of the records for using your own domain: _acme-challenge.<domain> as a CNAME to <routehash>.acme.vyre.run (required) and an optional CAA record.",

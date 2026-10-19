@@ -1303,6 +1303,16 @@ export default {
     // held exactly as host-here holds one) so a joiner can check the server holds the Space. The app then publishes the same names-directory record for the EXISTING id and calls this again with `done` to
     // keep the name the home Space is shown under ("<Name>'s Cloud"). Asking again never makes a second key. Owner only, like host-here.
     /** @type {Promise<any> | null} */ let homeKeyMaking = null;
+    /**
+     * The box takes the name it was given: names.serve sets config.name and network.via, which the public gate, names.status and hooks.status read. Without it a server whose Space is named here (the "one Space per server" install, whose
+     * app steps are name-here, the directory claim, name-here done) holds the name in the directory and serves nothing at <name>.vyre.run. A refusal is logged and never undoes the name; the repair below tries again at start.
+     * @param {string} label
+     */
+    const serveName = async (label) => {
+      const r = /** @type {any} */ (await ctx.call("names.serve", { name: label }).catch((/** @type {any} */ e) => ({ error: e })));
+      if (r && r.error) { ctx.log.warn(`spaces: ${label} is named, but this server could not start serving it (${String((r.error && r.error.message) || r.error)}); run vyre call names.serve '{"name":"${label}"}'`); return false; }
+      return true;
+    };
     tool("spaces.name-here", "On a server: give this home's OWN space its team name. Without `done`: make the space's root key if it has none and answer { space, rootPublic } (the app then publishes the directory record). With `done`: keep the published name for the space's listing. Owner only; hosts nothing. With `server` (a paired server's id from spaces.servers), asks that server to do it instead of this home.", obj({ name: str, done: { type: "boolean" }, server: str }, ["name"]), async (i, meta) => {
       if (i.server !== undefined) return chosenServer({ ctx, identity, K, remoteCall, refuse }).onChosenServer("spaces.name-here", i, meta, ["name", "done"], "Only this home's owner can name a space on a server.");
       if (!K || typeof K.space !== "string" || typeof K.owner !== "string") throw refuse("This home has no kernel of its own space to name; run this on a server.", "unavailable");
@@ -1330,6 +1340,7 @@ export default {
         let r; try { r = await dir.resolve(label, { resolve: ownerLookup }); } catch { throw notPublished(); }
         if (!r || !r.ok || r.kind !== "space" || !r.payload || r.payload.id !== id || r.payload.rootPublic !== have.publicKey) throw notPublished();
         await kv.put("home-named", { name: label, at: now() });
+        await serveName(label);
       }
       return { space: id, existed: true, rootPublic: have.publicKey };
     });
@@ -2560,6 +2571,17 @@ export default {
     if (typeof agreeFirst.unref === "function") agreeFirst.unref();
     const agreeTimer = setInterval(completeAgree, syncEvery);
     if (typeof agreeTimer.unref === "function") agreeTimer.unref();
+
+    // A server named by an earlier build (home-named is kept, but the box never started serving the name) takes it now: only when names.status says it holds no name.
+    const nameRepair = setTimeout(() => {
+      void (async () => {
+        const named = await kv.get("home-named").catch(() => null);
+        if (!named || typeof named.name !== "string" || !named.name) return;
+        const st = /** @type {any} */ (await ctx.call("names.status", {}).catch(() => null));
+        if (st && st.data && !st.data.name) await serveName(named.name);
+      })().catch(() => {});
+    }, 10_000);
+    if (typeof nameRepair.unref === "function") nameRepair.unref();
 
     // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
     adoptOwner().catch(() => {});
