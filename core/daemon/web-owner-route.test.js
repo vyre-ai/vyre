@@ -40,7 +40,6 @@ async function box(t) {
 
 const asks = (/** @type {any} */ r) => Boolean(r && r.error && ["person_session_required", "presence_required", "held_for_approval", "needs_presence"].includes(String(r.error.code)));
 const blocked = (/** @type {any} */ r) => Boolean(r && r.error && ["denied", "person_session_required", "presence_required", "held_for_approval", "needs_presence", "not_found", "no_such_tool"].includes(String(r.error.code)));
-const NW = { name: "nw", scheme: "hmac-sha256", header: "x-sig", secret: "s".repeat(24) };
 const key = () => crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
 
 /** the walk's box: the owner's chain-admitted browser and its presence key, plus a second device key with no row */
@@ -56,8 +55,7 @@ test("the walk's box: the chain-admitted browser and two bare device keys, no ph
   const { d, call } = await box(t);
   walkBox(d, "walkbrowser00000", d.kernel.id.owner);
   assert.equal(d.registry.deps.presence.keys().length, 2);
-  const hook = await call("device:walkbrowser00000", "hooks.open", NW);
-  assert.ok(!blocked(hook), "hooks.open for the owner's browser: " + JSON.stringify(hook).slice(0, 300));
+  // (hooks.open is not asked of a `device:` label at all: the callers gate refuses it first, "not available to device callers", so the walk's webhook prompt came from another label, not this one)
   const invite = await call("device:walkbrowser00000", "spaces.invites.create", { space: d.kernel.id.space, role: "member" });
   assert.ok(!blocked(invite), "spaces.invites.create for the owner's browser: " + JSON.stringify(invite).slice(0, 300));
 });
@@ -66,9 +64,11 @@ test("the same box with a hardware phone paired is asked; a member's chain devic
   const { d, call } = await box(t);
   walkBox(d, "walkbrowser00000", d.kernel.id.owner);
   walkBox(d, "memberbrowser000", "per_" + "m".repeat(26));
-  const member = await call("device:memberbrowser000", "hooks.open", NW);
-  assert.ok(asks(member) || (member.error && member.status >= 400), "a member's device is refused: " + JSON.stringify(member).slice(0, 300));
+  const invite = (/** @type {string} */ id) => call(`device:${id}`, "spaces.invites.create", { space: d.kernel.id.space, role: "member" });
+  const member = await invite("memberbrowser000");
+  assert.ok(blocked(member) || (member.error && member.status >= 400), "a member's device is refused: " + JSON.stringify(member).slice(0, 300));
+  assert.ok(!blocked(await invite("walkbrowser00000")), "before a phone is paired the owner's browser makes an invite");
   enrolDevice(d);
-  const hook = await call("device:walkbrowser00000", "hooks.open", NW);
-  assert.ok(blocked(hook), "with a phone paired the owner's browser is asked or refused: " + JSON.stringify(hook).slice(0, 300));
+  const after = await invite("walkbrowser00000");
+  assert.ok(blocked(after), "with a phone paired the owner's browser is asked or refused: " + JSON.stringify(after).slice(0, 300));
 });
