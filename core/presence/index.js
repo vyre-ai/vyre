@@ -1095,9 +1095,10 @@ export async function noPresenceWhy(d, caller, meta, tool, code) {
     const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
     const text = `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; label class: ${String(caller).split(/[:\s]/)[0].slice(0, 16).replace(/[^a-z-]/gi, "?")}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"}; device keys: ${presence && typeof presence.describeKeys === "function" ? presence.describeKeys() : "unknown"})`;
     // the home's own log says it too (counts and kinds only), so a walk can read which condition failed even where the app swallows the refusal's words
-    if (typeof d.log === "function") d.log(`presence: ${typeof tool === "string" ? tool : "a call"} refused as ${typeof code === "string" ? code : "person_session_required"} ${text}`);
+    // the registry's log when it has one; stderr otherwise, so the line is never lost
+    (typeof d.log === "function" ? d.log : (/** @type {string} */ m) => process.stderr.write(m + "\n"))(`presence: ${typeof tool === "string" ? tool : "a call"} refused as ${typeof code === "string" ? code : "person_session_required"} ${text}`);
     return text;
-  } catch { return "(reason unavailable)"; }
+  } catch (e) { try { process.stderr.write(`presence: reason unavailable (${String(/** @type {any} */ (e) && /** @type {any} */ (e).message).slice(0, 80)})\n`); } catch { /* a log is never the failure */ } return "(reason unavailable)"; }
 }
 
 /**
