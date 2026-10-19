@@ -124,6 +124,7 @@ export function parseHeadscaleLog(line) {
  *   tls?: { cert: string, key: string } | null,
  *   upstream: { host?: string, port: number, tls?: boolean, pin?: string },
  *   derp?: boolean,
+ *   rootRedirect?: string,   where GET / and HEAD / (the bare name, exactly, no query) are sent with a 302: the hosted app. Nothing else is served at the root; every other path is as before
  *   forwarder?: { trust: string[], header: string },
  *   proxy?: { trust?: string[] },   the peers whose connections may begin with a PROXY v2 header (default: loopback, where the tunnel end connects from)
  *   ingress?: { vaultmcp?: () => number | null | Promise<number | null>, agentsmcp?: () => number | null | Promise<number | null>, personmcp?: () => number | null | Promise<number | null>, login?: () => number | null | Promise<number | null>, hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
@@ -438,6 +439,10 @@ export function createGate(o) {
     const ah = appsHost(req);
     if (ah !== null) { apps(req, res, ah, addr).catch(() => { try { sock.destroy(); } catch { /* gone */ } }); return; }
     if (o.ingress && o.ingress.apps) { const rt = setTimeout(() => { try { sock.destroy(); } catch { /* gone */ } }, L.requestMs); rt.unref(); res.on("close", () => clearTimeout(rt)); }
+    // The bare root of the public name: a visitor who types https://<name>.vyre.run is sent to the app. A redirect only: no body, nothing from the box, exactly "/" and exactly GET or HEAD.
+    if (o.rootRedirect && !kind && req.url === "/" && (req.method === "GET" || req.method === "HEAD") && !req.headers.upgrade) {
+      res.writeHead(302, { Location: o.rootRedirect, "Content-Length": "0", "Cache-Control": "no-store", Connection: "close" }); res.end(); return;
+    }
     const ing = kind ? null : ingressKind(req);
     if (ing) { ingress(req, res, ing, addr).catch(() => { try { sock.destroy(); } catch { /* gone */ } }); return; }
     if (!kind || req.headers["transfer-encoding"] || cl > L.maxBodyBytes || req.headers.upgrade) {

@@ -807,3 +807,20 @@ test("gate apps: only a GET with Upgrade: websocket to a running app's host is c
   const up = "POST /ts2021 HTTP/1.1\r\nHost: x\r\nUpgrade: tailscale-control-protocol\r\nConnection: Upgrade\r\n\r\n";
   assert.equal(head(await raw(port, up, { wait: 150 })), "HTTP/1.1 101", "Headscale's control channel is not starved by the apps' upgrades");
 });
+
+test("gate: with a root redirect, exactly GET / and HEAD / are sent to the app with no body, and nothing else at the root changes; without one the root stays the plain 404", async t => {
+  const on = await setup(t, { rootRedirect: "https://web.vyre.run/" });
+  const head = (/** @type {Buffer} */ b) => b.toString("latin1").split("\r\n\r\n")[0];
+  for (const m of ["GET", "HEAD"]) {
+    const r = head(await raw(on.port, `${m} / HTTP/1.1\r\nHost: tess.vyre.run\r\nConnection: close\r\n\r\n`));
+    assert.match(r, /^HTTP\/1\.1 302 /, m);
+    assert.match(r, /\r\nlocation: https:\/\/web\.vyre\.run\/(\r\n|$)/i, m);
+    assert.match(r, /\r\ncontent-length: 0(\r\n|$)/i, m);
+  }
+  assert.deepEqual(on.be.seen, [], "the redirect never reached the backend");
+  for (const bytes of ["POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", "GET /?a=1 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n", "GET /index.html HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"]) {
+    assert.deepEqual(await raw(on.port, bytes), NOT_FOUND, "any other root-ish request is the same 404 bytes");
+  }
+  const off = await setup(t);
+  assert.deepEqual(await raw(off.port, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"), NOT_FOUND, "no option: the root is a 404 as before");
+});
