@@ -42,7 +42,7 @@ test("a member's request for an agent's thread with no sign-in picked is refused
   const w = await world(t);
   const r = await w.launch(await w.tokenOf(w.bobChain));
   assert.equal(r.error && r.error.code, "no_account", JSON.stringify(r));
-  assert.match(r.error.message, /Ask the owner to pick one/);
+  assert.match(r.error.message, /^Connect your own AI account in Settings, AI accounts, to use kit\./);
   assert.equal(w.runs(), 0, "no thread row, so no process and nothing for the sandbox to give a login to");
 });
 
