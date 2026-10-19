@@ -181,8 +181,8 @@ export class Accounts {
     const vaultItem = i.vault_item == null ? null : String(i.vault_item);
     if (kind === "login" ? vaultItem !== null : !vaultItem || !VAULT_ITEM.test(vaultItem)) throw bad(kind === "login" ? "a login account holds no vault item" : "vault_item must name an existing vault item");
     const scope = normalizeScope(i.scope);
-    // A member holds one sign-in account of their own on this server: each one takes a user of the box's fixed 64.
-    if (i.person && kind === "login" && this.db.prepare("SELECT 1 FROM sessions_accounts WHERE kind = 'login' AND person = ?").get(String(i.person))) throw Object.assign(new Error("you have one sign-in account on this server already; remove it first, or add a key instead"), { code: "too_many" });
+    // A member holds one sign-in account of their own per provider on this server (Claude, Codex and Grok each), since each one takes a user of the box's fixed 64; keys are not limited. Every one is theirs alone (serves()).
+    if (i.person && kind === "login" && this.db.prepare("SELECT 1 FROM sessions_accounts WHERE kind = 'login' AND person = ? AND provider = ?").get(String(i.person), provider)) throw Object.assign(new Error(`you have a ${provider} sign-in account on this server already; remove it first, or add a key instead`), { code: "too_many" });
     const id = crypto.randomBytes(6).toString("hex");
     const uid = await this.allocate();
     const now = Date.now();

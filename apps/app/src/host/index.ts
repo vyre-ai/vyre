@@ -61,6 +61,6 @@ async function deviceId(): Promise<string> {
 let host: ReturnType<typeof createHost> | null = null;
 export function getHost() {
   // The Mac window pairs with the page's own software key today (the Secure Enclave key does not sign the session yet), so a release server will not take it for approvals that need a fingerprint: the online screen says so.
-  if (!host) host = createHost({ store: hostStore, directory: directory(), agreePoint: async () => (await getAgreeKey())?.point ?? null, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
+  if (!host) host = createHost({ store: hostStore, directory: directory(), agreePoint: async () => (await getAgreeKey())?.point ?? null, github, signin: { deviceId }, space: { load: spacePorts }, done: shellSetupDone, softwareKeyHere: shellKind() === "mac", memberKeyPath: true, memberKeys: deviceKeyStore({ get: kvGet, set: kvSet }) });
   return host;
 }

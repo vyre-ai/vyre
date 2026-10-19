@@ -189,6 +189,10 @@ export function createFlowsHost(o) {
         if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code)), { code: r.error.code || "failed" });
         return r ? r.data : null;
       },
+      // A Flow's AI step runs on the account of the person the Flow runs as (kernel/flows/runs-as.js decides who), through this Space's inference door as that person's own chain (core/daemon/flow-model.js).
+      ...(o.flowModel ? { model: (/** @type {any} */ q) => o.flowModel.call({ ...q, space, door: gw.model, chainFor: personChain }), accountOk: (/** @type {any} */ q) => o.flowModel.accountOk(q) } : {}),
+      // Runs on may be changed by the Flow's maker, or by the Space's owner for themselves.
+      isOwner: async (/** @type {string} */ p) => p === ownerOf() || (await roleHolders("owner")).some((/** @type {any} */ h) => h && h.id === p),
       // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
       sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
@@ -447,7 +451,9 @@ export function createFlowsHost(o) {
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles, doer: projectRoleDoer }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       // a template's Automations: an attached Flow starts as the person who approved it, once per entry (the key); a Flow that is not running says so
       startFlow: async (/** @type {string} */ id, /** @type {any} */ input, /** @type {string} */ key) => { const f = await store.active(id); if (!f || !f.approver) throw new Error("it is not running (paused, disabled, or without an approved version)"); return flows.runner.start(id, input, personChain(f.approver.id), key); },
-      chain: () => k.chains.appendService(owner(), "flows", true) });
+      chain: () => k.chains.appendService(owner(), "flows", true),
+      // a stage task that puts an agent to work is assigned by the person who moved the record into the stage, so the agent's job runs as them (core/daemon/agent-wake.js reads assigned_by)
+      chainFor: (/** @type {string} */ p) => k.chains.forModule({ module: "flows", approver: personChain(p) }) });
 
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.

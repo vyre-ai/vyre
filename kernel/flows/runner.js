@@ -21,7 +21,7 @@ import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter, slim, OUTWARD } from "./runner-util.js";
 import { simulate as simulateFlow } from "./simulate.js";
 export { resolveValue, toFilter };
-import { stampAdders } from "./adders.js";
+import { stampAdders } from "./adders.js"; import { modelCall, runsAsOf, runsAsChecked, settleRunsOn } from "./runs-as.js";
 import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
@@ -84,7 +84,7 @@ export { showable };
  *     service?: (q: { chain: any, connector: string, request: { method: string, path: string, query?: any, headers?: any, body?: any, upload?: { drive: { path: string, version?: string, contentType?: string } }, saveTo?: string }, idem: string, approval?: string }) => Promise<{ status: number, ok?: boolean, headers?: Record<string, string>, body?: string } | { saved: { path: string, version: string|number, size: number, sha256: string } } | { held: boolean, kind?: string, summary?: string }>,
  *     sandbox?: (req: { language: string, source: string, hash: string, inputs: any, outputs: string[], needs: string[] }) => Promise<{ outputs: Record<string, any> }>,
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
- *     model?: { provider: string, model: string },
+ *     model?: { provider: string, model: string } | ((q: { person: string, account?: string, provider?: string, purpose: string, max_tokens: number, messages: any[], run: string }) => Promise<any>), isOwner?: (person: string) => Promise<boolean>, accountOk?: (q: { person: string, account: string, provider?: string }) => Promise<boolean>,
  *   },
  *   settings?: (key: string) => Promise<any>,
  *   policy?: Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>,
@@ -137,6 +137,7 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const before = id ? await this.#newest(id) : null;
     flow = stampAdders(before && before.flow, flow, by);
+    const ro = await settleRunsOn({ before, flow, by, id, store: this.store, isOwner: async p => Boolean(this.ports.isOwner && (await this.ports.isOwner(p))), accountOk: this.ports.accountOk }); if ("errors" in ro) return { ok: false, errors: ro.errors }; flow = ro.flow;   // Runs on (kernel/flows/runs-as.js): the writer's own account, changed only by the maker or the owner for themselves; left out, the one before stands
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings, effects: compiled.effects };
     // The person who adds a step must reach what it touches: a Flow is a way to use your own access, never someone else's.
@@ -821,6 +822,7 @@ export class FlowRunner {
     // The words a Flow can print about itself, fixed once when the run starts (so a replay prints the same): this run's number among the Flow's, who approved it, who started it, and the Space's name.
     run.number = await this.#nextNumber(f.id);
     if (typeof trig.by === "string" && trig.by) run.started_by = trig.by;
+    run.runs_as = await runsAsOf(this.store, f);   // whoever or whatever started it (a person, a webhook, a schedule, a watcher), its AI turns are this person's
     run.names = await this.#namesFor(f, run.started_by);
     const about = recordOfTrigger(trig);
     if (about) run.record = about;
@@ -1789,7 +1791,7 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
-      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record });
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (doer && doer.kind === "agent" && typeof this.ports.model === "function") await runsAsChecked(this.store, ctx);   // an agent's job runs as the task's assigner: the runs-as person
       // What each person on the task is told: tags in a box are resolved now, through THAT reader's own chain (a role: each holder's), so a record is read as it is at this moment, a sealed field stays
       // sealed, and nobody is handed a record through someone else's reach.
       const ioOf = (/** @type {any} */ actor) => {
@@ -1901,12 +1903,11 @@ export class FlowRunner {
     const need = { action: "model.call", resource: `vyre://${ctx.cat.space}/model/*` };
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
-      const m = this.ports.model || { provider: "default", model: "default" };
       // AI is metered: a step may spend little, a run a bit more, a Space a day's worth (an admin sets it; kernel/flows `flows.budget`). Refused plainly before anything is sent.
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       // The door's refusal (a budget, a residency rule, a value it would not let through) is the step's failure with its own code, so the owner reads the rule and not "error".
-      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model, max_tokens: 64,
+      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "classify", max_tokens: 64,
         messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: text }] }).catch(portFail);
       const u = r && r.usage || {};
       const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
@@ -1926,11 +1927,10 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       const names = s.fields.map((/** @type {any} */ f) => f.name);
       if (ctx.dry) return { dry: true, fields: Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) };
-      const m = this.ports.model || { provider: "default", model: "default" };
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");
-      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "extract", provider: m.provider, model: m.model, max_tokens: 400,
+      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "extract", max_tokens: 400,
         messages: [{ role: "system", content: `Read the user's text and answer with ONE JSON object and nothing else. Its keys are exactly these fields; a value is null when the text does not say. Dates are YYYY-MM-DD.\n${spec}` }, { role: "user", content: text }] }).catch(portFail);
       const u = r && r.usage || {};
       const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);

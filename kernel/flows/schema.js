@@ -365,6 +365,17 @@ function checkOutput(o, path, out) {
 /** @param {string} source */
 export const sourceHash = source => crypto.createHash("sha256").update(source).digest("base64url");
 
+const RUNS_ON = { person: /^per_[a-z0-9]{1,64}$/, account: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, provider: /^[a-z][a-z0-9-]{0,31}$/ };
+/** A Flow's Runs on (kernel/flows/runs-as.js): { person?, account?, provider? }, the person stamped by the runner from who wrote the version. @param {any} r @returns {string} the problem, or "" */
+export function runsOnProblem(r) {
+  if (!r || typeof r !== "object" || Array.isArray(r)) return "runs_on is { account?, provider? }: the account the Flow's AI steps use";
+  for (const [k, v] of Object.entries(r)) {
+    if (!Object.hasOwn(RUNS_ON, k)) return "runs_on has only person, account and provider";
+    if (!(typeof v === "string" && /** @type {any} */ (RUNS_ON)[k].test(v))) return `runs_on.${k} is ${k === "person" ? "a person's id" : k === "account" ? "an account's id" : "a provider's name"}`;
+  }
+  return "";
+}
+
 /**
  * Check the shape of a stored Flow. Returns every problem found (not just the first), each with a path.
  * @param {any} flow @returns {Problem[]}
@@ -373,13 +384,15 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "triggers", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group", "project"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "triggers", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms", "group", "project", "runs_on"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
   if (flow.description !== undefined && typeof flow.description !== "string") out.push({ path: "description", message: "a description is text" });
   // The group a Flow is listed under (presentation only, never a permission).
   if (flow.project !== undefined && !(typeof flow.project === "string" && /^[a-z0-9][a-z0-9-]{0,119}$/.test(flow.project))) out.push({ path: "project", message: "project is the project's short name: lower case letters, numbers and dashes, up to 120 characters" });
+  // Whose AI account its AI steps use (kernel/flows/runs-as.js): the person is stamped by the runner from who wrote the version, never trusted from here.
+  if (flow.runs_on !== undefined && runsOnProblem(flow.runs_on)) out.push({ path: "runs_on", message: runsOnProblem(flow.runs_on) });
   if (flow.group !== undefined && (typeof flow.group !== "string" || !flow.group.trim() || flow.group.length > 60)) out.push({ path: "group", message: "group is a short string (1 to 60 characters)" });
   if (!AUTHORSHIP.includes(flow.authorship)) out.push({ path: "authorship", message: `authorship is one of ${AUTHORSHIP.join(", ")}` });
   if (flow.caps !== undefined) {
