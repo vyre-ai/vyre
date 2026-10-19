@@ -18,11 +18,11 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ### The shared browser and a Linux user for each agent
 
-Off until 0.6.2. Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used, even on a server that could run them. To try them on a server you run, set `computers.browse` to `browser` and `computers.agentUsers` to `true` in its config. Nothing else turns them on.
+Each agent that has a computer gets its own, with its own screen and its own Chrome. A separate Linux user for each agent on the space's computer is used only when you set `computers.agentUsers` to `true` in a server's config, and the one shared browser only when you set `computers.browse` to `browser`; each is its own setting. In 0.6.2 the service that makes those users (agentd) starts correctly. With `computers.agentUsers` on, if agentd is not ready, an agent's browser call waits up to 90 seconds (`computers.agentdWaitMs`) and is then refused with a plain message; it never falls back to the shared browser.
 
 ### Downloads in an agent's computer
 
-A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent, and the folder the proof expects (the browser's own) is not the one computerd accepts today (the agent's Downloads). The proof reports these four checks (the two download-path checks, the landing and the read) as known failures; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+Fixed in 0.6.2, for an agent that has its own Linux user. Chrome's downloads land in a folder the browser's user owns and outside every folder the agent owns: the agent can read a download and cannot place or swap anything in it, and Files shows it read-only as Downloads.
 
 ### A member's own AI account in chats
 
@@ -203,3 +203,19 @@ Chrome reserves far more virtual memory than it uses and does not start under a 
 What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
 
 Owner: comp6 with sec53.
+
+## The Mac app is ad-hoc signed
+
+Until the Mac app has Apple signing, it has no Touch ID approvals. While no phone is paired, the owner's own approvals pass in the app without one (Settings > Privacy says "Approvals: none needed until you pair a phone"), and so do approvals from anything that can act as the owner's paired device. Commands typed in a terminal (the `vyre` command) still need a paired phone for approval steps. The GitHub sign-in in the Mac app may not finish: its return page opens in the browser, not the app window.
+
+What to do: pair a phone in Settings to turn the proof back on and to approve from it, and use your username and password in the Mac app.
+
+Owner: app53 and the release lead, until Apple signing.
+
+## A flood of forged asks to join can keep real asks waiting
+
+Asking to join a Space by its address checks a person's identity with the names directory, and those lookups are capped at fifty a minute for the whole server so a flood cannot overload the directory. A flood of forged asks from free relay channels can fill that cap, so while it lasts a real ask is refused as rate limited and works in a later minute. Nothing is shown to the asker or the owner that they should not see, and no one is moved across a Space. Caps by network address are the relay's job.
+
+What to do: ask again a minute later. The owner can turn "Let people ask to join" off while a flood lasts.
+
+Owner: app53 with sec53. Planned: counting lookups for each identity, or keeping a share of them for identities that already hold an invite (team/BACKLOG.md).
