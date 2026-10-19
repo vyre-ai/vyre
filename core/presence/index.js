@@ -1087,7 +1087,7 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
 /**
  * Why noPresenceDevice said no, in counts and kinds only, never an id or a key: shown after the sign-in refusal so a walk can say which condition failed. @param {any} d @param {string} caller @param {any} meta
  */
-export async function noPresenceWhy(d, caller, meta, tool) {
+export async function noPresenceWhy(d, caller, meta, tool, code) {
   try {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
@@ -1095,7 +1095,7 @@ export async function noPresenceWhy(d, caller, meta, tool) {
     const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
     const text = `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"}; device keys: ${presence && typeof presence.describeKeys === "function" ? presence.describeKeys() : "unknown"})`;
     // the home's own log says it too (counts and kinds only), so a walk can read which condition failed even where the app swallows the refusal's words
-    if (typeof d.log === "function") d.log(`presence: ${typeof tool === "string" ? tool : "a call"} refused as person_session_required ${text}`);
+    if (typeof d.log === "function") d.log(`presence: ${typeof tool === "string" ? tool : "a call"} refused as ${typeof code === "string" ? code : "person_session_required"} ${text}`);
     return text;
   } catch { return "(reason unavailable)"; }
 }
