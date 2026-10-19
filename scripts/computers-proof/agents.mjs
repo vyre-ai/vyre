@@ -315,6 +315,7 @@ try {
   press(802); await sleep(4000);
   const fm = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 pcmanfm"]);
   check(/pcmanfm \/var\/lib\/vyre\/agents\/ag20000\/home$/.test(fm), "Files opens the file manager as the agent, on its folder", fm);
+  check((await shoot("agent-desk-terminal-files.png")) > 1000, "a picture with the terminal and the file manager in front is saved (agent-desk-terminal-files.png)");
   press(638); await sleep(3000);
   const tabsAfter = await pages().catch(e => `ERR ${e.message}`);
   check(typeof tabsBefore === "number" && typeof tabsAfter === "number" && tabsAfter === tabsBefore + 1, "Chrome brings Chrome to the front with a new tab (the holder opens it; the agent never reaches Chrome's pipe)", `${tabsBefore} -> ${tabsAfter}`);
