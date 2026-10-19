@@ -37,6 +37,7 @@ import { presenceFor } from "./presence.js";
 import { createSendContext } from "./context.js";
 import { chatFolderFor } from "./chat-folder.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
+import { withinOrThrow } from "../../lib/within.js";
 
 const MIGRATIONS = [`
   CREATE TABLE stream_groups_members (
@@ -78,6 +79,11 @@ const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
+
+/** A send appends the person's words or fails within SEND_MS; no one awaited step before the append may take longer than STEP_MS (both may be made shorter for a test, `sendBudget`). */
+export const SEND_BUDGET = Object.freeze({ totalMs: 16_000, stepMs: 12_000 });
+/** The refusal of a send whose step took too long: the step's name is in the message and in `detail`, so the next stall says where it was. @param {string} step */
+export const slowStep = step => Object.assign(fail("slow_step", `slow_step: ${step}: the server took too long, so this message was not saved. Try again.`), { detail: { step } });
 /** A uuid from a string, the same every time. @param {string} s */
 function uuidOf(s) {
   const b = crypto.createHash("sha1").update(`vyre-stream-group\n${s}`).digest().subarray(0, 16);
@@ -106,11 +112,11 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 
 /**
  * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void },
- *   ks?: KernelThreads }} o
+ *   ks?: KernelThreads, sendBudget?: { totalMs?: number, stepMs?: number } }} o
  *   ks: the kernel-session seam (lib/kernel-session.js, handed to the stream by the daemon as ctx.kernelThreads, or injected by a test): the assistant's kernel session is opened by vyred from the person's own send,
  *   and the stream only asks for calls on a thread's session (`forThread(thread)`), never a token. With it the stream opens no session of its own for an assistant; without it (a test with no daemon) the older path runs.
  */
-export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers, ks: ksOpt }) {
+export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers, ks: ksOpt, sendBudget }) {
   const setT = (timers && timers.set) || ((/** @type {() => void} */ fn, /** @type {number} */ ms) => { const t = setTimeout(fn, ms); t.unref?.(); return t; });
   const clearT = (timers && timers.clear) || ((/** @type {any} */ t) => clearTimeout(t));
   /** How long a reply waits for an assistant session after a restart (stream.resumeWaitSeconds, 60 by default). */
@@ -142,6 +148,29 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /** @type {any} */ let timer = null;
   let stopped = false;
   const log = (/** @type {string} */ m) => { try { ctx.log(`stream: ${m}`); } catch {} };
+  const debug = (/** @type {string} */ m) => { try { (ctx.log && typeof ctx.log.debug === "function" ? ctx.log.debug : ctx.log)(`stream: ${m}`); } catch {} };
+  const SEND_MS = Math.max(1, Number((sendBudget && sendBudget.totalMs) ?? SEND_BUDGET.totalMs));
+  const STEP_MS = Math.max(1, Number((sendBudget && sendBudget.stepMs) ?? SEND_BUDGET.stepMs));
+  /**
+   * One send's clock: each awaited step before the append runs within its budget (the step's own, and what is left of the send's) and is logged at debug level with how long it took, so a send
+   * that stalls says which step it stalled in. Only the step, the chat, the first characters of the client's message id and the time are written: never the words. @param {string} grp @param {unknown} message
+   */
+  const sendClock = (grp, message) => {
+    const t0 = Date.now();
+    const id = typeof message === "string" && ID.test(message) ? message.slice(0, 8) : "new";
+    return {
+      /** @template T @param {string} step @param {Promise<T>} p @returns {Promise<T>} */
+      async step(step, p) {
+        const s = Date.now();
+        const ms = Math.max(1, Math.min(STEP_MS, SEND_MS - (s - t0)));
+        let ok = false;
+        try { const r = await withinOrThrow(p, ms, () => slowStep(step)); ok = true; return r; }
+        finally { debug(`send ${id} in ${grp}: ${step} ${ok ? "took" : "failed after"} ${Date.now() - s} ms`); }
+      },
+      /** @param {string} what */
+      end(what) { debug(`send ${id} in ${grp}: ${what} after ${Date.now() - t0} ms`); },
+    };
+  };
   /** The kernel-session seam: handed by the daemon, injected by a test, or none. */
   const ks = /** @type {KernelThreads | null} */ (ksOpt || ctx.kernelThreads || null);
   /** @type {Promise<any> | null} the restart's reopening of the open turns, while it runs */ let reopening = null;
@@ -957,6 +986,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     {
       const grp = sessionOf(i);
       const author = personOf(meta, i);
+      const clock = sendClock(grp, i.message);
       // SS-2: with the kernel on, the asker of every turn is the kernel-verified author of the message (the chain the call was made under, recorded by the gate), never `as`, `asker` or anything else the caller wrote.
       if (kernelOn() && !(meta && typeof meta === "object" && kernelPerson.has(meta))) throw fail("person_session_required", "this chat is the kernel's: a call needs the person's own session");
       mustBeIn(grp, author);
@@ -969,8 +999,12 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const out = logs.get(grp);
         join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
         const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
-        if (!had && kernelOn()) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
+        if (!had && kernelOn()) {
+          const mine = await clock.step("person-session", personSession(meta, grp, author));
+          await clock.step("kernel-append", append(mine.token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private"));
+        }
         if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
+        clock.end(had ? "a repeat, nothing appended" : "appended");
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
       }
       const text = String(i.text ?? "").trim();
@@ -998,9 +1032,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         for (const r of rows) void schedule(r);
         const fo = out.read(0).find(f => f.type === "chat.fanout" && f.data.message === message);
         const answers = rows.map(r => ({ who: String(r.who), message: String(r.answer) }));
+        clock.end("a repeat, nothing appended");
         return { session: grp, message, duplicate: true, ...(fo ? { group: fo.data.group, answers: fo.data.members } : { answers }) };
       }
-      await adoptRuns(grp, author);
+      await clock.step("adopt-runs", adoptRuns(grp, author));
       // One Chat: a chat of one person with nobody in it who answers yet (a new chat) gets the default model slot, and this send starts its run in the chat. A chat of several people never does: an assistant
       // does not jump into a conversation between people.
       if (kernelOn() && g.bots.size === 0 && g.people.size === 1 && !(Array.isArray(i.to) && i.to.length)) {
@@ -1031,16 +1066,17 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       }
 
       // What the message carries beside the words, for the assistants only (a record named exactly, the files attached): read under the sender's own chain, and a bad list refuses the send before anything is stored.
-      const carried = await sendContext({ chain: (kcalls.get(meta) || {}).chain, grp, text, pasted: i.pasted, attachments: i.attachments, people: g.people.size, members: !(Array.isArray(i.attachments) && i.attachments.length) ? [] : await Promise.all(to.map(async id => { const m = g.bots.get(id); return { who: id, cwd: m ? m.cwd || (m.thread ? await ctx.call("threads.get", { thread: m.thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.cwd) || null, () => null) : null) : null, session: Boolean(m && m.thread) }; })) });
+      const members = !(Array.isArray(i.attachments) && i.attachments.length) ? [] : await clock.step("assistant-folders", Promise.all(to.map(async id => { const m = g.bots.get(id); return { who: id, cwd: m ? m.cwd || (m.thread ? await ctx.call("threads.get", { thread: m.thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.cwd) || null, () => null) : null) : null, session: Boolean(m && m.thread) }; })));
+      const carried = await clock.step("attachments", sendContext({ chain: (kcalls.get(meta) || {}).chain, grp, text, pasted: i.pasted, attachments: i.attachments, people: g.people.size, members }));
       // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer
       // (its replies are appended under it). A refusal here is the send's refusal: nothing is stored.
       /** @type {string|undefined} */ let kid;
       if (kernelOn()) {
-        const mine = await personSession(meta, grp, author);
+        const mine = await clock.step("person-session", personSession(meta, grp, author));
         const bots = [];
         // The assistants' sessions are vyred's (the seam), opened from this send; the stream opens none for them on the daemon path.
-        if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await sessionFor(k.chain, grp, author, shortOf(id))]); }
-        kid = String((await append(mine.token, { text })).id);
+        if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await clock.step("assistant-session", sessionFor(k.chain, grp, author, shortOf(id)))]); }
+        kid = String((await clock.step("kernel-append", append(mine.token, { text }))).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
       out.append("user-message", { message, text, state: "sent", ...(carried.saved.length ? { attachments: carried.saved } : {}), ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(tz ? { tz } : {}) }, { author, message });
@@ -1061,6 +1097,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         return row;
       });
       for (const r of rows) void schedule(r);
+      clock.end("appended");
       return { session: grp, message, routed: to, answers, ...(groupId ? { group: groupId } : {}) };
     }
   }
