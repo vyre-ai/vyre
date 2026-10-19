@@ -25,7 +25,9 @@ test("the Assistant: the owner's chat on the owner's account, a member's on a th
   };
   const as = (/** @type {any} */ who) => (/** @type {string} */ name, /** @type {any} */ input = {}) => d.registry.call(name, input, "deck", who);
   const ben = as(await add(BEN, "member", 2)), ada = as(await add(ADA, "admin", 3));
-  const owner = (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "cli");
+  // the owner at a surface of theirs, with the owner's own session (the chat the Assistant's thread is in is judged as the owner)
+  const ownerToken = { token: (await d.kernel.surfaces.open(ownerChain, {})).token };
+  const owner = (/** @type {string} */ n, /** @type {any} */ i = {}) => d.registry.call(n, i, "deck", ownerToken);
   /** @param {string} id */
   const run = id => { const db = openStore(config.paths(root).db); try { return /** @type {any} */ (db.prepare("SELECT account, agent, provider FROM threads_runs WHERE id = ?").get(id)); } finally { db.close(); } };
   const runsOf = () => { const db = openStore(config.paths(root).db); try { return /** @type {any[]} */ (db.prepare("SELECT id, account FROM threads_runs WHERE agent = 'juno'").all()); } finally { db.close(); } };

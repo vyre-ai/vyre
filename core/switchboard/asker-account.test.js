@@ -131,7 +131,7 @@ test("checkLaunch: who asks is the first person on the chain, else the person th
   // No person on the call is not judged (the narrow gate): the owner's surfaces, a restart re-running a queued request, a duty and a Flow run as they did before the gate.
   assert.equal(await checkLaunch(none, tm, null, OWNER), null, "nobody recorded, a picked credential: not judged");
   assert.equal(await checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, null, OWNER), null, "nobody recorded, nothing picked (ambient): not judged either");
-  await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, chain(ANA), OWNER), /has no AI sign-in picked for it/, "a member, nothing picked (ambient)");
+  await assert.rejects(checkLaunch(none, { agent: "tm", agent_kind: "teammate" }, chain(ANA), OWNER), /Connect your own AI account in Settings, AI accounts, to use tm\./, "a member, nothing picked (ambient)");
   // an agentless launch: tool-less passes for anyone; WITH tools it is the machine's own sign-in, the owner's
   assert.equal(await checkLaunch(none, { tools: "none" }, chain(ANA), OWNER), ANA, "tool-less");
   assert.equal(await checkLaunch(none, { lean: true }, chain(ANA), OWNER), ANA, "lean");
