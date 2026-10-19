@@ -392,6 +392,7 @@ test("a Space whose paired route was never kept is listed with the route the pai
   for (let i = 0; i < 100 && (await box.get("/v1/names/mine")).json.data.name === null; i++) await new Promise((r) => setTimeout(r, 20));
   assert.equal((await box.get("/v1/names/mine")).json.data.name, "teamb", "the route the server reported is listed");
   assert.equal(store.peek().listed.teamb, box.route);
+});
 
 test("Settings, Account on a page with no daemon reads the person's list from the host and the directory: the device, the recovery code, and which entry is this one", async (t) => {
   const d = directory(t);
