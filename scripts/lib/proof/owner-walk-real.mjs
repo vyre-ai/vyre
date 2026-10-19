@@ -10,6 +10,20 @@ import path from "node:path";
 
 /** @typedef {{ run: any, drv: any, srv: any, ins: any, S: (n: string) => string, READY: string[], USERNAME: string, PASSWORD: string, until: (f: () => any, ms: number, what: string) => Promise<any>, wait: (ms: number) => Promise<void>, out: string, spaceName: () => string, cleanups: (() => any)[] }} Ctx */
 
+/** Names of an object's keys (never values), for logs. */
+const keysOf = (/** @type {any} */ o) => (o && typeof o === "object" ? Object.keys(o).join(",") || "(none)" : typeof o);
+const errOf = (/** @type {any} */ e) => String(e?.code ?? e?.message ?? e).slice(0, 120);
+const rowsOf = (/** @type {any} */ o) => (Array.isArray(o) ? o : ["spaces", "items", "rows", "devices", "keys"].map((k) => o?.[k]).find(Array.isArray) ?? []);
+/** What the box says about presence keys and devices, as counts and kinds only (ids cut to 6 characters). */
+async function boxFacts(/** @type {(t: string, i?: any) => Promise<any>} */ op) {
+  /** @type {string[]} */ const out = [];
+  try { const k = rowsOf(await op("presence.keys", {})); out.push(`presence.keys: ${k.length} (${k.map((x) => String(x?.kind ?? x?.type ?? "?")).join(",")})`); } catch (e) { out.push(`presence.keys: ${errOf(e)}`); }
+  try { const d = rowsOf(await op("spaces.devices.list", {})); out.push(`devices: ${d.map((x) => `${String(x?.id ?? "").slice(0, 6)}/${x?.kind ?? "?"}/removed=${!!x?.removed}/owner=${!!(x?.owner ?? x?.is_owner)}`).join(" ")}`); } catch (e) { out.push(`spaces.devices.list: ${errOf(e)}`); }
+  try { out.push(`network.wink.status keys: ${keysOf(await op("network.wink.status", {}))}`); } catch (e) { out.push(`network.wink.status: ${errOf(e)}`); }
+  try { out.push(`presence.person.status keys: ${keysOf(await op("presence.person.status", {}))}`); } catch (e) { out.push(`presence.person.status: ${errOf(e)}`); }
+  out.push("caller label: the browser's label is not exposed by a box tool I tried");
+  return out;
+}
 /** @param {Ctx} c */
 export async function ownerWalkReal(c) {
   const { run, drv, srv, ins, READY, USERNAME, until, wait } = c;
@@ -156,13 +170,19 @@ export async function ownerWalkReal(c) {
     catch (e) {
       await shot("failed-04-invite");
       const said = `${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`;
-      // The screen refused (a passkey is asked for); make the link from the box so walks 4b and 5b still run, and fail this step honestly.
+      // The screen refused (a passkey is asked for). Say what the box knows (counts, kinds, short ids: no secrets), then make the link from the box so walks 4b and 5b still run, and fail this step honestly.
+      const facts = await boxFacts(op);
       try {
-        const sp = await op("spaces.list", {}); const id = String((sp?.spaces ?? sp)?.[0]?.id ?? "");
+        let id = "";
+        for (const tool of ["onboard.space.list", "spaces.list"]) {
+          try { const sp = await op(tool, {}); const rows = rowsOf(sp); facts.push(`${tool}: keys ${keysOf(sp)}, ${rows.length} rows, row keys ${keysOf(rows[0])}`); id = id || String(rows[0]?.id ?? rows[0]?.space ?? ""); } catch (e3) { facts.push(`${tool}: ${errOf(e3)}`); }
+        }
         const r = await op("onboard.member.link", { space: id, role: "member", ttlDays: 7 });
-        inviteLink = String(r?.link ?? r?.url ?? "");
-      } catch (e2) { throw new Error(`${said} (the box link fallback also failed: ${/** @type {Error} */ (e2).message})`); }
-      throw new Error(`${said} (link made from the box instead: ${inviteLink ? "yes" : "no"})`);
+        facts.push(`onboard.member.link: keys ${keysOf(r)}`);
+        inviteLink = String([r?.link, r?.url, r?.invite?.link, r?.data?.link, ...Object.values(r ?? {})].find((v) => typeof v === "string" && /^(https?|vyre):\/\//.test(v)) ?? "");
+      } catch (e2) { facts.push(`onboard.member.link: ${errOf(e2)}`); }
+      console.log(`owner walk 4 box facts: ${facts.join(" | ")}`);
+      throw new Error(`${said} (link made from the box instead: ${inviteLink ? "yes" : "no"}; box facts: ${facts.join(" | ").slice(0, 900)})`);
     }
     inviteLink = String(/(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
     await shot("04-invite-made");
