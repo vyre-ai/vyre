@@ -13,6 +13,21 @@ export function computerOf(d) {
   return { state, lastActive: Number(d?.lastActive) || 0, thumbnail: t };
 }
 
+const NOT_ON = "Agent computers aren't set up on this server yet. Update the server to turn them on.";
+/** A server older than plain words answers with its driver's own message; these are the ones it has, said the way a newer server says them. @type {Array<[RegExp, string]>} */
+const OLD_WORDS = [
+  [/no computer driver is configured|computers\.docker is not set|the agent computer is not set up on this machine/i, NOT_ON],
+  [/no such image/i, "The agent computer's image isn't on this server yet. Update the server to download it."],
+  [/vyre docker proxy:/i, "This server's computer service refused to start the agent computer because its settings don't match. Update the server to fix it."],
+];
+
+/** Why the computer cannot run, as the tab says it: the server's own words (computers.agent.status `problem`, or a refusal), never a driver's raw message. @param {unknown} message */
+export function computerProblem(message) {
+  const m = String(message || "");
+  for (const [re, words] of OLD_WORDS) if (re.test(m)) return words;
+  return m;
+}
+
 /** The line under the screen. @param {ComputerView} v @param {string} name */
 export function computerWords(v, name) {
   if (v.state === "waking") return `Waking ${name}'s computer. Chrome and the screen come back where they were.`;

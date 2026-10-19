@@ -20,7 +20,7 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
     if (!who) return null;
     const r = await agentComputer.status(who);
     if (!live.current) return null;
-    if ("view" in r) { setView(r.view); setProblem(""); return r.view; }
+    if ("view" in r) { setView(r.view); setProblem(r.problem ?? ""); return r.view; }
     setProblem(r.problem);
     return null;
   }, [who]);
