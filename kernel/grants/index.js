@@ -309,7 +309,7 @@ export function createGrantsStore(cfg) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     if (!bound) throw new KernelError("unavailable", "the grants store is not bound to an authorizer");
     // One authorize call, one proof: the proof is bound to this exact input.
-    return bound.gate(chain, action, resource, { presence, input_hash: sha256(canonical({ action, input })) });
+    return bound.gate(chain, action, resource, { presence, input_hash: sha256(canonical({ action, input })), payload: input });
   }
   const person = (/** @type {any} */ chain) => { if (!isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person on their own gives or takes access"); return chain.hops[0].actor; };
 
@@ -777,7 +777,7 @@ export function createGrantsStore(cfg) {
     async inviteConfirm(chain, /** @type {string} */ id, /** @type {{ words: string }} */ c, o = {}) {
       const issuer = person(chain);
       const inv = invites.get(id);
-      const d = await gate(chain, "grants.invite", urn("invite", id), { confirm: id, words: c && c.words }, o.presence);
+      const d = await gate(chain, "grants.invite", urn("invite", id), { confirm: id, words: c && c.words, ...(inv && typeof inv.role === "string" ? { role: inv.role } : {}) }, o.presence); // role: the STORED invite's, read here, for the home's presenceNotNeeded
       if (!inv || inv.status !== "pending" || !sameActor(inv.issuer, issuer)) throw new KernelError("not_found", "no such invite");
       if (typeof c.words !== "string" || !c.words.trim()) throw new KernelError("bad_input", "confirm the invitee's fingerprint words");
       const n = freeze({ ...inv, confirmed: true, confirmed_words_hash: sha256(c.words.trim().toLowerCase()) });

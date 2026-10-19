@@ -393,6 +393,9 @@ export const MIGRATIONS = [`
   ALTER TABLE presence_pair_grants ADD COLUMN cap_ms INTEGER;
 `, `
   DROP TABLE IF EXISTS presence_sessions;
+`, `
+  -- Where a key was enrolled from, set by the enrolling code and never by a request: native (the app's biometric key), first-key (a Mac server's first key), relay (a pairing hello), setup (the setup page). NULL: made before this column existed.
+  ALTER TABLE presence_keys ADD COLUMN source TEXT;
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -906,13 +909,18 @@ export class Presence {
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
   /**
-   * The ids of the device keys that are not a paired phone's: a device key counts only while a relay row (not removed) names it, paired from a phone's app (not from a browser) with a key not held in software. The
-   * first-run browser's own key and the in-page host's are enrolled with no relay row, a browser's through its hello, and the 0.6.1 rows of an ad-hoc Mac app keep their key in software: none of them is a phone.
-   * A passkey and a Lumen key are never here. A table that cannot be read gives an empty set, so every key counts.
+   * The ids of the device keys that do NOT turn approvals on: this one place decides what counts as an enrolled phone (the module floor, the kernel's remote path and the cards all ask it). A passkey and a Lumen
+   * key always count. A device key counts when it was enrolled by the native app (source native: the biometric key, hardware-bound), or when it came through the relay (source relay, or none: made before the source
+   * was recorded) AND a relay row that is not removed names it, was not paired from a browser and holds its key outside software. The setup page's key and a Mac server's first key (setup, first-key) never count
+   * (BACKLOG: count first-key once the app records hardware storage), and neither does a device key with no source and no such relay row (the first-run browser's identity key, the in-page host's). A table that
+   * cannot be read gives an empty set, so every key counts.
    */
   notPhoneKeyIds() {
-    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND NOT EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage != 'software')").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND COALESCE(k.source, '') <> 'native' AND NOT (COALESCE(k.source, 'relay') = 'relay' AND EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage <> 'software'))").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
   }
+
+  /** Does any enrolled key turn approvals on? (the keys list less notPhoneKeyIds) */
+  hasPresenceDevice() { const not = this.notPhoneKeyIds(); return this.keys().some((/** @type {any} */ k) => !not.has(k.id)); }
 
   keys() {
     return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
@@ -945,7 +953,7 @@ export class Presence {
    * only: base64url SPKI DER, or a JWK, or a Windows BCRYPT RSA blob (keys.js), stored as SPKI.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
-  enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
+  enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null, source = null }) {
     if (this.coreLink) throw coreOwned("presence keys are enrolled");
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
@@ -987,6 +995,7 @@ export class Presence {
       .run(id, kind, clean(name || kind).slice(0, 80) || kind, public_key, alg ?? null, rp_id ?? null, created);
     // A passkey made in a browser paired over the relay: it proves only for that device.
     if (kind === "passkey" && device) this.db.prepare("INSERT INTO presence_key_devices (key, device, origin) VALUES (?,?,?)").run(id, String(device), String(origin));
+    if (source) this.db.prepare("UPDATE presence_keys SET source = ? WHERE id = ?").run(String(source), id);
     return { id, kind, name: clean(name || kind).slice(0, 80) || kind, created };
   }
 
@@ -1061,8 +1070,8 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
       if (!owner || String(meta.person.id) !== String(owner)) return false;
     }
     // Only a paired phone's key, a passkey or a Lumen key turns approvals on (Presence.notPhoneKeyIds says which device keys are not a phone's).
-    const soft = typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
-    return (await presence.keys()).filter((/** @type {any} */ k) => !soft.has(k.id)).length === 0;
+    if (typeof presence.hasPresenceDevice === "function") return !presence.hasPresenceDevice();
+    return (await presence.keys()).length === 0;
   } catch { return false; }
 }
 
@@ -1074,7 +1083,23 @@ export async function noPresenceWhy(d, caller, meta) {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
     const soft = presence && typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
-    const kind = f && f.web === true ? "web" : String(caller).startsWith("device:") ? "app" : String(caller).startsWith("tailnet:") ? "tailnet" : "other";
+    const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
     return `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
   } catch { return "(reason unavailable)"; }
+}
+
+/**
+ * The kernel's remote path (kernel/core/authorize.js `presenceNotNeeded`): with no counted presence device, the home's owner as exactly one person passes a presence step, except the acts that make an owner: `grants.role`
+ * (making an owner, handing the Space on), a `grants.invite` whose role is owner, and the confirm of an invite whose STORED role is owner (the kernel puts that role in the payload itself; a confirm with none asks).
+ * Member and admin invites, their confirms and `grants.member` role changes pass. The same Presence answers it as the module floor. An agent hop, a viewer or another person never passes.
+ * @param {{ presence: any, owner: () => string | null }} d @param {{ chain: any, action: string, payload?: any }} q
+ */
+export function noPresenceForChain(d, q) {
+  try {
+    const c = q.chain, owner = d.owner(), pl = q.payload && typeof q.payload === "object" ? q.payload : {};
+    if (!c || c.viewer === true || !Array.isArray(c.hops) || c.hops.length !== 1 || !c.hops[0].actor || c.hops[0].actor.kind !== "person" || !owner || String(c.hops[0].actor.id) !== String(owner)) return false;
+    if (q.action === "grants.role") return false;
+    if (q.action === "grants.invite" && (pl.role === "owner" || (pl.confirm !== undefined && (typeof pl.role !== "string" || pl.role === "owner")))) return false;
+    return Boolean(d.presence) && typeof d.presence.hasPresenceDevice === "function" && !d.presence.hasPresenceDevice();
+  } catch { return false; }
 }

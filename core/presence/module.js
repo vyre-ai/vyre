@@ -81,7 +81,7 @@ export default {
           const origins = hostedOrigins(ctx.config.network);
           const origin = origins.find(o => { try { return new URL(o).hostname === String(input.rp_id || "").toLowerCase(); } catch { return false; } });
           if (!origin) throw Object.assign(new Error(`a device's passkey must be for an allowed app (${origins.join(", ")})`), { code: "denied" });
-          const k = presence.enroll({ ...input, origin });
+          const k = presence.enroll({ ...input, origin, source: null });
           ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
           return k;
         }
@@ -92,7 +92,8 @@ export default {
           if (!host) throw new Error("the box has no address yet, so no passkey can be enrolled");
           if (String(input.rp_id || "").toLowerCase() !== host.toLowerCase()) throw new Error(`a passkey here must be for ${host}`);
         }
-        const k = presence.enroll(input);
+        // The relay's own enrolments (a pairing hello, the setup page) say where a key came from; no request can (only module:relay is believed).
+        const k = presence.enroll({ ...input, source: meta.caller === "module:relay" ? (input.name === "setup page" ? "setup" : "relay") : null });
         ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
         return k;
       },

@@ -33,7 +33,7 @@ import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
 import { canonical } from "../../lib/tool-names.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder, noPresenceForChain } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
@@ -474,7 +474,7 @@ async function startLocked(opts, root, p, release) {
     // the providers whose own model list the door can ask for (door.listModels): each driver holds its endpoint, and the key comes from the switchboard (`registry.deps.accountKey`, set by it) for one request
     const lists = modelListDrivers({ keyOf: async (/** @type {any} */ a) => { const f = /** @type {any} */ (registry.deps).accountKey; return typeof f === "function" ? f(a) : null; }, fetch: httpFetch, hostSafe });
     const modelDrivers = { ...lists, openrouter: openrouterDoorDriver(), "openai-compatible": { ...openrouterDoorDriver(), models: lists["openai-compatible"].models } };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, presenceNotNeeded: (/** @type {any} */ q) => noPresenceForChain({ presence, owner: () => (kernel && kernel.id ? kernel.id.owner : null) }, q), requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
@@ -1513,7 +1513,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       && !(b.key && h.x === b.key.x && h.y === b.key.y) && registry.deps.presence && typeof registry.deps.presence.enroll === "function") {
       try {
         const spki = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: h.x, y: h.y }, format: "jwk" }).export({ format: "der", type: "spki" }).toString("base64url");
-        const k = registry.deps.presence.enroll({ kind: "device", name: `${/** @type {any} */ (r).label || "phone"} (biometric)`, public_key: spki, alg: -7 });
+        const k = registry.deps.presence.enroll({ kind: "device", name: `${/** @type {any} */ (r).label || "phone"} (biometric)`, public_key: spki, alg: -7, source: "native" });
         events.emit("presence", "presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
         r.data.human = { key: k.id };
       } catch (e) {
