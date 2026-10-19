@@ -339,3 +339,19 @@ test("an identity made without a key-agreement point (v0.6.1) is repaired when i
   await new Promise((r) => setTimeout(r, 100));
   assert.equal((await chainEntry(d, "nina")).ops.length, 1);
 });
+
+test("Settings, Account on a page with no daemon reads the person's list from the host and the directory: the device, the recovery code, and which entry is this one", async (t) => {
+  const d = directory(t);
+  const point = await agreePointOf();
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => point });
+  assert.deepEqual(await host.call("identity.entries"), { entries: [] }, "no identity yet");
+  const made = await host.call("onboard.person.create", { username: "ida", password: PASSWORD, confirm: PASSWORD });
+  const { entries } = await host.call("identity.entries");
+  assert.deepEqual(entries.map((e) => e.kind).sort(), ["code", "device"]);
+  const dev = entries.find((e) => e.kind === "device");
+  assert.deepEqual([dev.self, dev.agree], [true, true]);
+  assert.equal(entries.find((e) => e.kind === "code").self, false);
+  assert.equal((await host.call("identity.status")).id, made.id);
+  await host.call("identity.lock");
+  assert.equal((await host.call("identity.entries")).entries.find((e) => e.kind === "device").self, false, "locked: this device's entry is not known");
+});
