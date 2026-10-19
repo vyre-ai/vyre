@@ -223,7 +223,7 @@ test("a record's reveal and fill go to the box held for the owner's yes: the pag
   assert.equal(/simulatedProof/.test(page), false);
   assert.match(page, /Hidden from AI; your agent sees a placeholder/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
-  assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
+  assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal", "records\.field\.seal"\]\)/, "sealing a field for good goes through the held door too");
 });
 
 test("a type with several stored views of one kind: the first is the default, a name picks another", () => {
