@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, enrolDevice } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
@@ -143,6 +143,7 @@ test("onboard: moving to server needs a presence proof once an owner already exi
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [],
     network: { onboardPort: 0, ownerSeen: new Date().toISOString(), owner: "alex@example.com" }, machine: "solo" }));
   const d = await start({ root, log: () => {} });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
   assert.equal(later.error.code, "presence_required");
@@ -158,6 +159,7 @@ test("onboard: a Solo Mac always needs a presence proof to become a server, even
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
     network: { onboardPort: 0 }, machine: "solo" }));
   const d = await start({ root, log: () => {} });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const r = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
   assert.equal(r.error.code, "presence_required");

@@ -123,6 +123,12 @@ export default {
     watch.unref();
     const soon = setTimeout(watching, 30_000);
     soon.unref();
-    return { async stop() { clearTimeout(soon); clearInterval(watch); } };
+    // The spaces module says "space.named" once the owner's own name-here call has been answered by the directory for this home's Space (core/spaces/index.js): this box then serves that name, as names.serve does. Only the spaces
+    // module's own event counts; names.serve itself stays the person's (a module cannot call it).
+    const offNamed = ctx.events.on("space.named", (/** @type {any} */ e) => {
+      if (!e || e.source !== "spaces") return;
+      try { svc.serve(String((e.payload && e.payload.name) || "")); } catch (err) { ctx.log(`names: the server could not start serving ${String(e.payload && e.payload.name)}: ${/** @type {Error} */ (err).message}`); }
+    });
+    return { async stop() { clearTimeout(soon); clearInterval(watch); offNamed(); } };
   },
 };

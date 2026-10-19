@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { homeIdentity } from "../kernel/home.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
@@ -25,6 +25,7 @@ test("a moment takes a yes in its forms, a reveal's yes may be reused for five m
   homeIdentity(root);
   assert.equal(run("dev-enrol-software-key.mjs", ["--home", root]).status, 0);
   const d = await start({ root, log: () => {}, kernel: true });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   await new Promise(r => setTimeout(r, 200));
   assert.ok((await d.registry.tools.get("vault.put").run({ name: "k", kind: "api-key", value: "secret-1" }, { caller: "module:vault", firstParty: true })).created);

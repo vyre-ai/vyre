@@ -24,6 +24,8 @@ services:
     # in vyre.env AND wink.publicPort in the config, together; the node program's own UDP is outbound-initiated and needs no published port.
     ports:
       - "${VYRE_PUBLIC_GATE_PORT:-7443}:${VYRE_PUBLIC_GATE_PORT:-7443}"
+      # The same gate on the standard port, so https://<name>.vyre.run works with no port: links and webhooks use that form (VYRE_WINK_INGRESS_PORT below); devices still dial the gate's own port above.
+      - "443:${VYRE_PUBLIC_GATE_PORT:-7443}"
       - "${VYRE_SETUP_HTTP_PORT:-80}:8080"
     networks:
       vyre:
@@ -60,6 +62,10 @@ services:
       # 0.3: the kernel is on, whatever a user's vyre.env says or a root-run update passes on (a packaged box must not depend on a user file; platform's MA-5 refuses a packaged
       # daemon with the kernel off). VYRE_STORE (the Space store) is the installer's choice and the root run passes it on from vyre.env.
       - VYRE_KERNEL=1
+      # A server exists to be reached: publish its name's address without waiting for the outside check (a router-less box cannot pass it through the hosted relay), and give links the 443 form.
+      # Settings can opt out with wink.publish: false. A home or a Mac sets neither.
+      - VYRE_WINK_PUBLISH=1
+      - VYRE_WINK_INGRESS_PORT=443
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env

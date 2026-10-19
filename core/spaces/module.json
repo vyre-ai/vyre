@@ -568,6 +568,7 @@
    "invite.accepted",
    "invite.revoked",
    "invite.expired",
+   "space.named",
    "compute.space-allowed",
    "compute.space-stopped",
    "compute.member-accepted",
