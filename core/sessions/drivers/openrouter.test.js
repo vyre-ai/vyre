@@ -167,3 +167,41 @@ test("openrouter: a 400 from the service, a plain JSON answer, an error sent wit
   assert.equal(r.result.is_error, true); assert.match(r.result.result, /no credits for \[key\]/, "the key is scrubbed from the words");
   for (const m of ["comments", "done"]) { mode = m; r = await turn({ model: "x/y" }); assert.equal(r.result.is_error, true, m); assert.match(r.result.result, /returned no answer/, m); }
 });
+
+test("openrouter, a fresh box with no inference door: the owner's own API-key account is sent direct with the prompt scrubbed; any other run is refused; a connected door is used first", async t => {
+  const KEY = "sk-or-v1-" + "a".repeat(40);
+  const { seen, turn } = await oneShot(t, (req, res) => sse(res, "hello"));
+  const base = seen; // (the server is reached through the provider below)
+  const run = async (entry, env, say = `please use ${KEY}`) => {
+    const got = [];
+    const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { entry.seen.push(JSON.parse(b || "{}")); sse(res, "hello"); }); });
+    await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+    t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+    const p = openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, warn() {}, ...(entry.door ? { door: entry.door } : {}) });
+    const r = p.run({ id: crypto.randomUUID(), resume: false, model: "x/y", env: { OPENROUTER_API_KEY: "sk-test", ...env }, onMessage: m => got.push(m), onExit() {} });
+    r.write({ type: "user", message: { role: "user", content: say } });
+    for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
+    await r.stop();
+    return got.find(m => m.type === "result");
+  };
+  void turn; void base;
+  // the owner's own account, no door: sent, and the credential in the prompt is not
+  const direct = { seen: [] };
+  const ok = await run(direct, { VYRE_OWNER_ACCOUNT: "1" });
+  assert.equal(ok.is_error, false);
+  assert.equal(direct.seen.length, 1, "the request was sent");
+  assert.ok(!JSON.stringify(direct.seen[0].messages).includes(KEY), "the prompt left without the key");
+  // anyone else's run, no door: refused in words, nothing sent
+  const refused = { seen: [] };
+  const no = await run(refused, {});
+  assert.equal(no.is_error, true);
+  assert.match(no.result, /inference door and none is connected/);
+  assert.equal(refused.seen.length, 0, "nothing was sent");
+  // a door that is connected is used first, even for the owner's account
+  let doorCalled = 0;
+  const withDoor = { seen: [], door: { call: async () => { doorCalled++; return { content: "via the door" }; } } };
+  const via = await run(withDoor, { VYRE_OWNER_ACCOUNT: "1" });
+  assert.equal(via.is_error, false);
+  assert.equal(doorCalled, 1);
+  assert.equal(withDoor.seen.length, 0, "the door answered; no direct request");
+});

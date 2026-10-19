@@ -15,6 +15,7 @@
 import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
 import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
 import { scrub as scrubText } from "../../../lib/scrub.js";
+import { redact as redactCredentials } from "../../../lib/sanitize.js";
 import { OPENROUTER_DEFAULT_MODEL } from "../account-model.js";
 
 const BASE = "https://openrouter.ai/api/v1";
@@ -115,7 +116,8 @@ function runChat(entry, store, o) {
       if (!(entry.fetch && !entry.lookup) && !pin) throw new Error("that address is not a place a key may be sent");
       if (!key) throw new Error("no OpenRouter key on this account");
       if (!model) throw new Error("choose a model for OpenRouter (in the routing list, or when the session starts)");
-      const via = route({ door: entry.door, legacyDirect: entry.legacyDirect, warn: entry.warn }, entry.id || "openrouter");
+      // The owner's own API-key account (VYRE_OWNER_ACCOUNT, set from the account row by the Switchboard, never from a request) may go direct when no door is connected; its prompt is scrubbed of credentials first. Any other run needs the door.
+      const via = route({ door: entry.door, legacyDirect: entry.legacyDirect, directOk: Boolean(o.env && o.env.VYRE_OWNER_ACCOUNT === "1"), warn: entry.warn }, entry.id || "openrouter");
       if ("refused" in via) throw new Error(via.refused);
       if ("door" in via) {
         // Through the door: scanned, ledgered, residency and budget checked. The door answers whole, so the text arrives as one chunk (a known gap).
@@ -128,9 +130,10 @@ function runChat(entry, store, o) {
         if (out.usage) { usage = { prompt_tokens: out.usage.input_tokens, completion_tokens: out.usage.output_tokens }; cost = Number(out.usage.cost_usd) || 0; }
         throw DONE;
       }
+      const sent = "direct" in via && !entry.legacyDirect ? messages.map(m => ({ ...m, content: typeof m.content === "string" ? redactCredentials(m.content).text : m.content })) : messages;
       const res = await (pin && !entry.fetch ? (u, i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: ac.signal,
         headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
-        body: JSON.stringify({ model, messages, stream: true, usage: { include: true }, provider: { data_collection: "deny" } }) });
+        body: JSON.stringify({ model, messages: sent, stream: true, usage: { include: true }, provider: { data_collection: "deny" } }) });
       if (!res.ok) throw new Error(`OpenRouter answered ${res.status}: ${String(await res.text().catch(() => "")).slice(0, 200)}`);
       const dec = new TextDecoder();
       let buf = "", got = 0, other = "";   // other: what is not a server-sent event line (a plain JSON answer, or an error body), kept to be read when the stream ends
