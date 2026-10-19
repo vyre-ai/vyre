@@ -195,7 +195,10 @@ const sbFor = (/** @type {any} */ o) => ({
 });
 test("a start with no provider, on a box with no Claude sign-in, runs on the provider of the person's own account", async () => {
   const sb = sbFor({ accounts: [{ id: "acct_or", provider: "openrouter", person: null }] });
-  assert.deepEqual(await accountProviderFor(sb, { kernelTurn: { asker: "per_owner" } }), { provider: "openrouter", account: "acct_or" });
+  assert.deepEqual(await accountProviderFor(sb, { kernelTurn: { asker: "per_owner" } }), { provider: "openrouter", account: "acct_or", model: "anthropic/claude-sonnet-4.5" }, "an account with no model gets the default");
+  const named = sbFor({ accounts: [{ id: "acct_or", provider: "openrouter", person: null, model: "openai/gpt-4o-mini" }] });
+  assert.deepEqual(await accountProviderFor(named, {}), { provider: "openrouter", account: "acct_or" }, "an account's own model stands");
+  assert.deepEqual(await accountProviderFor(sb, { model: "x/y" }), { provider: "openrouter", account: "acct_or" }, "a model the start names stands");
 });
 test("Claude stays the default when it can run, or the start names a provider, an agent or an account", async () => {
   const both = sbFor({ accounts: [{ id: "c1", provider: "claude", person: null }, { id: "o1", provider: "openrouter", person: null }] });
@@ -214,7 +217,7 @@ test("a person with no account of their own gets nothing from another person's: 
 
 test("the person's Assistant, with no credentials of its own on a box with no Claude sign-in, runs on their account; an Assistant with Claude credentials, or any other agent, does not move", async () => {
   const sb = sbFor({ accounts: [{ id: "acct_or", provider: "openrouter", person: null }] });
-  assert.deepEqual(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", auth: "ambient" }), { provider: "openrouter", account: "acct_or" });
+  assert.deepEqual(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", auth: "ambient" }), { provider: "openrouter", account: "acct_or", model: "anthropic/claude-sonnet-4.5" });
   assert.equal(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", auth: "subscription" }), null);
   assert.equal(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", env: { ANTHROPIC_API_KEY: "x" } }), null);
   assert.equal(await accountProviderFor(sb, { agent: "kit", agent_kind: "agent", auth: "ambient" }), null);

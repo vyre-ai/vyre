@@ -37,7 +37,10 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
  * are sandboxed has no Claude login of its own, so a person who added only an OpenRouter key (the first-run way) would otherwise get a Claude thread that refuses "Connect an AI account to start a session".
  * Claude can run when the person has a Claude account of their own, or the box holds a Claude credential (deps.auth), or an ambient login is allowed (no deps.requireAccount). null: keep the default.
  * @param {any} sb the Switchboard @param {{ provider?: string, agent?: string, agent_kind?: string, auth?: string, env?: Record<string, string>, fallback?: any, account?: string, kernelTurn?: { asker?: string } | null, person?: string }} o
- * @returns {Promise<{ provider: string, account: string } | null>}
+export const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
+
+/**
+ * (see above) @returns {Promise<{ provider: string, account: string, model?: string } | null>}
  */
 export async function accountProviderFor(sb, o) {
   // an agent that is not the person's Assistant brings its own sign-in; an Assistant's own Claude credentials (a token or key in its env, or a named auth) keep it on Claude
@@ -51,7 +54,8 @@ export async function accountProviderFor(sb, o) {
   const names = sb.deps.providers && typeof sb.deps.providers.list === "function" ? sb.deps.providers.list() : [];
   for (const provider of names) {
     const acct = await sb.accountFor({ provider, ...who }).catch(() => null);
-    if (acct && acct.id) return { provider: String(provider), account: String(acct.id) };
+    // OpenRouter's driver never picks a model for a person: an account saved without one (an older first run) gets the same default first run saves now.
+    if (acct && acct.id) return { provider: String(provider), account: String(acct.id), ...(provider === "openrouter" && !acct.model && !o.model ? { model: OPENROUTER_DEFAULT_MODEL } : {}) };
   }
   return null;
 }

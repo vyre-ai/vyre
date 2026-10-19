@@ -919,7 +919,7 @@ export class Switchboard {
       const now = Date.now();
       // A start that names no provider runs on Claude when Claude can run for the person, else on the provider of the AI account they added (asker-account.js accountProviderFor).
       const own = await accountProviderFor(this, o);
-      if (own) o = { ...o, provider: own.provider, account: own.account };
+      if (own) o = { ...o, provider: own.provider, account: own.account, ...(own.model ? { model: own.model } : {}) };
       const provider = String(o.provider || "claude"); await checkResidency(this.deps, provider);
       if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
         throw Object.assign(new Error(`no session provider ${provider}; this machine has ${["claude", ...(this.deps.providers ? this.deps.providers.list() : [])].join(", ")}`), { code: "bad_input" });
