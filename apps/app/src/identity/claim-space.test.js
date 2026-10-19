@@ -29,11 +29,12 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   const me = await claimIdentity({ name: "boxless", code: await reserveAt(base, "boxless"), password: "four words in a row", deviceLabel: "Alex's phone", base, params: FAST });
   const identity = { id: me.id, name: "boxless", eid: me.eid, ops: me.ops, key: me.key };
   const ROOT = Buffer.alloc(32, 7).toString("base64url");
-  const ROUTE = { relay: "https://relay.example", route: "rt-srv", box: "bx-srv" };
+  const ROUTE = { relay: "https://relay.example", route: "abcdefghijklmnopqrstuvwxyz", box: "bx-srv" };
   const calls = [];
   const made = await claimServerSpace({ identity, name: "Juniper", displayName: "Juniper Studio", base, route: ROUTE, host: async a => { calls.push(["host", a]); return { space: "spc_" + "abcdefghijkl", rootPublic: ROOT }; }, retire: async s => { calls.push(["retire", s]); } });
   assert.deepEqual(calls, [["host", { name: "juniper" }]], "the server was asked once, nothing was retired");
   assert.equal(made.name, "juniper.vyre.run");
+  assert.equal(made.listed, true, "the space listed the server as serving its name (POST /v1/ids/server, signed by this person)");
   const dir = idDirectory({ base, seen: memorySeen() });
   const r = await dir.resolve("juniper", { resolve: async id => (id === me.id ? me.ops : null) });
   assert.ok(r.ok, JSON.stringify(r));
@@ -44,6 +45,11 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   assert.equal(made.rootPublic, ROOT);
   assert.equal(made.rootKey, undefined, "the app holds no space key");
   assert.deepEqual(r.state.entries.map(e => [e.kind, e.subject]), [["owner", me.id]], "this person is the space's first owner");
+  // a route the directory does not take: the name stays claimed, the hosted space is NOT taken back, and the words say what to run
+  const kept = [];
+  await assert.rejects(claimServerSpace({ identity, name: "badroute", base, route: { relay: "https://relay.example", route: "rt-srv", box: "bx" }, host: async () => ({ space: "spc_" + "cdefghijklmn", rootPublic: ROOT }), retire: async s => kept.push(s) }), e => e.code === "server_not_listed" && /spaces\.server\.list/.test(e.message));
+  assert.deepEqual(kept, [], "a claimed name is not unmade");
+  assert.equal((await dir.check("badroute")).status, "taken", "the name is the person's now");
   // a name that is taken: nothing is claimed and the hosted space is taken back
   const again = [];
   await assert.rejects(claimServerSpace({ identity, name: "juniper", base, host: async () => ({ space: "spc_" + "mnopqrstuvwx", rootPublic: ROOT }), retire: async s => again.push(s) }), e => e.code !== undefined);
