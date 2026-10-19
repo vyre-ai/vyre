@@ -416,7 +416,7 @@ try {
   const BAD = /You may not do that|Pair first|member's own vault|did not answer|did not load|went wrong|not allowed|forbidden/i;
   const READY = [S("the server pairs to the creator, the screen names it, and the app reaches Ready")];
   /** The Mac window has a sidebar; the browser at phone width has a tab bar with only Now, Chat, Projects, Records and More. So a screen the tab bar does not carry is opened by its route. @param {string} text @param {string} path @param {boolean} inTabBar */
-  const open = async (text, path, inTabBar) => { if (client === "mac-app" || inTabBar) { try { await drv.click(text); return; } catch { /* the press did not land: the route is the same screen */ } } await drv.go(path); };
+  const open = async (text, path, inTabBar) => { if (client === "mac-app" || inTabBar) { try { await drv.click(text === "Now" ? "Home" : text); return; } catch { /* the press did not land: the route is the same screen */ } } await drv.go(path); };
   /** Open a screen and wait until its own pane says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} before */
   const look = async (name, file, shows, ms, before) => {
     let t = "";
@@ -434,7 +434,8 @@ try {
   };
   // First 90 s: a screen that needs Records either shows its content or says, calmly, that Records is setting up (the honest first-start state). An error sentence is never accepted.
   const SETTING = /Records is setting up/i;
-  const NOW_OK = /Good (morning|afternoon|evening)/i;
+  // Home greets by the clock of the machine the page runs on: Good morning, afternoon or evening, and "Still up" from 22:00 to 05:00 (apps/app/screens/now/home-model.js greeting). A runner is on UTC, so the walk meets all four.
+  const NOW_OK = /Good (morning|afternoon|evening)|Still up/i;
   const RECORDS_OK = /Contacts|People|All objects|No records|No people/i;
   await run.step(S("owner walk: Now loads, or says Records is setting up, with no skeleton after 90 s"), async () => {
     await look("Now", "07-now", new RegExp(`${NOW_OK.source}|${SETTING.source}`, "i"), 90_000, async () => { await open("Now", "/u/now", true); });
