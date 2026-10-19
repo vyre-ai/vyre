@@ -33,9 +33,12 @@ export async function ownerWalkReal(c) {
   const shot = (/** @type {string} */ n) => drv.shot(`ow-${n}`).catch(() => {});
   const text = async () => String(await drv.text()).replace(/\s+/g, " ");
   const show = async (/** @type {number} */ n = 400) => (await text()).slice(0, n);
+  /** A phone-approval sheet stays over every later screen for five minutes (the walk has no phone): close it. */
+  const stopWaiting = async () => { if (/Approve on your phone/.test(await text())) { try { await drv.click("Stop waiting"); await wait(500); } catch { /* it ended */ } } };
   /** Open a route and wait for words that only that screen says. */
   const screen = async (/** @type {string} */ route, /** @type {RegExp} */ re, /** @type {string} */ what, ms = 60_000) => {
     await drv.go(route);
+    await stopWaiting();
     try { await until(async () => re.test(await text()), ms, what); } catch (e) { await shot(`failed-${route.replace(/\W+/g, "-")}`); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(500)}`); }
   };
   /** Press the first of these that is on the screen. @param {string[]} names */
@@ -147,6 +150,8 @@ export async function ownerWalkReal(c) {
     await shot("03-upload");
   }, { needs: READY });
   await run.step(W(3, "Files: move the file into the folder"), async () => {
+    await screen("/u/files", /Files|Upload/i, "the Files screen");
+    await until(async () => (await has(/\bWalk\b|walk-note/)), 30_000, "the Files list").catch(() => {});
     if (!(await has(/\bWalk\b/))) pending("there is no folder to move into (New folder is not on this build)");
     await drv.rightClick?.("walk-note.txt");
     await wait(800); await shot("03-menu");
@@ -191,6 +196,7 @@ export async function ownerWalkReal(c) {
         inviteLink = String([r?.link, r?.url, r?.invite?.link, r?.data?.link, ...Object.values(r ?? {})].find((v) => typeof v === "string" && /^(https?|vyre):\/\//.test(v)) ?? "");
       } catch (e2) { facts.push(`onboard.member.link: ${errOf(e2)}`); }
       console.log(`owner walk 4 box facts: ${facts.join(" | ")}`);
+      console.log(`owner walk 4 refused calls: ${(drv.refused?.() || []).join(" || ") || "none seen"}`);
       throw new Error(`${said} (link made from the box instead: ${inviteLink ? "yes" : "no"}; box facts: ${facts.join(" | ").slice(0, 900)})`);
     }
     inviteLink = String(/(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
@@ -335,10 +341,11 @@ export async function ownerWalkReal(c) {
     try { await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening"); }
     catch (e) {
       await shot("failed-08-open");
+      console.log(`owner walk 8 refused calls: ${(drv.refused?.() || []).join(" || ") || "none seen"}`);
       const said = `${/** @type {Error} */ (e).message}. The screen says: ${await show(900)}`;
       // A phone approval sheet stays over every later screen for five minutes: close it so walks 9 and 10 are not blocked by it.
-      const phone = /Approve on your phone/.test(said);
-      if (phone) { try { await drv.click("Stop waiting"); } catch { /* it ended */ } }
+      const phone = /Approve on your phone/.test(await text());
+      await stopWaiting();
       throw new Error(phone ? `the route asks for a PHONE approval ("Approve on your phone") and the walk has none; ${said}` : said);
     }
     if (await has(/Turn the listener on/)) { await press(["Turn the listener on"]); await until(async () => !(await has(/listener is off/)), 60_000, "the listener turning on"); }
