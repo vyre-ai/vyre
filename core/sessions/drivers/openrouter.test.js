@@ -85,7 +85,7 @@ test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a l
   assert.match(limited.result, /usage limit reached/);
 });
 
-test("openrouter: it asks not to be trained on, needs a chosen model and an https address, cuts a huge answer, and ends a stalled one", async t => {
+test("openrouter: it asks not to be trained on, falls back to the default model, needs an https address, cuts a huge answer, and ends a stalled one", async t => {
   const s = await server(t);
   const turn = async (p, o) => {
     const got = [];
@@ -97,7 +97,9 @@ test("openrouter: it asks not to be trained on, needs a chosen model and an http
   };
   await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url }), { model: "x/y" });
   assert.deepEqual(s.seen.at(-1).provider, { data_collection: "deny" });
-  assert.match((await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url }), {})).result, /choose a model/);
+  // no model at all: the default first run saves is used, never an empty model
+  await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url }), {});
+  assert.equal(s.seen.at(-1).model, "anthropic/claude-sonnet-4.5");
   assert.match((await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: "http://example.com/v1" }), { model: "x/y" })).result, /must be https/);
   // A server that never stops talking is cut at the cap; one that goes quiet is ended.
   const http = await import("node:http");
@@ -117,4 +119,51 @@ test("conform: only Vyre's own openrouter driver may skip the process and tool c
   const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: "http://127.0.0.1:1" });
   const fails = await conform({ ...p, id: "sneaky" }, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, timeout: 500 });
   assert.ok(fails.length > 0, "a module's provider claiming process:false is checked in full");
+});
+
+// What a chat launch carries is not always an OpenRouter model: a Claude alias ("opus") is never sent to OpenRouter, and every shape of answer ends in words.
+async function oneShot(t, handler) {
+  const seen = [];
+  const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { seen.push(JSON.parse(b || "{}")); handler(req, res, seen.at(-1)); }); });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+  const base = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
+  const turn = async (o = {}) => {
+    const got = [];
+    const r = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: base }).run({ id: crypto.randomUUID(), resume: false, env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {}, ...o });
+    r.write({ type: "user", message: { role: "user", content: "hi" } });
+    for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
+    await r.stop();
+    return { result: got.find(m => m.type === "result"), said: got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join("") };
+  };
+  return { seen, turn };
+}
+const sse = (res, text) => { res.writeHead(200, { "content-type": "text/event-stream" }); res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`); res.end(); };
+
+test("openrouter: a Claude alias in the launch's model is never sent; the account's model, else the default, is", async t => {
+  const { seen, turn } = await oneShot(t, (req, res) => sse(res, "ok"));
+  await turn({ model: "opus" });
+  assert.equal(seen.at(-1).model, "anthropic/claude-sonnet-4.5", "alias, no account model: the default");
+  await turn({ model: "opus", env: { OPENROUTER_API_KEY: "sk-test", VYRE_API_MODEL: "openai/gpt-4o-mini" } });
+  assert.equal(seen.at(-1).model, "openai/gpt-4o-mini", "alias: the account's own model");
+  await turn({ model: "anthropic/claude-haiku-4.5", env: { OPENROUTER_API_KEY: "sk-test", VYRE_API_MODEL: "openai/gpt-4o-mini" } });
+  assert.equal(seen.at(-1).model, "anthropic/claude-haiku-4.5", "an OpenRouter id the launch names stands");
+});
+
+test("openrouter: a 400 from the service, a plain JSON answer, an error sent with a 200 and an empty answer each end the turn in words", async t => {
+  let mode = "400";
+  const { turn } = await oneShot(t, (req, res) => {
+    if (mode === "400") { res.writeHead(400); return res.end('{"error":{"message":"opus is not a valid model ID"}}'); }
+    if (mode === "json") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ choices: [{ message: { content: "plain answer" } }], usage: { prompt_tokens: 1, completion_tokens: 2 } })); }
+    if (mode === "error200") { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "no credits for sk-test" } })); }
+    if (mode === "comments") { res.writeHead(200, { "content-type": "text/event-stream" }); res.write(": keep-alive\n\n"); return res.end(); }
+    res.writeHead(200, { "content-type": "text/event-stream" }); res.write("data: [DONE]\n\n"); res.end();
+  });
+  let r = await turn({ model: "x/y" });
+  assert.equal(r.result.is_error, true); assert.match(r.result.result, /OpenRouter answered 400: .*not a valid model/);
+  mode = "json"; r = await turn({ model: "x/y" });
+  assert.equal(r.result.is_error, false); assert.equal(r.said, "plain answer"); assert.equal(r.result.result, "plain answer");
+  mode = "error200"; r = await turn({ model: "x/y" });
+  assert.equal(r.result.is_error, true); assert.match(r.result.result, /no credits for \[key\]/, "the key is scrubbed from the words");
+  for (const m of ["comments", "done"]) { mode = m; r = await turn({ model: "x/y" }); assert.equal(r.result.is_error, true, m); assert.match(r.result.result, /returned no answer/, m); }
 });

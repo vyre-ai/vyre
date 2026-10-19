@@ -15,6 +15,7 @@
 import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
 import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
 import { scrub as scrubText } from "../../../lib/scrub.js";
+import { OPENROUTER_DEFAULT_MODEL } from "../account-model.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
@@ -57,6 +58,12 @@ export function openrouterDoorDriver(entry = {}) {
   };
 }
 
+/** The model an OpenRouter turn asks for. @param {any} o @param {any} entry @returns {string} */
+export function modelFor(o, entry) {
+  const asked = String(o.model || "");
+  return asked.includes("/") ? asked : String((o.env && o.env.VYRE_API_MODEL) || entry.model || OPENROUTER_DEFAULT_MODEL);
+}
+
 /** @param {{ id?: string, keyEnv?: string, baseUrl?: string, idleMs?: number, model?: string, fetch?: typeof fetch, door?: any, legacyDirect?: boolean, chainFor?: (o: any) => any, warn?: (m: string) => void, store?: { get(id: string): any[]|undefined, set(id: string, messages: any[]): void } }} [entry] */
 export function openrouterProvider(entry = {}) {
   const memory = new Map();
@@ -78,8 +85,9 @@ function runChat(entry, store, o) {
   // is ignored here, so a bad value can never send the key somewhere else.
   const acctBase = o.env && o.env.VYRE_API_BASE_URL && okBase(String(o.env.VYRE_API_BASE_URL)) ? String(o.env.VYRE_API_BASE_URL) : "";
   const base = String(acctBase || entry.baseUrl || BASE).replace(/\/+$/, "");
-  // The model is the one the person chose (a launch's, or the routing entry's, or the one saved with the account): never a default that spends on their behalf.
-  const model = String(o.model || (o.env && o.env.VYRE_API_MODEL) || entry.model || "");
+  // The model is the one the person chose: the account's saved one, else the routing entry's, else the default first run saves. A launch's own model counts only when it is an OpenRouter id ("vendor/model"): a Claude
+  // alias such as "opus", which a chat's default carries, is not a model OpenRouter knows and is never sent to it.
+  const model = modelFor(o, entry);
   /** @type {{ role: string, content: string }[]} */
   const history = o.resume ? [...(store.get(o.id) || [])] : [];
   const queue = /** @type {string[]} */ ([]);
@@ -115,7 +123,8 @@ function runChat(entry, store, o) {
         try { out = await via.door.call({ chain: entry.chainFor ? entry.chainFor(o) : o.chain, purpose: "session", provider: entry.id || "openrouter", model, session: String(o.id), messages, credential: { key, base } }); }
         catch (e) { if (isRefusal(e)) throw new Error(doorMessage(e) || "the inference door refused this"); throw e; }
         text = String(out.content || "");
-        if (text) say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } });
+        if (!text) throw new Error("the model returned no answer");
+        say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } });
         if (out.usage) { usage = { prompt_tokens: out.usage.input_tokens, completion_tokens: out.usage.output_tokens }; cost = Number(out.usage.cost_usd) || 0; }
         throw DONE;
       }
@@ -124,7 +133,7 @@ function runChat(entry, store, o) {
         body: JSON.stringify({ model, messages, stream: true, usage: { include: true }, provider: { data_collection: "deny" } }) });
       if (!res.ok) throw new Error(`OpenRouter answered ${res.status}: ${String(await res.text().catch(() => "")).slice(0, 200)}`);
       const dec = new TextDecoder();
-      let buf = "", got = 0;
+      let buf = "", got = 0, other = "";   // other: what is not a server-sent event line (a plain JSON answer, or an error body), kept to be read when the stream ends
       const it = /** @type {any} */ (res.body)[Symbol.asyncIterator]();
       for (;;) {
         // No data for a minute ends the turn; so does an answer past the cap.
@@ -139,7 +148,7 @@ function runChat(entry, store, o) {
         let i;
         while ((i = buf.indexOf("\n")) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          if (!line.startsWith("data:")) continue;
+          if (!line.startsWith("data:")) { if (line && !line.startsWith(":") && other.length < 65_536) other += line + "\n"; continue; }
           const data = line.slice(5).trim();
           if (data === "[DONE]") continue;
           let j; try { j = JSON.parse(data); } catch { continue; }
@@ -149,6 +158,16 @@ function runChat(entry, store, o) {
           if (j.usage) { usage = j.usage; cost = Number(j.usage.cost) || 0; }
         }
       }
+      if (buf.trim() && !buf.trim().startsWith("data:") && other.length < 65_536) other += buf;
+      // An answer that is not a stream (a plain JSON body, or an error sent with a 200) is read whole; a turn with no text at all is a failure said in words, never an empty "success".
+      if (!text && other.trim()) {
+        let j = null; try { j = JSON.parse(other); } catch { /* not JSON */ }
+        if (j && j.error) throw new Error(String(j.error.message || "the model refused"));
+        const c = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+        if (typeof c === "string" && c) { text = c; say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: c } } }); if (j.usage) { usage = j.usage; cost = Number(j.usage.cost) || 0; } }
+        else if (!j) throw new Error(`OpenRouter sent something Vyre could not read: ${other.replace(/\s+/g, " ").slice(0, 120)}`);
+      }
+      if (!text) throw new Error("the model returned no answer");
     } catch (e) {
       if (e === DONE) { /* answered through the door */ }
       else if (asked && ac.signal.aborted) cancelled = true; else failed = /** @type {Error} */ (e);
