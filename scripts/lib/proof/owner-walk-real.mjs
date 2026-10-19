@@ -225,7 +225,27 @@ export async function ownerWalkReal(c) {
 
   // ---- 7. watchers: a Feed watcher on a real public RSS URL
   await run.step(W(7, "Watchers: a Feed watcher on a public RSS feed tests, turns on and Run now files items"), async () => {
-    pending("the Feed watcher screen is not driven yet on this build");
+    await screen("/u/flows", /Flows|Watchers/i, "the Flows screen");
+    try { await press(["Watchers"]); } catch { pending(`the Flows screen has no Watchers tab on this build: ${await show(160)}`); }
+    await until(async () => (await has(/New watcher/)), 30_000, "the Watchers tab");
+    await press(["New watcher"]);
+    await drv.choose?.("Where should it look?", "Feed");
+    await fillAny(["Feed address"], "https://github.com/vyre-ai/vyre/releases.atom");
+    await shot("07-new-watcher");
+    await press(["Write it and test it"]);
+    let t = "";
+    try { t = await until(async () => { const x = await text(); return /Turn on/.test(x) && !/Writing and testing/.test(x) ? x : ""; }, 120_000, "the test result"); }
+    catch (e) { await shot("failed-07-test"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(700)}`); }
+    await shot("07-tested");
+    if (/did not|could not|failed|no items/i.test(t) && !/item|found|new/i.test(t)) throw new Error(`the test shows no items: ${t.slice(0, 500)}`);
+    await press(["Turn on"]);
+    await until(async () => (await has(/Run now/)), 60_000, "the watcher listed with Run now");
+    await press(["Run now"]);
+    await wait(15_000);
+    const after = await text();
+    await shot("07-ran");
+    if (/did not|could not|went wrong/i.test(after) && !/filed|item/i.test(after)) throw new Error(`Run now did not file items: ${after.slice(0, 500)}`);
+    return after.slice(0, 200);
   }, { needs: READY });
 
   // ---- 8. a webhook Flow
@@ -235,8 +255,36 @@ export async function ownerWalkReal(c) {
 
   // ---- 9. playbooks
   await run.step(W(9, "Playbooks: create, add a stage and a to-do, rename, Go live, start a project"), async () => {
-    await screen("/u/playbooks", /Playbooks|New playbook/i, "the Playbooks screen");
-    pending("editing a playbook's stages and to-dos in its own screen is not on this build (it goes through chat)");
+    await screen("/u/playbooks", /Playbooks|Start blank/i, "the Playbooks screen");
+    if (!(await has(/Start blank/))) pending(`the Playbooks screen has no Start blank on this build: ${await show(160)}`);
+    await press(["Start blank"]);
+    await until(async () => (await has(/Untitled|Add stage|Add to-do/i)), 45_000, "the new playbook opening");
+    await shot("09-new-playbook");
+    // rename: the name is an inline edit
+    await press(["Untitled playbook", "the playbook"]);
+    await fillAny(["the playbook", "Name"], "Walk playbook");
+    await press(["Save"]);
+    await until(async () => (await has(/Walk playbook/)), 30_000, "the rename showing");
+    await fillAny(["Add stage"], "Review");
+    await press(["Add stage"]);
+    await until(async () => (await has(/Review/)), 30_000, "the stage listed");
+    await fillAny(["Add to-do"], "Send the welcome email");
+    await press(["Add to-do"]);
+    await until(async () => (await has(/Send the welcome email/)), 30_000, "the to-do listed");
+    await shot("09-edited");
+    await press(["Go live"]);
+    await until(async () => !(await has(/Go live/)) || (await has(/Live/)), 45_000, "the playbook going live");
+    await shot("09-live");
+    // start a project from it: the new project sheet offers the playbook
+    await screen("/u/projects", /Projects|New project/i, "the Projects screen");
+    await press(["New project"]);
+    await until(async () => (await has(/Start project|Walk playbook/)), 30_000, "the new project sheet");
+    await fillAny(["Name", "Project name"], "Walk project");
+    try { await press(["Walk playbook"]); } catch { /* the sheet starts from it by default or lists it under another word */ }
+    await press(["Start project"]);
+    await until(async () => (await has(/Walk project/)), 60_000, "the project listed");
+    await fresh("/u/projects", /Walk project/, "the Projects list showing the project");
+    await shot("09-project");
   }, { needs: READY });
 
   // ---- 10. settings

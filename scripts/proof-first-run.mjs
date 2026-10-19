@@ -137,6 +137,14 @@ async function browserDriver(shared = null) {
       const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 20_000 }), d.click(button)]);
       await chooser.setFiles({ name, mimeType: "text/plain", buffer: Buffer.from(content) });
     },
+    /** Choose an option of a select by the label it carries: a native select, or a control that opens a list. */
+    async choose(/** @type {string} */ label, /** @type {string} */ option) {
+      const el = page.getByLabel(label, { exact: false }).first();
+      const tag = await el.evaluate((/** @type {any} */ n) => n.tagName).catch(() => "");
+      if (tag === "SELECT") { await el.selectOption({ label: option }).catch(async () => { await el.selectOption({ label: new RegExp(option) }); }); return; }
+      await el.click({ timeout: 15_000 });
+      await page.getByText(option, { exact: false }).first().click({ timeout: 15_000 });
+    },
     async viewport(/** @type {number} */ w, /** @type {number} */ h) { await page.setViewportSize({ width: w, height: h }); },
     url() { return page.url(); },
     async rightClick(/** @type {string} */ t) { await page.getByText(t, { exact: false }).first().click({ button: "right", timeout: 15_000 }); },
