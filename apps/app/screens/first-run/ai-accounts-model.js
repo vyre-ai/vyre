@@ -21,7 +21,7 @@ export const ACCOUNTS_COPY = Object.freeze({
   keyPassword: "Your password, to open your own Vault",
   keyLabel: "API key",
   keyHelp: "Checked with the provider, kept in your Vault, and never shown again.",
-  keyUnknown: "That does not look like a key we know. Check it, or add a Claude, Codex or Grok account by signing in.",
+  keyUnknown: "That does not look like a key we know. Check it, or add the account by signing in with its provider.",
 });
 
 /** The provider ids the first run can sign in to, in the order shown. */

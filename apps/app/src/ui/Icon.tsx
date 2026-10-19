@@ -36,6 +36,8 @@ export function Icon({ name, color, size = tokens.icon.sizes[1] }: { name: IconN
           switch (p.el) {
             case "path":
               return <Path key={i} d={p.d} {...ink} />;
+            case "fill":
+              return <Path key={i} d={p.d} fill={ink.stroke} stroke="none" />;
             case "circle":
               return <Circle key={i} cx={p.cx} cy={p.cy} r={p.r} {...ink} />;
             case "rect":
