@@ -46,7 +46,9 @@ if (!process.getuid || process.getuid() !== 0) {
   // cannot find the other projects). What is inside is each project's own: a folder is handed to its project's group by the project-group op, when the project is made and at its first launch.
   // vyred's home, which holds the vault and Claude's sign-in, is closed to everyone else. No capability is needed for either.
   const asVyre = (...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${SHARED}`, "--inh-caps=-all", "--", ...argv], { stdio: "ignore" });
-  prepareWork({ work: WORK, shared: SHARED, asVyre, log });
+  // The spawner has no capability to list a folder it only passes through, so the notice's listing is Vyre's (a plain file name per line).
+  const listAsVyre = (/** @type {string} */ dir) => String(execFileSync("/usr/bin/setpriv", [`--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${SHARED}`, "--inh-caps=-all", "--", "find", dir, "-mindepth", "1", "-maxdepth", "1", "-type", "f", "-printf", "%f\\n"], { stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 20 })).split("\n").filter(Boolean);
+  prepareWork({ work: WORK, shared: SHARED, asVyre, list: listAsVyre, log });
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
   // The box agent's home is its own group's (an older volume has it in the /work group, which an account's session under /work joins): the agent, who owns it, moves it, with no capability.
   try {
