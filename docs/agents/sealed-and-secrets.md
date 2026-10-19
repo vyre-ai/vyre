@@ -4,7 +4,7 @@ summary: Why you see placeholders instead of secrets, how to use one, and what t
 audience: agents
 owner: docs
 status: stable
-tokens: 700
+tokens: 800
 when: A field shows a placeholder instead of a value, you need a password, key or number you cannot see, or you are about to write a secret into text.
 ---
 

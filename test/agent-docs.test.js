@@ -17,8 +17,8 @@ import { ROOT, renderAll, renderPage, STEP_HELP, NEXT } from "../scripts/gen-age
 
 const nav = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/nav.json"), "utf8"));
 const corpus = loadCorpus(ROOT);
-// 12600 (13 Oct 2026, from 12200: the Flows cheat sheet is generated from the code and grew to about 2150); 12200 was: the generated tools page grew with the Microsoft, linked-files, publish and comms tools; the hand-written pages were trimmed (behaviour.md back to 500).
-const TOTAL_BUDGET = 12600;
+// 15200 (19 Oct 2026, from 12600: four new pages for being woken, telling a person, working in a project and a site's API through Chrome, and the Vault, memory, history and browser paragraphs of the agent prompt design v3). 12600 (13 Oct 2026, from 12200: the Flows cheat sheet is generated from the code and grew to about 2150); 12200 was: the generated tools page grew with the Microsoft, linked-files, publish and comms tools; the hand-written pages were trimmed (behaviour.md back to 500).
+const TOTAL_BUDGET = 15200;
 
 test("nav.agents is exactly the files of docs/agents, and docs/agents is an unpublished folder", () => {
   const files = fs.readdirSync(path.join(ROOT, "docs/agents")).filter((f) => f.endsWith(".md")).map((f) => `agents/${f}`).sort();
