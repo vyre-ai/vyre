@@ -64,7 +64,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { noOwnerMarker, ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -889,7 +889,7 @@ export class Switchboard {
   async launchInner(o, person, box) {
     let id, rec;
     const at = (/** @type {string} */ step) => { if (box.cancelled) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); box.step = step; if (box.id) this.deps.log(`threads: ${box.id.slice(0, 8)} start step ${step}`); };
-    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
+    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined }; o = noOwnerMarker(o);   // the direct-call marker is never a caller's
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);

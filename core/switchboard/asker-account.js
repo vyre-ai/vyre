@@ -57,6 +57,13 @@ export async function accountProviderFor(sb, o) {
   return null;
 }
 
+/** The launch options with the direct-call marker taken out of any env the caller gave: the marker is set only by ownerDirect, at the account merge, never by a caller. @param {any} o */
+export function noOwnerMarker(o) {
+  if (!o || !o.env || typeof o.env !== "object" || !("VYRE_OWNER_ACCOUNT" in o.env)) return o;
+  const { VYRE_OWNER_ACCOUNT: _drop, ...rest } = o.env;
+  return { ...o, env: rest };
+}
+
 /**
  * May this run call its provider directly when no inference door is connected? Only the Space owner's own turn in their own chat (the asker is the kernel turn's, never a caller's word), on the owner's own API-key
  * account (no person on it, not Claude), answered by no agent or by the person's Assistant or the built-in Engineer, and not started by a Flow, a schedule or a job. Everything else keeps needing the door.
