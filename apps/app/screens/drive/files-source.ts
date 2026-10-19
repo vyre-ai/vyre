@@ -12,6 +12,8 @@ export type FilesSources = {
   linked: { ls: (id: string, path?: string) => Promise<{ path: string; entries: LinkedEntry[] }> };
   box: { list: (share: string, path: string, offset?: number) => Promise<Listing & { entries: Entry[] }> };
   linkedNames: () => Record<string, string>;
+  /** The names to show for folders whose path is not readable (a project's folder is its id): path to name. The listing's own names win. */
+  names?: () => Promise<Record<string, string>>;
 };
 
 export function filesLoader(s: FilesSources) {
@@ -19,8 +21,8 @@ export function filesLoader(s: FilesSources) {
     const p = parsePlace(id);
     if (!p) throw new Error(`not a place: ${id}`);
     if (p.root === "space") {
-      const r = await s.space.list(undefined, p.path);
-      return rowsFromSpace(children(r.entries, p.path, { names: r.names, folders: r.folders }), p.path);
+      const [r, known] = await Promise.all([s.space.list(undefined, p.path), s.names ? s.names().catch(() => ({} as Record<string, string>)) : Promise.resolve({} as Record<string, string>)]);
+      return rowsFromSpace(children(r.entries, p.path, { names: { ...known, ...(r.names ?? {}) }, folders: r.folders }), p.path);
     }
     if (p.root === "linked") {
       if (!p.link) return [];

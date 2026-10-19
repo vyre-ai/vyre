@@ -8,7 +8,9 @@ import { markSource } from "../marks/source.js";
 test("a look is a shape and a colour, and reads back", () => {
   assert.equal(lookSeed(3, 5), "s3~c5");
   assert.deepEqual(lookOf("s3~c5"), { shape: 3, color: 5 });
-  assert.equal(lookSeed(9, -1), "s1~c7");
+  assert.equal(lookSeed(9, -1), "s1~c15");
+  assert.equal(lookSeed(0, 11), "s0~c11");
+  assert.equal(lookSeed(0, 16), "s0~c0");
   assert.equal(lookOf("kit"), null);
   assert.equal(SHAPES.length, 8);
 });
@@ -37,6 +39,9 @@ test("a look reads its parts in order, and an old look has none", () => {
   assert.equal(baseOf("rex"), "rex");
   assert.deepEqual(lookOf("s3~c5~e2~m1~t4~b1~h0"), { shape: 3, color: 5 });
   assert.equal(lookOf("s3~c5~e9"), null);
+  assert.deepEqual(lookOf("s3~c12"), { shape: 3, color: 12 });
+  assert.deepEqual(lookOf("s3~c15~e2~m1~t4~b1~h0"), { shape: 3, color: 15 });
+  assert.equal(lookOf("s3~c16"), null, "sixteen colours, c0 to c15");
 });
 
 test("a part a look leaves out is drawn from the agent's uid: always the same, and different agents differ", () => {
@@ -77,4 +82,15 @@ test("the renderer draws the parts: eyes, mouth, top, blush and charm change the
   // the body and colour still come from the shape and colour, whatever the parts say
   const body = (/** @type {string} */ seed) => /<path d="(M[^"]+)" fill="url/.exec(agentV2(seed, 48, "dark"))?.[1];
   assert.equal(body("s1~c2~e0"), body("s1~c2~e5~t3~h4"), "same body path");
+});
+
+test("the agent family has sixteen colours: the first eight are as shipped, the new eight draw and differ", async () => {
+  const { AGENT_COLORS } = await import("../../../../lib/wink-code/agent2.js");
+  assert.equal(AGENT_COLORS.length, 16);
+  assert.deepEqual(AGENT_COLORS.slice(0, 8), ["#F2A58C", "#F3C970", "#86D0BB", "#E39A5B", "#E897C0", "#CDBF9B", "#EE9494", "#93D2B0"], "an agent made before c8 keeps its colour");
+  assert.equal(new Set(AGENT_COLORS).size, 16);
+  const drawn = new Set(Array.from({ length: 16 }, (_, c) => agentV2(`s1~c${c}`, 48, "dark")));
+  assert.equal(drawn.size, 16, "each of the sixteen colours draws differently");
+  assert.ok(agentV2("s1~c15~e1~m2~t3~b1~h4", 48, "dark").includes("<svg"), "a two-digit colour takes its parts after it");
+  assert.equal(agentV2("s1~c12~e1", 48, "dark"), agentV2("s1~c12~e1", 48, "dark"));
 });

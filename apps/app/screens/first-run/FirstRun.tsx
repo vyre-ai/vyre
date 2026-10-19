@@ -103,7 +103,6 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(shot?.copyDone || null);
   const [carried, setCarried] = useState<{ name: string; look: string } | null>(shot?.carried || null);
   const [changing, setChanging] = useState(false);
-  const [moreLook, setMoreLook] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
   const [signedIn, setSignedIn] = useState<boolean>(Boolean(shot?.another));
   const [first, setFirst] = useState(shot?.first || "");
@@ -737,8 +736,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
-          onPart={moreLook ? (key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) })) : undefined} />
-        <Button kind="ghost" label={moreLook ? "Fewer options" : "More: eyes, mouth, top, blush, charm"} onPress={() => setMoreLook((v) => !v)} />
+          onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
         </>)}
       </FlowStep>
     );
