@@ -53,6 +53,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(roles): New role on a real box was refused with 'There is no record type "invoice" in this Space'. The screen read the box's record types by an `id` the box does not send (it names a type by `name`), so it fell back to its sample types and sent them as the new role's data. It now reads the types by name and makes the role from the Space's own types. Found by the real-box owner walk (owner walk 5).
+
 - test: the owner walk on a real box. first-run-e2e takes owner_walk and strict inputs; with owner_walk the browser first run, after its group walk, walks ten owner walks on the fresh installer box (scripts/lib/proof/owner-walk-real.mjs): the identity chain's agree and Account, Chats, Files, People, Roles, Apps, Watchers, a webhook Flow, Playbooks and Settings, each checking the server's state; a walk whose screen is not on the build yet is reported pending and, with strict, fails the run.
 
 - fix(first run): a page with no daemon (the Mac window with no vyred, the hosted web app) made its identity's device entry with no key-agreement point (`agree`), so no chat could be wrapped to the device ("This device isn't ready for private chats yet") and the box listed no device. The genesis entry now carries the point, and an identity made the old way is repaired when it is unlocked: the device signs the chain's own `agree` op for its own entry and the directory appends it, once.

@@ -130,6 +130,7 @@ test("roles-core's role is read: label, base, people, id lists, a level per type
   assert.deepEqual(roleOf({ id: "a", where: { kind: "my_projects" } }).where.kind, "seats");
   assert.deepEqual(rolesOf({ roles: [{ id: "a", label: "A" }, null, { label: "no id" }] }).map((x) => x.id), ["a"]);
   assert.deepEqual(typesOf({ types: [{ id: "client", plural: "Clients", fields: [{ label: "Phone" }, "SSN"] }] }), [{ id: "client", name: "Clients", fields: ["Phone", "SSN"] }]);
+  assert.deepEqual(typesOf({ types: [{ name: "contact", label: "Contact", fields: [{ name: "email" }] }] }), [{ id: "contact", name: "Contact", fields: ["email"] }], "a real box names a type by its name, with no id");
   assert.deepEqual(projectsOf([{ id: 1, title: "Smith estate" }, {}]), [{ id: "1", name: "Smith estate" }]);
 });
 

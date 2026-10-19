@@ -60,8 +60,6 @@ export async function ownerWalkReal(c) {
   // ---- 2. chats: a new thread; a message gets a real Assistant reply
   let threadsBefore = 0;
   await run.step(W(2, "Chats opens a new thread with the Assistant, and the server has the thread"), async () => {
-    const count = async () => { const r = await op("threads.list", {}); const l = r?.data ?? r?.threads ?? r; return { n: Array.isArray(l) ? l.length : (Array.isArray(l?.threads) ? l.threads.length : -1), raw: JSON.stringify(r).slice(0, 300) }; };
-    const before = await count();
     await screen("/u/chats/new", /Start chat|Search people and agents/i, "the new chat screen");
     await press(["Juno", "juno"]);
     await fillAny(["First message (optional)", "First message"], "Say hello in five words.");
@@ -71,9 +69,13 @@ export async function ownerWalkReal(c) {
     try { await until(async () => { t = await text(); return /\/u\/chats\/(?!new)[^/]+/.test(String(drv.url?.() || "")) || !/Starting/.test(t); }, 90_000, "the thread opening (the button leaving Starting)"); }
     catch (e) { await shot("failed-02-starting"); throw new Error(`${/** @type {Error} */ (e).message}. url ${drv.url?.()}. The screen says: ${await show(400)}`); }
     await shot("02-thread");
-    const after = await count();
-    if (after.n <= before.n) throw new Error(`the server lists ${after.n} threads after the new chat, ${before.n} before (url ${drv.url?.()}; raw ${after.raw})`);
-    return `${before.n} threads before, ${after.n} after`;
+    const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
+    if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
+    // the server's own record of the chat, with the first message in it
+    const got = await op("work.chat.get", { id });
+    const raw = JSON.stringify(got);
+    if (!raw.includes("Say hello in five words")) throw new Error(`the server's chat ${id} does not hold the first message: ${raw.slice(0, 400)}`);
+    return `chat ${id} holds the first message`;
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply"), async () => {
     const key = process.env.OWNER_WALK_OPENROUTER_KEY;
@@ -89,7 +91,7 @@ export async function ownerWalkReal(c) {
     await fillAny(["Folder name", "Name", "New folder name"], "Walk");
     await press(["Create", "Make the folder", "Make folder"]);
     await until(async () => (await has(/\bWalk\b/)), 30_000, "the folder showing");
-    const l = await op("files.drive.space.list", { path: "" });
+    const l = await op("files.drive.space.list", { prefix: "" });
     if (!JSON.stringify(l).includes("Walk")) throw new Error(`the server's Drive does not list the folder: ${JSON.stringify(l).slice(0, 300)}`);
     await shot("03-folder");
   }, { needs: READY });
@@ -98,7 +100,7 @@ export async function ownerWalkReal(c) {
     await screen("/u/files", /Upload|Nothing here|Files/i, "the Files screen");
     await drv.upload?.("Upload", "walk-note.txt", "owner walk upload\n");
     await until(async () => (await has(/walk-note\.txt/)), 45_000, "the file showing");
-    const l = await op("files.drive.space.list", { path: "" });
+    const l = await op("files.drive.space.list", { prefix: "" });
     if (!JSON.stringify(l).includes("walk-note.txt")) throw new Error(`the server's Drive does not list the upload: ${JSON.stringify(l).slice(0, 300)}`);
     await shot("03-upload");
   }, { needs: READY });
@@ -109,7 +111,7 @@ export async function ownerWalkReal(c) {
     await press(["Walk"]);
     await press(["Move here", "Move"]);
     await wait(1500);
-    const l = await op("files.drive.space.list", { path: "Walk" });
+    const l = await op("files.drive.space.list", { prefix: "Walk" });
     if (!JSON.stringify(l).includes("walk-note.txt")) throw new Error(`the file is not in the folder on the server: ${JSON.stringify(l).slice(0, 300)}`);
   }, { needs: READY });
   await run.step(W(3, "Files: a project's folder shows its name"), async () => {

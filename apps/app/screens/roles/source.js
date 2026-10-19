@@ -68,7 +68,8 @@ export function rolesSource(call) {
       const full = await Promise.all(rows.map(async (row) => { const b = row.builtin ? tmpl.find((t) => t.id === row.id) : null; if (b) return { ...b, holders: row.holders }; try { return { ...roleOf((await ask("roles.get", { id: row.id }))?.role, useTypes), holders: row.holders }; } catch { return row; } }));
       return /** @type {World} */ ({ roles: full.map((r) => withTypes(r, useTypes)), types: useTypes, projects: projectsOf(projects), catalogue: catalogueOf(cat) });
     },
-    create: async (/** @type {string} */ _from, /** @type {string} */ name) => { const r = newRole("member", name, []); return roleOf((await ask("roles.create", { role: { id: r.id, label: r.name, base: "member", ...bodyOf(r) } }))?.role); },
+    create: async (/** @type {string} */ _from, /** @type {string} */ name) => { const real = typesOf(await ask("records.types").catch(() => null)); const r = newRole("member", name, [], real);   // the Space's own record types, never the sample ones (the box refuses a type it does not have)
+      return roleOf((await ask("roles.create", { role: { id: r.id, label: r.name, base: "member", ...bodyOf(r) } }))?.role); },
     duplicate: async (/** @type {string} */ id) => {
       const src = roleOf((await ask("roles.get", { id }))?.role);
       const copy = duplicateRole(src, rolesOf(await ask("roles.list")));
@@ -129,7 +130,8 @@ export function roleOf(r, types = []) {
 /** @param {any} d */
 export function typesOf(d) {
   const list = Array.isArray(d) ? d : Array.isArray(d?.types) ? d.types : [];
-  return list.filter((/** @type {any} */ t) => t && t.id != null).map((/** @type {any} */ t) => ({ id: String(t.id), name: String(t.plural || t.name || t.id), fields: (Array.isArray(t.fields) ? t.fields : []).map((/** @type {any} */ f) => String(f?.label || f?.name || f)) }));
+  // the box names a type by its `name` (records.types has no id); a type with an id (the mock) keeps it
+  return list.filter((/** @type {any} */ t) => t && (t.id != null || t.name)).map((/** @type {any} */ t) => ({ id: String(t.id ?? t.name), name: String(t.plural || t.label || t.name || t.id), fields: (Array.isArray(t.fields) ? t.fields : []).map((/** @type {any} */ f) => String(f?.label || f?.name || f)) }));
 }
 
 /** @param {any} d */
