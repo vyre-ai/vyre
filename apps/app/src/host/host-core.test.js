@@ -287,3 +287,55 @@ test("a browser with no Ed25519 and no fallback is told in plain words, not give
     await assert.rejects(() => host.call("onboard.signin", { space: "juniper.vyre.run", username: "alex", password: PASSWORD }), (e) => e.code === "browser_too_old");
   } finally { if (before) Object.defineProperty(globalThis, "crypto", before); }
 });
+
+/** A real P-256 point, as an agree key makes one: 0x04 || x || y, base64url. */
+async function agreePointOf() {
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  return Buffer.from(new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey))).toString("base64url");
+}
+const chainEntry = async (d, name) => {
+  const r = await (await d.fetch(`${d.base}/v1/ids/resolve?name=${name}`)).json();
+  const C = await import("../../../../kernel/identity/chain.js");
+  const state = await C.verifyChain(r.data.ops, { now: d.now() });
+  return { ops: r.data.ops, entry: state.entries.find((e) => e.kind === "device") };
+};
+
+test("a fresh identity's genesis device entry carries the device's key-agreement point, so chats can be wrapped to it", async (t) => {
+  const d = directory(t);
+  const point = await agreePointOf();
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => point });
+  await host.call("onboard.person.create", { username: "agnes", password: PASSWORD, confirm: PASSWORD });
+  const { entry } = await chainEntry(d, "agnes");
+  assert.equal(entry.agree, point);
+});
+
+test("an identity made without a key-agreement point (v0.6.1) is repaired when it is unlocked: the device signs the chain's own agree op for itself, once", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const old = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await old.call("onboard.person.create", { username: "olga", password: PASSWORD, confirm: PASSWORD });
+  assert.equal((await chainEntry(d, "olga")).entry.agree, undefined, "made the old way: no agree");
+
+  const point = await agreePointOf();
+  const fresh = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => point });
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && (await chainEntry(d, "olga")).entry.agree === undefined; i++) await new Promise((r) => setTimeout(r, 20));
+  const after = await chainEntry(d, "olga");
+  assert.equal(after.entry.agree, point, "the entry now has the point");
+  assert.equal(after.ops.length, 2, "one agree op was appended");
+  assert.equal(after.ops[1].type, "agree");
+  assert.equal(store.peek().ops.length, 2, "the kept copy of the chain follows");
+
+  // unlocking again changes nothing: the point is set once
+  await fresh.call("identity.lock");
+  await fresh.call("identity.unlock", { password: PASSWORD });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await chainEntry(d, "olga")).ops.length, 2);
+
+  // a page with no agree key leaves the old identity as it was
+  const none = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await none.call("onboard.person.create", { username: "nina", password: PASSWORD, confirm: PASSWORD });
+  await none.call("identity.lock"); await none.call("identity.unlock", { password: PASSWORD });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await chainEntry(d, "nina")).ops.length, 1);
+});

@@ -65,7 +65,12 @@ test("the inviter's confirmation checks the Space's own four words: right words 
 
 test("the shipped invite screen checks the Space's words before EVERY confirm path (the team wire, the home's spaces tool, the phone's approval), and a wrong word is refused with nothing sent", async () => {
   const fs = await import("node:fs");
-  const src = fs.readFileSync(new URL("../../screens/devices/RealInvite.tsx", import.meta.url), "utf8");
+  // The confirm step lives in InviteBody.tsx (one form, used by the Wink invite page and by Settings > People and roles); neither screen has a confirm call of its own.
+  const src = fs.readFileSync(new URL("../../screens/devices/InviteBody.tsx", import.meta.url), "utf8");
+  for (const own of ["../../screens/devices/RealInvite.tsx", "../../screens/roles/RolesScreen.tsx", "../../screens/roles/PeopleSection.tsx"]) {
+    const t = fs.readFileSync(new URL(own, import.meta.url), "utf8");
+    assert.ok(!/invites\.confirm|confirmTeamInviteWords|checkInviteWordsFor/.test(t), `${own} has no confirm path of its own`);
+  }
   const at = (/** @type {string} */ s) => { const i = src.indexOf(s); assert.ok(i >= 0, `missing: ${s}`); return i; };
   assert.ok(at("checkInviteWordsFor(card.id, made.id, words.trim(), card.name)") < at("confirmTeamInviteWords(card.id"), "the check comes before the team wire");
   assert.ok(at("checkInviteWordsFor(card.id") < at('tool("spaces.invites.confirm"'), "and before the home's tool (whose presence refusal the phone route answers)");

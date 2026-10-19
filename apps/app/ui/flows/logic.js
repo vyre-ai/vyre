@@ -6,7 +6,7 @@
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, kind?: string, options?: string[] }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, route?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], moreTriggers?: Trigger[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `moreTriggers` is every trigger after the first (stored as `triggers`, any of them starts a run); `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
@@ -33,6 +33,7 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
   { id: "watcher", icon: "eye", label: "Something new arrives", hint: "An email in a watched mailbox, or a file in a watched folder" },
+  { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service calls a web address, checked by its signature" },
   { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
 
@@ -108,6 +109,7 @@ export function triggerPhrase(t, o) {
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
     case "event": return (EVENT_CHOICES.find(([v]) => v === t.event)?.[1] || "something happens in Vyre").replace(/^A /, "a ").replace(/^An /, "an ");
     case "watcher": return t.watcher ? `the watcher ${t.watcher} finds something new` : "a watcher finds something new";
+    case "webhook": return t.route ? `the webhook /hooks/${t.route} is called` : "a webhook is called";
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
     case "schedule": return t.every ? `it is ${t.every.toLowerCase()}${TIMED.has(t.every) ? ` at ${t.at || "09:00"}` : ""}` : "it is time";
@@ -257,6 +259,7 @@ export function triggerProblems(t) {
   if (t.kind === "removed" && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
+  if (t.kind === "webhook" && !/^[a-z0-9][a-z0-9-]*$/.test((t.route || "").trim())) out.push("Choose the webhook route that starts it.");
   return out;
 }
 
@@ -466,6 +469,10 @@ export function triggerDefinition(t) {
 }
 /** The triggers that take an optional `where` condition (kernel/flows/triggers.js: record events and watchers). */
 const WHERE_KINDS = new Set(["created", "changed", "removed", "event", "watcher"]);
+/** A webhook route as the Flow's web path: a verified delivery to /hooks/<route> starts the Flow that answers hook-<route>, with the body as its input (core/hooks/flow-body.js). @param {string} route */
+const webhookPath = (route) => `hook-${route}`;
+const WEBHOOK_PATH = /^hook-([a-z0-9][a-z0-9-]*)$/;
+
 /** @param {Trigger} t */
 function triggerBase(t) {
   switch (t.kind) {
@@ -474,6 +481,7 @@ function triggerBase(t) {
     case "removed": return { on: "event", event: `${t.type}.removed` };
     case "event": return { on: "event", event: String(t.event) };
     case "watcher": return { on: "watcher", watcher: String(t.watcher).trim() };
+    case "webhook": return { on: "web", path: webhookPath(String(t.route).trim()) };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
     case "signup": return { on: "web", path: "signup" };
     case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
@@ -802,6 +810,11 @@ const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.k
 
 /** A stored trigger as a draft trigger: its kind's settings and its optional `where` condition. @param {any} t @returns {Trigger} */
 function triggerFrom(t) {
+  // A webhook: a verified delivery to one route starts the Flow at the web path hook-<route>.
+  if (t && typeof t === "object" && t.on === "web" && typeof t.path === "string" && Object.keys(t).every((k) => ["on", "path"].includes(k))) {
+    const m = WEBHOOK_PATH.exec(t.path);
+    if (m) return { kind: "webhook", route: m[1] };
+  }
   if (t && typeof t === "object" && t.where !== undefined) {
     const { where, ...rest } = t;
     const d = triggerFromKind(rest);
@@ -823,6 +836,7 @@ function triggerFromKind(t) {
     if (t.kind === "removed" && keys(t, ["kind", "type"])) return { kind: "removed", type: t.type };
     if (t.kind === "event" && keys(t, ["kind", "event"])) return { kind: "event", event: t.event };
     if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "watcher", watcher: t.watcher };
+    if (t.kind === "webhook" && keys(t, ["kind", "route"])) return { kind: "webhook", route: t.route };
     if (t.kind === "stage" && keys(t, ["kind", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
     if (t.kind === "signup" && keys(t, ["kind"])) return { kind: "signup" };
     if (t.kind === "form" && keys(t, ["kind", "path"])) return { kind: "form", path: t.path };
