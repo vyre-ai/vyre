@@ -66,7 +66,7 @@ async function boot(t, { door }) {
   assert.ok(put.data, `the key is in the Vault: ${JSON.stringify(put.error)}`);
   const listed = ((await asOwner("vault.list", {})).data || { items: [] }).items.find((/** @type {any} */ x) => x.name === item);
   assert.ok(listed && JSON.stringify(listed.grants || []).includes("threads"), `the item is granted to the chat module: ${JSON.stringify(listed)}`);
-  const acct = await asOwner("sessions.accounts.add", { provider: "openrouter", label: "OpenRouter (openrouter.ai)", kind: "api-key", vault_item: item, model: "x/y" });
+  const acct = await asOwner("sessions.accounts.add", { provider: "openrouter", label: "OpenRouter (openrouter.ai)", kind: "api-key", vault_item: item });
   assert.equal(acct.error, undefined, JSON.stringify(acct.error));
 
   // Ben, a member, with his own key in his own vault and an OpenRouter account naming it
@@ -77,7 +77,7 @@ async function boot(t, { door }) {
   assert.ok(made.data, `Ben makes his own vault: ${JSON.stringify(made.error)}`);
   const benPut = await asBen("vault.me.put", { name: "ben-openrouter", kind: "api-key", fields: { value: BEN_KEY } });
   assert.ok(benPut.data, `Ben's key is in his own vault: ${JSON.stringify(benPut.error)}`);
-  const benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter", model: "x/y" });
+  const benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" });
   assert.equal(benAcct.error, undefined, JSON.stringify(benAcct.error));
 
   /** A chat turn, as the stream starts one (chat and asker come only from module:stream). Resolves with the thread id and how its turn ended. @param {string} person @param {string} prompt */
