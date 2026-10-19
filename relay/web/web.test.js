@@ -108,9 +108,21 @@ test("the worker: strict policy from the build's hashes, the app under /app, the
   assert.equal(js.status, 200);
   assert.match(js.headers.get("cache-control"), /immutable/);
   assert.equal((await get(env, "/app/_expo/static/js/web/missing.js")).status, 404, "a missing script is a 404, never the page");
+  // a deep link under /app (a refresh of /app/onboard, a pasted /app/u/chats/x) is the app's page; a path that names a missing file is still a 404
+  for (const p of ["/app/onboard", "/app/u/chats", "/app/u/chats/chat_1?x=1", "/app/join"]) {
+    const r = await get(env, p);
+    assert.equal(r.status, 200, `${p} opens the app`);
+    assert.equal(await r.text(), HTML, p);
+    assert.equal(r.headers.get("content-security-policy"), csp, `${p} keeps the policy`);
+    assert.equal(r.headers.get("set-cookie"), null);
+  }
+  for (const p of ["/app/nope.png", "/app/_expo/static/js/web/other.js", "/app/fonts/x.woff2", "/app/robots.txt"]) assert.equal((await get(env, p)).status, 404, `${p}: a missing file is a 404`);
+  assert.equal((await get(env, "/app/onboard", { method: "HEAD" })).status, 200);
+  assert.match(js.headers.get("cache-control"), /no-transform/, "Cloudflare may not add its analytics beacon");
+  assert.match(home.headers.get("cache-control"), /no-transform/);
   assert.equal((await get(env, "/", { method: "POST" })).status, 405);
   const b = await get(env, "/vyre-build.json");
-  assert.equal(b.headers.get("cache-control"), "no-cache");
+  assert.equal(b.headers.get("cache-control"), "no-cache, no-transform");
 });
 
 test("with no release laid out the worker says so and serves no page", async () => {
