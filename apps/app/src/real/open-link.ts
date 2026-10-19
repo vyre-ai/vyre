@@ -1,6 +1,6 @@
 // The one way the app opens an address outside itself (a sign-in page, a docs link, GitHub). The Mac app's window blocks pop-ups and ignores the web's own "open" for some links, but its shell has a call that hands an
 // https link to the person's browser (Host/VyreAppWindow.swift, "open"), so that is tried first; a browser opens a tab; a phone uses the system. Only http, https and mailto addresses are opened.
-import { shell } from "../shell/shell";
+import { shell } from "../shell/shell.ts";
 
 /** Is this an address the app may open outside itself? */
 export const openable = (url: string): boolean => /^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i.test(String(url || "").trim());
