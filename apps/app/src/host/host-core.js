@@ -87,7 +87,7 @@ export function createHost(o) {
     throw bad(code === "name_taken" || code === "taken" ? "That name is taken." : code === "rate_limited" ? "Too many names were claimed from here today. Try again tomorrow." : "That name cannot be claimed right now. Try another.", code || "reserve");
   }
 
-  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean, unreachable?: string }>} */
+  /** One run per install line this page made: the add-server run, what the person called the space, the pairing it made and whether it is kept. @type {Map<string, { run: ReturnType<typeof createAddServer>, name: string, kind: string, paired: any, saved: boolean, failed: any, space: string, vault: boolean, pending?: Promise<any> | null, vaultPending?: boolean, unreachable?: string, listedAs?: { label: string, route: string } }>} */
   const waits = new Map();
   /** The paired server of the space this onboarding made last: where an AI sign-in goes. */
   let madeHere = "";
@@ -333,7 +333,7 @@ export function createHost(o) {
               w.space = await ports.claim({ id: k.id, name: k.username, eid: key.eid, ops: k.ops, key }, { name: w.name, route: { relay: p.relay, route: p.route, box: p.box } });
               // Was the server listed with the directory by the claim? Never a reason to stop: if not, the first run goes on, the page says so in one line, and ensureServers tries again now and on every unlock.
               const seenListing = ports.listing ? await ports.listing(w.space).catch(() => undefined) : undefined;
-              if (seenListing && seenListing.listed) { const fresh = await o.store.load(); if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), [String(w.name).toLowerCase()]: String(p.route) } }); }
+              if (seenListing && seenListing.listed) w.listedAs = { label: String(w.name).toLowerCase(), route: String(p.route) };
               else if (seenListing) { w.unreachable = `${String(w.name).toLowerCase()}.vyre.run`; trace(`poll: the directory was not told this server serves ${w.name} (${seenListing.why || "no reason given"}); it will be tried again`); }
             }
             catch (e) {
@@ -366,6 +366,7 @@ export function createHost(o) {
           await keepSpace(k, { id: w.space || spaceKey("", w.name), name: w.name, role: "owner", server: `https://${w.name}.vyre.run`, paired: p });
           // The listing did not land at the claim: try it again now, quietly, and on every unlock; the page already says it is not reachable yet.
           if (w.unreachable && held) void ensureServers(held);
+          if (w.listedAs) { const fresh = await o.store.load(); if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), [w.listedAs.label]: w.listedAs.route } }); }
           w.saved = true;
           madeHere = String(p.box);
         }
