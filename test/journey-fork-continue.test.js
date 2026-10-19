@@ -20,7 +20,7 @@ test("a chat's copy goes to the server: the copy is a new chat, the chat is unto
   assert.equal(out.ok, true, JSON.stringify(out));
   if (!out.ok) return;
   assert.notEqual(out.thread, chat.id, "a copy, not the chat");
-  assert.equal(out.note, "The copy runs in Space's Cloud.");
+  assert.equal(out.note, "The copy runs on the server.");
   const threads = (await w.tool("threads.list", {})).data;
   const rows = Array.isArray(threads) ? threads : threads.threads;
   assert.ok(rows.some((/** @type {any} */ r) => r.id === out.thread), "the copy is in the list");
@@ -33,7 +33,7 @@ test("a copy that cannot go to this computer is kept, and the sheet says why in 
   const out = await forkAndMove(box(w), chat.id, "mac");
   assert.equal(out.ok, true, JSON.stringify(out));
   if (!out.ok) return;
-  assert.match(out.note, /^The copy is made, but it could not go to My Computer: This computer is not set up to run chats yet\. Turn on Run my chats on this computer in Settings/);
+  assert.match(out.note, /^The copy is made, but it could not go to this computer: This computer is not set up to run chats yet\. Turn on Run my chats on this computer in Settings/);
   assert.notEqual(out.thread, chat.id);
 });
 

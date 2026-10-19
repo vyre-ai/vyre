@@ -20,7 +20,7 @@ export function AgentComputerPane({ name, view, busy, problem, onWake, onSleep, 
   /** The next step beside a problem: the agent computer's settings (Settings, This computer). */
   onSettings?: () => void;
   onWake: () => void; onSleep: () => void; onOpen: () => void;
-  /** A dock app opened on the live screen (Browser, Files, Terminal). */
+  /** A dock app opened on the live screen (Chrome, Files, Terminal). */
   onDock?: (id: string) => void;
   /** Empties this agent's home (browser logins, files, terminal). Asks once more before it does. */
   onReset?: () => void;

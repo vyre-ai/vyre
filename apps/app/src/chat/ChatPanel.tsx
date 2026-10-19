@@ -125,8 +125,8 @@ export function ChatPanel(p: ChatPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.open, p.page]);
 
-  const here = p.info.runsOn === "mac" ? "My Computer" : "Space's Cloud";
-  const there = p.info.runsOn === "mac" ? "Space's Cloud" : "My Computer";
+  const here = p.info.runsOn === "mac" ? "This computer" : "The server";
+  const there = p.info.runsOn === "mac" ? "the server" : "this computer";
   const proj = p.project.current && p.project.current.slug !== "general" ? p.project.current : null;
   // Details, Library and Computer: one tap on the header opens this panel, these are its three parts.
   const router = useRouter();

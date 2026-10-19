@@ -35,9 +35,9 @@ test("asleep offers Wake; waking offers nothing; live offers Open and Sleep", ()
   assert.deepEqual(computerActions(computerOf({ state: "live" })), ["open", "sleep"]);
 });
 
-test("the dock is the browser, Files and Terminal, in that order", () => {
+test("the dock is Chrome, Files and Terminal, in that order (the product map names the desktop's apps)", () => {
   assert.deepEqual(DOCK.map((d) => d.id), ["chrome", "files", "terminal"]);
-  assert.deepEqual(DOCK.map((d) => d.label), ["Browser", "Files", "Terminal"]);
+  assert.deepEqual(DOCK.map((d) => d.label), ["Chrome", "Files", "Terminal"]);
 });
 
 test("asleep, the whole screen wakes it: no separate Wake button, a gently breathing sleep mark (still with reduced motion), and Press to wake", async () => {
