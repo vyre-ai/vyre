@@ -6,7 +6,7 @@ import { Pressable, View } from "react-native";
 import { Avatar } from "../components/Avatar";
 import { markRef } from "../marks/useMark";
 import { Banner } from "../components/Banner";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Field } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
@@ -18,17 +18,26 @@ import { useUiTheme } from "../theme";
 // @ts-ignore the agent family's renderer is plain JavaScript
 import { AGENT_COLORS } from "../../../../lib/wink-code/agent2.js";
 import { PARTS, SHAPES, lookSeed } from "./agent-look.js";
-import { Chip } from "../components/Chip";
+
+/** What each of the sixteen colours is called, for a screen reader (the order of AGENT_COLORS). */
+const COLOUR_NAMES = ["Peach", "Sun", "Seafoam", "Amber", "Rose", "Sand", "Salmon", "Sage", "Blue", "Indigo", "Violet", "Teal", "Coral", "Mint", "Sky", "Graphite"];
 
 export type NewAgentValues = { name: string; shape: number; color: number; job: string; projects: string[]; runsOn: "subscription" | "key"; budget: string; model: string; effort: string; computer: boolean; personal: boolean };
 
 /** The effort choices: the box's own default, then four levels. */
 const EFFORTS: [string, string][] = [["", "Default"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["max", "Max"]];
 
-/** The grid of eight shapes and the row of eight colours that make an agent's look. Used by the New agent dialog and by an agent's Details. */
+/**
+ * The grid of eight shapes and the sixteen colours that make an agent's look, and, when the caller can change a part (`parts` and `onPart`), a "Customize" icon button that opens the character's parts as rows of
+ * little faces (eyes, mouth, top, blush, charm): each face is the look as it would be with that option. One component for first run's Assistant step, an agent's Details, the New agent dialog and Settings.
+ */
 export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: { shape: number; color: number; onChange: (p: { shape?: number; color?: number }) => void; /** The character's parts now, by key (e, m, t, b, h): with onPart the picker also lets the person change them. */ parts?: Record<string, number>; onPart?: (key: string, value: number) => void }) {
   const { color } = useUiTheme();
   const values = { shape, color: col };
+  const [open, setOpen] = useState(false);
+  const base = lookSeed(shape, col);
+  /** The look with one part set to one option, the other parts as they are now: what that option's little face is drawn from. */
+  const withOne = (key: string, value: number) => base + PARTS.map((q) => `~${q.key}${q.key === key ? value : parts?.[q.key] ?? 0}`).join("");
   return (
     <View style={{ gap: 20 }}>
         <View accessibilityLabel="Shape" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
@@ -41,7 +50,7 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
         </View>
         <View accessibilityLabel="Colour" style={{ flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "center" }}>
           {(AGENT_COLORS as string[]).map((c, i) => (
-            <Pressable key={c} accessibilityRole="radio" accessibilityLabel={`Colour ${i + 1}`} accessibilityState={{ selected: values.color === i }} onPress={() => onChange({ color: i })}
+            <Pressable key={c} accessibilityRole="radio" accessibilityLabel={`${COLOUR_NAMES[i] ?? `Colour ${i + 1}`}`} accessibilityState={{ selected: values.color === i }} onPress={() => onChange({ color: i })}
               style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, alignItems: "center", justifyContent: "center", borderWidth: values.color === i ? 3 : 0, borderColor: color.primary }}>
               {values.color === i ? <Icon name="check" size={16} tone="text" /> : null}
             </Pressable>
@@ -49,14 +58,22 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
         </View>
         {parts && onPart ? (
           <View style={{ gap: 12 }}>
-            {PARTS.map((p) => (
+            <View style={{ alignItems: "center" }}>
+              <IconButton icon="face" label="Customize" kind={open ? "secondary" : "ghost"} onPress={() => setOpen((v) => !v)} />
+            </View>
+            {open ? PARTS.map((p) => (
               <View key={p.key} accessibilityLabel={p.label} style={{ gap: 6 }}>
                 <Text size="caption" tone="label">{p.label}</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  {p.words.map((w, i) => <Chip key={w} selected={parts[p.key] === i} onPress={() => onPart(p.key, i)}>{w}</Chip>)}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {p.words.map((w, i) => (
+                    <Pressable key={w} accessibilityRole="radio" accessibilityLabel={`${p.label}: ${w}`} accessibilityState={{ selected: parts[p.key] === i }} onPress={() => onPart(p.key, i)}
+                      style={{ width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: parts[p.key] === i ? color.selected : color["surface-3"], borderWidth: parts[p.key] === i ? 2 : 0, borderColor: color.primary }}>
+                      <Avatar of={markRef("agent", `${p.key}${i}`, undefined, withOne(p.key, i))} size={34} />
+                    </Pressable>
+                  ))}
                 </View>
               </View>
-            ))}
+            )) : null}
           </View>
         ) : null}
     </View>
