@@ -105,7 +105,7 @@ async function boot(t, { door }) {
     const id = String(r.data.id);
     return { id, end: await until(() => finished.get(id), `the launch ${id} to end`) };
   };
-  return { d, K, OWNER, seen, scans, doorEvents, chatTurn, launch };
+  return { d, K, OWNER, seen, scans, doorEvents, chatTurn, launch, asOwner, asBen, finished, logs };
 }
 
 test("on a home with the inference door, every API-key chat turn goes through it as the person the turn is for", { timeout: 300_000 }, async t => {
@@ -173,6 +173,22 @@ test("on a home with the inference door, every API-key chat turn goes through it
     const scans = w.scans.filter(s => s.text.includes("case five"));
     assert.ok(scans.length >= 1, "the door scanned the job's prompt");
     assert.deepEqual([...new Set(scans.map(s => s.person))], [BEN], "as the person the job runs as, never the owner");
+  });
+
+  await t.test("a member whose only AI account is a key of her own talks to an agent on it: her thread, her key, her chain; NEGATIVE: never the owner's key", async () => {
+    assert.equal((await w.asOwner("agents.create", { name: "kit", kind: "agent", projects: [] })).error, undefined);
+    assert.equal((await w.asOwner("agents.access.set", { agent: "kit", kind: "person", subject: BEN, level: "use" })).error, undefined);
+    const before = w.seen.length;
+    const r = await w.asBen("agents.ask", { agent: "kit", text: "case eight: say ok", wait: false });
+    assert.equal(r.error, undefined, `${JSON.stringify(r.error)}\n${w.logs.slice(-25).join("\n")}`);
+    const end = await until(() => w.finished.get(String(r.data.thread)), "the agent's turn on her key to end");
+    assert.equal(end.ok, true, `${JSON.stringify(end)}\n${w.logs.slice(-25).join("\n")}`);
+    const sent = w.seen.slice(before);
+    assert.ok(sent.length >= 1, "her turn reached the model");
+    assert.deepEqual([...new Set(sent.map(s => s.auth))], [`Bearer ${BEN_KEY}`], "only her own key, lent from her own vault, never the owner's");
+    const scans = w.scans.filter(s => s.text.includes("case eight"));
+    assert.ok(scans.length >= 1, "through the door");
+    assert.deepEqual([...new Set(scans.map(s => s.person))], [BEN], "as her chain");
   });
 });
 
