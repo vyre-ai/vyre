@@ -23,6 +23,11 @@ test("appmods.install runs for the signed-in owner with no proof; an agent, a gu
   const asOwner = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", await meta());
   const code = (/** @type {any} */ r) => (r && r.error ? String(r.error.code) : "");
 
+  // the owner's own computer or phone, reached over a pairing or the tailnet, names itself device:<id> or tailnet:<login>: no proof for it either (this is the Mac with no phone paired)
+  for (const who of ["device:abcdefghijklmnop", "tailnet:alex@example.com"]) {
+    const r = await d.registry.call("appmods.install", { name: "not-an-app" }, who, await meta());
+    assert.ok(r.error && !/presence|held|approval/.test(String(r.error.code)) && /no app module called/.test(String(r.error.message)), `${who}: it reached the install and was refused for the name: ${JSON.stringify(r).slice(0, 300)}`);
+  }
   // the owner, no proof: past the gate (the fake runtime then refuses to start, which is not a presence refusal)
   const ok = await asOwner("appmods.install", { name: "documents" });
   assert.notEqual(code(ok), "presence_required", JSON.stringify(ok).slice(0, 300));
@@ -42,6 +47,8 @@ test("appmods.install runs for the signed-in owner with no proof; an agent, a gu
   // remove: the container without a proof, the data only with one
   const keep = await asOwner("appmods.remove", { name: "documents" });
   assert.ok(!/presence/.test(code(keep)) && keep.data && keep.data.removed === true, "the failed install left a row, and removing it asks no proof: " + JSON.stringify(keep).slice(0, 200));
-  const wipe = await asOwner("appmods.remove", { name: "documents", data: true });
-  assert.equal(code(wipe), "presence_required", "deleting the data asks: " + JSON.stringify(wipe).slice(0, 200));
+  // deleting the data asks: not from the person's own surface (that is the person), but from a device or the tailnet the caller is not the proof
+  const wipe = await d.registry.call("appmods.remove", { name: "documents", data: true }, "device:abcdefghijklmnop", await meta());
+  console.log("remove data:true from a device ->", JSON.stringify(wipe).slice(0, 300));
+  assert.ok(wipe.error, "deleting the data is not done without more than a device label: " + JSON.stringify(wipe).slice(0, 200));
 });
