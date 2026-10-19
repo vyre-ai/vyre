@@ -18,7 +18,7 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ### The shared browser and a Linux user for each agent are opt-in
 
-Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used unless you turn them on in a server's config: set `computers.browse` to `browser` and `computers.agentUsers` to `true`. In 0.6.2 the service that makes those users (agentd) starts correctly. With `computers.agentUsers` on, if agentd cannot start, the computer says so and agents wait; they never fall back to the shared browser. Nothing else turns the shared browser on.
+Each agent that has a computer gets its own, with its own screen and its own Chrome. A separate Linux user for each agent on the space's computer is used only when you set `computers.agentUsers` to `true` in a server's config, and the one shared browser only when you set `computers.browse` to `browser`; each is its own setting. In 0.6.2 the service that makes those users (agentd) starts correctly. With `computers.agentUsers` on, if agentd is not ready, an agent's browser call waits up to 90 seconds (`computers.agentdWaitMs`) and is then refused with a plain message; it never falls back to the shared browser.
 
 ### A member's own AI account in chats
 
@@ -202,9 +202,9 @@ Owner: comp6 with sec53.
 
 ## The Mac app is ad-hoc signed
 
-Until the Mac app has Apple signing, it has no Touch ID approvals. An approval needs a paired phone; while no phone is paired, the app needs none and Settings > Privacy says "Approvals: none needed until you pair a phone". The GitHub sign-in in the Mac app may not finish: its return page opens in the browser, not the app window.
+Until the Mac app has Apple signing, it has no Touch ID approvals. While no phone is paired, the owner's own approvals pass in the app without one (Settings > Privacy says "Approvals: none needed until you pair a phone"), and so do approvals from anything that can act as the owner's paired device. Commands typed in a terminal (the `vyre` command) still need a paired phone for approval steps. The GitHub sign-in in the Mac app may not finish: its return page opens in the browser, not the app window.
 
-What to do: pair a phone in Settings to approve from it, and use your username and password in the Mac app.
+What to do: pair a phone in Settings to turn the proof back on and to approve from it, and use your username and password in the Mac app.
 
 Owner: app53 and the release lead, until Apple signing.
 
