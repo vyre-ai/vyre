@@ -773,6 +773,7 @@
           "name": "chat-record",
           "label": "Chat",
           "icon": "IconMessage",
+          "hidden_in_records": true,
           "fields": [
             {
               "name": "title",
