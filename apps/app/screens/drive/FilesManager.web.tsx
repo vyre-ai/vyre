@@ -411,7 +411,7 @@ function Manager({ wide }: { wide: boolean }) {
             {newName !== null ? (
               <div onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void makeFolder(); } else if (e.key === "Escape") { e.stopPropagation(); setNewName(null); } }}>
                 <Card><View className="gap-s2">
-                  <Field label="Folder name" value={newName} onChangeText={setNewName} placeholder="New folder" autoFocus />
+                  <Field label="Folder name" value={newName} onChangeText={setNewName} placeholder="New folder" autoFocus onSubmit={() => { void makeFolder(); }} />
                   <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Make folder" onPress={() => { void makeFolder(); }} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setNewName(null)} /></View>
                 </View></Card>
               </div>
