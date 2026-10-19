@@ -6,5 +6,5 @@ export const linkedNames: Record<string, string> = {};
 /** A project's folder is named by its id (Projects/<id>); files.places has its name. Filled once, then used by the listing, the tree and the path above it. */
 export const folderNames: Record<string, string> = {};
 let named: Promise<void> | null = null;
-const learnNames = () => (named ??= driveTool<{ projects?: { name: string; path: string }[] }>("files.places", {}).then((r) => { for (const p of r?.projects ?? []) if (p.path && p.name) folderNames[p.path] = p.name; }).catch(() => {}));
-export const loader = filesLoader({ space: { list: spaceList }, linked, box: { list: listReal }, linkedNames: () => linkedNames, names: async () => { await learnNames(); return folderNames; } });
+export const learnFolderNames = () => (named ??= driveTool<{ projects?: { name: string; path: string }[] }>("files.places", {}).then((r) => { for (const p of r?.projects ?? []) if (p.path && p.name) folderNames[p.path] = p.name; }).catch(() => {}));
+export const loader = filesLoader({ space: { list: spaceList }, linked, box: { list: listReal }, linkedNames: () => linkedNames, names: async () => { await learnFolderNames(); return folderNames; } });
