@@ -482,6 +482,4 @@ test("a page with no key of its own reads a person's list from the directory, ch
   assert.equal(list.filter((e) => e.kind === "code").length, 1, "the recovery code");
   assert.ok(list.every((e) => e.self === false), "no entry is this page's own");
   await assert.rejects(() => publicEntries({ directory: d.base, id: "per_zzzzzzzzzzzzzzzzzzzzzzzzzz", fetch: d.fetch, now: d.now() }), (e) => e.code === "not_found");
-}); };
-  assert.equal((await publicEntries({ directory: d.base, id: made.id, fetch: swapped, now: d.now() })).length, list.length);
 });
