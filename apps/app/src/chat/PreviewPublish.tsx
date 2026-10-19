@@ -2,13 +2,12 @@
 // own (screens/sites/real-model planLines); nothing here names a tool, a path or a task.
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
-import { View } from "react-native";
+import { Linking, Platform, View } from "react-native";
 import { AskCard, Banner, Button, Sheet, Text } from "@vyre/ui";
 import { presenceText } from "../../screens/shell/FaceIdSheet";
 import { decision, heldOf, planLines, publishRefusal, type Held } from "../../screens/sites/real-model";
 import { tool } from "../real/box";
 import { addressOf, publishWords, siteNameOf, whileSettingUp } from "./preview-model.js";
-import { openExternal } from "../shell/open-external";
 
 type Step = { kind: "building" } | { kind: "asking"; held: Held; later: string } | { kind: "deciding"; held: Held; later: string } | { kind: "done"; address: string; later: string } | { kind: "declined" } | { kind: "problem"; text: string };
 
@@ -34,7 +33,7 @@ export function PublishSheet({ open, onClose, preview }: { open: boolean; onClos
       .then((r) => setStep({ kind: "done", address: addressOf(r.deployment ?? null), later }))
       .catch((e) => setStep({ kind: "problem", text: say(e) }));
   };
-  const openAddress = (a: string) => { const url = /^https?:/.test(a) ? a : `https://${a}`; void openExternal(url); };
+  const openAddress = (a: string) => { const url = /^https?:/.test(a) ? a : `https://${a}`; if (Platform.OS === "web") window.open(url, "_blank", "noopener"); else void Linking.openURL(url); };
   return (
     <Sheet open={open} onClose={onClose} title={`Publish ${preview.title}`}>
       <View style={{ gap: 12 }}>

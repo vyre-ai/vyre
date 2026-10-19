@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
+import { Linking } from "react-native";
 import { Button, Text, showToast } from "@vyre/ui";
 import { MOCK, tool } from "../../src/real/box";
 import { REPO_URL, starNote, starPlan } from "./about-model.js";
-import { openExternal } from "../../src/shell/open-external";
 
 type Status = { connected?: boolean; starred?: boolean | null } | null;
 
@@ -22,7 +22,7 @@ function usePress() {
       try { await tool("github.star"); setStatus({ connected: true, starred: true }); showToast("Starred. Thank you."); return; }
       catch (e) { showToast(`${e instanceof Error ? e.message : "GitHub did not star it"} Opening the project instead.`); }
     }
-    if (plan.action !== "none") void openExternal(REPO_URL);
+    if (plan.action !== "none") void Linking.openURL(REPO_URL);
   };
   return { plan, press };
 }

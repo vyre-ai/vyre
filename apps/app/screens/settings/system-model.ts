@@ -60,14 +60,23 @@ export function hooksCard(d: any, status: any): Card {
 }
 
 /** The Wink network: whether this computer is signed in, each space's link (state, the path it takes, how fast, how many devices) and the relay. Read only, from network.wink.status. */
-export function winkCard(d: any): Card {
+/** An id the app made (spc_, per_, tpl_): never for a person to read. */
+export const isMadeId = (v: unknown): boolean => typeof v === "string" && /^(spc|per|tpl)_[A-Za-z0-9]+$/.test(v.trim());
+
+/** What a Space is called in a line: its name from `names` (by id), else the name the link carries, else "A space"; an id is never shown. */
+export const spaceWords = (x: any, names: Record<string, string> = {}): string => {
+  const own = typeof x?.name === "string" && x.name.trim() && !isMadeId(x.name) ? x.name.trim() : "";
+  return names[String(x?.id ?? "")] || names[String(x?.name ?? "")] || own || "A space";
+};
+
+export function winkCard(d: any, names: Record<string, string> = {}): Card {
   const c = card("Wink network");
   const spaces = list(d?.spaces, "id");
   const bad = spaces.filter((x) => x.state !== "connected");
   c.state = !spaces.length ? "No spaces linked" : bad.length ? `${plural(bad.length, "space")} not connected` : "Connected";
   for (const x of spaces) {
     const via = x.path === "direct" ? "direct" : x.path === "relay" ? "through the relay" : "";
-    c.lines.push([String(x.name || "A space"), String(x.state || "unknown"), via, typeof x.latencyMs === "number" ? `${Math.round(x.latencyMs)} ms` : "", typeof x.peers === "number" ? plural(x.peers, "device") : ""].filter(Boolean).join(", "));
+    c.lines.push([spaceWords(x, names), String(x.state || "unknown"), via, typeof x.latencyMs === "number" ? `${Math.round(x.latencyMs)} ms` : "", typeof x.peers === "number" ? plural(x.peers, "device") : ""].filter(Boolean).join(", "));
   }
   if (d?.relay) c.lines.push(`Relay: ${d.relay.enabled === false ? "off" : d.relay.reachable === false ? "not reachable" : "reachable"}${typeof d.relay.latencyMs === "number" ? `, ${Math.round(d.relay.latencyMs)} ms` : ""}`);
   if (d?.otherVpn) c.warn.push("Another VPN is running on this computer. It can get in the way of the link to your devices.");

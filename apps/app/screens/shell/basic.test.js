@@ -39,7 +39,7 @@ test("the backup line: not backed up with no team, the destination when the box 
 
 test("the personal-items host: the Cloud spaces from spaces.tier, named by the one function, and the current choice", () => {
   const t = { tier: "basic", cloud: [{ id: "spc_a", name: "juniper.vyre.run", label: "juniper" }, { id: "spc_b", name: "example.vyre.run", label: null }], time_zone: null, personal_host: "spc_b" };
-  assert.deepEqual(hostChoices(t), { options: [["spc_a", "juniper"], ["spc_b", "example"]], current: "spc_b" });
+  assert.deepEqual(hostChoices(t), { options: [["spc_a", "juniper's Cloud"], ["spc_b", "example's Cloud"]], current: "spc_b" });
   assert.deepEqual(hostChoices({ cloud: [], personal_host: null }), { options: [], current: null });
   assert.equal(hostChoices({ cloud: [{ id: "spc_a", name: "x" }], personal_host: "gone" }).current, null);
 });

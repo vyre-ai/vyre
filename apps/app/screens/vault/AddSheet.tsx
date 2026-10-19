@@ -1,13 +1,12 @@
 // The Vault's Add sheet. Step one asks "What are you adding?": a searchable picker, grouped as the list and the sidebar are, every row from the providers catalog (add-model.js). Step two is that
 // pick's own form: its labelled fields, a drop zone for a key file, or a Sign in button, with "Where do I get this?" from the catalog. Save is the vault.put the model builds; nothing here keeps a value after it.
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { Banner, Button, Card, Field, GroupedList, IconButton, IconTile, Row, Segmented, Sheet, Text, type IconName } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { DropZone } from "./DropZone";
 import { IMPORT_ENTRY, callOf, entriesFor, formOf, pickerGroups, problemsOf, searchEntries, slugOf, startName, type Entry, type Form, type FormField } from "./add-model.js";
 import { checkServiceAccount } from "../../../../core/vault/providers.js";
-import { openExternal } from "../../src/shell/open-external";
 
 export type Call = { tool: string; input: Record<string, unknown> };
 type Scope = "space" | "mine";
@@ -121,7 +120,7 @@ export function AddSheet({ open, scope, busy, problem, onClose, onSave, onImport
                   kind={f.name === "url" ? "url" : "text"} />)}
           </>
         )}
-        {form.help ? <View className="self-start"><Button kind="ghost" size="sm" icon="external" label="Where do I get this?" onPress={() => void openExternal(form.help!)} /></View> : null}
+        {form.help ? <View className="self-start"><Button kind="ghost" size="sm" icon="external" label="Where do I get this?" onPress={() => void Linking.openURL(form.help!)} /></View> : null}
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
         {form.how === "oauth" ? null : <Button kind="primary" label={busy ? "Saving" : form.how === "ssh" && mode === "make" ? "Make the key" : "Add"} disabled={busy} onPress={busy ? () => {} : save} />}
         <Text size="caption" tone="label">Agents use it and never see the value.</Text>

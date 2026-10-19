@@ -2,7 +2,6 @@
 // The ticket is the credential, so neither carries anything else.
 import { boxOrigin } from "../../src/api/box";
 import { rawUrl } from "./model";
-import { openExternal } from "../../src/shell/open-external";
 
 /** Save a file the box handed a ticket for. Returns false when the ticket's path is not on the box. */
 export function saveFile(path: string, name: string): boolean {
@@ -18,7 +17,7 @@ export function saveFile(path: string, name: string): boolean {
 export function openFile(path: string): boolean {
   const url = rawUrl(boxOrigin() || location.origin, path);
   if (!url) return false;
-  void openExternal(url);
+  window.open(url, "_blank", "noopener,noreferrer");
   return true;
 }
 

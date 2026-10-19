@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { View } from "react-native";
+import { Linking, Platform, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button, Card, EmptyState, Text } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { tool } from "../../src/real/box";
-import { openExternal } from "../../src/shell/open-external";
 
 /** A tile on the Apps place. `route` is where it opens; a tile with no route says what it is waiting for. */
 type Tile = { id: string; label: string; sub: string; route?: string; waiting?: string };
@@ -51,7 +50,8 @@ export function AppsHome() {
     tool<{ url?: string }>("appmods.open", { name: sc.module, screen: sc.id })
       .then((r) => {
         if (!r?.url) return;
-        void openExternal(r.url);
+        if (Platform.OS === "web") window.open(r.url, "_blank", "noopener");
+        else void Linking.openURL(r.url);
       })
       .catch(() => {});
   };

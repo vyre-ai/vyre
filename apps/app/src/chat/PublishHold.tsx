@@ -1,20 +1,19 @@
 // A publish an agent asked for, waiting for the person's one yes. The same card sits on Now (the item's page) and in the chat where the agent asked. It shows the plan in the box's own words
 // (what goes public, at which address, with which secrets, replacing which version); the yes calls publish.decide with the plan's hash, and the box asks for Face ID or the click.
 import { useState } from "react";
-import { View } from "react-native";
+import { Linking, Platform, View } from "react-native";
 import { AskCard, Banner, Button, Text } from "@vyre/ui";
 import { presenceText } from "../../screens/shell/FaceIdSheet";
 import { decision, planLines, publishRefusal, type Held } from "../../screens/sites/real-model";
 import { setNeeds, needsStore, type Need } from "../state/needs";
 import { tool } from "../real/box";
 import { addressOf } from "./preview-model.js";
-import { openExternal } from "../shell/open-external";
 
 type Step = { kind: "asking" } | { kind: "deciding" } | { kind: "done"; address: string } | { kind: "declined" } | { kind: "problem"; text: string };
 
 const heldOf = (n: Need): Held | null => (n.plan && n.planHash ? ({ held: true, task: n.ref, plan: { ...(n.plan as object), hash: n.planHash } } as Held) : null);
 const leave = (n: Need) => setNeeds(needsStore.get().items.filter((x) => x.id !== n.id), needsStore.get().from === "cache" ? "cache" : "box");
-const open = (a: string) => { const url = /^https?:/.test(a) ? a : `https://${a}`; void openExternal(url); };
+const open = (a: string) => { const url = /^https?:/.test(a) ? a : `https://${a}`; if (Platform.OS === "web") window.open(url, "_blank", "noopener"); else void Linking.openURL(url); };
 
 export function PublishHold({ need, who }: { need: Need; who?: string }) {
   const [step, setStep] = useState<Step>({ kind: "asking" });

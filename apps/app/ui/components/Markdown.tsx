@@ -1,19 +1,19 @@
 // Chat's markdown, drawn with the design system's own components from the closed tree markdown/parse.js makes: paragraphs, headings, bold, italic, lists, links, inline code, quotes, tables, rules and code blocks.
 // Nothing is ever drawn from the model's markup: there is no HTML node, and a link opens only if it is http, https or mailto (and opens outside the app).
 import { Fragment, useMemo } from "react";
-import { ScrollView, View } from "react-native";
+import { Linking, Platform, ScrollView, View } from "react-native";
 import { CodeBlock } from "./CodeBlock";
 import { Text } from "./Text";
 import { useUiTheme } from "../theme";
 import { parse, plainOf, safeHref } from "../markdown/parse.js";
-import { openExternal } from "../../src/shell/open-external";
 
 type Node = { t: string; [k: string]: any };
 
 /** A link opens outside: a new tab on the web (no opener), the system's handler on a device. Only a safe address gets here. */
 export function openOutside(href: string) {
   if (!safeHref(href)) return;
-  void openExternal(href);
+  if (Platform.OS === "web") window.open(href, "_blank", "noopener,noreferrer");
+  else void Linking.openURL(href);
 }
 
 export type RefNode = { lead: "@" | "#"; name: string; urn: string };
