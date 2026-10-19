@@ -52,7 +52,7 @@ export function enrollFirst({ db, presence, now = Date.now }, input) {
     const row = db.prepare("SELECT fp, expires, used FROM core_first_key WHERE id = 1").get();
     if (!row || row.used || now() > Number(row.expires)) { db.exec("ROLLBACK"); throw no("no first key is waiting for this server (the install line's hour is over, or it was used)"); }
     if (row.fp !== fp) { db.exec("ROLLBACK"); throw no("that key is not the one the install line named"); }
-    const k = presence.enroll({ kind: "device", name: input.name, public_key: input.public_key, alg: -7 });
+    const k = presence.enroll({ kind: "device", name: input.name, public_key: input.public_key, alg: -7, source: "first-key" });
     db.prepare("UPDATE core_first_key SET used = ?, key_id = ?, capsule_done = NULL WHERE id = 1").run(now(), k.id);
     db.exec("COMMIT");
     return k;
