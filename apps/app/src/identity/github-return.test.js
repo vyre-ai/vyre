@@ -97,3 +97,25 @@ test("the Mac app asks until the ticket is there, keeps asking through a busy re
   assert.deepEqual(await claimTicket(slow.ask, CV, { sleep, every: 2000, until: 10_000 }), { code: "timeout" });
   assert.equal(slow.seen.length, 5);
 });
+
+test("the step a first run picks up after GitHub: create keeps the typed names, never a password, and is cleared once used", async () => {
+  const { AFTER_KEY, clearAfter, readAfter, saveAfter } = await import("./github-return.js");
+  const s = store();
+  assert.equal(readAfter(s), null);
+  saveAfter(s, /** @type {any} */ ({ kind: "create", first: "Sam", last: "Okafor", username: "sam", password: "hunter2-long-secret" }));
+  assert.deepEqual(readAfter(s), { kind: "create", first: "Sam", last: "Okafor", username: "sam" });
+  assert.equal(String(s.m.get(AFTER_KEY)).includes("hunter2"), false, "no password is kept");
+  saveAfter(s, /** @type {any} */ ({ kind: "other", first: "x".repeat(200) }));
+  const r = readAfter(s);
+  assert.equal(r && r.kind, "signin");
+  assert.equal(r && r.first.length, 60);
+  clearAfter(s);
+  assert.equal(readAfter(s), null);
+  s.setItem(AFTER_KEY, "not json");
+  assert.equal(readAfter(s), null);
+  const refused = store({ refuse: true });
+  saveAfter(refused, { kind: "create" });
+  assert.equal(readAfter(refused), null);
+  clearAfter(refused);
+  assert.equal(readAfter(null), null);
+});
