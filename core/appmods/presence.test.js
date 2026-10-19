@@ -41,7 +41,7 @@ test("appmods.install runs for the signed-in owner with no proof; an agent, a gu
 
   // remove: the container without a proof, the data only with one
   const keep = await asOwner("appmods.remove", { name: "documents" });
-  assert.ok(keep.error && !/presence/.test(code(keep)), "no proof asked to keep the data: " + JSON.stringify(keep).slice(0, 200));
+  assert.ok(!/presence/.test(code(keep)) && keep.data && keep.data.removed === true, "the failed install left a row, and removing it asks no proof: " + JSON.stringify(keep).slice(0, 200));
   const wipe = await asOwner("appmods.remove", { name: "documents", data: true });
   assert.equal(code(wipe), "presence_required", "deleting the data asks: " + JSON.stringify(wipe).slice(0, 200));
 });
