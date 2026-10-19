@@ -12,7 +12,7 @@ import { roleLabel } from "../spaces/roles.js";
 import type { SpaceCard } from "../spaces/data";
 import { tool, said } from "../../src/real/box";
 import { invitesHere } from "../../src/real/team-join";
-import { inviteRefusal, liveServers, inviteRow, invitable, madeNote } from "./invite.js";
+import { inviteRefusal, liveServers, inviteRow, invitable, madeNote, requestInvite } from "./invite.js";
 
 export const inviteWhy = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
 
@@ -53,13 +53,15 @@ export function InviteForm({ card, onChanged }: { card: SpaceCard; onChanged: ()
     setProblem(""); setWords("");
     setBusy(true);
     // Role and days are checked inside onboard.member.link, the same tool the first run uses.
-    void tool("onboard.member.link", { space: card.id, role: role === "temp" ? "guest" : role, ttlDays: Number(days) }).then((r) => { setMade(madeNote(r)); onChanged(); }).catch((e) => {
-      setProblem(inviteWhy(e));
-      if ((e as { code?: string }).code !== "this_computer") return;
+    void requestInvite((name, input) => tool(name, input), { space: card.id, role, days: Number(days) }, { phone: isPhone(deviceKindHere()) || deviceKindHere() === "web" }).then((r) => {
+      setBusy(false);
+      if (r.ok) { setMade(r.made); onChanged(); return; }
+      setProblem(r.why);
+      if (r.code !== "this_computer") return;
       // The way forward depends on whether a server is paired (wink.access, rows of kind server): make a space on it, or pair one first.
       setOnComputer("server");
       void tool<any>("wink.access").then((a) => setOnComputer(liveServers(a).length ? "server" : "pair")).catch(() => {});
-    }).finally(() => setBusy(false));
+    });
   };
   const confirm = () => {
     if (!made || !words.trim()) return;

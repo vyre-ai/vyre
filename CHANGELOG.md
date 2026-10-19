@@ -1694,6 +1694,7 @@ Release summary (the plain-words version is release/notes/0.5.3.md): a new first
 
 ## Unreleased
 
+- test(invite): the invite screen makes the link with one call to the box (requestInvite in devices/invite.js) and shows the box's own words when it refuses; a test with a fake box that allows it shows a link, and one that refuses shows its reason. The app has no passkey or session check of its own before that call (the in-page host answers no invite tool).
 - test: the key-screens list names agents/[name] (the same page as assistants/[name]) as hand-written with its reason, and the space proof no longer sets another VPN product's switch (its network module is off in that proof anyway).
 - fix(chat): composer `/` and `!` lines route through the kernel (`threads.slash`, lib/thread-composer-route.js) from the app and the CLI, so `/remember`, `/model`, `/effort`, `/later`, `/find`, and session slashes like `/compact` no longer go to the model as plain text. `stream.send` carries picked `#` tags as `chips` into `threads.send` so vault and record grants are recorded.
 - fix(chat): mute and list-pin sync through `work.chat.prefs` on the box (not only localStorage). Push holds for asks and drafts are per push device, so one screen in use does not delay notifications on your other devices. The chat panel loads effort, mode and thinking from `threads.get`; Carry on here follows `runner.places`. Stream cursor gaps resync the socket from the last good frame.
