@@ -20,8 +20,8 @@ async function boot(t) {
   return { d, reg: (/** @type {string} */ tool, input = {}, caller = "deck", meta = {}) => d.registry.call(tool, input, caller, meta) };
 }
 
-// A bare device: or web: label is refused by the door before any card (it is not vouched by the transport), so the person surfaces are what this test can stand in for.
-const CALLERS = ["deck", "local:capsule"];
+// A bare device: or web: label is refused by the door before any card (it is not vouched by the transport), so the person surfaces (deck, capsule) are what this test can stand in for.
+const CALLERS = ["deck", "capsule"];
 for (const caller of CALLERS) for (const [label, verify] of [["no secret named (Vyre makes it)", { scheme: "hmac-sha256", header: "x-signature" }], ["a Vault item named", { scheme: "hmac-sha256", header: "x-signature", secret: "northwind-hook" }], ["GitHub", { scheme: "github" }]]) {
   test(`hooks.open as ${caller}, ${label}: the card the app asks for fits the moment the box named`, async t => {
     const { reg } = await boot(t);
