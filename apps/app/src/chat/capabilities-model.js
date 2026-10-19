@@ -2,6 +2,7 @@
 // Pure helpers for chat capability UI: rewind points from the live store, /later titles, second-opinion targets.
 
 import { laterInput } from "../../../../lib/thread-composer-route.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 import { answerRows } from "./core/answer-with.js";
 
 /**
@@ -36,7 +37,7 @@ export function laterNoteFromLine(line) {
 }
 
 /** The providers a model the chat does not have yet can join as (core/stream/group.js secondOpinion). */
-const JOINS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
+const JOINS = [...AIS, "openrouter", "openai-compatible"];
 /** A model slot's provider: "model:codex/default#12" is codex. @param {string} id */
 const providerOf = (id) => /^model:([a-z][a-z0-9-]*)\//.exec(String(id).toLowerCase())?.[1] ?? null;
 
