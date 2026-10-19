@@ -1017,15 +1017,20 @@ export const defaultPresence = ({ db, events, log }) => new Presence({ db, event
 // their own act passes, the floor's HUMAN_ONLY list included. Once a device is enrolled, the proof is asked as before. Never for an agent, a model, a module or a guest, and never for another person's session.
 // The decision is made from the enrolment records, not from anything the call carries. The registry asks this before it refuses (Registry.noPresenceDevice in core/modules/index.js, kernel/retrofit/gates.js).
 
+/** The tools that make an owner or hand the Space over. */
+const OWNERSHIP_TOOLS = new Set(["spaces.owner.transfer", "spaces.members.transfer", "spaces.owner.adopt"]);
+
 /**
  * Does this person's own call pass the presence floor because they have no presence device to prove with? The person is a person surface or the owner's own paired device/tailnet node WITH its signed-in session
  * (a module relaying a model, an agent, a guest or a module is never the person), the session names the Space's owner when it names anyone, vyre-core is not holding the keys, and the server's table of
  * enrolled presence keys is empty. Fails closed on any doubt.
  * @param {{ presence: any, ownerId?: () => string | null, isPerson: (c: string) => boolean, ownerDevice: (c: string) => boolean, core: { link: any } }} d the registry's own pieces
- * @param {string} caller @param {any} meta
+ * Making an owner or handing the Space to someone else is never covered: those keep their presence step with no device enrolled too (the owner's list), as does anything that cannot be told from the tool and input.
+ * @param {string} caller @param {any} meta @param {string} [tool] @param {any} [input]
  */
-export async function noPresenceDevice(d, caller, meta) {
+export async function noPresenceDevice(d, caller, meta, tool, input) {
   try {
+    if (typeof tool !== "string" || OWNERSHIP_TOOLS.has(tool) || (tool === "spaces.members.set-role" && !(input && typeof input === "object" && typeof input.role === "string" && input.role !== "owner"))) return false;
     const presence = /** @type {any} */ (d.presence);
     if (!presence || typeof presence.keys !== "function" || d.core.link) return false;
     const label = String(caller);
