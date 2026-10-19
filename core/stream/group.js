@@ -112,7 +112,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 
 /**
  * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void },
- *   ks?: KernelThreads, sendBudget?: { totalMs?: number, stepMs?: number } }} o
+ *   ks?: KernelThreads, sendBudget?: { totalMs?: number, stepMs?: number, staleAppendMs?: number } }} o
  *   ks: the kernel-session seam (lib/kernel-session.js, handed to the stream by the daemon as ctx.kernelThreads, or injected by a test): the assistant's kernel session is opened by vyred from the person's own send,
  *   and the stream only asks for calls on a thread's session (`forThread(thread)`), never a token. With it the stream opens no session of its own for an assistant; without it (a test with no daemon) the older path runs.
  */
@@ -232,6 +232,29 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   }
   /** The only way a word lands in a chat: the destination is the token's chat. @param {string} token @param {any} body @param {string} [kind] */
   const append = (token, body, kind = "text") => ctx.kernel.chats.append(token, { kind, body });
+  /**
+   * The kernel's append of a person's message, made once per (chat, client message id): a send that gave up on a slow append (slow_step) leaves it running, and the person's Retry (the same id) is
+   * handed that same append, landed or still on its way, instead of a second one, so the kernel holds the message once. Forgotten when the chat's log has the message (a repeat then answers from
+   * the log), when the append failed (a retry appends anew), or KEEP_APPEND_MS after it landed. One that has not answered in STALE_APPEND_MS is taken as lost: a retry then appends anew.
+   * @type {Map<string, { p: Promise<any>, at: number, landed: boolean }>}
+   */
+  const kernelAppends = new Map();
+  const KEEP_APPEND_MS = 10 * 60_000;
+  const STALE_APPEND_MS = Math.max(1, Number((sendBudget && sendBudget.staleAppendMs) ?? 60_000));
+  /** @param {string} grp @param {string} message @param {string} token @param {any} body @param {string} [kind] */
+  const appendOnce = (grp, message, token, body, kind) => {
+    const key = `${grp}|${message}`;
+    const had = kernelAppends.get(key);
+    if (had && (had.landed || Date.now() - had.at < STALE_APPEND_MS)) return had.p;
+    const e = { p: Promise.resolve().then(() => append(token, body, kind)), at: Date.now(), landed: false };
+    if (!had && kernelAppends.size >= 1000) kernelAppends.delete(/** @type {string} */ (kernelAppends.keys().next().value));
+    kernelAppends.set(key, e);
+    const forget = () => { if (kernelAppends.get(key) === e) kernelAppends.delete(key); };
+    e.p.then(() => { e.landed = true; setT(forget, KEEP_APPEND_MS); }, forget);
+    return e.p;
+  };
+  /** The message is in the chat's log now: a repeat answers from the log, so its append is no longer kept. @param {string} grp @param {string} message */
+  const inLog = (grp, message) => { kernelAppends.delete(`${grp}|${message}`); };
   /**
    * A token for the member's turn: the one for the person it is answering, now, or when that person next acts (a restart forgets tokens). The wait has a
    * deadline (RESUME_MS): when it passes the answer is null and the caller drops the reply and says so in the room.
@@ -1001,9 +1024,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
         if (!had && kernelOn()) {
           const mine = await clock.step("person-session", personSession(meta, grp, author));
-          await clock.step("kernel-append", append(mine.token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private"));
+          await clock.step("kernel-append", appendOnce(grp, message, mine.token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private"));
         }
-        if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
+        if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); inLog(grp, message); group(grp).previous = author; }
         clock.end(had ? "a repeat, nothing appended" : "appended");
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
       }
@@ -1076,10 +1099,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const bots = [];
         // The assistants' sessions are vyred's (the seam), opened from this send; the stream opens none for them on the daemon path.
         if (!viaKs()) for (const id of to) { const m = g.bots.get(id); const k = kcalls.get(meta); if (m && k) bots.push([m, await clock.step("assistant-session", sessionFor(k.chain, grp, author, shortOf(id)))]); }
-        kid = String((await clock.step("kernel-append", append(mine.token, { text }))).id);
+        kid = String((await clock.step("kernel-append", appendOnce(grp, message, mine.token, { text }))).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
       out.append("user-message", { message, text, state: "sent", ...(carried.saved.length ? { attachments: carried.saved } : {}), ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(tz ? { tz } : {}) }, { author, message });
+      inLog(grp, message);
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));

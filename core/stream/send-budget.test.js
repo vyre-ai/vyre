@@ -13,7 +13,7 @@ import { createFakeKernel } from "./fake-reply-port.js";
 
 const WORDS = "the private words of this message";
 
-/** @param {any} t @param {{ hang?: "kernel-append" | "adopt-runs" }} o */
+/** @param {any} t @param {{ hang?: "kernel-append" | "adopt-runs" | "late-append", staleAppendMs?: number }} o */
 function rig(t, o) {
   const p = config.ensure(tempHome(t));
   const db = open(p.db);
@@ -23,7 +23,14 @@ function rig(t, o) {
   const state = { hang: o.hang ?? null };
   const never = () => new Promise(() => {});
   const log = Object.assign((/** @type {string} */ m) => { lines.push(m); }, { debug: (/** @type {string} */ m) => { lines.push(`debug: ${m}`); } });
-  const chats = { ...fk.kernel.chats, append: (/** @type {string} */ token, /** @type {any} */ m) => (state.hang === "kernel-append" ? never() : fk.kernel.chats.append(token, m)) };
+  /** every chats.append the stream asked the kernel for, and the late ones still held back @type {{ calls: number, held: (() => void)[] }} */ const kernel = { calls: 0, held: [] };
+  const chats = { ...fk.kernel.chats, append: (/** @type {string} */ token, /** @type {any} */ m) => {
+    kernel.calls++;
+    if (state.hang === "kernel-append") return never();
+    // the kernel is slow, not dead: this append lands when the test lets it go, after the send has given up on it
+    if (state.hang === "late-append") return new Promise((res, rej) => { kernel.held.push(() => fk.kernel.chats.append(token, m).then(res, rej)); });
+    return fk.kernel.chats.append(token, m);
+  } };
   let n = 0;
   const ctx = {
     log,
@@ -36,7 +43,7 @@ function rig(t, o) {
       return { data: {} };
     },
   };
-  const groups = createGroups({ ctx, logs, db, sendBudget: { totalMs: 400, stepMs: 250 } });
+  const groups = createGroups({ ctx, logs, db, sendBudget: { totalMs: 400, stepMs: 250, ...(o.staleAppendMs ? { staleAppendMs: o.staleAppendMs } : {}) } });
   t.after(() => { groups.stop(); logs.close(); db.close(); });
   const send = async (/** @type {string} */ grp, /** @type {string} */ who, /** @type {string} */ message) => {
     const meta = {};
@@ -45,7 +52,10 @@ function rig(t, o) {
     return groups.send({ chat: grp, text: WORDS, message, to: ["assistant:kit"], cwd: "/tmp" }, meta);
   };
   const said = (/** @type {string} */ grp) => logs.get(grp).read(0).filter(f => f.type === "chat.user-message");
-  return { fk, groups, send, said, lines, state };
+  /** what the kernel holds of bob's words (not the assistants' replies) */
+  const inKernel = (/** @type {string} */ grp) => r0.fk.appended.filter((/** @type {any} */ a) => a.chat === grp && !a.agent && a.kind === "text");
+  const r0 = { fk, groups, send, said, lines, state, kernel, inKernel };
+  return r0;
 }
 
 test("the default budget lets a send append or fail in about 20 s, a step in less", () => {
@@ -53,7 +63,8 @@ test("the default budget lets a send append or fail in about 20 s, a step in les
 });
 
 test("a kernel append that never answers fails the send as slow_step within its budget; nothing is stored, and the retry with the same id is said once", async t => {
-  const r = rig(t, { hang: "kernel-append" });
+  // staleAppendMs: an append that has not answered by then is taken as lost, so the retry appends anew
+  const r = rig(t, { hang: "kernel-append", staleAppendMs: 100 });
   r.fk.create("c1", ["bob"], ["kit"]);
   const t0 = Date.now();
   await assert.rejects(r.send("c1", "bob", "msg-1"), (/** @type {any} */ e) => e.code === "slow_step" && e.detail && e.detail.step === "kernel-append" && /^slow_step: kernel-append/.test(e.message) && /Try again/.test(e.message));
@@ -70,7 +81,49 @@ test("a kernel append that never answers fails the send as slow_step within its 
   const again = await r.send("c1", "bob", "msg-1");
   assert.equal(again.duplicate, true, "a second arrival of the same id is not said twice");
   assert.equal(r.said("c1").length, 1);
+  assert.equal(r.inKernel("c1").length, 1, "the lost append never landed, the retry's did: once in the kernel");
   assert.ok(r.lines.some(l => /^debug: stream: send msg-1 in c1: appended after \d+ ms$/.test(l)));
+  await r.groups.idle();
+});
+
+test("an append that times out on our side but lands later, then Retry with the same id: exactly one message in the kernel and in the chat's log", async t => {
+  const r = rig(t, { hang: "late-append" });
+  r.fk.create("c3", ["bob"], ["kit"]);
+  await assert.rejects(r.send("c3", "bob", "msg-3"), (/** @type {any} */ e) => e.code === "slow_step" && e.detail.step === "kernel-append");
+  assert.deepEqual(r.said("c3"), [], "the send gave up: the chat's log has nothing yet");
+  assert.equal(r.kernel.held.length, 1);
+  // the kernel was only slow: the append lands after the send gave up on it
+  for (const go of r.kernel.held.splice(0)) go();
+  await new Promise(res => setTimeout(res, 20));
+  assert.equal(r.inKernel("c3").length, 1, "the late append landed");
+  // the person presses Retry: the same words, the same message id
+  r.state.hang = null;
+  const ok = await r.send("c3", "bob", "msg-3");
+  assert.equal(ok.message, "msg-3");
+  assert.equal(r.kernel.calls, 1, "the retry was handed the first append's answer: the kernel was asked once");
+  assert.equal(r.inKernel("c3").length, 1, "exactly one message in the kernel");
+  assert.equal(r.said("c3").length, 1, "exactly one message in the chat's log");
+  assert.equal(r.said("c3")[0].data.kid, r.inKernel("c3")[0].id, "the chat's message is the kernel's one");
+  const again = await r.send("c3", "bob", "msg-3");
+  assert.equal(again.duplicate, true);
+  assert.equal(r.kernel.calls, 1);
+  assert.equal(r.inKernel("c3").length, 1);
+  await r.groups.idle();
+});
+
+test("a Retry while the slow append is still on its way waits for that same append, never makes a second one", async t => {
+  const r = rig(t, { hang: "late-append" });
+  r.fk.create("c4", ["bob"], ["kit"]);
+  await assert.rejects(r.send("c4", "bob", "msg-4"), (/** @type {any} */ e) => e.code === "slow_step");
+  r.state.hang = null;
+  const retry = r.send("c4", "bob", "msg-4");
+  await new Promise(res => setTimeout(res, 30));
+  for (const go of r.kernel.held.splice(0)) go();
+  const ok = await retry;
+  assert.equal(ok.message, "msg-4");
+  assert.equal(r.kernel.calls, 1, "one append, handed to both tries");
+  assert.equal(r.inKernel("c4").length, 1);
+  assert.equal(r.said("c4").length, 1);
   await r.groups.idle();
 });
 
