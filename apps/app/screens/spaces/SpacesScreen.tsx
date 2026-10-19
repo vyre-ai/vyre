@@ -14,6 +14,7 @@ import { useSpaces } from "../shell/state";
 import { loadTeammates, TEMP_PROJECTS, type Member } from "./data";
 import { MOCK, said, tool } from "../../src/real/box";
 import { useMembers } from "./state";
+import { useProfiles } from "../../src/state/profiles";
 import { loadSetupElsewhere } from "../install/data";
 import { CONTINUE_HERE, isResumable, packProgress, setupElsewhere } from "../install/flow.js";
 import { applyClaim } from "../install/real.js";
@@ -44,6 +45,10 @@ export function SpacesScreen() {
   const setLook = useSpaces((s) => s.setLook);
   const kept = useSpaces((s) => (space ? s.looks[space]?.logo : undefined));
   const [sheet, setSheet] = useState<Sheetv>(null);
+  // Each member's profile in this Space: the name and look they chose there.
+  const profiles = useProfiles((s) => (space ? s.bySpace[space]?.byPerson : undefined));
+  const loadProfiles = useProfiles((s) => s.load);
+  useEffect(() => { if (space) void loadProfiles(space); }, [space, loadProfiles]);
   const member = (id: string) => members.find((m) => m.id === id);
   const open = (m: Member) => setSheet({ kind: "role", id: m.id, role: m.role, scope: m.scope ?? projectNames[0] ?? "", days: String(m.left && m.left > 30 ? 90 : m.left && m.left > 7 ? 30 : 7) });
   const allowed = assignable(MY_ROLE);
@@ -92,7 +97,7 @@ export function SpacesScreen() {
             return (
               <View key={m.id}>
                 {i ? <Divider inset={68} /> : null}
-                <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name}
+                <Row dense lead={<Avatar of={markRef("person", self ? m.name : profiles?.[m.id]?.name || m.name, m.id, profiles?.[m.id]?.look || undefined)} size={40} />} title={self ? m.name : profiles?.[m.id]?.name || m.name}
                   end={temp && can ? <Button kind="ghost" size="sm" label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /> : undefined}
                   sub={temp ? (
                     <View className="gap-s1 pt-s1">

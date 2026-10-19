@@ -51,6 +51,7 @@ export { Avatar, AvatarStack, SpaceMark, kindOf, badgePx } from "./components/Av
 export type { AvatarKind, AvatarRef, AvatarSize } from "./components/Avatar";
 export type AvatarFamily = import("./components/Avatar").AvatarKind;
 export { markRef, spaceRef } from "./marks/useMark";
+export { usePersonLooks } from "./marks/usePersonLooks";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";

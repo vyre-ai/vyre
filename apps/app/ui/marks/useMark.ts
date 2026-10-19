@@ -3,6 +3,7 @@ import { parse } from "react-native-svg";
 import { markKey, markSource, seedOf, slug as slugOf, type MarkKind, type Scheme, type DeviceType } from "./source.js";
 import { useUiTheme } from "../theme";
 import { lookFor, withParts } from "../chat/agent-look.js";
+import { usePersonLooks } from "./usePersonLooks";
 
 /** A parsed mark, kept for the life of the app: lists render dozens, so each (kind, seed, size band, scheme) is parsed once, never per row. */
 const CACHE = new Map<string, ReturnType<typeof parse>>();
@@ -29,7 +30,10 @@ export function astFor(of: MarkRef, size: number, scheme: Scheme) {
 /** The parsed mark for a reference at a size, in the current scheme. */
 export function useMark(of: MarkRef, size: number) {
   const { resolved } = useUiTheme();
-  const { kind, id, name, seed, device } = of;
+  const { kind, id, name, device } = of;
+  // A person drawn with no look of their own is drawn with the look they chose in their Space profile, when the app has read it.
+  const chosen = usePersonLooks((s) => (kind === "person" && !of.seed ? s.looks[id] || (name ? s.looks[String(name).toLowerCase()] : undefined) : undefined));
+  const seed = of.seed || chosen || undefined;
   return useMemo(() => astFor({ kind, id, name, seed, device }, size, resolved.scheme), [kind, id, name, seed, device, size, resolved.scheme]);
 }
 
