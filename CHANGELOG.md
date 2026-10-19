@@ -5,6 +5,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## 0.6.4
 
 - fix(github): Sign in with GitHub works in a browser and in the Mac app. In a browser the tab itself goes to GitHub and comes back to the page it started on, which finishes the sign-in (or the Settings link) by itself; there is no popup to block, and web.vyre.run's same-origin opener policy no longer makes the page see the GitHub window as closed and call the sign-in cancelled. The Mac app opens the person's browser with `claim=1`: the relay's callback keeps the ticket and shows "Go back to the Vyre app", and the app claims the ticket with its verifier (POST /v1/github/claim, 202 while waiting, once, per-address limit). Needs the relay deploy. apps/app/src/identity/github-return.js holds the pure steps.
+- fix(ui): menus, selects and pickers are readable in dark mode again. On the web they are portalled to <body>, where the theme's custom properties come only from <html>; the unlock cover mounts its own ThemeProvider, and when it closed its cleanup removed every property from <html> while the app's provider stayed up, so item text drawn with a class (text-text) had no colour and fell back to dark on the dark panel. The providers now share <html> through mirrorVars (ui/lib/root-vars.js): one that goes away hands it back to the one under it. Menu items take the theme's colour as a style too. Test: apps/app/ui/components/portal-colour.test.js.
+- feat(ui): a Select with more than 15 options (or `search`) opens a sheet with a search field: type to filter, arrows to move, Enter to pick. The time zone list in Look and name gets it.
 
 ## 0.6.2
 
