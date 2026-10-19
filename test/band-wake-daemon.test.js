@@ -26,9 +26,9 @@ test("the owner's words to an agent are instructions, a member's who does not us
   const real = d.registry.call.bind(d.registry);
   d.registry.call = async (tool, input, caller, meta) => { if (tool === "agents.wake") { woke.push(input); return { data: { thread: "th-" + input.task, already: false } }; } return real(tool, input, caller, meta); };
   const doer = { kind: "agent", id: "bandy", space };
-  const mine = await ask.request(ownerChain, { title: "Owner asks", doer, output: { kind: "note" }, form: { instructions: "OWNER-WORDS" } });
+  const mine = await ask.request(ownerChain, { title: "Owner asks", doer, output: { kind: "note" }, source: "request", form: { instructions: "OWNER-WORDS" } });
   let theirs = null;
-  try { theirs = await ask.request(anaChain, { title: "Member asks", doer, output: { kind: "note" }, form: { instructions: "MEMBER-WORDS" } }); } catch { /* a member may not give an agent a task at all: then nothing woke */ }
+  try { theirs = await ask.request(anaChain, { title: "Member asks", doer, output: { kind: "note" }, source: "request", form: { instructions: "MEMBER-WORDS" } }); } catch { /* a member may not give an agent a task at all: then nothing woke */ }
   for (let i = 0; i < 100 && woke.length < (theirs ? 2 : 1); i++) await new Promise(r => setTimeout(r, 100));
   const w = (/** @type {string} */ id) => woke.find(x => x.task === id);
   assert.ok(w(mine.id), "the owner's task woke the agent");

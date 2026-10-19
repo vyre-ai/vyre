@@ -72,7 +72,8 @@ test("a task made by an agent's request wakes the agent, with no approver when n
   await r.onEvent(created("a", "task.readied"));
   assert.equal(r.woke.length, 1);
   assert.equal(r.woke[0].approver, undefined);
-  assert.equal(r.woke[0].instructions, "Do the thing");
+  assert.equal(r.woke[0].instructions, undefined, "an agent with no person behind it does not instruct another agent");
+  assert.equal(r.woke[0].info.from_requester, "Do the thing");
   assert.equal(wakes(task(), NOW), true);
 });
 

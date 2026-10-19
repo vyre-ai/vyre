@@ -14,7 +14,7 @@ test("an agent instruction stored as plain text with {client} in it reaches the 
   await w.runner.start(id, { client: "Jane" }, w.kernel.as(ALEX));
   await settle(w);
   const woke = [];
-  const onEvent = createAgentWake({ space: w.cat.space, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i), edit: (c, i, p) => w.kernel.tasksApi.edit(c, i, p) } }, chain: () => w.kernel.sysChain(), editChain: () => w.kernel.as(ALEX),
+  const onEvent = createAgentWake({ space: w.cat.space, mayUse: async () => true, gw: { ask: { get: (c, i) => w.kernel.ask.get(c, i), edit: (c, i, p) => w.kernel.tasksApi.edit(c, i, p) } }, chain: () => w.kernel.sysChain(), editChain: () => w.kernel.as(ALEX),
     clock: () => w.kernel.clock(), callModule: async (_tool, input) => { woke.push(input); return { agent: input.agent, thread: "thr-1", already: false }; }, log: () => {} });
   for (const e of w.kernel.rawLog.read({ type: "task.*" })) await onEvent(e);
   assert.equal(woke.length, 1);
