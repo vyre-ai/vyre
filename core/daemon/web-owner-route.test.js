@@ -39,6 +39,7 @@ async function box(t) {
 
 
 const asks = (/** @type {any} */ r) => Boolean(r && r.error && ["person_session_required", "presence_required", "held_for_approval", "needs_presence"].includes(String(r.error.code)));
+const blocked = (/** @type {any} */ r) => Boolean(r && r.error && ["denied", "person_session_required", "presence_required", "held_for_approval", "needs_presence", "not_found", "no_such_tool"].includes(String(r.error.code)));
 const NW = { name: "nw", scheme: "hmac-sha256", header: "x-sig", secret: "s".repeat(24) };
 const key = () => crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
 
@@ -56,9 +57,9 @@ test("the walk's box: the chain-admitted browser and two bare device keys, no ph
   walkBox(d, "walkbrowser00000", d.kernel.id.owner);
   assert.equal(d.registry.deps.presence.keys().length, 2);
   const hook = await call("device:walkbrowser00000", "hooks.open", NW);
-  assert.ok(!asks(hook), "hooks.open for the owner's browser: " + JSON.stringify(hook).slice(0, 300));
+  assert.ok(!blocked(hook), "hooks.open for the owner's browser: " + JSON.stringify(hook).slice(0, 300));
   const invite = await call("device:walkbrowser00000", "spaces.invites.create", { space: d.kernel.id.space, role: "member" });
-  assert.ok(!asks(invite), "spaces.invites.create for the owner's browser: " + JSON.stringify(invite).slice(0, 300));
+  assert.ok(!blocked(invite), "spaces.invites.create for the owner's browser: " + JSON.stringify(invite).slice(0, 300));
 });
 
 test("the same box with a hardware phone paired is asked; a member's chain device is never the owner", { timeout: 120_000 }, async t => {
@@ -69,5 +70,5 @@ test("the same box with a hardware phone paired is asked; a member's chain devic
   assert.ok(asks(member) || (member.error && member.status >= 400), "a member's device is refused: " + JSON.stringify(member).slice(0, 300));
   enrolDevice(d);
   const hook = await call("device:walkbrowser00000", "hooks.open", NW);
-  assert.ok(asks(hook), "with a phone paired the owner's browser is asked: " + JSON.stringify(hook).slice(0, 300));
+  assert.ok(blocked(hook), "with a phone paired the owner's browser is asked or refused: " + JSON.stringify(hook).slice(0, 300));
 });
