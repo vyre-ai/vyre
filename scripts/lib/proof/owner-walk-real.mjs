@@ -33,9 +33,9 @@ export async function ownerWalkReal(c) {
   const shot = (/** @type {string} */ n) => drv.shot(`ow-${n}`).catch(() => {});
   const text = async () => String(await drv.text()).replace(/\s+/g, " ");
   const show = async (/** @type {number} */ n = 400) => (await text()).slice(0, n);
-  /** Open a route and wait for words that only that screen says. */
   /** A phone-approval sheet stays over every later screen for five minutes (the walk has no phone): close it. */
   const stopWaiting = async () => { if (/Approve on your phone/.test(await text())) { try { await drv.click("Stop waiting"); await wait(500); } catch { /* it ended */ } } };
+  /** Open a route and wait for words that only that screen says. */
   const screen = async (/** @type {string} */ route, /** @type {RegExp} */ re, /** @type {string} */ what, ms = 60_000) => {
     await drv.go(route);
     await stopWaiting();
