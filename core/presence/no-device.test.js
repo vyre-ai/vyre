@@ -74,27 +74,33 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, tool, {}), true, `${tool}: the app device is not asked`);
   }
   assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: { ...devFacts, web: true } }, "spaces.invites.create", {}), true, "a web browser still makes an invite");
-  // 4e. a browser's own device key (a relay device that paired from a browser) is not a phone and does not turn approvals on; a hardware phone key does; the refusal says why in counts and kinds
+  // 4e. exactly the walk's box: two device keys with no relay row (the first-run browser's identity key and the in-page host's) are not phones, so the owner passes; a software key on a relay row, a browser row and an
+  // old 0.6.1 row are not phones either; a hardware phone's row (paired from the app) ends the window. A passkey always counts. The reason says why in counts and kinds.
   {
     const key = () => crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
     const db = d.registry.deps.db;
+    const ask = (/** @type {boolean} */ why = false) => d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}, why);
     const row = (/** @type {string} */ id, /** @type {string} */ keyId, /** @type {number} */ browser, /** @type {string} */ storage) =>
       db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, presence_key, paired_at, kind, trusted, removed_at, key_storage, from_browser) VALUES (?, 'x', 'p', ?, 1, 'app', 0, NULL, ?, ?)").run(id, keyId, storage, browser);
-    const browserKey = presence.enroll({ kind: "device", name: "browser", public_key: key(), alg: -7 });
-    row("browserdev0000000", browserKey.id, 1, "software");
-    assert.equal(presence.keys().length, 1);
-    assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}), true, "a browser's own key does not count as a phone");
-    // an old 0.6.1 row (no from_browser, key held in software: the ad-hoc Mac app) is ignored too
-    const oldKey = presence.enroll({ kind: "device", name: "mac app", public_key: key(), alg: -7 });
-    row("oldmacapp0000000", oldKey.id, 0, "software");
-    assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}), true, "a software key on an old row does not count");
-    const phoneKey = presence.enroll({ kind: "device", name: "phone", public_key: key(), alg: -7 });
-    row("phonedev000000000", phoneKey.id, 0, "hardware");
-    assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}), false, "a phone with a hardware key ends the window");
-    const why = await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}, true);
-    assert.match(why, /keys enrolled: 3, browser keys ignored: 2.*caller kind: app; owner device: yes; facts: yes/, why);
+    const a = presence.enroll({ kind: "device", name: "first-run browser", public_key: key(), alg: -7 });
+    const b = presence.enroll({ kind: "device", name: "in-page host", public_key: key(), alg: -7 });
+    assert.equal(presence.keys().length, 2);
+    assert.equal(await ask(), true, "two device keys with no relay rows: the owner passes");
+    row("softdev000000000", a.id, 0, "software");
+    row("browserdev0000000", b.id, 1, "hardware");
+    assert.equal(await ask(), true, "a software key and a browser's key are not phones");
+    const phone = presence.enroll({ kind: "device", name: "phone", public_key: key(), alg: -7 });
+    row("phonedev000000000", phone.id, 0, "hardware");
+    assert.equal(await ask(), false, "a hardware phone paired from the app ends the window");
+    const why = await ask(true);
+    assert.match(why, /keys enrolled: 3, keys ignored \(not a phone\): 2.*caller kind: app; owner device: yes; facts: yes/, why);
     assert.doesNotMatch(why, /per_|abcdefghijklmnop/, "no ids in the reason");
-    presence.remove(phoneKey.id); presence.remove(oldKey.id); presence.remove(browserKey.id);
+    presence.remove(phone.id);
+    db.prepare("UPDATE relay_devices SET removed_at = 5 WHERE id = 'phonedev000000000'").run();
+    assert.equal(await ask(), true, "back to the walk's box");
+    const pk = presence.enroll({ kind: "passkey", name: "pk", public_key: crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, rp_id: "x.example", credential_id: "cred-abcdefgh" });
+    assert.equal(await ask(), false, "a passkey always counts");
+    presence.remove(pk.id); presence.remove(a.id); presence.remove(b.id);
   }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
   const was = presence.keys;
