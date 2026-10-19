@@ -34,6 +34,7 @@ import { createMirror } from "./mirror.js";
 import { agentDir } from "../../lib/files/layout.js";
 import { orientation } from "../../lib/orientation.js";
 import { dataBlock } from "../../lib/prompt-data.js";
+import { nameTools, toolNamer } from "../../lib/tool-namer.js";
 import { MIGRATIONS as CONFIG_MIGRATIONS, register as registerConfig } from "./config.js";
 
 export /** What a woken agent is told about closing its task: the real tools and states (core/tasks-tools), so a task is never left open in silence and the next step of a Flow starts when the agent is done. */
@@ -147,17 +148,21 @@ const ENGINEER_BEFORE_HANDOFF = [
 const ENGINEER_HANDOFF_BEFORE_NEW_AGENT = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update or agents.create. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
 const ENGINEER_HANDOFF = "A message that starts \"From Playbooks\", \"From Objects\", \"From Flows\" or \"From Agents\" and ends with a fenced ```engineer-context JSON block ({ source, ref, name, intent, words, shape }) is a handoff from that page about that exact thing. Answer with: (1) a short read of the request in the context of that thing, (2) the two or three questions that matter most, (3) a first draft the person can apply with one yes: for a Playbook through work.template.define, work.template.test and work.template.install; for a Flow flows.define; for an Object the Space's record types; for an Agent agents.update, and for a NEW agent flows.propose { what: \"agent.new\", input } with the same input agents.create takes (name, instructions, projects, skills, auth, model, effort, look, and for the owner computer and personal): the person sees one card and says yes once. Apply nothing before the yes. If shape is empty the thing is new: draft from the words alone.";
 
-export const ENGINEER = Object.freeze({
-  name: "engineer",
-  instructions: ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF,
-  /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
-  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4, ENGINEER_BEFORE_HANDOFF, ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF_BEFORE_NEW_AGENT]),
-  /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
-  tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
+/** The tools the Engineer's session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
+const ENGINEER_TOOLS = Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
     "flows.patch", "flows.cheatsheet", "flows.describe", "flows.test.save", "flows.test.run", "flows.test.list", "flows.health",
     "work.template.define", "work.template.test", "work.template.list", "work.template.get", "work.template.library", "work.template.install", "work.template.from-project",
-    "agents.list", "agents.versions", "skills.find", "skills.get", "skills.list", "skills.draft", "skills.versions", "docs.find", "docs.read"]),
+    "agents.list", "agents.versions", "skills.find", "skills.get", "skills.list", "skills.draft", "skills.versions", "docs.find", "docs.read"]);
+/** What the Engineer says before the name of each tool is written for how it is called (a tool outside the listed core is reached with tools_call). */
+const ENGINEER_RAW = ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF;
+
+export const ENGINEER = Object.freeze({
+  name: "engineer",
+  instructions: nameTools(ENGINEER_RAW, toolNamer(ENGINEER_TOOLS)),
+  /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
+  previous: Object.freeze([ENGINEER_0_3_0, ENGINEER_0_3_4, ENGINEER_BEFORE_HANDOFF, ENGINEER_BEFORE_HANDOFF + "\n" + ENGINEER_HANDOFF_BEFORE_NEW_AGENT, ENGINEER_RAW]),
+  tools: ENGINEER_TOOLS,
 });
 
 /** The agent's thinking effort, as sessions.effort names it. */

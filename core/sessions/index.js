@@ -13,6 +13,7 @@
 // Editing a prompt is the person's own act: no model, agent or MCP caller may change what an
 // agent is told, its own prompt least of all (core/presence PERSON_ONLY).
 
+import { nameTools, toolNamer } from "../../lib/tool-namer.js";
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf, withRefsResolved } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { environmentOf } from "./environment.js";
@@ -832,7 +833,7 @@ export default {
       const spaceZone = zoneFrom(i.space_zone || (here && here.zone), "") || null;
       const personZone = zoneFrom(i.zone, spaceZone || "UTC");
       const timeText = timeLine({ now: Number.isFinite(Number(i.now)) ? Number(i.now) : Date.now(), person: personZone, space: spaceZone, contacts: Array.isArray(i.contacts) ? i.contacts : [] });
-      return environmentOf({
+      const brief = environmentOf({
         timeLine: timeText,
         agent: i.agent ? { name: i.agent, kind: i.agent_kind || null, projects: a && (a.projects === "*" || Array.isArray(a.projects)) ? a.projects : undefined } : null,
         project: i.project || null, provider: i.provider || "claude", tools: names, spaces, space: spaces.find((/** @type {any} */ x) => x.current) || null, types,
@@ -841,6 +842,9 @@ export default {
         artifactsDir: i.artifacts_dir ? String(i.artifacts_dir) : null,
         computerDefault: Boolean(cdef && cdef.value === true),
       });
+      // Each tool name in the brief is written the way this agent can call it (agent-brief.js), and only if it can reach it.
+      const text = nameTools(brief.text, toolNamer(names, i.provider === "codex" || i.provider === "grok" || i.provider === "openrouter" ? i.provider : "claude"));
+      return { ...brief, text, chars: text.length };
     };
     ctx.tool("sessions.environment", {
       description: "The environment brief an agent starting now is told (what Vyre is, its Space, its records, how to work, approvals, memory, what it can reach), built from live reads and cut to a budget. The same text goes to every model and driver.", internal: true,
