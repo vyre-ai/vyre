@@ -10,17 +10,8 @@ export function roleLine(a, fallback = "") {
   return (one(a?.description) || one(a?.role) || fallback).slice(0, 90);
 }
 
-/**
- * The name to show for an agent. The stored name is its id (lowercase letters, digits and dashes, so "qi" and "juno-two"). The assistant carries the name as the person typed it in its first line of
- * instructions ("Your name is Qi."), which is shown as typed; any other agent is its id in words ("engineer" is "Engineer", "ads-writer" is "Ads Writer").
- * @param {any} a
- */
-export function displayName(a) {
-  const id = String(a?.name ?? "");
-  const typed = a?.kind === "assistant" ? /^Your name is ([^.\n]{1,40})\./.exec(String(a?.instructions ?? "")) : null;
-  if (typed && typed[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") === id.toLowerCase()) return typed[1].trim();
-  return id.split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") || id;
-}
+export { displayName } from "../../src/state/agent-name.js";
+import { displayName } from "../../src/state/agent-name.js";
 
 /** @param {any} a */
 export const statusOf = (a) => (a.status === "stopped" ? "Paused" : a.status === "running" || a.doing ? "Running now" : "Idle");

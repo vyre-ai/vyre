@@ -132,3 +132,13 @@ test("the Engineer's Space chat is the first row of Space chats, called Engineer
   assert.deepEqual(space?.rows.map((r) => r.title), ["Engineer", "Hiring"]);
   assert.equal(space?.rows[0].pinned, true);
 });
+
+test("an agent is said as its title, in the list and in a chat that is only with it; a chat with its own title keeps it", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "e", title: "engineer", agents: ["engineer"], last: 3 }), chat({ id: "l", title: "Lease review", agents: ["engineer"], last: 2 })],
+    agents: [agent({ name: "engineer", title: "Engineer" }), agent({ name: "ads-writer", title: "Ads Writer" })], people: [],
+  });
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads Writer", "Engineer", "Lease review"]);
+  assert.equal(items.find((i) => i.id === "chat:e").title, "Engineer");
+  assert.equal(items.find((i) => i.id === "agent:ads-writer").title, "Ads Writer");
+});
