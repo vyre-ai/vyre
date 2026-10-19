@@ -34,7 +34,7 @@ export function WatchersTab({ startNew, source = watchersSource }: { startNew?: 
       <View className="flex-row"><Button kind="primary" size="md" icon="plus" label="New watcher" onPress={() => setMaking(true)} /></View>
       {err ? <Card flush><ErrorState title="Watchers did not load" reason={err} retry={load} /></Card> : null}
       {!err && rows === null ? <Card flush><LoadingState rows={3} /></Card> : null}
-      {!err && rows && !rows.length ? <Card flush><EmptyState title="No watchers yet" body="A watcher looks at mail, a calendar, a repo, Slack, a feed or a connection on a schedule and files what is new. A Flow can start from what it finds." action={{ label: "New watcher", onPress: () => setMaking(true) }} /></Card> : null}
+      {!err && rows && !rows.length ? <Card flush><EmptyState title="No watchers yet" body="A watcher looks at mail, a calendar, a repo, Slack, an RSS source or a connection on a schedule and files what is new. A Flow can start from what it finds." action={{ label: "New watcher", onPress: () => setMaking(true) }} /></Card> : null}
       {rows && rows.length ? (
         <Card flush>
           {rows.map((w, i) => {
