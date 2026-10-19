@@ -41,7 +41,7 @@ let themeTokensSuite = Suite("theme tokens") { t in
 
     t.test("Deck v2 tokens: surfaces, accent, the type roles, springs and the project emblem") {
         t.eq(rgb(Tokens.V2.dark.surface1), [20, 19, 17], "surface 1 in dark")
-        t.eq(rgb(Tokens.V2.paper.surface1), [244, 241, 234], "surface 1 in paper")
+        t.eq(rgb(Tokens.V2.paper.surface1), [251, 250, 246], "surface 1 in paper (#FBFAF6, the prototype's paper surfaces in lib/theme/tokens.json)")
         t.eq(rgb(Tokens.V2.dark.accent), rgb(Tokens.dark.beacon), "the accent is the attention colour")
         t.eq(Tokens.V2.TypeScale.body.size, 14)
         t.eq(Tokens.V2.PhoneTypeScale.body.size, 16)
