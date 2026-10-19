@@ -591,7 +591,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   if (screen === "join.ask") {
     return (
       <FlowStep steps={steps} onBack={back} mark="working" title={ASK_COPY.waitingTitle} lead={ASK_COPY.waitingLead} failure={askSaid || failure}>
-        {askWords ? (<View style={{ gap: 4, alignItems: "center" }} accessibilityLabel="Your four words"><Text size="caption" tone="label">{ASK_COPY.yourWords}</Text><Text strong size="page">{askWords}</Text></View>) : null}
+        {askWords ? (<View style={{ gap: 4, alignItems: "center" }} accessibilityLabel="Your check words"><Text size="caption" tone="label">{ASK_COPY.yourWords}</Text><Text strong size="page">{askWords}</Text></View>) : null}
         <Text tone="muted">{`Asking ${askAddr}.vyre.run`}</Text>
       </FlowStep>
     );
