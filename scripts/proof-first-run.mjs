@@ -96,7 +96,7 @@ async function browserDriver(shared = null) {
     async open() {
       if (page) await page.close().catch(() => {});
       page = await ctx.newPage();
-      page.on("response", (/** @type {any} */ r) => { const u = String(r.url()); if (r.status() < 400 || !/\/v1\//.test(u)) return; void r.json().then((/** @type {any} */ j) => noteRefusal(`${r.status()} ${new URL(u).pathname}`, j)).catch(() => refusedCalls.push(`${r.status()} ${new URL(u).pathname}`)); });
+      page.on("response", (/** @type {any} */ r) => { const u = String(r.url()); if (r.status() < 400 || r.status() === 404 || !/\/v1\//.test(u)) return;   // a 404 is the static page server having no /v1 at all (the page polls it), not a refusal void r.json().then((/** @type {any} */ j) => noteRefusal(`${r.status()} ${new URL(u).pathname}`, j)).catch(() => refusedCalls.push(`${r.status()} ${new URL(u).pathname}`)); });
       page.on("websocket", (/** @type {any} */ ws) => ws.on("framereceived", (/** @type {{ payload: any }} */ f) => { const t = typeof f.payload === "string" ? f.payload : ""; if (!t.includes('"error"')) return; try { noteRefusal("peer", JSON.parse(t)); } catch { /* not JSON */ } }));
       page.on("pageerror", (/** @type {Error} */ e) => pageErrors.push(String(e.message).slice(0, 200)));
       // A worker's error and a console error never reach pageerror: keep them, and print them when something fails.

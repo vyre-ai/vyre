@@ -299,7 +299,7 @@ export async function ownerWalkReal(c) {
     try { await press(["Watchers"]); } catch { pending(`the Flows screen has no Watchers tab on this build: ${await show(160)}`); }
     await until(async () => (await has(/New watcher/)), 30_000, "the Watchers tab");
     await press(["New watcher"]);
-    await drv.choose?.("Where should it look?", "Feed");
+    try { await drv.choose?.("Where should it look?", "Feed"); } catch (e) { await shot("failed-07-new-watcher"); throw new Error(`${/** @type {Error} */ (e).message.split("\n")[0]}. The screen says: ${await show(500)}`); }
     await fillAny(["Feed address"], "https://github.com/vyre-ai/vyre/releases.atom");
     await shot("07-new-watcher");
     await press(["Write it and test it"]);
