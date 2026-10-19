@@ -48,7 +48,7 @@ export function pickAppRelease(list, current, arch) {
     if (!v || v.pre) continue;
     const version = v.n.join(".");
     const names = Array.isArray(r.assets) ? r.assets.map((/** @type {any} */ a) => String((a && a.name) || "")) : [];
-    if (want ? !names.includes(want) : !names.some((n) => /^Vyre-.*\.dmg$/.test(n))) continue;
+    if (want ? !names.includes(want) : !names.some((/** @type {string} */ n) => /^Vyre-.*\.dmg$/.test(n))) continue;
     if (compareVersions(version, current) <= 0) continue;
     if (!best || compareVersions(version, best.version) > 0) best = { version, url: downloadUrl(version, arch) };
   }
