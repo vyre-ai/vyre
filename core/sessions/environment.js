@@ -9,8 +9,8 @@
 
 import { createHash } from "node:crypto";
 
-/** Characters, about 1,500 tokens, paid once per session start. */
-export const BUDGET = 6000;
+/** Characters, the ceiling and not a target: the brief is what it needs to be and today is about 1,500 tokens. Raised from 6000 on the owner's ruling (agent prompt design v3, 19 Oct 2026); paid once per session start. */
+export const BUDGET = 8000;
 
 /**
  * Every family of tools an agent can reach (the name before the first dot), and where it is taught. A family in `section` has a sentence in the brief; one in `more` is only
