@@ -32,3 +32,11 @@ test("the sample call signs with the Vault item's value, which is never in the t
   assert.match(sampleCall("", "github", ""), /X-Hub-Signature-256: sha256=/);
   assert.match(sampleCall("u", "stripe", ""), /Stripe CLI/);
 });
+
+test("the webhook fields name the Vault item and offer to add it there", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("./WebhookFields.tsx", import.meta.url), "utf8");
+  assert.match(src, /Add the secret in the Vault/);
+  assert.match(src, /openVault/);
+  assert.doesNotMatch(src, /vault\.generate|secret_once/, "the editor never makes or shows a secret itself");
+});

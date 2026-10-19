@@ -49,7 +49,9 @@ export function WebhookFields({ route, onRoute, sources }: { route: string; onRo
           <Field label="Name" value={name} onChangeText={setName} placeholder="northwind-orders" help="The sender posts to /hooks/ and this name." />
           <Segmented label="Signed by" value={scheme} onChange={setScheme} options={SCHEMES} />
           {scheme === "hmac-sha256" ? <Field label="Signature header" value={header} onChangeText={setHeader} placeholder="x-signature" /> : null}
-          <Field label="Secret, in the Vault" value={secret} onChangeText={setSecret} placeholder="northwind-orders-hook" help="The name of the Vault item that holds the shared secret. Make it in the Vault first, and let the webhooks module use it." />
+          <Field label="Secret, in the Vault" value={secret} onChangeText={setSecret} placeholder="northwind-orders-hook" help="The name of the Vault item that holds the shared secret." />
+          {sources.openVault ? <View className="flex-row"><Button kind="secondary" size="sm" label="Add the secret in the Vault" disabled={!secret.trim()} onPress={() => sources.openVault!(secret.trim())} /></View> : null}
+          <Text size="caption" tone="label">The Vault opens its Add sheet; your Flow draft is not saved, so save it first if you have changed anything. After adding the item, let the webhooks module use it, then come back and open the route.</Text>
           <View className="flex-row"><Button kind="primary" label={busy ? "Opening" : "Open the route"} disabled={busy || !sources.openRoute} onPress={() => void open()} /></View>
         </View>
       ) : null}

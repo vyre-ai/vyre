@@ -11,7 +11,7 @@ import { ShareFlow } from "./FlowShare";
 import { useFlowOptions, defineReal } from "./builder-source";
 import { runsReal } from "./real";
 import { stepTestSource } from "./step-test-source";
-import { triggerSources } from "./trigger-sources";
+import { useTriggerSources } from "./trigger-sources";
 import { testLines } from "./step-test-model.js";
 import { callT } from "../../src/real/call-tool";
 import { useMembers } from "../spaces/state";
@@ -21,6 +21,7 @@ const BLANK: FlowDraft = { name: "", trigger: { kind: "created" }, steps: [] };
 
 function Editor({ id, start, options }: { id: string | null; start: FlowDraft; options: FlowOptions }) {
   const router = useRouter();
+  const triggerSources = useTriggerSources();
   const { saveMade, groups } = useFlowsState();
   const [draft, setDraft] = useState<FlowDraft>(start);
   const [shown, setShown] = useState(false);
@@ -101,6 +102,7 @@ export function MadeFlowScreen({ id }: { id: string }) {
 /** A Flow stored on the box, opened in the builder. Saving writes a new version (the box asks for the person's yes again); steps the builder cannot show are kept as they were. */
 export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
   const options = useFlowOptions();
+  const triggerSources = useTriggerSources();
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
   const staff = role === "owner" || role === "admin" || allowsMock();
