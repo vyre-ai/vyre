@@ -13,7 +13,7 @@ import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, pro
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { isApprovalList, isEveryServer, urnSpace } from "./server-route.js";
-import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, memberChatWire, withSpace } from "./with-space.js";
+import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, planWire, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
@@ -82,9 +82,9 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   }
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   // A joined member's Records notes are the team's planner's (planner.serve, notes only): only a planner call the Notes tab marks { notes: true } goes to the team's door. The rest of the planner is hers, at home.
-  const noteCall = name.startsWith("planner.") && given.notes === true;
-  if (name.startsWith("planner.") && "notes" in given) { const { notes: _marker, ...unmarked } = given; given = unmarked; }
-  const wire = name.startsWith("planner.") && !noteCall ? null : memberChatWire(name);
+  const planned = planWire(name, given);
+  given = planned.given;
+  const wire = planned.wire;
   if (wire) {
     const space = chatSpace(given, useSpaces.getState().space);
     const team = space ? await import("./team-join") : null;

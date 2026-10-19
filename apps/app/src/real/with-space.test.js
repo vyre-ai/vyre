@@ -86,11 +86,23 @@ test("a member starts her own projects through the door: a blank project, one fr
 test("a member's daily Records and tasks go through the door under the same name; presence and admin calls stay on her own home", async () => {
   const { memberWire, isTeamWork } = await import("./with-space.js");
   for (const t of ["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"]) assert.equal(memberWire(t), t, t);
-  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
+  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.snooze", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
   // a joined member's Records reads and her call or meeting log go through the door too (history, totals, Busy blocks, roles, log)
   for (const t of ["records.history", "records.stats", "records.busy", "records.roles.summary", "records.log", "records.move", "records.layout.get", "records.layout.set", "records.relationship.list"]) assert.equal(memberWire(t), t, t);
-  // the four planner NOTE calls have door rows (core/work/member-tools.js), but box.ts sends a planner call there only when the Notes tab marks it { notes: true }: the table alone does not route the planner, and the rest of the planner has no row
-  for (const t of ["planner.list", "planner.get", "planner.add", "planner.update"]) { assert.equal(memberWire(t), t, t); assert.ok(!isTeamWork(t), `${t} is not refused`); }
+  // the four planner NOTE calls have door rows (core/work/member-tools.js): reads go to planner.serve, writes to planner.serve-write
+  const { MEMBER_TOOLS } = await import("../../../../core/work/member-tools.js");
+  assert.equal(memberWire("planner.add"), "planner.add");
+  assert.deepEqual([["planner.list", "planner.serve"], ["planner.get", "planner.serve"], ["planner.add", "planner.serve-write"], ["planner.update", "planner.serve-write"]].map(([k]) => /** @type {any} */ (MEMBER_TOOLS)[k].tool), ["planner.serve", "planner.serve", "planner.serve-write", "planner.serve-write"]);
+  // ...but at the box layer a planner call goes to the team's door only when the Notes tab marks it { notes: true }; the marker is always taken off
+  const { planWire } = await import("./with-space.js");
+  assert.deepEqual(planWire("planner.add", { title: "a note" }), { wire: null, given: { title: "a note" } }, "an unmarked add stays on her own home");
+  assert.deepEqual(planWire("planner.add", { title: "a note", notes: true }), { wire: "planner.add", given: { title: "a note" } }, "a marked add goes to the team's door, marker off");
+  assert.equal(planWire("planner.list", { notes: true }).wire, "planner.list");
+  assert.equal(planWire("planner.list", {}).wire, null);
+  assert.equal(planWire("planner.update", { item: "i", notes: false }).wire, null, "only true marks it");
+  // the rest of the planner has no row, marked or not, and other tools are untouched by the marker rule
+  for (const t of ["planner.delete", "planner.done", "planner.snooze"]) { assert.equal(planWire(t, { notes: true }).wire, null, `${t} stays home even marked`); assert.equal(planWire(t, {}).wire, null, t); }
+  assert.deepEqual(planWire("records.list", { notes: true }), { wire: "records.list", given: { notes: true } });
 });
 
 test("a member's project files go through the door: list, read and upload, and nothing else of Drive", async () => {
