@@ -149,3 +149,15 @@ test("a slot's time limit and fallback role are kept together, and one without t
   const everyone = { ...d, steps: [{ ...d.steps[0], approverDue: 86400000, approverEscalate: "role:admins" }] };
   assert.match(draftProblems(everyone, O).join(" "), /needs everyone/);
 });
+
+test("a webhook trigger is the listener's hook.received for one route, and reads back as a webhook", async () => {
+  const stored = { format: 1, name: "t", label: "T", authorship: "builder", trigger: { on: "event", event: "hook.received", where: 'trigger.route == "northwind-orders"' }, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] };
+  assert.deepEqual(checkFlow(stored), []);
+  const d = fromDefinition(stored);
+  assert.deepEqual(d.trigger, { kind: "webhook", route: "northwind-orders" });
+  assert.deepEqual(toDefinition(d, O).trigger, stored.trigger, "saved back unchanged");
+  assert.match(flowSentence(d, O), /^When the webhook \/hooks\/northwind-orders is called,/);
+  assert.deepEqual(draftProblems({ ...d, trigger: { kind: "webhook", route: "" } }, O), ["Choose the webhook route that starts it."]);
+  const other = fromDefinition({ ...stored, trigger: { on: "event", event: "hook.received", where: 'trigger.route == "a" and trigger.bytes > 5' } });
+  assert.equal(other.trigger.kind, "advanced", "any other condition stays whole");
+});
