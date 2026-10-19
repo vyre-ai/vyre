@@ -383,7 +383,7 @@ test("cors: claim, append and update accept the app's origin (and only its exact
     assert.equal(r.h("access-control-allow-origin"), null, "a foreign origin gets no CORS answer");
   }
   // preflights: the app origin for the three routes, nothing for others
-  for (const p of ["/v1/ids/claim", "/v1/ids/finalize", "/v1/ids/append", "/v1/ids/update"]) {
+  for (const p of ["/v1/ids/claim", "/v1/ids/finalize", "/v1/ids/append", "/v1/ids/update", "/v1/ids/server"]) {
     const pre = await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
     assert.equal(pre.status, 204, p);
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
@@ -394,6 +394,16 @@ test("cors: claim, append and update accept the app's origin (and only its exact
     const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
     assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
   }
+});
+
+test("cors: the app's origin may list a server for a Space (POST /v1/ids/server, signed by the Space's owner): the page that names a server's Space does it from the browser, and a foreign origin still cannot", async t => {
+  const w = world(t, { APP_ORIGINS: "https://app.vyre.run" });
+  const ok = await raw(w, "POST", "/v1/ids/server", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body: { name: "nobody", route: "abcdefghijklmnopqrstuvwxyz", act: { by: "x", ts: w.clock.t, sig: "AAAA" } } });
+  assert.notEqual(ok.json && ok.json.error && ok.json.error.code, "origin", "not refused as a browser call");
+  assert.equal(ok.h("access-control-allow-origin"), "https://app.vyre.run");
+  const bad = await raw(w, "POST", "/v1/ids/server", { origin: "https://evil.example", body: { name: "nobody", route: "abcdefghijklmnopqrstuvwxyz", act: { by: "x", ts: w.clock.t, sig: "AAAA" } } });
+  assert.equal(bad.status, 403);
+  assert.equal(bad.h("access-control-allow-origin"), null);
 });
 
 test("cors: the per-IP claim limit applies to claims from the app origin too", async t => {
