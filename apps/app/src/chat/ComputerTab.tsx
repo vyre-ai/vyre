@@ -14,6 +14,8 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const live = useRef(true);
+  // On a server that has not made the agents' computer yet, opening the tab starts it once (the same Wake), so the person is not left at "asleep".
+  const started = useRef("");
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   useEffect(() => { if (!agents.includes(who)) setWho(agents[0] ?? ""); }, [agents, who]);
   const load = useCallback(async (): Promise<ComputerView | null> => {
@@ -29,12 +31,20 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
   const settle = async (tries = 3) => { for (let i = 0; i < tries && live.current; i++) { await new Promise((r) => setTimeout(r, 4000)); const v = await load(); if (v && v.state !== "waking") return; } };
   const act = async (fn: () => Promise<string | null>, follow?: boolean) => {
     setBusy(true); setProblem("");
+    // a first start shows its own words while the computer is made and boots
+    if (follow && view?.first) setView({ ...view, state: "waking" });
     const why = await fn();
     setBusy(false);
-    if (why) { setProblem(why); return; }
+    // a failed start goes back to what the server says (so Wake is there to try again), with the reason over it
+    if (why) { await load(); setProblem(why); return; }
     await load();
     if (follow) void settle();
   };
+  useEffect(() => {
+    if (!view?.first || view.state !== "asleep" || busy || problem || started.current === who) return;
+    started.current = who;
+    void act(() => agentComputer.wake(who), true);
+  }, [view, busy, problem, who]);
   const leave = (app?: string) => { onLeave?.(); router.push(`/u/glass/${encodeURIComponent(who)}${app ? `?app=${app}` : ""}` as never); };
   if (!agents.length) return <EmptyState title="No agent in this chat" body="An agent's computer shows here when the agent is in the chat." />;
   return (

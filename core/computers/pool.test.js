@@ -89,6 +89,22 @@ test("pool: a computer is made on first need, not before", async t => {
   assert.equal(pool.view("kit").state, "running");
 });
 
+test("pool: ensureSpace makes the Space's one computer (browser kind) and starts it the first time, through the same create, and only once", async t => {
+  const { pool, driver, types } = setup(t, { config: { labelPrefix: "run.vyre.computers", network: "vyre-computers", image: "vyre/computer:0.1" }, memberTokenKey: async () => "k".repeat(43) });
+  assert.equal(pool.row("browser-shared"), null);
+  await pool.ensureSpace("browser-shared");
+  const row = pool.row("browser-shared");
+  assert.equal(row.kind, "browser");
+  assert.equal(row.state, "running");
+  assert.equal(driver.containers.size, 1);
+  const spec = [...driver.containers.values()][0].spec;
+  assert.deepEqual([spec.image, spec.network, spec.labels], ["vyre/computer:0.1", "vyre-computers", { "run.vyre.computers.computer": "browser-shared", "run.vyre.computers.managed": "true" }]);
+  assert.deepEqual(types(), ["computer.created"]);
+  await pool.ensureSpace("browser-shared");
+  assert.equal(driver.containers.size, 1, "a running computer is not made again");
+  await assert.rejects(pool.checkout("kit").then(() => pool.ensureSpace("kit")), /not a shared computer/);
+});
+
 test("pool: only agents whose record says computer: true get one, and only with the agents module", async t => {
   const { pool } = setup(t);
   await assert.rejects(pool.checkout("rio"), /rio has no computer; set computer: true/);

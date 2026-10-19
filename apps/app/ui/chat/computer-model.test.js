@@ -33,6 +33,14 @@ test("asleep offers Wake; waking offers nothing; live offers Open and Sleep", ()
   assert.deepEqual(computerActions(computerOf({ state: "live" })), ["open", "sleep"]);
 });
 
+test("a computer the server has never made says so while it starts the first time", () => {
+  assert.equal(computerOf({ state: "none", firstStart: true }).first, true);
+  assert.equal(computerOf({ state: "asleep" }).first, undefined);
+  assert.equal(computerWords(computerOf({ state: "waking", firstStart: true }), "Ads"), "Starting this agent's computer for the first time…");
+  assert.match(computerWords(computerOf({ state: "waking" }), "Ads"), /^Waking Ads's computer/);
+  assert.deepEqual(computerActions(computerOf({ state: "none", firstStart: true })), ["wake"], "Wake makes it");
+});
+
 test("why a computer cannot run reads in plain words, even from an older server that answers with its driver's own message", () => {
   const NOT_ON = "Agent computers aren't set up on this server yet. Update the server to turn them on.";
   assert.equal(computerProblem("the agent computer is not set up on this machine: its container is not running, or this machine's driver cannot run commands in it"), NOT_ON);

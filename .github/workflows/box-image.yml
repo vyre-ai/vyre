@@ -270,7 +270,7 @@ jobs:
           echo "docker-api before vyred: $(docker logs "$api" 2>&1 | tail -2)"
           docker compose $F up -d vyre
           V=$(docker compose $F ps -q vyre); export V
-          C="$V" sh "$RUNNER_TEMP/health.sh" 180
+          C="$V" sh "$RUNNER_TEMP/health.sh" 300
           cat > "$RUNNER_TEMP/call.sh" <<'EOF'
           # call.sh <tool> <json>: one call as the person at vyred's socket, in the vyre container; prints the answer
           docker exec -e T="$1" -e I="$2" "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.call(process.env.T, JSON.parse(process.env.I), { caller: "cli", timeout: 240000 }); console.log(JSON.stringify(r)); }).catch(e => console.log(JSON.stringify({ error: { message: String(e && e.message || e) } })))'
@@ -282,7 +282,11 @@ jobs:
           echo "vyred wrote docker-api's bearer"
           a=$(sh "$RUNNER_TEMP/call.sh" agents.create '{"name":"kit","computer":true}'); echo "agents.create: $a"
           echo "$a" | grep -q '"error"' && exit 1
-          st=""
+          # before anything used a browser: no computer exists, the tab is told this is a first start (no problem, no raw driver words), and Wake makes it
+          st=$(sh "$RUNNER_TEMP/call.sh" computers.agent.status '{"agent":"kit"}'); echo "status before Wake: $st"
+          echo "$st" | grep -q '"firstStart":true' || { echo "status does not say this is the computer's first start"; exit 1; }
+          if echo "$st" | grep -q '"problem"'; then echo "status names a problem before Wake"; exit 1; fi
+          [ -z "$(docker ps -aq --filter label=run.vyre.computers.managed=true)" ] || { echo "a computer exists before Wake"; exit 1; }
           for i in 1 2 3 4 5 6 7 8 9 10; do
             w=$(sh "$RUNNER_TEMP/call.sh" computers.agent.wake '{"agent":"kit"}'); echo "wake $i: $w"
             st=$(sh "$RUNNER_TEMP/call.sh" computers.agent.status '{"agent":"kit"}'); echo "status $i: $st"
@@ -303,7 +307,9 @@ jobs:
           COMPOSE_PROJECT_NAME: vyreci
         run: |
           docker compose -f box/compose.yml --profile computers logs --tail 60 docker-api 2>&1 || true
-          docker compose -f box/compose.yml --profile computers logs --tail 120 vyre 2>&1 | grep -iE "computer|docker-api|bearer|agentd" | tail -60 || true
+          docker compose -f box/compose.yml --profile computers logs --tail 150 vyre 2>&1 || true
+          v=$(docker compose -f box/compose.yml --profile computers ps -aq vyre)
+          [ -n "$v" ] && docker exec "$v" sh -c 'ls -la /home/vyre/.vyre /home/vyre/.vyre/logs 2>&1; for f in /home/vyre/.vyre/logs/*; do echo "== $f"; tail -n 80 "$f"; done; ps -eo user,pid,args | head -30' 2>&1 | tail -250 || true
           for c in $(docker ps -aq --filter label=run.vyre.computers.managed=true); do docker logs --tail 60 "$c" 2>&1 || true; done
       - name: Compose down
         if: always() && hashFiles('core/daemon/loop.sh') != ''

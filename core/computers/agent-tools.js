@@ -22,7 +22,7 @@ const AGENT = /^[a-z][a-z0-9._-]{1,80}$/;
  * Returns `mayUse` (the agents module's level check) and `place` (the agent's place on the computer, made on first use) for the one path that needs them besides these tools: the agent's endpoint.
  * @param {{ tool: (name: string, description: string, input: any, run: (i: any, meta: any) => Promise<any>, extra?: any) => void,
  *   users: import("./agent-users.js").AgentUsers, call: (tool: string, input: any, opts?: { relay?: boolean }) => Promise<any>, callers: string[],
- *   held?: (agent: string) => boolean, problem?: () => ({ code: string, message: string } | null), terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
+ *   held?: (agent: string) => boolean, problem?: () => ({ code: string, message: string } | null), space?: () => { starting: boolean, first: boolean }, terminal?: (agent: string, session: string) => { ticket: string, path: string }, watch?: (agent: string, slow: boolean, surface: string) => { ticket: string, path: string, width: number, height: number }, nameOf?: (agent: string) => Promise<string> }} d
  */
 export function registerAgentTools(d) {
   /** @param {"use" | "edit"} need @param {string} agent */
@@ -43,7 +43,15 @@ export function registerAgentTools(d) {
   /** The agent's place on the computer, made on first use so a new agent needs no setup step. @param {string} agent */
   const place = async agent => d.users.row(agent) || d.users.add(agent, d.nameOf ? await d.nameOf(agent) : agent);
   // with `problem`, in plain words, while this server cannot run the agent's computer (no driver, no image, the computer service refusing): the Computer tab shows it instead of a state
-  const shape = (/** @type {string} */ agent) => { const s = d.users.status(agent); const p = d.problem ? d.problem() : null; return p ? { ...s, problem: p.message, problemCode: p.code } : s; };
+  // and `firstStart` while the Space's computer has not been made yet (waking makes it): the tab says so, and says "waking" while it is being made
+  const shape = (/** @type {string} */ agent) => {
+    /** @type {any} */ let s = d.users.status(agent);
+    const sp = d.space ? d.space() : null;
+    if (sp && sp.starting && s.state !== "live") s = { ...s, state: "waking" };
+    if (sp && sp.first) s = { ...s, firstStart: true };
+    const p = d.problem ? d.problem() : null;
+    return p ? { ...s, problem: p.message, problemCode: p.code } : s;
+  };
 
   d.tool("computers.agent.status", "Where an agent's computer is: none (not set up), asleep, waking or live. Needs access to the agent.",
     obj({ agent: str }, ["agent"]), async i => { const a = agentOf(i); await mayUse("use", a); return shape(a); }, { callers: d.callers });

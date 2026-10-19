@@ -23,7 +23,7 @@ test("each state has its own plain sentence and an error code the catalogue know
   ];
   for (const [msg, code, words] of cases) assert.deepEqual(plainComputerError(new Error(msg)), { code, message: words }, msg);
   for (const w of [NO_DRIVER_WORDS, IMAGE_MISSING_WORDS, PROXY_REFUSED_WORDS, PROXY_DOWN_WORDS, NOT_STARTED_WORDS, NO_EXEC_WORDS]) {
-    assert.doesNotMatch(w, /vyred|docker|driver|container|computers\.|config\.json|bearer/i, `no internal word: ${w}`);
+    assert.doesNotMatch(w, /vyred|docker|driver|container|computers\.[a-z]|config\.json|bearer/i, `no internal word: ${w}`);
     assert.match(w, /\.$/);
   }
 });

@@ -1,7 +1,7 @@
 // @ts-check
 // The pure half of the Computer tab: an agent computer's status as one of three states, the words under its screen, and what can be done from each state. No tool is called here.
 
-/** @typedef {{ state: "asleep" | "waking" | "live", lastActive: number, thumbnail: string }} ComputerView */
+/** first: the server has not made the agents' computer yet, so waking makes it (the first start takes a while). @typedef {{ state: "asleep" | "waking" | "live", lastActive: number, thumbnail: string, first?: boolean }} ComputerView */
 
 const STATES = ["asleep", "waking", "live"];
 const IMAGE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,/;
@@ -10,7 +10,7 @@ const IMAGE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,/;
 export function computerOf(d) {
   const state = STATES.includes(d?.state) ? d.state : "asleep";
   const t = typeof d?.thumbnail === "string" && IMAGE.test(d.thumbnail) ? d.thumbnail : "";
-  return { state, lastActive: Number(d?.lastActive) || 0, thumbnail: t };
+  return { state, lastActive: Number(d?.lastActive) || 0, thumbnail: t, ...(d?.firstStart === true ? { first: true } : {}) };
 }
 
 const NOT_ON = "Agent computers aren't set up on this server yet. Update the server to turn them on.";
@@ -30,6 +30,7 @@ export function computerProblem(message) {
 
 /** The line under the screen. @param {ComputerView} v @param {string} name */
 export function computerWords(v, name) {
+  if (v.state === "waking" && v.first) return "Starting this agent's computer for the first time…";
   if (v.state === "waking") return `Waking ${name}'s computer. Chrome and the screen come back where they were.`;
   if (v.state === "live") return `${name}'s computer is live. You are watching.`;
   return `${name} is asleep. Waking it reopens Chrome where it was left.`;

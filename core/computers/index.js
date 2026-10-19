@@ -294,16 +294,31 @@ export default {
     const BRINGS_UP = new Set(["createUser", "startScreen", "exec", "runTicket", "terminalTicket"]);
     /** @type {{ code: string, message: string } | null} */
     let spaceProblem = null;
-    const spaceUp = async () => {
+    /** The bring-up in flight (callers join it), and whether it is the computer's first (no container yet). @type {Promise<void> | null} */
+    let spaceStarting = null;
+    let spaceFirst = false;
+    const spaceUp = () => {
       const box = pool.row(SHARED_COMPUTER_ID);
-      if (box && box.container && box.state === "running" && pool.hosts.has(SHARED_COMPUTER_ID)) return;
-      try { await pool.ensureSpace(SHARED_COMPUTER_ID); spaceProblem = null; }
-      catch (e) {
-        ctx.log(`the Space's agent computer could not start: ${/** @type {Error} */ (e).message}`);
-        const p = plainComputerError(e);
-        if (p) spaceProblem = p;
-        throw plainError(e);
-      }
+      if (box && box.container && box.state === "running" && pool.hosts.has(SHARED_COMPUTER_ID)) return Promise.resolve();
+      if (spaceStarting) return spaceStarting;
+      spaceFirst = !(box && box.container);
+      if (spaceFirst) ctx.log("starting the Space's agent computer for the first time");
+      spaceStarting = (async () => {
+        try { await pool.ensureSpace(SHARED_COMPUTER_ID); spaceProblem = null; }
+        catch (e) {
+          ctx.log(`the Space's agent computer could not start: ${/** @type {Error} */ (e).message}`);
+          const p = plainComputerError(e);
+          if (p) spaceProblem = p;
+          throw plainError(e);
+        }
+      })().finally(() => { spaceStarting = null; spaceFirst = false; });
+      return spaceStarting;
+    };
+    /** Is the Space's computer being brought up now, and has it never been made? Read by computers.agent.status. */
+    const spaceNow = () => {
+      const canRun = Boolean(pool.driver && typeof /** @type {any} */ (pool.driver).execIn === "function");
+      const box = pool.row(SHARED_COMPUTER_ID);
+      return { starting: Boolean(spaceStarting), first: spaceStarting ? spaceFirst : canRun && !(box && box.container) };
     };
     /** Why an agent's computer cannot run here, in plain words, or null. Read by computers.agent.status. */
     const problemNow = () => {
@@ -332,7 +347,7 @@ export default {
     // Pool.reconcile has just made the table agree with the runtime: when the space's computer is gone or stopped, no agent's screen is up, whatever the rows said last time.
     { const box = pool.row(SHARED_COMPUTER_ID); if (!box || (box.state !== "running" && box.state !== "frozen")) agentUsers.asleepAll(); }
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
-    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, problem: problemNow, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
+    const agentTools = registerAgentTools({ tool, users: agentUsers, call: ctx.call, callers: PEOPLE, problem: problemNow, space: spaceNow, held: agent => keyboard.takeovers.has(agent) || pool.checkouts.has(agent) || (screenViewers.get(agent) || 0) > 0,
       terminal: (agent, session) => {
         const ticket = pool.ticket(agent, `terminal:${session}`, { perAgent: true });
         return { ticket, path: `/v1/streams/computers/terminal?ticket=${encodeURIComponent(ticket)}` };
