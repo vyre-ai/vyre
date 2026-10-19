@@ -54,6 +54,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(app): no screen puts an id the app made (spc_, per_, tpl_) or a Space's id on the page as text (apps/app/src/state/no-raw-ids.test.js reads every screen's source).
+
 - fix(roles): New role on a real box was refused with 'There is no record type "invoice" in this Space'. The screen read the box's record types by an `id` the box does not send (it names a type by `name`), so it fell back to its sample types and sent them as the new role's data. It now reads the types by name and makes the role from the Space's own types. Found by the real-box owner walk.
 
 - test(daemon): the ask-door test of forged asks from fresh channels now says what the door does. They fill the box-wide lookup cap (50 a minute), so a valid ask in that minute waits for the next one; they do not spend the Space's three an hour, which three valid asks a minute later still get (the fourth is refused by the Space-wide cap). The door's code is unchanged.
