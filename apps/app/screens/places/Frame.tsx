@@ -17,13 +17,15 @@ export type FrameProps = {
   /** A top-level page (Settings): the large title, no back. */
   top?: boolean;
   actions?: React.ReactNode;
+  /** Draws the title itself (an editable name): in place of the title text on a wide page, and above the content on a phone, where the header keeps the plain title. */
+  titleNode?: React.ReactNode;
   /** Up to three marks shown before the title in the phone header. */
   marks?: AvatarRef[];
   scope?: boolean;
   children: React.ReactNode;
 };
 
-export function Frame({ title, sub, back, onBack, top, actions, marks, scope, children }: FrameProps) {
+export function Frame({ title, sub, back, onBack, top, actions, titleNode, marks, scope, children }: FrameProps) {
   const phone = usePhone();
   const router = useRouter();
   const goBack = () => (onBack ? onBack() : router.canGoBack() ? router.back() : router.replace((back ?? "/u/settings") as never));
@@ -31,6 +33,7 @@ export function Frame({ title, sub, back, onBack, top, actions, marks, scope, ch
     <>
       {actions ? <View className={phone ? "gap-s2" : "flex-row flex-wrap items-center gap-s2 self-end"}>{actions}</View> : null}
       {scope ? <ScopeBar /> : null}
+      {phone && titleNode ? titleNode : null}
       {children}
     </>
   );
@@ -48,7 +51,7 @@ export function Frame({ title, sub, back, onBack, top, actions, marks, scope, ch
       {onBack ? <View className="self-start"><Button kind="ghost" size="sm" icon="chev-l" label="Back" onPress={() => onBack()} /></View> : null}
       <View className="flex-row items-start gap-s3">
         <View className="min-w-0 flex-1 gap-s1">
-          <Text size="page" strong accessibilityRole="header">{title}</Text>
+          {titleNode ?? <Text size="page" strong accessibilityRole="header">{title}</Text>}
           {sub ? <Text tone="muted">{sub}</Text> : null}
         </View>
         {actions ? <View className="flex-none flex-row flex-wrap gap-s2">{actions}</View> : null}

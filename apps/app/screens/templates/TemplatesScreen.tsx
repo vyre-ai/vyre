@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, EmptyState, ErrorState, Field, LoadingState, Menu, Row, Text, showToast, useWork } from "@vyre/ui";
+import { Button, Card, Chip, EmptyState, ErrorState, Field, Icon, LoadingState, Row, Text, showToast, useWork } from "@vyre/ui";
 import { MenuRow } from "../../ui/blocks/RowMenu";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
@@ -35,7 +35,6 @@ export default function TemplatesScreen() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [describing, setDescribing] = useState(false);
-  const [idea, setIdea] = useState("");
   const load = useCallback(() => { setErr(""); templates.list().then(setRows).catch((e) => setErr(errWords(e))); templates.library().then(setLib).catch(() => setLib([])); }, []);
   useEffect(load, [load]);
   useEffect(() => { (rows || []).forEach((r) => { if (!bodies[r.template]) templates.get(r.template, r.live ?? r.latest).then((v) => v.body && setBodies((b) => ({ ...b, [r.template]: v.body! }))).catch(() => undefined); }); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -55,7 +54,7 @@ export default function TemplatesScreen() {
     return (
       <MenuRow key={r.template} items={mayMake ? [{ label: "Duplicate", onPress: () => void copy(r) }] : []}>
         {(menu) => (
-          <Row lead={<IconTile icon="box" />} title={b ? sentenceOf(b, true) : c.name} sub={[c.counts, c.usedBy].filter(Boolean).join(" · ")} onPress={() => router.push(playbookPath(r.template) as never)}
+          <Row lead={<IconTile icon="box" />} title={c.name} sub={[b ? sentenceOf(b, true) : "", c.counts, c.usedBy].filter(Boolean).join(" · ")} onPress={() => router.push(playbookPath(r.template) as never)}
             end={<View className="flex-row items-center gap-s2"><Chip tone={r.live !== null ? "ok" : "plain"}>{r.live !== null ? "Live" : "Draft"}</Chip><Text size="caption" tone="label">{`v${r.live ?? r.latest}`}</Text>{menu}</View>} />
         )}
       </MenuRow>
@@ -63,34 +62,24 @@ export default function TemplatesScreen() {
   };
   return (
     <Frame title={TEMPLATES_LABEL} sub={rows ? `${rows.length} ${rows.length === 1 ? PLAYBOOK.one : PLAYBOOK.many}` : undefined}
-      actions={mayMake ? <Menu trigger={<Button kind="primary" size="sm" icon="plus" label="New playbook" />} items={[
-        { label: "New blank playbook", onPress: () => void startBlank() },
-        { label: "From a kit", onPress: () => setShowKits(true) },
-        { label: "Describe a playbook to the Engineer", onPress: () => setDescribing(true) },
-      ]} /> : undefined}>
-      <Text tone="muted">A playbook is a kind of project your team runs again and again: its stages, the to-dos in each, who does what, and the Flows that run inside it. Start a project from one in a click.</Text>
+>
+      <Text tone="muted">The kinds of project your team runs again and again, with their stages and to-dos.</Text>
       {mayMake ? (
-        <View className="flex-row items-end gap-s2">
-          <View className="min-w-0 flex-1"><Field label="Describe a kind of project" value={idea} onChangeText={setIdea} placeholder="For example: a product launch: brief, draft, review, launch, wrap up" /></View>
-          <Button kind="primary" size="sm" label="Draft it" disabled={!idea.trim()} onPress={() => { const words = idea.trim(); setIdea(""); openEngineer(router, { source: "playbook", words }); }} />
+        <View className={phone ? "gap-s3" : "flex-row gap-s3"}>
+          {[
+            { t: "Start blank", b: "Write the stages and to-dos yourself.", on: () => void startBlank(), icon: "plus" as const },
+            { t: "From a kit", b: "Add a playbook a Kit ships, then change it.", on: () => setShowKits(true), icon: "box" as const },
+            { t: "Describe it", b: "Say what the work is and the Engineer drafts one.", on: () => setDescribing(true), icon: "spark" as const },
+          ].map((o) => (
+            <Pressable key={o.t} accessibilityRole="button" accessibilityLabel={o.t} onPress={o.on} className={phone ? "" : "min-w-0 flex-1"}>
+              <Card className="h-full"><View className="min-h-[88px] gap-s1 p-s4"><View className="flex-row items-center gap-s2"><Icon name={o.icon} size={16} tone="text-2" /><Text strong>{o.t}</Text></View><Text size="caption" tone="muted">{o.b}</Text></View></Card>
+            </Pressable>
+          ))}
         </View>
       ) : null}
       <Field name="Search" value={query} onChangeText={setQuery} placeholder={`Search ${TEMPLATES_LABEL.toLowerCase()}`} />
       {err ? <Card flush><ErrorState title={`${TEMPLATES_LABEL} did not load`} reason={err} retry={load} /></Card> : null}
       {rows === null && !err ? <LoadingState rows={3} /> : null}
-      {rows && !rows.length ? (
-        <View className="flex-row flex-wrap gap-s3">
-          {[
-            { t: "Start blank", b: "Write the stages and tasks as a list.", on: () => void startBlank(), go: true },
-            { t: "Start from a kit", b: "Add a playbook a Kit ships, then change it.", on: () => setShowKits(true), go: true },
-            { t: "Describe it", b: "Tell the Engineer what the work is and it drafts one.", on: () => setDescribing(true), go: true },
-          ].map((o) => (
-            <Pressable key={o.t} accessibilityRole="button" accessibilityLabel={o.t} onPress={o.on} style={{ width: phone ? "100%" : 300 }}>
-              <Card><View className="gap-s1 p-s4"><Text strong>{o.t}</Text><Text size="caption" tone="muted">{o.b}</Text></View></Card>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
       {rows && rows.length && !items.length ? <Card><EmptyState title="No match" body="Try another word, or show All." /></Card> : null}
       {items.length ? <Card flush>{items.map((i) => row(i.r, i.c))}</Card> : null}
       {showKits && lib.length ? (
