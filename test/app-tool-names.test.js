@@ -33,7 +33,8 @@ test("every tool a screen's source file sends exists on the server", () => {
   const hostSrc = fs.readFileSync(path.join(ROOT, "apps/app/src/host/host-core.js"), "utf8");
   for (const n of ["onboard.signin", "onboard.signin.github", "onboard.signin.unlock", "onboard.space.name", "onboard.space.remove",
     "onboard.assistant.set", "onboard.assistant.models", "onboard.assistant.model", "onboard.assistant.current", "onboard.agent.key", "onboard.accounts.copyable", "onboard.accounts.copy",
-    "onboard.space.ask", "onboard.space.ask.status"]) {
+    // join by address (the asker's screens, real.js) and Settings, Account on a page with no daemon (its box holds no identity, so the host answers the person's list and recovery code)
+    "onboard.space.ask", "onboard.space.ask.status", "identity.entries", "identity.code.replace", "identity.entry.remove", "identity.agree.status", "identity.agree.retry"]) {
     assert.ok(hostSrc.includes(`"${n}": async`), `${n} is answered by the page host`);
     OTHER.add(n);
   }
