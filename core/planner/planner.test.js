@@ -747,3 +747,35 @@ test("planner: a task starts an AI session later on the machine's login, so only
   const stranger = await w.call("planner.add", job, "cli", as(NOBODY));
   assert.equal(stranger.error?.code, "denied", "a person who is not a member of the Space is not the owner or an admin either");
 });
+
+test("planner: an admin who changes a task's words or where it runs is who it runs as from then on, kept across a restart; a change of anything else leaves its maker", async t => {
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const used = new Set();
+  const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, hasPresenceSession: () => true });
+  await k.gateway.records.define(ownerChain(k), { add_types: CORE_TYPES.filter(x => x.name === "event") });
+  const sign = (/** @type {string} */ call, /** @type {any} */ input) => ({ payload_hash: proofRequest(SPACE, call, input).payload_hash, nonce: Math.random().toString(36) });
+  const ADMIN = "per_" + "a".repeat(26);
+  const r0 = { person: ADMIN, role: "admin" }; await k.gateway.grants.setRole(ownerChain(k), r0, { presence: sign("setRole", r0) });
+  const w = await world(t, { kernel: k });
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const as = (/** @type {string} */ person) => ({ kernelFacts: { kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "direct", session: "s2" } });
+  const reworded = await w.ok("planner.add", { kind: "task", title: "Run the digest", project: "harlow-legal", at: T0 + HOUR });
+  const pinned = await w.ok("planner.add", { kind: "task", title: "Run the report", project: "harlow-legal", at: T0 + 2 * HOUR });
+  assert.ok((await w.call("planner.update", { item: reworded.id, title: "Run the digest and email it to the whole list" }, "cli", as(ADMIN))).data, "the admin rewords the owner's task");
+  assert.ok((await w.call("planner.update", { item: pinned.id, pinned: true }, "cli", as(ADMIN))).data, "and only pins the other");
+  // a restart reads the tasks back from their records: the new maker was saved, not only held in memory
+  await new Promise(r => setImmediate(r));
+  await w.stop(); await w.boot();
+  const launches = () => w.calls.filter(c => c.tool === "threads.launch");
+  w.advanceTo(T0 + HOUR); await new Promise(r => setImmediate(r));
+  const first = launches().at(-1);
+  assert.equal(first && first.input.prompt, "Run the digest and email it to the whole list");
+  assert.equal(first.input.person, ADMIN, "the run carries the admin who wrote its words, on the admin's own account");
+  assert.notEqual(first.input.person, OWNER, "NEGATIVE: never the maker's account for words the maker did not write");
+  w.advanceTo(T0 + 2 * HOUR); await new Promise(r => setImmediate(r));
+  const second = launches().at(-1);
+  assert.equal(second && second.input.prompt, "Run the report");
+  assert.equal(second.input.person, OWNER, "a pin changes nothing it does: it still runs as its maker");
+});

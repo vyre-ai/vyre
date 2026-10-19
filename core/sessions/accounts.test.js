@@ -210,16 +210,21 @@ test("accounts: a member has one sign-in account of their own per provider, seve
   await a.add({ provider: "grok", label: "Owner 2", kind: "login" });
 });
 
-test("accounts: an agent's job never resolves to a member's own key or token, and a member's own turn still does", async () => {
+test("accounts: a job for a member runs on that member's own account like their own turn, never on the home's; a job for nobody is the home's own", async () => {
   const a = fresh();
   const own = await a.add({ provider: "claude", label: "Space key", vault_item: "claude-space" });
   const bob = await a.add({ provider: "claude", label: "Bob token", kind: "setup-token", vault_item: "bob-claude", person: "per_bob", is_default: true });
   assert.equal(a.resolve({ provider: "claude", person: "per_bob" }).id, bob.id, "Bob's own turn");
-  assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true }).id, own.id, "a job on his behalf runs on the agent's own access");
-  assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: bob.id }), /no account/, "and cannot name it");
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true }).id, bob.id, "a job on his behalf runs on his own account");
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true, account: bob.id }).id, bob.id, "and may name it");
+  assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: own.id }), /no account/, "never the home's for him");
+  assert.equal(a.resolve({ provider: "claude", job: true }).id, own.id, "a job for nobody is the home's own");
+  const eve = fresh();
+  await eve.add({ provider: "claude", label: "Space key", vault_item: "claude-space" });
+  assert.equal(eve.resolve({ provider: "claude", person: "per_eve", job: true }), null, "a member with no account of her own gets no account for her job, never the home's");
 });
 
-test("accounts: a job a member asked for may name that member's own login, and no one else's, and never their key or token", async () => {
+test("accounts: a job a member asked for may name that member's own login, key or token, and no one else's", async () => {
   const a = fresh();
   const login = await a.add({ provider: "claude", label: "Bob login", kind: "login", person: "per_bob" });
   const eve = await a.add({ provider: "claude", label: "Eve login", kind: "login", person: "per_eve" });
@@ -227,7 +232,21 @@ test("accounts: a job a member asked for may name that member's own login, and n
   assert.equal(a.resolve({ provider: "claude", person: "per_bob", job: true, account: login.id }).id, login.id, "his own login serves a job he asked for");
   assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", job: true, account: eve.id }), /no account/, "not another person's");
   assert.throws(() => a.resolve({ provider: "claude", job: true, account: login.id }), /no account/, "and a job with no person named cannot name it");
-  assert.throws(() => a.resolve({ provider: "codex", person: "per_bob", job: true, account: token.id }), /no account/, "a token is never chosen for a job");
+  assert.equal(a.resolve({ provider: "codex", person: "per_bob", job: true, account: token.id }).id, token.id, "his own token serves his own job");
+});
+
+test("accounts: own() is the person's own account on any provider, the one asked for first, never the home's for a member and never another member's", async () => {
+  const a = fresh();
+  const home = await a.add({ provider: "claude", label: "Space key", vault_item: "claude-space" });
+  const codex = await a.add({ provider: "codex", label: "Bob Codex", kind: "login", person: "per_bob" });
+  const key = await a.add({ provider: "openrouter", label: "Bob key", kind: "api-key", vault_item: "bob-or", person: "per_bob", own_vault: true });
+  await a.add({ provider: "grok", label: "Eve Grok", kind: "login", person: "per_eve" });
+  assert.equal(a.own({ person: "per_bob" }).id, codex.id, "no Claude of his own: his first other account");
+  assert.equal(a.own({ person: "per_bob", provider: "openrouter" }).id, key.id, "the provider asked for comes first");
+  assert.equal(a.own({ person: "per_bob", provider: "grok" }).id, codex.id, "a provider he has none on is skipped, never someone else's on it");
+  assert.equal(a.own({ person: "per_ann" }), null, "a member with none gets none, never the home's");
+  assert.equal(a.own({}), null, "nobody gets nothing");
+  assert.equal(a.own({ person: "per_owner" }).id, home.id, "the owner's own is the home's");
 });
 
 test("accounts: a member's own api-key account is stored under that member with its key in their own Vault, serves only them, and is never the owner's", async () => {

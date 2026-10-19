@@ -31,6 +31,7 @@ import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, makeWake, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
+import { connectOwn } from "../../lib/own-account.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { rekeyLegacy } from "./rekey.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -319,6 +320,23 @@ export default {
     /** Tool results unwrapped; an error becomes a throw with its message. */
     const dutyApi = makeDuties({ db, call: (tool, input) => ctx.call(tool, input), emit: (e, p) => ctx.events.emit(e, p), slugOf: id => slugOf(id) });
     const use = async (tool, input) => { const r = await ctx.call(tool, input); if (r.error) throw new Error(r.error.message); return r.data; };
+    /**
+     * The OWN AI account a person's request to a teammate runs on (the owner's rule, 20 Oct 2026: every turn on the account of the person it is for), on any provider they hold one on, the one asked for first.
+     * Null for the owner, an automation (the duty wake, the integrator: the owner's own settings) and a request with nobody behind it: those run on the teammate's standing thread as before. Anyone else with
+     * none is refused in plain words, never run on the owner's or the agent's picked sign-in.
+     * @param {string | null | undefined} person @param {string | undefined} provider @param {string} who the teammate's role, for the words
+     */
+    const personAccount = async (person, provider, who) => {
+      const K = ctx.kernel;
+      if (!K || !person || person === "automation") return null;
+      const owner = typeof K.owner === "string" ? K.owner : "";
+      const canon = (/** @type {string} */ x) => (typeof K.canonicalPerson === "function" ? K.canonicalPerson(x) : x);
+      if (owner && canon(String(person)) === canon(owner)) return null;   // an owner that cannot be read: nobody is the owner (fails closed)
+      const r = await ctx.call("sessions.accounts.resolve", { provider: provider || "claude", person: String(person), any: true }).catch(() => null);
+      const a = r && !r.error ? r.data : null;
+      if (a && !a.synthetic && a.id && String(a.person || "") === String(person)) return a;
+      throw Object.assign(new Error(connectOwn(who)), { code: "no_account" });
+    };
 
     // ---------------------------------------------------------------- the project's identity: its record id
 
@@ -808,7 +826,11 @@ export default {
             const rotate = await shouldRotate(tm);
             // A request that names a model runs in a session made for it alone (another provider cannot resume this one), with the teammate's notes and last results carried in as for a rotation; the standing thread stays as it was.
             const over = modelChoice(req.model);
-            const first = !tm.thread || rotate || Boolean(over);
+            // A person's own request (not the owner's, not an automation's) runs on their own AI account, in a session made for it alone like a model's: the standing thread runs on the owner's sign-in and is never theirs.
+            // Resolved again now (the account may have gone since team.ask); none is a refusal, caught below as the request's failure.
+            const mineAcct = await personAccount(req.asker, over ? over.provider : undefined, tm.role);
+            const alone = Boolean(over) || Boolean(mineAcct);
+            const first = !tm.thread || rotate || alone;
             // A rotation's notes and last results ride in the first user turn, ahead of the
             // request itself, never in `append` (the system prompt): they are the teammate's own
             // past writing, so untrusted like any other request text (e2e review MEDIUM).
@@ -842,16 +864,22 @@ export default {
             const projectSlug = await slugOf(req.project);
             try {
               // The agent filling the teammate's role runs on the sign-in picked for it (as that agent's own launch does), so a member's request never falls back to the owner's login.
-              const creds = filler ? await use("agents.credentials", { agent: filler.name }).catch(() => null) : null;
+              // A person's own request carries none of the agent's sign-in: her account is named, and the session acts as her (run_as).
+              const creds = filler && !mineAcct ? await use("agents.credentials", { agent: filler.name }).catch(() => null) : null;
+              const onProvider = mineAcct ? String(mineAcct.provider || "claude") : null;
+              const modelPart = mineAcct
+                ? { provider: onProvider, ...(over && over.provider === onProvider && over.model ? { model: over.model } : !over && onProvider === "claude" && filler?.model ? { model: filler.model } : {}), ...(onProvider === "claude" && filler?.effort ? { effort: filler.effort } : {}) }
+                : over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) };
               t = await use("threads.launch", { agent, agent_kind: "teammate", project: projectSlug, purpose: "teammate", ...(req.asker ? { for_person: req.asker } : {}),
+                ...(mineAcct ? { auth: "ambient", account: String(mineAcct.id), person: String(req.asker), run_as: String(req.asker) } : {}),
                 ...(creds ? { auth: creds.auth, ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}), ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}) } : {}),
                 prompt: wrapped, name: agent, ...(worktreeDir ? { cwd: worktreeDir } : {}),
                 ...(first ? { append: preamble({ ...tm, project_name: projectSlug, charter: charterCurrent(agent)?.text || null, filler_character: filler?.instructions || null }) } : { resume: tm.thread }),
-                ...(over ? { provider: over.provider, ...(over.model ? { model: over.model } : {}) } : { ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) }) });
+                ...modelPart });
             } finally { early(); } // always unsubscribed, whether launch succeeded or threw (reviewer LOW, 20d0f121)
             const already = finishedEarly.has(t.id);
             ctx.events.emit("summon.thread", { request: req.id, teammate: agent, project: req.project, thread: t.id, reply_to: req.reply_to || null });
-            if (over) db.prepare("UPDATE team_requests SET thread = ? WHERE id = ?").run(t.id, req.id);
+            if (alone) db.prepare("UPDATE team_requests SET thread = ? WHERE id = ?").run(t.id, req.id);
             else setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
             if (already) { await onTurnEnded(); }
             else {
@@ -1392,9 +1420,11 @@ export default {
         }
         const inherited = callerTm ? ((reqById(callerTm.current_request || "") || {}).asker || null) : null;
         const forPerson = asker0 || inherited || null;
-        const filler0 = await fillerOf(tm).catch(() => null);
+        // a person's own request (anyone but the owner) runs on THEIR own AI account, in a session of its own (never the teammate's standing thread, which is on the owner's sign-in); one with none is refused here
+        const mineAcct = await personAccount(forPerson, choice ? choice.provider : undefined, i.to).catch((/** @type {any} */ e) => { throw Object.assign(new Error(`${e.message} Nothing was queued.`), { code: e.code || "no_account" }); });
+        const filler0 = mineAcct ? null : await fillerOf(tm).catch(() => null);
         const creds0 = filler0 ? await use("agents.credentials", { agent: filler0.name }).catch(() => null) : null;
-        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
+        const checked = await use("threads.launch-check", { agent: tm.agent, agent_kind: "teammate", ...(forPerson ? { for_person: forPerson } : {}), ...(mineAcct ? { account: String(mineAcct.id), person: String(forPerson) } : {}), ...(creds0 && creds0.env ? { env: creds0.env } : {}), ...(creds0 && creds0.fallback ? { fallback: creds0.fallback } : {}) });
         const id = queueRequest({ teammate: tm.agent, project, from_kind, from, reply_to: meta.thread || null, via, text: i.text, refs: i.refs, priority, key: i.key, model: choice ? choice.label : null, asker: (checked && checked.asker) || forPerson || null });
         if (i.wait) {
           const done = await new Promise(resolve => {

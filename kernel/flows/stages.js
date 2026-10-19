@@ -5,7 +5,9 @@
 // holds no permission of its own: every call runs under the module's chain, [the person who installed the Kit, service:stages], so the tasks
 // it assigns carry that person as the assigner and never exceed what they could do. A task that puts an AGENT to work (as doer, checker, reviewer
 // or approver) is assigned instead by the person whose write moved the record into the stage (`chainFor`, [that person, service:flows]): the
-// agent's job runs as whoever assigned it, on their own AI account, never on the installer's.
+// agent's job runs as whoever assigned it, on their own AI account, never on the installer's. Where that port is wired (the daemon), a write with no person on
+// it puts no agent to work: the task is not made and the stage says so. The mover is kept on the gate (gate.by), carried through the automatic move on, and
+// an early move is the act of the person who makes it.
 //
 //   const stages = createStages({ kernel, catalog, chain, ports, clock, emit });
 //   kernel events -> stages.onEvent(event)
@@ -146,7 +148,7 @@ export function createStages(o) {
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
-    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]), by: /** @type {string | null} */ (null) };
+    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]), by: /** @type {string | null} */ (e.by || null) };
     // A task with a checker, an approver or a reviewer that could not be made holds the stage: the stage never settles on the tasks that were made while the check that was meant to stand in front of it is missing.
     const held = (/** @type {any} */ t, /** @type {string} */ why) => { if (t.checker || t.approver || t.reviewer) ent.unmade.push({ title: t.title, why }); };
     entries.set(key, ent);
@@ -156,7 +158,6 @@ export function createStages(o) {
     const chain = o.chain();
     // A task that puts an agent to work is the mover's to assign (the agent's job runs as them); without a mover it is the module's, as before.
     const moverChain = e.by && o.chainFor ? o.chainFor(e.by) : null;
-    ent.by = e.by || null;
     // The stage owner (role:x or person:x) is told when one of its tasks is not done by its due offset: the task's escalate_to, read by the planner.
     const data = (await recordData(e.type, e.id)) || {};
     const owner = stage && stage.owner ? await actorFor(stage.owner, space, { record: e.urn, type: e.type, stage: e.stage }) : null;
@@ -186,6 +187,11 @@ export function createStages(o) {
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
       const agentAt = [spec.doer, spec.checker, /** @type {any} */ (spec).reviewer, /** @type {any} */ (spec).approver].some((/** @type {any} */ a) => a && a.kind === "agent");
+      // No person moved the record in (the home's own services wrote it): no agent is put to work on nobody's account.
+      if (agentAt && o.chainFor && !moverChain) {
+        const why = "no person moved this record into the stage, so no agent is put to work on it";
+        emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why }); skipped.push({ task: t.title, why }); held(t, why); continue;
+      }
       try { task = await o.kernel.ask.request(agentAt && moverChain ? moverChain : chain, spec, { idem: `stage:${key}:${t.title}` }); }
       catch (err) {
         emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` });
@@ -220,7 +226,7 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, ...(ent.by ? { by: ent.by } : {}), unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -240,7 +246,7 @@ export function createStages(o) {
       return;
     }
     if (!ent || ent.advanced || !ent.tasks.length) return;
-    const chain = o.chain();
+    const chain = o.chain();   // reading the tasks and moving the record on are the module's; only the next stage's agent tasks are the mover's (carried below)
     const rows = [];
     for (const t of ent.tasks) { const row = await o.kernel.ask.get(chain, t.id); if (!row) return; t.state = row.state; rows.push({ ...t, state: row.state }); }
     // A task the kernel calls done counts only when its checklist holds (s2): the gate looks, the doer's word is not enough.
@@ -249,7 +255,7 @@ export function createStages(o) {
       const t = ent.tasks.find(/** @param {any} x */ x => x.id === r.id);
       if (!DONE.has(r.state) || !t || !t.checklist) continue;
       const data = (await recordData(ent.type, ent.id)) || {};
-      const ev = await evalChecklist(t.checklist, { data, since: t.since || 0, now: now(), seen, memo: t.memo, ...(o.gates && o.gates.read ? { read: (/** @type {any} */ spec) => /** @type {any} */ (o.gates).read(spec, o.chain()) } : {}) });
+      const ev = await evalChecklist(t.checklist, { data, since: t.since || 0, now: now(), seen, memo: t.memo, ...(o.gates && o.gates.read ? { read: (/** @type {any} */ spec) => /** @type {any} */ (o.gates).read(spec, chain) } : {}) });
       t.memo = ev.memo; t.due = ev.due;
       if (!ev.ok) {
         r.state = "checking"; t.state = "checking"; listed = true;
@@ -343,7 +349,7 @@ export function createStages(o) {
     for (const run of await o.gates.list()) {
       const g = run.gate;
       if (!g || entries.has(g.key)) continue;
-      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next };
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next, ...(typeof g.by === "string" && g.by ? { by: g.by } : {}) };
       entries.set(g.key, ent);
       latest.set(`${g.urn}|${g.stage}`, g.key);
       for (const t of ent.tasks) taskEntry.set(t.id, g.key);
@@ -383,15 +389,19 @@ export function createStages(o) {
       if (!ent.next) throw fail("bad_state", "this is the last stage; there is nowhere to move it");
       if (!(await mayAdvance(ent, who))) throw fail("not_allowed", "only the stage's owner or an admin moves a record on early");
       if (!reason || !String(reason).trim()) throw fail("bad_input", "reason is required: say why it moves on early");
+      // the early move is the act of the person who makes it: the next stage's tasks are theirs to assign (the person who moved it in when the mover is not a person)
+      const mover = who && who.kind === "person" && who.id ? String(who.id) : ent.by;
       const chain = o.chain();
       const cur = await o.kernel.records.get(chain, ent.type, ent.id);
       if (!cur || cur.data[fieldOf(cur.data)] !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
-      await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` });
+      if (mover) carried.set(`${ent.urn}|${ent.next}`, mover);
+      try { await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` }); }
+      finally { carried.delete(`${ent.urn}|${ent.next}`); }
       ent.advanced = true;
       await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
       await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
       emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
-      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key) });
+      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key), ...(mover ? { by: mover } : {}) });
       return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
     });
   }
