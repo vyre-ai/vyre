@@ -80,6 +80,8 @@ export const MIGRATIONS = [
   // Design B (rc.4): this device came in because the person's identity chain lists it, not because the owner was present: { identity, entry, seq, at }. Never owner_paired. Whether it is `limited` is read from the chain at each call
   // (core/relay/chain-admit.js limitedOf), and a limited device is refused the device-admin tools at the registry (core/modules/device-admin.js).
   `ALTER TABLE relay_devices ADD COLUMN via_chain TEXT;`,
+  // 1: this device paired from a browser (its hello said kind web), whatever row kind the pairing then made. Its presence key is the browser's own WebCrypto key, which is not a phone: the no-device rule ignores it (core/presence).
+  `ALTER TABLE relay_devices ADD COLUMN from_browser INTEGER NOT NULL DEFAULT 0;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -453,11 +455,11 @@ export default {
       // confirmed ring, so a test device is the owner's like the real one. There is no bearer code any more: nothing here is paired by a secret a stranger could hold.
       const ownerAct = match && (Boolean(match.window) || match.gate === "phone" || match.gate === "ring" || (match.via === "ring" && !match.gate));
       const ownerPaired = ownerAct ? JSON.stringify({ by: "owner", at: now(), path: match.gate ? `gate:${match.gate}` : match.window ? "window" : "ring" }) : null;
-      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired, old_code) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?, 0)
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage, owner_paired, old_code, from_browser) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?, ?, 0, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
-          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired, old_code = 0`)
-        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage, ownerPaired);
+          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage, owner_paired = excluded.owner_paired, old_code = 0, from_browser = excluded.from_browser`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage, ownerPaired, hello.kind === "web" ? 1 : 0);
       // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
       // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
       const pkey = hello.passkey;
