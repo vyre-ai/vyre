@@ -53,6 +53,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(daemon): the ask-door test of forged asks from fresh channels now says what the door does. They fill the box-wide lookup cap (50 a minute), so a valid ask in that minute waits for the next one; they do not spend the Space's three an hour, which three valid asks a minute later still get (the fourth is refused by the Space-wide cap). The door's code is unchanged.
 - fix(first run): a page with no daemon (the Mac window with no vyred, the hosted web app) made its identity's device entry with no key-agreement point (`agree`), so no chat could be wrapped to the device ("This device isn't ready for private chats yet") and the box listed no device. The genesis entry now carries the point, and an identity made the old way is repaired when it is unlocked: the device signs the chain's own `agree` op for its own entry and the directory appends it, once.
 - fix(roles): the New role dialog starts a role with "Work with files" and "Use memory" on, which the box refuses for a role that starts from Member (a Member holds no drive or memory-filing action), so no role could be made at all. A new role now starts with the switches a Member has (see, create, change, tasks, flows), and the screen's own list of admin-only switches is the catalogue's (files, memory, people, rules, invite, customize, kits, services, reveal). test/new-role-default.test.js makes a role from the dialog's default and holds the two lists together.
 
