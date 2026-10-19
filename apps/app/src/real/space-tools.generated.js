@@ -25,6 +25,7 @@ export const TOOLS_WITH_SPACE = [
  "files.drive.restore",
  "files.drive.space.delete",
  "files.drive.space.list",
+ "files.drive.space.mkdir",
  "files.drive.space.move",
  "files.drive.space.read",
  "files.drive.space.rename",

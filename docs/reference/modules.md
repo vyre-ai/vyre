@@ -43,7 +43,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`documents`](#documents) | `core/documents` | `box` | 13 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 73 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 74 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 52 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 18 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 19 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 127 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 128 | 35 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 15 | 0 | none |
@@ -108,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 222 | 63 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 223 | 63 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -430,7 +430,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [73](tools.md#files), 1 of them only for other modules
+- Tools: [74](tools.md#files), 1 of them only for other modules
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Needs vault: `dropbox`
@@ -548,6 +548,8 @@ Inbound webhooks from the public internet: one route at a time, each checked by 
 - Tools: [6](tools.md#hooks)
 - Emits: [3 events](events.md#hooks)
 - Shows on: capsule, cli, deck
+- Needs daemon: `flowsHost`
+- Needs tools: `vault.make-hook-secret`
 - Needs vault: `per-route`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -1020,8 +1022,8 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [127](tools.md#spaces), 37 of them only for other modules
-- Emits: [34 events](events.md#spaces)
+- Tools: [128](tools.md#spaces), 37 of them only for other modules
+- Emits: [35 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
 
@@ -1179,7 +1181,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [222](tools.md#vault), 37 of them only for other modules
+- Tools: [223](tools.md#vault), 38 of them only for other modules
 - Emits: [63 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.fill","vault.totp","vault.read","vault.call","vault.reveal","vault.edit","vault.rotate"]}]}`
