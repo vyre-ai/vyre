@@ -16,13 +16,9 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
-### The shared browser and a Linux user for each agent
+### The shared browser and a Linux user for each agent are opt-in
 
-Off until 0.6.2. Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used, even on a server that could run them. To try them on a server you run, set `computers.browse` to `browser` and `computers.agentUsers` to `true` in its config. Nothing else turns them on.
-
-### Downloads in an agent's computer
-
-A file an agent's Chrome downloads may not land in the folder the agent reads from, or may not be readable by the agent, and the folder the proof expects (the browser's own) is not the one computerd accepts today (the agent's Downloads). The proof reports these four checks (the two download-path checks, the landing and the read) as known failures; the fix is in 0.6.2. Until then, have the agent fetch the file by its address instead of through a download.
+Each agent that has a computer gets its own, with its own screen and its own Chrome. The one shared browser on the space's computer, and a separate Linux user for each agent on it, are not used unless you turn them on in a server's config: set `computers.browse` to `browser` and `computers.agentUsers` to `true`. In 0.6.2 the service that makes those users (agentd) starts correctly. With `computers.agentUsers` on, if agentd cannot start, the computer says so and agents wait; they never fall back to the shared browser. Nothing else turns the shared browser on.
 
 ### A member's own AI account in chats
 
@@ -203,3 +199,19 @@ Chrome reserves far more virtual memory than it uses and does not start under a 
 What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
 
 Owner: comp6 with sec53.
+
+## The Mac app is ad-hoc signed
+
+Until the Mac app has Apple signing, it has no Touch ID approvals. An approval needs a paired phone; while no phone is paired, the app needs none and Settings > Privacy says "Approvals: none needed until you pair a phone". The GitHub sign-in in the Mac app may not finish: its return page opens in the browser, not the app window.
+
+What to do: pair a phone in Settings to approve from it, and use your username and password in the Mac app.
+
+Owner: app53 and the release lead, until Apple signing.
+
+## A flood of forged asks to join can keep real asks waiting
+
+Asking to join a Space by its address checks a person's identity with the names directory, and those lookups are capped at fifty a minute for the whole server so a flood cannot overload the directory. A flood of forged asks from free relay channels can fill that cap, so while it lasts a real ask is refused as rate limited and works in a later minute. Nothing is shown to the asker or the owner that they should not see, and no one is moved across a Space. Caps by network address are the relay's job.
+
+What to do: ask again a minute later. The owner can turn "Let people ask to join" off while a flood lasts.
+
+Owner: app53 with sec53. Planned: counting lookups for each identity, or keeping a share of them for identities that already hold an invite (team/BACKLOG.md).
