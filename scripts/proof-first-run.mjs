@@ -151,6 +151,9 @@ async function browserDriver(shared = null) {
       const tag = await el.evaluate((/** @type {any} */ n) => n.tagName).catch(() => "");
       if (tag === "SELECT") { await el.selectOption({ label: option }).catch(async () => { await el.selectOption({ label: new RegExp(option) }); }); return; }
       await el.click({ timeout: 15_000 });
+      // An option reads "Feed: New items in ..." and a substring match (case-blind) finds other text first: take the entry that starts with the label.
+      const starts = page.getByText(new RegExp("^" + option + "(:|$)")).first();   // the options are plain words
+      if (await starts.count()) { await starts.click({ timeout: 15_000 }); return; }
       await page.getByText(option, { exact: false }).first().click({ timeout: 15_000 });
     },
     /** Fill the field that has this placeholder (two fields can share a label on one screen). */

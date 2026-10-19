@@ -118,7 +118,8 @@ export async function ownerWalkReal(c) {
     if (!threadPath) pending("no thread was opened");
     await screen(threadPath, /Say hello|Message|Juno|Assistant/, "the thread");
     await fillAny(["Message Juno", "Message"], "Please answer with the single word: ready");
-    await press(["Send"]);
+    // While the first answer is still streaming the button is a stop square, so wait for Send to come back (up to 2 minutes).
+    await until(async () => { try { await press(["Send"]); return true; } catch { return false; } }, 120_000, "the Send button");
     const before = (await text()).length;
     let t = "";
     try { t = await until(async () => { const x = await text(); return x.includes("single word") && x.length > before + 8 && !/Thinking|Working on it|Sending/.test(x) ? x : ""; }, 240_000, "the Assistant's reply"); }
