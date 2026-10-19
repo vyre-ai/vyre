@@ -484,3 +484,21 @@ test("a page with no key of its own reads a person's list from the directory, ch
   assert.ok(list.every((e) => e.self === false), "no entry is this page's own");
   await assert.rejects(() => publicEntries({ directory: d.base, id: "per_zzzzzzzzzzzzzzzzzzzzzzzzzz", fetch: d.fetch, now: d.now() }), (e) => e.code === "not_found");
 });
+
+test("the name typed in first run is kept beside the username, and identity.status gives it to Account; a bad or missing one leaves the username alone", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await host.call("onboard.person.create", { username: "pia", password: PASSWORD, confirm: PASSWORD, display: "  Pia Walker " });
+  const st = await host.call("identity.status");
+  assert.deepEqual([st.username, st.display], ["pia", "Pia Walker"]);
+  assert.equal(store.peek().display, "Pia Walker");
+  await host.call("identity.lock");
+  assert.equal((await host.call("identity.status")).display, "Pia Walker", "kept across a lock");
+
+  for (const [i, bad] of [undefined, "", "   ", "12345", "a\nb", "x".repeat(61), 7].entries()) {
+    const h = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+    await h.call("onboard.person.create", { username: `quin${i}`, password: PASSWORD, confirm: PASSWORD, display: bad });
+    assert.equal((await h.call("identity.status")).display, undefined, JSON.stringify(bad));
+  }
+});

@@ -431,7 +431,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     return (
       <FlowStep steps={steps} onBack={back} title="Make your password." lead="It locks your account and your vault. Nobody can reset it for you, not even us, so pick one you'll remember."
         failure={failure} primary={{ label: busy ? "Creating..." : "Create", disabled: !nameOk || !passOk || busy, loading: busy, onPress: () => void run(async () => {
-          const r = await createPerson({ username, password, confirm });
+          const r = await createPerson({ username, password, confirm, display: displayNameOf(first, last) });
           if (!r.ok) { setFailure(r.message); return; }
           if (r.already) { setUsername(r.username || usernameOf(username)); go(afterRecovery({ path, heldInvite: review?.link, skipAi: noDaemon })); return; }
           setRecovery(typeof r.recoveryKey === "string" ? r.recoveryKey : "");

@@ -39,7 +39,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 
 /**
  * @typedef {{ id: string, name: string, role: string, server: string | null, paired?: { box: string, route: string, relay: string, name: string } | null }} KeptSpace
- * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, display?: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  * The GitHub leg of sign-in, bound in the app (host/index.ts): `start` runs the GitHub sign-in (src/real/github.ts signInWithGithub: who GitHub says this is, and the session the relay holds), `assert` asks the relay for a short assertion
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
@@ -389,7 +389,7 @@ export function createHost(o) {
       return { exists: Boolean(k), username: k ? k.username : null, id: k ? k.id : null, current: null, spaces: [], ...(k ? personRoutes(k.username) : {}) };
     },
 
-    "onboard.person.create": async ({ username, password, confirm }) => {
+    "onboard.person.create": async ({ username, password, confirm, display }) => {
       const name = usernameOf(username);
       if (!name) throw bad("A username is lowercase letters, digits and hyphens, 3 to 20 characters, starting with a letter.");
       if (!passwordOk(password)) throw bad("Use a password of at least 12 characters, and not a common one.");
@@ -406,7 +406,10 @@ export function createHost(o) {
       trail(`agree ${agree ? "in the genesis entry" : "none on this page"}`);
       const made = await claimIdentity({ name, code, base, key, fetch: f, ...(agree ? { agree } : {}), ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
       const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: null, ...(o.kdf ? { kdf: o.kdf } : {}) });
-      await o.store.save({ master, username: name, id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
+      // The name the person typed (first and last), kept beside the username: Account shows it, with the username under it. One line of letters and marks, up to 60.
+      const shown = typeof display === "string" ? display.trim() : "";
+      const given = shown && shown.length <= 60 && /\p{L}/u.test(shown) && !/[\u0000-\u001f]/.test(shown) ? shown : "";
+      await o.store.save({ master, username: name, ...(given ? { display: given } : {}), id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
       held = seed;
       return { username: name, id: made.id, ...personRoutes(name), recoveryKey: made.recoveryCode, once: true, already: false };
     },
@@ -414,7 +417,7 @@ export function createHost(o) {
     "identity.status": async () => {
       const k = await o.store.load();
       if (!k) return { exists: false, unlocked: false, username: null, id: null, url: null, private: true, github: null, needsMigration: false };
-      return { exists: true, unlocked: held !== null, username: k.username, id: k.id, url: personRoutes(k.username).route, private: true, github: null, needsMigration: false };
+      return { exists: true, unlocked: held !== null, username: k.username, ...(k.display ? { display: k.display } : {}), id: k.id, url: personRoutes(k.username).route, private: true, github: null, needsMigration: false };
     },
 
     "identity.unlock": async ({ password, recovery }) => {

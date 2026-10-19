@@ -19,8 +19,8 @@ export const identity = async (): Promise<Identity> => {
     const own = await source.identity();
     return own.exists ? own : ((await readOnlyIdentity(call, own)) as Identity);
   }
-  const s = (await getHost().call("identity.status")) as { exists?: boolean; username?: string | null; id?: string | null };
-  return s.exists ? { exists: true, name: s.username ?? undefined, id: s.id ?? undefined } : { exists: false };
+  const s = (await getHost().call("identity.status")) as { exists?: boolean; username?: string | null; display?: string; id?: string | null };
+  return s.exists ? { exists: true, name: s.username ?? undefined, ...(s.display ? { label: s.display } : {}), id: s.id ?? undefined } : { exists: false };
 };
 export const entries = async (): Promise<Entry[]> => {
   if (!hostWanted()) {

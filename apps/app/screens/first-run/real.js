@@ -27,10 +27,10 @@ export async function personStatus() {
   catch (e) { return fail(e); }
 }
 
-/** @param {{ username: string, password: string, confirm: string }} input */
+/** @param {{ username: string, password: string, confirm: string, display?: string }} input */
 export async function createPerson(input) {
   if (MOCK) return mock.createPerson(input);
-  try { return done(await tool("onboard.person.create", { username: input.username, password: input.password, confirm: input.confirm })); }
+  try { return done(await tool("onboard.person.create", { username: input.username, password: input.password, confirm: input.confirm, ...(input.display ? { display: input.display } : {}) })); }
   catch (e) { return fail(e); }
 }
 
