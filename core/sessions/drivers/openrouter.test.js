@@ -134,7 +134,7 @@ async function oneShot(t, handler) {
     r.write({ type: "user", message: { role: "user", content: "hi" } });
     for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
     await r.stop();
-    return { result: got.find(m => m.type === "result"), said: got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join("") };
+    return { result: got.find(m => m.type === "result"), said: got.filter(m => m.type === "stream_event" && m.event.delta).map(m => m.event.delta.text).join("") };
   };
   return { seen, turn };
 }
