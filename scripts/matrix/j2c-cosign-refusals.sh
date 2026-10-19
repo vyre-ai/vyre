@@ -110,7 +110,7 @@ refused 12-moving-tag "$R1" 'not pinned by digest' unpinned 'Nothing was install
 # the baseline: a real install with data
 serve "$BOX" 18180
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
-if VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
+if VYRE_STORE=sqlite VYRE_PROOF_BUILTIN_STORE=1 VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
 else rec B1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
 seedfiles
 seen && mem && rec B2-seed ok || rec B2-seed false "seed not readable"
