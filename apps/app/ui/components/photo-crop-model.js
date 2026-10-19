@@ -116,7 +116,7 @@ export function stripMeta(b) {
     /** @type {Uint8Array[]} */ const chunks = [];
     let i = 12;
     while (i + 8 <= b.length) {
-      const len = u32le(b, i), t = tag(b, i), end = i + 8 + len + (len & 1);
+      const len = u32le(b, i + 4), t = tag(b, i), end = i + 8 + len + (len & 1);
       if (i + 8 + len > b.length) return b;
       if (t !== "EXIF" && t !== "XMP ") {
         const c = b.slice(i, Math.min(end, b.length));
