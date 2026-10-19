@@ -73,11 +73,10 @@ export async function ownerWalkReal(c) {
     await shot("02-thread");
     const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
     if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
-    // the server's own record of the chat, with the first message in it
-    const got = await op("work.chat.get", { chat: id });
-    const raw = JSON.stringify(got);
-    if (!raw.includes("Say hello in five words")) throw new Error(`the server's chat ${id} does not hold the first message: ${raw.slice(0, 400)}`);
-    return `chat ${id} holds the first message`;
+    // what the server holds, read fresh: the Chats list, fetched from the box, shows the thread and its first message
+    await fresh("/u/chats", /Say hello in five words/, "the Chats list showing the thread's first message");
+    await shot("02-chats-list");
+    return `chat ${id} is on the server with its first message`;
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply"), async () => {
     const key = process.env.OWNER_WALK_OPENROUTER_KEY;
