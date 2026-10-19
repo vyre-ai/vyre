@@ -2,6 +2,11 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(ui): menus, selects and pickers are readable in dark mode again. On the web they are portalled to <body>, where the theme's custom properties come only from <html>; the unlock cover mounts its own ThemeProvider, and when it closed its cleanup removed every property from <html> while the app's provider stayed up, so item text drawn with a class (text-text) had no colour and fell back to dark on the dark panel. The providers now share <html> through mirrorVars (ui/lib/root-vars.js): one that goes away hands it back to the one under it. Menu items take the theme's colour as a style too. Test: apps/app/ui/components/portal-colour.test.js.
+- feat(ui): a Select with more than 15 options (or `search`) opens a sheet with a search field: type to filter, arrows to move, Enter to pick. The time zone list in Look and name gets it.
+
 ## 0.6.2
 
 - fix(agents): the Agents list says Working, Needs you or Idle from what agents.list reports the agent doing, not "Running now" for every agent. A new agent on an API key with a budget saves the key as its fallback, so its spend is counted against the budget. "New agent" on the Agents page opens an Engineer thread, "New chat" on the Engineer opens the one shared Engineer chat, Share opens the agent's Overview, and New thread on an agent's page makes the chat on this device and opens it. The "What wakes" section on an agent's page is gone: watchers.list carries no link to an agent, so it showed every watcher. A to-do a person gives an agent now wakes the agent (a person's own to-do still wakes nothing), and a reviewer or approver that could not be woken hands the person who gave the task a note saying why.

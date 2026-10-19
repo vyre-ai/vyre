@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { PortalHost } from "@rn-primitives/portal";
 import { ToastHost } from "./components/Toast";
 import { themeVars, typeStyle } from "./theme-vars.js";
+import { mirrorVars } from "./lib/root-vars.js";
 
 export type SpaceTheme = { accent?: string; hex?: string; tint?: string; thex?: string; density?: string; font?: string; corners?: string };
 export type PersonTheme = { theme?: "dark" | "paper" | "system"; density?: string | null; font?: string | null; reducedMotion?: boolean; largerText?: boolean };
@@ -49,14 +50,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [space, person, system, phone]);
   const style = useMemo(() => vars(ctx.map), [ctx]);
   // The web's dialogs and menus are portalled to <body>, outside this view, so they would lose every custom property. Mirror them on the root element.
+  // Through mirrorVars, never set and removed here: a nested provider (the unlock cover's) that goes away must hand <html> back to the one under it, not wipe it.
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const root = document.documentElement;
-    const names = Object.keys(ctx.map);
-    for (const k of names) root.style.setProperty(k, String(ctx.map[k]));
+    const release = mirrorVars(document.documentElement.style, ctx.map);
     // The splash of the next load (public/splash.html) follows the person's theme, not the system's.
     try { localStorage.setItem("vyre.scheme", ctx.resolved.scheme); } catch { /* private mode: the splash follows the system */ }
-    return () => { for (const k of names) root.style.removeProperty(k); };
+    return release;
   }, [ctx]);
   return (
     <ThemeCtx.Provider value={ctx}>
