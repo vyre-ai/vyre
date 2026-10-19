@@ -117,7 +117,23 @@ export function createDefs({ kernel, dir, db, log = () => {}, onGone = () => {} 
   return Object.freeze({
     /** Bring records and folders into step. Safe to call often. @returns {Promise<{ created: number, updated: number, written: number, removed: number }>} */
     sync() { const p = busy.then(run, run); busy = p.catch(() => {}); return p; },
-    /** A teammate's duty is deleted with its folder, so its definition goes too. @param {string} name */
+    /**
+     * Write one definition record (watchers.write and watchers.revise, for an agent whose own session cannot write the folder), then bring the folder into step from it: the record is the definition.
+     * @param {string} name @param {string} spec watcher.json as text @param {string} code watch.js
+     */
+    put(name, spec, code) {
+      const p = busy.then(async () => {
+        const rec = await byName(name);
+        if (rec === undefined) throw new Error("the watcher definitions could not be read; try again");
+        const fields = fieldsOf(name, spec, code);
+        if (rec) await kernel.records.update(chain(), DEF, rec.id, fields, rec.version);
+        else await kernel.records.create(chain(), DEF, fields);
+        return run();
+      });
+      busy = p.catch(() => {});
+      return p;
+    },
+    /** A teammate's duty, or an agent's own watcher, is deleted with its folder, so its definition goes too. @param {string} name */
     async forget(name) {
       const recs = await allRecords(); const rec = recs.get(name);
       if (rec) await kernel.records.remove(chain(), DEF, rec.id, rec.version);

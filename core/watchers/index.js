@@ -1,8 +1,8 @@
 // @ts-check
 // watchers: the watcher runtime, as a module (docs/SPEC.md, section 7.6).
 //
-// A runtime, not a set of integrations: Claude writes each watcher through the write-a-watcher
-// skill, and this runs it. Projects, the vault and Memory are used through ctx and are not listed
+// A runtime, not a set of integrations: an agent sets up its own watcher when a person asks it to (watchers.write, the
+// write-a-watcher skill), and this runs it. Projects, the vault and Memory are used through ctx and are not listed
 // under requires, so the runtime starts without them: a watcher that needs a vault item fails its
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
@@ -13,10 +13,11 @@ import { ShownLog } from "./shown.js";
 import { scopeFor } from "./scope.js";
 import { PRESET_KINDS } from "./presets.js";
 import * as folderMod from "./folder.js";
-import { isAgent, isPerson } from "../../lib/caller.js";
+import { isAgent, isPerson, agentName } from "../../lib/caller.js";
+import { connectOwn } from "../../lib/own-account.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
-import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS, WAITING } from "./runtime.js";
 import { runOnce } from "./run.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -42,7 +43,7 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
 /** A model session (mcp) and the harness: the project-scoped tools below name them, since mustSee already limits a model to its granted projects. */
 const MODEL = ["mcp", "harness"];
 
-/** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. */
+/** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. An agent manages its own watchers with watchers.own.*. */
 function owned(name, caller) {
   if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
   if (!isPerson(caller)) throw Object.assign(new Error("deleting, running or resuming a watcher is the person's; an agent asks them"), { code: "denied" });
@@ -74,6 +75,27 @@ export default {
     const sync = () => (defs ? defs.sync().catch(e => { ctx.log(`watchers: definitions not synced (${e && e.message})`); }) : Promise.resolve());
     const SYNCED = new Set(["watchers.list", "watchers.test", "watchers.card", "watchers.create", "watchers.preset", "watchers.delete", "watchers.duty.create", "watchers.duty.update", "watchers.duty.delete"]);
     const tool = (/** @type {string} */ name, /** @type {any} */ spec) => ctx.tool(name, defs && SYNCED.has(name) ? { ...spec, run: async (/** @type {any} */ i, /** @type {any} */ m) => { await sync(); const r = await spec.run(i, m); void sync(); return r; } } : spec);
+    const K = ctx.kernel || null;
+    const canon = (/** @type {string} */ x) => (K && typeof K.canonicalPerson === "function" ? K.canonicalPerson(x) : x);
+    /** Whether a person is the Space's owner. No kernel: one person, the owner. @param {string|null|undefined} person */
+    const isOwnerPerson = person => (!K ? true : Boolean(person && K.owner && canon(String(person)) === canon(String(K.owner))));
+    /** The person a call is for: its chain's first person hop, else the owner (the owner's own surfaces and the home's services). Null when the chain cannot be read. @param {any} meta */
+    const personOf = async meta => {
+      if (!K || typeof K.chain !== "function") return null;
+      try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : (K.owner ? String(K.owner) : null); }
+      catch { return null; }
+    };
+    /**
+     * The account a watcher's model question runs on: the asker's own (any provider, the sessions module's one resolution), else the owner's own default for the owner. Anyone else with none is refused in plain words.
+     * @param {string|undefined} person @param {string} agent
+     */
+    const askerAccount = async (person, agent) => {
+      if (!person || isOwnerPerson(person)) return person ? { person } : {};
+      const r = await ctx.call("sessions.accounts.resolve", { provider: "claude", person, agent, any: true }).catch(() => null);
+      const acct = r && !r.error ? r.data : null;
+      if (acct && !acct.synthetic && acct.person === person && acct.id) return { person, account: String(acct.id), ...(acct.provider ? { provider: String(acct.provider) } : {}) };
+      throw new Error(connectOwn(agent));
+    };
     const rt = rtRef = new Runtime({
       db: ctx.store.db, dir: ctx.paths.watchers, defs,
       // Schedules run in the Space's time zone: the planner's configured zone, else the server's own.
@@ -81,23 +103,37 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       // A watcher that fires at a different time since schedules follow the Space's zone is told once, as a to-do in the planner.
       notice: text => ctx.call("planner.add", { kind: "todo", title: text.slice(0, 120), body: text }),
-      call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
+      // An agent's own watcher (`agent` set) reads what is lent to that agent: the vault checks the agent's grant, not a per-watcher one.
+      call: ctx.call, fetch: async (name, watcher, field, agent) => {
+        if (!agent) return ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) });
+        const r = await ctx.call("vault.release", { name, watcher, agent, ...(field ? { field } : {}) });
+        if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
+        return r.data && r.data.value;
+      },
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
-      ask: async (prompt, o) => {
+      ask: async (prompt, o = {}) => {
         // threads.quick, no tools (internal, module-only). Its cost reaches core/spend on its own, from the quick session's thread.finished.
-        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), timeout_ms: 30_000 });
+        // An agent's own watcher asks on the AI account of the person it runs for (any provider they hold one on), never the owner's for someone else.
+        const who = o && o.agent ? await askerAccount(o.person, o.agent) : {};
+        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), timeout_ms: 30_000, ...who });
         if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
         return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0, provider: r.data.provider };
       },
-      thread: async id => { const r = await ctx.call("threads.get", { thread: id, limit: 1 }); return r.data && r.data.thread ? { project: r.data.thread.project ?? null } : null; },
+      thread: async id => { const r = await ctx.call("threads.get", { thread: id, limit: 1 }); return r.data && r.data.thread ? { project: r.data.thread.project ?? null, agent: r.data.thread.agent ?? null } : null; },
+      // An agent's own watcher wakes that agent for the person who asked, in the chat it was asked in (the agents module checks the thread and the account).
+      wakeAgent: async w => {
+        const r = await ctx.call("agents.wake", { task: `watcher:${w.watcher}`, agent: w.agent, title: w.watcher, watcher: w.watcher, text: w.text, ...(w.person ? { approver: w.person } : {}), ...(w.thread ? { thread: w.thread } : {}) });
+        if (r.error) throw new Error(r.error.message || r.error.code || "agents.wake refused");
+        return r.data;
+      },
       post: async (thread, text, from) => { const r = await ctx.call("threads.post", { thread, text, kind: "watcher.item", from }); if (r.error) throw new Error(r.error.message || r.error.code || "threads.post refused"); },
       // A Google account is read by a watcher only against a person's grant of the account's vault item to this watcher (`vyre vault grant <item> watchers --watcher <name>`), as for any credential.
       googleItem: async account => { const r = await ctx.call("google.accounts", {}); const a = (Array.isArray(r.data) ? r.data : []).find(/** @param {any} x */ x => x.name === account); return a && a.auth && typeof a.auth.item === "string" ? a.auth.item : null; },
-      googleGranted: async (account, watcher) => {
+      googleGranted: async (account, watcher, agent) => {
         const r = await ctx.call("google.accounts", {}); const a = (Array.isArray(r.data) ? r.data : []).find(/** @param {any} x */ x => x.name === account);
         const item = a && a.auth && a.auth.item; if (!item) return false;
-        // the vault's own check, the one release makes: a grant to this module and exactly this watcher
-        const g = await ctx.call("vault.granted", { name: String(item), watcher });
+        // the vault's own check, the one release makes: a grant to this module and exactly this watcher, or for an agent's own watcher what is lent to that agent
+        const g = await ctx.call("vault.granted", { name: String(item), watcher, ...(agent ? { agent } : {}) });
         return Boolean(g.data && g.data.granted);
       },
       google: async input => { const r = await ctx.call("google.api", input); if (r.error) throw new Error(r.error.message || r.error.code || "the google module refused the request"); return r.data; },
@@ -112,15 +148,26 @@ export default {
     const projectOf = name => { const f = folderMod.read(ctx.paths.watchers, name); return f.spec ? f.spec.project : (rt.row(name) || {}).project || null; };
     const projectOfCwd = cwd => ctx.call("projects.of", { cwd }).then(r => (r.data && r.data.slug) || null);
     const projectOfThread = thread => ctx.call("threads.get", { thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.project) || null);
-    const mustSee = async (meta, name) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); if (!can(projectOf(name))) throw Object.assign(new Error(`no watcher ${name} (watchers.list shows them)`), { code: "not_found" }); };
+    /** The agent a model's call comes from: vyred's verified meta.agent, else the daemon-assigned claim in its label (L-1). Two that disagree are no one. @param {any} meta */
+    const callingAgent = meta => { const m = meta || {}; const v = typeof m.agent === "string" && m.agent ? m.agent : null, c = agentName(m.caller || ""); return v && c && v !== c ? null : v || c || null; };
+    /** An agent sees its own watchers wherever they file; anything else by project, as before. */
+    const visible = (meta, can, name, project) => { const own = rt.ownerAgent(name); return (own !== null && own === callingAgent(meta)) || can(project || null); };   // can(null) is true only for a caller that sees everything
+    const mustSee = async (meta, name) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); if (!visible(meta, can, name, projectOf(name))) throw Object.assign(new Error(`no watcher ${name} (watchers.list shows them)`), { code: "not_found" }); };
+    /** An agent's own watcher, for that agent's own call: the name checked, the owner checked, the caller a model session of that agent. */
+    const mustOwn = (meta, name) => {
+      const me = callingAgent(meta), own = rt.ownerAgent(String(name));
+      if (!me) throw Object.assign(new Error("watchers.own.* is for an agent managing its own watchers; a person uses watchers.pause, resume, run and delete"), { code: "denied" });
+      if (own !== me) throw Object.assign(new Error(own ? `${name} is ${own}'s watcher, not yours: only ${own} or a person manages it` : `${name} is not one of your watchers (watchers.list with agent shows yours)`), { code: own ? "denied" : "not_found" });
+      return me;
+    };
     const shown = new ShownLog();
     /** A card served to a thread is remembered as shown, with the hash it carried. */
     const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
 
     tool("watchers.list", {
-      description: "List watchers, drafts and turned-on ones, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed.",
-      input: { type: "object", properties: { project: { ...str, description: "only this project's watchers" } } },
-      run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
+      description: "List watchers, drafts and turned-on ones, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. An agent's own watchers also say the person each runs for.",
+      input: { type: "object", properties: { project: { ...str, description: "only this project's watchers" }, agent: { ...str, description: "only this agent's own watchers (an agent passes its own name to see the ones it set up)" } } },
+      run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(i.agent ? { agent: String(i.agent) } : {}); return { ...l, watchers: l.watchers.filter(w => visible(meta, can, w.name, w.project) && (!i.project || w.project === i.project)) }; },
     });
     tool("watchers.test", {
       // A dry run executes the watcher's code in the sandbox (network, a granted credential, a model call) and records the run; a model dry-runs its own project's watchers before it asks to turn one on (the event input is the person's, checked below).

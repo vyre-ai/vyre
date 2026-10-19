@@ -20,6 +20,8 @@ export const SOURCE_TOOLS = ["github.session.review"];
 const THREAD = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
 const KIND = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
+const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+const PERSON = /^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,120}$/;
 /** The longest a run may take, whatever watcher.json asks for. */
 export const MAX_TIMEOUT_S = 300;
 export const DEFAULT_TIMEOUT_S = 60;
@@ -27,11 +29,12 @@ export const DEFAULT_TIMEOUT_S = 60;
 /**
  * A watcher's spec. `on` and `where` are for schedule "event": the event type it runs on, and the
  * payload fields that must match for it to run (hook.received needs a route).
+ * owner { kind: "agent" } is a watcher an agent set up for itself when a person asked (watchers.write): it wakes that agent for that person, and its project is optional.
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number, memory?: boolean,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
  *   net: Record<string, { vault?: string, credential?: string, google?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, params: Record<string, any>|null, summary: { when: string, check?: string, do: string }|null,
- *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
+ *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|{ kind: "agent", agent: string, person?: string, thread?: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
 
 /**
@@ -48,14 +51,25 @@ export function read(root, name) {
   try { json = fs.readFileSync(path.join(dir, "watcher.json"), "utf8"); } catch { problems.push(`${path.join(dir, "watcher.json")} is missing`); }
   try { code = fs.readFileSync(path.join(dir, "watch.js"), "utf8"); } catch { problems.push(`${path.join(dir, "watch.js")} is missing`); }
   if (problems.length) return { dir, spec: null, hash: null, problems };
+  return { dir, ...checkFiles(name, json, code) };
+}
+
+/**
+ * The same checks on the two files' text, before anything is written (watchers.write checks what an agent passes this way).
+ * @param {string} name @param {string} json watcher.json as text @param {string} code watch.js
+ * @returns {{ spec: Spec|null, hash: string|null, problems: string[] }}
+ */
+export function checkFiles(name, json, code) {
+  const problems = [];
+  if (!NAME.test(String(name || "")) || name.length > 60) return { spec: null, hash: null, problems: [`"${name}" is not a watcher name: lowercase words joined by dashes, like harlow-invoices`] };
   let raw;
-  try { raw = JSON.parse(json); } catch (e) { return { dir, spec: null, hash: null, problems: ["watcher.json is not JSON: " + /** @type {Error} */ (e).message] }; }
+  try { raw = JSON.parse(json); } catch (e) { return { spec: null, hash: null, problems: ["watcher.json is not JSON: " + /** @type {Error} */ (e).message] }; }
   const spec = check(raw, name, problems);
   if (!/export\s+default\s+(async\s+)?function|export\s+default\s+async\s*\(|export\s*\{[^}]*\bas\s+default\b/.test(code)) {
     problems.push("watch.js must `export default async function watch({ vault, since, emit, log })`");
   }
   const hash = crypto.createHash("sha256").update(json).update("\0").update(code).digest("hex").slice(0, 32);
-  return { dir, spec: problems.length ? null : spec, hash, problems };
+  return { spec: problems.length ? null : spec, hash, problems };
 }
 
 /**
@@ -67,17 +81,21 @@ export function read(root, name) {
 function check(raw, name, problems) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) { problems.push("watcher.json must be an object"); return /** @type {any} */ (null); }
   if (raw.name !== name) problems.push(`watcher.json name "${raw.name}" must match its folder, "${name}"`);
-  if (typeof raw.project !== "string" || !raw.project.trim()) problems.push("watcher.json needs project: the slug of the project items file into (vyre projects lists them)");
+  const agentOwned = raw.owner && typeof raw.owner === "object" && raw.owner.kind === "agent";
+  // An agent's own watcher files its items for that agent; a project is optional (its items are then taught to no project's Memory).
+  if (agentOwned ? raw.project !== undefined && (typeof raw.project !== "string" || !raw.project.trim()) : (typeof raw.project !== "string" || !raw.project.trim())) problems.push(agentOwned ? "project, when given, is the slug of a project the items also file into" : "watcher.json needs project: the slug of the project items file into (vyre projects lists them)");
   // An event trigger: "on" names the event, "where" the payload fields it must carry. The
   // schedule is then "event", written or not.
   const on = raw.on === undefined ? null : raw.on;
   if (on !== null && (typeof on !== "string" || !KIND.test(on))) problems.push(`on "${on}" must be an event type like hook.received`);
   const where = checkWhere(raw.where, on, problems);
   const schedule = typeof raw.schedule === "string" ? raw.schedule.trim() : on !== null ? "event" : "";
-  if (!schedule) problems.push('watcher.json needs schedule: cron like "*/15 * * * *", "webhook", or an event to run on with on and where');
+  if (!schedule) problems.push('watcher.json needs schedule: cron like "*/15 * * * *", or an event to run on with on and where');
+  // Webhooks start Flows now (Flows, "A webhook is called"); a watcher reads a source on a schedule or on an event.
+  else if (schedule === "webhook") problems.push('schedule "webhook" is retired: a webhook starts a Flow. A watcher checks a source on a schedule, like "*/15 * * * *", or runs on an event with on and where');
   else if (on !== null && schedule !== "event") problems.push(`a watcher with on runs on that event; its schedule must be "event" or left out, not "${schedule}"`);
   else if (schedule === "event" && on === null) problems.push('schedule "event" needs on: the event type to run on, like hook.received');
-  else if (schedule !== "webhook" && schedule !== "event") { try { parse(schedule); } catch (e) { problems.push(/** @type {Error} */ (e).message); } }
+  else if (schedule !== "event") { try { parse(schedule); } catch (e) { problems.push(/** @type {Error} */ (e).message); } }
   if (raw.needs !== undefined && !(Array.isArray(raw.needs) && !raw.needs.length)) problems.push('needs is retired: a watcher never holds a credential. Name the host and the vault item under net, like { "net": { "api.example.com": { "vault": "billing-inbox" } } }, and Vyre attaches it to that host\'s requests');
   const needs = [];
   if (raw.emits !== undefined && (typeof raw.emits !== "string" || !KIND.test(raw.emits))) problems.push(`emits "${raw.emits}" must look like noun.past-verb, like invoice.seen`);
@@ -103,13 +121,14 @@ function check(raw, name, problems) {
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
   if (raw.act !== undefined && !owner) problems.push("act is for a teammate's duty or a watcher that wakes a session: it needs owner");
+  if (owner && owner.kind === "agent" && raw.act === false) problems.push("an agent's own watcher wakes its agent: leave act out");
   const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source", "memory"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under net`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) { if (h.vault) needed.add(h.vault); if (h.credential) needed.add(h.credential); }
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, memory: raw.memory !== false, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, memory: raw.memory !== false, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true || Boolean(owner && owner.kind === "agent"), emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
 }
 
@@ -133,8 +152,15 @@ export function checkOwner(owner, problems) {
   if (owner === undefined) return null;
   const o = /** @type {any} */ (owner);
   if (o && o.kind === "session" && typeof o.thread === "string" && THREAD.test(o.thread) && Object.keys(o).every(k => k === "kind" || k === "thread")) return { kind: "session", thread: o.thread };
+  // An agent's own watcher: the agent, the person it runs for and the chat it was asked in. watchers.write sets all three from the verified call, never from the agent's words.
+  if (o && o.kind === "agent") {
+    const ok = typeof o.agent === "string" && AGENT.test(o.agent) && (o.person === undefined || (typeof o.person === "string" && PERSON.test(o.person))) && (o.thread === undefined || (typeof o.thread === "string" && THREAD.test(o.thread)))
+      && Object.keys(o).every(k => ["kind", "agent", "person", "thread"].includes(k));
+    if (!ok) { problems.push('owner is { "kind": "agent", "agent": "<the agent>" }, set by watchers.write'); return null; }
+    return { kind: "agent", agent: o.agent, ...(o.person ? { person: o.person } : {}), ...(o.thread ? { thread: o.thread } : {}) };
+  }
   if (!o || o.kind !== "teammate" || typeof o.teammate !== "string" || !/^[a-z][a-z0-9-]{0,80}$/.test(o.teammate) || Object.keys(o).some(k => k !== "kind" && k !== "teammate")) {
-    problems.push('owner is { "kind": "teammate", "teammate": "<role>-<project>" } or { "kind": "session", "thread": "<the session\'s id>" }');
+    problems.push('owner is { "kind": "teammate", "teammate": "<role>-<project>" }, { "kind": "session", "thread": "<the session\'s id>" } or { "kind": "agent", "agent": "<the agent>" }');
     return null;
   }
   return { kind: "teammate", teammate: o.teammate };
@@ -159,11 +185,18 @@ function checkWake(raw, owner, problems) {
     if (!a || typeof a !== "object" || Array.isArray(a) || Object.keys(a).some(k => k !== "session") || typeof a.session !== "string" || !THREAD.test(a.session)) problems.push('about is { "session": "<the session\'s id>" }');
     else about = { session: a.session };
   }
+  const agentOwned = owner && owner.kind === "agent";
   if (raw.wake !== undefined) {
     const w = raw.wake;
     if (!w || typeof w !== "object" || Array.isArray(w) || Object.keys(w).some(k => k !== "maxPerDay") || (w.maxPerDay !== undefined && !(Number.isInteger(w.maxPerDay) && w.maxPerDay >= 1 && w.maxPerDay <= 20))) problems.push('wake is { "maxPerDay": 1 to 20 }');
     else wake = { maxPerDay: w.maxPerDay === undefined ? 5 : w.maxPerDay };
-    if (!about && !problems.some(p => p.startsWith("about"))) problems.push("wake needs about: the session it wakes");
+    if (!about && !agentOwned && !problems.some(p => p.startsWith("about"))) problems.push("wake needs about: the session it wakes");
+  }
+  // An agent's own watcher wakes its own agent, five times a day unless it says fewer or more (at most 20); it never names a session or a source of Vyre's.
+  if (agentOwned) {
+    if (raw.about !== undefined) problems.push("an agent's own watcher wakes its agent: leave about out");
+    if (raw.source !== undefined) problems.push("an agent's own watcher reads with its own code: leave source out");
+    return { about: null, wake: wake || { maxPerDay: 5 }, source: null };
   }
   if (about) {
     if (raw.act !== true) problems.push("a watcher that wakes a session needs act true");
