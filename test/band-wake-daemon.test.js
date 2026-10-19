@@ -32,7 +32,11 @@ test("the owner's words to an agent are instructions, a member's who does not us
   for (let i = 0; i < 100 && woke.length < (theirs ? 2 : 1); i++) await new Promise(r => setTimeout(r, 100));
   const w = (/** @type {string} */ id) => woke.find(x => x.task === id);
   assert.ok(w(mine.id), "the owner's task woke the agent");
-  assert.equal(w(mine.id).instructions, "OWNER-WORDS");
+  const u = await real("agents.uid", { name: "bandy" }, "module:vyred");
+  const hostChain = K.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: OWNER, path: "direct" });
+  const dec = await Promise.all(["agents.use", "agents.edit"].map(action => K.gateway.authorize({ chain: hostChain, action, resource: `vyre://${space}/agent/${u.data && u.data.uid}` }).then(d => d && d.effect, e => String(e.message))));
+  const t0 = await ask.get(ownerChain, mine.id);
+  assert.equal(w(mine.id).instructions, "OWNER-WORDS", JSON.stringify({ uid: u, dec, labels: t0.labels, by: t0.assigned_by, rf: t0.requested_for, w: w(mine.id) }));
   if (theirs) {
     assert.ok(w(theirs.id), "the member's task woke the agent");
     assert.equal(w(theirs.id).instructions, undefined, "a member who does not use the agent does not instruct it");
