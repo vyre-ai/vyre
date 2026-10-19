@@ -468,7 +468,7 @@ try {
     await look("Sites", "09-sites", /Nothing published|Publish a site|No sites yet|Your sites|Live|Draft/i, 60_000, async () => { await open("Sites", "/u/sites", false); });
   }, { needs: READY });
   await run.step(S("owner walk: Vault, Mine, opens"), async () => {
-    await look("Vault Mine", "10-vault-mine", /Nothing here|Make your own vault|is locked|Add (a|your|an)|No item|Add item/i, 60_000, async () => { await drv.go("/u/vault"); try { await drv.click("Mine"); } catch { /* it shows Mine already */ } });
+    await look("Vault Mine", "10-vault-mine", /Nothing here|Make your own vault|is locked|Add (a|your|an)|No item|Add item|\d+ items?, all healthy/i, 60_000, async () => { await drv.go("/u/vault"); try { await drv.click("Mine"); } catch { /* it shows Mine already */ } });
   }, { needs: READY });
   await run.step(S("owner walk: Agents, creating an agent succeeds"), async () => {
     await look("New agent form", "11-new-agent", /New agent/i, 60_000, async () => { await drv.go("/u/settings/assistants/new"); });
