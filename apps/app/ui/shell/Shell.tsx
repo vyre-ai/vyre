@@ -45,6 +45,8 @@ export type ShellProps = NavDef & {
   folded?: boolean;
   /** Opens search: the footer's search button. */
   onSearch?: () => void;
+  /** The foot's theme toggle chose a scheme: the caller saves it where Appearance keeps it (the shell itself only changes the look). */
+  onTheme?: (scheme: "dark" | "paper") => void;
   /** Lock the vault on this device (the account menu's Lock). */
   onLock?: () => void;
   /** The few latest chats, under the places: a short Recent list. Folded, it is not drawn. */
@@ -130,7 +132,7 @@ function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle
   const items = [
     { label: "Your profile and Assistant", onPress: () => p.onNavigate("/u/settings/account") },
     { label: "Appearance", onPress: () => p.onNavigate("/u/appearance") },
-    { label: resolved.scheme === "paper" ? "Use the dark theme" : "Use the light theme", onPress: () => useAppearance.getState().setPerson({ theme: resolved.scheme === "paper" ? "dark" : "paper" }) },
+    { label: resolved.scheme === "paper" ? "Use the dark theme" : "Use the light theme", onPress: () => { const next = resolved.scheme === "paper" ? "dark" : "paper"; useAppearance.getState().setPerson({ theme: next }); p.onTheme?.(next); } },
     ...others.map((s) => ({ label: `Switch to ${s.name}`, onPress: () => p.onSpace(s.id) })),
     ...(p.onLock ? [{ label: "Lock now", onPress: p.onLock }] : []),
     { label: folded ? "Expand sidebar" : "Collapse sidebar", onPress: toggle },

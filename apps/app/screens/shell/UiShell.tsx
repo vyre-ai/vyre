@@ -24,6 +24,7 @@ import { FindHost, openFind } from "../find/FindHost";
 import { startKeepingAppearance } from "../../src/state/keep-appearance";
 import { lockIdentity } from "../unlock/real.js";
 import { lockChanged } from "../../src/shell/lock-setting";
+import { setScheme } from "../settings/appearance";
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
 export function UiShell({ children }: { children: React.ReactNode }) {
@@ -102,7 +103,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
+    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />
