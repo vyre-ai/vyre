@@ -149,3 +149,14 @@ test("system: hand-back keeps its choices; shares flip between read only and rea
   await s.rename("  Atlas ");
   assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["computers.handback.set", { minutes: 5 }], ["files.drive.access", { name: "docs", mode: "rw" }], ["system.rename", { name: "Atlas" }]]);
 });
+
+test("the Wink card says a Space by its name, never by an id the app made", async () => {
+  const m = await import("./system-model.ts");
+  assert.equal(m.isMadeId("spc_zqvwc5w7zo5v"), true);
+  assert.equal(m.isMadeId("per_ab12"), true);
+  assert.equal(m.isMadeId("tpl_x1"), true);
+  assert.equal(m.isMadeId("tess"), false);
+  const w = m.winkCard({ spaces: [{ id: "spc_zqvwc5w7zo5v", name: "spc_zqvwc5w7zo5v", state: "connected", path: "direct" }, { id: "spc_b", name: "Northwind", state: "connected" }, { id: "spc_c", state: "connected" }] }, { spc_zqvwc5w7zo5v: "tess" });
+  assert.deepEqual(w.lines, ["tess, connected, direct", "Northwind, connected", "A space, connected"]);
+  assert.ok(!JSON.stringify(w).includes("spc_"));
+});

@@ -53,6 +53,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(settings): This computer, the Wink card, names a Space by its name ("tess"), never by its id (spc_...). A link that carries only an id and no name reads "A space".
+
 - fix(agents): an agent is said in words wherever a person reads it (Engineer, Ads Writer, and the assistant as typed): the Chats list and a chat only with it, the New chat picker, Home's agents, and the names on a task's slots. An @mention keeps the agent's id, because the id is what the mention resolves by.
 
 - fix(first run): a page with no daemon (the Mac window with no vyred, the hosted web app) made its identity's device entry with no key-agreement point (`agree`), so no chat could be wrapped to the device ("This device isn't ready for private chats yet") and the box listed no device. The genesis entry now carries the point, and an identity made the old way is repaired when it is unlocked: the device signs the chain's own `agree` op for its own entry and the directory appends it, once.
