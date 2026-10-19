@@ -32,6 +32,28 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   throw Object.assign(new Error("This chat runs on another member's sign-in, and you have none of your own here. Add your own sign-in to use it. Nothing was sent."), { code: "account_required" });
 }
 
+/**
+ * The provider a NEW thread runs on when its start names none and no agent brings its own: Claude when Claude can run for the person, else the provider of the AI account they do have. A box whose sessions
+ * are sandboxed has no Claude login of its own, so a person who added only an OpenRouter key (the first-run way) would otherwise get a Claude thread that refuses "Connect an AI account to start a session".
+ * Claude can run when the person has a Claude account of their own, or the box holds a Claude credential (deps.auth), or an ambient login is allowed (no deps.requireAccount). null: keep the default.
+ * @param {any} sb the Switchboard @param {{ provider?: string, agent?: string, account?: string, kernelTurn?: { asker?: string } | null, person?: string }} o
+ * @returns {Promise<{ provider: string, account: string } | null>}
+ */
+export async function accountProviderFor(sb, o) {
+  if (o.provider || o.agent || o.account || !sb.deps.requireAccount) return null;
+  const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
+  const who = asker ? { person: asker } : {};
+  const claude = await sb.accountFor({ provider: "claude", ...who }).catch(() => null);
+  if (claude && claude.id) return null;
+  if (typeof sb.deps.auth === "function") { const a = await sb.deps.auth({ agent: null }).catch(() => null); if (a && a.env) return null; }
+  const names = sb.deps.providers && typeof sb.deps.providers.list === "function" ? sb.deps.providers.list() : [];
+  for (const provider of names) {
+    const acct = await sb.accountFor({ provider, ...who }).catch(() => null);
+    if (acct && acct.id) return { provider: String(provider), account: String(acct.id) };
+  }
+  return null;
+}
+
 /** Is a turn running on this thread (so another person's one-turn must wait)? @param {any} sb @param {string} id */
 export function busyTurn(sb, id) {
   const st = sb.live.get(id), rec = sb.record(id);

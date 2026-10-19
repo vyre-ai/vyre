@@ -186,3 +186,28 @@ test("checkLaunch: an account named for a person it is for must be that person's
   await assert.rejects(checkLaunch(none, { agent: "kit", account: "a1", for_person: BEN }, null, OWNER), /not that person's own/, "no person named with it");
   assert.equal(await checkLaunch(none, { agent: "kit", account: "a1", for_person: BEN, person: BEN }, null, OWNER), BEN, "the same person: judged as before (a named account is memberAccount's)");
 });
+
+// A new thread that names no provider runs on the AI the person actually has, on a box that has no Claude login of its own (the first-run OpenRouter key).
+import { accountProviderFor } from "./asker-account.js";
+const sbFor = (/** @type {any} */ o) => ({
+  deps: { requireAccount: true, providers: { list: () => ["openrouter", "codex"] }, ...(o.deps || {}) },
+  accountFor: async (/** @type {any} */ q) => { const hit = (o.accounts || []).find((/** @type {any} */ a) => a.provider === q.provider && (!q.person || !a.person || a.person === q.person)); if (!hit) throw Object.assign(new Error("none"), { code: "not_found" }); return hit; },
+});
+test("a start with no provider, on a box with no Claude sign-in, runs on the provider of the person's own account", async () => {
+  const sb = sbFor({ accounts: [{ id: "acct_or", provider: "openrouter", person: null }] });
+  assert.deepEqual(await accountProviderFor(sb, { kernelTurn: { asker: "per_owner" } }), { provider: "openrouter", account: "acct_or" });
+});
+test("Claude stays the default when it can run, or the start names a provider, an agent or an account", async () => {
+  const both = sbFor({ accounts: [{ id: "c1", provider: "claude", person: null }, { id: "o1", provider: "openrouter", person: null }] });
+  assert.equal(await accountProviderFor(both, {}), null, "a Claude account of theirs");
+  const token = sbFor({ accounts: [{ id: "o1", provider: "openrouter", person: null }], deps: { auth: async () => ({ env: { CLAUDE_CODE_OAUTH_TOKEN: "x" } }) } });
+  assert.equal(await accountProviderFor(token, {}), null, "the box holds a Claude credential");
+  const ambient = sbFor({ accounts: [{ id: "o1", provider: "openrouter", person: null }], deps: { requireAccount: false } });
+  assert.equal(await accountProviderFor(ambient, {}), null, "an ambient login may run it");
+  const only = sbFor({ accounts: [{ id: "o1", provider: "openrouter", person: null }] });
+  for (const o of [{ provider: "claude" }, { agent: "juno" }, { account: "x" }]) assert.equal(await accountProviderFor(only, o), null, JSON.stringify(o));
+});
+test("a person with no account of their own gets nothing from another person's: the default stays, and the refusal is the old one", async () => {
+  const sb = sbFor({ accounts: [{ id: "bens", provider: "openrouter", person: "per_ben" }] });
+  assert.equal(await accountProviderFor(sb, { kernelTurn: { asker: "per_cy" } }), null);
+});
