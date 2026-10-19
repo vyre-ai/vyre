@@ -2,7 +2,6 @@
 // What a real chat's composer offers, from the box: the models and accounts that can answer (providers.list), the people and assistants to @mention (records.actors, agents.list), and the records to # tag (the person's own
 // records, with how many of their fields are sealed). Pure, so Node tests it; src/chat/useRealComposer.ts reads the box and calls these.
 import { answerRows } from "./core/answer-with.js";
-import { agentWords } from "../state/agent-name.js";
 
 /** @typedef {{ id: string, label: string, fit: number | null }} ModelChoice */
 
@@ -47,7 +46,7 @@ export function peopleFor({ actors, agents, viewer, here = [] }) {
   for (const p of here) add(p.name, p.family);
   for (const a of Array.isArray(actors?.actors) ? actors.actors : Array.isArray(actors) ? actors : []) if (a && a.id !== viewer && a.name !== viewer) add(a.name || a.id, a.family, a.id);
   for (const a of Array.isArray(agents) ? agents : []) {
-    add(agentWords(a?.name), "assistant", String(a?.name || ""));
+    add(a?.name, "assistant");
     // what the live session is doing now and where it works, said under its name in the picker
     const row = out.get(String(a?.name || "").trim().toLowerCase());
     if (row) { const line = doingLine(a); if (line) row.doing = line; }
