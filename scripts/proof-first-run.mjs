@@ -358,7 +358,19 @@ try {
     await new Promise((r) => setTimeout(r, 5000));
     const still = await drv.text();
     if (/You're all set/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
-    await drv.click("Skip for now");
+    if (OWNER_WALK && process.env.OWNER_WALK_OPENROUTER_KEY) {
+      // The owner walk gives the Assistant a real model: an OpenRouter key added through the app's own API key tile (checked with the provider, kept in the Vault), the way a person adds one.
+      try {
+        await drv.click("Add API key");
+        await drv.fill("API key", process.env.OWNER_WALK_OPENROUTER_KEY);
+        if (await drv.fieldReady("Your password, to open your own Vault")) await drv.fill("Your password, to open your own Vault", PASSWORD);
+        await drv.shot("04b2-api-key");
+        await drv.click("Add account");
+        await until(async () => /OpenRouter/i.test(await drv.text()), 90_000, "the OpenRouter account listed");
+        await drv.shot("04b3-account-added");
+        await drv.click("Continue");
+      } catch (e) { console.log(`  note: the model key was not added (${String(/** @type {Error} */ (e).message).replace(/sk-[A-Za-z0-9_-]+/g, "<key>").slice(0, 300)}); the walk goes on without it`); await drv.shot("04b4-key-failed"); await drv.click("Skip for now").catch(() => {}); }
+    } else await drv.click("Skip for now");
     // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
     const as = await drv.waitFor("Name your Assistant.", 60_000);
     if (/You're all set/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
@@ -369,6 +381,11 @@ try {
     const md = await drv.waitFor(`How should ${ASSISTANT} think?`, 60_000);
     if (/You're all set/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
     await drv.shot("04d-model");
+    if (OWNER_WALK && process.env.OWNER_WALK_OPENROUTER_KEY) {
+      const want = process.env.OWNER_WALK_MODEL || "openai/gpt-4o-mini";
+      try { await drv.click(want); } catch { try { await drv.click(want.split("/").pop() || want); } catch { console.log(`  note: the model step offers no "${want}": ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`); } }
+      await drv.shot("04e-model-picked");
+    }
     await drv.click("Continue");
     const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");

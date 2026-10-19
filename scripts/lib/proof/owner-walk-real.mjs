@@ -40,6 +40,8 @@ export async function ownerWalkReal(c) {
     throw new Error(`none of the fields ${labels.map((l) => `"${l}"`).join(", ")} is on the screen: ${await show(400)}`);
   };
 
+  const JOINED = W(4, "People: a second browser joins with the link and shows in the list with its role");
+  const ROLE_MADE = W(5, "Roles: New role with the defaults makes the role and it is listed");
   // ---- 1. a fresh first run: identity, then name; the device entry has `agree`; Account shows the name and the device
   await run.step(W(1, "the identity chain's device entry carries the key-agreement point (agree)"), async () => {
     const r = await fetch(`${ins.names}/v1/ids/resolve?name=${USERNAME}`);
@@ -79,9 +81,17 @@ export async function ownerWalkReal(c) {
     return `chat ${id} is on the server with its first message`;
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply"), async () => {
-    const key = process.env.OWNER_WALK_OPENROUTER_KEY;
-    if (!key) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check; the CI secret OPENROUTER_EVAL_KEY is held behind an approval environment");
-    pending("a real reply needs the account and model wiring below; written when the key is provided");
+    if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
+    // the thread opened in the step above is the current screen's chat; read it as the page shows it, until something more than our own message appears
+    const chat = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
+    if (!chat) { await screen("/u/chats", /Say hello in five words/, "the Chats list"); await press(["Say hello in five words"]); }
+    const base = (await text()).length;
+    let t = "";
+    try { t = await until(async () => { const x = await text(); return x.includes("Say hello in five words") && x.length > base + 12 && !/Thinking|Working on it|Starting/.test(x) ? x : ""; }, 240_000, "the Assistant's reply"); }
+    catch (e) { await shot("failed-02-reply"); throw new Error(`${/** @type {Error} */ (e).message}. The thread says: ${await show(700)}`); }
+    if (/could not|couldn't|sign in again|no AI account|didn't answer|did not answer/i.test(t.replace("Say hello in five words", ""))) throw new Error(`the thread shows an error instead of a reply: ${t.slice(0, 500)}`);
+    await shot("02-reply");
+    return `the thread grew from ${base} to ${t.length} characters`;
   }, { needs: READY });
 
   // ---- 3. files: a new folder, an upload into it, a move into it; project folders show names
@@ -137,7 +147,7 @@ export async function ownerWalkReal(c) {
     if (!inviteLink) throw new Error(`no link on the screen: ${await show(300)}`);
     return inviteLink;
   }, { needs: READY });
-  await run.step(W(4, "People: a second browser joins with the link and shows in the list with its role"), async () => {
+  await run.step(JOINED, async () => {
     if (!inviteLink) pending("no invitation link");
     const two = await drv.second?.();
     if (!two) pending("this client cannot open a second person");
@@ -176,7 +186,7 @@ export async function ownerWalkReal(c) {
   }, { needs: READY });
 
   // ---- 5. roles: New role with the defaults succeeds, and the role appears
-  await run.step(W(5, "Roles: New role with the defaults makes the role and it is listed"), async () => {
+  await run.step(ROLE_MADE, async () => {
     await screen("/u/settings/roles", /Roles/, "the roles screen");
     await press(["New role"]);
     await fillAny(["Role name", "Name"], "TestRole");
@@ -189,6 +199,17 @@ export async function ownerWalkReal(c) {
     await fresh("/u/settings/roles", /TestRole/, "the Roles screen listing the role");
     await shot("05-role-listed");
   }, { needs: READY });
+
+  await run.step(W(5, "People and roles: the joined person is given the custom role, and the list shows it"), async () => {
+    await screen("/u/settings/roles", /People/, "the People list on the roles screen");
+    await press(["Walker Two"]);
+    await until(async () => (await has(/A role of your own|TestRole/)), 20_000, "the role sheet");
+    await press(["TestRole"]);
+    await press(["Save"]);
+    await wait(2000);
+    await fresh("/u/settings/roles", /Walker Two[^]*TestRole|TestRole[^]*Walker Two/, "the People list showing the person with TestRole");
+    await shot("05-person-has-role");
+  }, { needs: [JOINED, ROLE_MADE] });
 
   // ---- 6. apps: install Documents with no phone
   await run.step(W(6, "Apps: Documents installs with no phone, and is installed and listed"), async () => {
