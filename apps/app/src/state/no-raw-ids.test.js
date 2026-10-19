@@ -21,8 +21,8 @@ function tsx(dir, out = []) {
   return out;
 }
 
-const LITERAL_ID = /["'`](?:spc|per|tpl)_[A-Za-z0-9]{3,}/;
-const TEXT_SLOT = /<Text|\btitle=|\bsub=|\blabel=|\bplaceholder=|>[^<{]*(?:spc|per|tpl)_/;
+const LITERAL_ID = /(?<![A-Za-z0-9_])(?:spc|per|tpl)_[A-Za-z0-9]{3,}/;
+const TEXT_SLOT = /<Text|\btitle=|\bsub=|\blabel=|\bplaceholder=|>[^<{]*(?<![A-Za-z0-9_])(?:spc|per|tpl)_/;
 const SPACE_ID_AS_TEXT = /(?:<Text[^>]*>\s*\{|\b(?:title|sub|label|placeholder)=\{)[^}]*\.(?:space|spaceId|space_id)\}/;
 
 test("no screen puts an id the app made, or a Space's id, on the page as text", () => {
