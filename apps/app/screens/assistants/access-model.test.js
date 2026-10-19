@@ -50,7 +50,7 @@ test("a display name: the assistant's as typed when it matches its id, otherwise
   assert.equal(displayName({ name: "engineer", kind: "agent", instructions: "Your name is Boss." }), "Engineer", "only the assistant carries a typed name");
 });
 
-test("the tool picker speaks plain words, leads each family with everything in it, hides what is off and what must never be turned off, and finds by word or by id", () => {
+test("the tool picker speaks plain words, leads each family with all of it, hides what is off and what must never be turned off, and finds by word or by id", () => {
   const commands = [
     { module: "records", verb: "list", tool: "records.list", summary: "List the records of a type." },
     { module: "records", verb: "delete", tool: "records.delete", summary: "Delete a record" },
@@ -60,7 +60,7 @@ test("the tool picker speaks plain words, leads each family with everything in i
   ];
   const all = pickerGroups(commands, [], "");
   assert.deepEqual(all.map((g) => g.title), ["Mail and messages", "Records and contacts", "Zeta"]);
-  assert.deepEqual(all[1].all, { name: "records.*", label: "Everything in Records and contacts" });
+  assert.deepEqual(all[1].all, { name: "records.*", label: "All of Records and contacts" });
   assert.deepEqual(all[1].tools.map((t) => t.label), ["Delete a record", "List the records of a type"]);
   assert.equal(all[2].tools[0].label, "Do thing", "no summary: the verb in words");
   assert.ok(!JSON.stringify(all).includes("assistant.access"), "the assistant can always read what it may not do");
@@ -77,8 +77,8 @@ test("every family an area covers has its plain words in the picker", () => {
 
 test("a tool that is off is named in words; the id is only the fallback", () => {
   const commands = [{ tool: "mail.send", summary: "Send an email." }];
-  assert.equal(offTitle("mail.*", commands), "Everything in Mail and messages");
-  assert.equal(offTitle("zeta.*", commands), "Everything in Zeta");
+  assert.equal(offTitle("mail.*", commands), "All of Mail and messages");
+  assert.equal(offTitle("zeta.*", commands), "All of Zeta");
   assert.equal(offTitle("mail.send", commands), "Send an email");
   assert.equal(offTitle("mail.read", commands), "mail.read");
 });

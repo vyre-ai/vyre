@@ -81,15 +81,15 @@ export function pickerGroups(commands, off, query) {
     const groupHit = !q || title.toLowerCase().includes(q) || family.includes(q);
     const hits = groupHit ? tools : tools.filter((t) => t.label.toLowerCase().includes(q) || t.id.includes(q));
     if (!hits.length) continue;
-    out.push({ family, title, all: { name: `${family}.*`, label: `Everything in ${title}` }, tools: hits.sort((a, b) => a.label.localeCompare(b.label)) });
+    out.push({ family, title, all: { name: `${family}.*`, label: `All of ${title}` }, tools: hits.sort((a, b) => a.label.localeCompare(b.label)) });
   }
   return out;
 }
 
-/** A turned-off name in plain words: a family is "Everything in Mail and messages", a tool is what it does when the picker knows it, else the id itself. @param {string} name @param {any} commands commands.list's answer */
+/** A turned-off name in plain words: a family is "All of Mail and messages", a tool is what it does when the picker knows it, else the id itself. @param {string} name @param {any} commands commands.list's answer */
 export function offTitle(name, commands) {
   const fam = /^([a-z][a-z0-9_]*)\.\*$/.exec(name);
-  if (fam) return `Everything in ${FAMILY_WORDS[fam[1]] || capital(fam[1])}`;
+  if (fam) return `All of ${FAMILY_WORDS[fam[1]] || capital(fam[1])}`;
   const list = Array.isArray(commands) ? commands : /** @type {any} */ (commands)?.commands;
   const c = (Array.isArray(list) ? list : []).find((/** @type {any} */ x) => x && x.tool === name);
   const said = c ? String(c.summary || "").replace(/\s+/g, " ").trim().replace(/\.$/, "") : "";
