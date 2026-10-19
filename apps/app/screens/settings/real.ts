@@ -40,6 +40,9 @@ export const needsPasswordForCode = (): boolean => hostWanted();
 /** Why private chats could not be set up on this page (the unlock-time repair), or "" when nothing is wrong or this page has no host. */
 export const chatSetupProblem = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.agree.status")) as { failed?: string }).failed ?? "" : "");
 export const retryChatSetup = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.agree.retry")) as { failed?: string }).failed ?? "" : "");
+/** Why a Space's address could not be put on its server (the owner's server listing with the names directory), or "" when nothing is wrong or this page has no host. */
+export const listingProblem = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.servers.status")) as { failed?: string }).failed ?? "" : "");
+export const retryListing = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.servers.retry")) as { failed?: string }).failed ?? "" : "");
 
 /** Can the name be changed here (a page whose host keeps it)? */
 export const canSetName = (): boolean => hostWanted();

@@ -394,6 +394,112 @@ test("a Space whose paired route was never kept is listed with the route the pai
   assert.equal(store.peek().listed.teamb, box.route);
 });
 
+/** An owner whose Space "tess" was claimed the old way (the directory lists no server for it), with the Space row kept on this page as paired with the test box. */
+async function oldSpace(t, username, o = {}) {
+  const d = directory(t);
+  const store = memoryStore();
+  const host = createHost({ store, directory: d.base, fetch: o.fetch ? o.fetch(d.fetch) : d.fetch, now: d.now, kdf: FAST, ...(o.space ? { space: o.space } : {}) });
+  const made = await host.call("onboard.person.create", { username, password: PASSWORD, confirm: PASSWORD });
+  const box = who(d.w);
+  const dev = await fromSeed(host.signer().seed);
+  await claimServerSpace({ identity: { id: made.id, name: username, eid: dev.eid, ops: store.peek().ops, key: dev }, name: "tess", base: d.base, fetch: d.fetch, now: d.now, host: async () => ({ space: "spc_" + "abcdefghijkl", rootPublic: Buffer.alloc(32, 7).toString("base64url") }) });
+  await new Promise((r) => setTimeout(r, 50));
+  await store.save({ ...store.peek(), spaces: [{ id: "spc_abcdefghijkl", name: "tess", role: "owner", server: "https://tess.vyre.run", paired: { box: "bx", route: box.route, relay: "https://relay.example", name: "the test box" } }], ...(o.listed ? { listed: { tess: box.route } } : {}) });
+  const servedName = async () => (await box.get("/v1/names/mine")).json.data.name;
+  return { d, store, host, box, servedName };
+}
+
+test("a server that says its Space has not listed it is listed again when the app heals, even when this page thinks it listed it already", async (t) => {
+  const asked = [];
+  let phase = "not-listed";
+  const space = { load: async () => ({ call: async (tool, _input, box) => { asked.push([tool, box]); return tool === "names.status" ? { name: "tess", phase } : {}; } }) };
+  const w = await oldSpace(t, "tesso", { space, listed: true });
+  assert.equal(await w.servedName(), null, "the directory has no listing, though this page kept one");
+  for (let i = 0; i < 50 && (await w.servedName()) === null; i++) { await w.host.call("identity.heal"); await new Promise((r) => setTimeout(r, 20)); }
+  assert.equal(await w.servedName(), "tess", "the server's word made the app list it again");
+  assert.ok(asked.some(([tool, box]) => tool === "names.status" && box === "bx"), "the paired server was asked how its name stands, by its own box id");
+  assert.equal((await w.host.call("identity.servers.status")).failed, "");
+
+  // a server that is serving is not listed again: the directory is not asked
+  phase = "serving";
+  let posts = 0;
+  const counting = createHost({ store: w.store, directory: w.d.base, fetch: async (url, init) => { if (String(url).includes("/v1/ids/server")) posts++; return w.d.fetch(url, init); }, now: w.d.now, kdf: FAST, space });
+  await counting.call("identity.unlock", { password: PASSWORD });
+  await counting.call("identity.heal");
+  assert.equal(posts, 0);
+
+  // a locked page heals nothing and says so
+  await counting.call("identity.lock");
+  assert.deepEqual(await counting.call("identity.heal"), { healed: false });
+});
+
+test("the owner's state on 20 Oct: a Space row kept with no pairing and the server's own Space id, one paired server that says the directory refuses its name; unlocking finds that server and lists it", async (t) => {
+  const asked = [];
+  let pairs = [];
+  const space = { load: async () => ({
+    pairings: async () => pairs,
+    call: async (tool, _input, box) => { asked.push([tool, box]); return tool === "names.status" ? { name: "tess", via: "vyre.run", phase: "failed", why: "that name is not served by this server" } : {}; },
+  }) };
+  const w = await oldSpace(t, "tessz", { space });
+  // as a sign-in keeps it: the id the server itself uses (not the directory's), the role, no pairing
+  await w.store.save({ ...w.store.peek(), spaces: [{ id: "spc_vvquqb6nm5q5", name: "tess", role: "owner", server: "https://tess.vyre.run" }] });
+
+  // no pairing on this app yet: nothing is listed, and Account says why instead of staying quiet
+  await w.host.call("identity.lock");
+  await w.host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await w.host.call("identity.servers.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.match((await w.host.call("identity.servers.status")).failed, /^tess\.vyre\.run: this app is not paired with the server of this Space/);
+  assert.equal(await w.servedName(), null);
+
+  // the app is paired with the owner's server (another pairing beside it names another Space): the next heal finds it by the name it holds and lists it
+  pairs = [{ box: "bx-other", route: "a".repeat(26), relay: "https://relay.example", name: "other" }, { box: "bx", route: w.box.route, relay: "https://relay.example", name: "the owner's server" }];
+  const other = space.load;
+  space.load = async () => { const p = await other(); return { ...p, call: async (tool, input, box) => (box === "bx-other" && tool === "names.status" ? { name: "elsewhere", phase: "serving" } : p.call(tool, input, box)) }; };
+  for (let i = 0; i < 50 && (await w.servedName()) === null; i++) { await w.host.call("identity.heal"); await new Promise((r) => setTimeout(r, 20)); }
+  assert.equal(await w.servedName(), "tess", "the server that holds tess is listed");
+  assert.equal((await w.host.call("identity.servers.status")).failed, "");
+  const row = w.store.peek().spaces[0];
+  assert.deepEqual([row.id, row.paired.box, row.paired.route], ["spc_vvquqb6nm5q5", "bx", w.box.route], "the server found is kept beside the row");
+  assert.equal(w.store.peek().listed.tess, w.box.route);
+});
+
+test("when the Space's server listing cannot finish, Account is told why in words and Retry lists it again", async (t) => {
+  let down = true;
+  const w = await oldSpace(t, "tessr", { fetch: (inner) => async (url, init) => { if (down && String(url).includes("/v1/ids/server")) throw new Error("offline"); return inner(url, init); } });
+  await w.host.call("identity.lock");
+  await w.host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await w.host.call("identity.servers.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  const st = await w.host.call("identity.servers.status");
+  assert.match(st.failed, /^tess\.vyre\.run: the names directory could not be reached$/, "a plain reason, per Space, not silence");
+  assert.equal(st.unlocked, true);
+  assert.equal(await w.servedName(), null);
+  down = false;
+  assert.deepEqual(await w.host.call("identity.servers.retry"), { failed: "" });
+  assert.equal(await w.servedName(), "tess", "the retry listed the server");
+  assert.equal(w.store.peek().listed.tess, w.box.route);
+  await w.host.call("identity.lock");
+  await assert.rejects(() => w.host.call("identity.servers.retry"), (e) => e.code === "locked");
+});
+
+test("signing in on the web to a Space whose address is not live yet says so and what to do, not 'cannot reach'; once it is live, a door that does not answer is 'cannot reach' again", async (t) => {
+  const w = await oldSpace(t, "tessw");
+  const noDoor = async (url, init) => { if (String(url).endsWith("/login")) throw new TypeError("Load failed"); return w.d.fetch(url, init); };
+  const page = createHost({ store: memoryStore(), directory: w.d.base, fetch: noDoor, now: w.d.now, kdf: FAST });
+  const LIVE_NOT = "The address tess.vyre.run isn't live yet. Open the Vyre app as the owner to finish setting it up.";
+  await assert.rejects(() => page.call("onboard.signin", { space: "tess", username: "tessw", password: PASSWORD }), (e) => { assert.equal(e.message, LIVE_NOT); assert.equal(e.code, "unreachable"); return true; });
+  assert.equal((await w.d.fetch(`${w.d.base}/v1/names/check?name=tess`).then((r) => r.json())).data.live, false, "the directory says the Space is not live: no server is listed");
+
+  // the owner's app lists the server, and the server publishes its address: the Space is live, and a door that does not answer is the plain "cannot reach"
+  await w.host.call("identity.servers.retry");
+  assert.equal((await w.box.post("/v1/names/publish", { name: "tess" }, { ip: "93.184.216.34" })).status, 200);
+  assert.equal((await w.d.fetch(`${w.d.base}/v1/names/check?name=tess`).then((r) => r.json())).data.live, true);
+  await assert.rejects(() => page.call("onboard.signin", { space: "tess", username: "tessw", password: PASSWORD }), /Cannot reach that space right now/);
+
+  // a directory that does not say (an older one) keeps the plain words too
+  const unsure = createHost({ store: memoryStore(), directory: w.d.base, fetch: noDoor, now: w.d.now, kdf: FAST, signin: { resolves: async () => null } });
+  await assert.rejects(() => unsure.call("onboard.signin", { space: "tess", username: "tessw", password: PASSWORD }), /Cannot reach that space right now/);
+});
+
 test("Settings, Account on a page with no daemon reads the person's list from the host and the directory: the device, the recovery code, and which entry is this one", async (t) => {
   const d = directory(t);
   const point = await agreePointOf();
