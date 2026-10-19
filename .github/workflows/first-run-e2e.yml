@@ -106,7 +106,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_walk }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    # the protected environment that holds OPENROUTER_EVAL_KEY (a required reviewer approves the run; branches main, work/stage-0.2 and work/0.6.2/*)
+    # the protected environment that holds OPENROUTER_EVAL_KEY (a required reviewer approves each run, and reads the ref's diff of scripts/proof-first-run.mjs and scripts/lib/proof/owner-walk-real.mjs first; the branches that may deploy to it are set in the repository's environment settings)
     environment: eval
     env:
       VYRE_NO_DIALOGS: "1"
@@ -155,8 +155,9 @@ jobs:
           docker ps -a || true
           docker logs --tail 120 vyre-vyre-1 2>&1 || true
           tail -60 "$RUNNER_TEMP/owner-walk/server/install.log" 2>&1 || true
-      # The model key never leaves the runner: before anything is uploaded, every text file of the run's folder is searched for the key itself and for any OpenRouter key prefix; a file that holds one is
-      # removed and the step fails, so the owner sees it. (The key is typed into a password field, which no picture shows; the walk takes no picture of that field.)
+      # The model key never leaves the runner: before anything is uploaded, every file of the run's folder (the pictures too, read as bytes) is searched for the key's value. If one holds it the whole folder is
+      # deleted and the job fails, so the owner sees it and nothing is uploaded. The key is in this step's environment only, and an empty key skips the step. The key is typed into the app's password field,
+      # which no picture shows, and the walk takes no picture while it is typed.
       - name: Artifact key guard
         id: keyguard
         if: always()
@@ -165,18 +166,14 @@ jobs:
         run: |
           set +e
           dir="$RUNNER_TEMP/owner-walk"
+          [ -n "${OWNER_WALK_OPENROUTER_KEY:-}" ] || { echo "no model key in this run: nothing to guard"; exit 0; }
           [ -d "$dir" ] || { echo "no artifact folder: nothing to guard"; exit 0; }
-          hits=$(grep -rIlE -e 'sk-or-[A-Za-z0-9_-]{8,}' "$dir" 2>/dev/null)
-          if [ -n "${OWNER_WALK_OPENROUTER_KEY:-}" ]; then
-            more=$(grep -rIlF -e "$OWNER_WALK_OPENROUTER_KEY" "$dir" 2>/dev/null)
-            hits=$(printf '%s\n%s\n' "$hits" "$more" | sed '/^$/d' | sort -u)
-          fi
-          if [ -n "$hits" ]; then
-            echo "::error::a model key is in the artifact folder: removing the file(s) and failing"
-            printf '%s\n' "$hits" | while read -r f; do echo "removed: ${f#$dir/}"; rm -f "$f"; done
+          if grep -rlaF -e "$OWNER_WALK_OPENROUTER_KEY" "$dir" >/dev/null 2>&1 || grep -rlaE -e 'sk-or-v1-[A-Za-z0-9]{16,}' "$dir" >/dev/null 2>&1; then
+            echo "::error::the model key is in the artifact folder: the folder is deleted and nothing is uploaded"
+            rm -rf "$dir"
             exit 1
           fi
-          echo "no model key in $(find "$dir" -type f | wc -l) files"
+          echo "the model key is in none of $(find "$dir" -type f | wc -l) files (pictures read as bytes too)"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
