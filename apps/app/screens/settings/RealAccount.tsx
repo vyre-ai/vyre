@@ -49,7 +49,7 @@ export function RealAccount() {
   return (
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
-      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This Mac could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
+      {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This computer could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
       {id?.exists ? (
         <Card className="gap-s2">
           <Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0"
