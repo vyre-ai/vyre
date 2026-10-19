@@ -32,6 +32,8 @@ export async function ownerWalkReal(c) {
   /** The box's own answer, as the operator. */
   const op = (/** @type {string} */ tool, /** @type {any} */ input = {}) => srv.operator(tool, input);
   const has = async (/** @type {RegExp} */ re) => re.test(await text());
+  /** What the SERVER holds, read the way the person reads it: leave the screen and open it again, so it is fetched from the box, not drawn from what the page already had. The box's operator tools cannot stand in for the owner here (they answer "not from a signed-in person"). @param {string} route @param {RegExp} re @param {string} what */
+  const fresh = async (route, re, what) => { await drv.go("/u/now"); await wait(1500); await screen(route, re, `${what} after a fresh read`); };
   /** Fill the first field of these labels that exists. @param {string[]} labels @param {string} v */
   const fillAny = async (labels, v) => {
     for (const l of labels) { if (await drv.fieldReady(l)) { await drv.fill(l, v); return l; } }
@@ -72,7 +74,7 @@ export async function ownerWalkReal(c) {
     const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
     if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
     // the server's own record of the chat, with the first message in it
-    const got = await op("work.chat.get", { id });
+    const got = await op("work.chat.get", { chat: id });
     const raw = JSON.stringify(got);
     if (!raw.includes("Say hello in five words")) throw new Error(`the server's chat ${id} does not hold the first message: ${raw.slice(0, 400)}`);
     return `chat ${id} holds the first message`;
@@ -91,8 +93,7 @@ export async function ownerWalkReal(c) {
     await fillAny(["Folder name", "Name", "New folder name"], "Walk");
     await press(["Create", "Make the folder", "Make folder"]);
     await until(async () => (await has(/\bWalk\b/)), 30_000, "the folder showing");
-    const l = await op("files.drive.space.list", { prefix: "" });
-    if (!JSON.stringify(l).includes("Walk")) throw new Error(`the server's Drive does not list the folder: ${JSON.stringify(l).slice(0, 300)}`);
+    await fresh("/u/files", /\bWalk\b/, "the Files screen listing the folder");
     await shot("03-folder");
   }, { needs: READY });
   await run.step(W(3, "Files: upload a file, and the server holds it"), async () => {
@@ -100,8 +101,7 @@ export async function ownerWalkReal(c) {
     await screen("/u/files", /Upload|Nothing here|Files/i, "the Files screen");
     await drv.upload?.("Upload", "walk-note.txt", "owner walk upload\n");
     await until(async () => (await has(/walk-note\.txt/)), 45_000, "the file showing");
-    const l = await op("files.drive.space.list", { prefix: "" });
-    if (!JSON.stringify(l).includes("walk-note.txt")) throw new Error(`the server's Drive does not list the upload: ${JSON.stringify(l).slice(0, 300)}`);
+    await fresh("/u/files", /walk-note\.txt/, "the Files screen listing the upload");
     await shot("03-upload");
   }, { needs: READY });
   await run.step(W(3, "Files: move the file into the folder"), async () => {
@@ -111,8 +111,9 @@ export async function ownerWalkReal(c) {
     await press(["Walk"]);
     await press(["Move here", "Move"]);
     await wait(1500);
-    const l = await op("files.drive.space.list", { prefix: "Walk" });
-    if (!JSON.stringify(l).includes("walk-note.txt")) throw new Error(`the file is not in the folder on the server: ${JSON.stringify(l).slice(0, 300)}`);
+    await fresh("/u/files", /\bWalk\b/, "the Files screen");
+    await press(["Walk"]);
+    await until(async () => (await has(/walk-note\.txt/)), 30_000, "the file inside the folder");
   }, { needs: READY });
   await run.step(W(3, "Files: a project's folder shows its name"), async () => {
     await screen("/u/files", /Files/i, "the Files screen");
@@ -186,8 +187,7 @@ export async function ownerWalkReal(c) {
     catch (e) { await shot("failed-05-after-make"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
     if (await has(/is wider than a role that starts from Member|Take it out/)) throw new Error(`the box refused the default role: ${await show(500)}`);
     await until(async () => (await has(/TestRole/)), 30_000, "the role listed");
-    const l = await op("roles.list", {});
-    if (!JSON.stringify(l).includes("TestRole")) throw new Error(`the server has no TestRole: ${JSON.stringify(l).slice(0, 300)}`);
+    await fresh("/u/settings/roles", /TestRole/, "the Roles screen listing the role");
     await shot("05-role-listed");
   }, { needs: READY });
 
