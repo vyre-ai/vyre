@@ -101,6 +101,14 @@ export async function ownerWalkReal(c) {
     try { await until(async () => (await has(/Say hello in five words/)), 30_000, "the first message in the thread"); }
     catch (e) { await shot("failed-02-first-message"); throw new Error(`${/** @type {Error} */ (e).message}: the thread with Juno shows only "${await show(300)}"`); }
     await shot("02-first-message");
+    // Log what the Assistant says back to this first message (never fails the step: the reply step below asserts a reply to a typed message).
+    const base = await text(); const mark = base.indexOf("Say hello in five words");
+    const tail = (/** @type {string} */ x) => x.slice(mark + "Say hello in five words.".length).replace(/\b\d{1,2}:\d{2}\s?(am|pm)\b/gi, "").trim();
+    try {
+      const after = await until(async () => { const x = await text(); const t = tail(x); return t.length > tail(base).length + 4 && !/Thinking|Working on it|Sending/.test(x) ? t : ""; }, 120_000, "a new assistant bubble");
+      console.log(`owner walk 2 first reply: ${after.slice(0, 200)}`);
+    } catch { console.log(`owner walk 2 first reply: none in 120 s; the thread says: ${tail(await text()).slice(0, 200)}`); }
+    await shot("02-first-reply");
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply to a message typed in the thread"), async () => {
     if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
