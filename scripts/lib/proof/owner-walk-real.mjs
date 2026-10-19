@@ -213,14 +213,20 @@ export async function ownerWalkReal(c) {
 
   // ---- 6. apps: install Documents with no phone
   await run.step(W(6, "Apps: Documents installs with no phone, and is installed and listed"), async () => {
-    await screen("/u/apps", /Apps|Documents|catalog/i, "the Apps screen");
-    if (!(await has(/Documents/)) || !(await has(/Install|Add to this Space/))) pending(`the Apps screen has no install for Documents on this build (it lists the built-in apps with Open): ${await show(160)}`);
-    await press(["Install Documents", "Documents"]);
-    await press(["Install", "Add"]);
-    await until(async () => (await has(/Installed|Installing|Open Documents/i)), 60_000, "Documents installing");
-    await shot("06-documents");
-    const l = await op("modulelist.list", {}).catch(() => null) || await op("apps.list", {}).catch(() => null);
-    if (l && !JSON.stringify(l).toLowerCase().includes("documents")) throw new Error(`the server does not list Documents: ${JSON.stringify(l).slice(0, 300)}`);
+    // the owner's own path: Build, Documents, Setup, "Install the Documents app" (no phone is paired on this box)
+    await screen("/u/documents", /Documents/i, "the Documents screen");
+    try { await press(["Setup"]); } catch { /* the tab is already open or named otherwise */ }
+    await until(async () => (await has(/Install the Documents app|Running|Stopped|Start it/)), 60_000, "the Documents setup card");
+    if (await has(/Install the Documents app/)) {
+      await press(["Install the Documents app"]);
+      try { await until(async () => (await has(/Running/)) || (await has(/Approve on your phone|no way to approve/i)), 360_000, "Documents installing"); }
+      catch (e) { await shot("failed-06-install"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
+      if (await has(/Approve on your phone|no way to approve/i) && !(await has(/Running/))) { await shot("failed-06-phone"); throw new Error(`installing Documents asks for a phone: ${await show(500)}`); }
+    }
+    await shot("06-documents-running");
+    // what the box holds, read fresh: the Documents setup and the Apps screen both show it running
+    await fresh("/u/apps", /Documents[^]*Running/i, "the Apps screen listing Documents as running");
+    await shot("06-apps-listed");
   }, { needs: READY });
 
   // ---- 7. watchers: a Feed watcher on a real public RSS URL

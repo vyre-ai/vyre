@@ -106,6 +106,8 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_walk }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # the protected environment that holds OPENROUTER_EVAL_KEY (a required reviewer approves the run; branches main, work/stage-0.2 and work/0.6.2/*)
+    environment: eval
     env:
       VYRE_NO_DIALOGS: "1"
     steps:
