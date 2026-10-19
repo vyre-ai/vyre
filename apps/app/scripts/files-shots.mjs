@@ -41,7 +41,7 @@ try {
       // Move to...: the right-click menu, the folder picker, a folder entered, and the move done (with its Undo)
       await page.getByText("Weekly report template.docx").first().click({ button: "right" }).catch(() => {}); await shot("5-menu");
       await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("6-picker");
-      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("7-picker-in");
+      await page.getByText("Spring launch", { exact: true }).last().click().catch(() => {}); await shot("7-picker-in");
       await page.getByRole("button", { name: "Move", exact: true }).last().click().catch(() => {}); await shot("8-moved");
       // drag to move: a folder tile carried over another (the target is outlined and says what will happen), then dropped. A fresh load, so the sample world is as it started.
       await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
@@ -66,7 +66,7 @@ try {
       await page.getByText("Juniper Studio", { exact: true }).first().click().catch(() => {}); await shot("3-folder");
       await page.getByText("Weekly report template.docx").first().click().catch(() => {}); await shot("4-file");
       await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("5-picker");
-      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("6-picker-in");
+      await page.getByText("Spring launch", { exact: true }).last().click().catch(() => {}); await shot("6-picker-in");
     }
     await ctx.close();
   }
