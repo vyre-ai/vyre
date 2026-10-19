@@ -40,6 +40,8 @@ export async function ownerWalkReal(c) {
     throw new Error(`none of the fields ${labels.map((l) => `"${l}"`).join(", ")} is on the screen: ${await show(400)}`);
   };
 
+  const JOINED = W(4, "People: a second browser joins with the link and shows in the list with its role");
+  const ROLE_MADE = W(5, "Roles: New role with the defaults makes the role and it is listed");
   // ---- 1. a fresh first run: identity, then name; the device entry has `agree`; Account shows the name and the device
   await run.step(W(1, "the identity chain's device entry carries the key-agreement point (agree)"), async () => {
     const r = await fetch(`${ins.names}/v1/ids/resolve?name=${USERNAME}`);
@@ -79,9 +81,17 @@ export async function ownerWalkReal(c) {
     return `chat ${id} is on the server with its first message`;
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply"), async () => {
-    const key = process.env.OWNER_WALK_OPENROUTER_KEY;
-    if (!key) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check; the CI secret OPENROUTER_EVAL_KEY is held behind an approval environment");
-    pending("a real reply needs the account and model wiring below; written when the key is provided");
+    if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
+    // the thread opened in the step above is the current screen's chat; read it as the page shows it, until something more than our own message appears
+    const chat = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
+    if (!chat) { await screen("/u/chats", /Say hello in five words/, "the Chats list"); await press(["Say hello in five words"]); }
+    const base = (await text()).length;
+    let t = "";
+    try { t = await until(async () => { const x = await text(); return x.includes("Say hello in five words") && x.length > base + 12 && !/Thinking|Working on it|Starting/.test(x) ? x : ""; }, 240_000, "the Assistant's reply"); }
+    catch (e) { await shot("failed-02-reply"); throw new Error(`${/** @type {Error} */ (e).message}. The thread says: ${await show(700)}`); }
+    if (/could not|couldn't|sign in again|no AI account|didn't answer|did not answer/i.test(t.replace("Say hello in five words", ""))) throw new Error(`the thread shows an error instead of a reply: ${t.slice(0, 500)}`);
+    await shot("02-reply");
+    return `the thread grew from ${base} to ${t.length} characters`;
   }, { needs: READY });
 
   // ---- 3. files: a new folder, an upload into it, a move into it; project folders show names
@@ -137,7 +147,7 @@ export async function ownerWalkReal(c) {
     if (!inviteLink) throw new Error(`no link on the screen: ${await show(300)}`);
     return inviteLink;
   }, { needs: READY });
-  await run.step(W(4, "People: a second browser joins with the link and shows in the list with its role"), async () => {
+  await run.step(JOINED, async () => {
     if (!inviteLink) pending("no invitation link");
     const two = await drv.second?.();
     if (!two) pending("this client cannot open a second person");
@@ -176,7 +186,7 @@ export async function ownerWalkReal(c) {
   }, { needs: READY });
 
   // ---- 5. roles: New role with the defaults succeeds, and the role appears
-  await run.step(W(5, "Roles: New role with the defaults makes the role and it is listed"), async () => {
+  await run.step(ROLE_MADE, async () => {
     await screen("/u/settings/roles", /Roles/, "the roles screen");
     await press(["New role"]);
     await fillAny(["Role name", "Name"], "TestRole");
@@ -190,32 +200,152 @@ export async function ownerWalkReal(c) {
     await shot("05-role-listed");
   }, { needs: READY });
 
+  await run.step(W(5, "People and roles: the joined person is given the custom role, and the list shows it"), async () => {
+    await screen("/u/settings/roles", /People/, "the People list on the roles screen");
+    await press(["Walker Two"]);
+    await until(async () => (await has(/A role of your own|TestRole/)), 20_000, "the role sheet");
+    await press(["TestRole"]);
+    await press(["Save"]);
+    await wait(2000);
+    await fresh("/u/settings/roles", /Walker Two[^]*TestRole|TestRole[^]*Walker Two/, "the People list showing the person with TestRole");
+    await shot("05-person-has-role");
+  }, { needs: [JOINED, ROLE_MADE] });
+
   // ---- 6. apps: install Documents with no phone
   await run.step(W(6, "Apps: Documents installs with no phone, and is installed and listed"), async () => {
-    await screen("/u/apps", /Apps|Documents|catalog/i, "the Apps screen");
-    if (!(await has(/Documents/)) || !(await has(/Install|Add to this Space/))) pending(`the Apps screen has no install for Documents on this build (it lists the built-in apps with Open): ${await show(160)}`);
-    await press(["Install Documents", "Documents"]);
-    await press(["Install", "Add"]);
-    await until(async () => (await has(/Installed|Installing|Open Documents/i)), 60_000, "Documents installing");
-    await shot("06-documents");
-    const l = await op("modulelist.list", {}).catch(() => null) || await op("apps.list", {}).catch(() => null);
-    if (l && !JSON.stringify(l).toLowerCase().includes("documents")) throw new Error(`the server does not list Documents: ${JSON.stringify(l).slice(0, 300)}`);
+    // the owner's own path: Build, Documents, Setup, "Install the Documents app" (no phone is paired on this box)
+    await screen("/u/documents", /Documents/i, "the Documents screen");
+    try { await press(["Setup"]); } catch { /* the tab is already open or named otherwise */ }
+    await until(async () => (await has(/Install the Documents app|Running|Stopped|Start it/)), 60_000, "the Documents setup card");
+    if (await has(/Install the Documents app/)) {
+      await press(["Install the Documents app"]);
+      try { await until(async () => (await has(/Running/)) || (await has(/Approve on your phone|no way to approve/i)), 360_000, "Documents installing"); }
+      catch (e) { await shot("failed-06-install"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
+      if (await has(/Approve on your phone|no way to approve/i) && !(await has(/Running/))) { await shot("failed-06-phone"); throw new Error(`installing Documents asks for a phone: ${await show(500)}`); }
+    }
+    await shot("06-documents-running");
+    // what the box holds, read fresh: the Documents setup and the Apps screen both show it running
+    await fresh("/u/apps", /Documents[^]*Running/i, "the Apps screen listing Documents as running");
+    await shot("06-apps-listed");
   }, { needs: READY });
 
   // ---- 7. watchers: a Feed watcher on a real public RSS URL
   await run.step(W(7, "Watchers: a Feed watcher on a public RSS feed tests, turns on and Run now files items"), async () => {
-    pending("the Feed watcher screen is not driven yet on this build");
+    await screen("/u/flows", /Flows|Watchers/i, "the Flows screen");
+    try { await press(["Watchers"]); } catch { pending(`the Flows screen has no Watchers tab on this build: ${await show(160)}`); }
+    await until(async () => (await has(/New watcher/)), 30_000, "the Watchers tab");
+    await press(["New watcher"]);
+    await drv.choose?.("Where should it look?", "Feed");
+    await fillAny(["Feed address"], "https://github.com/vyre-ai/vyre/releases.atom");
+    await shot("07-new-watcher");
+    await press(["Write it and test it"]);
+    let t = "";
+    try { t = await until(async () => { const x = await text(); return /Turn on/.test(x) && !/Writing and testing/.test(x) ? x : ""; }, 120_000, "the test result"); }
+    catch (e) { await shot("failed-07-test"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(700)}`); }
+    await shot("07-tested");
+    if (/did not|could not|failed|no items/i.test(t) && !/item|found|new/i.test(t)) throw new Error(`the test shows no items: ${t.slice(0, 500)}`);
+    await press(["Turn on"]);
+    await until(async () => (await has(/Run now/)), 60_000, "the watcher listed with Run now");
+    await press(["Run now"]);
+    await wait(15_000);
+    const after = await text();
+    await shot("07-ran");
+    if (/did not|could not|went wrong/i.test(after) && !/filed|item/i.test(after)) throw new Error(`Run now did not file items: ${after.slice(0, 500)}`);
+    return after.slice(0, 200);
   }, { needs: READY });
 
   // ---- 8. a webhook Flow
-  await run.step(W(8, "Webhook Flow: 'A webhook is called' with one step, a signed curl, a run and a record"), async () => {
-    pending("the 'A webhook is called' trigger is not on this build's Flow screen");
+  let hookSecret = "";
+  const ROUTE = "walk-orders";
+  await run.step(W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault"), async () => {
+    await screen("/u/flows/new", /Name|When|What starts/i, "the new Flow screen");
+    await press(["Choose what starts it", "When"]);
+    await drv.choose?.("What starts the Flow", "A webhook is called");
+    await until(async () => (await has(/Which route/)), 20_000, "the webhook fields");
+    await drv.choose?.("Which route", "Open a new route");
+    await drv.fillPlaceholder?.("northwind-orders", ROUTE);
+    try { await drv.fillPlaceholder?.("x-signature", "x-signature"); } catch { /* the scheme asks for no header */ }
+    await shot("08-open-route");
+    await press(["Open the route"]);
+    await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening");
+    if (await has(/Turn the listener on/)) { await press(["Turn the listener on"]); await until(async () => !(await has(/listener is off/)), 60_000, "the listener turning on"); }
+    await shot("08-route-open");
+    await press(["Reveal the secret"]);
+    await until(async () => (await has(/Reveal/)), 30_000, "the Vault item");
+    await press(["Reveal"]);
+    const found = await until(async () => { const m = (await drv.monospaces?.()) || []; const c = m.filter((x) => x.length >= 24 && !/\s/.test(x)).sort((a, b) => b.length - a.length)[0]; return c || ""; }, 30_000, "the revealed secret").catch(async (e) => { await shot("failed-08-secret"); throw new Error(`${e.message}. The screen says: ${await show(500)}`); });
+    hookSecret = found;
+    await shot("08-secret-revealed");
+    return `route ${ROUTE}, a ${hookSecret.length}-character secret read back`;
   }, { needs: READY });
+  const FLOW_MADE = W(8, "Webhook Flow: 'A webhook is called' with an If on trigger.amount and one record step, approved");
+  await run.step(FLOW_MADE, async () => {
+    await screen("/u/flows/new", /Name|When|What starts/i, "the new Flow screen");
+    await fillAny(["Name"], "Walk webhook");
+    await press(["Choose what starts it", "When"]);
+    await drv.choose?.("What starts the Flow", "A webhook is called");
+    await until(async () => (await has(/Which route/)), 20_000, "the webhook fields");
+    await drv.choose?.("Which route", `/hooks/${ROUTE}`);
+    await press(["Add the first step"]);
+    await press(["If / else"]);
+    await drv.choose?.("Field", "amount").catch(async () => { await fillAny(["Field"], "amount"); });
+    await drv.choose?.("Is", ">").catch(() => {});
+    await fillAny(["Value"], "50");
+    await press(["Add a step here"]);
+    await press(["Create a record"]);
+    await shot("08-flow-built");
+    pending(`the Create step's object and fields are not driven yet; the screen says: ${await show(500)}`);
+  }, { needs: [W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault")] });
+  await run.step(W(8, "Webhook: a delivery signed with the revealed secret is taken, a bad signature is refused (401) and starts nothing"), async () => {
+    if (!hookSecret) pending("no signing secret was read");
+    /** One delivery to the loopback listener inside the box, signed (or not) as the sender would. */
+    const post = async (/** @type {number} */ amount, /** @type {boolean} */ good) => {
+      const code = `const c=require("crypto"),h=require("http");const b=process.argv[1],good=process.argv[2]==="1",k=process.argv[3];const mac=good?c.createHmac("sha256",k).update(b).digest("hex"):"00".repeat(32);const r=h.request({host:"127.0.0.1",port:7310,path:"/hooks/${ROUTE}",method:"POST",headers:{"content-type":"application/json","x-signature":mac}},x=>{let d="";x.on("data",c=>d+=c);x.on("end",()=>console.log(x.statusCode));});r.on("error",e=>console.log("error "+e.message));r.end(b);`;
+      const r = await srv.shell(["node", "-e", code, JSON.stringify({ amount, email: `a${amount}-${Date.now()}@b.test` }), good ? "1" : "0", hookSecret]);
+      return r.stdout.split("\n").pop() || r.stderr.slice(0, 200);
+    };
+    const bad = await post(80, false);
+    if (bad !== "401") throw new Error(`a delivery with a bad signature answered ${bad}, not 401`);
+    const ok = await post(80, true);
+    if (ok !== "200") throw new Error(`a delivery signed with the revealed secret answered ${ok}, not 200`);
+    return "bad signature 401, signed delivery 200";
+  }, { needs: [W(8, "Webhook: open a route, turn the listener on and read the signing secret in the Vault")] });
+  await run.step(W(8, "Webhook Flow: amount 80 starts a run and makes one record, amount 20 makes none"), async () => {
+    pending("the Flow's Create step (its object and fields) is not driven yet");
+  }, { needs: [FLOW_MADE] });
 
   // ---- 9. playbooks
   await run.step(W(9, "Playbooks: create, add a stage and a to-do, rename, Go live, start a project"), async () => {
-    await screen("/u/playbooks", /Playbooks|New playbook/i, "the Playbooks screen");
-    pending("editing a playbook's stages and to-dos in its own screen is not on this build (it goes through chat)");
+    await screen("/u/playbooks", /Playbooks|Start blank/i, "the Playbooks screen");
+    if (!(await has(/Start blank/))) pending(`the Playbooks screen has no Start blank on this build: ${await show(160)}`);
+    await press(["Start blank"]);
+    await until(async () => (await has(/Untitled|Add stage|Add to-do/i)), 45_000, "the new playbook opening");
+    await shot("09-new-playbook");
+    // rename: the name is an inline edit
+    await press(["Untitled playbook", "the playbook"]);
+    await fillAny(["the playbook", "Name"], "Walk playbook");
+    await press(["Save"]);
+    await until(async () => (await has(/Walk playbook/)), 30_000, "the rename showing");
+    await fillAny(["Add stage"], "Review");
+    await press(["Add stage"]);
+    await until(async () => (await has(/Review/)), 30_000, "the stage listed");
+    await fillAny(["Add to-do"], "Send the welcome email");
+    await press(["Add to-do"]);
+    await until(async () => (await has(/Send the welcome email/)), 30_000, "the to-do listed");
+    await shot("09-edited");
+    await press(["Go live"]);
+    await until(async () => !(await has(/Go live/)) || (await has(/Live/)), 45_000, "the playbook going live");
+    await shot("09-live");
+    // start a project from it: the new project sheet offers the playbook
+    await screen("/u/projects", /Projects|New project/i, "the Projects screen");
+    await press(["New project"]);
+    await until(async () => (await has(/Start project|Walk playbook/)), 30_000, "the new project sheet");
+    await fillAny(["Name", "Project name"], "Walk project");
+    try { await press(["Walk playbook"]); } catch { /* the sheet starts from it by default or lists it under another word */ }
+    await press(["Start project"]);
+    await until(async () => (await has(/Walk project/)), 60_000, "the project listed");
+    await fresh("/u/projects", /Walk project/, "the Projects list showing the project");
+    await shot("09-project");
   }, { needs: READY });
 
   // ---- 10. settings

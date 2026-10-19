@@ -137,6 +137,18 @@ async function browserDriver(shared = null) {
       const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 20_000 }), d.click(button)]);
       await chooser.setFiles({ name, mimeType: "text/plain", buffer: Buffer.from(content) });
     },
+    /** Choose an option of a select by the label it carries: a native select, or a control that opens a list. */
+    async choose(/** @type {string} */ label, /** @type {string} */ option) {
+      const el = page.getByLabel(label, { exact: false }).first();
+      const tag = await el.evaluate((/** @type {any} */ n) => n.tagName).catch(() => "");
+      if (tag === "SELECT") { await el.selectOption({ label: option }).catch(async () => { await el.selectOption({ label: new RegExp(option) }); }); return; }
+      await el.click({ timeout: 15_000 });
+      await page.getByText(option, { exact: false }).first().click({ timeout: 15_000 });
+    },
+    /** Fill the field that has this placeholder (two fields can share a label on one screen). */
+    async fillPlaceholder(/** @type {string} */ ph, /** @type {string} */ v) { await page.locator(`input[placeholder="${ph}"], textarea[placeholder="${ph}"]`).first().fill(v, { timeout: 15_000 }); },
+    /** The text of every monospace element (a revealed secret shows that way). */
+    async monospaces() { return page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => /mono/i.test(getComputedStyle(e).fontFamily) && e.children.length === 0 && (e.textContent || "").trim()).map((e) => (e.textContent || "").trim())); },
     async viewport(/** @type {number} */ w, /** @type {number} */ h) { await page.setViewportSize({ width: w, height: h }); },
     url() { return page.url(); },
     async rightClick(/** @type {string} */ t) { await page.getByText(t, { exact: false }).first().click({ button: "right", timeout: 15_000 }); },
@@ -358,7 +370,18 @@ try {
     await new Promise((r) => setTimeout(r, 5000));
     const still = await drv.text();
     if (/You're all set/.test(still) || !/Connect your AI\./.test(still)) throw new Error(`Continue with nothing signed in left the AI step: ${still.slice(0, 200)}`);
-    await drv.click("Skip for now");
+    if (OWNER_WALK && process.env.OWNER_WALK_OPENROUTER_KEY) {
+      // The owner walk gives the Assistant a real model: an OpenRouter key added through the app's own API key tile (checked with the provider, kept in the Vault), the way a person adds one.
+      try {
+        await drv.click("Add API key");
+        await drv.fill("API key", process.env.OWNER_WALK_OPENROUTER_KEY);
+        if (await drv.fieldReady("Your password, to open your own Vault")) await drv.fill("Your password, to open your own Vault", PASSWORD);
+        await drv.click("Add account");
+        await until(async () => /OpenRouter/i.test(await drv.text()), 90_000, "the OpenRouter account listed");
+        await drv.shot("04b3-account-added");
+        await drv.click("Continue");
+      } catch (e) { console.log(`  note: the model key was not added (${String(/** @type {Error} */ (e).message).replace(/sk-[A-Za-z0-9_-]+/g, "<key>").slice(0, 300)}); the walk goes on without it`); await drv.shot("04b4-key-failed"); await drv.click("Skip for now").catch(() => {}); }
+    } else await drv.click("Skip for now");
     // The Assistant step: named and given a look, made on the paired server; Continue goes on to Ready.
     const as = await drv.waitFor("Name your Assistant.", 60_000);
     if (/You're all set/.test(as)) throw new Error("the Assistant step was jumped over: Ready showed with it");
@@ -369,6 +392,11 @@ try {
     const md = await drv.waitFor(`How should ${ASSISTANT} think?`, 60_000);
     if (/You're all set/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
     await drv.shot("04d-model");
+    if (OWNER_WALK && process.env.OWNER_WALK_OPENROUTER_KEY) {
+      const want = process.env.OWNER_WALK_MODEL || "openai/gpt-4o-mini";
+      try { await drv.click(want); } catch { try { await drv.click(want.split("/").pop() || want); } catch { console.log(`  note: the model step offers no "${want}": ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`); } }
+      await drv.shot("04e-model-picked");
+    }
     await drv.click("Continue");
     const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");
@@ -391,7 +419,7 @@ try {
   const BAD = /You may not do that|Pair first|member's own vault|did not answer|did not load|went wrong|not allowed|forbidden/i;
   const READY = [S("the server pairs to the creator, the screen names it, and the app reaches Ready")];
   /** The Mac window has a sidebar; the browser at phone width has a tab bar with only Now, Chat, Projects, Records and More. So a screen the tab bar does not carry is opened by its route. @param {string} text @param {string} path @param {boolean} inTabBar */
-  const open = async (text, path, inTabBar) => { if (client === "mac-app" || inTabBar) { try { await drv.click(text); return; } catch { /* the press did not land: the route is the same screen */ } } await drv.go(path); };
+  const open = async (text, path, inTabBar) => { if (client === "mac-app" || inTabBar) { try { await drv.click(text === "Now" ? "Home" : text); return; } catch { /* the press did not land: the route is the same screen */ } } await drv.go(path); };
   /** Open a screen and wait until its own pane says what it should (or the time is up); an error sentence anywhere on it fails it. @param {string} name @param {string} file @param {RegExp} shows @param {number} ms @param {() => Promise<void>} before */
   const look = async (name, file, shows, ms, before) => {
     let t = "";
@@ -409,7 +437,8 @@ try {
   };
   // First 90 s: a screen that needs Records either shows its content or says, calmly, that Records is setting up (the honest first-start state). An error sentence is never accepted.
   const SETTING = /Records is setting up/i;
-  const NOW_OK = /Good (morning|afternoon|evening)/i;
+  // Home greets by the clock of the machine the page runs on: Good morning, afternoon or evening, and "Still up" from 22:00 to 05:00 (apps/app/screens/now/home-model.js greeting). A runner is on UTC, so the walk meets all four.
+  const NOW_OK = /Good (morning|afternoon|evening)|Still up/i;
   const RECORDS_OK = /Contacts|People|All objects|No records|No people/i;
   await run.step(S("owner walk: Now loads, or says Records is setting up, with no skeleton after 90 s"), async () => {
     await look("Now", "07-now", new RegExp(`${NOW_OK.source}|${SETTING.source}`, "i"), 90_000, async () => { await open("Now", "/u/now", true); });
