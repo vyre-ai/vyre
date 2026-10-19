@@ -1,7 +1,7 @@
 import { dayOf } from "../../src/time/show.js";
 // The pure half of Account, What my assistants can see and Privacy on the real box: spaces.identity.* answers and the sealed fields of records.types as lines.
 
-export type Identity = { exists: boolean; name?: string; label?: string; id?: string; pending?: boolean };
+export type Identity = { exists: boolean; name?: string; label?: string; id?: string; pending?: boolean; /** This page holds no key of the person's own (a browser or phone on a server's address): the list is read from the names directory and cannot be changed here. */ readOnly?: boolean };
 export type Entry = { eid: string; kind: "device" | "code" | "contact" | string; label: string | null; since: number; self: boolean; newcomer: boolean };
 export type TypeDef = { name: string; label?: string; fields: { name: string; label?: string; kind: string; seal?: unknown }[] };
 
@@ -17,6 +17,9 @@ export function entryTitle(e: Entry): string { return e.label || (e.kind === "de
 export function entryLine(e: Entry): string { return `${WAY[e.kind] ?? e.kind}. Added ${day(e.since)}${e.newcomer ? ". New sign-in, under 24 hours old" : ""}`; }
 /** A device you are on cannot be removed from here; the recovery code is replaced, not removed. */
 export const removable = (e: Entry): boolean => !e.self && e.kind !== "code";
+
+/** Why a page that only reads the list shows no buttons to change it. */
+export const READ_ONLY_LINE = "Your keys are on your Mac or your phone, so this page can show your list but not change it. Make a recovery code or take a device off from there.";
 
 /** The line under the name: the Vyre name, or that setup is waiting. */
 export const identityLine = (i: Identity): string => (i.pending ? "Setting up." : i.name ?? "");

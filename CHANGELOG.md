@@ -55,6 +55,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(settings): Account and recovery on a page that holds no key of its own (a browser or phone on a server's address) shows who the server knows by name and the person's list from the names directory, checked (src/identity/public-list.js, settings/account-read.js), and says that changing it (a new recovery code, taking a device off) is done from the Mac or phone that holds the keys; those buttons are not offered there.
+
 - docs(known-gaps): the shared browser and a Linux user for each agent are opt-in and agentd starts in 0.6.2 (the entry no longer says off until 0.6.2); the download-folder entry is gone (fixed in 0.6.2); new entries for the ad-hoc signed Mac app (no Touch ID approvals; the GitHub sign-in may not finish) and for a flood of forged asks to join keeping real asks waiting.
 - fix(app): a Space named before its server was listed (v0.6.1) is listed when its owner unlocks (host-core.js ensureServers, beside the key-agreement repair): the host signs the owner's server-add act for each Space it owns on a paired server, once per Space and route, quietly, and retries at the next unlock if the directory refuses. The first-run claim already does it (identity/claim-space.js).
 - feat(wink): the public gate sends a visitor at the bare name, GET or HEAD for exactly `/`, to the hosted app (302 to https://web.vyre.run/) instead of a 404; every other path is as before. Config `rootRedirect` on the gate; the server install turns it on by default.
