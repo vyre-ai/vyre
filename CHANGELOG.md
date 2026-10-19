@@ -1689,6 +1689,7 @@ Release summary (the plain-words version is release/notes/0.5.3.md): a new first
 
 ## Unreleased
 
+- fix(golden): requests.attention is named in scripts/gen-allow.mjs (DECLARED, with its guard in DECLARED_NOTES) and in kernel/golden/allow.json. It became internal for the approvals queue alone, so its person-caller cells became no_such_tool and its module cells moved from denied to run in the golden (the golden models module callers by kind, and the body refuses every module but approvals); the refresh refused that move until it was named.
 - test: the key-screens list names agents/[name] (the same page as assistants/[name]) as hand-written with its reason, and the space proof no longer sets another VPN product's switch (its network module is off in that proof anyway).
 - fix(chat): composer `/` and `!` lines route through the kernel (`threads.slash`, lib/thread-composer-route.js) from the app and the CLI, so `/remember`, `/model`, `/effort`, `/later`, `/find`, and session slashes like `/compact` no longer go to the model as plain text. `stream.send` carries picked `#` tags as `chips` into `threads.send` so vault and record grants are recorded.
 - fix(chat): mute and list-pin sync through `work.chat.prefs` on the box (not only localStorage). Push holds for asks and drafts are per push device, so one screen in use does not delay notifications on your other devices. The chat panel loads effort, mode and thinking from `threads.get`; Carry on here follows `runner.places`. Stream cursor gaps resync the socket from the last good frame.
