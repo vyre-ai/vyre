@@ -122,8 +122,8 @@ export default {
         const r = item.thread
           ? await ctx.call("threads.post", { thread: item.thread, text, kind: "scheduled", from: "planner" })
           : agent
-            ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}) })
-            : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true });
+            ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}), ...(item.by ? { person: String(item.by) } : {}) })
+            : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(item.by ? { person: String(item.by) } : {}) });   // the schedule's maker: it runs on their own account (asker-account.js memberAccount), never the owner's for an admin
         if (r.error) { ok = false; note = r.error.message; }
         else if (r.data && typeof r.data.thread === "string") thread = r.data.thread;   // the job's thread, so the run says where the work is
       } catch (e) { ok = false; note = /** @type {Error} */ (e).message; }

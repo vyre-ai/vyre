@@ -1,5 +1,6 @@
 // @ts-check
 import { carriesPickedCredential, OPENROUTER_DEFAULT_MODEL } from "../sessions/providers.js";
+import { connectOwn } from "../../lib/own-account.js";
 // A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
 // accounts that serve that person), so a turn is never run on another member's sign-in:
 //   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
@@ -23,7 +24,12 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
   // Nobody but the owner runs on the owner's login, nor on the machine's own credential or the ambient login of the user the server runs as (a Mac mini server's Claude Code login is the owner's): a person with no sign-in of their own is refused ALWAYS, whatever account the thread names or none, and whether or not any credential is visible to take.
   const owner = ownerOf(sb);
   if (owner === "") throw ownerUnknown();
-  if (owner !== null && !isOwner(sb, owner, asker)) throw needOwnSignIn();
+  if (owner !== null && !isOwner(sb, owner, asker)) {
+    // none on the thread's provider: their own account on any other provider runs this one turn (the turn hops to that provider and back), before anyone is refused
+    const other = await sb.accountFor({ provider, person: asker, any: true, ...scope }).catch(() => null);
+    if (other && other.id && other.provider && other.person && sb.canon(String(other.person)) === sb.canon(asker)) return { provider: String(other.provider), account: String(other.id), person: asker };
+    throw needOwnSignIn();
+  }
   if (!rec.account) return null;
   const serves = await sb.accountFor({ provider, account: rec.account, person: asker, ...scope }).catch(() => null);
   if (serves) return null;
@@ -40,11 +46,16 @@ export async function askerOver(sb, id, kernelTurn, memberOnly = false) {
  * @returns {Promise<{ provider: string, account: string, model?: string } | null>}
  */
 export async function accountProviderFor(sb, o) {
+  const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
+  const who = asker ? { person: asker } : {};
+  // The model picked for the Assistant (or any agent) names its provider (agents_agents.model_provider): an OpenRouter model runs on OpenRouter, even with Claude connected. The account is still the asker's own of it.
+  if (typeof o.model_provider === "string" && o.model_provider && o.model_provider !== "claude" && !o.provider && !o.account && o.agent) {
+    const picked = await sb.accountFor({ provider: o.model_provider, ...who }).catch(() => null);
+    if (picked && picked.id) return { provider: o.model_provider, account: String(picked.id) };
+  }
   // an agent that is not the person's Assistant brings its own sign-in; an Assistant's own Claude credentials (a token or key in its env, or a named auth) keep it on Claude
   if (o.provider || o.account || !sb.deps.requireAccount || (o.agent && o.agent_kind !== "assistant")) return null;
   if (o.agent && ((o.auth && o.auth !== "ambient") || carriesPickedCredential(o) || o.fallback)) return null;
-  const asker = (o.kernelTurn && o.kernelTurn.asker) || (typeof o.person === "string" && o.person) || undefined;
-  const who = asker ? { person: asker } : {};
   const claude = await sb.accountFor({ provider: "claude", ...who }).catch(() => null);
   if (claude && claude.id) return null;
   if (typeof sb.deps.auth === "function") { const a = await sb.deps.auth({ agent: null }).catch(() => null); if (a && a.env) return null; }
@@ -79,6 +90,8 @@ export function ownerDirect(sb, o, acct) {
 
 /** A NEW thread's launch options with the provider and account it should run on (accountProviderFor), or as they were. @param {any} sb @param {any} o */
 export async function withAccountProvider(sb, o) {
+  // OpenRouter's driver never picks a model for a person: a launch that names an OpenRouter account (an agent run on the asker's own) and no model gets the default first run saves
+  if (o.provider === "openrouter" && o.account && !o.model) return { ...o, model: OPENROUTER_DEFAULT_MODEL };
   const own = await accountProviderFor(sb, o);
   return own ? { ...o, provider: own.provider, account: own.account, ...(own.model ? { model: own.model } : {}) } : o;
 }
@@ -263,13 +276,10 @@ export async function agentLaunchGuard(sb, i, who, owner) {
   if (i.account || owner === undefined) return;
   const person = forPerson || who;
   if (forPerson === "automation") return;                  // an owner's or a Flow's own setting, named by the module that makes it (the duty wake, the integrator)
-  // The gate judges ONE situation: a call that carries a person who is not the owner or an admin. A call with no person on it (the owner's surfaces, a session asking a teammate, a restart re-running a queued
-  // request, a duty, the integrator, a Flow) is not judged and not refused here, as before the gate existed.
+  // The gate judges ONE situation: a call that carries a person who is not the owner. An admin is a person with an account of their own like any member: the owner's credential never pays for their turn.
+  // A call with no person on it (the owner's surfaces, a session asking a teammate, a restart re-running a queued request, a duty, the integrator, a Flow) is not judged and not refused here, as before the gate existed.
   if (!person) return;
   if (owner && sb.canon(person) === sb.canon(owner)) return;
-  // an admin's turn is the owner's kind of turn
-  const role = typeof sb.deps.membershipOf === "function" ? await Promise.resolve(sb.deps.membershipOf(person)).catch(() => null) : null;
-  if (role && (role.role === "owner" || role.role === "admin")) return;
   if (!i.agent) throw Object.assign(new Error("An agentless job with tools runs on the machine's own sign-in, which is the owner's. Ask the owner to run it. Nothing was started."), { code: "no_account" });
   // A credential PICKED for the agent (its vault token or key in the launch's env, or a fallback key) is the owner's: a turn that somebody else drives runs on it ONLY when the launch delivers it where the turn's tools cannot read it
   // (the sandboxed launch hands it over by a file descriptor: delivered "fd"). An environment variable or a file the turn can print is refused, whatever the delivery is not known to be.
@@ -279,7 +289,7 @@ export async function agentLaunchGuard(sb, i, who, owner) {
     if (how === undefined) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. The owner can run it for you. Nothing was started.`), { code: "no_account" });
     throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. Ask the owner to give it an API key or a setup token. Nothing was started.`), { code: "no_account" });
   }
-  throw Object.assign(new Error(`${i.agent} has no AI sign-in picked for it, and the owner's is not used for your request. Ask the owner to pick one for it. Nothing was started.`), { code: "no_account" });
+  throw Object.assign(new Error(`${connectOwn(i.agent)} Nothing was started.`), { code: "no_account" });
 }
 
 /** The launch input with `for_person` kept only when a first-party module made the call (anyone else's is dropped: a person's own words never say who the work is for). @param {any} i @param {any} meta */

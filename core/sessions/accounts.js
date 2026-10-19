@@ -243,17 +243,15 @@ export class Accounts {
    * account out of scope is a refusal, never a fallback to a different one (reviewer-2's finding:
    * the assistant, or anything a prompt injection shapes, must not be able to reach another
    * project's account just by naming it).
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null, job?: boolean }} i `job`: an agent's unattended job (a member's own key or token is never chosen for it). `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null, job?: boolean }} i `job`: an unattended job (a wake, a schedule, a Flow's job); it runs on the account of the person it acts for, as their own turn would. `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
    * @returns {any} the resolved account (never synthetic-only unless nothing else exists), or null
    *   when the provider has no accounts configured at all (today's single-credential behavior).
    */
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    // an agent's job runs on the agent's own access, never on a member's own key or token: those are for that member's own turns. A member's own sign-in (a login) named for a job the member asked for
-    // (a Flow's chat, agents.flow-say: `account` and `person` both given) is the one exception, because it is their own turn.
-    const forThem = i.job === true && Boolean(i.account) && Boolean(i.person);
-    const listed = this.list(provider, i.job === true && !forThem ? undefined : i.person).filter(a => !(i.job === true && a.person && a.kind !== "login"));
+    // A job is the person's own run like a turn (the owner's rule, 20 Oct 2026): only the accounts that serve that person, never the home's for anyone but the owner. A job with no person is the home's own.
+    const listed = this.list(provider, i.person);
     // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
     const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);
@@ -273,5 +271,21 @@ export class Accounts {
     if (!real.length) return all[0] || null; // only the synthetic default exists: today's behavior
     if (real.length === 1 && inScope(real[0].scope, target)) return real[0];
     throw Object.assign(new Error(`${provider} has ${real.length} accounts and none resolved for this call; name one explicitly`), { code: "ambiguous", accounts: real.map(a => ({ id: a.id, label: a.label })) });
+  }
+
+  /**
+   * The person's own account on ANY provider, chosen by resolve() itself (the same scope and default rules): the provider asked for first, then Claude, then each other provider they hold an account on,
+   * in the order they added them. Only a real account that serves this person; null when they have none (never the synthetic machine login, and for anyone but the owner never the home's).
+   * @param {{ person?: string|null, provider?: string|null, project?: string|null, agent?: string|null }} i
+   */
+  own(i) {
+    if (!i.person) return null;
+    const mine = this.list(undefined, i.person).filter(a => !a.synthetic && !a.pending);
+    for (const provider of new Set([i.provider, "claude", ...mine.map(a => a.provider)].filter(Boolean).map(String))) {
+      let a = null;
+      try { a = this.resolve({ provider, person: i.person, project: i.project || null, agent: i.agent || null }); } catch { a = null; }
+      if (a && !a.synthetic && this.serves(a, i.person)) return a;
+    }
+    return null;
   }
 }

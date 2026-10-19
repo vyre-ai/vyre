@@ -103,7 +103,7 @@ test("in a chat an agent runs on the chatter's own AI sign-in, never on the agen
   assert.equal(refused.error && refused.error.code, "denied", "not shared: no talk");
   await owner("agents.access.set", { agent: "intake", kind: "person", subject: BEN, level: "use" });
   const none = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
-  assert.match(String(none.error && none.error.message), /no AI sign-in picked/, "no sign-in of her own: the owner's is never used for her: " + JSON.stringify(none.error));
+  assert.match(String(none.error && none.error.message), /Connect your own AI account in Settings, AI accounts, to use intake/, "no sign-in of her own: the owner's is never used for her: " + JSON.stringify(none.error));
   const added = await ben("sessions.accounts.add", { provider: "claude", label: "Ben's Claude", kind: "login" });
   assert.equal(added.error, undefined, JSON.stringify(added.error));
   const r = await ben("agents.ask", { agent: "intake", text: "hello", wait: false });
