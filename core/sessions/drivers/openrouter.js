@@ -107,6 +107,9 @@ function runChat(entry, store, o) {
     const messages = [...(o.system && o.system.text ? [{ role: "system", content: String(o.system.text) }] : []), ...history.slice(-MAX_HISTORY)];
     ac = new AbortController();
     asked = false;
+    // One reply is one message: the stream names it (message_start) before its first text, and the finished message carries the same id and block, so a surface draws one bubble and not two. (Claude Code does the same.)
+    const mid = `or-turn-${turn + 1}`; let opened = false;
+    const delta = (/** @type {string} */ t) => { if (!opened) { opened = true; say({ type: "stream_event", event: { type: "message_start", message: { id: mid } } }); } say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); };
     let text = "", cost = 0, usage = null, failed = null, cancelled = false;
     try {
       if (!okBase(base)) throw new Error("the OpenRouter address must be https");
@@ -157,7 +160,7 @@ function runChat(entry, store, o) {
           let j; try { j = JSON.parse(data); } catch { continue; }
           if (j.error) throw new Error(String(j.error.message || "the model refused"));
           const d = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
-          if (typeof d === "string" && d) { text += d; say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: d } } }); }
+          if (typeof d === "string" && d) { text += d; delta(d); }
           if (j.usage) { usage = j.usage; cost = Number(j.usage.cost) || 0; }
         }
       }
@@ -167,7 +170,7 @@ function runChat(entry, store, o) {
         let j = null; try { j = JSON.parse(other); } catch { /* not JSON */ }
         if (j && j.error) throw new Error(String(j.error.message || "the model refused"));
         const c = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
-        if (typeof c === "string" && c) { text = c; say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: c } } }); if (j.usage) { usage = j.usage; cost = Number(j.usage.cost) || 0; } }
+        if (typeof c === "string" && c) { text = c; delta(c); if (j.usage) { usage = j.usage; cost = Number(j.usage.cost) || 0; } }
         else if (!j) throw new Error(`OpenRouter sent something Vyre could not read: ${other.replace(/\s+/g, " ").slice(0, 120)}`);
       }
       if (!text) throw new Error("the model returned no answer");
@@ -178,7 +181,7 @@ function runChat(entry, store, o) {
       if (failed && key) failed = new Error(scrubText(String(failed.message), [key], { marker: "[key]", min: 1 }));
     }
     ac = null;
-    if (text) { history.push({ role: "assistant", content: text }); say({ type: "assistant", message: { id: `or-turn-${++turn}`, content: [{ type: "text", text }] } }); }
+    if (text) { history.push({ role: "assistant", content: text }); turn++; say({ type: "assistant", message: { id: mid, content: [{ type: "text", text }] } }); }
     else if (history.length && history[history.length - 1].role === "user") history.pop();   // an unanswered turn is not kept
     store.set(o.id, history.slice(-MAX_HISTORY));
     total += cost;
