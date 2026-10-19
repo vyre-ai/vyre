@@ -393,11 +393,10 @@ try {
     if (/You're all set/.test(md)) throw new Error("the model step was jumped over: Ready showed with it");
     await drv.shot("04d-model");
     if (OWNER_WALK && process.env.OWNER_WALK_OPENROUTER_KEY) {
-      const want = process.env.OWNER_WALK_MODEL || "openai/gpt-4o-mini";
-      try { await drv.click(want); } catch { try { await drv.click(want.split("/").pop() || want); } catch { console.log(`  note: the model step offers no "${want}": ${(await drv.text()).replace(/\s+/g, " ").slice(0, 300)}`); } }
-      await drv.shot("04e-model-picked");
-    }
-    await drv.click("Continue");
+      // The model step lists no model for an OpenRouter key yet (the row is greyed and Continue stays off): the person keeps the default, which is what the button is for.
+      await drv.shot("04e-model-keep-default");
+      await drv.click("Keep the default");
+    } else await drv.click("Continue");
     const ready = await drv.waitFor("You're all set", 60_000);
     await drv.shot("05-ready");
     // The last screen is "You're all set." and the Assistant and Engineer waiting in Chats, nothing more.
