@@ -21,7 +21,8 @@ function tsx(dir, out = []) {
   return out;
 }
 
-const LITERAL_ID = /(?<![A-Za-z0-9_])(?:spc|per|tpl)_[A-Za-z0-9]{3,}/;
+// a whole id as a string ("spc_zqvwc5w7zo5v"), not a prefix a program tests for ("tpl_untitled-")
+const LITERAL_ID = /["'`](?:spc|per|tpl)_[A-Za-z0-9]{3,}["'`]/;
 const TEXT_SLOT = /<Text|\btitle=|\bsub=|\blabel=|\bplaceholder=|>[^<{]*(?<![A-Za-z0-9_])(?:spc|per|tpl)_/;
 const SPACE_ID_AS_TEXT = /(?:<Text[^>]*>\s*\{|\b(?:title|sub|label|placeholder)=\{)[^}]*\.(?:space|spaceId|space_id)\}/;
 
