@@ -389,7 +389,7 @@ export default function Gallery() {
     return <ThemeProvider><Page><View nativeID="fixture"><RunPage flow="reminder" run="run_9" /></View></Page></ThemeProvider>;
   }
   if (q.f === "flow-kit") return <ThemeProvider><FlowKit /></ThemeProvider>;
-  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one, ?f=space-tiles the tiles.
+  // The shell looks and the space tiles are components, not block fixtures: /gallery?f=shell shows every state of the sidebar, ?f=shell-main|shell-folded|shell-projects|shell-projects-folded|shell-records one (shell-folded-account and shell-folded-space are the folded rail the picture test presses), ?f=space-tiles the tiles.
   if (typeof q.f === "string" && (q.f === "space-tiles" || q.f === "shell" || q.f.startsWith("shell-"))) return <ThemeProvider><Page><View nativeID="fixture"><Sample name={q.f} /></View></Page></ThemeProvider>;
   const form = q.form === "compact" || q.form === "glance" ? q.form : "full";
   const given = fromQuery(q.screen);
