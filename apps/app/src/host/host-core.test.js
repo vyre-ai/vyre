@@ -471,3 +471,17 @@ test("when the repair of private chats cannot finish, the host says why and a re
   for (let i = 0; i < 100 && !(await none.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
   assert.match((await none.call("identity.agree.status")).failed, /no key for private chats/);
 });
+
+test("a page with no key of its own reads a person's list from the directory, checked, and cannot change it", async (t) => {
+  const { publicEntries } = await import("../identity/public-list.js");
+  const d = directory(t);
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  const made = await host.call("onboard.person.create", { username: "sol", password: PASSWORD, confirm: PASSWORD });
+  const list = await publicEntries({ directory: d.base, id: made.id, fetch: d.fetch, now: d.now() });
+  assert.equal(list.filter((e) => e.kind === "device").length, 1, "the one device");
+  assert.equal(list.filter((e) => e.kind === "code").length, 1, "the recovery code");
+  assert.ok(list.every((e) => e.self === false), "no entry is this page's own");
+  await assert.rejects(() => publicEntries({ directory: d.base, id: "per_zzzzzzzzzzzzzzzzzzzzzzzzzz", fetch: d.fetch, now: d.now() }), (e) => e.code === "not_found");
+}); };
+  assert.equal((await publicEntries({ directory: d.base, id: made.id, fetch: swapped, now: d.now() })).length, list.length);
+});
