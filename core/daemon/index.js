@@ -145,7 +145,7 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
       return null;
     }
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
-    return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
+    return { kind: "device", device_key_id: deviceId, person: k.id.owner, ...(device && device.kind === "web" ? { web: true } : {}), path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
   return null;
 }

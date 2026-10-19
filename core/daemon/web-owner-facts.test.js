@@ -25,3 +25,10 @@ test("a web browser that is not the owner's, a removed one, an unknown one and a
   assert.equal(callerFacts("cli", policy, undefined, k, false, web({ kind: "setup" }), undefined, true), null, "a setup page");
   assert.equal(callerFacts("mcp:agent:kit", {}, undefined, k, false, null, undefined, true), null, "an agent has none from a flag");
 });
+
+test("a web browser's facts say so, and an app device's do not", () => {
+  const webFacts = callerFacts("cli", policy, undefined, k, false, web(), undefined, true);
+  assert.equal(webFacts && webFacts.web, true);
+  const appFacts = callerFacts("cli", policy, undefined, k, false, web({ kind: "app" }), undefined, false);
+  assert.ok(appFacts && appFacts.web === undefined, JSON.stringify(appFacts));
+});

@@ -19,6 +19,7 @@ import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 import { isServer } from "../config/index.js";
 import { within } from "../../lib/within.js";
+import { MOMENT_OPS } from "../../lib/one-yes-ops.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -1030,6 +1031,9 @@ const OWNERSHIP_TOOLS = new Set(["spaces.owner.transfer", "spaces.members.transf
  */
 export async function noPresenceDevice(d, caller, meta, tool, input) {
   try {
+    // A web browser never pairs a device on the no-device pass: a hostile script in the tab could mint a ticket and confirm an attacker's device, and that outlives the no-key window. The Vyre app pairs the first phone.
+    const web = Boolean(meta && meta.kernelFacts && meta.kernelFacts.web === true);
+    if (web && typeof tool === "string" && MOMENT_OPS.pair.includes(tool)) return false;
     if (typeof tool !== "string" || OWNERSHIP_TOOLS.has(tool) || (tool === "spaces.members.set-role" && !(input && typeof input === "object" && typeof input.role === "string" && input.role !== "owner"))) return false;
     const presence = /** @type {any} */ (d.presence);
     if (!presence || typeof presence.keys !== "function" || d.core.link) return false;
