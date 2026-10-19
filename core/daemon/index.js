@@ -112,7 +112,7 @@ export function tailnetLabelHolds(label, peer, network) {
  * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
  * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ inside: boolean, outside?: boolean } | undefined} [ancestry] what runs above the caller on the socket (a person's surface label gets facts only with this) @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
  */
-export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
+export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined, noDevice = false) {
   if (!k || !k.id) return null;
   // The person's own connected client (core/mcpconn): the daemon vouched its key (via.viaMcp) on the plain `mcp` label, and the call is the owner's, on the chain a person's own terminal here carries (the linkBoxFacts shape), its session the connection the person made with presence. It is
   // still labelled `mcp`, so the registry holds an outward act for it like a model's, and agent-reach.mcpPersonMay names what stays out of its reach.
@@ -131,7 +131,8 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   }
   // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
   // not), a setup page, an id the home never paired and a removed device get no person facts; the relay's say-so is never enough. (tailnet nodes are the tailnet listener's own identity, X-1.)
-  if (policy.caller && String(policy.caller).startsWith("device:") && !(device && device.kind === "app" && device.removed === false)) return null;
+  // With no presence device enrolled (the owner's ruling, `noDevice` from the daemon's own enrolment table) the owner's own web browser counts too, by the same `deviceIsOwner` test below.
+  if (policy.caller && String(policy.caller).startsWith("device:") && !(device && (device.kind === "app" || (noDevice === true && device.kind === "web")) && device.removed === false)) return null;
   if (policy.caller && ownerDevice(policy.caller)) {
     // A paired device is the owner's only by `deviceIsOwner`: Wink's own record says its person IS this home's owner, or the owner's own present act paired it. Anything else gives no person facts, before an owner's identity is
     // claimed as after (a confirmed device of another member is a paired device, not the owner's).
@@ -1656,7 +1657,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
     /** @type {{ inside: boolean, outside?: boolean } | undefined} */
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
+    const noDeviceKeys = Boolean(deviceRow && deviceRow.kind === "web" && String(policy.caller || "").startsWith("device:") && registry.deps.presence && typeof registry.deps.presence.keys === "function" && await Promise.resolve(registry.deps.presence.keys()).then(ks => ks.length === 0, () => false));
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured, noDeviceKeys);
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
     // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
