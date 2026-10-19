@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Banner, Button, Card, Row, Text, showToast } from "@vyre/ui";
 import { Group } from "../places/Frame";
 import { dayOf } from "../../src/time/show.js";
-import { changeGithubDevice, githubAccount, githubDevices, linkGithub, signInWithGithub, type GithubDevice } from "../../src/real/github";
+import { changeGithubDevice, githubAccount, githubDevices, githubReturnWaiting, linkGithub, signInWithGithub, type GithubDevice } from "../../src/real/github";
 
 /** Settings > Account: link or unlink GitHub. GitHub proves who you are on a new device; the password still opens your vault. Unlinking deletes the stored copy of your key at once. */
 export function GithubCard() {
@@ -23,7 +23,8 @@ export function GithubCard() {
   const link = async () => {
     setBusy(true); setSay("");
     const s = await signInWithGithub({ signin: false });
-    if (!s.ok) { setBusy(false); setSay(s.say); return; }
+    // in a browser the tab goes to GitHub and comes back here, where the effect below finishes the link
+    if (!s.ok) { setBusy(false); if ((s as { code?: string }).code !== "redirect") setSay(s.say); return; }
     const r = await linkGithub(s.session, s.user);
     setBusy(false);
     if (!r.ok) { setSay(r.say); return; }
@@ -31,6 +32,8 @@ export function GithubCard() {
     const st = await githubAccount("status");
     setLinked(st.ok ? st.linked : null);
   };
+  // Back from GitHub in this tab: finish the link it started.
+  useEffect(() => { if (githubReturnWaiting()) void link(); }, []);
   const unlink = async () => {
     setBusy(true); setSay("");
     const r = await githubAccount("unlink");

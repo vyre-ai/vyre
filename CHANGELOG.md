@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(github): Sign in with GitHub works in a browser and in the Mac app. In a browser the tab itself goes to GitHub and comes back to the page it started on, which finishes the sign-in (or the Settings link) by itself; there is no popup to block, and web.vyre.run's same-origin opener policy no longer makes the page see the GitHub window as closed and call the sign-in cancelled. The Mac app opens the person's browser with `claim=1`: the relay's callback keeps the ticket and shows "Go back to the Vyre app", and the app claims the ticket with its verifier (POST /v1/github/claim, 202 while waiting, once, per-address limit). Needs the relay deploy. apps/app/src/identity/github-return.js holds the pure steps.
+
 ## 0.6.2
 
 - fix(app): the welcome page reads in dark. The line under the greeting and the "Vyre" wordmark asked the theme for `text2`, a name it does not have (it is `text-2`), so they drew black on black; every colour on the page now comes from WELCOME_TONES, token names the welcome-model test checks against tokens v2 in light and dark with a 4.5:1 floor. The theme switch is a compact Segmented of three icons (sun Light, laptop Match this device, moon Dark), named for screen readers and in a tooltip; an icons-only Segmented marks the chosen segment with a hairline edge and full ink.

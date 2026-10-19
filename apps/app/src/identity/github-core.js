@@ -52,6 +52,8 @@ export async function openRelease(sealed, agree) {
 /** The sentences for each way a GitHub step ends. */
 export function githubSay(/** @type {string|undefined} */ code) {
   if (code === "popup") return "The GitHub window was blocked. Allow pop-ups for this page, then try again.";
+  if (code === "redirect") return "Taking you to GitHub.";
+  if (code === "no_storage") return "This browser keeps nothing for this page, so GitHub cannot send you back here. Sign in with your username and password instead.";
   if (code === "denied") return "GitHub sign-in was cancelled. Nothing was changed.";
   if (code === "timeout") return "GitHub did not answer in time. Try again.";
   if (code === "expired") return "That GitHub sign-in has run out. Start again.";
