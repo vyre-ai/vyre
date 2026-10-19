@@ -36,6 +36,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^(now|now\/doing|now\/needs|task\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|flows\/\[id\]\/runs\/\[run\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
   [/^(index|about|access|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
+  [/^profile\.tsx$/, "your profile in the showing Space (screens/profile): your look with the look picker, your name and About me, saved as your own member-profile record; a form of its own, owned by the identity work"],
 ]);
 
 const walk = (/** @type {string} */ dir, /** @type {string} */ rel = "") => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name), path.join(rel, e.name)) : e.name.endsWith(".tsx") ? [path.join(rel, e.name)] : []);
