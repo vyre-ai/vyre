@@ -8,6 +8,18 @@ import { tool } from "../real/box";
  * identity list, or a participant whose devices cannot agree each stop it with a plain line. Shared by a new chat and by the persistent chats (assistant, Engineer).
  */
 export async function ringForNewChat(): Promise<{ id: string; ring: unknown } | { say: string }> {
+  const gate = await deviceGate();
+  if ("say" in gate) return gate;
+  return newChatRing(`chat_${newUuid()}`, gate.holders);
+}
+
+/** Whether this device can start a private chat right now, without making one: null when it can, else the line that says why. Cheap enough to ask again when the person comes back or on a timer. */
+export async function deviceReadiness(): Promise<string | null> {
+  const gate = await deviceGate().catch(() => ({ say: "Vyre did not answer." }));
+  return "say" in gate ? gate.say : null;
+}
+
+async function deviceGate(): Promise<{ holders: Record<string, any> } | { say: string }> {
   const me = await getAgreeKey();
   if (!me) return { say: "This device can't start private chats yet." };
   const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
@@ -15,5 +27,5 @@ export async function ringForNewChat(): Promise<{ id: string; ring: unknown } | 
   const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
   if (!r.listed) return { say: "This device isn't ready for private chats yet." };
   if (r.without.length) return { say: "Some devices can't open private chats yet." };
-  return newChatRing(`chat_${newUuid()}`, r.holders);
+  return { holders: r.holders };
 }

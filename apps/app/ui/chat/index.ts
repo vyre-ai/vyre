@@ -9,7 +9,7 @@ export { PanelCapabilityRows, type PanelCapabilityRowsProps } from "./PanelCapab
 export { NewPopover, type NewRow } from "./NewPopover";
 export { newMenuRows, firstRow } from "./new-menu-model.js";
 export { ConversationList, ConversationTypes, ConversationHeader, type Convo } from "./ConversationList";
-export { convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf } from "./convo-model.js";
+export { displayName, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf } from "./convo-model.js";
 export { AgentComputerPane, type ComputerView } from "./AgentComputerPane";
 export { computerOf, computerWords, computerActions, DOCK } from "./computer-model.js";
 export { NewAgentDialog, AgentLookPicker, type NewAgentValues } from "./NewAgentDialog";
