@@ -93,7 +93,7 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     row("phonedev000000000", phone.id, 0, "hardware");
     assert.equal(await ask(), false, "a hardware phone paired from the app ends the window");
     const why = await ask(true);
-    assert.match(why, /keys enrolled: 3, keys ignored \(not a phone\): 2.*caller kind: app; owner device: yes; facts: yes/, why);
+    assert.match(why, /keys enrolled: 3, keys ignored \(not a phone\): 2.*caller kind: app; label class: device; owner device: yes; facts: yes/, why);
     assert.doesNotMatch(why, /per_|abcdefghijklmnop/, "no ids in the reason");
     presence.remove(phone.id);
     db.prepare("UPDATE relay_devices SET removed_at = 5 WHERE id = 'phonedev000000000'").run();
