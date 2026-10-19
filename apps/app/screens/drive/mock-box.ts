@@ -1,7 +1,7 @@
 // A fake box for a mock build: the same tools the real Drive calls (files.drive.*, artifacts.*), answered from the sample world in data.ts, so the one Drive screen
 // runs unchanged. State lives in the module, per `mockBox()` instance, so a test starts clean.
 import type { Call } from "./source";
-import { SAMPLE_ARTIFACTS, SAMPLE_FILES, SAMPLE_NOW, type SampleFile } from "./data.ts";
+import { SAMPLE_ARTIFACTS, SAMPLE_FILES, SAMPLE_NOW, SAMPLE_PROJECT, type SampleFile } from "./data.ts";
 
 type Out = { data?: unknown; error?: { code: string; message: string } };
 const err = (code: string, message = ""): Out => ({ error: { code, message } });
@@ -47,6 +47,14 @@ export function mockBox(now: () => number = () => SAMPLE_NOW) {
         if (files.some((f) => f.path === to || f.path.startsWith(`${to}/`))) return err("conflict", `${to} already exists: pick another name, or move it out of the way first`);
         for (const f of hit) f.path = to + f.path.slice(from.length);
         return { data: { from, to, kind: hit.length === 1 && hit[0].path === to ? "file" : "folder", moved: hit.length } };
+      }
+      case "files.places": return { data: { mine: { path: "" }, projects: [{ slug: SAMPLE_PROJECT.slug, name: SAMPLE_PROJECT.name, path: `Projects/${SAMPLE_PROJECT.id}` }], agents: [] } };
+      case "files.drive.space.mkdir": {
+        const up = String(i.parent ?? ""), name = String(i.name ?? ""), at0 = up ? `${up}/${name}` : name;
+        if (!name || /[\\/]/.test(name) || name.startsWith(".")) return err("bad_input", "a folder name has no slash and does not start with a dot");
+        if (files.some((f) => f.path === at0 || f.path.startsWith(`${at0}/`))) return err("conflict", `${at0} already exists: pick another name`);
+        files.push({ path: `${at0}/.folder`, size: 0, ver: 1, at: now(), by: "you" });
+        return { data: { path: at0 } };
       }
       case "files.drive.space.delete": {
         const p = String(i.path ?? ""), hit = files.filter((f) => f.path === p || f.path.startsWith(`${p}/`));

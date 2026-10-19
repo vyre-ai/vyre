@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sentenceOf, stageCards, metaParts, rowLine, waitingForYes, PAGE_TABS } from "./page.ts";
+import { sentenceOf, stageCards, metaParts, rowLine, waitingForYes, PAGE_TABS, ownerWords } from "./page.ts";
 
 const body = (extra = {}) => ({
   name: "Launch", stages: [
@@ -58,4 +58,15 @@ test("a playbook waits for a yes when a pending card names its template, or says
   assert.equal(waitingForYes({ approvals: [{ id: "d", title: "Send the Launch invoice", fields: {} }] }, "tpl_launch", "Launch"), false, "a card that only mentions the name is not a playbook change");
   assert.equal(waitingForYes(null, "tpl_launch", "Launch"), false);
   assert.equal(waitingForYes({ approvals: [] }, "tpl_launch", "Launch"), false);
+});
+
+test("who made a playbook is a name a person reads, never an id or a placeholder", () => {
+  const members = [{ id: "per_ana", name: "Ana Reyes" }, { id: "per_zagy5e", name: "Member zagy5e" }, { id: "per_bare", name: "per_bare" }];
+  assert.equal(ownerWords("per_ana", members, "per_me"), "Ana Reyes");
+  assert.equal(ownerWords("per_me", members, "per_me"), "you");
+  assert.equal(ownerWords("per_zagy5e", members, "per_me"), "a teammate", "an auto name like Member zagy5e is not shown");
+  assert.equal(ownerWords("per_bare", members, "per_me"), "a teammate", "a name that is only the id is not shown");
+  assert.equal(ownerWords("per_unknown", members, "per_me"), "a teammate");
+  assert.equal(ownerWords(null, members, "per_me"), null);
+  assert.deepEqual(metaParts({ name: "Launch", version: 2, by: ownerWords("per_ana", members), live: false }), ["Launch", "v2", "made by Ana Reyes", "Draft"]);
 });

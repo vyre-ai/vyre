@@ -10,7 +10,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, enrolDevice } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { CONTACT } from "../kernel/conformance/suite.js";
@@ -65,6 +65,7 @@ test("server side of a server-homed space: host-here needs no proof from the own
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "srv-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} }); // the daemon's REAL presence verifier: no test double
   t.after(() => d.stop());
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller });
   const before = d.kernel.spaces.list().length;
   // host-here needs no presence proof (11391dc9d: the owner check is the gate, the owner's device calls it over the paired session): the owner's call hosts the space...

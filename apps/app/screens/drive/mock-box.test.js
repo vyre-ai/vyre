@@ -18,7 +18,7 @@ test("the space lists its files, and a sealed file is not among them", { skip: !
 
 test("versions run newest first and restoring an old one adds a new version", { skip: !strip }, async () => {
   const call = await fresh();
-  const path = "Doe estate plan/Trust agreement v4.pdf";
+  const path = "Spring launch/Launch plan v4.pdf";
   const v = /** @type {any} */ ((await call("files.drive.versions", { path })).data).versions;
   assert.deepEqual(v.map((/** @type {any} */ x) => x.ver), [4, 3, 2, 1]);
   const r = /** @type {any} */ ((await call("files.drive.restore", { path, version: 2 })).data);

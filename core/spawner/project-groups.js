@@ -158,7 +158,8 @@ export function projectGroups(o) {
  * The work folder as the project groups need it, done at every start as Vyre's user (no capability): /work belongs to the shared group at 2711 (any uid passes through it to a folder it knows; only Vyre and the
  * shared group list it, so a member's session cannot find the other projects), and whatever sits directly in it, and each project folder in /work/projects, has no "other" bits until its project group is
  * given, whatever mode an older volume left it in. Only the folders themselves, never what is inside; links are left alone.
- * @param {{ work: string, shared: number, asVyre: (...argv: string[]) => void, log?: (m: string) => void }} o @returns {string[]} the loose files named in the upgrade notice
+ * The spawner itself is root with no capability, so it reads /work as "other" (2711: pass through, never list): it cannot list it. The loose files are listed as Vyre, by `list`.
+ * @param {{ work: string, shared: number, asVyre: (...argv: string[]) => void, list?: (dir: string) => string[], log?: (m: string) => void }} o @returns {string[]} the loose files named in the upgrade notice
  */
 export function prepareWork(o) {
   const log = o.log || (() => {});
@@ -171,9 +172,12 @@ export function prepareWork(o) {
     // the folder that holds the projects is passed through and never listed: others get x only
     if (fs.existsSync(held) && !fs.lstatSync(held).isSymbolicLink()) o.asVyre("chmod", "o=x", held);
     if (fs.existsSync(held)) o.asVyre("find", held, "-mindepth", "1", "-maxdepth", "1", "!", "-type", "l", "-exec", "chmod", "o-rwx", "{}", "+");
-    // Upgrade notice: what sits loose directly in /work was the shared group's, which no session holds any more; it is vyred's alone now. Said once per start, never left silently unreadable.
-    const loose = fs.readdirSync(o.work, { withFileTypes: true }).filter(e => !e.isSymbolicLink() && e.name !== "projects" && e.isFile()).map(e => e.name);
+  } catch (e) { log(`spawner: ${o.work} is not set up for project groups: ${/** @type {Error} */ (e).message}`); return []; }
+  // Upgrade notice: what sits loose directly in /work was the shared group's, which no session holds any more; it is vyred's alone now. Said once per start, never left silently unreadable. Only the notice
+  // depends on listing the folder, so a folder that cannot be listed here costs the notice and nothing else (the folders above are already closed).
+  try {
+    const loose = (o.list ? o.list(o.work) : fs.readdirSync(o.work, { withFileTypes: true }).filter(e => !e.isSymbolicLink() && e.isFile()).map(e => e.name)).filter(n => n !== "projects");
     if (loose.length) log(`spawner: ${loose.length} loose file(s) directly in ${o.work} are reachable by vyred only now (${loose.slice(0, 20).join(", ")}${loose.length > 20 ? ", ..." : ""}); move what a session needs into its project's folder`);
     return loose;
-  } catch (e) { log(`spawner: ${o.work} is not set up for project groups: ${/** @type {Error} */ (e).message}`); return []; }
+  } catch (e) { log(`spawner: the loose files of ${o.work} were not listed for the upgrade notice: ${/** @type {Error} */ (e).message}`); return []; }
 }

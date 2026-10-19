@@ -7,7 +7,7 @@
 import dns from "node:dns";
 import * as config from "../config/index.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
-import { names } from "./service.js";
+import { names, withIngress } from "./service.js";
 import { directory, DEFAULT_BASE } from "./directory.js";
 
 const HOUR = 3_600_000;
@@ -53,7 +53,12 @@ export default {
     ctx.tool("names.status", {
       description: "This box's name and whether it is held: the name, its address once the built-in network publishes one, and why not when it cannot.",
       input: obj(),
-      run: async () => svc.status(),
+      run: async () => {
+        const s = svc.status();
+        // what the public gate says about the name (network.wink.status ingress): without it, "named" is all this module knows
+        const r = /** @type {any} */ (await ctx.call("network.wink.status", {}).catch(() => null));
+        return withIngress(s, r && r.data ? r.data.ingress : null);
+      },
     });
     ctx.tool("names.check", {
       description: "Is <name>.vyre.run a valid name, and is it free (or already this box's)?",
@@ -118,6 +123,12 @@ export default {
     watch.unref();
     const soon = setTimeout(watching, 30_000);
     soon.unref();
-    return { async stop() { clearTimeout(soon); clearInterval(watch); } };
+    // The spaces module says "space.named" once the owner's own name-here call has been answered by the directory for this home's Space (core/spaces/index.js): this box then serves that name, as names.serve does. Only the spaces
+    // module's own event counts; names.serve itself stays the person's (a module cannot call it).
+    const offNamed = ctx.events.on("space.named", (/** @type {any} */ e) => {
+      if (!e || e.source !== "spaces") return;
+      try { svc.serve(String((e.payload && e.payload.name) || "")); } catch (err) { ctx.log(`names: the server could not start serving ${String(e.payload && e.payload.name)}: ${/** @type {Error} */ (err).message}`); }
+    });
+    return { async stop() { clearTimeout(soon); clearInterval(watch); offNamed(); } };
   },
 };

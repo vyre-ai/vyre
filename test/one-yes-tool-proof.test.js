@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { homeIdentity } from "../kernel/home.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
@@ -31,6 +31,7 @@ test("a software-key proof over the call opens relay.enable on a development bui
   const enrol = run("dev-enrol-software-key.mjs", ["--home", root]);
   assert.equal(enrol.status, 0, enrol.stderr);
   const d = await start({ root, log: () => {}, kernel: true });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   await new Promise(r => setTimeout(r, 100)); // the sealing process takes no proof made before it started
   /** @param {string} tool @param {any} [input] */
@@ -64,6 +65,7 @@ test("a release build refuses the software-key proof for the same tools", { time
   const proofs = Object.fromEntries(TOOLS.map(x => [x, sign(x)]));
   withEnv(t, { VYRE_SEAL_DEV: undefined, VYRE_SEAL_SOFTWARE: undefined });
   const d = await start({ root, log: () => {}, kernel: true });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   await new Promise(r => setTimeout(r, 100));
   for (const tool of TOOLS) {

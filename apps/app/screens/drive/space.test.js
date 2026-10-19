@@ -95,3 +95,14 @@ test("files.drive.space.list's real extras: names show a folder by its name, fol
   assert.deepEqual(chats.map((i) => [i.name, !!i.locked]), [["Draft the welcome email", false], ["Private strategy chat", true]]);
   assert.equal(chats[1].path, "Projects/pa/chat/s2");
 });
+
+test("an empty folder's marker file never shows, the folder it holds open does, and a new folder's name is checked before the box is asked", { skip: !strip }, async () => {
+  const m = await import("./space-model.ts");
+  const e = [{ path: "Clients/New/.folder", size: 0 }, { path: "Clients/Old/a.txt", size: 1 }, { path: "Clients/Old/.folder", size: 0 }];
+  assert.deepEqual(m.children(e, "Clients").map((i) => [i.name, i.dir]), [["New", true], ["Old", true]]);
+  assert.deepEqual(m.children(e, "Clients/New"), [], "an empty folder lists nothing");
+  assert.deepEqual(m.children(e, "Clients/Old").map((i) => i.name), ["a.txt"]);
+  assert.deepEqual(m.newFolderName("  Plans  ", ["Old"]), { name: "Plans" });
+  for (const bad of ["", "   ", "a/b", "a\\b", ".hidden", "x".repeat(121)]) assert.ok("error" in m.newFolderName(bad, []), JSON.stringify(bad));
+  assert.match(/** @type {any} */ (m.newFolderName("Old", ["Old"])).error, /already something called Old/);
+});

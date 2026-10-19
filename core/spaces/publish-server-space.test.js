@@ -15,19 +15,21 @@ function rig(o = {}) {
     refuse: (m, c) => Object.assign(new Error(m), { code: c }),
     chosen: { onChosenServer: async (tool, i, _meta, keys, deny) => { log.push(["server", tool, Object.fromEntries(keys.filter((k) => i[k] !== undefined).map((k) => [k, i[k]])), i.server, deny]); return i.done ? { space: "spc_aaaaaaaaaaaa", existed: true } : { space: "spc_aaaaaaaaaaaa", rootPublic: "ROOT" }; } },
     names: { claimSpace: async (a) => { log.push(["claim", a]); return o.claim ? o.claim(a) : { ok: true }; } },
+    listServer: async (a) => { log.push(["list", a.name, a.server]); if (o.list) return o.list(a); return undefined; },
   });
-  return { run: /** @type {Function} */ (tools.get("spaces.publish-server-space")), log };
+  return { run: /** @type {Function} */ (tools.get("spaces.publish-server-space")), list: /** @type {Function} */ (tools.get("spaces.server.list")), log };
 }
 
 test("it asks the server for its key, publishes the record with that key and id, then has the server keep the name", async () => {
   const { run, log } = rig();
   const r = await run({ server: "srv_1", name: "Juniper.vyre.run" }, {});
   assert.deepEqual(r, { space: "spc_aaaaaaaaaaaa", name: "juniper" });
-  assert.deepEqual(log.map((l) => l[0] + ":" + (l[1] && l[1].name || l[1])), ["server:spaces.name-here", "claim:juniper", "server:spaces.name-here"]);
+  assert.deepEqual(log.map((l) => l[0] + ":" + (l[1] && l[1].name || l[1])), ["server:spaces.name-here", "claim:juniper", "list:juniper", "server:spaces.name-here"]);
   assert.deepEqual(log[0][2], { name: "juniper" });
   assert.equal(log[0][3], "srv_1");
   assert.deepEqual(log[1][1], { name: "juniper", rootPublic: "ROOT", record: { spaceId: "spc_aaaaaaaaaaaa", displayName: "juniper" } });
-  assert.deepEqual(log[2][2], { name: "juniper", done: true });
+  assert.deepEqual(log[2], ["list", "juniper", "srv_1"], "the server is listed as serving the name before it keeps it");
+  assert.deepEqual(log[3][2], { name: "juniper", done: true });
   assert.match(log[0][4], /owner/);
 });
 
@@ -38,4 +40,14 @@ test("a name the directory refuses stops before the server keeps anything, and a
   const fresh = rig();
   await assert.rejects(() => fresh.run({ server: "srv_1", name: "x" }, {}), (e) => e.code === "bad_name");
   assert.equal(fresh.log.length, 0);
+});
+
+test("the server is listed after the claim and before the name is kept; a listing that fails stops the server from keeping it, and spaces.server.list signs the same act on its own", async () => {
+  const bad = rig({ list: async () => { throw Object.assign(new Error("the directory did not list the server"), { code: "unavailable" }); } });
+  await assert.rejects(() => bad.run({ server: "srv_1", name: "juniper" }, {}), (/** @type {any} */ e) => e.code === "unavailable");
+  assert.deepEqual(bad.log.map((l) => l[0] + ":" + (l[1] && l[1].name || l[1])), ["server:spaces.name-here", "claim:juniper", "list:juniper"], "nothing was kept on the server");
+  const { list, log } = rig();
+  assert.deepEqual(await list({ server: "srv_2", name: "Tess.vyre.run" }, {}), { name: "tess", listed: true });
+  assert.deepEqual(log, [["list", "tess", "srv_2"]], "only the listing: no claim and no server call");
+  await assert.rejects(() => list({ server: "srv_2", name: "x" }, {}), (/** @type {any} */ e) => e.code === "bad_name");
 });

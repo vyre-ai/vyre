@@ -88,6 +88,13 @@ export const mockTools: Record<string, (i: any) => unknown> = {
     return { project: `vyre://mock/project/${made.id}`, slug: slug(i.name), template: i.template, version: v.version, stage: b.stages[0].name, teammates: [], tasks_made: (b.stages[0].tasks || []).length };
   },
   "work.project.level": () => ({ ok: true }),
+  // Settings > People and roles in the sample build: two invitations waiting, and a link when one is made (screens/devices/InviteBody.tsx)
+  "spaces.invites.list": () => ({ invites: [
+    { id: "inv_sam", role: "member", to_label: "Sam Ortiz", status: "open", valid_until: Date.now() + 5 * 86_400_000 },
+    { id: "inv_lee", role: "admin", status: "open", valid_until: Date.now() + 2 * 86_400_000 },
+  ] }),
+  "roles.assign": () => ({ membership: {} }),
+  "onboard.member.link": (i) => ({ link: "https://vyre.run/i/sample-invite-link", role: i.role, ttlDays: i.ttlDays, space: i.space }),
   "flows.list": () => ({ flows: [] }),
   "agents.list": () => [{ name: "research", label: "Research" }, { name: "scribe", label: "Scribe" }],
 };

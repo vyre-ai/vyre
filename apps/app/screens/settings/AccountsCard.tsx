@@ -1,15 +1,16 @@
 // AI accounts beyond Claude: every account sessions can run on (Codex, Grok, ...), who each is signed in as, which is the default, and a way to add one with the provider's own sign-in
 // (the Deck's settings-accounts.js, ported). The sign-in is the provider's: Vyre shows its link and code and never sees a password or token.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, View } from "react-native";
-import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
+import { View } from "react-native";
+import { openExternal } from "../../src/shell/open-external";
+import { Button, Card, Chip, CodeBlock, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
 import { addableFor, serverCannotWords, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
 import { showingJoined } from "../../src/real/team-join";
 
 const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
 
-export function AccountsCard() {
+export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = {}) {
   const [rows, setRows] = useState<Account[] | null>(null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
@@ -59,6 +60,8 @@ export function AccountsCard() {
     catch (e) { setProblem(say(e, "That did not look like the code.")); }
   };
 
+  // Claude has one sign-in, the Claude card above; its row is not a second one
+  const shown = (rows ?? []).filter((a) => !(skipClaude && a.provider === "claude"));
   const name = flow ? providerName(flow.provider) : "";
   return (
     <Card className="gap-s3">
@@ -67,10 +70,10 @@ export function AccountsCard() {
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {rows === null ? <LoadingState rows={2} /> : null}
       {err ? <ErrorState title="AI accounts did not load" reason={err} retry={load} /> : null}
-      {rows && !err && !rows.length ? <Text tone="muted">No AI accounts yet.</Text> : null}
-      {rows && rows.length ? (
+      {rows && !err && !shown.length ? <Text tone="muted">No other AI accounts yet.</Text> : null}
+      {rows && shown.length ? (
         <View>
-          {rows.map((a, i) => (
+          {shown.map((a, i) => (
             <View key={a.id}>
               {i ? <Divider /> : null}
               <View className="gap-s2 py-s2">
@@ -107,7 +110,8 @@ export function AccountsCard() {
         ) : (
           <View className="gap-s2">
             <Text>{flow.url ? `Open this page, sign in to ${name}, and approve.` : `Starting the ${name} sign-in.`}</Text>
-            {flow.url && safeUrl(flow.url) ? <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void Linking.openURL(flow.url as string)} /></View> : null}
+            {flow.url && safeUrl(flow.url) ? <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void openExternal(flow.url as string).then((o) => { if (!o.opened) setProblem("The sign-in did not open. Copy the link below and open it in your browser."); })} /></View> : null}
+            {flow.url && safeUrl(flow.url) ? <CodeBlock code={flow.url} /> : null}
             {flow.code ? <Text mono>{`Code: ${flow.code}`}</Text> : null}
             {flow.step === "url" ? (
               <View className="gap-s2">

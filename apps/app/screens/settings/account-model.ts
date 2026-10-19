@@ -32,3 +32,10 @@ export function codeOf(r: unknown): string | null {
 export function sealedFields(types: TypeDef[]): { type: string; typeLabel: string; field: string; label: string }[] {
   return types.flatMap((t) => t.fields.filter((f) => f.kind === "sealed" || !!f.seal).map((f) => ({ type: t.name, typeLabel: t.label || t.name, field: f.name, label: f.label || f.name })));
 }
+
+/** The Privacy line about approvals: shown while no phone or passkey is enrolled (the server passes the owner's own sensitive acts then), gone once one is. A reply we cannot read shows nothing. */
+export const NO_APPROVALS_LINE = "Approvals: none needed until you pair a phone. Pair a phone to require approvals for sensitive actions.";
+export function approvalsLine(reply: unknown): string | null {
+  const keys = Array.isArray(reply) ? reply : reply && Array.isArray((reply as { keys?: unknown }).keys) ? (reply as { keys: unknown[] }).keys : null;
+  return keys && keys.length === 0 ? NO_APPROVALS_LINE : null;
+}

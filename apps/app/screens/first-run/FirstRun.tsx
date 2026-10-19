@@ -18,6 +18,7 @@ import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-r
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
+import { openExternal } from "../../src/shell/open-external";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
@@ -102,7 +103,6 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [copyDone, setCopyDone] = useState<{ id: string; label: string; ok: boolean; why?: string }[] | null>(shot?.copyDone || null);
   const [carried, setCarried] = useState<{ name: string; look: string } | null>(shot?.carried || null);
   const [changing, setChanging] = useState(false);
-  const [moreLook, setMoreLook] = useState(false);
   const [asLookSeed, setAsLookSeed] = useState("");
   const [signedIn, setSignedIn] = useState<boolean>(Boolean(shot?.another));
   const [first, setFirst] = useState(shot?.first || "");
@@ -330,7 +330,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const r = await startGithub();
     if (!r.ok) { setFailure(r.message); return; }
     const login = r.user && r.user.login ? String(r.user.login) : "";
-    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (typeof r.url === "string" && r.url) void openExternal(r.url, { name: "vyre-github", features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure(`The GitHub window did not open. Open this link in your browser: ${r.url}`); });
     if (!login && !r.exchange) return;
     const done = await finishGithub(login);
     if (!done.ok) { setFailure(done.message); return; }
@@ -551,7 +551,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
                 setAgentFlow(String(r.flow));
                 setAgentStep(typeof r.step === "string" ? r.step : "");
                 setAgentPaste(r.paste === true);
-                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                if (!agentFlow && typeof r.url === "string" && r.url) void openExternal(r.url, { name: `vyre-ai-${pick}`, features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure("The sign-in window did not open. Copy the link below and open it in your browser."); });
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
                 setPasted("");
@@ -736,8 +736,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         <Field label={ASSISTANT_COPY.nameLabel} value={asName} onChangeText={setAsName} placeholder={ASSISTANT_COPY.suggestion} error={asName.length > 40 ? ASSISTANT_COPY.tooLong : undefined} />
         <AgentLookPicker shape={asLook.shape} color={asLook.color} parts={parts}
           onChange={(p) => setAsLook((x) => { const n = { ...x, ...p }; return { ...n, seed: lookSeed(n.shape, n.color) + PARTS.map((q) => `~${q.key}${parts[q.key]}`).join("") }; })}
-          onPart={moreLook ? (key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) })) : undefined} />
-        <Button kind="ghost" label={moreLook ? "Fewer options" : "More: eyes, mouth, top, blush, charm"} onPress={() => setMoreLook((v) => !v)} />
+          onPart={(key, value) => setAsLook((x) => ({ ...x, seed: setPart(full, name.toLowerCase(), key, value) }))} />
         </>)}
       </FlowStep>
     );

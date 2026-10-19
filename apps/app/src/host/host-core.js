@@ -38,7 +38,7 @@ const unb64 = (/** @type {string} */ s) => { const t = s.replace(/-/g, "+").repl
 
 /**
  * @typedef {{ id: string, name: string, role: string, server: string | null, paired?: { box: string, route: string, relay: string, name: string } | null }} KeptSpace
- * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
+ * @typedef {{ master: any, username: string, id: string, ops: unknown[], pin: unknown, device?: { pub: string, wrapped: { iv: string, ct: string } }, signin?: { space: string }, spaces?: KeptSpace[], listed?: Record<string, string>, current?: string | null, progress?: { screen: string, stack: string[] } | null, done?: boolean }} Kept
  * @typedef {{ load(): Promise<Kept | null>, save(k: Kept): Promise<void> }} KeptStore
  * The GitHub leg of sign-in, bound in the app (host/index.ts): `start` runs the GitHub sign-in (src/real/github.ts signInWithGithub: who GitHub says this is, and the session the relay holds), `assert` asks the relay for a short assertion
  * for one audience (a space's name, or "names" for the directory). @typedef {{ start(): Promise<{ ok: boolean, code?: string, session?: any, user?: { id: number, login: string } }>, assert(session: any, audience: string): Promise<string> }} GithubPorts
@@ -252,7 +252,8 @@ export function createHost(o) {
       const key = await fromSeed(seed);
       const chain = await chainOf(String(k.id));
       const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
-      const entry = (state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device");
+      // the chain's Entry type does not list `agree` (the point the device's identity entry carries), so the entry is read as any here
+      const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
       if (!entry || entry.agree !== undefined) return;
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
@@ -261,6 +262,34 @@ export function createHost(o) {
       await o.store.save({ ...k, ops: [...chain.ops, op], pin: C.pinOf(next) });
       trail("agree repair done");
     } catch (e) { trail(`agree repair failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+  }
+
+  /**
+   * A Space this person owns on a paired server is listed with the directory as served by that server's route (POST /v1/ids/server, the owner's signed act). The first run does it right after the claim (identity/claim-space.js);
+   * a Space named before that step existed (v0.6.1) has an empty list, and the directory then refuses the server's certificate and address ("that name is not served by this server"). Once per Space and route, kept in `listed`;
+   * quiet, and a refusal or an unreachable directory leaves it for the next unlock. @param {Uint8Array} seed
+   */
+  async function ensureServers(seed) {
+    try {
+      const k = await o.store.load();
+      if (!k) return;
+      const rows = (k.spaces || []).filter((r) => r && r.role === "owner" && r.paired && r.paired.route && r.name);
+      if (!rows.length) return;
+      const key = await fromSeed(seed);
+      const listed = { ...(k.listed || {}) };
+      let changed = false;
+      for (const r of rows) {
+        const label = String(r.name).toLowerCase().replace(/\.vyre\.run$/, ""), route = String(/** @type {any} */ (r.paired).route);
+        if (listed[label] === route) continue;
+        const ts = o.now ? o.now() : Date.now();
+        const act = { by: String(k.id), via: key.eid, ts, sig: b64u(await key.sign(actMessage({ action: "server-add", name: label, domain: route, ts }))) };
+        const res = await f(`${base}/v1/ids/server`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: label, route, act }) });
+        if (!res.ok) { trail(`server listing for ${label} refused ${res.status}`); continue; }
+        listed[label] = route; changed = true;
+        trail(`server listed for ${label}`);
+      }
+      if (changed) { const fresh = await o.store.load(); if (fresh) await o.store.save({ ...fresh, listed: { ...(fresh.listed || {}), ...listed } }); }
+    } catch (e) { trail(`server listing failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
   }
 
   /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
@@ -383,6 +412,8 @@ export function createHost(o) {
       if (!k.device) await o.store.save({ ...k, device: makeDeviceKey(held, o.random) });
       // An identity made without its key-agreement point (v0.6.1) is repaired now, in the background: nothing waits on it.
       void ensureAgree(held);
+      // A Space named before the first run listed its server gets that listing now, once, in the background.
+      void ensureServers(held);
       return { unlocked: true, username: k.username, id: k.id };
     },
 

@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, enrolDevice } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { SURFACE_LABELS } from "../core/modules/index.js";
 import { above } from "../core/daemon/index.js";
@@ -885,6 +885,7 @@ test("peer: a caller claiming to be the Capsule, with the Capsule's own ambiguou
 test("peer: presence.capsule.pin is presence-required and lives in vyred's own db, never a file", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const presence = d.registry.deps.presence;
   assert.equal(presence.capsulePin(), null, "nothing pinned yet");

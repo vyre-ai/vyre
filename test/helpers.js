@@ -4,6 +4,7 @@
 // message, which is why this is the only way tests get a home.
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -377,4 +378,14 @@ export async function mailFixture(t, cli, { user = "alex@harlow.example", passwo
   if (!id) throw new Error(`no mail account id: ${JSON.stringify(accounts)}`);
   await cli("vault.connections.grant", { id, surface: "agents" });
   return { mailbox, item: String(conn.data.item), id };
+}
+
+/**
+ * Enrol a phone key in this daemon's presence table. With no presence device enrolled the floor passes the owner's own acts (the owner's ruling, Registry.noPresenceDevice), so a test of
+ * the proof being asked for enrols one first. The key is never used to sign anything here.
+ * @param {any} d a started daemon
+ */
+export function enrolDevice(d) {
+  const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  return d.registry.deps.presence.enroll({ kind: "device", name: "test phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
 }

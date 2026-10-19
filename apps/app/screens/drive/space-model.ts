@@ -12,6 +12,9 @@ export type Listing = { entries: SpaceEntry[]; names?: Record<string, string>; f
 export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number; /** A chat folder the caller is not in: its name shows greyed and it does not open. */ locked?: boolean };
 export type Version = { ver: number; size: number; at: number; by?: string; base?: number };
 
+/** The empty file that holds an empty folder open in the Drive (core/files/space-edit.js FOLDER_MARK). Listings never show it. */
+export const FOLDER_MARK = ".folder";
+
 const ms = (v: unknown): number => { if (typeof v === "number") return v; const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? 0 : t; };
 const clean = (p: string): string => p.replace(/^\/+|\/+$/g, "");
 
@@ -25,7 +28,7 @@ export function children(entries: SpaceEntry[], prefix: string, extra: Pick<List
     if (!full || (base && !full.startsWith(base + "/"))) continue;
     const rest = base ? full.slice(base.length + 1) : full;
     const [head, ...more] = rest.split("/");
-    if (!head) continue;
+    if (!head || (head === FOLDER_MARK && !more.length)) continue;
     const path = base ? `${base}/${head}` : head;
     if (more.length) { const cur = out.get(head); out.set(head, { name: nameOf(path, head), dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)) }); }
     else out.set(head, { name: head, dir: false, path, size: Number(e.size ?? 0), ver: Number(e.ver ?? e.version ?? 1), at: ms(e.at ?? e.mtime) });
@@ -52,6 +55,17 @@ export const itemLine = (i: Item): string => (i.dir ? "" : [sizeOf(i.size), dayO
 
 /** "alex" from "person:per_x" is not known here: the box gives an id, so the line says "by" only for a name that reads like one. */
 export const versionLine = (v: Version, head: number): string => [`Version ${v.ver}${v.ver === head ? ", current" : ""}`, sizeOf(v.size), dayOf(v.at), v.base && v.base !== v.ver - 1 ? `from version ${v.base}` : ""].filter(Boolean).join(", ");
+
+/** A new folder's name, checked before the box is asked (the box checks the same again): one part, 1 to 120 characters, no slash, not starting with a dot, and not already in this folder. */
+export function newFolderName(name: string, taken: Iterable<string>): { name: string } | { error: string } {
+  const n = name.trim();
+  if (!n) return { error: "Give the folder a name." };
+  if (/[\\/]/.test(n)) return { error: "A folder name cannot hold a slash." };
+  if (n.startsWith(".")) return { error: "A folder name cannot start with a dot." };
+  if (n.length > 120) return { error: "A folder name is at most 120 characters." };
+  if ([...taken].includes(n)) return { error: `There is already something called ${n} here.` };
+  return { name: n };
+}
 
 /** The path of a new file in the folder you are in. A name with a slash, a dot-dot or a backslash is refused before the box is asked. */
 export function uploadPath(prefix: string, name: string): { path: string } | { error: string } {

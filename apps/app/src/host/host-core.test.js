@@ -9,6 +9,8 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { createLoginService } from "../../../../kernel/identity/space-login.js";
 import { world, BASE } from "../../../../names/worker/testing.js";
 import worker from "../../../../names/worker/index.js";
+import { who } from "../../../../names/worker/testing.js";
+import { claimServerSpace } from "../identity/claim-space.js";
 
 const FAST = { memoryKiB: 64, passes: 2 };
 const PASSWORD = "correct horse battery staple";
@@ -22,7 +24,7 @@ function directory(t) {
     headers.set("cf-connecting-ip", "203.0.113.9");
     return worker.fetch(new Request(`${BASE}${u.pathname}${u.search}`, { method: init.method || "GET", headers, body: init.body }), w.env);
   };
-  return { fetch: fetchIn, base: BASE, now: () => w.clock.t };
+  return { fetch: fetchIn, base: BASE, now: () => w.clock.t, w };
 }
 
 const memoryStore = () => { let kept = null; return { load: async () => (kept ? structuredClone(kept) : null), save: async (k) => { kept = structuredClone(k); }, peek: () => kept }; };
@@ -338,4 +340,29 @@ test("an identity made without a key-agreement point (v0.6.1) is repaired when i
   await none.call("identity.lock"); await none.call("identity.unlock", { password: PASSWORD });
   await new Promise((r) => setTimeout(r, 100));
   assert.equal((await chainEntry(d, "nina")).ops.length, 1);
+});
+
+test("a Space named before its server was listed (v0.6.1) is listed when its owner unlocks: the server's route may then ask for the name, and it is done once", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  const made = await host.call("onboard.person.create", { username: "tessa", password: PASSWORD, confirm: PASSWORD });
+  const box = who(d.w);
+  // the name is claimed the old way: the record carries no listing (no route given to the claim), and the app kept the paired server's route beside the Space row
+  const dev = await fromSeed(host.signer().seed);
+  const me = { id: made.id, name: "tessa", eid: dev.eid, ops: store.peek().ops, key: dev };
+  await claimServerSpace({ identity: me, name: "tess", base: d.base, fetch: d.fetch, now: d.now, host: async () => ({ space: "spc_" + "abcdefghijkl", rootPublic: Buffer.alloc(32, 7).toString("base64url") }) });
+  assert.equal((await box.get("/v1/names/mine")).json.data.name, null, "listed with nothing: the box's route serves nothing");
+  const kept = store.peek();
+  await store.save({ ...kept, spaces: [{ id: "spc_abcdefghijkl", name: "tess", role: "owner", server: "https://tess.vyre.run", paired: { box: "bx", route: box.route, relay: "https://relay.example", name: "the test box" } }] });
+  await host.call("identity.lock");
+  await host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && (await box.get("/v1/names/mine")).json.data.name === null; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal((await box.get("/v1/names/mine")).json.data.name, "tess", "the server is listed: its route serves tess");
+  assert.equal(store.peek().listed.tess, box.route, "kept, so it is done once");
+  await host.call("identity.lock");
+  await host.call("identity.unlock", { password: PASSWORD });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(store.peek().listed.tess, box.route);
+  assert.ok(made.id);
 });

@@ -128,7 +128,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "events.catalog",
   "files.deliver", "files.dirs", "files.drive.access", "files.drive.audit", "files.drive.candidates", "files.drive.link.create", "files.drive.link.list",
   "files.drive.link.revoke", "files.drive.list", "files.drive.measure", "files.drive.offer", "files.drive.read", "files.drive.restore", "files.drive.search",
-  "files.drive.share", "files.drive.space.delete", "files.drive.space.move", "files.drive.space.rename", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
+  "files.drive.share", "files.drive.space.delete", "files.drive.space.mkdir", "files.drive.space.move", "files.drive.space.rename", "files.drive.status", "files.drive.upload", "files.drop.ack", "files.drop.begin", "files.drop.cancel", "files.drop.finish", "files.drop.get",
   "files.drop.meta", "files.drop.pending", "files.drop.put", "files.drop.register", "files.drop.targets", "files.drop.unregister", "files.fetch", "files.mentions.search",
   "files.preview", "files.recent", "files.search", "files.stat",
   // Linked folders (core/files/linked*.js): the owner moved them to the member's reach. Every handler keeps a caller to their OWN links and their OWN account at the source; mentions.resolve is the chat's own (module callers only).
@@ -220,7 +220,7 @@ export const OWNER_ONLY = Object.freeze(new Set([
   "spaces.identity.sync", "spaces.invites.accept", "spaces.invites.confirm", "spaces.invites.create", "spaces.invites.list", "spaces.invites.preview",
   "spaces.groups.remove", "spaces.groups.set", "spaces.invites.redeem", "spaces.invites.revoke", "spaces.members.add", "spaces.members.add-agent", "spaces.members.computers", "spaces.members.extend",
   "spaces.members.remove", "spaces.members.set-role", "spaces.members.transfer", "spaces.move.plan", "spaces.moves.evidence", "spaces.moves.finish", "spaces.moves.receipt",
-  "spaces.moves.receive", "spaces.name-here", "spaces.publish-server-space", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
+  "spaces.moves.receive", "spaces.name-here", "spaces.publish-server-space", "spaces.server.list", "spaces.owner.transfer", "spaces.personal-host.set", "spaces.presence.begin", "spaces.presence.recover", "spaces.presence.sync",
   "spaces.records.status", "spaces.resume", "spaces.retire-here", "spaces.roles.names", "spaces.server.install", "spaces.servers", "spaces.setup.claim",
   "spaces.setup.save", "spaces.status", "spaces.storage.delete", "spaces.storage.get", "spaces.storage.list", "spaces.storage.put", "spaces.storage.put-if",
   "spaces.storage.set-cap", "spaces.storage.usage", "spaces.time-zone.set", "spaces.upgrade.plan", "spaces.upgrade.receipt", "spaces.upgrade.run",

@@ -83,7 +83,7 @@ export function filterRows<T extends { name: string }>(rows: readonly T[], q: st
 }
 
 /** Each step from the root to the place, with the place id tapping it opens. `names.linked` names a linked folder by id. */
-export function crumbsFor(p: Place, names: { linked?: Record<string, string> }): { name: string; place: string }[] {
+export function crumbsFor(p: Place, names: { linked?: Record<string, string>; space?: Record<string, string> }): { name: string; place: string }[] {
   const out: { name: string; place: string }[] = [{ name: rootLabel(p.root), place: p.root }];
   const slash = p.root === "box" && p.path.startsWith("/");
   if (p.root === "linked" && p.link) out.push({ name: names.linked?.[p.link] ?? p.link, place: `linked:${p.link}` });
@@ -91,7 +91,7 @@ export function crumbsFor(p: Place, names: { linked?: Record<string, string> }):
   const parts = p.path.split("/").filter(Boolean);
   parts.forEach((seg, i) => {
     const sub = (slash ? "/" : "") + parts.slice(0, i + 1).join("/");
-    out.push({ name: seg, place: placeId({ ...p, path: sub }) });
+    out.push({ name: (p.root === "space" && names.space?.[sub]) || seg, place: placeId({ ...p, path: sub }) });
   });
   return out;
 }

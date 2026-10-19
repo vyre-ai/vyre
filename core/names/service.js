@@ -122,3 +122,24 @@ export function names(deps) {
 
   return { status, check, serve, unserve, watch, domainCheck };
 }
+
+/**
+ * This box's name status with what the public gate says (network.wink.status `ingress`: { state, base, why }) laid over it, so `vyre name status` tells the truth about "named, but is it reachable".
+ * serving: the gate is up and the name points at it (address is the public origin, listening true). getting-cert and failed keep the gate's own words; waiting is "up but the name does not point
+ * here yet". off and no-name are the gate not being started: the name is set, nothing public. Anything else, or no ingress, leaves the status as it was. Pure.
+ * @param {any} status @param {any} ingress
+ */
+export function withIngress(status, ingress) {
+  if (!status || !status.name || status.via !== "vyre.run" || !ingress || typeof ingress.state !== "string") return status;
+  const why = typeof ingress.why === "string" && ingress.why ? ingress.why : null;
+  switch (ingress.state) {
+    case "up": {
+      let port = null; try { port = ingress.base ? Number(new URL(String(ingress.base)).port) || 443 : null; } catch { port = null; }
+      return { ...status, phase: "serving", why: null, address: ingress.base ? String(ingress.base).replace(/^https?:\/\//, "") : status.address, listening: true, port };
+    }
+    case "waiting": return { ...status, phase: "waiting", why: why || "the gate is up but this box's name does not point at it yet" };
+    case "getting-cert": return { ...status, phase: "getting-cert", why };
+    case "failed": return { ...status, phase: "failed", why: why || "the public gate did not come up" };
+    default: return status;
+  }
+}

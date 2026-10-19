@@ -176,7 +176,7 @@ export function isDevice(machine) { return machine === "device" || machine === "
  *   modules: { enable: string[], disable: string[] }, network: Network, onboard?: any, owner?: { id: string }, github?: { start?: string, clientId?: string, clientSecret?: string, redirect?: string },
  *   glass: { roots?: string[] },
  *   computers: { [k: string]: any },
- *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
+ *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string, space?: string }> },
  *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
  *   app: { root: boolean },
  *   term: { keep_hours: number, max?: number, shell?: string },
