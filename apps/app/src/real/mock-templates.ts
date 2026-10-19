@@ -93,6 +93,7 @@ export const mockTools: Record<string, (i: any) => unknown> = {
     { id: "inv_sam", role: "member", to_label: "Sam Ortiz", status: "open", valid_until: Date.now() + 5 * 86_400_000 },
     { id: "inv_lee", role: "admin", status: "open", valid_until: Date.now() + 2 * 86_400_000 },
   ] }),
+  "roles.assign": () => ({ membership: {} }),
   "onboard.member.link": (i) => ({ link: "https://vyre.run/i/sample-invite-link", role: i.role, ttlDays: i.ttlDays, space: i.space }),
   "flows.list": () => ({ flows: [] }),
   "agents.list": () => [{ name: "research", label: "Research" }, { name: "scribe", label: "Scribe" }],

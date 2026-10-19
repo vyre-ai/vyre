@@ -70,6 +70,11 @@ try {
     await page.waitForLoadState("networkidle").catch(() => {});
     await page.waitForTimeout(900);
     await page.screenshot({ path: path.join(out, `people-${w}-page.png`), fullPage: true }).catch(() => {});
+    await page.getByText("Ben Okafor", { exact: true }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no person row: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: path.join(out, `people-${w}-role.png`) }).catch(() => {});
+    await page.getByRole("button", { name: "Cancel" }).first().click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(400);
     await page.getByRole("button", { name: "Invite someone" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Invite someone button: " + String(e).slice(0, 100)));
     await page.waitForTimeout(700);
     await page.screenshot({ path: path.join(out, `people-${w}-sheet.png`) }).catch(() => {});

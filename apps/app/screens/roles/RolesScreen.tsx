@@ -44,7 +44,7 @@ export function RolesScreen() {
       <Button size="sm" label="New role" onPress={() => setMaking(true)} />
     </>}>
       {error ? <Banner tone="warn"><Text>{error}</Text></Banner> : null}
-      <PeopleSection mine={mine} invites={invites} onInvite={() => setInviting(true)} />
+      <PeopleSection mine={mine} invites={invites} onInvite={() => setInviting(true)} custom={world.roles.filter((r) => !r.builtin).map((r) => ({ id: r.id, name: r.name }))} onChanged={() => void reload()} />
       <Sec title="Built in"><Card flush>{built.map(row)}</Card></Sec>
       <Sec title="Your roles" meta={custom.length ? String(custom.length) : undefined}>
         {custom.length ? <Card flush>{custom.map(row)}</Card> : <Card><EmptyState title="No roles of your own yet" body="Make one from a built-in role, like Paralegal or Contractor, and change what it can do." action={{ label: "New role", onPress: () => setMaking(true) }} /></Card>}

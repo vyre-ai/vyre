@@ -7,22 +7,32 @@ import { Sec } from "../places/Frame";
 import { useMembers } from "../spaces/state";
 import { ROLES, assignable, canManage, roleLabel, type Role } from "../spaces/roles.js";
 import { joinedLine } from "../devices/invite.js";
-import { MOCK } from "../../src/real/box";
+import { MOCK, said, tool } from "../../src/real/box";
 import type { useInviteList } from "../devices/InviteBody";
 
 type Invites = ReturnType<typeof useInviteList>;
 
-export function PeopleSection({ mine, invites, onInvite }: { mine: string | undefined; invites: Invites; onInvite: () => void }) {
-  const { members, selfId, setRole } = useMembers();
+/** `custom` is the space's own roles (id and name), offered beside the built-in ones; `onChanged` runs after a role is given so the page can reload its counts. */
+export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { mine: string | undefined; invites: Invites; onInvite: () => void; custom: { id: string; name: string }[]; onChanged: () => void }) {
+  const { members, selfId, setRole, load, space } = useMembers();
   const me = (["owner", "admin", "manager", "member", "temp"].includes(String(mine)) ? mine : "member") as Role;
   const allowed = assignable(me);
-  const [pick, setPick] = useState<null | { id: string; role: Role }>(null);
+  const [pick, setPick] = useState<null | { id: string; role: string }>(null);
   const [busy, setBusy] = useState(false);
   const who = pick ? members.find((m) => m.id === pick.id) : undefined;
+  // A member who holds a role of the space's own is listed by its name (the box's label); the sheet starts on that role, else on their built-in one.
+  const heldId = (m: { role: string; label?: string }) => custom.find((c) => c.name === m.label)?.id ?? m.role;
   const save = () => {
-    if (!pick || !who || pick.role === who.role) return;
+    if (!pick || !who || pick.role === heldId(who)) return;
     setBusy(true);
-    void setRole(pick.id, pick.role).then((err) => { if (err) showToast(err); else { showToast(`${who.name} is now ${roleLabel(pick.role)}.`); setPick(null); } }).finally(() => setBusy(false));
+    const isCustom = custom.some((c) => c.id === pick.role);
+    const done = () => { showToast(`${who.name} is now ${isCustom ? custom.find((c) => c.id === pick.role)!.name : roleLabel(pick.role)}.`); setPick(null); onChanged(); };
+    // A built-in role goes through spaces.members.set-role (as Spaces and members does); a role of the space's own through roles.assign.
+    const give = async (): Promise<string | null> => {
+      if (!isCustom) return setRole(pick.id, pick.role as Role);
+      try { await tool("roles.assign", { space, person: pick.id, role: pick.role }); await load(space); return null; } catch (e) { return said(e); }
+    };
+    void give().then((err) => { if (err) showToast(err); else done(); }).finally(() => setBusy(false));
   };
   const self = MOCK ? "alex" : selfId ?? "";
   const { open, joined, revoke } = invites;
@@ -36,8 +46,8 @@ export function PeopleSection({ mine, invites, onInvite }: { mine: string | unde
               return (
                 <View key={m.id}>
                   {i ? <Divider inset={68} /> : null}
-                  <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name} sub={m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : roleLabel(m.role)}
-                    chevron={can} onPress={can ? () => setPick({ id: m.id, role: m.role }) : undefined} accessibilityLabel={`${m.name}, ${roleLabel(m.role)}${can ? ", change role" : ""}`} />
+                  <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name} sub={m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : m.role === "temp" ? roleLabel(m.role) : m.label || roleLabel(m.role)}
+                    chevron={can} onPress={can ? () => setPick({ id: m.id, role: heldId(m) }) : undefined} accessibilityLabel={`${m.name}, ${roleLabel(m.role)}${can ? ", change role" : ""}`} />
                 </View>
               );
             })}
@@ -60,9 +70,9 @@ export function PeopleSection({ mine, invites, onInvite }: { mine: string | unde
               {ROLES.filter((r) => r.id !== "temp" && (allowed.includes(r.id) || r.id === who.role)).map((r) => (
                 <Row key={r.id} title={r.label} sub={<Text size="secondary" tone="label">{r.line}</Text>} selected={pick.role === r.id} onPress={allowed.includes(r.id) ? () => setPick({ ...pick, role: r.id }) : undefined} />
               ))}
+              {custom.map((c) => <Row key={c.id} title={c.name} sub={<Text size="secondary" tone="label">A role of your own</Text>} selected={pick.role === c.id} onPress={() => setPick({ ...pick, role: c.id })} />)}
             </View>
-            <Banner icon="shield"><Text>A role of your own is given from Spaces and members.</Text></Banner>
-            <View className="flex-row gap-s2"><Button kind="primary" label="Save" loading={busy} disabled={pick.role === who.role} onPress={save} /><Button kind="ghost" label="Cancel" onPress={() => setPick(null)} /></View>
+            <View className="flex-row gap-s2"><Button kind="primary" label="Save" loading={busy} disabled={pick.role === heldId(who)} onPress={save} /><Button kind="ghost" label="Cancel" onPress={() => setPick(null)} /></View>
           </>
         ) : null}
       </Sheet>
