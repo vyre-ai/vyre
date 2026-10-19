@@ -10,6 +10,9 @@ export function roleLine(a, fallback = "") {
   return (one(a?.description) || one(a?.role) || fallback).slice(0, 90);
 }
 
+export { displayName } from "../../src/state/agent-name.js";
+import { displayName } from "../../src/state/agent-name.js";
+
 /** @param {any} a */
 export const statusOf = (a) => (a.status === "stopped" ? "Paused" : a.status === "running" || a.doing ? "Running now" : "Idle");
 
@@ -39,7 +42,7 @@ const worksLine = (/** @type {unknown} */ projects, /** @type {Record<string, st
 export function agentRow(a, me, names = {}) {
   const sharing = sharingOf(a, me);
   return {
-    name: String(a.name), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
+    name: String(a.name), title: displayName(a), kind: String(a.kind ?? "agent"), maker: a.made_by ? String(a.made_by) : "", role: roleLine(a, a.kind === "assistant" ? "Your assistant" : a.builtin ? "Builds your Space by conversation" : "Agent"),
     model: a.model ? String(a.model) : "Default model", works: worksLine(a.projects, names), status: statusOf(a), group: groupOf(a, me), mine: sharing.mine, sharedWith: sharing.count, canPause: !!a.thread, builtin: !!a.builtin,
     ...(a.look ? { look: String(a.look) } : {}), ...(a.autonomy ? { autonomy: String(a.autonomy) } : {}), ...(a.effort ? { effort: String(a.effort) } : {}),
     ...(typeof a.last_active === "number" && Number.isFinite(a.last_active) ? { last_active: a.last_active } : {}),

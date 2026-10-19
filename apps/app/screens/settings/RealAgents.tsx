@@ -28,7 +28,7 @@ export function RealAi() {
       <PlaceTag of="home" />
       <Banner>Nobody's work runs on someone else's account. Your chats use your accounts and count against your budget.</Banner>
       {member ? null : <ConnectClaude onConnected={load} />}
-      <AccountsCard />
+      <AccountsCard skipClaude={!member} />
       {err ? <Card flush><ErrorState title="AI accounts did not load" reason={err} retry={load} /></Card> : null}
       {ps === null && !err ? <LoadingState rows={3} /> : null}
       {ps ? (

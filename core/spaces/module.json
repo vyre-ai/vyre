@@ -277,6 +277,11 @@
     "effect": "write"
    },
    {
+    "name": "spaces.server.list",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules",
     "effect": "read"
@@ -563,6 +568,7 @@
    "invite.accepted",
    "invite.revoked",
    "invite.expired",
+   "space.named",
    "compute.space-allowed",
    "compute.space-stopped",
    "compute.member-accepted",

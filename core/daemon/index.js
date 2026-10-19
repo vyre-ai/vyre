@@ -340,6 +340,8 @@ async function startLocked(opts, root, p, release) {
         accounts: async () => { const r = await registry.call("google.accounts", {}, "module:leases"); const d = r && !r.error ? r.data : null; return Array.isArray(d) ? d : d && Array.isArray(d.accounts) ? d.accounts : []; },
         api: async (account, req) => { const r = await registry.call("google.api", { account, ...req }, "module:leases"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       } });
+    // who the Space's owner is, for the registry's own checks (the presence floor passes only the owner's session when no device is enrolled)
+    registry.deps.ownerId = () => (kernel && kernel.id ? kernel.id.owner : null);
     registry.deps.flowsHost = flowsHost;
     // Every tool's static gates, its presence requirement and its asked requirement are decided by the kernel's one check (`authorize`) over the compiled rules (kernel/retrofit/gates.js; the golden set proves it changes no decision), not by the registry's inline predicates.
     const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");

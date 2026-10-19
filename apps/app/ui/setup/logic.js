@@ -105,6 +105,24 @@ export function fieldSummary(f, types) {
   return parts.join(", ");
 }
 
+/** What a field is, in one short phrase: "Text", "Pick one, 4 options", "Link". The detail that changes what a person sees (required, unique, where it links) is a badge, not part of this line. @param {Partial<Draft> & { kind: string }} f */
+export function fieldKindLine(f) {
+  const word = f.sealed ? "Kept sealed" : KIND_WORD[f.kind] ?? f.kind;
+  return f.options?.length ? `${word}, ${f.options.length} options` : word;
+}
+
+/** The badges of a field row, in the order a person reads them: Required, Unique, where a link goes, hidden from roles. @param {Partial<Draft> & { kind: string }} f @param {TypeRef[]} types @returns {string[]} */
+export function fieldBadges(f, types) {
+  const out = [];
+  if (f.required) out.push("Required");
+  if (f.unique) out.push("Unique");
+  const target = types.find((t) => t.name === f.to);
+  if (f.kind === "link" && target) out.push(f.many ? `Links to many ${target.plural}` : `Link to ${target.label}`);
+  const n = f.hidden_from?.length ?? 0;
+  if (n) out.push(`Hidden from ${n} ${n === 1 ? "role" : "roles"}`);
+  return out;
+}
+
 /** A rule from a pick: the Expression the type stores. @param {{ field: string, op: "is" | "is_not" | "filled", value?: string }} r */
 export function buildRule(r) {
   if (!r.field) return "";

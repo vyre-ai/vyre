@@ -124,7 +124,8 @@ export function markSource(kind, seed, scheme, o = {}) {
   const px = kind === "teammate" ? (size >= 32 ? 40 : 24) : 120;
   let svg;
   switch (kind) {
-    case "person": svg = person(seed, scheme); break;
+    // A person who has picked a look (the same picker as an agent's, a seed like s3~c5~e2~m1~t4~b1~h0) is drawn as that little character; everyone else, from their name as before.
+    case "person": svg = /^s[0-7]~c(?:1[0-5]|[0-9])(?:~[emtbh]\d)*$/.test(seed) ? agentV2(seed, px, scheme) : person(seed, scheme); break;
     // The Assistant and every agent are the same kind of little character (agent2.js), drawn from their look and, for what it leaves out, a hash of their name.
     case "assistant": svg = agentV2(seed, px, scheme); break;
     case "agent": svg = agentV2(seed, px, scheme); break;

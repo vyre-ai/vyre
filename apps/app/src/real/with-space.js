@@ -34,6 +34,32 @@ const MEMBER_DOOR = Object.freeze({ ...MEMBER_CHAT, ...Object.fromEntries(MEMBER
 export function memberChatWire(tool) { return Object.hasOwn(MEMBER_DOOR, tool) ? /** @type {any} */ (MEMBER_DOOR)[tool] : null; }
 export const memberWire = memberChatWire;
 
+/**
+ * The team-door call for a tool and the input to send it, with the planner held back: the planner's four note calls have door rows, but only a call the Notes tab marks { notes: true } goes to the team's door.
+ * An unmarked planner call (a reminder, an alarm, a to-do) stays on her own home. The marker is always taken off. @param {string} name @param {Record<string, unknown>} given @returns {{ wire: string | null, given: Record<string, unknown> }}
+ */
+export function planWire(name, given) {
+  const planner = name.startsWith("planner.");
+  const marked = planner && given.notes === true;
+  const { notes: _marker, ...rest } = given;
+  return { wire: planner && !marked ? null : memberChatWire(name), given: planner ? rest : given };
+}
+
+/**
+ * Where a call goes while a team is showing: the team door ({ space, wire, input }) or nowhere (null, so it goes on as before). The input to the door has the Space taken off, and a planner call has its kind taken off too:
+ * the team door fixes the kind to note. @param {string} name @param {Record<string, unknown>} given @param {string | undefined} showing @param {(space: string) => Promise<boolean>} joinedHere
+ * @returns {Promise<{ space: string, wire: string, input: Record<string, unknown> } | null>}
+ */
+export async function teamRoute(name, given, showing, joinedHere) {
+  const planned = planWire(name, given);
+  if (!planned.wire) return null;
+  const space = chatSpace(planned.given, showing);
+  if (!space || !(await joinedHere(space))) return null;
+  const { space: _named, ...withKind } = planned.given;
+  const { kind: _kind, ...noKind } = withKind;
+  return { space, wire: planned.wire, input: name.startsWith("planner.") ? noKind : withKind };
+}
+
 /** The tools that do a Space's own work. While a team the person JOINED is showing, none of them may go to her own home as if it were the team: the ones with a member door call go through it (memberWire), the rest are refused in words. Her own things (planner, settings, accounts, her sidebar, her devices) are not in this list. Records, tasks, assistants and lessons are NOT here yet either: screens such as the chat composer read them today and only a door row for them (rc2-people) can replace those reads, so they wait for their rows instead of being refused. */
 const TEAM_WORK = Object.freeze(["work.project.", "work.start-project", "work.template.", "flows.", "team."]);
 

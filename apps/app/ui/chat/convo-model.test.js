@@ -136,7 +136,7 @@ test("the Engineer's Space chat is the first row of Space chats, called Engineer
 test("an agent is listed by its display name, and the second line never repeats the name", async () => {
   const { convosFrom, displayName } = await import("./convo-model.js");
   assert.equal(displayName("engineer"), "Engineer");
-  assert.equal(displayName("desk-helper"), "Desk helper");
+  assert.equal(displayName("desk-helper"), "Desk Helper");
   const rows = convosFrom({ chats: [], agents: [{ name: "engineer", role: "engineer" }, { name: "scout", role: "Finds leads" }], people: [] });
   const eng = rows.find((r) => r.agent === "engineer");
   assert.equal(eng.title, "Engineer");
@@ -162,4 +162,13 @@ test("the assistant is always first: with no chat of its own yet, a row that sta
   assert.equal(rows[0].sub, "Your assistant");
   assert.equal(rows[0].chat, "", "nothing is made until the first message");
   assert.equal(convosFrom({ chats: [], agents: [], people: [] }).some((r) => r.id === "assistant:new"), false, "no assistant known, no row");
+
+test("an agent is said as its title, in the list and in a chat that is only with it; a chat with its own title keeps it", () => {
+  const items = convosFrom({
+    chats: [chat({ id: "e", title: "engineer", agents: ["engineer"], last: 3 }), chat({ id: "l", title: "Lease review", agents: ["engineer"], last: 2 })],
+    agents: [agent({ name: "engineer", title: "Engineer" }), agent({ name: "ads-writer", title: "Ads Writer" })], people: [],
+  });
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads Writer", "Engineer", "Lease review"]);
+  assert.equal(items.find((i) => i.id === "chat:e").title, "Engineer");
+  assert.equal(items.find((i) => i.id === "agent:ads-writer").title, "Ads Writer");
 });

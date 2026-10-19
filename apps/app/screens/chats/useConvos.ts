@@ -37,8 +37,8 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
         const sum = await callT("work.chat.summary", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
         const bySummary = summaryByAgent(sum);
         if (!live) return;
-        setAssistantName(mineAsst ? mineAsst.name : "");
-        setAgents(rows.map((r) => ({ name: r.name, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), summary: bySummary.get(r.name), projects: ids(r.name).map((s) => names[s] || s) })));
+        setAssistantName(mineAsst ? mineAsst.title : "");
+        setAgents(rows.map((r) => ({ name: r.name, title: r.title, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), summary: bySummary.get(r.name), projects: ids(r.name).map((s) => names[s] || s) })));
         setPeople(who.filter((w) => w.family === "person" && w.name && String(w.id) !== me).map((w) => ({ id: String(w.id), name: String(w.name), role: w.role ? String(w.role) : undefined })));
       } catch { /* the chats still show */ }
     })();

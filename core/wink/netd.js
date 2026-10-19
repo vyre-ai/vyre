@@ -80,6 +80,8 @@ export function findBinaries(env = process.env) {
  *   certDeps?: any,                                 test seam for the public gate ({ deps: { createGate, certs, acme, waitDns } })
  *   gatePort?: number,                              a fixed port for the gate behind a configured control address (config wink.gatePort; a router forward or a test names it); default a free one
  *   publicPort?: number,                            the public gate's port (default 7443)
+ *   rootRedirect?: string,                           where the bare root of the public name is sent (default the hosted app, https://web.vyre.run/); an empty string turns it off
+ *   ingressPort?: number,                          the port outside people reach the public gate on, for links and webhooks (443 in a container that publishes 443 onto the gate)
  *   publish?: boolean,                              publish the name's address without the outside check (config wink.publish)
  *   acme?: string,                                  "production", "staging" or a test CA's directory URL
  *   relayUrl?: string,                              the relay used for the outside reachability check
@@ -141,7 +143,7 @@ export function createNetd(o) {
     if (!publicUrl && o.directory && o.publicGate !== false) {
       pub = D.createPublicGate({
         name: () => (o.name ? o.name() : null), domain: o.domain, dir: path.join(dir, "certs"), directory: o.directory || { acme: async () => { throw new Error("no directory"); }, acmeClear: async () => {}, publish: async () => {} },
-        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}), ...(o.apps ? { apps: o.apps } : {}), ...(o.hosts ? { hosts: o.hosts } : {}),
+        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}), ...(Number.isInteger(o.ingressPort) ? { ingressPort: o.ingressPort } : {}), rootRedirect: o.rootRedirect === undefined ? "https://web.vyre.run/" : o.rootRedirect, ...(o.ingress ? { ingress: o.ingress, onIngress: (/** @type {string | null} */ b) => { if (o.onIngress) o.onIngress(b); } } : {}), ...(o.apps ? { apps: o.apps } : {}), ...(o.hosts ? { hosts: o.hosts } : {}),
         reachable: reachNow, log, ...(o.certDeps || {}),
       });
       // started in the background below: a certificate can take a minute, and the network does not wait for it

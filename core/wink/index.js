@@ -642,7 +642,11 @@ export function createWink(inject = {}) {
       apps: async () => { try { const r = /** @type {any} */ (await ctx.call("appmods.list", {})); return Boolean(r && r.data && Array.isArray(r.data.apps) && r.data.apps.length); } catch { return false; } },
       onIngress: (/** @type {string | null} */ base) => tellIngressBase((tool, input) => ctx.call(tool, input), base),
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
-      ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      // Publish the name's address without waiting for the outside check: the person's word in config (wink.publish: true), or a server install's (box/compose.yml sets VYRE_WINK_PUBLISH=1: a box that exists to be reached),
+      // unless the config says wink.publish: false. A home or a Mac sets neither, so it stays gated on the check.
+      ...((ctx.config && ctx.config.wink && ctx.config.wink.publish === true) || (process.env.VYRE_WINK_PUBLISH === "1" && !(ctx.config && ctx.config.wink && ctx.config.wink.publish === false)) ? { publish: true } : {}),
+      // the port the outside reaches the gate on for links and webhooks (a server publishes 443 onto the gate's own port, box/compose.yml)
+      ...(Number.isInteger(Number(process.env.VYRE_WINK_INGRESS_PORT)) && Number(process.env.VYRE_WINK_INGRESS_PORT) > 0 ? { ingressPort: Number(process.env.VYRE_WINK_INGRESS_PORT) } : ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.ingressPort) ? { ingressPort: ctx.config.wink.ingressPort } : {}),
       tunnel: () => Boolean(ctx.config && ctx.config.relay && typeof ctx.config.relay.tunnel_url === "string" && ctx.config.relay.tunnel_url),
       ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),

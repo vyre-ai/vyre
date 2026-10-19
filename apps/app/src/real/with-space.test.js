@@ -86,15 +86,65 @@ test("a member starts her own projects through the door: a blank project, one fr
 test("a member's daily Records and tasks go through the door under the same name; presence and admin calls stay on her own home", async () => {
   const { memberWire, isTeamWork } = await import("./with-space.js");
   for (const t of ["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"]) assert.equal(memberWire(t), t, t);
-  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
+  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.snooze", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
   // a joined member's Records reads and her call or meeting log go through the door too (history, totals, Busy blocks, roles, log)
   for (const t of ["records.history", "records.stats", "records.busy", "records.roles.summary", "records.log", "records.move", "records.layout.get", "records.layout.set", "records.relationship.list"]) assert.equal(memberWire(t), t, t);
-  // the four planner NOTE calls have door rows (core/work/member-tools.js), but box.ts sends a planner call there only when the Notes tab marks it { notes: true }: the table alone does not route the planner, and the rest of the planner has no row
-  for (const t of ["planner.list", "planner.get", "planner.add", "planner.update"]) { assert.equal(memberWire(t), t, t); assert.ok(!isTeamWork(t), `${t} is not refused`); }
+  // the four planner NOTE calls have door rows (core/work/member-tools.js): reads go to planner.serve, writes to planner.serve-write
+  const { MEMBER_TOOLS } = await import("../../../../core/work/member-tools.js");
+  assert.equal(memberWire("planner.add"), "planner.add");
+  assert.deepEqual([["planner.list", "planner.serve"], ["planner.get", "planner.serve"], ["planner.add", "planner.serve-write"], ["planner.update", "planner.serve-write"]].map(([k]) => /** @type {any} */ (MEMBER_TOOLS)[k].tool), ["planner.serve", "planner.serve", "planner.serve-write", "planner.serve-write"]);
+  // ...but at the box layer a planner call goes to the team's door only when the Notes tab marks it { notes: true }; the marker is always taken off
+  const { planWire } = await import("./with-space.js");
+  assert.deepEqual(planWire("planner.add", { title: "a note" }), { wire: null, given: { title: "a note" } }, "an unmarked add stays on her own home");
+  assert.deepEqual(planWire("planner.add", { title: "a note", notes: true }), { wire: "planner.add", given: { title: "a note" } }, "a marked add goes to the team's door, marker off");
+  assert.equal(planWire("planner.list", { notes: true }).wire, "planner.list");
+  assert.equal(planWire("planner.list", {}).wire, null);
+  assert.equal(planWire("planner.update", { item: "i", notes: false }).wire, null, "only true marks it");
+  // the rest of the planner has no row, marked or not, and other tools are untouched by the marker rule
+  for (const t of ["planner.delete", "planner.done", "planner.snooze"]) { assert.equal(planWire(t, { notes: true }).wire, null, `${t} stays home even marked`); assert.equal(planWire(t, {}).wire, null, t); }
+  assert.deepEqual(planWire("records.list", { notes: true }), { wire: "records.list", given: { notes: true } });
 });
 
 test("a member's project files go through the door: list, read and upload, and nothing else of Drive", async () => {
   const { memberWire } = await import("./with-space.js");
   for (const t of ["files.list", "files.read", "files.upload"]) assert.equal(memberWire(t), t, t);
   for (const t of ["files.drive.list", "files.drive.read", "files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
+});
+
+test("while a team shows, only the Notes tab's marked planner note calls reach the team's door, with the marker, the kind and the Space taken off", async () => {
+  const { teamRoute, planWire } = await import("./with-space.js");
+  const SPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any[]} */ const teamCalls = [];
+  const joined = async (/** @type {string} */ s) => s === SPACE;
+  /** a fake team door: the call box.ts makes when teamRoute names a route */
+  const send = async (/** @type {string} */ name, /** @type {any} */ given, showing = SPACE, isJoined = joined) => { const r = await teamRoute(name, given, showing, isJoined); if (r) teamCalls.push([r.space, r.wire, r.input]); return r; };
+  const notes = ["planner.add", "planner.list", "planner.get", "planner.update"];
+  // (a) unmarked: no team call
+  for (const t of notes) assert.equal(await send(t, { title: "x", kind: "note", item: "i" }), null, `${t} unmarked stays home`);
+  assert.equal(teamCalls.length, 0);
+  // (b) marked: exactly one call each, to the right wire, with notes, kind and space stripped
+  for (const t of notes) {
+    const before = teamCalls.length;
+    await send(t, { title: "x", kind: "note", item: "i", notes: true, space: SPACE });
+    assert.equal(teamCalls.length, before + 1, `${t} marked makes one team call`);
+    assert.deepEqual(teamCalls[teamCalls.length - 1], [SPACE, t, { title: "x", item: "i" }], t);
+  }
+  // (c) the rest of the planner: no team call, marked or not
+  for (const t of ["planner.delete", "planner.done", "planner.agenda", "planner.snooze"]) { const before = teamCalls.length; assert.equal(await send(t, { item: "i", notes: true }), null, t); assert.equal(teamCalls.length, before, `${t} makes no team call`); }
+  // (d) at home, with no team showing or a Space she has not joined: a marked call is not routed, and only loses the marker
+  for (const t of notes) {
+    const before = teamCalls.length;
+    assert.equal(await teamRoute(t, { title: "x", notes: true }, undefined, joined), null, `${t}: no team showing`);
+    assert.equal(await send(t, { title: "x", notes: true }, SPACE, async () => false), null, `${t}: a Space she has not joined`);
+    assert.equal(teamCalls.length, before);
+    assert.deepEqual(planWire(t, { title: "x", notes: true }).given, { title: "x" }, `${t}: only the marker is dropped`);
+  }
+  // other tools keep their input whole (the kind and other keys are only dropped from planner calls)
+  assert.deepEqual(await teamRoute("records.list", { type: "deal", kind: "x" }, SPACE, joined), { space: SPACE, wire: "records.list", input: { type: "deal", kind: "x" } });
+  // box.ts makes the team call from exactly this route, and nothing else sends a planner call to the team (box.ts needs React Native, so this part is a source-pattern check)
+  const { readFileSync } = await import("node:fs");
+  const box = readFileSync(new URL("./box.ts", import.meta.url), "utf8");
+  assert.match(box, /const routed = await teamRoute\(name, given, useSpaces\.getState\(\)\.space/);
+  assert.match(box, /team\.teamCall\(routed\.space, routed\.wire, \[routed\.input\]\)/);
+  assert.doesNotMatch(box, /memberChatWire\(/, "box.ts reaches the member table only through planWire and teamRoute");
 });

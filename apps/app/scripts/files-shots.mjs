@@ -60,6 +60,13 @@ try {
         await shot("9-drag-over-folder");
         await fire("drop", "Vyre site"); await fire("dragend", "Juniper Studio"); await shot("10-dropped");
       } else console.log("drag shots skipped: tiles not found");
+      // New folder: the button, the name field, the folder made and selected, the project folder by its name, and the right-click on empty space. A fresh load again.
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      await page.getByRole("button", { name: "New folder" }).first().click().catch(() => {}); await shot("11-new-folder-field");
+      await page.getByLabel("Folder name").first().fill("Plans").catch(() => {}); await page.keyboard.press("Enter").catch(() => {}); await shot("12-new-folder-made");
+      await page.getByText("Projects", { exact: true }).first().dblclick().catch(() => {}); await shot("13-project-by-name");
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      await page.mouse.click(1000, 460, { button: "right" }).catch(() => {}); await shot("14-empty-space-menu");
     } else {
       await page.getByText("Space", { exact: true }).first().click().catch(() => {}); await shot("2-space");
       // Move to... on a phone: open a file, ask to move it, pick a folder

@@ -20,7 +20,7 @@ export function HomeAgents({ onCount, onNames }: { onCount?: (working: number) =
       {cards.map((a) => (
         <View key={a.name} className="items-center gap-s1">
           <Pulse active={a.live}><View className={a.needsYou ? "rounded-full border-2 border-primary p-s1" : a.live ? "rounded-full border-2 border-edge-strong p-s1" : "rounded-full border-2 border-transparent p-s1"}><Avatar of={{ kind: a.kind === "assistant" ? "assistant" : "agent", id: a.name, name: a.name }} size={40} onPress={() => router.push(`/u/assistants/${encodeURIComponent(a.name)}` as never)} label={`${a.name}, ${a.doing}`} /></View></Pulse>
-          <Text size="caption" tone={a.live ? "default" : "muted"}>{a.name}</Text>
+          <Text size="caption" tone={a.live ? "default" : "muted"}>{a.title}</Text>
         </View>
       ))}
     </View>

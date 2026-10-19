@@ -1,9 +1,9 @@
 // Small parts the Connections sections share: a poll that runs only while a sign-in is open, who-can-use-it, and the vault-item pick.
 import { useEffect, useRef } from "react";
-import { Linking } from "react-native";
 import { View } from "react-native";
 import { Button, Chip, Segmented, Text } from "@vyre/ui";
 import { WHO, whoHelp, type Guide, type Who } from "./model";
+import { openExternal } from "../../src/shell/open-external";
 
 /** Runs `fn` every `ms` while `on`. Nothing runs otherwise: Connections never polls on its own. */
 export function usePoll(on: boolean, fn: () => void, ms = 3000) {
@@ -17,7 +17,7 @@ export function usePoll(on: boolean, fn: () => void, ms = 3000) {
 }
 
 /** Open a page on the device. The link is checked to be https by the caller. */
-export const openUrl = (url: string) => { void Linking.openURL(url).catch(() => {}); };
+export const openUrl = (url: string) => { void openExternal(url); };
 
 /** "Who can use it": just me, everyone, or the projects picked. */
 export function WhoControl({ who, projects, onChange }: { who: Who; projects: { slug: string; name: string }[] | null; onChange: (w: Who) => void }) {

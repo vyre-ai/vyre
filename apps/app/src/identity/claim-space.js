@@ -11,7 +11,7 @@
 // One function, used by the phone and the web app. If the directory refuses (name taken), nothing is claimed and `retire` (when given) takes the hosted space back.
 
 import * as C from "../../../../kernel/identity/chain.js";
-import { recordMessage } from "../../../../names/worker/id-messages.js";
+import { actMessage, recordMessage } from "../../../../names/worker/id-messages.js";
 import { sealRecord } from "./seal.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
@@ -67,8 +67,23 @@ export async function claimServerSpace(o) {
     /** @type {any} */ let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
     if (!res.ok || !json || json.error || !json.data) { const e = (json && json.error) || {}; throw refuse(plain(e), String(e.code || "directory")); }
-    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic, claimed: json.data };
+    // The Space says this server serves its name (POST /v1/ids/server, signed by this person's own entry; the first server needs no older sign-in). Without it the directory refuses the server's
+    // certificate and address ("that name is not served by this server"). The name is claimed by now, so a failure here keeps it and says what to run.
+    const serverRoute = o.route && o.route.route ? String(o.route.route) : "";
+    if (serverRoute) {
+      const act = { by: me.id, via: me.eid, ts: now() };
+      try {
+        const lr = await f(`${o.base.replace(/\/+$/, "")}/v1/ids/server`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json", ...(o.headers ?? {}) },
+          body: JSON.stringify({ name: label, route: serverRoute, act: { ...act, sig: C.b64u(await me.key.sign(actMessage({ action: "server-add", name: label, domain: serverRoute, ts: act.ts }))) } }) });
+        /** @type {any} */ let lj = null; try { lj = await lr.json(); } catch { /* not JSON */ }
+        if (!lr.ok || !lj || lj.error) throw new Error(String((lj && lj.error && lj.error.message) || `the directory answered ${lr.status}`));
+      } catch (e) {
+        throw refuse(`${label} is named, but the directory was not told this server serves it (${/** @type {Error} */ (e).message}). Run spaces.server.list for ${label} from your computer, or name it again.`, "server_not_listed");
+      }
+    }
+    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic, claimed: json.data, listed: Boolean(serverRoute) };
   } catch (e) {
+    if (/** @type {any} */ (e) && /** @type {any} */ (e).code === "server_not_listed") throw e;
     if (o.retire) { try { await o.retire(space); } catch { /* the server keeps an empty space; the person can retire it later */ } }
     throw e;
   }

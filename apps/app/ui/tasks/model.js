@@ -7,6 +7,7 @@ import { needsRead } from "../components/quoted-assistants-model.js";
 import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/store-core/tasks.js";
 import { aid, eventLine } from "../../src/store-core/kernel-view.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
+import { agentWords } from "../../src/state/agent-name.js";
 
 const STATE_WORDS = /** @type {Record<string, string>} */ (STATE_LABEL);
 export { STATE_WORDS as STATE_LABEL, HOW_LABEL, OUTPUT_KINDS };
@@ -28,10 +29,13 @@ export function recordTitle(w, rec) {
   return String(rec.data?.[key] ?? rec.id);
 }
 
+/** An actor's name as a person reads it: a person's as it is, an assistant or agent (whose name is its id) in words. @param {any} a */
+const saidName = (a) => (a ? (a.family === "assistant" || a.family === "teammate" ? agentWords(a.name) : a.name) : "");
+
 /** @param {World} w @param {string|undefined} id */
 export const who = (w, id) => actorOf(id, w.actors);
 /** @param {World} w @param {string|undefined} id */
-export const nameOf = (w, id) => who(w, id)?.name || id || "";
+export const nameOf = (w, id) => saidName(who(w, id)) || (id ? agentWords(id) : "");
 /** @param {World} w @param {string|undefined} spaceId */
 export const spaceName = (w, spaceId) => w.spaces.find((s) => s.id === spaceId)?.name || "";
 /** The small tag that says where a thing lives: "Personal - Home", "Personal - Cloud" or the team space's name (placeTag, carried on the space row); the space's name when a row has no tag. */
@@ -46,7 +50,7 @@ export const spaceTag = (w, spaceId) => { const s = w.spaces.find((x) => x.id ==
 export function cardModel(i) {
   const { task, actors } = i;
   const reason = needsReason(task, i.me, actors);
-  const nameOfActor = (/** @type {string} */ _k, /** @type {string} */ id) => actorOf(id, actors)?.name || id;
+  const nameOfActor = (/** @type {string} */ _k, /** @type {string} */ id) => saidName(actorOf(id, actors)) || id;
   const line = reason === "review" || (reason === "check" && task.review) ? nowLine(task, nameOfActor, i.me) : null;
   const title = reason === "review" && line ? line.title : cardTitle(task, reason, actors);
   const rec = i.recordTitle || "";

@@ -10,7 +10,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, enrolDevice } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { CONTACT } from "../kernel/conformance/suite.js";
@@ -31,6 +31,7 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "walk-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const lines = /** @type {string[]} */ ([]);
   const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 800)}`); return r.data; };

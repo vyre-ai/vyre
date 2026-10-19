@@ -2,10 +2,13 @@
 // Playbook "Who does it, reviews and approves" sheet. Sample world only (allowsMock): on a real box this route is not found. The data is made up here and touches nothing.
 import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Banner, Button, Card, EmptyState, FlowBuilder, QUOTE_NOTE_TEXT, QuotedAssistants, Text, allowsMock, assistantBoxes } from "@vyre/ui";
+import { Banner, Button, Card, EmptyState, FlowBuilder, Tabs, QUOTE_NOTE_TEXT, QuotedAssistants, Text, allowsMock, assistantBoxes } from "@vyre/ui";
 import type { FlowDraft } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { SlotsSheet } from "../templates/SlotsSheet";
+import { NewWatcherSheet } from "./NewWatcherSheet";
+import { WatchersTab } from "./WatchersTab";
+import type { TriggerSources } from "@vyre/ui";
 import { RunSteps } from "./RunSteps";
 import { REFUND_DRAFT, SAMPLE_OPTIONS } from "./starters.js";
 
@@ -37,6 +40,22 @@ const HOSTILE = "\"# Heading **bold** [click here](https://evil.example/x) https
 const LONG = `"${"Greet the person, find the matter and say what is next. ".repeat(36)}" [cut: 2500 characters in all]`;
 const KIT = { adds: { teammates: [{ name: "desk-helper", instructions_quoted: HOSTILE }, { name: "intake-helper", instructions_quoted: LONG }] } };
 
+const WATCHERS = [
+  { name: "mail-intake", state: "on", title: "Notes for important mail", project: "ads", schedule: "0 * * * *", every: "every hour", next: "2026-10-19T06:00:00.000Z", lastRun: "2026-10-19T05:00:00.000Z", failures: 0, items: 14, problems: [] },
+  { name: "repo-acme-site", state: "on", title: "New issues on acme/site", project: "ads", every: "every 30 minutes", next: "2026-10-19T05:30:00.000Z", lastRun: "2026-10-19T05:00:00.000Z", failures: 3, lastError: "GitHub answered 403: the credential has no access to acme/site.", items: 2, problems: [] },
+  { name: "calendar-court", state: "paused", title: "Court dates on the calendar", project: "ads", every: "every hour", pausedWhy: "You paused it on 17 Oct.", items: 6, problems: [] },
+  { name: "feed-news", state: "draft", title: "New items in the news feed", project: "ads", every: "every hour", items: 0, problems: [] },
+];
+const FAKE = {
+  list: async () => WATCHERS, projects: async () => [["ads", "Ads"], ["intake", "Intake"]] as [string, string][],
+  preset: async () => ({ name: "repo-acme-site", hash: "h1", lines: { when: "Runs every 30 minutes", do: "Files new issues from acme/site into Ads" }, facts: { readsText: "Reads github.com with your GitHub credential, read only", acts: "Never acts: it reads and files", cost: "No model cost" } }),
+  test: async () => ({ ok: true, count: 2, items: [{ title: "Login fails on Safari" }, { title: "Footer link is broken" }], alreadyFiled: 0 }),
+  card: async () => ({ hash: "h1", lines: { when: "Runs every 30 minutes", do: "Files new issues from acme/site into Ads" }, facts: { readsText: "Reads github.com with your GitHub credential, read only", acts: "Never acts: it reads and files", cost: "No model cost" } }),
+  create: async () => ({}), run: async () => ({}), pause: async () => ({}), resume: async () => ({}), remove: async () => ({}),
+} as never;
+const HOOKS = { enabled: false, listening: false, routes: [{ name: "northwind-orders", scheme: "hmac-sha256", header: "x-signature", secret: "northwind-orders-hook" }], public: { available: false, why: "The box has no public address yet." }, urls: { "northwind-orders": null } };
+const SOURCES: TriggerSources = { hooks: async () => HOOKS, enableHooks: async () => {}, openRoute: async () => {}, watchers: async () => WATCHERS.map((w) => w.name), newWatcher: (open, onClose, onCreated) => <NewWatcherSheet source={FAKE} open={open} onClose={onClose} onCreated={onCreated} /> };
+
 function KitShot() {
   const [read, setRead] = useState(false);
   const boxes = assistantBoxes(KIT);
@@ -55,6 +74,10 @@ export default function ShotScreen() {
   const [draft, setDraft] = useState<FlowDraft>(EDITOR);
   if (!allowsMock()) return <Frame title="Not here" back="/u/flows"><EmptyState title="Not here" body="This page is only for the sample world." /></Frame>;
   if (k === "kit") return <KitShot />;
+  if (k === "watchers") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><Tabs items={[["flows", "Flows"], ["watchers", "Watchers"]]} value="watchers" onChange={() => {}} /><WatchersTab source={FAKE} /></Frame>;
+  if (k === "newwatcher") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><NewWatcherSheet source={FAKE} open initialKind="repo" onClose={() => {}} onCreated={() => {}} /></Frame>;
+  if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook", route: "northwind-orders" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
+  if (k === "watcherpick") return <Frame back="/u/flows" title="Refund request" sub="Starts when a watcher finds something new."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "watcher", watcher: "mail-intake" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
   if (k === "run") {
     return (
       <Frame back="/u/flows" title="Refund request, run of Today 10:05" sub="Every step with what went in and came out.">

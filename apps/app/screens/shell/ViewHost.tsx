@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Linking, View } from "react-native";
+import { View } from "react-native";
 import { Banner, BlockScreen, Button, ErrorState, Field, LoadingState, Row, SectionLabel, Sheet, Text, showToast } from "@vyre/ui";
 import type { BlockHandlers, BlockScreenData } from "@vyre/ui";
 import { useUiTheme } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { tool } from "../../src/real/box";
 import { actInput, getInput, moveAction, outcome } from "./module-view.js";
+import { openExternal } from "../../src/shell/open-external";
 
 type Frame = BlockScreenData & { title?: string; from?: string };
 type Preview = { title: string; words: { label: string; value: string }[]; asked: { hash: string; token: string }; again: () => Promise<void> };
@@ -42,7 +43,7 @@ export function ViewHost({ module, view, label, initialQ }: { module: string; vi
     setNote(null);
     if (o.effect === "frame") { setTrail((t) => (frame ? [...t, frame] : t)); setFrame(o.frame); return; }
     if (o.effect === "reload") { showToast(o.said); await load(q); return; }
-    if (o.effect === "open") { await Linking.openURL(o.url).catch(() => setNote({ tone: "err", text: "That link did not open." })); return; }
+    if (o.effect === "open") { if (!(await openExternal(o.url)).opened) setNote({ tone: "err", text: "That link did not open." }); return; }
     if (o.effect === "copy") { showToast("Copied."); return; }
     if (o.effect === "command") { setNote({ tone: "plain", text: "That opens another view of this module; pick it in the sidebar." }); return; }
     setNote({ tone: o.effect === "held" ? "plain" : o.effect === "needs" ? "warn" : "err", text: o.message });

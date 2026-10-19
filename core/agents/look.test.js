@@ -70,6 +70,16 @@ test("a look that is not a shape and a colour is refused, at creation and at upd
   await assert.rejects(() => call("agents.update", { name: "rex", look: "s9~c1" }), /look/);
 });
 
+test("there are sixteen colours: c0 to c15 are taken, c16 is not, and a part may follow a two-digit colour", async (t) => {
+  const call = await world(t);
+  await call("agents.create", { name: "rex" });
+  for (const c of [0, 7, 8, 11, 15]) await call("agents.update", { name: "rex", look: `s2~c${c}` });
+  await call("agents.update", { name: "rex", look: "s2~c12~e3~m1~t4~b1~h5" });
+  assert.equal((await call("agents.list")).find((r) => r.name === "rex").look, "s2~c12~e3~m1~t4~b1~h5");
+  await assert.rejects(() => call("agents.update", { name: "rex", look: "s2~c16" }), /look/);
+  await assert.rejects(() => call("agents.update", { name: "rex", look: "s2~c-1" }), /look/);
+});
+
 test("a look may carry a character: eyes, mouth, top, blush and charm, in that order, each in range; a part may be left out but not reordered", async (t) => {
   const call = await world(t);
   await call("agents.create", { name: "rex", look: "s3~c5~e2~m1~t4~b1~h0" });

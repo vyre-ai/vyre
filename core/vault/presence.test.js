@@ -49,7 +49,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed",
   "vault.space.status", "vault.space.list", "vault.space.attention",
   // a module asks whether it holds a grant: a boolean about its own grant, no value (module-only)
-  "vault.granted", "vault.mcp.status", "vault.mcp.base", "vault.connections.lend", "vault.connections.end"];
+  "vault.granted", "vault.make-hook-secret" /* internal, only module:hooks: makes a webhook route's signing secret, grants it to hooks, returns the item name and never the value */, "vault.mcp.status", "vault.mcp.base", "vault.connections.lend", "vault.connections.end"];
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

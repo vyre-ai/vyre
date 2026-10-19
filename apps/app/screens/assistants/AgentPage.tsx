@@ -5,6 +5,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
 import AgentWork from "./AgentWork";
+import { displayName } from "../agents/home-model.js";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
 import { AgentMemory } from "./AgentMemory";
 import { Page, Sec } from "../places/Frame";
@@ -31,7 +32,7 @@ export default function AgentPage() {
   const load = useCallback(() => { setErr(""); agent.get(who).then(setA).catch((e) => setErr(say(e, "Your agents did not answer."))); }, [who]);
   useEffect(load, [load]);
   return (
-    <Page title={who} back="/u/assistants" marks={[markRef("agent", who)]}>
+    <Page title={a ? displayName(a) : who} back="/u/assistants" marks={[markRef("agent", who)]}>
       {err ? <Card flush><ErrorState title="This page did not load" reason={err} retry={load} /></Card> : null}
       {a === undefined && !err ? <LoadingState rows={4} /> : null}
       {a === null ? <Card><EmptyState title={`There is no agent called ${who}`} body="It may have been removed." /></Card> : null}
@@ -220,19 +221,19 @@ function ComputerCard({ a, onChange }: { a: AgentFull; onChange: () => void }) {
   );
 }
 
-/** Change how an agent is drawn: the grid of shapes and the colours, then Save (agents.update look). */
-function LookSheet({ a, open, onClose, onSaved }: { a: AgentFull; open: boolean; onClose: () => void; onSaved: (look: string) => void }) {
+/** Change how an agent is drawn: the grid of shapes and the colours (and, behind the Customize button, eyes, mouth, top, blush and charm), then Save (agents.update look). Also used by Settings for the Assistant. */
+export function LookSheet({ a, open, onClose, onSaved, person, onSave }: { a: AgentFull; open: boolean; onClose: () => void; onSaved: (look: string) => void; /** The sheet is for a person's own look, not an agent's: titled "Your look" and drawn as a person. */ person?: boolean; /** How a look is kept when it is not agents.update (a person's own look). */ onSave?: (look: string) => Promise<unknown> }) {
   const start = lookOf(a.look ?? "") ?? { shape: 0, color: 0 };
   // the character: the parts its look names, and for the rest what it is drawn with now (a hash of its name), so a tap changes one thing and keeps the others
   const [v, setV] = useState({ ...start, parts: partsOf(withParts(a.look || a.name, a.name.toLowerCase())) as Record<string, number> });
   const look = lookSeed(v.shape, v.color) + PARTS.map((p) => `~${p.key}${v.parts[p.key] ?? 0}`).join("");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const save = () => { setBusy(true); setProblem(""); agent.setLook(a.name, look).then(() => onSaved(look)).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
+  const save = () => { setBusy(true); setProblem(""); (onSave ? onSave(look) : agent.setLook(a.name, look)).then(() => onSaved(look)).catch((e) => setProblem(say(e))).finally(() => setBusy(false)); };
   return (
-    <Sheet open={open} onClose={onClose} title={`How ${a.name} looks`}>
+    <Sheet open={open} onClose={onClose} title={person ? "Your look" : `How ${a.name} looks`}>
       <View className="gap-s4">
-        <View className="items-center"><Avatar of={markRef("agent", a.name, undefined, look)} size={56} /></View>
+        <View className="items-center"><Avatar of={markRef(person ? "person" : "agent", a.name, undefined, look)} size={56} /></View>
         <AgentLookPicker shape={v.shape} color={v.color} parts={v.parts} onChange={(p) => setV((x) => ({ ...x, ...p }))} onPart={(key, value) => setV((x) => ({ ...x, parts: { ...x.parts, [key]: value } }))} />
         {problem ? <Banner tone="warn">{problem}</Banner> : null}
         <View className="flex-row justify-end gap-s2"><Button kind="ghost" label="Cancel" onPress={onClose} /><Button kind="primary" label={busy ? "Saving" : "Save"} disabled={busy} onPress={save} /></View>
