@@ -179,7 +179,7 @@ export { ActivityFeed } from "./records/ActivityFeed";
 export type { Activity } from "./records/ActivityFeed";
 export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
-export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
+export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf, isInternalField, isLockedField, personFields, taskRequestOf } from "./records/logic.js";
 export { FlowBuilder } from "./flows/FlowBuilder";
 export type { TriggerSources } from "./flows/trigger-sources";
 export { StepCard } from "./flows/StepCard";

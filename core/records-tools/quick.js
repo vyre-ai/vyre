@@ -130,7 +130,32 @@ export async function quickRows(d, type) {
   // no filter on the data field `type`: it came back empty for a member (see layout.js); the rows are few
   try { return ((await d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).rows || []).filter((/** @type {any} */ r) => r.data && r.data.type === type); } catch { return []; }
 }
+/** One quick-field row in the shape the helpers use. @param {any} r */
+const shapeOf = (r) => { let options = []; try { options = JSON.parse(r.data.options || "[]"); } catch { /* none */ } return { name: r.data.name, label: r.data.label, kind: r.data.kind, options, state: r.data.state }; };
+/**
+ * The fields records.types lists for a type: its own, then each fast field that is not a real field yet, marked `fast: true` with its state, so a column added a moment ago shows at once. A fast field that is
+ * real is in the type's own fields already. @param {any} t @param {any[]} quick the type's quick fields
+ */
+export function withFastFields(t, quick) {
+  const own = new Set((t.fields || []).map((/** @type {any} */ f) => f.name));
+  const fast = quick.filter((f) => f.state !== "real" && !own.has(f.name)).map((f) => ({ name: f.name, label: f.label, kind: f.kind, ...(f.kind === "choice" ? { options: f.options } : {}), fast: true, state: f.state }));
+  return fast.length ? { ...t, fields: [...(t.fields || []), ...fast] } : t;
+}
+/** A definition change without the fast fields records.types added: they are rows of quick-field, never fields of the store, until records.field.promote makes them so. @param {any} diff */
+export function withoutFastFields(diff) {
+  if (!diff || typeof diff !== "object") return diff;
+  const strip = (/** @type {any} */ list) => (Array.isArray(list) ? list.map((t) => (t && Array.isArray(t.fields) && t.fields.some((/** @type {any} */ f) => f && f.fast === true) ? { ...t, fields: t.fields.filter((/** @type {any} */ f) => !(f && f.fast === true)) } : t)) : list);
+  return { ...diff, ...(diff.add_types ? { add_types: strip(diff.add_types) } : {}), ...(diff.change_types ? { change_types: strip(diff.change_types) } : {}) };
+}
+/** Every type's quick fields from one read of the rows. @param {any} d @returns {Promise<Map<string, any[]>>} */
+export async function quickFieldsByType(d) {
+  /** @type {Map<string, any[]>} */ const out = new Map();
+  let rows = [];
+  try { rows = (await d.gateway.records.query(d.chain, "quick-field", { page: { limit: 200 } })).rows || []; } catch { return out; }
+  for (const r of rows) if (r && r.data && typeof r.data.type === "string") { const list = out.get(r.data.type) || []; list.push(shapeOf(r)); out.set(r.data.type, list); }
+  return out;
+}
 /** The quick fields of a type in the shape the helpers use. @param {any} d @param {string} type */
 export async function quickFieldsOf(d, type) {
-  return (await quickRows(d, type)).map((r) => { let options = []; try { options = JSON.parse(r.data.options || "[]"); } catch { /* none */ } return { name: r.data.name, label: r.data.label, kind: r.data.kind, options, state: r.data.state }; });
+  return (await quickRows(d, type)).map(shapeOf);
 }

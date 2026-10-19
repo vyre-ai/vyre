@@ -3,7 +3,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf, viaOf, prefillFromLink, pinnedFacts } from "./logic.js";
+import { formOrder, formErrors, timelineOf, TIMELINE_KINDS, guessMapping, importIssues, importSummary, createPayload, groupRelated, factsOf, viaOf, prefillFromLink, pinnedFacts, isInternalField, isLockedField, personFields, taskRequestOf } from "./logic.js";
+import { TASK } from "../../../../records/core-types.js";
 
 const FIELDS = [
   { name: "notes", label: "Notes", kind: "rich_text" },
@@ -102,4 +103,41 @@ test("pinned fields show in the person's order, an empty one as null, and a hidd
   assert.deepEqual(pinnedFacts(def, rec, ["ssn", "secret", "nope", "value"]), [["Value", "$24,000"]]);
   assert.deepEqual(pinnedFacts(def, rec, undefined), []);
   assert.equal(pinnedFacts(def, rec, Array.from({ length: 12 }, () => "name")).length, 8, "at most eight");
+});
+
+test("New task can be saved: the kernel's status, the planner's bookkeeping and the fast-field bag are never asked, so a title is enough", () => {
+  const fields = personFields(TASK);
+  const names = fields.map((f) => f.name);
+  for (const n of ["planner", "wall", "floating", "source", "extra"]) assert.ok(!names.includes(n), `${n} is internal: on no record page and in no form`);
+  const asked = formOrder(fields).map((f) => f.name);
+  for (const n of ["status", "stage", "record", "ref"]) assert.ok(!asked.includes(n), `${n} is the kernel's: the form never asks for it`);
+  assert.equal(asked[0], "title");
+  assert.deepEqual(formErrors(fields, { title: "Call back" }), {}, "the required status is the kernel's, so it never blocks the save");
+  assert.deepEqual(Object.keys(formErrors(fields, {})), ["title"]);
+  assert.deepEqual(Object.keys(formErrors(TASK.fields, { title: "Call back" })), [], "the raw fields too: what the form does not ask is not judged");
+});
+
+test("a field is internal, locked, or a person's", () => {
+  assert.equal(isInternalField({ name: "extra", kind: "text" }), true);
+  assert.equal(isInternalField({ name: "old", kind: "text", hidden: true }), true);
+  assert.equal(isInternalField({ name: "planner", kind: "text", hidden_from: ["member"] }), true);
+  assert.equal(isInternalField({ name: "wall", kind: "text" }, "task"), true);
+  assert.equal(isInternalField({ name: "wall", kind: "text" }, "contact"), false, "only the task's own bookkeeping");
+  assert.equal(isInternalField({ name: "title", kind: "text" }, "task"), false);
+  assert.equal(isLockedField({ name: "status", owned_by: "kernel" }), true);
+  assert.equal(isLockedField({ name: "ref", read_only: true }), true);
+  assert.equal(isLockedField({ name: "total", computed: { expr: "1" } }), true);
+  assert.equal(isLockedField({ name: "title" }), false);
+});
+
+test("a new task goes to tasks.request: done by the person, about the record it was started from, its own words apart from its custom fields", () => {
+  const fields = personFields(TASK);
+  const { plain } = createPayload(fields, { title: " Call back ", note: "Ask about the quote", due: "2026-11-30T10:00:00Z", priority: 2, contact: { urn: "vyre://s/contact/c1" }, parent: { urn: "vyre://s/task/t9" } });
+  const spec = taskRequestOf(plain, { doer: "per_a", about: "vyre://s/organization/o1" });
+  assert.deepEqual(spec, {
+    title: "Call back", doer: "per_a", output: { kind: "note" }, source: "manual", record: "vyre://s/organization/o1", due: Date.parse("2026-11-30T10:00:00Z"), note: "Ask about the quote", parent: "t9",
+    fields: { priority: 2, contact: { urn: "vyre://s/contact/c1" } },
+  });
+  for (const k of ["status", "stage", "record"]) assert.ok(!(k in (spec.fields ?? {})), `${k} is never a custom field`);
+  assert.equal("record" in taskRequestOf({ title: "x" }, { doer: "per_a" }), false, "made from the Tasks list, it is about nothing");
 });

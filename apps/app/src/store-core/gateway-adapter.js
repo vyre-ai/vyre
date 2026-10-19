@@ -16,7 +16,7 @@ import { placeTag, spaceName } from "../state/space-name.js";
 export const TOOLS = {
   me: "records.me", spaceList: "spaces.list", actors: "records.actors", types: "records.types", define: "records.define",
   list: "records.list", get: "records.get", create: "records.create", update: "records.update",
-  seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events",
+  seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events", fieldSeal: "records.field.seal",
   tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit", review: "tasks.review",
 };
 
@@ -127,7 +127,7 @@ export function createGatewayStore({ rpc }) {
     async editTask() { throw Object.assign(new Error("Editing a task is not available on this Vyre yet."), { code: "invalid" }); },
     async events(q = {}) { const d = await rpc.read(TOOLS.events, q); return Array.isArray(d) ? d : d?.events ?? []; },
     async define(diff) { return await write(TOOLS.define, { diff }); },
-    // Customize is a definition change: the field is added to, or sealed in, the type's own definition.
+    // Adding a field is a definition change on the type. Sealing one is not: it is the kernel's own migration (records.field.seal), which moves every value into a sealed field and scrubs the old ones.
     async addField(type, spec) {
       /** @type {any} */ let made;
       await changeType(type, (t) => {
@@ -140,10 +140,10 @@ export function createGatewayStore({ rpc }) {
       });
       return made;
     },
-    async sealField(type, field) {
-      /** @type {any} */ let sealed;
-      await changeType(type, (t) => { const f = t.fields.find((/** @type {any} */ x) => x.name === field); if (f) { f.seal = f.seal || { level: "ai", class: "free" }; sealed = f; } return t; });
-      return sealed;
+    // The space is the record's own (the page names it): the migration acts on that space's type, whichever space is showing.
+    async sealField(type, field, space) {
+      const d = await write(TOOLS.fieldSeal, { ...sp(space), type, field });
+      return d && typeof d.sealed_field === "string" ? { name: d.sealed_field, label: field, kind: "sealed" } : undefined;
     },
     subscribe(fn) {
       subs.add(fn);
