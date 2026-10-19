@@ -40,3 +40,8 @@ export const needsPasswordForCode = (): boolean => hostWanted();
 /** Why private chats could not be set up on this page (the unlock-time repair), or "" when nothing is wrong or this page has no host. */
 export const chatSetupProblem = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.agree.status")) as { failed?: string }).failed ?? "" : "");
 export const retryChatSetup = async (): Promise<string> => (hostWanted() ? ((await getHost().call("identity.agree.retry")) as { failed?: string }).failed ?? "" : "");
+
+/** Can the name be changed here (a page whose host keeps it)? */
+export const canSetName = (): boolean => hostWanted();
+/** Change the name shown for the person: one line with a letter, up to 60 characters. */
+export const setDisplayName = async (display: string): Promise<string> => ((await getHost().call("identity.display.set", { display })) as { display: string }).display;

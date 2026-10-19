@@ -5,14 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Field, PasswordField, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
 import { AssistantLookCard } from "./AssistantLookCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
-import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
+import { contacts, codeOf, displayNameOk, devices, entryLine, entryTitle, hasCode, identityLine, READ_ONLY_LINE, removable, sealedFields, approvalsLine, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, chatSetupProblem, needsPasswordForCode, removeEntry, retryChatSetup, replaceCode, types as loadTypes } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, canSetName, chatSetupProblem, needsPasswordForCode, removeEntry, retryChatSetup, replaceCode, setDisplayName, types as loadTypes } from "./real";
 import { useUpdate } from "../../src/state/update";
 import { aboutButton, aboutLine, appliedLine, askLine } from "./update-model.js";
 import { CREDITS } from "./data";
@@ -32,6 +32,8 @@ export function RealAccount() {
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState("");
   const [chatProblem, setChatProblem] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
   const [autoLock, setAutoLock] = useState("15");
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
@@ -47,7 +49,21 @@ export function RealAccount() {
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {chatProblem ? <Banner icon="refresh"><View className="gap-s2"><Text tone="warn">{`This Mac could not finish setting up private chats: ${chatProblem}.`}</Text><View className="self-start"><Button size="sm" label="Try again" onPress={() => void retryChatSetup().then((p) => { setChatProblem(p); load(); }).catch((e) => setChatProblem(say(e)))} /></View></View></Banner> : null}
-      {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
+      {id?.exists ? (
+        <Card className="gap-s2">
+          <Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0"
+            end={canSetName() && !editing ? <Button kind="ghost" size="sm" icon="edit" label="Change name" onPress={() => { setNameDraft(id.label || ""); setEditing(true); }} /> : undefined} />
+          {editing ? (
+            <View className="gap-s2">
+              <Field label="Your name" value={nameDraft} onChangeText={setNameDraft} help="One line of up to 60 characters. Your username stays the same." />
+              <View className="flex-row gap-s2">
+                <Button kind="primary" size="sm" label="Save" disabled={!displayNameOk(nameDraft)} onPress={() => void setDisplayName(nameDraft.trim()).then(() => { setEditing(false); load(); }).catch((e) => showToast(say(e)))} />
+                <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(false)} />
+              </View>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
       {id?.readOnly ? <Banner><Text>{READ_ONLY_LINE}</Text></Banner> : null}
       {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
       {id?.exists ? <AssistantLookCard person={id.label || id.name || "You"} /> : null}

@@ -42,3 +42,6 @@ export function approvalsLine(reply: unknown): string | null {
   const keys = Array.isArray(reply) ? reply : reply && Array.isArray((reply as { keys?: unknown }).keys) ? (reply as { keys: unknown[] }).keys : null;
   return keys && keys.length === 0 ? NO_APPROVALS_LINE : null;
 }
+
+/** The rule for the name shown for a person (the host's displayOk): one line, 1 to 60 characters, at least one letter. */
+export const displayNameOk = (v: string): boolean => { const t = v.trim(); return t.length > 0 && t.length <= 60 && /\p{L}/u.test(t) && !/[\u0000-\u001f]/.test(t); };
