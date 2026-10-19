@@ -10,7 +10,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 
@@ -33,6 +33,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   const lines = /** @type {string[]} */ ([]);
   const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  enrolDevice(d); // a phone is enrolled, so a device that has not signed in is still asked to (without one the owner's own paired device passes)
   t.after(() => d.stop());
   const as = (/** @type {string} */ caller) => (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller });
   const deck = as("deck");
