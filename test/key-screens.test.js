@@ -34,6 +34,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|flows\/\[id\]\/runs\/\[run\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
+  [/^flows\/shot\.tsx$/, "the Flow editor's picture fixtures (two triggers, If lanes, a reviewed task), drawn by the picture tests; a canvas of its own, owned by the flows team"],
   [/^(index|about|access|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
 ]);
 
