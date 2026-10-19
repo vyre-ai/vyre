@@ -6,6 +6,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { settingsGroups } from "./logic.js";
 import { SETTINGS_ITEMS } from "../shell/settings-items.js";
+import { ARCHIVED } from "./archived.js";
 import { REPO_URL, starNote, starPlan } from "./about-model.js";
 
 const APP = new URL("../../app", import.meta.url).pathname;
@@ -37,9 +38,31 @@ test("the route check finds real screens and refuses a missing one", () => {
   assert.ok(!resolves("/u/settings/nothing-here-xyz"));
 });
 
-test("every row on the Settings home opens a screen that exists", () => {
-  for (const role of [undefined, "owner", "member", "temp"]) {
-    for (const g of settingsGroups("Space", role)) for (const r of g.rows) assert.ok(resolves(r[2]), `${r[0]} points at ${r[2]}, which has no screen`);
+test("every row on the Settings home opens a screen that exists, with Labs off and on", () => {
+  for (const labs of [false, true]) for (const role of [undefined, "owner", "member", "temp"]) {
+    for (const g of settingsGroups("Space", role, { labs })) for (const r of g.rows) assert.ok(resolves(r[2]), `${r[0]} points at ${r[2]}, which has no screen`);
+  }
+});
+
+test("archived pages keep their route, open only through Labs, and nothing in the app links to them", () => {
+  for (const a of ARCHIVED) {
+    assert.ok(resolves(a.href), `${a.title}: the route ${a.href} is kept (archived, not deleted)`);
+    if (a.kind !== "archived") continue;
+    const file = path.join(APP, a.href.split("?")[0] + ".tsx");
+    const src = fs.readFileSync(file, "utf8");
+    assert.ok(src.includes(`<ArchivedGate href="${a.href}">`), `${a.href} opens only with Labs on (ArchivedGate)`);
+  }
+  // no router push, link or row in the app opens an archived page; the archived list and the route files themselves are the only places that name one
+  const gated = ARCHIVED.filter((a) => a.kind === "archived").map((a) => a.href);
+  const roots = ["screens", "src", "ui"].map((d) => path.join(APP, "..", d));
+  const files = roots.flatMap(function walk(dir) { return fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? (e.name === "node_modules" ? [] : walk(path.join(dir, e.name))) : /\.(tsx?|js)$/.test(e.name) && !/\.test\.js$/.test(e.name) ? [path.join(dir, e.name)] : []) : []; });
+  // logic.js names them in its role lists, sidebar-stack.js in its path prefixes; find/source.ts points the server's raw keys at All settings, and FindPanel drops those rows unless Labs is on
+  const allowed = new Set(["screens/settings/archived.js", "screens/settings/logic.js", "ui/shell/sidebar-stack.js", "screens/find/source.ts"]);
+  assert.match(fs.readFileSync(path.join(APP, "..", "screens", "find", "FindPanel.tsx"), "utf8"), /filter\(\(k\) => labs \|\| !archivedAt\(k\.href\)\)/, "the raw keys are not searched with Labs off");
+  for (const f of files) {
+    if (allowed.has(path.relative(path.join(APP, ".."), f).split(path.sep).join("/"))) continue;
+    const src = fs.readFileSync(f, "utf8").replace(/^\s*(\/\/|\*|\/\*\*).*$/gm, "");
+    for (const href of gated) assert.ok(!new RegExp(`["'\`]${href.replace(/\//g, "\\/")}["'\`?/]`).test(src), `${path.relative(APP, f)} links to the archived ${href}`);
   }
 });
 

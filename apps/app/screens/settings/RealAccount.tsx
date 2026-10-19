@@ -21,6 +21,7 @@ import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/
 import { lockIdentity } from "../unlock/real.js";
 import { callT } from "../../src/real/call-tool";
 import { openExternal } from "../../src/shell/open-external";
+import { LabsSwitch } from "./labs";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -176,6 +177,7 @@ export function RealAbout() {
         <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void openExternal(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
+      <LabsSwitch />
     </Page>
   );
 }

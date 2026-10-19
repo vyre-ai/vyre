@@ -1,4 +1,4 @@
-// /u/settings/backups: which Spaces this box backs up, and which are not because their owner has not turned backups on. Each Space is backed up under its own owner's recovery code, given once;
+// Backups (drawn on Updates and backups; the old /u/settings/backups route goes there): which Spaces this box backs up, and which are not because their owner has not turned backups on. Each Space is backed up under its own owner's recovery code, given once;
 // after that the Space bundle is written by itself every hour and every backup of the box carries it. Only a Space's owner can turn its backup on.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -8,7 +8,13 @@ import { callT } from "../../src/real/call-tool";
 import { errorNote } from "../../src/real/error-note.js";
 import { backupLine, whenLine, vaultBackupLines, type SpaceBackup } from "./backups-model.js";
 
+/** The backups page on its own (its route now opens Updates and backups, which draws BackupsSection: archived.js). */
 export default function BackupsScreen() {
+  return <Page title="Backups" sub="Each Space is backed up under its owner's recovery code." back="/u/settings"><BackupsSection /></Page>;
+}
+
+/** Which Spaces are backed up, with a Turn on for each that is not, and the Vault's own backup. Drawn under Updates on Updates and backups. */
+export function BackupsSection() {
   const [rows, setRows] = useState<SpaceBackup[] | null>(null);
   const [vb, setVb] = useState<Parameters<typeof vaultBackupLines>[0]>(null);
   const [err, setErr] = useState("");
@@ -31,7 +37,8 @@ export default function BackupsScreen() {
     setCode(""); setOpen(""); showToast("Backups are on for this Space."); load();
   };
   return (
-    <Page title="Backups" sub="Each Space is backed up under its owner's recovery code." back="/u/settings">
+    <View className="gap-s2">
+      <Text tone="muted">Each Space is backed up under its owner's recovery code.</Text>
       {err ? <Card flush><ErrorState title="Backups did not load" reason={err} retry={load} recourse={errNote?.recourse} code={errNote?.code} /></Card> : null}
       {!rows && !err ? <LoadingState rows={3} /> : null}
       {rows && !rows.length ? <Card><EmptyState title="No Spaces here" body="A box that holds Spaces lists each one here." /></Card> : null}
@@ -60,6 +67,6 @@ export default function BackupsScreen() {
           {v.drill ? <><Divider /><Row title="Restore drill" sub={v.drill} end={vb.drill ? <Chip>{vb.drill.ok ? "Passed" : "Failed"}</Chip> : undefined} /></> : null}
         </Card>
       ); })() : null}
-    </Page>
+    </View>
   );
 }

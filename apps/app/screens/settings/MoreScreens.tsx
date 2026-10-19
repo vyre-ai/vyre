@@ -4,6 +4,7 @@ import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock
 import { RealNotifications, RealUpdates } from "./RealMore";
 import { RealAbout } from "./RealAccount";
 import { AboutCard } from "./AboutCard";
+import { LabsSwitch } from "./labs";
 import { Group, Page } from "../places/Frame";
 import { CREDITS, VERSION } from "./data";
 import { NOTIFY_ROWS } from "./logic.js";
@@ -48,6 +49,7 @@ function SampleAboutScreen() {
         <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void openExternal(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
+      <LabsSwitch />
     </Page>
   );
 }

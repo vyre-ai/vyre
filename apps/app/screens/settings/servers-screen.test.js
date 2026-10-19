@@ -22,10 +22,12 @@ test("servers screen: a device with no box answers 'no servers' instead of waiti
   assert.doesNotMatch(src, /TypeCode|redeemPairing/, "a typed code from another device is not how a server is added: the door is the install line and its pair code");
 });
 
-test("settings lists Servers whether or not anything is paired", async () => {
+test("Servers is archived (owner, 20 Oct): off the Settings list, listed under Labs with Labs on, and Look and name still adds a server", async () => {
   const { settingsGroups } = await import("./logic.js");
-  const rows = settingsGroups("Juniper Studio").flatMap((g) => g.rows);
-  assert.ok(rows.some((r) => r[2] === "/u/settings/servers"));
+  assert.ok(!settingsGroups("Juniper Studio").flatMap((g) => g.rows).some((r) => r[2] === "/u/settings/servers"));
+  assert.ok((settingsGroups("Juniper Studio", undefined, { labs: true }).find((g) => g.title === "Labs")?.rows ?? []).some((r) => r[2] === "/u/settings/servers"));
+  const spaces = fs.readFileSync(new URL("../spaces/SpacesScreen.tsx", import.meta.url), "utf8");
+  assert.match(spaces, /<MyCloudCard/, "the add-a-server door stays reachable from Look and name");
 });
 
 test("servers screen: a server connected from the list says so and has a Remove", () => {
