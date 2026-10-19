@@ -9,6 +9,7 @@ import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
 import { StepCard } from "./StepCard";
 import { TriggerFields } from "./TriggerFields";
+import type { TriggerSources } from "./trigger-sources";
 import { FlowSettings } from "./FlowSettings";
 import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
@@ -27,7 +28,7 @@ export type { Draft, DraftStep, Options };
  * Refunds agent."), under it the trigger ("When") and the steps in order ("Then"), each a closed card that says what it does and opens to its settings, and "Add a step" with the palette of
  * what a Flow can do. It edits a draft; `toDefinition` writes the stored Flow. A step the engine cannot do yet is shown and marked Coming. See docs/design/system/components/flow-builder.md.
  */
-export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep, initialOpen }: { /** A step (or "trigger") open when the page first draws; the sample-world shots use it. */ initialOpen?: string; /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
+export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep, initialOpen, triggerSources }: { /** What the trigger editor may ask the box: webhook routes and watchers. */ triggerSources?: TriggerSources; /** A step (or "trigger") open when the page first draws; the sample-world shots use it. */ initialOpen?: string; /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
   const [open, setOpen] = useState<string | null>(initialOpen ?? null);
   const [adding, setAdding] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
@@ -61,11 +62,11 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, on
         <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={more.length ? `${more.length + 1} ways to start` : t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${[t, ...more].map((x) => triggerPhrase(x, options)).join(", or when ")}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
           last={false}>
           {more.length ? <Text size="caption" tone="label" strong>Starts it, trigger 1</Text> : null}
-          <TriggerFields t={t} setTrig={setTrig} options={options} />
+          <TriggerFields t={t} setTrig={setTrig} options={options} sources={triggerSources} />
           {more.map((x, i) => (
             <View key={i} className="gap-s3 border-t border-edge pt-s3">
               <View className="flex-row items-center gap-s2"><Chip tone="accent">or</Chip><Text size="caption" tone="label" strong className="flex-1">{`Trigger ${i + 2}`}</Text>{readOnly ? null : <Button kind="ghost" size="sm" icon="x" label="Remove" onPress={() => set({ moreTriggers: more.filter((_, j) => j !== i) })} />}</View>
-              <TriggerFields t={x} setTrig={(patch) => setMore(i, patch)} options={options} />
+              <TriggerFields t={x} setTrig={(patch) => setMore(i, patch)} options={options} sources={triggerSources} />
             </View>
           ))}
           {readOnly || more.length >= 7 ? null : <View className="flex-row"><Button kind="secondary" size="sm" icon="plus" label="Add trigger" onPress={() => set({ moreTriggers: [...more, { kind: "created", type: "" }] })} /></View>}
