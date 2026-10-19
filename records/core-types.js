@@ -400,7 +400,8 @@ const roleType = (name, label, holder, color, stages = [], ended = []) => ({
   // the type's label is unique in a Space (a person's define refuses a second type with the same words, and a Kit may have its own Lead); `role_label` is what the screens call the role
   name, label: `${label} role${holder === "organization" && /^(Vendor|Partner)$/.test(label) ? " (company)" : ""}`, role_label: label, icon: "IconTag", color, hidden_in_records: true, role: { link: "holder", ...(ended.length ? { ended } : {}) },
   fields: [
-    f("link", "holder", holder === "contact" ? "Person" : "Company", { to: holder, required: true }),
+    // each role names its other end on the holder ("Lead roles" on a Contact): every link to a record has a named inverse
+    f("link", "holder", holder === "contact" ? "Person" : "Company", { to: holder, required: true, inverse: { name: `${name.slice(5).replace(/-/g, "_")}_roles`, label: `${label} roles` } }),
     ...(stages.length ? [f("stage", "stage", "Stage", { options: stages.map((s) => s.name) })] : []),
     f("date", "since", "Since"),
     text("note", "Note"),
