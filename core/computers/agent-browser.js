@@ -42,7 +42,7 @@ export class AgentBrowser {
 
   /** Never the shared browser unless the owner asked for it: the agent's own Chrome on the Space's computer, or a plain error. @param {string} agent */
   async ownChrome(agent) {
-    if (!this.space) throw Object.assign(new Error("This agent's computer isn't running on your server yet. An owner can set it up in Settings, This computer."), { code: "computer_unavailable" });
+    if (!this.space) throw new Error("the agent computer is not set up on this machine: this machine cannot run commands in the Space's computer, and the shared browser is used only when computers.browse is \"browser\"");
     const helper = await this.space.endpoint(agent);
     this.saySo(agent, "computer");
     return helper;
