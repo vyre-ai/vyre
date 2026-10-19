@@ -34,10 +34,10 @@ jobs:
           set -eu
           printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::the tag is a release tag like v0.6.2"; exit 1; }
           printf '%s' "$ORIGIN" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$' || { echo "::error::the origin is https://host with no path"; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - name: The release's signed files
