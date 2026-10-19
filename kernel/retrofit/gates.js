@@ -117,7 +117,7 @@ export function createLegacyGates(cfg) {
       if ((await ask("guest", chain, tool, cls)).effect !== "allow") return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
       const s = await ask("session", chain, tool, cls);
       // With no presence device enrolled the owner's own paired device is the person without a passkey sign-in (the owner's ruling; the registry decides it from its enrolment records and refuses an agent).
-      if (s.effect !== "allow" && !(typeof reg.noPresenceDevice === "function" && await reg.noPresenceDevice(caller, meta))) return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
+      if (s.effect !== "allow" && !(typeof reg.noPresenceDevice === "function" && await reg.noPresenceDevice(caller, meta, tool, input))) return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
       return null;
     },
     /** Does this call need a presence proof checked by the registry? (Never for a module.) */

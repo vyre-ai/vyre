@@ -45,6 +45,15 @@ test("the Documents app is installed when appmods.list holds it, running or stop
   assert.deepEqual(appState(null), { installed: false, running: false, word: "Not installed" });
 });
 
+test("an app that is still installing is installed and installing, never 'Not installed', so the card does not offer Install again and keeps asking", () => {
+  const s = appState({ apps: [{ name: "documents", state: "installing" }] });
+  assert.equal(s.installed, true);
+  assert.equal(s.installing, true);
+  assert.equal(s.running, false);
+  assert.match(s.word, /Installing/);
+  assert.equal(appState({ apps: [{ name: "documents", state: "running" }] }).installing, undefined);
+});
+
 test("records go to the list header as records of the made-document type", () => {
   const rows = madeRows([{ id: "a", data: { name: "A", status: "Draft", template: "T" } }]);
   assert.deepEqual(asRecs(rows)[0].data, { name: "A", status: "Draft", template: "T" });

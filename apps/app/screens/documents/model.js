@@ -48,6 +48,8 @@ export function signingTemplates(answer) {
 export function appState(list) {
   const a = (list?.apps ?? []).find((/** @type {any} */ x) => x?.name === "documents");
   if (!a) return { installed: false, running: false, word: "Not installed" };
+  // An install takes a minute or two and the row is there from its first second: say so, and the card keeps asking until it is up (useSigningTemplates)
+  if (a.state === "installing") return { installed: true, running: false, installing: true, word: "Installing, this takes a few minutes" };
   const running = a.state === "running";
   return { installed: true, running, word: running ? "Running" : "Installed, not running" };
 }
