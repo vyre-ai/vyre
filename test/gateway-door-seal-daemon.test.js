@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { homeIdentity } from "../kernel/home.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const run = (/** @type {string} */ script, /** @type {string[]} */ args) => spawnSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8" });
@@ -27,6 +27,7 @@ test("the sealing verifier's verdicts reach the caller through the gateway door 
   assert.equal(enrol.status, 0, enrol.stderr);
   const key = JSON.parse(enrol.stdout);
   const d = await start({ root, log: () => {}, kernel: true });
+  enrolDevice(d); // a phone is paired, so the owner's act needs the sealing verifier's proof (with none the owner's own acts pass)
   t.after(() => d.stop());
   const owner = d.kernel.id.owner, space = d.kernel.id.space;
   assert.equal(owner, key.person);
