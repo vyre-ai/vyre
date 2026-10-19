@@ -6,8 +6,8 @@ export type TriggerSources = {
   hooks?: () => Promise<{ enabled: boolean; listening: boolean; routes: { name: string; scheme?: string; header?: string; secret?: string }[]; public: { available: boolean; base?: string; why?: string }; urls: Record<string, string | null> } | null>;
   enableHooks?: () => Promise<void>;
   openRoute?: (name: string, scheme: string, header: string, secret: string) => Promise<void>;
-  /** Open the Vault's Add sheet for this item name (leaves the editor). */
-  openVault?: (item: string) => void;
+  /** Open the Vault at this item: its Add sheet (a name to fill in), or the item itself to reveal its value (a presence act in the Vault). Leaves the editor. */
+  openVault?: (item: string, mode?: "add" | "see") => void;
   /** The names of the person's watchers (watchers.list). */
   watchers?: () => Promise<string[]>;
   /** The sheet that makes a new watcher; the editor opens it and takes the name it made. */

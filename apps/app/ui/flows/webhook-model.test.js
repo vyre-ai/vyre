@@ -37,6 +37,7 @@ test("the webhook fields name the Vault item and offer to add it there", async (
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("./WebhookFields.tsx", import.meta.url), "utf8");
   assert.match(src, /Add the secret in the Vault/);
+  assert.match(src, /Reveal the secret/);
   assert.match(src, /openVault/);
   assert.doesNotMatch(src, /vault\.generate|secret_once/, "the editor never makes or shows a secret itself");
 });

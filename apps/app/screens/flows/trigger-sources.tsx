@@ -8,7 +8,7 @@ import type { TriggerSources } from "@vyre/ui";
 /** The sources, with the Vault link: adding the signing secret opens the Vault's Add sheet prefilled with the item's name (the same sheet a stuck task sends you to). */
 export function useTriggerSources(): TriggerSources {
   const router = useRouter();
-  return useMemo(() => ({ ...triggerSources, openVault: (item: string) => router.push(`/u/vault?add=${encodeURIComponent(item)}&kind=api-key` as never) }), [router]);
+  return useMemo(() => ({ ...triggerSources, openVault: (item: string, mode: "add" | "see" = "add") => router.push((mode === "see" ? `/u/vault?item=${encodeURIComponent(item)}` : `/u/vault?add=${encodeURIComponent(item)}&kind=api-key`) as never) }), [router]);
 }
 
 const triggerSources: TriggerSources = {
