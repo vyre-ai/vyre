@@ -83,3 +83,16 @@ test("the hook's exact names: grants.role asks; an invite confirm asks unless th
   assert.equal(ask("grants.invite", { confirm: "inv", words: "w" }), false, "a confirm with no stored role asks");
   assert.equal(ask("requests.setting", { accepting: true }), true, "requests.setting passes");
 });
+
+test("the sign-in refusal's reason also goes to the home's log, in counts and kinds, with the device keys by source", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const p = /** @type {any} */ (d.registry.deps.presence);
+  p.enroll({ kind: "device", name: "a", public_key: key(), alg: -7, source: "setup" });
+  p.enroll({ kind: "device", name: "b", public_key: key(), alg: -7 });
+  const lines = [];
+  const text = await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: { kind: "device", person: d.kernel.id.owner, path: "relay" } }, "spaces.invites.create", {}, true);
+  assert.match(text, /device keys: .*setup: 1 \(0 with a relay row\).*none: 1 \(0 with a relay row\)/, text);
+  assert.doesNotMatch(text, /per_|abcdefghijklmnop/);
+  void lines;
+});

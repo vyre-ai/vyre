@@ -63,8 +63,10 @@ export function createRequestsService(o) {
       const accepting = obj(input).accepting === true;
       const want = proofRequest(o.space, "requestsSetting", { accepting });
       const proof = opts && typeof opts === "object" ? opts.presence : undefined;
-      if (!proof) throw new KernelError("needs_presence", "turning requests on or off needs you at your device");
-      const why = await o.kernel.presence.check({ chain, op: want.op, fields: want.fields, proof });
+      // The owner's ruling: with no counted presence device the home answers that the owner's own one-person act needs no proof (kernel/core/authorize.js presenceNotNeeded; this call does not go through authorize).
+      const free = typeof o.kernel.presenceNotNeeded === "function" && o.kernel.presenceNotNeeded({ chain, action: "requests.setting" }) === true;
+      if (!proof && !free) throw new KernelError("needs_presence", "turning requests on or off needs you at your device");
+      const why = free && !proof ? null : await o.kernel.presence.check({ chain, op: want.op, fields: want.fields, proof });
       if (why !== null) throw new KernelError("needs_presence", "turning requests on or off needs you at your device", String(why));
       return serve("setting", person, role, { accepting });
     },

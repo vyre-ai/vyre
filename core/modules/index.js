@@ -1358,7 +1358,7 @@ export class Registry {
     return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
-  noPresenceDevice(caller, meta, tool, input, why) { const d = { presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder }; return why ? noPresenceWhy(d, caller, meta) : noPresenceDevice(d, caller, meta, tool, input); } // core/presence/index.js
+  noPresenceDevice(caller, meta, tool, input, why) { const d = { presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder, log: this.deps.log }; return why ? noPresenceWhy(d, caller, meta, tool) : noPresenceDevice(d, caller, meta, tool, input); } // core/presence/index.js
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
