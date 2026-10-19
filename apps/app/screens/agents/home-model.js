@@ -13,8 +13,8 @@ export function roleLine(a, fallback = "") {
 export { displayName } from "../../src/state/agent-name.js";
 import { displayName } from "../../src/state/agent-name.js";
 
-/** @param {any} a */
-export const statusOf = (a) => (a.status === "stopped" ? "Paused" : a.status === "running" || a.doing ? "Running now" : "Idle");
+/** Paused when its thread is stopped; else what agents.list says it is doing: waiting on your answer is Needs you, working or starting is Working, anything else is Idle. @param {any} a */
+export const statusOf = (a) => (a.status === "stopped" ? "Paused" : a.doing === "waiting on your answer" ? "Needs you" : a.doing === "working" || a.doing === "starting" ? "Working" : "Idle");
 
 /** Builders are the built-in agents; mine are the assistant and what I made (made_by) or a personal agent; shared with me when its shares name me; the rest are the team's. @param {any} a @param {string} [me] */
 export function groupOf(a, me) {
@@ -59,7 +59,7 @@ export function agentsDef(rows) {
       { name: "role", label: "Role", kind: "text" },
       { name: "kind", label: "Kind", kind: "choice", options: uniq(rows.map((r) => r.kind)) },
       { name: "model", label: "Model", kind: "choice", options: uniq(rows.map((r) => r.model)) },
-      { name: "status", label: "Status", kind: "choice", options: ["Running now", "Idle", "Paused"] },
+      { name: "status", label: "Status", kind: "choice", options: ["Working", "Needs you", "Idle", "Paused"] },
       { name: "works", label: "Works on", kind: "text" },
     ],
   };
@@ -114,6 +114,9 @@ export function rowActions(r, o = {}) {
   for (const g of mine.slice(0, 6)) out.push({ key: "move", label: `Move to ${g}`, to: g });
   return out;
 }
+
+/** Where "New chat" goes for a row: a built-in agent (the Engineer) has one shared Space chat, so it opens that; null starts a new chat with the agent. @param {{ builtin?: boolean }} r */
+export const newChatRoute = (r) => (r.builtin ? "/u/engineer" : null);
 
 /** Whether a chat row has this agent in it. @param {{ agents?: string[], pinned?: string }} c @param {string} name */
 export const chatHas = (c, name) => c.pinned !== "assistant" && (c.agents ?? []).some((a) => a === name);

@@ -11,7 +11,8 @@ import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
 import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
 import { ageOf } from "../chats/chat-model.js";
-import { AGENT_GROUPS, agentRow, agentsDef, asRecords, byRecent, chatHas, loadGroups, rowActions, saveGroups, visibleAgents } from "./home-model.js";
+import { AGENT_GROUPS, agentRow, agentsDef, asRecords, byRecent, chatHas, loadGroups, newChatRoute, rowActions, saveGroups, visibleAgents } from "./home-model.js";
+import { openEngineer } from "../engineer/openEngineer";
 import { useChats } from "../../src/state/chats";
 import { useMembers } from "../spaces/state";
 import { teammates } from "../teammates/teammates";
@@ -85,12 +86,12 @@ export function AgentsHome() {
         items={(AUTONOMY as [string, string][]).map(([k, l]) => ({ label: l, selected: r.autonomy === k, onPress: () => { const a = sample.assistants.find((x) => x.name === r.name); if (a) sample.setAutonomy(a.id, k); } }))} />
     ) : null;
     const mine = withIt(r);
-    const run: Record<string, (x?: { to?: string }) => void> = { open: () => open(r), chat: () => assistantChat(r), "new-chat": () => talk(r), chats: () => (mine.length === 1 ? go(`/u/chats/${encodeURIComponent(mine[0].id)}`) : setListFor(r.name)), pause: () => flip(r), share: () => open(r, "used"), delete: () => setConfirm(r.name), move: (x) => x?.to && move(r, x.to) };
+    const run: Record<string, (x?: { to?: string }) => void> = { open: () => open(r), chat: () => assistantChat(r), "new-chat": () => { const to = newChatRoute(r); if (to) go(to); else talk(r); }, chats: () => (mine.length === 1 ? go(`/u/chats/${encodeURIComponent(mine[0].id)}`) : setListFor(r.name)), pause: () => flip(r), share: () => open(r, "overview"), delete: () => setConfirm(r.name), move: (x) => x?.to && move(r, x.to) };
     const menu = (
       <Menu trigger={<IconButton icon="more" label={`${r.name}, more`} />}
         items={rowActions(r, { me, staff, chats: mine.length, groups: groups.map((g) => g.name), placed: placed[r.name] ?? titleOf(r.group as string), canDelete: !mock }).map((a) => ({ label: a.label, onPress: () => run[a.key]?.(a) }))} />
     );
-    const status = <Chip tone={paused ? "warn" : r.status === "Running now" ? "ok" : "plain"}>{r.status}</Chip>;
+    const status = <Chip tone={paused ? "warn" : r.status === "Needs you" ? "warn" : r.status === "Working" ? "ok" : "plain"}>{r.status}</Chip>;
     return (
       <Pressable accessibilityRole="button" accessibilityLabel={r.kind === "assistant" ? "Open your assistant" : `Open ${r.name}`} onPress={() => press(r)} disabled={busy === r.name} className="gap-s2 p-s3">
         <View className="flex-row items-center gap-s3">
@@ -121,12 +122,12 @@ export function AgentsHome() {
           {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={load} /></Card> : null}
           {agents === null && !err ? <LoadingState rows={4} /> : null}
           {agents && !agents.length ? (
-            <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here." action={{ label: "New agent", onPress: () => router.push("/u/settings/assistants/new" as never) }} /></Card>
+            <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here." action={{ label: "New agent", onPress: () => openEngineer(router, { source: "agent", intent: "create" }) }} /></Card>
           ) : null}
           {agents && agents.length ? (
             <>
               <ListHeader onSearch={() => openFind("people")} title={null} noun="agents" shown={shown.length} total={rows.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={{}}
-                actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => router.push("/u/settings/assistants/new" as never)} />} />
+                actions={phone ? <IconButton kind="primary" icon="plus" label="New agent" onPress={() => openEngineer(router, { source: "agent", intent: "create" })} /> : <Button kind="primary" size="sm" icon="plus" label="New agent" onPress={() => openEngineer(router, { source: "agent", intent: "create" })} />} />
               {shown.length ? (
                 <GroupedList groups={groups} items={shown} itemNoun="agents"
                   onChange={({ groups: g, items: it }) => { const p = { ...placed, ...Object.fromEntries(it.map((i) => [i.name, i.group as string])) }; setGroups(g); setPlaced(p); persist(g, p); }}

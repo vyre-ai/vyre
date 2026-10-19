@@ -1,9 +1,9 @@
-// One assistant or agent: its job, a line to talk to it, what wakes it, what it has used, its model and its computer (the Deck's /agents/:name, ported).
+// One assistant or agent: its job, a line to talk to it, what it has used, its model and its computer (the Deck's /agents/:name, ported).
 import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Switch, Tabs, Text, markRef, showToast } from "@vyre/ui";
+import { AgentLookPicker, Avatar, Banner, Sheet, lookOf, lookSeed, PARTS, partsOf, withParts, rememberLook, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Select, Tabs, Text, markRef, showToast } from "@vyre/ui";
 import AgentWork from "./AgentWork";
 import { displayName } from "../agents/home-model.js";
 import { Context, Instructions, Models, Sharing, Used } from "./AgentParts";
@@ -13,7 +13,7 @@ import { agent } from "./agent";
 import { useChats } from "../../src/state/chats";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 import { chatHas } from "../agents/home-model.js";
-import { EFFORT, NO_WATCHER, computerView, modelsFor, usageView, watcherLine, type AgentFull, type Computer, type UsageFull, type Watcher } from "./agent-model.ts";
+import { EFFORT, computerView, modelsFor, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
 import { AgentThreads } from "./AgentThreads";
 import { RealSkills } from "../skills/RealSkills";
 
@@ -46,7 +46,7 @@ export default function AgentPage() {
           {tab === "overview" ? <><Instructions name={a.name} /><Context name={a.name} /><AgentMemory name={a.name} /><Used name={a.name} /><Sharing name={a.name} /></> : null}
           {tab === "skills" ? <RealSkills initialLevel="agent" scope={a.name} /> : null}
           {tab === "ai" ? <><Models name={a.name} /><Model a={a} onSaved={(m, e) => setA({ ...a, model: m, effort: e })} /></> : null}
-          {tab === "computer" ? <><ComputerCard a={a} onChange={load} /><Talk name={a.name} /><AgentWork name={a.name} /><Wakes name={a.name} /><Usage name={a.name} /></> : null}
+          {tab === "computer" ? <><ComputerCard a={a} onChange={load} /><Talk name={a.name} /><AgentWork name={a.name} /><Usage name={a.name} /></> : null}
         </>
       ) : null}
     </Page>
@@ -105,28 +105,6 @@ function Talk({ name }: { name: string }) {
           {thread?.thread ? <Button size="sm" kind="ghost" label="Open the chat" onPress={() => router.push(`/u/chats/${encodeURIComponent(thread.thread!)}` as never)} /> : null}
         </View>
       </Card>
-    </Sec>
-  );
-}
-
-function Wakes({ name }: { name: string }) {
-  const [list, setList] = useState<Watcher[] | null>(null);
-  const [err, setErr] = useState("");
-  const load = useCallback(() => { setErr(""); agent.wakes(name).then(setList).catch((e) => setErr(say(e))); }, [name]);
-  useEffect(load, [load]);
-  const flip = (w: Watcher, on: boolean) => agent.wake(w.name, on).then(() => setList((l) => (l || []).map((x) => (x.name === w.name ? { ...x, paused: !on } : x)))).catch((e) => showToast(say(e)));
-  return (
-    <Sec title={`What wakes ${name}`}>
-      {err ? <Card><Text tone="muted">{`${name} wakes only when you talk to it. ${err}`}</Text></Card> : null}
-      {list && !list.length ? <Card><Text tone="muted">{NO_WATCHER(name)}</Text></Card> : null}
-      {list && list.length ? (
-        <Card flush>
-          {list.map((w, i) => {
-            const l = watcherLine(w);
-            return <View key={w.name}>{i ? <Divider /> : null}<Row title={l.title} sub={l.sub} end={<Switch label={l.title} on={!w.paused} onChange={(on) => flip(w, on)} />} /></View>;
-          })}
-        </Card>
-      ) : null}
     </Sec>
   );
 }

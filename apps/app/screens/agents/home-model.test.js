@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { roleLine, statusOf, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups, byRecent } from "./home-model.js";
+import { roleLine, statusOf, newChatRoute, agentRow, groupOf, sharingOf, AGENT_GROUPS, agentsDef, asRecords, loadGroups, saveGroups, byRecent } from "./home-model.js";
 
 const NOW = 1_760_000_000_000;
 
@@ -19,16 +19,24 @@ test("where it works names the project, not its id", () => {
   assert.equal(agentRow({ name: "a", projects: ["juniper"] }).works, "Works on juniper");
 });
 
-test("status: paused when its thread is stopped, running when it is doing something, else idle", () => {
-  assert.equal(statusOf({ status: "stopped" }), "Paused");
-  assert.equal(statusOf({ status: "running", doing: "drafting" }), "Running now");
-  assert.equal(statusOf({ status: "idle" }), "Idle");
+test("status: paused when its thread is stopped, Needs you when it waits on an answer, Working when working or starting, else idle", () => {
+  assert.equal(statusOf({ status: "stopped", doing: "stopped" }), "Paused");
+  assert.equal(statusOf({ status: "working", doing: "waiting on your answer" }), "Needs you");
+  assert.equal(statusOf({ status: "working", doing: "working" }), "Working");
+  assert.equal(statusOf({ status: "starting", doing: "starting" }), "Working");
+  assert.equal(statusOf({ status: "idle", doing: "idle" }), "Idle", "idle is a word, not a sign of work");
+  assert.equal(statusOf({ status: "new", doing: "not started" }), "Idle");
   assert.equal(statusOf({}), "Idle");
 });
 
+test("New chat on a built-in agent opens the one shared Engineer chat; any other agent starts a new chat", () => {
+  assert.equal(newChatRoute({ builtin: true }), "/u/engineer");
+  assert.equal(newChatRoute({ builtin: false }), null);
+});
+
 test("a row carries what the list shows", () => {
-  const r = agentRow({ name: "Intake", kind: "agent", projects: ["Doe trust"], model: "sonnet-5.5", description: "Intake", status: "running", personal: true, thread: "t1" });
-  assert.deepEqual([r.name, r.role, r.model, r.works, r.status, r.group, r.canPause], ["Intake", "Intake", "sonnet-5.5", "Works on Doe trust", "Running now", "yours", true]);
+  const r = agentRow({ name: "Intake", kind: "agent", projects: ["Doe trust"], model: "sonnet-5.5", description: "Intake", status: "working", doing: "working", personal: true, thread: "t1" });
+  assert.deepEqual([r.name, r.role, r.model, r.works, r.status, r.group, r.canPause], ["Intake", "Intake", "sonnet-5.5", "Works on Doe trust", "Working", "yours", true]);
   assert.equal(agentRow({ name: "A", kind: "agent" }).model, "Default model");
   assert.equal(agentRow({ name: "A", kind: "agent" }).canPause, false);
 });
@@ -45,7 +53,7 @@ test("the list header filters agents as it filters records: kind, model, status"
   const rows = [agentRow({ name: "A", kind: "assistant", model: "m1" }), agentRow({ name: "B", kind: "agent", model: "m2", status: "stopped" })];
   const def = agentsDef(rows);
   assert.deepEqual(def.fields.find((f) => f.name === "model").options, ["m1", "m2"]);
-  assert.deepEqual(def.fields.find((f) => f.name === "status").options, ["Running now", "Idle", "Paused"]);
+  assert.deepEqual(def.fields.find((f) => f.name === "status").options, ["Working", "Needs you", "Idle", "Paused"]);
   const recs = asRecords(rows);
   assert.equal(recs[1].data.status, "Paused");
   assert.equal(recs[0].id, "A");

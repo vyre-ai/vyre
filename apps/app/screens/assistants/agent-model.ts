@@ -4,7 +4,6 @@ import { timeOf } from "../../src/time/show.js";
 import { modelChoices } from "../../src/chat/core/composer-state.js";
 
 export type AgentFull = { name: string; look?: string | null; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
-export type Watcher = { name: string; source?: string; trigger?: string; cadence?: string; schedule?: string; agent?: string; paused?: boolean; files?: unknown; project?: string };
 export type Computer = { agent?: string; state?: string; screen?: number | null; screens?: number; size?: { w?: number; h?: number }; viewers?: number; takeover?: string | null; paused?: boolean; cpus?: number; memory_gb?: number; label?: string | null };
 export type UsageFull = { agent: string | null; auth?: string; turns?: number; threads?: number; spent_usd?: number; budget_usd?: number | null; left_usd?: number | null; duration_ms?: number; last_at?: number | null; tokens?: Record<string, number>; limit?: { status?: string; kind?: string; utilization?: number; resets_at?: number } | null };
 
@@ -12,21 +11,6 @@ export const EFFORT: [string, string][] = [["low", "Low"], ["medium", "Medium"],
 /** The model picker's rows: the box's own list (sessions.models.get aliases), plus the agent's model when it is not on it. No list lives here (test/cohesion-drift.test.js). */
 export const modelsFor = (current?: string | null, aliases?: unknown): { id: string; name: string }[] =>
   modelChoices({ current, aliases }).map((m) => ({ id: m.id, name: m.label }));
-
-const SOURCES: Record<string, string> = { gmail: "Gmail", slack: "Slack", schedule: "Schedule", github: "GitHub", fathom: "Fathom", files: "Files", web: "Web" };
-export const sourceName = (s?: string) => (s && SOURCES[s]) || String(s || "Watcher").replace(/^./, (c) => c.toUpperCase());
-
-/** The watchers that wake one agent: those it owns, and those that name nobody. */
-export function watchersFor(data: unknown, agent: string): Watcher[] {
-  const list: unknown[] = Array.isArray(data) ? data : Array.isArray((data as any)?.watchers) ? (data as any).watchers : [];
-  return list.filter((x): x is Watcher => !!x && typeof x === "object" && typeof (x as Watcher).name === "string" && (!(x as Watcher).agent || (x as Watcher).agent === agent));
-}
-/** "Gmail: mail labelled Ads arrives" and where it looks. */
-export function watcherLine(w: Watcher, names: Map<string, string> = new Map()): { title: string; sub: string } {
-  const files = Array.isArray(w.files) ? w.files.map((s) => names.get(String(s)) || String(s)).join(", ") : typeof w.files === "string" ? w.files : w.project ? names.get(w.project) || w.project : "Any project";
-  return { title: `${sourceName(w.source)}: ${w.trigger || w.cadence || w.schedule || w.name}`, sub: files };
-}
-export const NO_WATCHER = (name: string) => `Nothing wakes ${name} yet. It works when you talk to it. Ask your agent for one in plain words, for example "wake ${name} when mail labelled Ads arrives".`;
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 const since = (at: number, now: number) => {
@@ -95,7 +79,8 @@ export function createInput(f: NewAgentForm): { input: Record<string, unknown> }
   if (f.hasProjects && !f.projects.length) return { problem: "Pick at least one project. An agent never sees projects outside its list." };
   const budget = Number(f.budget);
   if (f.runsOn === "key" && !(budget > 0)) return { problem: "The budget is a number of dollars above zero." };
-  const auth = f.runsOn === "key" ? { vault: VAULT_KEY, budget_usd: budget } : { vault: VAULT_SUB };
+  // An API key is the fallback slot, where agents.create counts spend against the budget; vault is the subscription token only.
+  const auth = f.runsOn === "key" ? { fallback: VAULT_KEY, budget_usd: budget } : { vault: VAULT_SUB };
   return { input: { name, kind: "agent", projects: f.projects, instructions: f.instructions.trim(), auth, computer: f.computer } };
 }
 

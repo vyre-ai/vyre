@@ -1,6 +1,6 @@
 // An assistant's page on the real box, over an injected `call` (the app's box connection, or a fake box in a test).
 import type { Call } from "../settings/real-source";
-import { limitsInput, projectsOf, watchersFor, type Computer, type UsageFull, type Watcher, type AgentFull } from "./agent-model.ts";
+import { limitsInput, projectsOf, type Computer, type UsageFull, type AgentFull } from "./agent-model.ts";
 
 export function agentSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -20,9 +20,6 @@ export function agentSource(call: Call) {
     setModel: (name: string, model: string, effort: string) => ask("agents.update", { name, model, effort }),
     /** Say something to the agent, or give it a task. Returns the thread it landed in. */
     talk: (agent: string, text: string) => ask<{ thread?: string; project?: string }>("agents.ask", { agent, text: text.trim() }),
-    wakes: async (agent: string): Promise<Watcher[]> => watchersFor(await ask("watchers.list", {}), agent),
-    /** On is watchers.resume, off is watchers.pause; neither takes more than the name. */
-    wake: (name: string, on: boolean) => ask(on ? "watchers.resume" : "watchers.pause", { name }),
     usage: async (agent: string): Promise<UsageFull | undefined> => {
       const d = await ask<UsageFull[]>("agents.usage", { agent });
       const list = Array.isArray(d) ? d : [];

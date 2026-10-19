@@ -29,7 +29,7 @@ test("create: the form needs a lowercase name, a project and a real budget, and 
   assert.equal("input" in m.createInput({ ...ok, projects: [], hasProjects: false }), true, "no projects on the box: nothing to pick");
   assert.match(/** @type {any} */ (m.createInput({ ...ok, runsOn: "key", budget: "0" })).problem, /above zero/);
   const k = m.createInput({ ...ok, runsOn: "key", budget: "25" });
-  assert.deepEqual("input" in k && k.input.auth, { vault: "anthropic-api-key", budget_usd: 25 });
+  assert.deepEqual("input" in k && k.input.auth, { fallback: "anthropic-api-key", budget_usd: 25 }, "an API key is the fallback, so its spend is counted against the budget");
 });
 
 test("create: when the box drops the computer on create, the same update the page's button sends follows; a refusal is said, the agent stays", { skip: !strip }, async () => {
@@ -62,20 +62,6 @@ test("page: job and model go through agents.update by name, talk through agents.
     ["agents.update", { name: "kit", model: "claude-sonnet-5", effort: "high" }],
     ["agents.ask", { agent: "kit", text: "hello" }],
   ]);
-});
-
-test("watchers: the ones that name this agent or nobody, switch on is resume and off is pause", { skip: !strip }, async () => {
-  const m = await import("./agent-model.ts");
-  const { agentSource } = await import("./agent-source.ts");
-  const list = { watchers: [{ name: "w1", source: "gmail", trigger: "mail labelled Ads", agent: "kit" }, { name: "w2", source: "slack", trigger: "a mention" }, { name: "w3", source: "github", agent: "juno" }, { nope: 1 }] };
-  const b = box({ "watchers.list": { data: list } });
-  const s = agentSource(b.call);
-  assert.deepEqual((await s.wakes("kit")).map((w) => w.name), ["w1", "w2"]);
-  await s.wake("w1", false);
-  await s.wake("w1", true);
-  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["watchers.pause", { name: "w1" }], ["watchers.resume", { name: "w1" }]]);
-  assert.deepEqual(m.watcherLine({ name: "w1", source: "gmail", trigger: "mail labelled Ads" }, new Map()), { title: "Gmail: mail labelled Ads", sub: "Any project" });
-  assert.deepEqual(m.watcherLine({ name: "w", source: "files", files: ["a", "b"] }, new Map([["a", "Alpha"]])), { title: "Files: w", sub: "Alpha, b" });
 });
 
 test("usage: money only on an API key, turns otherwise, a limit says when it resets", { skip: !strip }, async () => {

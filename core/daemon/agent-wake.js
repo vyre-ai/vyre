@@ -125,6 +125,8 @@ export function createAgentWake(o) {
    * @param {string} id
    */
   async function wakeSlot(id) {
+    /** @type {{ t: any, agent: string, slot: string, key: string } | null} the round being woken, so a failure can be told */
+    let round = null;
     try {
       const t = await o.gw.ask.get(o.chain(), id);
       if (!t || t.kernel) return;
@@ -136,6 +138,7 @@ export function createAgentWake(o) {
       if (debounced(`${t.id}:${slot}`)) return;
       const hand = t.payload && typeof t.payload.payload_hash === "string" ? t.payload.payload_hash.slice(0, 12) : String(t.updated_at || 0);
       const key = `${t.id}#${slot}:${hand}`;
+      round = { t, agent: agent.id, slot, key };
       await o.lendSlot(t, agent.id, slot);
       const approver = t.assigned_by && t.assigned_by.kind === "person" ? String(t.assigned_by.id) : typeof t.requested_for === "string" && t.requested_for ? t.requested_for : undefined;
       const g = t.guides && typeof t.guides === "object" ? t.guides : null;
@@ -147,7 +150,20 @@ export function createAgentWake(o) {
     } catch (err) {
       log(`agent wake ${o.space}: task ${id} did not wake its reviewer or approver (${/** @type {Error} */ (err).message})`);
       if (typeof o.reclaimSlots === "function") await o.reclaimSlots(id).catch(() => null);
+      if (round) await slotFailed(round, /** @type {Error} */ (err).message);
     }
+  }
+  /**
+   * A reviewer or approver round that could not start is never left in silence. A task in review or waiting on a check cannot be marked stuck (the kernel takes stuck only from ready or working), so the
+   * person who gave the task is handed a note with what happened and the next step, once per hand-in, the way the review cap hands a task to a person.
+   * @param {{ t: any, agent: string, slot: string, key: string }} r @param {string} why
+   */
+  async function slotFailed(r, why) {
+    const who = r.t.assigned_by && r.t.assigned_by.kind === "person" ? r.t.assigned_by : null;
+    if (!who || typeof o.gw.ask.request !== "function") return;
+    const said = sayWhy(r.agent, why);
+    try { await o.gw.ask.request(o.chain(), { title: `${r.agent} could not ${r.slot === "reviewer" ? "review" : "check"} "${String(r.t.title).slice(0, 120)}"`, doer: who, output: { kind: "note" }, source: "flow_step", ...(r.t.record ? { record: r.t.record } : {}), note: `${said.reason} ${said.suggested_fix}`.slice(0, 400), form: { fyi: true } }, { idem: `slot-failed:${r.key}` }); }
+    catch (err) { log(`agent wake ${o.space}: task ${r.t.id} could not wake its ${r.slot} and no person was told (${/** @type {Error} */ (err).message})`); }
   }
 
   async function onEvent(e) {
@@ -206,10 +222,9 @@ export function sayWhy(agent, why) {
   return { reason: `${agent} stopped before it finished this task.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Open ${agent}'s thread to see what happened, then retry.` };
 }
 
-/** Whether a task is one an agent is to start on now: ready, an agent's, made by a Flow or by a request (not a person's own to-do), and not a Flow's note that only tells the agent about someone else's task. */
+/** Whether a task is one an agent is to start on now: ready and an agent's, whether a Flow, a request or a person's to-do gave it (a person's own to-do has a person as its doer and never wakes anything), and not a Flow's note that only tells the agent about someone else's task. */
 export function wakes(/** @type {any} */ t, /** @type {number} */ now) {
   if (!t || t.kernel || t.state !== "ready" || !t.doer || t.doer.kind !== "agent") return false;
-  if (t.source === "manual") return false;
   if (t.form && t.form.fyi === true) return false;   // a follower's or an approver's note (kernel/flows/runner.js #task) tells the agent about a task; it is not the task
   if (typeof t.created_at === "number" && now - t.created_at > MAX_AGE_MS) return false;
   return true;

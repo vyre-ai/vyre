@@ -51,10 +51,10 @@ test("a repeat after a crash between the wake and the write puts the thread on t
   assert.equal(r.edits.length, 2);
 });
 
-test("a task given to a person wakes nothing, and neither does a to-do, a follower's note, a task not ready, a stale one or a kernel one", async () => {
+test("a task given to a person wakes nothing, and neither does a person's own to-do, a follower's note, a task not ready, a stale one or a kernel one", async () => {
   const r = rig([
     task({ id: "p", doer: { kind: "person", id: "ana" } }),
-    task({ id: "m", source: "manual" }),
+    task({ id: "m", source: "manual", doer: { kind: "person", id: "ana" } }),
     task({ id: "n", form: { brief: "fyi", fyi: true } }),
     task({ id: "w", state: "waiting" }),
     task({ id: "d", state: "done" }),
@@ -325,4 +325,29 @@ test("a person's review is not a round: with a person in the reviewer slot no ag
   for (let i = 0; i < 8; i++) await onEvent({ type: "task.in-review", data: { task: { id: "t1" } } });
   assert.deepEqual(calls, [], "nothing is woken and no round is counted");
   assert.deepEqual(asked, [], "and no person is told of a cap");
+});
+
+test("a to-do a person gives an agent wakes the agent, with the person as its approver", async () => {
+  const r = rig([task({ id: "todo", source: "manual", flow: undefined, form: undefined, note: "Draft the welcome note" })]);
+  await r.onEvent(created("todo"));
+  assert.equal(r.woke.length, 1);
+  assert.deepEqual({ ...r.woke[0] }, { task: "todo", agent: "juno", title: "Refund R-9", instructions: "Draft the welcome note", approver: "ana" });
+  assert.equal(wakes(task({ source: "manual" }), NOW), true);
+  assert.equal(wakes(task({ source: "manual", doer: { kind: "person", id: "ana" } }), NOW), false, "a person's own to-do");
+});
+
+test("a reviewer that cannot be woken is not left in silence: the person who gave the task gets a note with why, once per hand-in", async () => {
+  const asked = /** @type {any[]} */ ([]), logs = /** @type {string[]} */ ([]);
+  const t = task({ state: "in_review", reviewer: { kind: "agent", id: "rev" }, payload: { payload_hash: "abcdef0123456789" } });
+  const onEvent = createAgentWake({ space: "s", gw: { ask: { get: async () => t, edit: async () => {}, request: async (_c, spec, opts) => { asked.push({ spec, opts }); } } }, chain: () => ({}), clock: () => NOW, log: m => logs.push(m),
+    lendSlot: async () => {}, reclaimSlots: async () => {},
+    callModule: async tool => { if (tool === "agents.wake-rounds") return { rounds: 0 }; throw new Error("rev has no AI account"); } });
+  await onEvent({ type: "task.in-review", data: { task: { id: "t1" } } });
+  assert.match(logs[0], /did not wake its reviewer or approver \(rev has no AI account\)/);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].spec.title, 'rev could not review "Refund R-9"');
+  assert.deepEqual(asked[0].spec.doer, { kind: "person", id: "ana" });
+  assert.match(asked[0].spec.note, /rev stopped before it finished this task\. \(rev has no AI account\)/);
+  assert.equal(asked[0].spec.form.fyi, true, "a note for the person, never a task that wakes an agent");
+  assert.equal(asked[0].opts.idem, "slot-failed:t1#reviewer:abcdef012345");
 });
