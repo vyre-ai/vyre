@@ -137,6 +137,8 @@ async function browserDriver(shared = null) {
       const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 20_000 }), d.click(button)]);
       await chooser.setFiles({ name, mimeType: "text/plain", buffer: Buffer.from(content) });
     },
+    async viewport(/** @type {number} */ w, /** @type {number} */ h) { await page.setViewportSize({ width: w, height: h }); },
+    url() { return page.url(); },
     async rightClick(/** @type {string} */ t) { await page.getByText(t, { exact: false }).first().click({ button: "right", timeout: 15_000 }); },
     async links() { return page.evaluate(() => [...document.querySelectorAll("a[href]")].map((a) => /** @type {HTMLAnchorElement} */ (a).href)); },
     async stop() { if (shared) { await ctx.close().catch(() => {}); return; } await browser.close().catch(() => {}); srv.close(); },

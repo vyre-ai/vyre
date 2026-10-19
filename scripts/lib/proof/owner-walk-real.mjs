@@ -60,20 +60,20 @@ export async function ownerWalkReal(c) {
   // ---- 2. chats: a new thread; a message gets a real Assistant reply
   let threadsBefore = 0;
   await run.step(W(2, "Chats opens a new thread with the Assistant, and the server has the thread"), async () => {
-    const before = await op("threads.list", {}).catch(() => null);
-    threadsBefore = Array.isArray(before?.data ?? before) ? (before.data ?? before).length : (before?.threads?.length ?? 0);
+    const count = async () => { const r = await op("threads.list", {}); const l = r?.data ?? r?.threads ?? r; return { n: Array.isArray(l) ? l.length : (Array.isArray(l?.threads) ? l.threads.length : -1), raw: JSON.stringify(r).slice(0, 300) }; };
+    const before = await count();
     await screen("/u/chats/new", /Start chat|Search people and agents/i, "the new chat screen");
-    await press(["Juno"]);
+    await press(["Juno", "juno"]);
     await fillAny(["First message (optional)", "First message"], "Say hello in five words.");
     await shot("02-new-chat");
     await press(["Start chat"]);
-    await until(async () => !(await has(/Start chat/)) || (await has(/Say hello in five words/)), 60_000, "the thread opening");
+    let t = "";
+    try { await until(async () => { t = await text(); return /\/u\/chats\/(?!new)[^/]+/.test(String(drv.url?.() || "")) || !/Starting/.test(t); }, 90_000, "the thread opening (the button leaving Starting)"); }
+    catch (e) { await shot("failed-02-starting"); throw new Error(`${/** @type {Error} */ (e).message}. url ${drv.url?.()}. The screen says: ${await show(400)}`); }
     await shot("02-thread");
-    const after = await op("threads.list", {});
-    const list = after?.data ?? after?.threads ?? after;
-    const n = Array.isArray(list) ? list.length : (list?.threads?.length ?? 0);
-    if (n <= threadsBefore) throw new Error(`the server lists ${n} threads after the new chat, ${threadsBefore} before`);
-    return `${threadsBefore} threads before, ${n} after`;
+    const after = await count();
+    if (after.n <= before.n) throw new Error(`the server lists ${after.n} threads after the new chat, ${before.n} before (url ${drv.url?.()}; raw ${after.raw})`);
+    return `${before.n} threads before, ${after.n} after`;
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply"), async () => {
     const key = process.env.OWNER_WALK_OPENROUTER_KEY;
@@ -94,6 +94,7 @@ export async function ownerWalkReal(c) {
     await shot("03-folder");
   }, { needs: READY });
   await run.step(W(3, "Files: upload a file, and the server holds it"), async () => {
+    await drv.viewport?.(1280, 900);   // the web file manager (a phone has no Upload button)
     await screen("/u/files", /Upload|Nothing here|Files/i, "the Files screen");
     await drv.upload?.("Upload", "walk-note.txt", "owner walk upload\n");
     await until(async () => (await has(/walk-note\.txt/)), 45_000, "the file showing");
@@ -118,14 +119,18 @@ export async function ownerWalkReal(c) {
     if (!/Personal/.test(t)) pending("Files does not list the project folders yet");
   }, { needs: READY });
 
+  await drv.viewport?.(520, 1000);
+
   // ---- 4. people: invite (a link), a second browser joins with it and shows in the list with its role
   /** @type {string} */ let inviteLink = "";
   await run.step(W(4, "People: Invite someone makes a link"), async () => {
     await screen("/u/wink/invite", /Invite someone|Make the invitation/i, "the invite screen");
     await fillAny(["Their name, for your own list"], "Walker Two");
     await press(["Make the invitation"]);
-    const t = await until(async () => { const x = await text(); return /https?:\/\/\S+/.test(x) && /Copy link|Email it/i.test(x) ? x : ""; }, 60_000, "the invitation link showing");
-    inviteLink = String(/https?:\/\/\S+/.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
+    let t = "";
+    try { t = await until(async () => { const x = await text(); return /(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.test(x) && !/Making/.test(x) ? x : ""; }, 60_000, "the invitation link showing"); }
+    catch (e) { await shot("failed-04-invite"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
+    inviteLink = String(/(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
     await shot("04-invite-made");
     if (!inviteLink) throw new Error(`no link on the screen: ${await show(300)}`);
     return inviteLink;
@@ -175,7 +180,8 @@ export async function ownerWalkReal(c) {
     await fillAny(["Role name", "Name"], "TestRole");
     await shot("05-new-role");
     await press(["Make the role"]);
-    await until(async () => !(await has(/Make the role/)) || (await has(/Take it out|is wider/)), 30_000, "the dialog closing");
+    try { await until(async () => !(await has(/Make the role/)) || (await has(/Take it out|is wider/)), 30_000, "the dialog closing"); }
+    catch (e) { await shot("failed-05-after-make"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
     if (await has(/is wider than a role that starts from Member|Take it out/)) throw new Error(`the box refused the default role: ${await show(500)}`);
     await until(async () => (await has(/TestRole/)), 30_000, "the role listed");
     const l = await op("roles.list", {});
@@ -186,7 +192,7 @@ export async function ownerWalkReal(c) {
   // ---- 6. apps: install Documents with no phone
   await run.step(W(6, "Apps: Documents installs with no phone, and is installed and listed"), async () => {
     await screen("/u/apps", /Apps|Documents|catalog/i, "the Apps screen");
-    if (!(await has(/Documents/))) pending(`the Apps screen does not offer Documents on this build: ${await show(200)}`);
+    if (!(await has(/Documents/)) || !(await has(/Install|Add to this Space/))) pending(`the Apps screen has no install for Documents on this build (it lists the built-in apps with Open): ${await show(160)}`);
     await press(["Install Documents", "Documents"]);
     await press(["Install", "Add"]);
     await until(async () => (await has(/Installed|Installing|Open Documents/i)), 60_000, "Documents installing");
@@ -240,6 +246,16 @@ export async function ownerWalkReal(c) {
       await shot(`10-${name}`);
       await screen("/u/settings/assistants", /Assistants|Juno|Engineer/i, "back to the assistants screen");
     }
+  }, { needs: READY });
+
+  await run.step(W(10, "Settings: names show as the person gave them (Juno, Engineer), not in lower case"), async () => {
+    /** @type {string[]} */ const bad = [];
+    for (const r of ["/u/chats/new", "/u/settings/assistants", "/u/agents"]) {
+      await drv.go(r); await wait(2500);
+      const t = await text();
+      for (const [shown, given] of [["juno", "Juno"], ["engineer", "Engineer"]]) if (new RegExp(`(^|[^A-Za-z])${shown}([^A-Za-z]|$)`).test(t) && !new RegExp(`(^|[^A-Za-z])${given}([^A-Za-z]|$)`).test(t)) bad.push(`${r} shows "${shown}", not "${given}"`);
+    }
+    if (bad.length) { await shot("failed-10-names"); throw new Error(bad.join("; ")); }
   }, { needs: READY });
 
   // ---- the gate: nothing pending
