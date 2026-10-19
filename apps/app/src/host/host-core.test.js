@@ -366,3 +366,30 @@ test("a Space named before its server was listed (v0.6.1) is listed when its own
   assert.equal(store.peek().listed.tess, box.route);
   assert.ok(made.id);
 });
+
+test("a Space whose paired route was never kept is listed with the route the paired server itself reports, and only a well-formed one is taken", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const asked = [];
+  let answer = { route: "not a route" };
+  const space = { load: async () => ({ call: async (tool, input, box) => { asked.push([tool, box]); return answer; } }) };
+  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, space });
+  const made = await host.call("onboard.person.create", { username: "tessb", password: PASSWORD, confirm: PASSWORD });
+  const box = who(d.w);
+  const dev = await fromSeed(host.signer().seed);
+  await claimServerSpace({ identity: { id: made.id, name: "tessb", eid: dev.eid, ops: store.peek().ops, key: dev }, name: "teamb", base: d.base, fetch: d.fetch, now: d.now, host: async () => ({ space: "spc_" + "abcdefghijkl", rootPublic: Buffer.alloc(32, 7).toString("base64url") }) });
+  await store.save({ ...store.peek(), spaces: [{ id: "spc_abcdefghijkl", name: "teamb", role: "owner", server: "https://teamb.vyre.run", paired: { box: "bx-1", route: "", relay: "https://relay.example", name: "the test box" } }] });
+  await host.call("identity.lock");
+  await host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && asked.length === 0; i++) await new Promise((r) => setTimeout(r, 20));
+  await new Promise((r) => setTimeout(r, 150));
+  assert.deepEqual(asked, [["relay.status", "bx-1"]], "the paired server was asked, by its own box id");
+  assert.equal((await box.get("/v1/names/mine")).json.data.name, null, "a malformed answer lists nothing");
+  assert.equal(store.peek().listed, undefined);
+  answer = { route: box.route };
+  await host.call("identity.lock");
+  await host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && (await box.get("/v1/names/mine")).json.data.name === null; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal((await box.get("/v1/names/mine")).json.data.name, "teamb", "the route the server reported is listed");
+  assert.equal(store.peek().listed.teamb, box.route);
+});
