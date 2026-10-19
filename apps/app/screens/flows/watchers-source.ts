@@ -36,6 +36,6 @@ export const hooksSource = {
   },
   enable: (on: boolean) => ask<any>("hooks.enable", { on }),
   /** With no secret named, the box makes one in the Vault as hooks-<name> and grants it to the webhooks module; its value is never in the answer. */
-  open: (name: string, scheme: string, header: string, secret: string) => ask<any>("hooks.open", { name, verify: { scheme, ...(header.trim() ? { header: header.trim() } : {}), ...(secret.trim() ? { secret: secret.trim() } : {}) } }),
+  open: (name: string, scheme: string, header: string, secret: string) => ask<any>("hooks.open", { name, scheme, ...(header.trim() ? { header: header.trim() } : {}), ...(secret.trim() ? { secret: secret.trim() } : {}) }),
   close: (name: string) => ask<any>("hooks.close", { name }),
 };
