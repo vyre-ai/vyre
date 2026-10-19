@@ -19,7 +19,7 @@ import * as config from "../config/index.js";
 import { listen, HOST, BODY_LIMIT, PER_MINUTE } from "./listener.js";
 import { SCHEMES, verify } from "./verify.js";
 import { Deliveries, MIGRATIONS } from "./deliveries.js";
-import { flowBody, flowPath } from "./flow-body.js";
+import { startFlows as handToFlows } from "./flow-body.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { now }. Production never sets them.
@@ -100,23 +100,12 @@ export default {
       const at = new Date(d.at).toISOString();
       ctx.events.emit("hook.received", { route: name, id: d.id, bytes: body.length, at });
       ctx.log(`${who}: stored ${d.id}, ${body.length} bytes`);
-      void startFlows(name, d.id, body).catch(e => ctx.log(`internet:${name}: ${String(e && e.message || e).slice(0, 160)}`));
+      void handToFlows(ctx.flowsHost, name, route, d.id, Buffer.isBuffer(body) || body instanceof Uint8Array ? Buffer.from(body).toString("utf8") : String(body), ctx.log, told).catch(e => ctx.log(`internet:${name}: ${String(e && e.message || e).slice(0, 160)}`));
       return 200;
     }
 
-    /**
-     * A Flow whose trigger is the web path hook-<route> starts on a verified delivery, with the body as its input (capped plain data). It starts as an outside call: untrusted, so the run is tainted and
-     * cannot drive a grant or an admin act. A route no Flow answers is the normal case, and a Flow that cannot start never fails the delivery (the sender got its 200 once it was stored and announced).
-     */
-    async function startFlows(name, id, body) {
-      const host = ctx.flowsHost;
-      if (!host) return;
-      const data = flowBody(Buffer.isBuffer(body) || body instanceof Uint8Array ? Buffer.from(body).toString("utf8") : String(body));
-      for (const space of host.spaces()) {
-        try { await host.get(space).flows.handleWeb(flowPath(name), { body: data, trust: "untrusted", key: id }); }
-        catch (e) { if (/** @type {any} */ (e).code !== "not_found") ctx.log(`internet:${name}: a Flow could not start on ${id} (${String(/** @type {Error} */ (e).message).slice(0, 160)})`); }
-      }
-    }
+    /** Routes already told that they have no recorded Space. */
+    const told = new Set();
 
     /** @type {{ port: number, close: () => Promise<void> } | null} */
     let live = null;
@@ -145,7 +134,7 @@ export default {
     const port = () => live ? live.port : cfg().port;
     const state = () => ({ enabled: cfg().enabled, host: HOST, port: port(), listening: Boolean(live), ...(listenError ? { error: listenError } : {}) });
     const routeOut = (name, r) => ({
-      name, path: `/hooks/${name}`, verify: { scheme: r.scheme, header: r.header, secret: r.secret }, opened: r.opened || null,
+      name, path: `/hooks/${name}`, verify: { scheme: r.scheme, header: r.header, secret: r.secret }, opened: r.opened || null, space: r.space || null,
       deliveries: store.count(name), recent: store.recent(name),
     });
 
@@ -198,7 +187,9 @@ export default {
         // the person whether a grant is still missing.
         let ready = true, why = null;
         try { await ctx.vault.fetch(secretItem); } catch (e) { ready = false; why = /** @type {Error} */ (e).message; }
-        const route = { scheme, header, secret: secretItem, opened: new Date(now()).toISOString() };
+        // The Space the route is opened for, the one a delivery may start Flows in (null where this box cannot say: the route then starts no Flow).
+        const space = ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : null;
+        const route = { scheme, header, secret: secretItem, opened: new Date(now()).toISOString(), ...(space ? { space } : {}) };
         save({ routes: { ...routes, [name]: route } });
         ctx.events.emit("hook.opened", { route: name, scheme });
         ctx.log(`route ${name} opened (${scheme}) by ${caller}`);

@@ -33,6 +33,7 @@ test("hooks.open makes the signing secret in the Vault, grants it to hooks, and 
   assert.equal(opened.error, undefined, JSON.stringify(opened));
   assert.equal(opened.data.secret_made, "hooks-orders");
   assert.equal(opened.data.verify.secret, "hooks-orders");
+  assert.equal(typeof opened.data.space, "string", "the route records the Space it was opened for");
   const item = (await reg("vault.list")).data.items.find((/** @type {any} */ i) => i.name === "hooks-orders");
   assert.ok(item, "the item is in the Vault");
   assert.deepEqual([...new Set(item.grants.map((/** @type {any} */ g) => g.module))], ["hooks"], "granted to the hooks module and no one else");
