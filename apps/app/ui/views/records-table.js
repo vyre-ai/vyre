@@ -48,7 +48,8 @@ const defOf = f => ({ name: f.name, label: f.label, kind: normalizeKind(f.kind),
 export function tableFromRecords(def, rows, o = {}) {
   const env = o.env || {};
   const vd = applyLayout(viewDefOf(def, undefined, o.view), o.layout);
-  const cols = listColumns(def, vd);
+  // With role chips on the table, a plain role column of the same name would say it twice.
+  const cols = listColumns(def, vd).filter((/** @type {any} */ f) => !(o.roles && f.name === "role"));
   const kept = layoutRows(viewRows(rows, o.noFilter ? undefined : vd.list?.filter), o.noFilter ? undefined : o.layout?.filters);
   const money = cols.find((/** @type {any} */ f) => normalizeKind(f.kind) === "money");
   const dateField = vd.calendar ? fieldOf(def, vd.calendar.date) : null;

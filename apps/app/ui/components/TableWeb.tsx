@@ -33,7 +33,7 @@ function WideTable<T>({ columns, rows, onRow, empty, rowKey, headerEnd, density,
   const model = table.getRowModel().rows;
   // Name takes the remaining width; the other columns size to their content (the longest header or cell text, in characters), the same on every row so they line up.
   const sizeOf = (i: number) => {
-    if (i === 0) return freezeFirst ? { flexGrow: 0, flexShrink: 0, width: FIRST_W, position: "sticky" as any, left: 16 + (selection ? TICK_W : 0), zIndex: 1 } : { flex: 1, minWidth: 0 };
+    if (i === 0) return freezeFirst ? { flexGrow: 0, flexShrink: 0, width: FIRST_W, position: "sticky" as any, left: 16 + (selection ? TICK_W : 0), zIndex: 1 } : { flex: 1, minWidth: 140 };
     const longest = Math.max(columns[i].label.length, ...model.map((r) => String(r.getVisibleCells()[i]?.getValue() ?? "").length));
     return { flexGrow: 0, flexShrink: 0, width: Math.min(240, Math.max(72, longest * 8 + 8)) };
   };

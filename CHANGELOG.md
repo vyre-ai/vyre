@@ -8,6 +8,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(ui): a wide table keeps its first column at least 140 wide, so a table with many columns no longer cuts the names to a letter; a table that has role chips leaves out a plain "role" column that would repeat them.
 - chore(app): the sample world gives its people sample roles (screens/records/roles-sample.js, reached only when the world is the made-up one), so the Roles column and the role pills can be seen in the screenshots; a real box answers records.roles.summary itself.
 - feat(app): Records, the approved layout on a wide screen. One header row (Records, Import and Settings as quiet buttons, a pin and an overflow menu for Export CSV, New view, New type, Reminders and Notes, and one primary New). Type tabs with counts come next, then a Views row (chips, a lock on your own, and Table / Board / Calendar at its right), then the ask bar with a Condition button and the Try chip. Fields, Access and History are behind Settings, not on the list. The table's own filter and sort row is gone on a wide screen (columns sort from their headers, and Condition filters). A phone keeps its layout. The sample world calls its Matters type Jobs.
 - feat(app): Records. The Notes tab has New note (planner.add, private, with the notes marker), so a joined member's note lands in the team's planner.
