@@ -392,4 +392,82 @@ test("a Space whose paired route was never kept is listed with the route the pai
   for (let i = 0; i < 100 && (await box.get("/v1/names/mine")).json.data.name === null; i++) await new Promise((r) => setTimeout(r, 20));
   assert.equal((await box.get("/v1/names/mine")).json.data.name, "teamb", "the route the server reported is listed");
   assert.equal(store.peek().listed.teamb, box.route);
+
+test("Settings, Account on a page with no daemon reads the person's list from the host and the directory: the device, the recovery code, and which entry is this one", async (t) => {
+  const d = directory(t);
+  const point = await agreePointOf();
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => point });
+  assert.deepEqual(await host.call("identity.entries"), { entries: [] }, "no identity yet");
+  const made = await host.call("onboard.person.create", { username: "ida", password: PASSWORD, confirm: PASSWORD });
+  const { entries } = await host.call("identity.entries");
+  assert.deepEqual(entries.map((e) => e.kind).sort(), ["code", "device"]);
+  const dev = entries.find((e) => e.kind === "device");
+  assert.deepEqual([dev.self, dev.agree], [true, true]);
+  assert.equal(entries.find((e) => e.kind === "code").self, false);
+  assert.equal((await host.call("identity.status")).id, made.id);
+  await host.call("identity.lock");
+  assert.equal((await host.call("identity.entries")).entries.find((e) => e.kind === "device").self, false, "locked: this device's entry is not known");
+});
+
+test("a new recovery code on a page with no daemon: the password is asked, the device signs the chain's replace-code op, the old code stops, and the new one opens this device later", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const host = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => agreePointOf() });
+  const made = await host.call("onboard.person.create", { username: "rhea", password: PASSWORD, confirm: PASSWORD });
+  const before = await chainEntry(d, "rhea");
+  await assert.rejects(() => host.call("identity.code.replace", { password: "" }), (e) => e.code === "person_enters");
+  await assert.rejects(() => host.call("identity.code.replace", { password: "zebra quartz mango pillow" }), (e) => e.code === "bad_password" || /password|recovery|open/i.test(e.message));
+  assert.equal((await chainEntry(d, "rhea")).ops.length, before.ops.length, "a wrong password changed nothing");
+  const r = await host.call("identity.code.replace", { password: PASSWORD });
+  assert.match(r.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  assert.notEqual(r.recoveryCode, made.recoveryKey);
+  const { ops } = await chainEntry(d, "rhea");
+  assert.equal(ops[ops.length - 1].type, "replace-code");
+  const { codeKey } = await import("../identity/recovery.js");
+  const ck = await codeKey(r.recoveryCode, "");
+  const C = await import("../../../../kernel/identity/chain.js");
+  const state = await C.verifyChain(ops, { now: d.now() });
+  assert.deepEqual(state.entries.filter((e) => e.kind === "code").map((e) => e.eid), [ck.eid], "the list holds only the new code");
+  // the kept record opens with the new code, not the old
+  await host.call("identity.lock");
+  await assert.rejects(() => host.call("identity.unlock", { recovery: made.recoveryKey }));
+  await host.call("identity.unlock", { recovery: r.recoveryCode });
+  assert.equal((await host.call("identity.status")).unlocked, true);
+});
+
+test("taking a device off the list: this device cannot take itself off, a stranger is not on the list, and a locked page asks for the password", async (t) => {
+  const d = directory(t);
+  const host = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await host.call("onboard.person.create", { username: "remo", password: PASSWORD, confirm: PASSWORD });
+  const { entries } = await host.call("identity.entries");
+  const me = entries.find((e) => e.self);
+  await assert.rejects(() => host.call("identity.entry.remove", { eid: me.eid }), (e) => e.code === "bad_input");
+  await assert.rejects(() => host.call("identity.entry.remove", { eid: "5wmpjevadlr3ouy5wjob4cy2pw" }), (e) => e.code === "not_found");
+  await host.call("identity.lock");
+  await assert.rejects(() => host.call("identity.entry.remove", { eid: me.eid }), (e) => e.code === "locked");
+});
+
+test("when the repair of private chats cannot finish, the host says why and a retry runs it again", async (t) => {
+  const d = directory(t);
+  const store = memoryStore();
+  const old = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST });
+  await old.call("onboard.person.create", { username: "vera", password: PASSWORD, confirm: PASSWORD });
+  const point = await agreePointOf();
+  let down = true;
+  const flaky = async (url, init) => { if (down && String(url).includes("/v1/ids/append")) throw new Error("offline"); return d.fetch(url, init); };
+  const host = createHost({ store, directory: d.base, fetch: flaky, now: d.now, kdf: FAST, agreePoint: async () => point });
+  await host.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await host.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  const st = await host.call("identity.agree.status");
+  assert.match(st.failed, /could not be reached|did not go through/, "a plain reason, not silence");
+  assert.equal((await chainEntry(d, "vera")).entry.agree, undefined);
+  down = false;
+  assert.deepEqual(await host.call("identity.agree.retry"), { failed: "" });
+  assert.equal((await chainEntry(d, "vera")).entry.agree, point);
+  // a page with no key says so
+  const none = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => null });
+  await none.call("onboard.person.create", { username: "wren", password: PASSWORD, confirm: PASSWORD });
+  await none.call("identity.lock"); await none.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await none.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.match((await none.call("identity.agree.status")).failed, /no key for private chats/);
 });
