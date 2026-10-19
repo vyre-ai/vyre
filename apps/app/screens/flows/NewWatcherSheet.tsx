@@ -10,7 +10,7 @@ const say = (e: unknown) => (e instanceof Error && e.message ? e.message : "That
  * A new watcher in four steps, each one a button: pick where it watches and fill in a few fields (watchers.preset writes it, off), Test it (watchers.test, nothing is filed), read its card, then Turn on
  * (watchers.create with the card's hash). "A webhook" is not a watcher source: it opens the route page instead (`onWebhook`). Used by the Watchers tab and by the Flow editor's watcher picker.
  */
-export function NewWatcherSheet({ open, onClose, onCreated, onWebhook }: { open: boolean; onClose: () => void; onCreated: (name: string) => void; onWebhook?: () => void }) {
+export function NewWatcherSheet({ open, onClose, onCreated, onWebhook, source = watchersSource, initialKind = "" }: { source?: typeof watchersSource; /** A source already chosen when the sheet opens (the screenshot pass). */ initialKind?: string; open: boolean; onClose: () => void; onCreated: (name: string) => void; onWebhook?: () => void }) {
   const [kind, setKind] = useState("");
   const [project, setProject] = useState("");
   const [projects, setProjects] = useState<[string, string][]>([]);
@@ -20,21 +20,21 @@ export function NewWatcherSheet({ open, onClose, onCreated, onWebhook }: { open:
   const [card, setCard] = useState<{ hash: string; rows: { label: string; text: string }[] } | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState("");
-  useEffect(() => { if (open) { setKind(""); setProject(""); setV({}); setName(""); setTested(null); setCard(null); setProblem(""); void watchersSource.projects().then((p) => { setProjects(p); if (p.length === 1) setProject(p[0][0]); }).catch(() => setProjects([])); } }, [open]);
+  useEffect(() => { if (open) { setKind(initialKind); setProject(""); setV({}); setName(""); setTested(null); setCard(null); setProblem(""); void source.projects().then((p) => { setProjects(p); if (p.length === 1) setProject(p[0][0]); }).catch(() => setProjects([])); } }, [open]);
   const preset = PRESETS.find((p) => p.kind === kind);
   const work = async (what: string, f: () => Promise<void>) => { setBusy(what); setProblem(""); try { await f(); } catch (e) { setProblem(say(e)); } finally { setBusy(""); } };
   const make = () => work("make", async () => {
     const r = presetInput(kind, project, v);
     if ("missing" in r) { setProblem(r.missing); return; }
-    const made = await watchersSource.preset(r.input);
+    const made = await source.preset(r.input);
     const n = String(made?.name ?? "");
     if (!n) throw new Error("The watcher was written but Vyre did not say its name.");
     setName(n); setCard({ hash: String(made.hash ?? ""), rows: cardRows(made) });
-    const t = testLines(await watchersSource.test(n));
+    const t = testLines(await source.test(n));
     setTested(t);
-    if (t.ok) { const c = await watchersSource.card(n); setCard({ hash: String(c.hash ?? ""), rows: cardRows(c) }); }
+    if (t.ok) { const c = await source.card(n); setCard({ hash: String(c.hash ?? ""), rows: cardRows(c) }); }
   });
-  const turnOn = () => work("on", async () => { if (!card?.hash) throw new Error("There is no card to turn on yet. Test it first."); await watchersSource.create(name, card.hash); onCreated(name); onClose(); });
+  const turnOn = () => work("on", async () => { if (!card?.hash) throw new Error("There is no card to turn on yet. Test it first."); await source.create(name, card.hash); onCreated(name); onClose(); });
   return (
     <Sheet open={open} onClose={onClose} title="New watcher">
       <View className="gap-s3">

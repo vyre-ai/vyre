@@ -9,22 +9,22 @@ import { watchersSource } from "./watchers-source";
 const say = (e: unknown) => (e instanceof Error && e.message ? e.message : "That did not go through.");
 
 /** The Watchers tab of Flows: every watcher with its state, next and last run, and Run now, Pause or Resume, Turn on and Delete; "New watcher" starts one from a source. */
-export function WatchersTab({ startNew }: { startNew?: boolean }) {
+export function WatchersTab({ startNew, source = watchersSource }: { startNew?: boolean; /** The watchers to draw: the box's own, or fixtures for the screenshot pass. */ source?: typeof watchersSource }) {
   const router = useRouter();
   const [rows, setRows] = useState<WatcherRow[] | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
   const [making, setMaking] = useState(!!startNew);
-  const load = useCallback(() => { setErr(""); watchersSource.list().then(setRows).catch((e) => setErr(say(e))); }, []);
+  const load = useCallback(() => { setErr(""); source.list().then(setRows).catch((e) => setErr(say(e))); }, []);
   useEffect(load, [load]);
   const act = async (name: string, what: string) => {
     setBusy(`${name}:${what}`);
     try {
-      if (what === "run") { await watchersSource.run(name); showToast("Ran it. What it found is filed."); }
-      else if (what === "pause") await watchersSource.pause(name);
-      else if (what === "resume") await watchersSource.resume(name);
-      else if (what === "delete") { await watchersSource.remove(name); showToast(`${name} is deleted. What it filed stays.`); }
-      else if (what === "turn-on") { const c = await watchersSource.card(name); await watchersSource.create(name, String(c.hash ?? "")); showToast(`${name} is on.`); }
+      if (what === "run") { await source.run(name); showToast("Ran it. What it found is filed."); }
+      else if (what === "pause") await source.pause(name);
+      else if (what === "resume") await source.resume(name);
+      else if (what === "delete") { await source.remove(name); showToast(`${name} is deleted. What it filed stays.`); }
+      else if (what === "turn-on") { const c = await source.card(name); await source.create(name, String(c.hash ?? "")); showToast(`${name} is on.`); }
       load();
     } catch (e) { showToast(say(e)); } finally { setBusy(""); }
   };
@@ -48,7 +48,7 @@ export function WatchersTab({ startNew }: { startNew?: boolean }) {
           })}
         </Card>
       ) : null}
-      <NewWatcherSheet open={making} onClose={() => setMaking(false)} onCreated={() => { showToast("Turned on."); load(); }} onWebhook={() => router.push("/u/flows/new" as never)} />
+      <NewWatcherSheet source={source} open={making} onClose={() => setMaking(false)} onCreated={() => { showToast("Turned on."); load(); }} onWebhook={() => router.push("/u/flows/new" as never)} />
     </View>
   );
 }
