@@ -63,6 +63,8 @@ export async function ownerWalkReal(c) {
 
   // ---- 2. chats: a new thread; a message gets a real Assistant reply
   let threadsBefore = 0;
+  /** The thread's own address, read from the URL after Start chat. /u/chats redirects to the new-thread page on a phone-wide window. */
+  let threadPath = "";
   await run.step(W(2, "Chats opens a new thread with the Assistant, and the server has the thread"), async () => {
     await screen("/u/chats/new", /Start chat|Search people and agents/i, "the new chat screen");
     await press(["Juno", "juno"]);
@@ -75,19 +77,21 @@ export async function ownerWalkReal(c) {
     await shot("02-thread");
     const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
     if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
+    threadPath = `/u/chats/${id}`;
     return `the app opened ${drv.url?.()}`;
   }, { needs: READY });
   await run.step(W(2, "the first message typed in New chat is in the thread, and the server holds it"), async () => {
-    await fresh("/u/chats", /Juno/, "the Chats screen");
-    try { await press(["Juno"]); } catch { /* the thread is already open */ }
+    if (!threadPath) pending("no thread was opened");
+    await fresh("/u/chats?list=1", /Juno/, "the thread list");
+    await fresh(threadPath, /Juno|Message/, "the thread");
     try { await until(async () => (await has(/Say hello in five words/)), 30_000, "the first message in the thread"); }
     catch (e) { await shot("failed-02-first-message"); throw new Error(`${/** @type {Error} */ (e).message}: the thread with Juno shows only "${await show(300)}"`); }
     await shot("02-first-message");
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply to a message typed in the thread"), async () => {
     if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
-    await screen("/u/chats", /Juno/, "the Chats screen");
-    try { await press(["Juno"]); } catch { /* the thread is open */ }
+    if (!threadPath) pending("no thread was opened");
+    await screen(threadPath, /Juno|Message/, "the thread");
     await fillAny(["Message Juno"], "Please answer with the single word: ready");
     await press(["Send"]);
     const before = (await text()).length;
@@ -122,7 +126,9 @@ export async function ownerWalkReal(c) {
   await run.step(W(3, "Files: move the file into the folder"), async () => {
     if (!(await has(/\bWalk\b/))) pending("there is no folder to move into (New folder is not on this build)");
     await drv.rightClick?.("walk-note.txt");
+    await wait(800); await shot("03-menu");
     await press(["Move to…", "Move to...", "Move"]);
+    await wait(1500); await shot("03-move-dialog");
     await press(["Walk"]);
     await press(["Move here", "Move"]);
     await wait(1500);
@@ -147,7 +153,17 @@ export async function ownerWalkReal(c) {
     await press(["Make invite", "Make the invitation"]);
     let t = "";
     try { t = await until(async () => { const x = await text(); return /(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.test(x) && !/Making/.test(x) ? x : ""; }, 60_000, "the invitation link showing"); }
-    catch (e) { await shot("failed-04-invite"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
+    catch (e) {
+      await shot("failed-04-invite");
+      const said = `${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`;
+      // The screen refused (a passkey is asked for); make the link from the box so walks 4b and 5b still run, and fail this step honestly.
+      try {
+        const sp = await op("spaces.list", {}); const id = String((sp?.spaces ?? sp)?.[0]?.id ?? "");
+        const r = await op("onboard.member.link", { space: id, role: "member", ttlDays: 7 });
+        inviteLink = String(r?.link ?? r?.url ?? "");
+      } catch (e2) { throw new Error(`${said} (the box link fallback also failed: ${/** @type {Error} */ (e2).message})`); }
+      throw new Error(`${said} (link made from the box instead: ${inviteLink ? "yes" : "no"})`);
+    }
     inviteLink = String(/(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.exec(t)?.[0] || "").replace(/[.,;)]+$/, "");
     await shot("04-invite-made");
     if (!inviteLink) throw new Error(`no link on the screen: ${await show(300)}`);
