@@ -18,6 +18,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
   const st = useStore();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [assistantName, setAssistantName] = useState("");
   const { chats: flowChats } = useFlowChats();
   useEffect(() => {
     let live = true;
@@ -26,6 +27,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
         const me = String((await (st.me?.() as Promise<string> | undefined)?.catch(() => "")) ?? "");
         const list: any[] = await agentsList().catch(() => []);
         for (const x of list) rememberLook(String(x.name), x.look ? String(x.look) : "");
+        const mineAsst = visibleAgents(list.map((x) => agentRow(x, me)), me).find((r) => r.kind === "assistant");
         const rows = visibleAgents(list.map((x) => agentRow(x, me)), me).filter((r) => r.kind !== "assistant");
         const ids = (name: string): string[] => { const a = list.find((x) => String(x.name) === name); return Array.isArray(a?.projects) ? a.projects.map(String) : []; };
         const slugs = [...new Set(rows.flatMap((r) => ids(r.name)))];
@@ -35,6 +37,7 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
         const sum = await callT("work.chat.summary", {}).then((r) => (r.error ? null : r.data)).catch(() => null);
         const bySummary = summaryByAgent(sum);
         if (!live) return;
+        setAssistantName(mineAsst ? mineAsst.name : "");
         setAgents(rows.map((r) => ({ name: r.name, role: r.role, status: r.status, look: String(list.find((x) => String(x.name) === r.name)?.look ?? ""), summary: bySummary.get(r.name), projects: ids(r.name).map((s) => names[s] || s) })));
         setPeople(who.filter((w) => w.family === "person" && w.name && String(w.id) !== me).map((w) => ({ id: String(w.id), name: String(w.name), role: w.role ? String(w.role) : undefined })));
       } catch { /* the chats still show */ }
@@ -42,5 +45,5 @@ export function useConvos(chats: readonly ChatRow[]): Convo[] {
     return () => { live = false; };
   }, [st]);
   const flows = useMemo(() => (flowChats ?? []).map((c) => ({ id: c.id, title: c.title, line: flowChatSub(c, Date.now()), last: c.last, runs: c.runs, needs: c.needsYou })), [flowChats]);
-  return useMemo(() => convosFrom({ chats, agents, people, flows }), [chats, agents, people, flows]);
+  return useMemo(() => convosFrom({ chats, agents, people, flows, assistantName }), [chats, agents, people, flows, assistantName]);
 }

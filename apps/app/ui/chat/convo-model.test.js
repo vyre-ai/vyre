@@ -132,3 +132,23 @@ test("the Engineer's Space chat is the first row of Space chats, called Engineer
   assert.deepEqual(space?.rows.map((r) => r.title), ["Engineer", "Hiring"]);
   assert.equal(space?.rows[0].pinned, true);
 });
+
+test("an agent is listed by its display name, and the second line never repeats the name", async () => {
+  const { convosFrom, displayName } = await import("./convo-model.js");
+  assert.equal(displayName("engineer"), "Engineer");
+  assert.equal(displayName("desk-helper"), "Desk helper");
+  const rows = convosFrom({ chats: [], agents: [{ name: "engineer", role: "engineer" }, { name: "scout", role: "Finds leads" }], people: [] });
+  const eng = rows.find((r) => r.agent === "engineer");
+  assert.equal(eng.title, "Engineer");
+  assert.equal(eng.sub, "Agent");
+  assert.equal(rows.find((r) => r.agent === "scout").sub, "Finds leads");
+});
+
+test("the assistant's pinned chat is listed under the assistant's own name, first", async () => {
+  const { convosFrom } = await import("./convo-model.js");
+  const chat = (o) => ({ id: "c1", title: "Assistant", project: "", people: [], agents: [], status: "idle", last: 1, line: "", asks: 0, unread: 0, open: true, ...o });
+  const rows = convosFrom({ assistantName: "Qi", chats: [chat({ id: "c2", title: "Lease", last: 99 }), chat({ pinned: "assistant" })], agents: [], people: [] });
+  assert.equal(rows[0].title, "Qi");
+  assert.equal(rows[0].sub, "Your assistant");
+  assert.equal(rows[0].pinned, true);
+});

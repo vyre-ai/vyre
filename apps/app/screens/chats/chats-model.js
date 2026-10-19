@@ -161,3 +161,13 @@ export function byTag(rows, tag) {
   const tags = [...n].map(([t, count]) => ({ tag: t, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
   return { rows: tag ? rows.filter((r) => (r.tags || []).includes(tag)) : rows, tags };
 }
+
+/**
+ * What pressing Chat does: open the Assistant's chat (its composer ready), make it when it is not there yet, or stay on the list (asked for with ?list=1, or while the box has not answered).
+ * @param {{ assistant: boolean, from: string, list?: string }} o @returns {"open" | "make" | "list"}
+ */
+export function chatsLanding(o) {
+  if (o.list === "1") return "list";
+  if (o.assistant) return "open";
+  return o.from === "chats" ? "make" : "list";
+}

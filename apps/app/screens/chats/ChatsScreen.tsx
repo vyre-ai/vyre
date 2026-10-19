@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, Card, EmptyState, LoadingState, Text, useUiTheme } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useChats } from "../../src/state/chats";
@@ -8,22 +8,39 @@ import { useGap } from "../../src/state/setup-gap";
 import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
 import { ChatsSidebar, ChatsSidebarHeader } from "./ChatsSidebar";
-import { UNSUPPORTED, chatsShown, chatsView } from "./chats-model.js";
+import { UNSUPPORTED, chatsLanding, chatsShown, chatsView } from "./chats-model.js";
 import { PlaceTag } from "../../src/real/PlaceTag";
+import { ensurePersistent } from "../../src/state/persistent-chat";
 
 /**
- * /u/chats. The list of chats lives in the sidebar, so on a wide screen this page opens the most recent chat (or says there is none yet). A phone has no sidebar, so there this page is the list.
+ * /u/chats. Pressing Chat opens your Assistant's chat, ready to type, the way a chat app opens on a new conversation. The Assistant's chat is made here the first time. If it cannot be made, the page says why
+ * (and offers Try again) instead of an empty list. The empty page shows only when there is no Assistant chat and it cannot be made.
  */
 export default function ChatsScreen() {
   const router = useRouter();
+  // ?list=1 is "show me the list" (the chat's own Chat list button on a phone): this page then stays the list
+  const { list } = useLocalSearchParams<{ list?: string }>();
   const { phone } = useUiTheme();
   const chats = useChats();
   const gap = useGap();
   const status = useConnection();
   const go = (p: string) => router.push(p as never);
   const rows = chatsShown(chats.rows).filter((c) => c.open);
-  const latest = [...rows].sort((a, b) => b.last - a.last)[0];
-  useEffect(() => { if (!phone && latest) router.replace({ pathname: "/u/chats/[id]", params: { id: latest.id } }); }, [phone, latest?.id]);
+  const assistant = rows.find((c) => c.pinned === "assistant");
+  const [say, setSay] = useState("");
+  const [making, setMaking] = useState(false);
+  const tried = useRef(false);
+  const openChat = (id: string) => router.replace({ pathname: "/u/chats/[id]", params: { id, focus: "1" } });
+  const landing = chatsLanding({ assistant: !!assistant, from: chats.from, list });
+  useEffect(() => { if (landing === "open" && assistant) openChat(assistant.id); }, [landing, assistant?.id]);
+  const make = async () => {
+    setMaking(true); setSay("");
+    try {
+      const r = await ensurePersistent("assistant");
+      if ("chat" in r) { refresh(); openChat(r.chat); } else setSay(r.say);
+    } catch (e) { setSay(e instanceof Error && e.message ? e.message : "Your Assistant's chat did not start."); } finally { setMaking(false); }
+  };
+  useEffect(() => { if (landing === "make" && !tried.current) { tried.current = true; void make(); } }, [landing]);
   const view = chatsView({ from: chats.from, gap, rows: chats.rows, live: status === "live" });
   return (
     <Page top title="Chat">
@@ -34,6 +51,15 @@ export default function ChatsScreen() {
             <Text strong>{gap.title}</Text>
             <Text size="caption" tone="muted">{gap.line}</Text>
             {gap.action && gap.route ? <View className="self-start"><Button size="sm" label={gap.action} onPress={() => go(gap.route as string)} /></View> : null}
+          </View>
+        </Banner>
+      ) : null}
+      {say && !assistant ? (
+        <Banner tone="warn" icon="warning">
+          <View className="gap-s2">
+            <Text strong>Your Assistant's chat did not start</Text>
+            <Text size="caption" tone="muted">{say}</Text>
+            <View className="self-start"><Button size="sm" label={making ? "Trying" : "Try again"} disabled={making} onPress={() => void make()} /></View>
           </View>
         </Banner>
       ) : null}
