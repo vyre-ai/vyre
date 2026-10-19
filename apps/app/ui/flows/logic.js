@@ -469,11 +469,11 @@ export function triggerDefinition(t) {
 }
 /** The triggers that take an optional `where` condition (kernel/flows/triggers.js: record events and watchers). */
 const WHERE_KINDS = new Set(["created", "changed", "removed", "event", "watcher"]);
-/** @param {Trigger} t */
 /** A webhook route as the Flow's web path: a verified delivery to /hooks/<route> starts the Flow that answers hook-<route>, with the body as its input (core/hooks/flow-body.js). @param {string} route */
 const webhookPath = (route) => `hook-${route}`;
 const WEBHOOK_PATH = /^hook-([a-z0-9][a-z0-9-]*)$/;
 
+/** @param {Trigger} t */
 function triggerBase(t) {
   switch (t.kind) {
     case "created": return { on: "event", event: `${t.type}.created` };
