@@ -54,6 +54,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the line under an object in Objects wraps to two lines, so "Links to ..." is no longer cut with an ellipsis.
 - fix(app): an Objects type page no longer repeats "Objects" under its title, and a sealed field says "Kept sealed" beside its Sealed badge.
 - feat(app): Build, Objects. The list gives each object an icon of its own (no more two "CO" tiles), folds "Links to" into the line under the name, and lists the built-in objects (Templates, Playbooks, Team members, Projects, Project templates) under "Built in". A type's page opens with an "Objects /" link back, a name you edit in place (no Name card, no Save), and field rows that say the name, what it is and badges (Required, Unique, Link to Contact); the template token, the key and moving a field are in a "..." menu (ui/setup/ModelMap.tsx, FieldRows.tsx, model-map.js, screens/customize/InlineTitle.tsx).
 - feat(app): Apps is a grid of equal tiles, three across on a wide page, two on a tablet, one on a phone. Each tile is an icon in a soft square, the name and one line, and the whole tile opens the app (no Open button); "Make an app" is a dashed tile at the end of the grid (screens/apps/AppsHome.tsx, grid.js). The screenshot pass takes /u/apps at 1400 wide as well.
