@@ -16,7 +16,7 @@ test("one list: chats, group chats, agents and people; a chat with two or more o
   const kinds = Object.fromEntries(items.map((i) => [i.title, i.kind]));
   assert.equal(kinds.Lease, "group");
   assert.equal(kinds.Solo, "chat");
-  assert.equal(kinds.ads, "agent");
+  assert.equal(kinds.Ads, "agent");
   assert.equal(kinds.Dee, "person");
 });
 
@@ -25,7 +25,7 @@ test("newest first; your assistant's pinned chat is first; agents and people wit
     chats: [chat({ id: "old", title: "Old", last: 1 }), chat({ id: "new", title: "New", last: 9 }), chat({ id: "asst", title: "Assistant", pinned: "assistant", last: 0 })],
     agents: [agent({ name: "ads" })], people: [],
   });
-  assert.deepEqual(items.map((i) => i.title), ["Assistant", "New", "Old", "ads"]);
+  assert.deepEqual(items.map((i) => i.title), ["Assistant", "New", "Old", "Ads"]);
 });
 
 test("an agent or person you already talk to alone is not listed twice", () => {
@@ -33,8 +33,8 @@ test("an agent or person you already talk to alone is not listed twice", () => {
     chats: [chat({ id: "k", title: "kit", agents: ["kit"], last: 3 }), chat({ id: "s", title: "Sam", people: ["Sam"], last: 4 })],
     agents: [agent({ name: "kit" }), agent({ name: "ads" })], people: [person()],
   });
-  assert.deepEqual(items.map((i) => i.title).sort(), ["Sam", "ads", "kit"]);
-  assert.equal(items.find((i) => i.title === "kit").chat, "k");
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Ads", "Kit", "Sam"]);
+  assert.equal(items.find((i) => i.title === "Kit").chat, "k");
 });
 
 test("a chat you are not in stays greyed and cannot open", () => {
@@ -52,7 +52,7 @@ test("project chips: All, each project once, No project; search spans title, lin
   assert.deepEqual(convosShown(items, { project: "Northwind", query: "" }).map((i) => i.title), ["Lease", "Other"]);
   assert.deepEqual(convosShown(items, { project: "none", query: "" }).map((i) => i.title), ["Intake"]);
   assert.deepEqual(convosShown(items, { project: "all", query: "ready" }).map((i) => i.title), ["Lease"]);
-  assert.deepEqual(convosShown(items, { project: "Okafor", query: "" }).map((i) => i.title), ["ads"]);
+  assert.deepEqual(convosShown(items, { project: "Okafor", query: "" }).map((i) => i.title), ["Ads"]);
 });
 
 test("a word for each kind, for the row's second line and screen readers", () => {
@@ -77,8 +77,8 @@ test("a row carries one dot: needs-you wins over unread; the preview is the last
 
 test("an agent row carries the look the agent was given, and none when it has none", () => {
   const items = convosFrom({ chats: [], agents: [agent({ name: "rex", look: "s3~c5" }), agent({ name: "kit" })], people: [] });
-  assert.equal(items.find((i) => i.title === "rex").look, "s3~c5");
-  assert.equal(items.find((i) => i.title === "kit").look, "");
+  assert.equal(items.find((i) => i.title === "Rex").look, "s3~c5");
+  assert.equal(items.find((i) => i.title === "Kit").look, "");
 });
 
 test("sections follow where a chat lives: Pinned, Personal, Space chats, Projects, Flows; an empty one is left out; the filter row lists the five", () => {
