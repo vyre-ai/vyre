@@ -129,7 +129,7 @@ function runChat(entry, store, o) {
         catch (e) { if (isRefusal(e)) throw new Error(doorMessage(e) || "the inference door refused this"); throw e; }
         text = String(out.content || "");
         if (!text) throw new Error("the model returned no answer");
-        say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } });
+        delta(text);
         if (out.usage) { usage = { prompt_tokens: out.usage.input_tokens, completion_tokens: out.usage.output_tokens }; cost = Number(out.usage.cost_usd) || 0; }
         throw DONE;
       }
