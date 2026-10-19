@@ -486,6 +486,10 @@ test("the API key tool sends the key once to the server's key tool and never let
   assert.deepEqual(r, { account: "ac_9", provider: "claude", label: "Work Claude", checked: true });
   assert.ok(!JSON.stringify(r).includes(KEY));
   assert.deepEqual([sent[0].box, sent[0].input.name, sent[0].input.label, sent[0].input.kind], ["boxA", "Work Claude", "Work Claude", "anthropic-compatible"]);
+  // an OpenRouter key is saved with a model (the driver never picks one), and only an OpenRouter key
+  assert.equal(sent[0].input.model, undefined, "another kind carries no model");
+  await host.call("onboard.agent.key", { kind: "openrouter", key: KEY, label: "OpenRouter key" });
+  assert.equal(sent[1].input.model, "anthropic/claude-sonnet-4.5");
   // an error that echoes the key is thrown without it
   mode = "echo";
   await assert.rejects(() => host.call("onboard.agent.key", { kind: "anthropic-compatible", key: KEY, label: "Work Claude" }), (e) => { assert.ok(!String(e.message).includes(KEY), "the thrown words carry no key"); assert.equal(e.code, "bad_input"); return true; });

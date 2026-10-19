@@ -64,7 +64,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { accountProviderFor, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -917,6 +917,9 @@ export class Switchboard {
       at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
+      // A start that names no provider runs on Claude when Claude can run for the person, else on the provider of the AI account they added (asker-account.js accountProviderFor).
+      const own = await accountProviderFor(this, o);
+      if (own) o = { ...o, provider: own.provider, account: own.account, ...(own.model ? { model: own.model } : {}) };
       const provider = String(o.provider || "claude"); await checkResidency(this.deps, provider);
       if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
         throw Object.assign(new Error(`no session provider ${provider}; this machine has ${["claude", ...(this.deps.providers ? this.deps.providers.list() : [])].join(", ")}`), { code: "bad_input" });
