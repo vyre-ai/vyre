@@ -1333,7 +1333,15 @@ export default {
       }
       return { space: id, existed: true, rootPublic: have.publicKey };
     });
-    registerPublishServerSpace({ tool, obj, str, refuse, chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names });
+    registerPublishServerSpace({ tool, obj, str, refuse, chosen: chosenServer({ ctx, identity, K, remoteCall, refuse }), names: deps.names,
+      // The paired server's route (the one it signs its own directory calls with), listed as serving the named space, signed by this person's own entry: the Space's owner is the only one who may.
+      listServer: async (/** @type {{ name: string, server: string }} */ a) => {
+        const who = me();
+        const ch = /** @type {any} */ (await ctx.call("wink.server.channel", { device: a.server, identity: who.id }).catch(() => null));
+        const c = ch && ch.data && !ch.error ? ch.data.channel : null;
+        if (!c || !c.route) throw refuse("This server's route is not known here. Check that it is online in Devices, then run spaces.server.list again.", "unavailable");
+        try { await dir.server(a.name, String(c.route), await ownerSigner()); } catch (e) { throw refuse(`The names directory did not list the server for ${a.name} (${plainDirectory(e)}). Run spaces.server.list again after fixing the cause.`, /** @type {any} */ (e).code || "unavailable"); }
+      } });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
     // A server proves it holds a space: it signs a joiner's nonce with the space's key (the one whose public half is the record's `rootPublic`). Asked by the peer door's remote server, inside the
     // answer to grants.invites.get; modules only. The message is fixed and starts with its own tag, so the signature is good for nothing else.
