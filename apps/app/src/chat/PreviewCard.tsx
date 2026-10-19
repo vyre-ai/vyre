@@ -2,7 +2,7 @@
 // Restart or "Look at the log" when it is not. No port, no host, no command on the card; the address is asked of the box (previews.url, a one-time sign-in) at the moment the person opens it. Share is a sheet
 // with three choices, the way a document is shared. State changes arrive as the chat's own frames (the card is patched in place), and every action asks the box and takes its answer.
 import { useState } from "react";
-import { Linking, Platform, View } from "react-native";
+import { View } from "react-native";
 import { Banner, Button, Chip, Icon, IconButton, Menu, Segmented, Sheet, Text, showToast, useUiTheme } from "@vyre/ui";
 import { Image } from "react-native";
 import { openPreview } from "./previewPane";
@@ -10,6 +10,7 @@ import { usePreviewThumb } from "./usePreviewThumb";
 import { tool } from "../real/box";
 import { PublishSheet } from "./PreviewPublish";
 import { canPublish, previewActions, previewWord, shareWord, lifeWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
+import { openExternal } from "../shell/open-external";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
@@ -35,7 +36,7 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
   };
   const showLog = () => run(() => tool<{ log: string }>("previews.log", { id: b.id }), (r) => setLog(String(r.log || "Nothing was printed yet.")));
   const open = () => openPreview({ id: b.id, title: b.title });
-  const inBrowser = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
+  const inBrowser = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { void openExternal(r.url); });
   const more = [
     ...(a.open ? [{ label: "Open in browser", onPress: inBrowser }] : []),
     ...(a.keep ? [{ label: "Keep it running", onPress: () => run(() => tool("previews.keep", { id: b.id })) }] : []),

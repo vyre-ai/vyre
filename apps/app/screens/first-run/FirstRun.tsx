@@ -18,6 +18,7 @@ import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-r
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
+import { openExternal } from "../../src/shell/open-external";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
@@ -330,7 +331,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const r = await startGithub();
     if (!r.ok) { setFailure(r.message); return; }
     const login = r.user && r.user.login ? String(r.user.login) : "";
-    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (typeof r.url === "string" && r.url) void openExternal(r.url, { name: "vyre-github", features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure(`The GitHub window did not open. Open this link in your browser: ${r.url}`); });
     if (!login && !r.exchange) return;
     const done = await finishGithub(login);
     if (!done.ok) { setFailure(done.message); return; }
@@ -551,7 +552,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
                 setAgentFlow(String(r.flow));
                 setAgentStep(typeof r.step === "string" ? r.step : "");
                 setAgentPaste(r.paste === true);
-                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                if (!agentFlow && typeof r.url === "string" && r.url) void openExternal(r.url, { name: `vyre-ai-${pick}`, features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure("The sign-in window did not open. Copy the link below and open it in your browser."); });
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
                 setPasted("");
