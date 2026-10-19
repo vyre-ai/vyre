@@ -97,16 +97,24 @@ export async function ownerWalkReal(c) {
   await run.step(W(2, "the first message typed in New chat is in the thread, and the server holds it"), async () => {
     if (!threadPath) pending("no thread was opened");
     await fresh("/u/chats?list=1", /Juno/, "the thread list");
-    await fresh(threadPath, /Juno|Message/, "the thread");
+    await fresh(threadPath, /Say hello|Message|Juno|Assistant/, "the thread");
     try { await until(async () => (await has(/Say hello in five words/)), 30_000, "the first message in the thread"); }
     catch (e) { await shot("failed-02-first-message"); throw new Error(`${/** @type {Error} */ (e).message}: the thread with Juno shows only "${await show(300)}"`); }
     await shot("02-first-message");
+    // Log what the Assistant says back to this first message (never fails the step: the reply step below asserts a reply to a typed message).
+    const base = await text(); const mark = base.indexOf("Say hello in five words");
+    const tail = (/** @type {string} */ x) => x.slice(mark + "Say hello in five words.".length).replace(/\b\d{1,2}:\d{2}\s?(am|pm)\b/gi, "").trim();
+    try {
+      const after = await until(async () => { const x = await text(); const t = tail(x); return t.length > tail(base).length + 4 && !/Thinking|Working on it|Sending/.test(x) ? t : ""; }, 120_000, "a new assistant bubble");
+      console.log(`owner walk 2 first reply: ${after.slice(0, 200)}`);
+    } catch { console.log(`owner walk 2 first reply: none in 120 s; the thread says: ${tail(await text()).slice(0, 200)}`); }
+    await shot("02-first-reply");
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply to a message typed in the thread"), async () => {
     if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
     if (!threadPath) pending("no thread was opened");
-    await screen(threadPath, /Juno|Message/, "the thread");
-    await fillAny(["Message Juno"], "Please answer with the single word: ready");
+    await screen(threadPath, /Say hello|Message|Juno|Assistant/, "the thread");
+    await fillAny(["Message Juno", "Message"], "Please answer with the single word: ready");
     await press(["Send"]);
     const before = (await text()).length;
     let t = "";
@@ -121,6 +129,7 @@ export async function ownerWalkReal(c) {
   await run.step(W(3, "Files: New folder"), async () => {
     await drv.viewport?.(1280, 900);   // the file manager (760 px and wider); a narrower window draws the older Drive screen
     await screen("/u/files", /Files|Upload|Nothing here/i, "the Files screen");
+    await until(async () => (await has(/New folder|Upload/)), 30_000, "the Files toolbar").catch(() => {});
     if (!(await has(/New folder/))) pending("the Files screen has no New folder yet (files-move is not on this build)");
     await press(["New folder"]);
     await fillAny(["Folder name", "Name", "New folder name"], "Walk");
@@ -324,7 +333,14 @@ export async function ownerWalkReal(c) {
     await shot("08-open-route");
     await press(["Open the route"]);
     try { await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening"); }
-    catch (e) { await shot("failed-08-open"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(900)}`); }
+    catch (e) {
+      await shot("failed-08-open");
+      const said = `${/** @type {Error} */ (e).message}. The screen says: ${await show(900)}`;
+      // A phone approval sheet stays over every later screen for five minutes: close it so walks 9 and 10 are not blocked by it.
+      const phone = /Approve on your phone/.test(said);
+      if (phone) { try { await drv.click("Stop waiting"); } catch { /* it ended */ } }
+      throw new Error(phone ? `the route asks for a PHONE approval ("Approve on your phone") and the walk has none; ${said}` : said);
+    }
     if (await has(/Turn the listener on/)) { await press(["Turn the listener on"]); await until(async () => !(await has(/listener is off/)), 60_000, "the listener turning on"); }
     await shot("08-route-open");
     await press(["Reveal the secret"]);
