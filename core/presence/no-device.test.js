@@ -16,7 +16,9 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const K = d.kernel, owner = K.id.owner;
-  const meta = async (/** @type {any} */ more = {}) => ({ token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token, ...more });
+  // what the daemon measures for a plain terminal: nothing above it is a model (callerFacts)
+  const outside = { kind: "socket", surface: "cli", uid: 0, pid: 0, inside_model_process: false, capsule_verified: false };
+  const meta = async (/** @type {any} */ more = {}) => ({ kernelFacts: outside, token: (await K.surfaces.open(K.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token, ...more });
   const presence = /** @type {any} */ (d.registry.deps.presence);
   const reveal = (/** @type {string} */ who, /** @type {any} */ m) => d.registry.call("vault.reveal", { name: "no-such-item" }, who, m);
   const asked = (/** @type {any} */ r) => Boolean(r && r.error && ["presence_required", "needs_presence", "held", "held_for_approval", "person_session_required"].includes(String(r.error.code)));
@@ -33,6 +35,12 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
   for (const who of ["mcp:agent:kit", "mcp", "harness", "tailnet-guest:abc"]) {
     const r = await reveal(who, { thread: "t1", agent: "kit", agentKind: "agent" });
     assert.ok(r.error && !/no item|locked|not found/i.test(String(r.error.message)), `${who} never reaches the Vault: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  // 3b. an agent's shell: the CLI inside a Vyre session is measured as inside a model, or not read at all, and is refused on a floor step with no device enrolled
+  for (const kernelFacts of [{ ...outside, inside_model_process: true }, undefined]) {
+    const m = await meta(); delete m.token; if (kernelFacts) m.kernelFacts = kernelFacts; else delete m.kernelFacts;
+    const r = await reveal("cli", m);
+    assert.ok(r.error && !/no item|locked|not found/i.test(String(r.error.message)), `an agent's shell (${kernelFacts ? "inside a model" : "unmeasured"}) never reaches the Vault: ${JSON.stringify(r).slice(0, 200)}`);
   }
   // 4. the owner's paired device passes only with a session that names the owner; another person's session and no session do not
   const owners = await reveal("device:abcdefghijklmnop", { person: { id: owner } });
