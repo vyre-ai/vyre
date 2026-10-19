@@ -145,33 +145,50 @@ for (const which of ["real"]) {
   });
 }
 
-test("stages: the person who moved the record in assigns its tasks, the automatic move on is theirs, the gate keeps them, and an early move is the mover's", async () => {
-  const w = await world({ cat: stagedCatalog(), stagesAs: true });
+// A catalog where every point has an agent task: Engagement drafts a letter, Closed files the matter (the rest is the staged catalog).
+const withAgents = () => { const c = stagedCatalog(); c.types.matter = { ...c.types.matter, stages: c.types.matter.stages.map(s => s.name === "Engagement" ? { ...s, tasks: [...s.tasks, { title: "Draft the letter", doer: "teammate:research", output: { kind: "note" } }] } : s.name === "Closed" ? { ...s, tasks: [{ title: "File the matter", doer: "teammate:research", output: { kind: "note" } }] } : s) }; return c; };
+
+test("stages: an agent task is the mover's through the module's own move on, the gate keeps the mover, an early move is the mover's, and a person's task stays the module's", async () => {
+  const w = await world({ cat: withAgents(), movers: true });
   const sysOf = () => w.kernel.sysChain();
-  const bob = w.kernel.as(BOB);
-  const r = await w.kernel.records.create(bob, "matter", { client: "Jane", stage: "Intake" }); await settle(w);
-  const mine = (await w.kernel.allTasks()).filter(t => t.record === r.urn);
-  assert.equal(mine.length, 2);
-  for (const t of mine) assert.equal(t.assigned_by && t.assigned_by.id, BOB.id, `${t.title}: assigned by the member who moved the record in`);
-  // NEGATIVE: never the owner's nor the Kit installer's
-  assert.ok(mine.every(t => t.assigned_by.id !== ALEX.id && t.assigned_by.id !== w.kernel.ownerActor().id));
-  // the gate keeps who it is for, so a restart moves the record on as them
-  const ent = w.stages.entries().find(e => e.urn === r.urn && e.stage === "Intake");
-  assert.equal(/** @type {any} */ (ent).by, BOB.id);
-  assert.equal((await w.store.getRun(/** @type {any} */ (ent).run)).gate.by, BOB.id, "on the gate's record");
-  // the automatic move on: the next stage's task is the member's too
+  const tasksOf = async (/** @type {string} */ urn) => (await w.kernel.allTasks()).filter(t => t.record === urn);
+  const r = await w.kernel.records.create(w.kernel.as(BOB), "matter", { client: "Jane", stage: "Intake" }); await settle(w);
+  const intake = await tasksOf(r.urn);
+  assert.deepEqual(intake.map(t => [t.title, t.assigned_by && t.assigned_by.id]), [["Research the client", BOB.id], ["Welcome email", BOB.id]], "the agents' tasks are the member's who moved the record in");
+  // the gate keeps who moved it in, so a restart moves the record on as them
+  const ent = /** @type {any} */ (w.stages.entries().find(e => e.urn === r.urn && e.stage === "Intake"));
+  assert.equal(ent.by, BOB.id);
+  assert.equal((await w.store.getRun(ent.run)).gate.by, BOB.id, "on the gate's record");
+  // the module's own move on (its write is the module's chain): the next stage's agent task is still his; the person's task is the module's
   const cur = await w.kernel.records.get(sysOf(), "matter", r.id);
   await w.kernel.records.update(sysOf(), "matter", r.id, { practice_area: "Estate" }, cur.version);
-  for (const title of ["Research the client", "Welcome email"]) { const t = mine.find(x => x.title === title); await w.kernel.completeTask(t.id); await settle(w); }
+  for (const t of intake) { await w.kernel.completeTask(t.id); await settle(w); }
   assert.equal((await w.kernel.records.get(sysOf(), "matter", r.id)).data.stage, "Engagement");
-  const letter = (await w.kernel.allTasks()).find(t => t.record === r.urn && t.stage === "Engagement");
-  assert.equal(letter && letter.assigned_by.id, BOB.id, "the stage moved on as the member, so Engagement's task is hers to assign");
-  // an early move: the person who makes it (ALEX, an admin here) assigns the next stage's tasks
-  const r2 = await w.kernel.records.create(bob, "matter", { client: "Joan", stage: "Intake" }); await settle(w);
-  const gate = w.stages.entries().find(e => e.urn === r2.urn && e.stage === "Intake");
-  await w.stages.advance(/** @type {any} */ (gate).run, ALEX, "the client signed already"); await settle(w);
-  const early = (await w.kernel.allTasks()).find(t => t.record === r2.urn && t.stage === "Engagement");
-  assert.equal(early && early.assigned_by.id, ALEX.id, "moved on early by ALEX: the next stage is ALEX's act");
+  const eng = await tasksOf(r.urn);
+  assert.equal(eng.find(t => t.title === "Draft the letter")?.assigned_by.id, BOB.id, "carried through the module's own move");
+  assert.equal(eng.find(t => t.title === "Engagement letter signed")?.assigned_by.id, ALEX.id, "a person's task stays the module's");
+  // an early move: the person who makes it (BOB, who holds the stage owner's role) assigns the next stage's agent task, never the module's chain standing in
+  const r2 = await w.kernel.records.create(w.kernel.as(ALEX), "matter", { client: "Joan", stage: "Intake" }); await settle(w);
+  const gate = /** @type {any} */ (w.stages.entries().find(e => e.urn === r2.urn && e.stage === "Intake"));
+  await w.stages.advance(gate.run, BOB, "the client signed already"); await settle(w);
+  assert.equal((await tasksOf(r2.urn)).find(t => t.title === "Draft the letter")?.assigned_by.id, BOB.id, "moved on early by BOB: his act");
+});
+
+test("stages: a write with no person on it starts no agent, as a stage error, and the module's own move on never makes the installer the mover", async () => {
+  const w = await world({ cat: withAgents(), movers: true });
+  const svc = w.kernel.as({ kind: "service", id: "ingress" });
+  const r = await w.kernel.records.create(svc, "matter", { client: "Jane", stage: "Intake" }); await settle(w);
+  assert.deepEqual((await w.kernel.allTasks()).filter(t => t.record === r.urn), [], "NEGATIVE: no agent task, so none on the installer's or the owner's account");
+  const why = w.stageEvents.filter(e => e.type === "stage.error" && e.data.record === r.urn).map(e => e.data.why);
+  assert.equal(why.filter(x => x === "no person moved this record, so no agent was started").length, 2, `one for each agent task: ${JSON.stringify(why)}`);
+  // a person's task is still made; when it is done the module moves the record on, and the next stage's agent task is refused the same way (the module's chain is not a mover)
+  const r2 = await w.kernel.records.create(svc, "matter", { client: "Joan", stage: "Review" }); await settle(w);
+  const polish = (await w.kernel.allTasks()).find(t => t.record === r2.urn && t.title === "Optional polish");
+  assert.ok(polish, "the person's task is made by the module, as before");
+  await w.kernel.completeTask(polish.id); await settle(w);
+  assert.equal((await w.kernel.records.get(w.kernel.sysChain(), "matter", r2.id)).data.stage, "Closed");
+  assert.equal((await w.kernel.allTasks()).find(t => t.record === r2.urn && t.title === "File the matter"), undefined, "NEGATIVE: no agent task assigned by the installer");
+  assert.ok(w.stageEvents.some(e => e.type === "stage.error" && e.data.record === r2.urn && e.data.stage === "Closed" && e.data.why === "no person moved this record, so no agent was started"));
 });
 
 test("stages: the task id comes from the data or, for the kernel's own events, from the subject", () => {
