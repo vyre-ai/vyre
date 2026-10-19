@@ -1,5 +1,6 @@
 // @ts-check
 import { clean, at, opt, DETAIL_MAX } from "../../lib/waiting-text.js";
+import { within } from "../../lib/within.js";
 // waiting: one "waiting on you" (docs/adr/0036-one-system.md, section 4).
 //
 // What waits on the person is held in three places now: the approvals queue (the Gate's held drafts, a session's asks and the vault's pending requests are cards in it, core/approvals/items.js),
@@ -15,6 +16,8 @@ import { clean, at, opt, DETAIL_MAX } from "../../lib/waiting-text.js";
 // Titles are the owners' own summaries, capped, and dropped whole when one looks like a secret.
 
 const DEBOUNCE_MS = 300;
+/** A source that has not answered in this long is left out and named in `partial`, so one that hangs never holds back the list Home waits on. Above the approvals queue's own budget per owner (OWNER_BUDGET_MS), so that queue answers first. */
+export const SOURCE_BUDGET_MS = 2000;
 const LIMIT_MAX = 500;
 /** How long a pairing request lives on the box (core/link/box.js TTL): link.pending gives only its expiry. */
 const PAIR_TTL_MS = 10 * 60_000;
@@ -75,7 +78,24 @@ export default {
     let said = JSON.stringify(tally([])), timer = null, running = null, again = false, stopped = false;
 
     /** One source's rows, or null when it failed, is refused or is not running here. The approvals queue also names the owners it could not read (`partial`). */
+    /** A source's read still running and when it began: a slow source is asked once, and a recompute waits only for what is left of its budget. */
+    const inflight = new Map();
+    const SLOW = Symbol("slow");
+    /** The source's rows, or null when it failed, is not running here or did not answer within its budget (its late answer computes the list again). */
     const read = async (tool, map) => {
+      let f = inflight.get(tool);
+      if (!f) {
+        const mine = { p: ask(tool, map), since: Date.now() };
+        inflight.set(tool, mine);
+        void mine.p.then(() => { if (inflight.get(tool) === mine) inflight.delete(tool); });
+        f = mine;
+      }
+      const got = await within(f.p, Math.max(0, SOURCE_BUDGET_MS - (Date.now() - f.since)), SLOW);
+      if (got !== SLOW) return got;
+      void f.p.then(() => schedule());
+      return null;
+    };
+    const ask = async (tool, map) => {
       try {
         const r = await ctx.call(tool, {});
         if (!r || r.error) return null;

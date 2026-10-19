@@ -206,7 +206,7 @@ export function nowModel(w, scope = "all", later = new Set()) {
   const working = tasks.filter((t) => t.state === "working");
   const day = startOfDay(w.now);
   const doneToday = tasks.filter((t) => (t.state === "done" || t.state === "skipped") && t.updated_at >= day && t.updated_at < day + 86_400_000).sort((a, b) => b.updated_at - a.updated_at);
-  const recent = w.events.map(eventLine).map((l) => plainLine(w, l)).filter((l) => l).filter((e) => e.record ? inScope(spaceOfUrnLoose(e.record)) : scope !== "mine").slice(0, 5);
+  const recent = w.events.filter((e) => !isSetupEvent(e)).map(eventLine).map((l) => plainLine(w, l)).filter((l) => l).filter((e) => e.record ? inScope(spaceOfUrnLoose(e.record)) : scope !== "mine").slice(0, 5);
   const calendar = w.calendar.filter((c) => !c.record || inScope(spaceOfUrnLoose(c.record)));
   const me = who(w, w.me);
   return {
@@ -220,10 +220,16 @@ export function nowModel(w, scope = "all", later = new Set()) {
 /** An id the box uses for an actor (per_, agt_, spc_ ...): never shown to a person as a name. */
 export const isRawId = (/** @type {unknown} */ n) => typeof n === "string" && /^[a-z]{2,4}_[a-z0-9]{10,}$/.test(n);
 
-/** Kernel events a person reads as sentences. Anything else with only a raw event type is housekeeping and stays out of Recent. */
-const PLAIN = {
-  "owner.changed": (/** @type {any} */ w, /** @type {any} */ l) => ({ actor: "You", what: `became the owner of ${(l.record && spaceName(w, spaceOfUrnLoose(l.record))) || "this space"}` }),
-};
+/** Kernel events a person reads as sentences. Anything else with only a raw event type is housekeeping and stays out of Recent. @type {Record<string, (w: any, l: any) => any>} */
+const PLAIN = {};
+
+/**
+ * Setup and the system's own bookkeeping, by the event's kind: a Space made, its owner set, a role written, a server or device listed, a type defined. None is news, and the kernel's actor on them is the
+ * system ("Vyre became the owner of tess"), so they stay out of Recent whatever words their data carries. A person joining (member.joined) is news and stays.
+ */
+const SETUP_KINDS = /^(?:owner|space|spaces|role|roles|server|servers|device|devices|presence|relay|identity|names|home|type|types|records\.define|schema)(?:\.|$)/;
+/** True for an event Recent leaves out because of its kind. @param {any} e */
+export const isSetupEvent = (e) => SETUP_KINDS.test(String(e?.type ?? ""));
 /** Recent's line: a plain sentence with the real actor, or null for housekeeping (a raw event type with no sentence of its own). @param {World} w @param {any} l */
 export function plainLine(w, l) {
   const raw = typeof l.what === "string" && /^[a-z_-]+(\.[a-z_-]+)+$/.test(l.what);
