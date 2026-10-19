@@ -7,7 +7,7 @@
 // The setting "this Space takes requests" is OFF for every Space until its owner turns it on, with their presence.
 
 import { isPerson } from "../../lib/caller.js";
-import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 import { CLOSED_WORDS, ENTRY, IDENTITY, INVITE, LIMITS, NAME, SPACE, cleanNote, statusFor } from "./model.js";
 import { createRequestsService } from "./service.js";
 
@@ -57,7 +57,7 @@ export default {
       if (openRows(space).length >= LIMITS.open) { noteRefusal(space); return closed(); }
       recent.push(t); asks.set(person, recent);
       const name = typeof i.name === "string" && NAME.test(i.name) ? i.name : null;
-      const id = `req_${crypto.randomBytes(8).toString("hex")}`;
+      const id = newPrefixedId("req");
       db.prepare("INSERT INTO requests_asks (id, space, identity, entry, name, note, state, created) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)").run(id, space, person, String(i.entry), name, cleanNote(i.note), t);
       ctx.events.emit("requests.asked", { space, request: id });
       return { state: "waiting" };
@@ -127,14 +127,12 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => { personOnly(meta); return doList(spaceOk(i.space)); },
     });
     ctx.tool("requests.attention", {
-      effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"],
-      description: "The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused.",
+      internal: true, effect: "read", callers: ["module"],
+      description: "The requests waiting across the Spaces that take them, for the owner's Needs-you list: who asked (username the directory confirmed, device key) and when, never the note; and, when the open cap is full, how many asks were refused. Only the approvals queue asks.",
       input: { type: "object", properties: {} },
       run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => {
-        // the approvals module is the only reader; another module is refused, and a person gets the list only when they are the box's owner
-        const caller = String(meta.caller || "");
-        if (caller.startsWith("module:")) { if (caller !== "module:approvals") throw refuse("Only the approvals list reads the requests waiting.", "denied"); }
-        else { personOnly(meta); const owner = ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : ""; if (owner && personOf(meta) !== owner) throw refuse("Only the Space's owner sees the requests waiting.", "denied"); }
+        // the person's Needs-you list is built by the approvals module, which checks the person; no agent, session, surface or other module reads the strangers' names and device keys directly
+        if (String(meta.caller || "") !== "module:approvals") throw refuse("Only the approvals list reads the requests waiting.", "denied");
         const t = now();
         const rows = /** @type {any[]} */ (db.prepare("SELECT id, space, identity, entry, name, created FROM requests_asks WHERE state = 'open' AND created > ? ORDER BY created").all(t - LIMITS.ttlMs));
         const full = /** @type {any[]} */ (db.prepare("SELECT space, refused FROM requests_settings WHERE accepting = 1 AND refused > 0").all());

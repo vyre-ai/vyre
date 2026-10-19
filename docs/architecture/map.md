@@ -266,6 +266,7 @@ Who you are, how machines find each other, and who may do what.
 | `network` | `core/network/` | box | The built-in network as the person sees it: signed in or not, and each link. |
 | `presence` | `core/presence/` | box and local | Proving a person is there before a human-only act. |
 | `relay` | `core/relay/` | box and local | The way to reach a server that always works: it dials out to a relay and paired devices follow. |
+| `requests` | `core/requests/` | box and local | Asking to join a Space by its address: a person with no invite asks, and the owner approves or declines. |
 | `signin` | `core/signin/` | box and local | `vyre signin`: the owner's phone approves a terminal. |
 | `spaces` | `core/spaces/` | box and local | Identity, Spaces, members and invites: the five roles, with temporary access. |
 | `vault` | `core/vault/` | box and local | Credentials sealed at rest and released one item at a time. |

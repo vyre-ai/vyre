@@ -151,7 +151,7 @@ test("requests.attention lists what waits and what was refused, never the note",
   const w = await world();
   await w.tool("requests.accept", { space: SPACE, accepting: true });
   await ask(w, ASKER, { name: "ada.vyre.run", note: "SECRET-NOTE" });
-  const a = (await w.tool("requests.attention", {})).data;
+  const a = await w.tools.get("requests.attention").run({}, { caller: "module:approvals" });
   assert.equal(a.requests.length, 1);
   assert.deepEqual([a.requests[0].name, a.requests[0].entry, a.requests[0].space], ["ada.vyre.run", ENTRY, SPACE]);
   assert.ok(!JSON.stringify(a).includes("SECRET-NOTE"));

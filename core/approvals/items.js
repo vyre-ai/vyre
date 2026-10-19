@@ -99,7 +99,7 @@ export const fromVault = (/** @type {any} */ p) => {
 export const fromRequests = (/** @type {any} */ d) => {
   const rows = d && Array.isArray(d.requests) ? d.requests : [];
   const refusing = d && Array.isArray(d.refusing) ? d.refusing : [];
-  const asks = rows.filter((/** @type {any} */ r) => r && typeof r.id === "string" && /^req_[0-9a-f]{16}$/.test(r.id) && typeof r.space === "string").map((/** @type {any} */ r) => {
+  const asks = rows.filter((/** @type {any} */ r) => r && typeof r.id === "string" && /^req_(?:[0-9a-f]{16}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/.test(r.id) && typeof r.space === "string").map((/** @type {any} */ r) => {
     const who = typeof r.name === "string" && /^[a-z0-9.-]{3,253}$/.test(r.name) ? clean(r.name, 80) : "Someone";
     return { id: `requests:${r.id}`, kind: "access", title: `${who} asks to join`, detail: "Check their fingerprint words with them before you approve.", at: at(r.at), source: "requests",
       facts: { space: String(r.space), request: r.id, ...(typeof r.entry === "string" ? { entry: r.entry } : {}) },

@@ -418,7 +418,6 @@ export const PERSON_ONLY = new Map([
   ["requests.accepting", "who is asking to join: names and device keys of strangers, for the owner's own eyes"],
   ["requests.list", "who is asking to join: names, device keys and the notes strangers wrote, for the owner's own eyes"],
   ["requests.decide", "answers an ask to join (a decline or Clear all): letting someone in, or turning them away, is the owner's own call"],
-  ["requests.attention", "the Needs-you feed for asks to join: names and device keys of strangers, read only by the approvals list and the owner"],
   ["sessions.models.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.prompt.revert", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
   ["sessions.prompt.set", "would let an assistant widen its own authority: the assistant's own prompt, mode, limits and accounts"],
