@@ -39,7 +39,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- ci: the update-refusals lane installs with the installer's CI proof seam (VYRE_STORE=sqlite with VYRE_PROOF_BUILTIN_STORE=1), because the installer now refuses VYRE_STORE=sqlite alone, so the lane never reached its refusal checks. New check-served workflow (workflow_dispatch, a release tag and an origin) runs scripts/check-served.mjs against the release's signed SHA256SUMS, SHA256SUMS.sig and setup.json, so release checklist step 5b needs no node on a Mac.
+- ci: the update-refusals, J8 data and J2c cosign-refusals lanes install with the installer's CI proof seam (VYRE_STORE=sqlite with VYRE_PROOF_BUILTIN_STORE=1), because the installer now refuses VYRE_STORE=sqlite alone, so the lane never reached its refusal checks. New check-served workflow (workflow_dispatch, a release tag and an origin) runs scripts/check-served.mjs against the release's signed SHA256SUMS, SHA256SUMS.sig and setup.json, so release checklist step 5b needs no node on a Mac.
 
 - docs(known-gaps): the Vyre Computer entry says it is about the person's own Chrome, not the agents' browsers on the Space computer (lint6).
 ## 0.6.1 (polish train)
