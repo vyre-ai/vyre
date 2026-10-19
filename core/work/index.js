@@ -770,12 +770,13 @@ export default {
         try {
           try { made = await open(); }
           catch (e) {
-            // A built-in agent (the Engineer) that no run has made an actor of the Space yet is registered, then the chat starts: a person's first Engineer chat is not refused.
+            // A built-in agent (the Engineer) or the Space's Assistant that nothing has made an actor of the Space yet is registered, then the chat starts: a person's first Engineer or Assistant chat is not
+            // refused. (The first-run Assistant is made by the onboarding module, a call with no person, so agents.create could not register it; see agents.js becomeActor.)
             if (!/belongs to the Space/.test(String(e && /** @type {any} */ (e).message)) || !Array.isArray(input.agents) || !input.agents.length || typeof ctx.agentActor !== "function") throw e;
-            // only a built-in agent (agents.list says builtin) is registered this way: a name a caller makes up is not made an actor of the Space
+            // only a built-in agent or the Assistant (agents.list says builtin or kind assistant) is registered this way: a name a caller makes up, or a member's own agent, is not made an actor of the Space
             const known = await ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
             for (const a of input.agents) {
-              if (!known.some((/** @type {any} */ x) => x && x.name === String(a) && x.builtin === true)) throw e;
+              if (!known.some((/** @type {any} */ x) => x && x.name === String(a) && (x.builtin === true || x.kind === "assistant"))) throw e;
               await ctx.agentActor(String(a));
             }
             made = await open();
