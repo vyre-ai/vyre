@@ -11,6 +11,7 @@ import { ShareFlow } from "./FlowShare";
 import { useFlowOptions, defineReal } from "./builder-source";
 import { runsReal } from "./real";
 import { stepTestSource } from "./step-test-source";
+import { useTriggerSources } from "./trigger-sources";
 import { testLines } from "./step-test-model.js";
 import { callT } from "../../src/real/call-tool";
 import { useMembers } from "../spaces/state";
@@ -20,6 +21,7 @@ const BLANK: FlowDraft = { name: "", trigger: { kind: "created" }, steps: [] };
 
 function Editor({ id, start, options }: { id: string | null; start: FlowDraft; options: FlowOptions }) {
   const router = useRouter();
+  const triggerSources = useTriggerSources();
   const { saveMade, groups } = useFlowsState();
   const [draft, setDraft] = useState<FlowDraft>(start);
   const [shown, setShown] = useState(false);
@@ -50,7 +52,7 @@ function Editor({ id, start, options }: { id: string | null; start: FlowDraft; o
           {allowsMock() ? <Select label="Group" value={draft.group ?? ""} options={[["", "No group"], ...groups.map((g) => [g.name, g.name] as [string, string])]} onChange={(group) => setDraft({ ...draft, group: group || undefined })} /> : null}
         </View>
       </Card>
-      <FlowBuilder draft={draft} onChange={setDraft} options={options} />
+      <FlowBuilder draft={draft} onChange={setDraft} options={options} triggerSources={triggerSources} />
       {shown && problems.length ? <Banner tone="warn" icon="warning"><View className="gap-s1">{problems.map((p) => <Text key={p}>{p}</Text>)}</View></Banner> : null}
       {err ? <Banner tone="err">{err}</Banner> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
@@ -100,6 +102,7 @@ export function MadeFlowScreen({ id }: { id: string }) {
 /** A Flow stored on the box, opened in the builder. Saving writes a new version (the box asks for the person's yes again); steps the builder cannot show are kept as they were. */
 export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unknown; onSaved: () => void }) {
   const options = useFlowOptions();
+  const triggerSources = useTriggerSources();
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
   const staff = role === "owner" || role === "admin" || allowsMock();
@@ -118,7 +121,7 @@ export function StoredFlowEditor({ id, flow, onSaved }: { id: string; flow: unkn
   return (
     <>
       <ShareFlow id={id} options={options} />
-      <FlowBuilder draft={draft} onChange={setDraft} options={options} onTestStep={!staff ? undefined : async (stepId, d) => {
+      <FlowBuilder draft={draft} onChange={setDraft} options={options} triggerSources={triggerSources} onTestStep={!staff ? undefined : async (stepId, d) => {
         const runs = await runsReal(id).catch(() => []);
         const r = await stepTestSource(callT).test(flowDefinition(d, options) as Record<string, unknown>, stepId, runs[0] ? { run: runs[0].id } : {});
         return "problem" in r ? r : testLines(r.result);

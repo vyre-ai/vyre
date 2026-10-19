@@ -562,6 +562,12 @@ test("ask door: forged asks from fresh channels do not spend the Space's allowan
     await w.kcall(c, "requests.ask", [{}]).then(() => assert.fail("a forged ask was served"), () => {});
   }
   assert.ok(w.live.lookups <= 50, `the directory was asked ${w.live.lookups} times, past its cap of 50`);
-  const c = await w.open(w.askHello());
-  assert.equal((await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)), true, "a valid ask still goes through: the forged ones did not use up the Space's three an hour");
+  // The forged asks DID fill the box-wide lookup cap (50 a minute), so a valid ask in that same minute waits for the next one: that cap is what protects the directory, and nothing before a signature can tell a forged ask from a valid one.
+  const early = await w.open(w.askHello());
+  assert.equal((await w.kcall(early, "requests.ask", [{}]).then(() => true, () => false)), false, "in the minute the lookup cap is full, a valid ask is refused (rate_limited), not served");
+  // What they must NOT have done is spend the Space's three an hour. A minute later the lookup window is clear: the Space's three valid asks go through and the fourth is the Space-wide cap's.
+  w.tick(61_000);
+  const ok = [];
+  for (let i = 0; i < 4; i++) { const c = await w.open(w.askHello()); ok.push(await w.kcall(c, "requests.ask", [{}]).then(() => true, () => false)); }
+  assert.deepEqual(ok, [true, true, true, false], "the forged ones did not use up the Space's three an hour: three valid asks are served, the fourth is refused by the Space-wide cap");
 });

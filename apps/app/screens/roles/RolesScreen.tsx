@@ -6,6 +6,9 @@ import { useMembers } from "../spaces/state";
 import { MOCK } from "../../src/real/box";
 import { ACCESS, ADMIN_ONLY, ADMIN_ONLY_LINE, CAN_DO, TOOLS, TOOL_NOTES, WHERE, builtInName, canDuplicate, canEditRoles, holdersLine, nameProblem, removeRefusal, rolesRefusal, sees, setAccess, setCan, setHidden, setProject, setWhere, type Role } from "./roles";
 import { useRoles } from "./state";
+import { PeopleSection } from "./PeopleSection";
+import { InviteForm, useInviteList } from "../devices/InviteBody";
+import { assignable } from "../spaces/roles.js";
 
 /** Settings, Roles: the space's roles with how many people hold each; open one to edit its four sections. Owner and admin only. */
 export function RolesScreen() {
@@ -15,9 +18,14 @@ export function RolesScreen() {
   const mine = MOCK ? "owner" : spaces.find((s) => s.id === space)?.role;
   const [openId, setOpenId] = useState("");
   const [making, setMaking] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  // The sample build never picks a space, so it shows the first.
+  const card = spaces.find((s) => s.id === space) ?? (MOCK ? spaces[0] ?? null : null);
+  const invites = useInviteList(card?.id ?? space);
+  const canInvite = !!card && assignable((MOCK ? "owner" : card.role) as never).length > 0;
 
-  if (!world) return <Page title="Roles" back="/u/settings"><LoadingState rows={4} /></Page>;
-  if (!canEditRoles(mine)) return <Page title="Roles" back="/u/settings"><Card><EmptyState title="Only an owner or admin changes roles" body="Ask an owner or admin of this space." /></Card></Page>;
+  if (!world) return <Page title="People and roles" back="/u/settings"><LoadingState rows={4} /></Page>;
+  if (!canEditRoles(mine)) return <Page title="People and roles" back="/u/settings"><Card><EmptyState title="Only an owner or admin changes roles" body="Ask an owner or admin of this space." /></Card></Page>;
   const open = world.roles.find((r) => r.id === openId);
   if (open) return <RoleDetail key={open.id} role={open} world={world} src={src} back={() => setOpenId("")} go={setOpenId} />;
 
@@ -31,13 +39,20 @@ export function RolesScreen() {
     </View>
   );
   return (
-    <Page title="Roles" sub="What each person in this space can do, see and use." back="/u/settings" actions={<Button kind="primary" size="sm" icon="plus" label="New role" onPress={() => setMaking(true)} />}>
+    <Page title="People and roles" sub="Who is in this space and what each person can do, see and use." back="/u/settings" actions={<>
+      {canInvite ? <Button kind="primary" size="sm" icon="plus" label="Invite someone" onPress={() => setInviting(true)} /> : null}
+      <Button size="sm" label="New role" onPress={() => setMaking(true)} />
+    </>}>
       {error ? <Banner tone="warn"><Text>{error}</Text></Banner> : null}
+      <PeopleSection mine={mine} invites={invites} onInvite={() => setInviting(true)} custom={world.roles.filter((r) => !r.builtin).map((r) => ({ id: r.id, name: r.name }))} onChanged={() => void reload()} />
       <Sec title="Built in"><Card flush>{built.map(row)}</Card></Sec>
       <Sec title="Your roles" meta={custom.length ? String(custom.length) : undefined}>
         {custom.length ? <Card flush>{custom.map(row)}</Card> : <Card><EmptyState title="No roles of your own yet" body="Make one from a built-in role, like Paralegal or Contractor, and change what it can do." action={{ label: "New role", onPress: () => setMaking(true) }} /></Card>}
       </Sec>
       <Footnote icon="shield">A role is never above Admin. A new member gets only the projects they are on, with no mail, calendar or computers, until a role turns them on.</Footnote>
+      <Sheet open={inviting && !!card} onClose={() => setInviting(false)} title="Invite someone">
+        {card ? <InviteForm card={card} onChanged={invites.refresh} /> : null}
+      </Sheet>
       <NewRole open={making} onClose={() => setMaking(false)} roles={world.roles} create={async (from, name) => { const r = await src.create(from, name); await reload(); setOpenId(r.id); }} />
     </Page>
   );

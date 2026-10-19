@@ -35,6 +35,7 @@
     {"name": "files.places", "effect": "read", "reach": "person"},
     {"name": "files.drive.space.move", "effect": "write", "reach": "person"},
     {"name": "files.drive.space.rename", "effect": "write", "reach": "person"},
+    {"name": "files.drive.space.mkdir", "effect": "write", "reach": "person"},
     {"name": "files.drive.space.delete", "outward": true, "effect": "write", "reach": "person"},
     {"name": "files.space.mentions.search", "effect": "read", "reach": "person"},
     {"name": "files.space.mentions.resolve", "reach": "modules"},

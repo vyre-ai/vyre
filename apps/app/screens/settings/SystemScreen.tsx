@@ -9,6 +9,9 @@ import { system } from "./system";
 import { RunHere } from "../runner/RunHere";
 import { computerView, winkCard, accessWord, auditLines, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
 
+import { spaceName } from "../../src/state/space-name.js";
+import { callT } from "../../src/real/call-tool";
+
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
 export function SystemScreen() {
@@ -152,14 +155,16 @@ function StatusCardView({ c, reload }: { c: StatusCard; reload: () => void }) {
 
 function Advanced() {
   const [cards, setCards] = useState<StatusCard[] | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => { void callT<any>("spaces.list", {}).then((r) => { const rows = Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : []; setNames(Object.fromEntries(rows.filter((s: any) => s && typeof s.id === "string").map((s: any) => [s.id, spaceName(s)]))); }).catch(() => {}); }, []);
   const [hb, setHb] = useState<ReturnType<typeof handbackOf> | null>(null);
   const load = useCallback(() => {
     Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.handback()]).then(([h, hs, w, b]) => {
       // A tool this box does not have leaves its card out.
-      setCards([h && hooksCard(h, hs), w && winkCard(w)].filter(Boolean) as StatusCard[]);
+      setCards([h && hooksCard(h, hs), w && winkCard(w, names)].filter(Boolean) as StatusCard[]);
       setHb(b ? handbackOf(b) : null);
     });
-  }, []);
+  }, [names]);
   useEffect(load, [load]);
   const [said, setSaid] = useState("");
   if (!cards) return null;

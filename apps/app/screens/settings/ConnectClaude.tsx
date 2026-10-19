@@ -1,12 +1,13 @@
 // Connect Claude from the owner's device: the home starts the sign-in and gives a link, the person finishes it in the browser and brings the code back, the home keeps the credential in the vault
 // (never shown again). Used in space setup and in Settings, AI accounts. The states are the box's: not connected, waiting, connected, blocked with its reason, failed with its reason.
 import { useCallback, useEffect, useState } from "react";
-import { Linking, View } from "react-native";
-import { Button, Card, Chip, Field, LoadingState, Text, showToast } from "@vyre/ui";
+import { View } from "react-native";
+import { openExternal } from "../../src/shell/open-external";
+import { Button, Card, Chip, CodeBlock, Field, LoadingState, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
 import { Platform } from "react-native";
 import { claimBlocked } from "../shell/rc";
-import { DISCONNECT_NOTE, aiRefusal, claudeOf, claudeState, codeInput, disconnectInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
+import { DISCONNECT_NOTE, aiRefusal, claudeOf, claudeState, codeInput, disconnectInput, keyInput, safeLink, startInput, codeMatchesFlow, WRONG_FLOW } from "../../src/real/ai-connect.js";
 
 // tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
 const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
@@ -36,7 +37,7 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
     finally { setBusy(false); }
   };
   const start = () => run(startInput(), (d) => { const l = safeLink(d?.url); if (l) setLink(l); else setFailed("The home did not give a sign-in link."); });
-  const finish = () => run(codeInput(code), () => { setLink(null); setCode(""); showToast("Claude is connected."); });
+  const finish = () => { if (!codeMatchesFlow(code, link)) { setFailed(WRONG_FLOW); return Promise.resolve(); } return run(codeInput(code), () => { setLink(null); setCode(""); showToast("Claude is connected."); }); };
   const disconnect = () => run(disconnectInput(), () => { setLink(null); showToast("Claude is disconnected."); });
   const useKey = () => run(keyInput(key), () => { setKey(""); showToast("Claude is connected."); });
 
@@ -57,7 +58,8 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
           {link ? (
             <View className="gap-s2">
               <Text>Open the link, sign in to Claude, and copy the code it shows. Paste the code here.</Text>
-              <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void Linking.openURL(link)} /></View>
+              <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void openExternal(link).then((o) => { if (!o.opened) setFailed("The sign-in did not open. Copy the link below and open it in your browser."); })} /></View>
+              <CodeBlock code={link} />
               <Field label="Code from Claude" value={code} onChangeText={setCode} />
               <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Connecting" : "Connect"} disabled={busy || !code.trim()} onPress={() => void finish()} /><Button kind="ghost" size="sm" label="Start over" onPress={() => { setLink(null); setCode(""); }} /></View>
             </View>

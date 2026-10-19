@@ -23,6 +23,7 @@ import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
 import { scheduleReminders, remindRun } from "./remind.js";
 import * as rotateTools from "./tools/rotate.js";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -370,6 +371,25 @@ export default {
       description: "One value, to a module holding a grant for it, or to Publish for a deployment holding its own grant. `project`, when the grant names one, must match.",
       input: obj({ name: str, field: str, watcher: str, project: str, deployment: str }, ["name"]),
       run: (input, { caller }) => vault.release(input, caller),
+    });
+
+    // A webhook route's signing secret, made for a person's hooks.open (core/hooks): 32 random bytes from the system CSPRNG, stored as the item hooks-<route> and granted to the hooks module, for fetch only.
+    // Only module:hooks may ask, only a hooks- name is made, an existing item is never touched, and the value is never returned, logged or emitted: the person reads it from the Vault's own reveal.
+    ctx.tool("vault.make-hook-secret", {
+      internal: true,
+      description: "For the hooks module's hooks.open: make a webhook route's signing secret as the Vault item hooks-<route> and grant it to hooks. Never returns the value; never replaces an item.",
+      input: obj({ name: str }, ["name"]),
+      run: async (input, { caller }) => {
+        if (String(caller) !== "module:hooks") throw new Error("only the hooks module makes a webhook secret");
+        const name = String(input.name ?? "");
+        if (!/^hooks-[a-z0-9][a-z0-9-]{0,40}$/.test(name)) throw new Error("a webhook secret is named hooks- and the route's name, like hooks-northwind-orders");
+        if (vault.row(name)) throw new Error(`${name} is already in the Vault; it is not replaced. Name that item as the route's secret, or close the route and retire the item first`);
+        const value = crypto.randomBytes(32).toString("hex");
+        // the origin is stamped from the caller, as vault.put does for a module: a module grants only items it put
+        await vault.put({ name, kind: "secret", description: `Signing secret for the webhook route ${name.slice(6)}`, fields: { value }, origin: String(caller) }, String(caller));
+        await vault.grant({ name, module: "hooks" }, String(caller));
+        return { item: name };
+      },
     });
 
     tool("vault.inject", PEOPLE, "Values for `vyre vault run`, which puts them in one child process's environment.",

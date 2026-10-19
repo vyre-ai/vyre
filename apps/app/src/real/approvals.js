@@ -48,11 +48,13 @@ export const ACT_WORDS = {
 export const actWords = (tool) => /** @type {Record<string, string>} */ (ACT_WORDS)[tool] ?? "";
 export const WAITING_LINE = "Open Vyre on your phone and approve it there. Nothing changes until you do.";
 
-/** The words for how an ask ended. @param {"approved" | "refused" | "none" | "timeout"} state */
-export function endLine(state) {
+/** The words for how an ask ended. @param {"approved" | "refused" | "none" | "timeout" | "noway"} state */
+export function endLine(state, why = /** @type {string[]} */ ([])) {
   if (state === "refused") return "You said no on your phone. Nothing changed.";
   if (state === "none") return "The request ended before it was answered. Try again.";
   if (state === "timeout") return "Nobody approved it on your phone in time. Nothing changed.";
+  // No phone is paired and this computer could not give the yes itself: say so, with the reason it gave, instead of waiting for a phone that does not exist.
+  if (state === "noway") return `There is no way to approve this yet: no phone is paired, and this computer cannot give the yes for a server it does not run${why.length ? ` (${why[0].slice(0, 160)})` : ""}. Pair your phone in Settings, then try again. Nothing changed.`;
   return "";
 }
 
@@ -117,8 +119,9 @@ export const heldAsk = (error, tool, input = {}) => {
  * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
  * the phone's proof itself). Resolves { approval } (the id approvals.status names) when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
  * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
- * @param {{ moment: string, request: any, onAsked?: (id: string) => Promise<void> | void, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
- * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
+ * @param {{ moment: string, request: any, onAsked?: (id: string) => Promise<string[] | void> | string[] | void, phonePaired?: () => Promise<boolean>, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
+ * `onAsked` tries the ways to say yes on THIS computer and answers the reasons each one could not (never silently). If none worked and `phonePaired` says no phone is paired, the ask ends at once as "noway".
+ * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" | "noway", why?: string[] }>}
  */
 export async function askYes(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -128,13 +131,17 @@ export async function askYes(call, o) {
   if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
   o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
   // A browser whose key is a passkey says its own yes: the caller answers the card it just opened. A failure leaves the ask for the phone.
-  if (o.onAsked) await Promise.resolve(o.onAsked(ask.id)).catch(() => {});
+  /** @type {string[]} */ let why = [];
+  if (o.onAsked) { try { why = (await Promise.resolve(o.onAsked(ask.id))) || []; } catch (e) { why = [String((/** @type {Error} */ (e))?.message || e)]; } }
   const start = now();
+  let phoneChecked = false;
   for (;;) {
     if (o.signal?.stopped) return { ended: "none" };
     const s = await call("approvals.status", { id: ask.id });
     if (s.state === "approved") return { approval: typeof s.approval === "string" ? s.approval : ask.id };
     if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
+    // Still waiting after this computer's own ways: if no phone is paired either, nothing can answer. Not knowing (an error) keeps waiting, as before.
+    if (!phoneChecked && o.phonePaired) { phoneChecked = true; if ((await o.phonePaired().catch(() => true)) === false) return { ended: "noway", why }; }
     if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
     await sleep(o.pollMs ?? 2000);
   }

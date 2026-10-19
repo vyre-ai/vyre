@@ -180,6 +180,7 @@ export { ImportWizard, IMPORT_STEPS } from "./records/ImportWizard";
 export type { ImportIssue, DupeRule } from "./records/ImportWizard";
 export { groupRelated, viaOf, prefillFromLink, factsOf, createPayload, formErrors, formOrder, guessMapping, importIssues, importSummary, timelineOf } from "./records/logic.js";
 export { FlowBuilder } from "./flows/FlowBuilder";
+export type { TriggerSources } from "./flows/trigger-sources";
 export { StepCard } from "./flows/StepCard";
 export { ContextBox } from "./flows/ContextBox";
 export { parseTags, tagLabel, tagToken } from "./flows/tags.js";

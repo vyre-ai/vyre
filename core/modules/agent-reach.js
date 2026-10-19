@@ -174,6 +174,7 @@ export const PERSON_ONLY = new Map([
   ["files.drive.restore", "restores a Drive version: admin and owner, with the person's own act"],
   ["files.drive.space.move", "moves or renames a file or folder in the Space's Drive: the person's own act, each step the kernel's read and write on their chain"],
   ["files.drive.space.rename", "renames a file or folder in the Space's Drive: the person's own act"],
+  ["files.drive.space.mkdir", "makes a folder in the Space's Drive: the person's own act (an agent makes one by writing a file to a path with files.drive.upload)"],
   ["files.drive.space.delete", "deletes from the Space's Drive (a version that can be restored): an outward act and the person's own"],
   ["records.define", "changes the Space's types: the person's own act (an assistant proposes through a Kit or a task)"],
   ["records.history.undo", "puts back what a change replaced: the person's own act, as records.update is, and refused when a later change touched the same fields"],

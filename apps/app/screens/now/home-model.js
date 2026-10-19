@@ -1,4 +1,5 @@
 // The top of Home: the date, the greeting by the person's local time, and a one-line summary of what needs them. Pure (home-model.test.js).
+import { displayName } from "../../src/state/agent-name.js";
 
 /** The part of the day on the person's own clock. @param {number} hour 0 to 23 */
 export const partOfDay = (hour) => (hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : hour >= 17 && hour < 22 ? "evening" : "night");
@@ -30,6 +31,7 @@ export function summary(n) {
 export function agentCards(rows) {
   const list = (Array.isArray(rows) ? rows : []).filter((a) => a && typeof a.name === "string").map((a) => ({
     name: a.name,
+    title: displayName(a),
     kind: a.kind === "assistant" || a.role === "assistant" ? "assistant" : "agent",
     live: a.doing === "working" || a.doing === "waiting on your answer",
     needsYou: a.doing === "waiting on your answer",

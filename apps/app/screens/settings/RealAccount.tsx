@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { ServerLine } from "./ServerLine";
 import { HIDDEN, claimBlocked } from "../shell/rc";
-import { Linking, View } from "react-native";
+import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { AboutCard } from "./AboutCard";
+import { AssistantLookCard } from "./AssistantLookCard";
 import { Group, Page } from "../places/Frame";
 import { GithubCard } from "./GithubCard";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
@@ -18,6 +19,7 @@ import { CREDITS } from "./data";
 import { LOCK_CHOICES } from "../../src/shell/lock-gate.js";
 import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/lock-setting";
 import { lockIdentity } from "../unlock/real.js";
+import { openExternal } from "../../src/shell/open-external";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -42,6 +44,7 @@ export function RealAccount() {
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
       {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
+      {id?.exists ? <AssistantLookCard person={id.label || id.name || "You"} /> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
@@ -144,7 +147,7 @@ export function RealAbout() {
       ) : null}
       <AboutCard version={v} />
       <Group title="Open-source credits">
-        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
+        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void openExternal(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
     </Page>

@@ -13,7 +13,7 @@ import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, pro
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { isApprovalList, isEveryServer, urnSpace } from "./server-route.js";
-import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, planWire, withSpace } from "./with-space.js";
+import { NOT_FOR_MEMBERS_YET, SPACE_TOOLS, chatSpace, isTeamWork, planWire, teamRoute, withSpace } from "./with-space.js";
 import { phoneSigner } from "./phone-signer";
 import { payloadHash } from "./payload-hash.js";
 import { loadIdentity } from "../identity/store";
@@ -83,17 +83,13 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   // A team member has no session of their own on the team's server: their chats go through the Space's own door (the chat service, kernel/remote), with their own chain there.
   // A joined member's Records notes are the team's planner's (planner.serve, notes only): only a planner call the Notes tab marks { notes: true } goes to the team's door. The rest of the planner is hers, at home.
   const planned = planWire(name, given);
+  const routed = await teamRoute(name, given, useSpaces.getState().space, async (s) => (await import("./team-join")).joinedHere(s));
   given = planned.given;
   const wire = planned.wire;
-  if (wire) {
-    const space = chatSpace(given, useSpaces.getState().space);
-    const team = space ? await import("./team-join") : null;
-    if (space && team && (await team.joinedHere(space))) {
-      const { space: _named, ...withKind } = given;
-      const { kind: _kind, ...rest } = withKind;   // the team door fixes the kind to note
-      try { return (await team.teamCall(space, wire, [name.startsWith("planner.") ? rest : withKind])) as T; }
-      catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
-    }
+  if (routed) {
+    const team = await import("./team-join");
+    try { return (await team.teamCall(routed.space, routed.wire, [routed.input])) as T; }
+    catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
   }
   // A team the person joined is showing and this is the team's own work with no door call for her: it never goes to her own home as if it were the team's.
   if (!wire && isTeamWork(name)) {
@@ -198,7 +194,16 @@ async function answerWithPasskey(ask: (tool: string, input?: Record<string, unkn
 
 /** On the person's own computer (the Mac window), Touch ID gives the yes at once; anywhere else this refuses and the card stays for the phone. */
 async function answerHere(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, id: string): Promise<void> {
-  await ask("approvals.local-yes", { id }).catch(() => {});
+  await ask("approvals.local-yes", { id });
+}
+
+/** Is a phone (a hardware device key) enrolled for presence? Not knowing answers true: the ask keeps waiting for one. */
+async function phoneIsPaired(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<boolean> {
+  try {
+    const r = await ask("presence.keys", {});
+    const keys = Array.isArray(r) ? r : Array.isArray(r?.keys) ? r.keys : null;
+    return keys ? keys.some((k: { kind?: string }) => k && k.kind === "device") : true;
+  } catch { return true; }
 }
 
 /** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
@@ -206,8 +211,8 @@ async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: 
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
-    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onAsked: async (id) => { await answerHere(ask, id); await answerWithPasskey(ask, id); }, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
-    if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, phonePaired: () => phoneIsPaired(ask), onAsked: async (id) => { const why: string[] = []; await answerHere(ask, id).catch((e: Error) => { why.push(e.message || "this computer could not confirm it"); }); await answerWithPasskey(ask, id).catch(() => {}); return why; }, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
+    if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended, "why" in out ? out.why : []));
     return await retry(out.approval);
   } catch (e) {
     if (e instanceof BoxError) throw e;

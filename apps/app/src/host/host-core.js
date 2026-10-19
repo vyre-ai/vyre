@@ -58,14 +58,15 @@ function pickSignin(r) {
   const src = r && typeof r === "object" ? r : {};
   const plain = (/** @type {any} */ v) => (typeof v === "string" ? v.slice(0, 500) : typeof v === "number" || typeof v === "boolean" ? v : undefined);
   /** @type {Record<string, any>} */ const out = {};
-  for (const key of ["flow", "step", "state", "status", "url", "code", "account", "id", "label", "provider", "message"]) { const v = plain(src[key]); if (v !== undefined) out[key] = v; }
+  for (const key of ["flow", "step", "state", "status", "url", "code", "paste", "account", "id", "label", "provider", "message"]) { const v = plain(src[key]); if (v !== undefined) out[key] = v; }
   if (src.error && typeof src.error === "object") out.error = { ...(plain(src.error.code) !== undefined ? { code: plain(src.error.code) } : {}), ...(plain(src.error.message) !== undefined ? { message: plain(src.error.message) } : {}) };
   else if (plain(src.error) !== undefined) out.error = plain(src.error);
   return out;
 }
 
 /**
- * @param {{ store: KeptStore, directory: string, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
+ * `agreePoint` answers this device's key-agreement point (base64url, the raw uncompressed P-256 point), or null where this page has none: it goes in the genesis device entry, and is added to an entry that lacks it (ensureAgree).
+ * @param {{ store: KeptStore, directory: string, agreePoint?: () => Promise<string | null>, fetch?: typeof fetch, kdf?: { memoryKiB: number, passes: number }, random?: (n: number) => Uint8Array, now?: () => number, signin?: { base?: (space: string) => string, label?: string, deviceId?: () => Promise<string> | string }, github?: GithubPorts,
  *   space?: { load: () => Promise<SpacePorts> }, done?: () => Promise<void>, sleep?: (ms: number) => Promise<void>, pollMs?: number, version?: string | null, softwareKeyHere?: boolean, memberKeyPath?: boolean, memberKeys?: { get: (acct: string) => Promise<string | null>, put: (acct: string, key: string) => Promise<void>, remove: (acct: string) => Promise<void> } }} o
  */
 export function createHost(o) {
@@ -237,6 +238,32 @@ export function createHost(o) {
     return { ops: d.ops, pin: C.pinOf(state), entries: /** @type {any[]} */ (state.entries || []) };
   }
 
+  /**
+   * Repair an identity whose device entry has no key-agreement point (v0.6.1 made them so): the device signs the chain's own `agree` op for ITS OWN entry (kernel/identity/chain.js: once, only for itself) and the
+   * directory appends it. Best effort and quiet: a page with no agree key, an entry that already has one, a chain that cannot be read, or a refusal leaves everything as it was. @param {Uint8Array} seed
+   */
+  async function ensureAgree(seed) {
+    try {
+      if (!o.agreePoint) return;
+      const point = await o.agreePoint();
+      if (!point) return;
+      const k = await o.store.load();
+      if (!k) return;
+      const key = await fromSeed(seed);
+      const chain = await chainOf(String(k.id));
+      const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
+      // the chain's Entry type does not list `agree` (the point the device's identity entry carries), so the entry is read as any here
+      const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
+      if (!entry || entry.agree !== undefined) return;
+      const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
+      const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
+      const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
+      if (!res.ok) { trail(`agree repair refused ${res.status}`); return; }
+      await o.store.save({ ...k, ops: [...chain.ops, op], pin: C.pinOf(next) });
+      trail("agree repair done");
+    } catch (e) { trail(`agree repair failed ${String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error")}`); }
+  }
+
   /** The GitHub sign-in in progress: the relay session, the username the directory found, and the spaces it listed. Memory only, ten minutes. @type {{ session: any, username: string, spaces: { space: string, address: string }[], at: number } | null} */
   let pendingGithub = null;
 
@@ -331,7 +358,10 @@ export function createHost(o) {
       const seed = (o.random || ((n) => crypto.getRandomValues(new Uint8Array(n))))(32);
       const key = await fromSeed(seed);
       const code = await reserve(name);
-      const made = await claimIdentity({ name, code, base, key, fetch: f, ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
+      // The device's key-agreement point goes in its first entry: without it no other device (or this one, for a chat) can wrap a chat key to it. A page with no such key says so and goes on; ensureAgree adds it later.
+      const agree = o.agreePoint ? await o.agreePoint().catch(() => null) : null;
+      trail(`agree ${agree ? "in the genesis entry" : "none on this page"}`);
+      const made = await claimIdentity({ name, code, base, key, fetch: f, ...(agree ? { agree } : {}), ...(o.random ? { random: o.random } : {}), ...(o.now ? { now: o.now } : {}) });
       const master = await createMasterRecord({ username: name, id: made.id, password, recoveryCode: made.recoveryCode, privateKey: b64u(seed), agreePrivate: null, ...(o.kdf ? { kdf: o.kdf } : {}) });
       await o.store.save({ master, username: name, id: made.id, ops: made.ops, pin: made.pin, device: makeDeviceKey(seed, o.random) });
       held = seed;
@@ -352,6 +382,8 @@ export function createHost(o) {
       held = unb64(keys.privateKey);
       // A record made before the device key existed gets one now, wrapped under the identity just opened.
       if (!k.device) await o.store.save({ ...k, device: makeDeviceKey(held, o.random) });
+      // An identity made without its key-agreement point (v0.6.1) is repaired now, in the background: nothing waits on it.
+      void ensureAgree(held);
       return { unlocked: true, username: k.username, id: k.id };
     },
 
