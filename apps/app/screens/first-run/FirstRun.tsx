@@ -18,6 +18,7 @@ import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-r
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
+import { openExternal } from "../../src/shell/open-external";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
   loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
@@ -113,6 +114,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
   const [agentStep, setAgentStep] = useState("");
+  const [agentPaste, setAgentPaste] = useState(false);
   const [pasted, setPasted] = useState("");
   const [accounts, setAccounts] = useState<{ provider: string; label: string; item?: string }[]>([]);
   const [pick, setPick] = useState("");
@@ -328,7 +330,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const r = await startGithub();
     if (!r.ok) { setFailure(r.message); return; }
     const login = r.user && r.user.login ? String(r.user.login) : "";
-    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (typeof r.url === "string" && r.url) void openExternal(r.url, { name: "vyre-github", features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure(`The GitHub window did not open. Open this link in your browser: ${r.url}`); });
     if (!login && !r.exchange) return;
     const done = await finishGithub(login);
     if (!done.ok) { setFailure(done.message); return; }
@@ -538,26 +540,27 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           <View style={{ gap: 12 }}>
             <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
             {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
-            {signinMode(agentFlow, agentStep) === "paste" ? (
+            {signinMode(agentFlow, agentStep, agentPaste) === "paste" ? (
               <Field label={ACCOUNTS_COPY.pasteLabel} value={pasted} onChangeText={setPasted} help={ACCOUNTS_COPY.pasteHelp} />
             ) : agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
-            <Button kind="secondary" size="lg" label={signinMode(agentFlow, agentStep) === "paste" ? ACCOUNTS_COPY.paste : agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy}
-              disabled={Boolean(problem) || busy || (signinMode(agentFlow, agentStep) === "paste" && !pasteOk(pasted))} onPress={() => void run(async () => {
-              const r = await signInAgent(signinInput({ provider: pick, label: acctLabel, flow: agentFlow, step: agentStep, pasted }));
+            <Button kind="secondary" size="lg" label={signinMode(agentFlow, agentStep, agentPaste) === "paste" ? ACCOUNTS_COPY.paste : agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy}
+              disabled={Boolean(problem) || busy || (signinMode(agentFlow, agentStep, agentPaste) === "paste" && !pasteOk(pasted))} onPress={() => void run(async () => {
+              const r = await signInAgent(signinInput({ provider: pick, label: acctLabel, flow: agentFlow, step: agentStep, pasted, paste: agentPaste }));
               if (!r.ok) { setFailure(r.message); return; }
               if (r.flow && r.step !== "done") {
                 setAgentFlow(String(r.flow));
                 setAgentStep(typeof r.step === "string" ? r.step : "");
-                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                setAgentPaste(r.paste === true);
+                if (!agentFlow && typeof r.url === "string" && r.url) void openExternal(r.url, { name: `vyre-ai-${pick}`, features: "width=520,height=720" }).then((o) => { if (!o.opened) setFailure("The sign-in window did not open. Copy the link below and open it in your browser."); });
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
                 setPasted("");
                 return;
               }
               setAccounts((x) => [...x, { provider: pick, label: acctLabel.trim() }]);
-              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl(""); setAgentStep(""); setPasted("");
+              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl(""); setAgentStep(""); setAgentPaste(false); setPasted("");
             })} />
-            {agentFlow ? <Button kind="ghost" size="lg" label={ACCOUNTS_COPY.cancel} disabled={busy} onPress={() => { setAgentFlow(NO_SIGNIN.flow); setAgentUrl(NO_SIGNIN.url); setAgentCode(NO_SIGNIN.code); setAgentStep(NO_SIGNIN.step); setPasted(NO_SIGNIN.pasted); setFailure(""); }} /> : null}
+            {agentFlow ? <Button kind="ghost" size="lg" label={ACCOUNTS_COPY.cancel} disabled={busy} onPress={() => { setAgentFlow(NO_SIGNIN.flow); setAgentUrl(NO_SIGNIN.url); setAgentCode(NO_SIGNIN.code); setAgentStep(NO_SIGNIN.step); setAgentPaste(NO_SIGNIN.paste); setPasted(NO_SIGNIN.pasted); setFailure(""); }} /> : null}
           </View>
         ) : null}
         {accounts.length ? (

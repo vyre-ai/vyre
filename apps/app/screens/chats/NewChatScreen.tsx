@@ -30,7 +30,7 @@ export default function NewChatScreen() {
   const team = useTeam(project || null);
   useEffect(() => { let live = true; if (project) void teammates.names([project]).then((n) => { if (live) setProjectName(n[project] || ""); }).catch(() => {}); return () => { live = false; }; }, [project]);
   const aboutUrn = typeof about === "string" && about.startsWith("vyre://") ? about : "";
-  const [agents, setAgents] = useState<{ name: string; kind: string; assistant: boolean }[] | null>(null);
+  const [agents, setAgents] = useState<{ name: string; title?: string; kind: string; assistant: boolean }[] | null>(null);
   const [people, setPeople] = useState<{ id: string; name: string; role?: string }[]>([]);
   const [me, setMe] = useState("");
   const [q, setQ] = useState("");
@@ -45,7 +45,7 @@ export default function NewChatScreen() {
       try {
         const m = String((await (st.me?.() as Promise<string> | undefined)?.catch(() => "")) ?? "");
         const a = await agentsList();
-        const rows = visibleAgents(a.map((x: any) => agentRow(x, m)), m).map((r) => ({ name: r.name, kind: r.kind, assistant: r.kind === "assistant" }));
+        const rows = visibleAgents(a.map((x: any) => agentRow(x, m)), m).map((r) => ({ name: r.name, title: r.title, kind: r.kind, assistant: r.kind === "assistant" }));
         const who = await Promise.resolve(st.actors()).catch(() => []);
         if (!live) return;
         setMe(m); setAgents(rows);
@@ -83,10 +83,10 @@ export default function NewChatScreen() {
   };
   const row = (k: string, title: string, sub: string, mark: React.ReactNode) => <Row key={k} lead={mark} title={title} sub={sub} selected={picked.includes(k)} onPress={() => toggle(k)} />;
   const lists = [
-    groups.assistant ? { title: "Your assistant", rows: [row("assistant", groups.assistant.name, "Your one chat, always at the top of Chat", <Avatar of={markRef("assistant", groups.assistant.name)} size={40} />)] } : null,
-    groups.team.length ? { title: `On ${projectName || "this project"}`, rows: groups.team.map((a) => row(`a:${a.name}`, a.name, "On this project", <Avatar of={markRef("agent", a.name)} size={40} />)) } : null,
+    groups.assistant ? { title: "Your assistant", rows: [row("assistant", groups.assistant.title ?? groups.assistant.name, "Your one chat, always at the top of Chat", <Avatar of={markRef("assistant", groups.assistant.name)} size={40} />)] } : null,
+    groups.team.length ? { title: `On ${projectName || "this project"}`, rows: groups.team.map((a) => row(`a:${a.name}`, a.title ?? a.name, "On this project", <Avatar of={markRef("agent", a.name)} size={40} />)) } : null,
     groups.people.length ? { title: "People", rows: groups.people.map((p) => row(`p:${p.id}`, p.name, p.role || "Person", <Avatar of={markRef("person", p.name)} size={40} />)) } : null,
-    groups.agents.length ? { title: "Agents", rows: groups.agents.map((a) => row(`a:${a.name}`, a.name, "Agent", <Avatar of={markRef("agent", a.name)} size={40} />)) } : null,
+    groups.agents.length ? { title: "Agents", rows: groups.agents.map((a) => row(`a:${a.name}`, a.title ?? a.name, "Agent", <Avatar of={markRef("agent", a.name)} size={40} />)) } : null,
   ].filter(Boolean) as { title: string; rows: React.ReactNode[] }[];
   const several = picked.length > 1;
   const onlyPeople = picked.length > 0 && picked.every((k) => k.startsWith("p:"));

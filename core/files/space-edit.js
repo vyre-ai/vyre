@@ -19,6 +19,9 @@ const MAX_MOVE = 8 * 1024 * 1024;
 const pathOf = (/** @type {any} */ p) => { try { const s = safePath(String(p ?? "")); if (!s) throw 0; return s.replace(/\/+$/, ""); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
 const nameOf = (/** @type {any} */ n) => { const s = String(n ?? ""); if (!s || s.includes("/") || s.includes("\\") || s === "." || s === "..") throw refuse("a name has no slash and is not . or ..", "bad_input"); return pathOf(s); };
 const parent = (/** @type {string} */ p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+/** A folder in the Drive is the path its files share, so an empty one is held by this one empty file inside it. Listings hide it (apps/app/screens/drive/space-model.ts); a folder delete or move carries it like any file. */
+export const FOLDER_MARK = ".folder";
+const MAX_FOLDER_NAME = 120;
 const isNotFound = (/** @type {any} */ e) => e && e.code === "not_found";
 
 /** What a path is in the Drive: a file (it has a head), a folder (files sit under it) or nothing. @param {any} drive @param {any} chain @param {string} p */
@@ -61,6 +64,18 @@ export function registerSpaceEdit(ctx) {
 
   tool("files.drive.space.move", "Move a file or folder in the Space's Drive, under the caller's own grants: { space?, from, to }. `to` is the new full path; it must not exist. The old path keeps its versions (files.drive.versions, files.drive.restore).",
     obj({ space: str, from: str, to: str }, ["from", "to"]), (i, d, drive) => move(d, drive, pathOf(i.from), pathOf(i.to)));
+
+  tool("files.drive.space.mkdir", "Make an empty folder in the Space's Drive: { space?, parent?, name }. Answers { path }.",
+    obj({ space: str, parent: { type: "string", description: "A folder that exists; none for the top." }, name: { type: "string", description: `One part, 1 to ${MAX_FOLDER_NAME} characters, no slash, not starting with a dot, not already there.` } }, ["name"]), async (i, d, drive) => {
+      const name = nameOf(i.name).trim();
+      if (!name || name.length > MAX_FOLDER_NAME || name.startsWith(".")) throw refuse(`a folder name is 1 to ${MAX_FOLDER_NAME} characters and does not start with a dot`, "bad_input");
+      const up = i.parent === undefined || i.parent === "" ? "" : pathOf(i.parent);
+      if (up && (await kindOf(drive, d.chain, up)) !== "folder") throw refuse("that parent folder does not exist: files.drive.space.list shows what is there", "not_found");
+      const at = up ? `${up}/${name}` : name;
+      if ((await kindOf(drive, d.chain, at)) !== "none") throw refuse(`${at} already exists: pick another name`, "conflict");
+      await drive.put(d.chain, `${at}/${FOLDER_MARK}`, new Uint8Array(0), {});   // the drive.write answer on this path is the kernel's, under the caller's own chain
+      return { path: at };
+    });
 
   tool("files.drive.space.rename", "Rename a file or folder in place in the Space's Drive: { space?, path, name }. `name` is the new last part of the path.",
     obj({ space: str, path: str, name: str }, ["path", "name"]), (i, d, drive) => { const p = pathOf(i.path), n = nameOf(i.name), up = parent(p); return move(d, drive, p, up ? `${up}/${n}` : n); });

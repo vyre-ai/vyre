@@ -38,8 +38,42 @@ try {
       const f = page.getByText("Weekly report template.docx").first();
       if (await f.count()) { await f.click(); await shot("3-selected"); }
       await page.getByRole("button", { name: "Show as a grid" }).click().catch(() => {}); await shot("4-grid");
+      // Move to...: the right-click menu, the folder picker, a folder entered, and the move done (with its Undo)
+      await page.getByText("Weekly report template.docx").first().click({ button: "right" }).catch(() => {}); await shot("5-menu");
+      await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("6-picker");
+      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("7-picker-in");
+      await page.getByRole("button", { name: "Move", exact: true }).last().click().catch(() => {}); await shot("8-moved");
+      // drag to move: a folder tile carried over another (the target is outlined and says what will happen), then dropped. A fresh load, so the sample world is as it started.
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      // a headless browser does not run a drag from the mouse, so the drag events are sent by hand from the page, with one shared DataTransfer: the page's own handlers do the rest
+      await page.waitForSelector("[data-tile]", { timeout: 30000 }).catch(() => {});
+      const fire = (type, name) => page.evaluate(([t, n]) => {
+        const el = [...document.querySelectorAll("[data-tile]")].find((x) => (x.textContent || "").includes(n));
+        if (!el) return false;
+        window.__dt = window.__dt || new DataTransfer();
+        el.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: window.__dt }));
+        return true;
+      }, [type, name]);
+      if (await fire("dragstart", "Juniper Studio")) {
+        await page.waitForTimeout(200);
+        await fire("dragenter", "Vyre site"); await fire("dragover", "Vyre site"); await page.waitForTimeout(200);
+        await shot("9-drag-over-folder");
+        await fire("drop", "Vyre site"); await fire("dragend", "Juniper Studio"); await shot("10-dropped");
+      } else console.log("drag shots skipped: tiles not found");
+      // New folder: the button, the name field, the folder made and selected, the project folder by its name, and the right-click on empty space. A fresh load again.
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      await page.getByRole("button", { name: "New folder" }).first().click().catch(() => {}); await shot("11-new-folder-field");
+      await page.getByLabel("Folder name").first().fill("Plans").catch(() => {}); await page.keyboard.press("Enter").catch(() => {}); await shot("12-new-folder-made");
+      await page.getByText("Projects", { exact: true }).first().dblclick().catch(() => {}); await shot("13-project-by-name");
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      await page.mouse.click(1000, 460, { button: "right" }).catch(() => {}); await shot("14-empty-space-menu");
     } else {
       await page.getByText("Space", { exact: true }).first().click().catch(() => {}); await shot("2-space");
+      // Move to... on a phone: open a file, ask to move it, pick a folder
+      await page.getByText("Juniper Studio", { exact: true }).first().click().catch(() => {}); await shot("3-folder");
+      await page.getByText("Weekly report template.docx").first().click().catch(() => {}); await shot("4-file");
+      await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("5-picker");
+      await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("6-picker-in");
     }
     await ctx.close();
   }

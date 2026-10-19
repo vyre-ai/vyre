@@ -17,6 +17,12 @@ const callWithPresence: Call = async (name, input) => {
   if (allowsMock()) return sampleCall(name, input);
   try { return { data: (await tool(name, input ?? {})) as never }; } catch (e) { const x = e as { code?: string; message?: string }; return { error: { code: x.code ?? "error", message: x.message ?? "" } }; }
 };
+/** One Drive call by name, answering its data or throwing its refusal (code and message): the edits of Files (move, rename, delete and their undo) go through it, so the sample world answers them in a mock build. */
+export async function driveTool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
+  const r = await callWithPresence(name, input);
+  if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+  return (r ? r.data : undefined) as T;
+}
 export const { list: spaceList, read: spaceRead, upload: spaceUpload, versions: spaceVersions, restore: spaceRestore, linkCreate, linkList, linkRevoke } = spaceDriveSource(callWithPresence);
 
 /** Files > Linked: linking, saving back and unlinking are the person's own acts, so they go through `tool` like the Space Drive's. */

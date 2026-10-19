@@ -1,7 +1,7 @@
 // A fake box for a mock build: the same tools the real Drive calls (files.drive.*, artifacts.*), answered from the sample world in data.ts, so the one Drive screen
 // runs unchanged. State lives in the module, per `mockBox()` instance, so a test starts clean.
 import type { Call } from "./source";
-import { SAMPLE_ARTIFACTS, SAMPLE_FILES, SAMPLE_NOW, type SampleFile } from "./data.ts";
+import { SAMPLE_ARTIFACTS, SAMPLE_FILES, SAMPLE_NOW, SAMPLE_PROJECT, type SampleFile } from "./data.ts";
 
 type Out = { data?: unknown; error?: { code: string; message: string } };
 const err = (code: string, message = ""): Out => ({ error: { code, message } });
@@ -37,6 +37,31 @@ export function mockBox(now: () => number = () => SAMPLE_NOW) {
         return { data: { versions: Array.from({ length: f.ver }, (_, k) => ({ ver: f.ver - k, size: f.size, at: f.at - k * DAY, by: f.by })) } };
       }
       case "files.drive.restore": { const f = at(String(i.path)); if (!f || !(Number(i.version) >= 1 && Number(i.version) < f.ver)) return err("bad_input", "That version cannot be restored."); const from = Number(i.version); f.ver += 1; f.at = now(); return { data: { path: f.path, from, version: f.ver } }; }
+      // Move, rename and delete in the sample Drive: a file, or a folder (every file under it). The real box keeps versions; the sample world just changes the paths.
+      case "files.drive.space.move": case "files.drive.space.rename": {
+        const from = String(i.from ?? i.path ?? ""), up = from.includes("/") ? from.slice(0, from.lastIndexOf("/") + 1) : "";
+        const to = tool === "files.drive.space.rename" ? `${up}${String(i.name ?? "")}` : String(i.to ?? "");
+        const hit = files.filter((f) => f.path === from || f.path.startsWith(`${from}/`));
+        if (!hit.length) return err("not_found", "there is nothing at that path");
+        if (to === from || to.startsWith(`${from}/`)) return err("bad_input", "a folder cannot move into itself");
+        if (files.some((f) => f.path === to || f.path.startsWith(`${to}/`))) return err("conflict", `${to} already exists: pick another name, or move it out of the way first`);
+        for (const f of hit) f.path = to + f.path.slice(from.length);
+        return { data: { from, to, kind: hit.length === 1 && hit[0].path === to ? "file" : "folder", moved: hit.length } };
+      }
+      case "files.places": return { data: { mine: { path: "" }, projects: [{ slug: SAMPLE_PROJECT.slug, name: SAMPLE_PROJECT.name, path: `Projects/${SAMPLE_PROJECT.id}` }], agents: [] } };
+      case "files.drive.space.mkdir": {
+        const up = String(i.parent ?? ""), name = String(i.name ?? ""), at0 = up ? `${up}/${name}` : name;
+        if (!name || /[\\/]/.test(name) || name.startsWith(".")) return err("bad_input", "a folder name has no slash and does not start with a dot");
+        if (files.some((f) => f.path === at0 || f.path.startsWith(`${at0}/`))) return err("conflict", `${at0} already exists: pick another name`);
+        files.push({ path: `${at0}/.folder`, size: 0, ver: 1, at: now(), by: "you" });
+        return { data: { path: at0 } };
+      }
+      case "files.drive.space.delete": {
+        const p = String(i.path ?? ""), hit = files.filter((f) => f.path === p || f.path.startsWith(`${p}/`));
+        if (!hit.length) return err("not_found", "there is nothing at that path");
+        for (const f of hit) files.splice(files.indexOf(f), 1);
+        return { data: { deleted: hit.length } };
+      }
       case "files.drive.upload": { const path = String(i.path); const f = at(path); if (f) { f.ver += 1; f.at = now(); return { data: { path, version: f.ver, conflict: false, size: f.size } }; } files.push({ path, ver: 1, at: now(), by: "you", size: 1024 }); return { data: { path, version: 1, conflict: false, size: 1024 } }; }
       case "files.drive.link.create": {
         const f = at(String(i.path)); if (!f) return err("not_found");

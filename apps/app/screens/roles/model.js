@@ -47,8 +47,8 @@ export const CAN_DO = [
   ["computers", "Use computers", "Run sessions on a computer."],
 ];
 
-/** Switches a custom role (a Member at heart) cannot hold: the box refuses them, so the screen shows them unavailable. The box's catalogue says which (`needs`); this is the list until it answers. */
-export const ADMIN_ONLY = ["customize", "kits", "services", "reveal"];
+/** Switches a custom role (a Member at heart) cannot hold: the box refuses them, so the screen shows them unavailable and a new role never starts with one on. The box's catalogue says which (`needs`); this is the list until it answers, and test/new-role-default.test.js holds the two together. */
+export const ADMIN_ONLY = ["files", "memory", "people", "rules", "invite", "customize", "kits", "services", "reveal"];
 /** The line under an unavailable switch. */
 export const ADMIN_ONLY_LINE = "Only admins can do this.";
 
@@ -97,7 +97,7 @@ export function starting(id, types = SAMPLE_TYPES) {
   const rule = (/** @type {Access} */ access) => types.map((t) => ({ id: t.id, name: t.name, access, hidden: /** @type {string[]} */ ([]) }));
   if (id === "admin") return { can: allOf(CAN_DO, true), where: { kind: /** @type {WhereKind} */ ("space"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, true) };
   if (id === "guest") return { can: { ...allOf(CAN_DO, false), view: true, edit: true }, where: { kind: /** @type {WhereKind} */ ("chosen"), projects: [] }, data: rule("read"), tools: allOf(TOOLS, false) };
-  return { can: { ...allOf(CAN_DO, false), view: true, edit: true, create: true, tasks: true, flows: true, files: true, memory: true }, where: { kind: /** @type {WhereKind} */ ("seats"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, false) };
+  return { can: { ...allOf(CAN_DO, false), view: true, edit: true, create: true, tasks: true, flows: true }, where: { kind: /** @type {WhereKind} */ ("seats"), projects: [] }, data: rule("edit"), tools: allOf(TOOLS, false) };
 }
 
 /** @param {string} id */

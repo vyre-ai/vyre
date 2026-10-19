@@ -38,6 +38,15 @@ export function stageCards(b: Body, people: Who[] = [], agents: Who[] = []): Sta
 }
 
 /** The meta line under the headline, as parts the page joins with a dot: the name, the version, who made it, then Live or Draft. */
+/** Who made it, in words a person reads: "you", the person's name, or "a teammate" when the name is only an id or a placeholder (an auto name like "Member zagy5e"). */
+export function ownerWords(owner: string | null, members: { id: string; name: string }[], selfId: string | null = null): string | null {
+  if (!owner) return null;
+  if (selfId && owner === selfId) return "you";
+  const name = members.find((m) => m.id === owner)?.name?.trim() ?? "";
+  if (!name || name === owner || /^member [a-z0-9]{4,}$/i.test(name) || /^per_/i.test(name)) return "a teammate";
+  return name;
+}
+
 export function metaParts(o: { name: string; version: number; by: string | null; live: boolean }): string[] {
   return [o.name, `v${o.version}`, ...(o.by ? [`made by ${o.by}`] : []), o.live ? "Live" : "Draft"];
 }

@@ -24,18 +24,18 @@ export function createInput(o) {
 /**
  * The New chat picker's three groups: your assistant, the people on the team (never you), and the agents the Agents screen shows. Each filtered by the search words.
  * With a project, its own team's agents come first, in a group of their own.
- * @param {{ agents: { name: string, kind?: string, assistant?: boolean }[], people: { id: string, name: string, role?: string }[], me?: string, q?: string, team?: string[] }} o
- * @returns {{ assistant: { name: string } | null, people: { id: string, name: string, role?: string }[], agents: { name: string }[], team: { name: string }[] }}
+ * @param {{ agents: { name: string, title?: string, kind?: string, assistant?: boolean }[], people: { id: string, name: string, role?: string }[], me?: string, q?: string, team?: string[] }} o
+ * @returns {{ assistant: { name: string, title?: string } | null, people: { id: string, name: string, role?: string }[], agents: { name: string, title?: string }[], team: { name: string, title?: string }[] }}
  */
 export function pickerGroups(o) {
   const w = String(o.q ?? "").trim().toLowerCase();
   const hit = (/** @type {string} */ n) => !w || n.toLowerCase().includes(w);
   const asst = o.agents.find((a) => a.assistant || a.kind === "assistant") ?? null;
   return {
-    assistant: asst && (hit(asst.name) || hit("your assistant")) ? { name: asst.name } : null,
+    assistant: asst && (hit(asst.name) || hit(asst.title ?? "") || hit("your assistant")) ? { name: asst.name, ...(asst.title ? { title: asst.title } : {}) } : null,
     people: o.people.filter((p) => p.id !== o.me && p.name && hit(p.name)),
-    team: o.agents.filter((a) => a !== asst && (o.team ?? []).includes(a.name) && hit(a.name)).map((a) => ({ name: a.name })),
-    agents: o.agents.filter((a) => a !== asst && !(o.team ?? []).includes(a.name) && hit(a.name)).map((a) => ({ name: a.name })),
+    team: o.agents.filter((a) => a !== asst && (o.team ?? []).includes(a.name) && (hit(a.name) || hit(a.title ?? ""))).map((a) => ({ name: a.name, ...(a.title ? { title: a.title } : {}) })),
+    agents: o.agents.filter((a) => a !== asst && !(o.team ?? []).includes(a.name) && (hit(a.name) || hit(a.title ?? ""))).map((a) => ({ name: a.name, ...(a.title ? { title: a.title } : {}) })),
   };
 }
 

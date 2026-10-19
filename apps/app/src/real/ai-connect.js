@@ -39,6 +39,23 @@ export const DISCONNECT_NOTE = "Assistants on Claude stop and ask you. Your Clau
 /** Is this a sign-in link the person may open? Only https, never anything else. @param {unknown} url */
 export const safeLink = (url) => { try { const u = new URL(String(url)); return u.protocol === "https:" ? u.toString() : null; } catch { return null; } };
 
+/** What the person is told when the code they pasted belongs to another sign-in than the one they opened. */
+export const WRONG_FLOW = "That code is from a different sign-in. Open the sign-in again.";
+
+/**
+ * Claude's code is shown as `code#state`; the state is the one in the sign-in link the home gave (its `state` parameter). A code whose state is not this link's came from another sign-in (an older tab, a
+ * second Open the sign-in): saying so beats a refusal that says nothing. A code with no state, or a link with none, is not judged here.
+ * @param {string} pasted @param {string | null | undefined} link
+ */
+export function codeMatchesFlow(pasted, link) {
+  const at = String(pasted ?? "").indexOf("#");
+  if (at < 0 || !link) return true;
+  let want = "";
+  try { want = new URL(String(link)).searchParams.get("state") || ""; } catch { return true; }
+  const got = String(pasted).slice(at + 1).trim();
+  return !want || !got || got === want;
+}
+
 /** The first step on a computer with no owner, by where the person is: a browser cannot make a name in this release, a Mac window of Vyre can. @param {"browser" | "mac" | "phone"} [surface] */
 export const nameFirstLine = (surface = "mac") => (surface === "browser" ? "Choose your Vyre name on your phone first. Then connect an AI account." : surface === "phone" ? "Choose your Vyre name on this phone first. Then connect an AI account." : "Make your Vyre name on this computer first. Then connect an AI account.");
 

@@ -12,6 +12,7 @@ import { GITHUB_MOCK } from "../../screens/first-run/mock.js";
 import { accountMessage, githubSay, homeHintText, linkMessage, newVerifier, openRelease, parseHomeHint, ticketId } from "../identity/github-core.js";
 import type { GithubUser, Outcome } from "./github-types";
 import * as C from "../../../../kernel/identity/chain.js";
+import { openExternal } from "../shell/open-external";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 const base = () => (process.env.EXPO_PUBLIC_VYRE_RELAY_HTTP || relayUrl().replace(/^ws/, "http")).replace(/\/+$/, "");
@@ -37,18 +38,20 @@ async function ticketFromGithub(cc: string): Promise<string | { code: string }> 
   const parse = (hash: string) => { const p = new URLSearchParams(hash.replace(/^#/, "")); return p.get("ticket") ?? ({ code: p.get("error") === "denied" ? "denied" : "failed" } as const); };
   if (Platform.OS === "web") {
     try { localStorage.removeItem(RETURN_KEY); } catch { /* none */ }
-    const w = window.open(url, "vyre-github", "width=520,height=720");
-    if (!w) return { code: "popup" };
+    const opened = await openExternal(url, { name: "vyre-github", features: "width=520,height=720" });
+    if (!opened.opened) return { code: "popup" };
+    // in the Mac app the sign-in is in the browser, which hands no window back: the wait is the same, without the closed-window shortcut
+    const w = opened.window;
     for (let i = 0; i < 600; i++) {
       await sleep(500);
       let got: string | null = null;
       try { got = localStorage.getItem(RETURN_KEY); } catch { /* none */ }
       if (got) {
         try { localStorage.removeItem(RETURN_KEY); } catch { /* none */ }
-        try { w.close(); } catch { /* closed */ }
+        try { w?.close?.(); } catch { /* closed */ }
         return parse(got);
       }
-      if (w.closed && i > 4) return { code: "denied" };
+      if (w && w.closed && i > 4) return { code: "denied" };
     }
     return { code: "timeout" };
   }

@@ -16,7 +16,7 @@ const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME,
 const { chromium } = require("playwright");
 
 const ROUTES = ["u/now", "u/now?scenario=client-pays", "u/now/needs", "u/now/doing", "u/projects", "u/playbooks", "u/playbooks/tpl_ad-campaign", "u/records/contact", "u/records/note", "u/records/matter", "u/calendar", "u/drive", "u/sites",
-  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=kit", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
+  "u/flows", "u/flows/shot?k=editor", "u/flows/shot?k=trigger", "u/flows/shot?k=run", "u/flows/shot?k=playbook", "u/flows/shot?k=kit", "u/flows/shot?k=watchers", "u/flows/shot?k=newwatcher", "u/flows/shot?k=webhook", "u/flows/shot?k=watcherpick", "u/kits", "u/memory", "u/vault", "u/engineer", "u/spaces", "u/access", "u/appearance", "u/about", "u/settings", "u/settings/account", "u/settings/ai",
   "u/settings/assistants", "u/settings/customize", "u/settings/customize/matter", "u/settings/devices", "u/settings/notifications", "u/settings/privacy", "u/settings/rules", "u/settings/audit",
   "u/settings/seeing", "u/settings/updates", "u/wink", "u/wink/invite", "u/wink/lend", "onboard",
   // the welcome flow's newer screens, from the sample world's fixtures (screens/first-run/mock.js SHOT_TABLE)
@@ -60,6 +60,31 @@ const facts = () => {
 };
 
 try {
+  // Settings > People and roles: FIRST, because the full pass can run out of time: the page, the invite sheet, and the made invite, at 1400 and at phone width (people-<width>-<step>.png).
+  for (const w of [1400, 390]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: w === 390 ? 844 : 900 }, colorScheme: "dark", deviceScaleFactor: 1 });
+    const page = await ctx.newPage();
+    const thrown = [];
+    page.on("pageerror", (e) => thrown.push(String(e).slice(0, 300)));
+    await page.goto(base + "u/settings/roles", { waitUntil: "load" }).catch(() => {});
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: path.join(out, `people-${w}-page.png`), fullPage: true }).catch(() => {});
+    await page.getByText("Ben Okafor", { exact: true }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no person row: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: path.join(out, `people-${w}-role.png`) }).catch(() => {});
+    await page.getByRole("button", { name: "Cancel" }).first().click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: "Invite someone" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Invite someone button: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: path.join(out, `people-${w}-sheet.png`) }).catch(() => {});
+    await page.getByRole("button", { name: "Make invite" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Make invite button: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: path.join(out, `people-${w}-made.png`) }).catch(() => {});
+    report.people = [...(report.people || []), { width: w, thrown }];
+    await ctx.close();
+  }
+
   for (const s of SIZES) for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, colorScheme: theme === "paper" ? "light" : "dark", deviceScaleFactor: 1 });
     const page = await ctx.newPage();
@@ -177,6 +202,7 @@ const noring = report.focus.filter((f) => !f.ring);
 const md = [`# ux-shots`, `${report.shots} shots, ${report.pages.length} pages, ${report.focus.length} focus stops.`,
   `Pages with sideways overflow or console errors: ${bad.length}`, ...bad.slice(0, 40).map((p) => `- ${p.file}: overflow ${p.overflowX}px ${p.errors?.[0] ?? ""}`),
   `Rail menus that did not open cleanly: ${menuBad.length}`, ...menuBad.map((m) => `- ${m.name}: found ${m.found}, items ${m.items}, blank ${m.blank} ${m.thrown[0] ?? ""}`),
+  `People and roles shots with a problem: ${(report.people || []).filter((p) => p.thrown.length).length}`, ...(report.people || []).flatMap((p) => p.thrown.map((t) => `- ${p.width}: ${t}`)),
   `Focus stops with no visible ring: ${noring.length}`, ...noring.slice(0, 40).map((f) => `- ${f.route} ${f.theme}: ${f.tag} "${f.label}"`)].join("\n");
 fs.writeFileSync(path.join(out, "summary.md"), md);
 console.log(md);
