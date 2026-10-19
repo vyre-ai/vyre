@@ -387,6 +387,16 @@ export function createHost(o) {
       return { unlocked: true, username: k.username, id: k.id };
     },
 
+    // The person's list as the directory holds it (what Settings, Account shows): the box of a page like this one holds no identity, so the page's own host answers. `self` is this device's entry, known once the key is unlocked.
+    "identity.entries": async () => {
+      const k = await o.store.load();
+      if (!k) return { entries: [] };
+      const chain = await chainOf(String(k.id));
+      const mine = held ? (await fromSeed(held)).eid : null;
+      const now = o.now ? o.now() : Date.now();
+      return { entries: chain.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, label: typeof e.label === "string" ? e.label : null, since: e.since, self: e.eid === mine, newcomer: C.youngAt(e, now), agree: typeof e.agree === "string" })) };
+    },
+
     // A page has no vault to open with the identity (the daemon's vault takes the unlocked key here): the unlock screen asks, and this says there is nothing to install, so a good password opens the page.
     "identity.vault.install": async () => ({ installed: false, reason: "no_vault" }),
 
