@@ -44,7 +44,3 @@ test("a name and a full address are the same Space", () => {
   assert.equal(addressFrom(""), null);
   assert.equal(addressFrom("a b"), null);
 });
-
-import { readFileSync } from "node:fs";
-import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, THEME_ICONS, UNLOCK_COPY, WELCOME_COPY, WELCOME_TONES, addressFrom, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
-});
