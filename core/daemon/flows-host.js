@@ -479,15 +479,8 @@ export function createFlowsHost(o) {
       // An agent asked to review or to approve a task holds that one task for the round (a grant the Flows service makes on the task address; tasks.decide only for the approver slot), ending with the round or in a day.
       const slotSource = (/** @type {string} */ id, /** @type {string} */ slot) => `${lendSource(id)}:${slot}`;
       const slotLend = (/** @type {any} */ t, /** @type {string} */ agent, /** @type {string} */ slot, /** @type {string | undefined} */ thread) => sh.mint.make({ subject: { kind: "actor", actor: { kind: "agent", id: String(agent), space } }, actions: slot === "approver" ? ["tasks.read", "tasks.work", "tasks.decide"] : ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/${t.id}` }, conditions: { when: { expires: clock() + 24 * 3600 * 1000 }, ...(thread ? { where: { sessions: [String(thread)] } } : {}) }, source: slotSource(t.id, slot), reason: `the agent was asked to ${slot === "approver" ? "approve" : "review"} this task` });
-      // Does this person hold use of this agent right now? The Gate decides, on the person's own chain, against the agent's address (its uid, never its name); edit includes use. Any doubt is no.
-      const mayUse = async (/** @type {string} */ person, /** @type {string} */ agent) => {
-        try {
-          const u = await o.callModule("agents.uid", { name: agent }, space);
-          if (!u || typeof u.uid !== "string") return false;
-          for (const action of ["agents.use", "agents.edit"]) { const d = await gw.authorize({ chain: personChain(person), action, resource: `vyre://${space}/agent/${u.uid}` }); if (d && d.effect === "allow") return true; }
-        } catch { /* no answer is no */ }
-        return false;
-      };
+      // Does this person hold use of this agent right now? The agents module answers from the Space's own roles, the agent's maker and the kernel's live sharing grants. Any doubt is no.
+      const mayUse = async (/** @type {string} */ person, /** @type {string} */ agent) => { try { const r = await o.callModule("agents.may-use", { agent, person }, space); return Boolean(r && r.use === true); } catch { return false; } };
       const wakeUp = createAgentWake({ space, gw, mayUse, chain: flowsChain, agentChain,
         lendSlot: async (/** @type {any} */ t, /** @type {string} */ agent, /** @type {string} */ slot) => { await sh.mint.end({ source: slotSource(t.id, slot), reason: "a new round" }); await slotLend(t, agent, slot); },
         bindSlot: async (/** @type {any} */ t, /** @type {string} */ agent, /** @type {string} */ slot, /** @type {string} */ thread) => { await sh.mint.end({ source: slotSource(t.id, slot), reason: "held to the job's thread" }); await slotLend(t, agent, slot, thread); },

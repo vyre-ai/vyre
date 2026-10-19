@@ -72,6 +72,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.may-use",
+        "summary": "whether a person may use an agent now (the Flows host only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.wake-done",
         "summary": "mark a task's wake over so it stops counting as a running job (the Flows host only)",
         "reach": "modules",

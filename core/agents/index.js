@@ -1080,6 +1080,23 @@ export default {
         return { rounds: /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM agents_wakes WHERE substr(task, 1, ?) = ?").get(prefix.length, prefix)).n };
       },
     });
+    // Does a person hold use of an agent right now: the Space's owner, an admin, the agent's own maker, or someone it is shared with (the kernel's live grant). For the Flows host's prompt band only (lib/prompt-band.js).
+    ctx.tool("agents.may-use", {
+      description: "Whether a person may use an agent now: { use }. For the Flows host.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["agent", "person"], properties: { agent: { type: "string" }, person: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:vyred") throw Object.assign(new Error("only the Space's own host asks who may use an agent"), { code: "denied" }); // internal-word: the caller label, not a person's text
+        const a = must(String(i.agent).toLowerCase()), person = String(i.person);
+        if (!K) return { use: true };   // no kernel, no members: nobody to keep it from (as seesFull)
+        const canon = typeof K.canonicalPerson === "function" ? (/** @type {string} */ x) => K.canonicalPerson(x) : (/** @type {string} */ x) => x;
+        if ((K.owner && canon(person) === canon(String(K.owner))) || (a.owner && canon(person) === canon(String(a.owner)))) return { use: true };
+        const m = typeof K.membership === "function" ? await Promise.resolve(K.membership(person, K.space)).catch(() => null) : null;
+        if (m && m.member === true && (m.role === "owner" || m.role === "admin")) return { use: true };
+        const gs = (ctx.kernel && ctx.kernel.mint ? await ctx.kernel.mint.list({ source: `agents:access:${a.uid}:${person}` }) : []) || [];
+        return { use: gs.some((/** @type {any} */ g) => Array.isArray(g.actions) && (g.actions.includes("agents.use") || g.actions.includes("agents.edit"))) };
+      },
+    });
     ctx.tool("agents.woken", {
       description: "The task a wake job thread was started for, or the thread a task's wake started: { task, agent, thread, failed, tries }, or null. Give a thread or a task. For the Flows host.",
       internal: true, callers: ["module"],
@@ -1264,7 +1281,7 @@ export default {
       callers: ["module"],
       run: async ({ name, uid }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault" && c !== "module:gate" && c !== "module:vyred") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent, vault, gate and Space host modules only; agents.list shows the agents"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault" && c !== "module:gate") throw Object.assign(new Error("looking up an agent's uid is for the projects, plugin-agent, vault and gate modules only; agents.list shows the agents"), { code: "denied" });
         if (uid !== undefined) { const r = /** @type {any} */ (db.prepare("SELECT name FROM agents_agents WHERE uid = ?").get(String(uid))); return { name: r ? String(r.name) : null }; }
         return { uid: must(String(name).toLowerCase()).uid };
       },
