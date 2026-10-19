@@ -51,10 +51,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   (xdotool, import and the AT-SPI helper are all short-lived children of computerd).
 # fonts-liberation, fonts-noto-color-emoji: Chromium and everything else needs *some* fonts or
 #   every page renders tofu.
+# python3-tk: the agent's dock (agentd-dock.py, three buttons). Tk speaks plain X, so it works with the agent's untrusted cookie; fluxbox has no launcher of its own and a panel
+#   such as tint2 would run as the screen's owner (the browser uid), whose programs must never be the agent's terminal or files.
+# pcmanfm: the agent's file manager, opened on its own folder from the dock. Light (GTK, no desktop session), runs as the agent's uid, so it reaches only what that uid may.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg \
       tigervnc-standalone-server tigervnc-common tigervnc-tools \
       fluxbox xterm xdotool xinput x11-utils x11-xserver-utils \
+      python3-tk pcmanfm \
       at-spi2-core dbus-x11 \
       python3 python3-gi gir1.2-atspi-2.0 \
       chromium \
@@ -106,7 +110,7 @@ RUN groupadd -g 1000 agent \
 
 # Chromium's own password saving, autofill and sync are off by policy: the Vault is the only store (ADR 0005, decision 3). The owner's ruling (18 Oct 2026): the agent keeps full DevTools in its own Chrome, so
 # only the pages that would list a saved login or address are blocked by URL; the folder downloads go to is set per agent by the holder (agentd-chrome.py).
-# No extensions of any kind: one would run in the same page as a password the Vault fills.
+# No extensions of any kind: one would run in the same page as a password the Vault fills. (Vyre for Chrome is not pre-installed for that reason; see the 0.6.4 changelog.)
 # DevTools stay allowed: DeveloperToolsAvailability 2 also refuses CDP attach ("Not allowed"), which
 # is how the agent's hands and the Vault fill work; the agent already has CDP through its hands.
 # Chrome runs as browser (1002), its own uid: no page may open file:// (browser's own profile,
@@ -144,7 +148,7 @@ RUN for n in $(seq 20000 20063); do \
       && chown "$b:$n" "/var/lib/vyre/downloads/ag$n" && chmod 2750 "/var/lib/vyre/downloads/ag$n"; \
     done \
     && chown vyre:vyre /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads && chmod 0711 /var/lib/vyre/agents /var/lib/vyre/browsers /var/lib/vyre/x /var/lib/vyre/downloads
-COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-run.py agentd-chrome.py /opt/agentd/
+COPY agentd.js agentd-server.js agentd-main.js agentd-client.js agentd-relay.js agentd-pipe.py agentd-term.py agentd-run.py agentd-chrome.py agentd-dock.py /opt/agentd/
 RUN printf '{"type":"module"}\n' > /opt/agentd/package.json \
     && printf '#!/usr/bin/node\nimport { main } from "/opt/agentd/agentd-client.js";\nawait main();\n' > /opt/agentd/client && chmod 0755 /opt/agentd/client \
     && groupadd -g 1004 agentctl && useradd -M -u 1004 -g 1004 -s /usr/sbin/nologin -d /var/lib/vyre/agentd agentctl \
@@ -153,7 +157,12 @@ COPY agentd-vncpass.sh /usr/local/bin/agentd-vncpass
 # agentd's code is root's: neither agentctl nor an agent can write a file it runs.
 RUN chmod 0755 /usr/local/bin/agentd-vncpass \
     && chown -R root:root /opt/agentd /usr/local/bin/agentd-vncpass \
-    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/package.json
+    && chmod 0755 /opt/agentd && chmod 0644 /opt/agentd/*.js /opt/agentd/agentd-pipe.py /opt/agentd/agentd-term.py /opt/agentd/agentd-run.py /opt/agentd/agentd-chrome.py /opt/agentd/agentd-dock.py /opt/agentd/package.json
+# The agent's desk (owner, 20 Oct 2026): the window manager's settings for each agent's screen (no toolbar, no desktop menu, no key that starts a program; agentd.js starts fluxbox with -rc on
+# this file) and the Vyre mark the wallpaper is drawn from (a copy of site/icon-192.png; dockerfile-files.test.js keeps the two the same). Root's and read-only, like everything here.
+COPY desk/fluxbox /etc/vyre-desk/fluxbox
+COPY desk/mark.png /usr/share/vyre-desk/mark.png
+RUN chown -R root:root /etc/vyre-desk /usr/share/vyre-desk && chmod -R a+rX,go-w /etc/vyre-desk /usr/share/vyre-desk
 # The harnesses an agent's sessions run (owner decision, 18 Oct 2026: Claude Code, Codex and Grok run as the agent's own Linux user in its computer). The same pins as the box's own image
 # (box/Dockerfile) for Codex and Grok. Claude Code is an exact version here, never `latest` (the agent computer runs untrusted tasks): agentd-run.test.js refuses `latest` or a range, and the version is recorded in the image label below. They are root's, on PATH, and no agent can change them.
 # curl is needed only for Grok's one static binary and is removed again.
