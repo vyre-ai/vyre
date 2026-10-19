@@ -1,6 +1,7 @@
 // People on Settings > People and roles: who is in the space with their role (open one to change it), and the invitations waiting to be used with Revoke.
 // Inviting is InviteBody's form, opened from the page's "Invite someone" button; this section only lists.
 import { useState } from "react";
+import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
@@ -15,7 +16,7 @@ type Invites = ReturnType<typeof useInviteList>;
 /** `custom` is the space's own roles (id and name), offered beside the built-in ones; `onChanged` runs after a role is given so the page can reload its counts. */
 export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { mine: string | undefined; invites: Invites; onInvite: () => void; custom: { id: string; name: string }[]; onChanged: () => void }) {
   const { members, selfId, setRole, load, space } = useMembers();
-  const me = (["owner", "admin", "manager", "member", "temp"].includes(String(mine)) ? mine : "member") as Role;
+  const me = ((ROLE_IDS as readonly string[]).includes(String(mine)) ? mine : "member") as Role;
   const allowed = assignable(me);
   const [pick, setPick] = useState<null | { id: string; role: string }>(null);
   const [busy, setBusy] = useState(false);

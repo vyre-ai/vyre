@@ -182,15 +182,14 @@ export async function teamDecide(space: string, input: { id: string; approve: bo
 }
 
 export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
-  if (!(await nameHere()) && !(await hostSoftYes())) {
-    // no name kept in this page: the paired server makes the invite (and asks for the person's yes itself), as the invite screen does
-    const { tool } = await import("./box");
-    const r = await tool<{ token?: string; needs_proof?: boolean }>("spaces.invites.create", { space: i.space, role: i.role, ...(i.to ? { to: i.to } : {}), ...(i.ttlDays ? { ttlDays: i.ttlDays } : {}) });
-    if (!r || typeof r.token !== "string") throw Object.assign(new Error("The invite needs your yes first. Approve it, then try again."), { code: "needs_presence" });
-    return r as { token: string };
-  }
+  // The invite is made through the Space's own door with the person's yes. A page with no kept name and no way to say yes (a browser on a release build) cannot give one: it is told so, in words, and nothing is made.
   const { createTeamInvite } = await import("./team-invite.js");
-  return createTeamInvite(await inviteDeps(i.space), i);
+  try { return await createTeamInvite(await inviteDeps(i.space), i); }
+  catch (e) {
+    const code = (e as { code?: string })?.code;
+    if (code === "presence_required" || code === "needs_presence" || code === "no_signer") throw Object.assign(new Error("Approving someone needs your yes, which this browser cannot give. Approve it in Vyre on your phone."), { code: "needs_presence" });
+    throw e;
+  }
 }
 export async function teamInvites(space: string) {
   const { listTeamInvites } = await import("./team-invite.js");
