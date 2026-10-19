@@ -29,9 +29,9 @@ function rig(/** @type {Record<string, string>} */ initial = {}, { askOnDelete =
 }
 const code = (/** @type {Promise<any>} */ p) => p.then(() => null, (e) => e.code);
 
-test("the three tools are the person's own surfaces and nothing else", () => {
+test("the four tools are the person's own surfaces and nothing else", () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.space.delete", "files.drive.space.move", "files.drive.space.rename"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.space.delete", "files.drive.space.mkdir", "files.drive.space.move", "files.drive.space.rename"]);
   for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "device"]);
 });
 
@@ -120,4 +120,28 @@ test("a folder delete that is refused part way stops there and says how many wen
   const out = await tools.get("files.drive.space.delete").run({ path: "d" }, {});
   assert.deepEqual(out, { path: "d", kind: "folder", deleted: 1, stopped_at: "d/2.txt", reason: "needs approval", code: "needs_approval" });
   assert.deepEqual([...files.keys()], ["d/2.txt", "d/3.txt"], "what was refused and what came after it are still there");
+});
+
+test("mkdir writes one empty marker file under the caller's chain, in a parent that exists, and refuses a bad, duplicate or missing-parent name", async () => {
+  const r = rig({ "Clients/a.txt": "1", "Clients/Old/b.txt": "2" });
+  assert.deepEqual(await r.run("files.drive.space.mkdir", { parent: "Clients", name: "New" }), { path: "Clients/New" });
+  assert.equal(r.files.get("Clients/New/.folder")?.length, 0);
+  const put = r.calls.find((c) => c[0] === "put" && c[2] === "Clients/New/.folder");
+  assert.equal(put[1], person, "the call's own chain");
+  assert.deepEqual(await r.run("files.drive.space.mkdir", { name: "Top" }), { path: "Top" });
+  for (const bad of ["", "a/b", "a\\b", ".hidden", "..", ".", "x".repeat(121), "   "]) assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "Clients", name: bad })), "bad_input", JSON.stringify(bad));
+  assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "Clients", name: "Old" })), "conflict", "a folder with that name is there");
+  assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "Clients", name: "a.txt" })), "conflict", "a file with that name is there");
+  assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "Nope", name: "X" })), "not_found");
+  assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "../x", name: "X" })), "bad_input", "no path escape");
+  assert.equal(await code(r.run("files.drive.space.mkdir", { parent: "Clients/a.txt", name: "X" })), "not_found", "a file is not a parent");
+  assert.equal(r.calls.filter((c) => c[0] === "put").length, 2, "nothing was written for a refusal");
+});
+
+test("an empty folder made by mkdir is a folder: it moves, and it cannot be made twice", async () => {
+  const r = rig();
+  await r.run("files.drive.space.mkdir", { name: "Empty" });
+  assert.equal(await code(r.run("files.drive.space.mkdir", { name: "Empty" })), "conflict");
+  assert.equal((await r.run("files.drive.space.rename", { path: "Empty", name: "Renamed" })).kind, "folder");
+  assert.equal(r.files.has("Renamed/.folder"), true);
 });

@@ -1375,11 +1375,9 @@ export class Registry {
       const dev = /** @type {any} */ (meta && meta.kernelFacts);
       const ownersDevice = Boolean(dev && dev.kind === "device" && dev.limited !== true && typeof this.deps.ownerId === "function" && this.deps.ownerId() && String(dev.person) === String(this.deps.ownerId()));
       if (ownerDevice(label) && !ownersDevice && !(meta && meta.person && meta.person.id)) return false;
-      // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open. It is the person only when the daemon MEASURED what runs above the caller and found no
-      // model or coding-agent session (callerFacts: `inside_model_process: false`), or when the call carries the owner's signed-in session. An agent's shell inside a session is relabelled a model's before it gets here,
-      // and an ancestry the daemon could not read gives no facts, so both are refused.
-      const facts = /** @type {any} */ (meta && meta.kernelFacts);
-      if (!ownerDevice(label) && !(meta && meta.person && meta.person.id) && !(facts && typeof facts === "object" && facts.inside_model_process === false)) return false;
+      // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open, and the daemon's ancestry measure can be dodged by a process that detaches from its
+      // session, so those labels never get the no-device pass: it is the owner's signed-in session (the app) or the owner's vouched paired device, and nothing else.
+      if (!ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
       if (meta && meta.person && meta.person.id) {
         const owner = typeof this.deps.ownerId === "function" ? this.deps.ownerId() : null;
         if (!owner || String(meta.person.id) !== String(owner)) return false;

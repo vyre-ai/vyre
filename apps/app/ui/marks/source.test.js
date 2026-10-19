@@ -54,3 +54,13 @@ test("device type follows the name", () => {
   assert.equal(deviceTypeOf("Juniper archive"), "storage");
   assert.equal(deviceTypeOf("Alex's Mac"), "computer");
 });
+
+test("a person who picked a look is drawn as that character; a person with only a name is drawn as before", () => {
+  const look = "s3~c12~e1~m0~t2~b1~h4";
+  const named = markSource("person", "alex-rivera", "dark"), picked = markSource("person", look, "dark");
+  assert.notEqual(picked, named);
+  // the picked one is the agent family's drawing (the same shape and colour as an agent with that look), the named one is the portrait
+  const agent = markSource("agent", look, "dark").replace(/-[a-z0-9]+(?=["')])/g, "");
+  assert.equal(picked.replace(/-[a-z0-9]+(?=["')])/g, ""), agent);
+  assert.equal(markSource("person", "alex-rivera", "dark"), named, "a named person is drawn the same every time");
+});

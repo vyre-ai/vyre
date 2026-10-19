@@ -252,7 +252,8 @@ export function createHost(o) {
       const key = await fromSeed(seed);
       const chain = await chainOf(String(k.id));
       const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
-      const entry = (state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device");
+      // the chain's Entry type does not list `agree` (the point the device's identity entry carries), so the entry is read as any here
+      const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
       if (!entry || entry.agree !== undefined) return;
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });

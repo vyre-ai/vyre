@@ -604,7 +604,7 @@ export default [
       const d = r.data;
       if (json()) {
         if (tool === "names.check") return emit(d, { kind: "card", title: String(d.name), state: d.valid && d.available ? "ok" : "failed", fields: [{ label: d.valid && d.available ? "Free" : "Not free", value: d.valid && d.available ? String(d.address) : String(d.why || "") }] });
-        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" || d.phase === "named" ? "ok" : "wait", fields: [{ label: "Name", value: d.name ? `${d.name}.vyre.run` : "none yet" }, { label: "Address", value: d.address || "not published yet" }, { label: "Phase", value: String(d.phase || "") },
+        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" ? "ok" : d.phase === "failed" ? "failed" : "wait", fields: [{ label: "Name", value: d.name ? `${d.name}.vyre.run` : "none yet" }, { label: "Address", value: d.address || "not published yet" }, { label: "Phase", value: String(d.phase || "") },
           ...(d.why ? [{ label: "Why", value: String(d.why) }] : [])] });
       }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));

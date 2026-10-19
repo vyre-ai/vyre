@@ -438,8 +438,8 @@ export default {
     /** A model name: an alias or a model id, short and plain. @param {unknown} m */
     const modelName = m => { if (typeof m !== "string" || !/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(m)) throw Object.assign(new Error("a model is an alias like opus or sonnet, or a model id"), { code: "bad_input" }); return m; };
     // A look is a shape and a colour, and may add a character: eyes e0 to e5, mouth m0 to m4, a top t0 to t6, a blush b0 or b1 and a charm h0 to h5, in that order ("s3~c5~e2~m1~t4~b1~h0"). A part left out is drawn from a hash of the agent's uid by the app.
-    const LOOK = /^s[0-7]~c[0-7](~e[0-5])?(~m[0-4])?(~t[0-6])?(~b[01])?(~h[0-5])?$/;
-    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c7), and may add eyes ~e0 to ~e5, mouth ~m0 to ~m4, top ~t0 to ~t6, blush ~b0 or ~b1 and charm ~h0 to ~h5, in that order"); };
+    const LOOK = /^s[0-7]~c(1[0-5]|[0-9])(~e[0-5])?(~m[0-4])?(~t[0-6])?(~b[01])?(~h[0-5])?$/;
+    const checkLook = l => { if (l !== undefined && l !== "" && !(typeof l === "string" && LOOK.test(l))) throw new Error("look is a shape and a colour, like s3~c5 (shapes s0 to s7, colours c0 to c15), and may add eyes ~e0 to ~e5, mouth ~m0 to ~m4, top ~t0 to ~t6, blush ~b0 or ~b1 and charm ~h0 to ~h5, in that order"); };
 
     const checkProjects = p => {
       if (p === undefined) return;

@@ -139,3 +139,22 @@ test("the loader lists a place from the right source, and its folders alone for 
   await assert.rejects(L.rows("nonsense"), /place/);
   assert.deepEqual(await L.rows("shared"), [], "shared and computer have their own panes, not rows");
 });
+
+test("a project's folder shows the project's name, in the list, the tree and the path, and the id stays only as the path", { skip: !strip }, async () => {
+  const { filesLoader } = await import("./files-source.ts");
+  const m = await import("./files-model.ts");
+  const ID = "01a1517e-dd35-4a93-a004-f76427678abc";
+  const names = { [`Projects/${ID}`]: "Harlow site" };
+  const L = filesLoader({
+    space: { list: async () => ({ entries: [{ path: `Projects/${ID}/brief.pdf`, size: 5 }, { path: "Projects/other-id/x.txt", size: 1 }], names: {}, folders: [], more: false }) },
+    linked: { ls: async () => ({ path: "", entries: [] }) }, box: { list: async () => ({ share: "", path: "", entries: [] }) },
+    linkedNames: () => ({}), names: async () => names,
+  });
+  const rows = await L.rows("space:Projects");
+  assert.deepEqual(rows.map((r) => [r.name, r.path]), [["Harlow site", `Projects/${ID}`], ["other-id", "Projects/other-id"]]);
+  assert.deepEqual((await L.dirs("space:Projects")).map((n) => n.label), ["Harlow site", "other-id"]);
+  assert.deepEqual(m.crumbsFor({ root: "space", path: `Projects/${ID}` }, { space: names }).map((c) => [c.name, c.place]), [["Space", "space"], ["Projects", "space:Projects"], ["Harlow site", `space:Projects/${ID}`]]);
+  // names that do not come back leave the id, never an error
+  const bare = filesLoader({ space: { list: async () => ({ entries: [{ path: `Projects/${ID}/brief.pdf` }], more: false }) }, linked: { ls: async () => ({ path: "", entries: [] }) }, box: { list: async () => ({ share: "", path: "", entries: [] }) }, linkedNames: () => ({}), names: async () => { throw new Error("down"); } });
+  assert.equal((await bare.rows("space:Projects"))[0].name, ID);
+});
