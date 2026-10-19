@@ -221,8 +221,8 @@ function ComputerCard({ a, onChange }: { a: AgentFull; onChange: () => void }) {
   );
 }
 
-/** Change how an agent is drawn: the grid of shapes and the colours, then Save (agents.update look). */
-function LookSheet({ a, open, onClose, onSaved }: { a: AgentFull; open: boolean; onClose: () => void; onSaved: (look: string) => void }) {
+/** Change how an agent is drawn: the grid of shapes and the colours (and, behind the Customize button, eyes, mouth, top, blush and charm), then Save (agents.update look). Also used by Settings for the Assistant. */
+export function LookSheet({ a, open, onClose, onSaved }: { a: AgentFull; open: boolean; onClose: () => void; onSaved: (look: string) => void }) {
   const start = lookOf(a.look ?? "") ?? { shape: 0, color: 0 };
   // the character: the parts its look names, and for the rest what it is drawn with now (a hash of its name), so a tap changes one thing and keeps the others
   const [v, setV] = useState({ ...start, parts: partsOf(withParts(a.look || a.name, a.name.toLowerCase())) as Record<string, number> });
