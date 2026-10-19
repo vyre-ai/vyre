@@ -63,6 +63,8 @@ export async function ownerWalkReal(c) {
 
   // ---- 2. chats: a new thread; a message gets a real Assistant reply
   let threadsBefore = 0;
+  /** The thread's own address, read from the URL after Start chat. /u/chats redirects to the new-thread page on a phone-wide window. */
+  let threadPath = "";
   await run.step(W(2, "Chats opens a new thread with the Assistant, and the server has the thread"), async () => {
     await screen("/u/chats/new", /Start chat|Search people and agents/i, "the new chat screen");
     await press(["Juno", "juno"]);
@@ -75,19 +77,21 @@ export async function ownerWalkReal(c) {
     await shot("02-thread");
     const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
     if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
+    threadPath = `/u/chats/${id}`;
     return `the app opened ${drv.url?.()}`;
   }, { needs: READY });
   await run.step(W(2, "the first message typed in New chat is in the thread, and the server holds it"), async () => {
-    await fresh("/u/chats", /Juno/, "the Chats screen");
-    try { await press(["Juno"]); } catch { /* the thread is already open */ }
+    if (!threadPath) pending("no thread was opened");
+    await fresh("/u/chats?list=1", /Juno/, "the thread list");
+    await fresh(threadPath, /Juno|Message/, "the thread");
     try { await until(async () => (await has(/Say hello in five words/)), 30_000, "the first message in the thread"); }
     catch (e) { await shot("failed-02-first-message"); throw new Error(`${/** @type {Error} */ (e).message}: the thread with Juno shows only "${await show(300)}"`); }
     await shot("02-first-message");
   }, { needs: READY });
   await run.step(W(2, "the Assistant sends a real reply to a message typed in the thread"), async () => {
     if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
-    await screen("/u/chats", /Juno/, "the Chats screen");
-    try { await press(["Juno"]); } catch { /* the thread is open */ }
+    if (!threadPath) pending("no thread was opened");
+    await screen(threadPath, /Juno|Message/, "the thread");
     await fillAny(["Message Juno"], "Please answer with the single word: ready");
     await press(["Send"]);
     const before = (await text()).length;
