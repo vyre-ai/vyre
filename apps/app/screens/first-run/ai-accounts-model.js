@@ -11,6 +11,10 @@ export const ACCOUNTS_COPY = Object.freeze({
   add: "Add account",
   check: "I signed in",
   signing: "Finish signing in in the window that opened, then press the button.",
+  pasteLabel: "The code the page showed",
+  pasteHelp: "The sign-in page shows a code. Paste it here, then press Continue.",
+  paste: "Continue",
+  cancel: "Cancel",
   empty: "Add an AI account, or press Skip for now.",
   tooLong: "Use up to 80 characters.",
   keyTile: "API key",
@@ -71,3 +75,28 @@ export function copyWords({ from, to, count }) {
     button: (/** @type {number} */ n) => (n === 1 ? "Copy 1 account" : `Copy ${n} accounts`),
   };
 }
+
+/**
+ * What the sign-in of one provider is waiting for. A provider whose page shows a code to paste back (the home answered step "url") needs that code typed here; one that finishes by itself (the home shows its own code, or the person
+ * just approves) needs only "I signed in". @param {string} flow the flow id the home gave, or "" before one @param {string} step the step the home answered
+ * @returns {"start" | "paste" | "wait"}
+ */
+export function signinMode(flow, step) {
+  if (!flow) return "start";
+  return step === "url" ? "paste" : "wait";
+}
+
+/**
+ * The sign-in call's input. The code sent is ONLY the one the person pasted from the provider's page: the code the home itself shows (to type at the provider) is never sent back as if it were theirs.
+ * @param {{ provider: string, label: string, flow: string, step: string, pasted: string }} o
+ */
+export function signinInput({ provider, label, flow, step, pasted }) {
+  const code = pasted.trim();
+  return { provider, label: label.trim(), ...(flow ? { flow } : {}), ...(flow && step === "url" && code ? { code } : {}) };
+}
+
+/** Whether the pasted code can be sent: something was typed, one line, within the home's own bound of 200. @param {string} pasted */
+export const pasteOk = (pasted) => { const c = pasted.trim(); return c.length > 0 && c.length <= 200 && !/[\u0000-\u001f]/.test(c); };
+
+/** The state after Cancel: no flow, no link, no code, nothing pasted, so the provider tiles and the key tile work again. */
+export const NO_SIGNIN = Object.freeze({ flow: "", url: "", code: "", step: "", pasted: "" });

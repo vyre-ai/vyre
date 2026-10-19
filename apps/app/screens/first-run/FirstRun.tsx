@@ -15,7 +15,7 @@ import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
-import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
@@ -113,6 +113,8 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
+  const [agentStep, setAgentStep] = useState("");
+  const [pasted, setPasted] = useState("");
   const [accounts, setAccounts] = useState<{ provider: string; label: string; item?: string }[]>([]);
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
@@ -537,20 +539,26 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           <View style={{ gap: 12 }}>
             <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
             {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
-            {agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
-            <Button kind="secondary" size="lg" label={agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy} disabled={Boolean(problem) || busy} onPress={() => void run(async () => {
-              const r = await signInAgent({ provider: pick, label: acctLabel.trim(), ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
+            {signinMode(agentFlow, agentStep) === "paste" ? (
+              <Field label={ACCOUNTS_COPY.pasteLabel} value={pasted} onChangeText={setPasted} help={ACCOUNTS_COPY.pasteHelp} />
+            ) : agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
+            <Button kind="secondary" size="lg" label={signinMode(agentFlow, agentStep) === "paste" ? ACCOUNTS_COPY.paste : agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy}
+              disabled={Boolean(problem) || busy || (signinMode(agentFlow, agentStep) === "paste" && !pasteOk(pasted))} onPress={() => void run(async () => {
+              const r = await signInAgent(signinInput({ provider: pick, label: acctLabel, flow: agentFlow, step: agentStep, pasted }));
               if (!r.ok) { setFailure(r.message); return; }
               if (r.flow && r.step !== "done") {
                 setAgentFlow(String(r.flow));
-                if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                setAgentStep(typeof r.step === "string" ? r.step : "");
+                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
+                setPasted("");
                 return;
               }
               setAccounts((x) => [...x, { provider: pick, label: acctLabel.trim() }]);
-              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl("");
+              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl(""); setAgentStep(""); setPasted("");
             })} />
+            {agentFlow ? <Button kind="ghost" size="lg" label={ACCOUNTS_COPY.cancel} disabled={busy} onPress={() => { setAgentFlow(NO_SIGNIN.flow); setAgentUrl(NO_SIGNIN.url); setAgentCode(NO_SIGNIN.code); setAgentStep(NO_SIGNIN.step); setPasted(NO_SIGNIN.pasted); setFailure(""); }} /> : null}
           </View>
         ) : null}
         {accounts.length ? (
