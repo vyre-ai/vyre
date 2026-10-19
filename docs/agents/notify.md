@@ -20,7 +20,7 @@ Never ask for a password, key or token this way. Flag your own task stuck with a
 
 ## Be told when a session finishes
 
-`threads.watch` fires once when a thread finishes a turn, asks a question or stops, then clears itself. Pass `thread`, `until` (`finished`, `asks` or `either`), `notify: "capsule"` so it shows on the person's devices, and a short `note` as the label. When a watch fires, do not poll `threads.get` to wait for it.
+`tools_call threads.watch` fires once when a thread finishes a turn, asks a question or stops, then clears itself. Pass `thread`, `until` (`finished`, `asks` or `either`), `notify: "capsule"` so it shows on the person's devices, and a short `note` as the label. When a watch fires, do not poll `tools_call threads.get` to wait for it.
 
 ## Say it plainly
 
