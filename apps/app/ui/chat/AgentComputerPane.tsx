@@ -39,7 +39,7 @@ export function AgentComputerPane({ name, view, busy, problem, onWake, onSleep, 
           style={({ hovered }: any) => ({ aspectRatio: 16 / 10, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: hovered ? color["edge-strong"] : color.edge, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" })}>
           <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: color.scrim, opacity: 0.35 }} />
           <View pointerEvents="none" style={{ alignItems: "center", gap: 8 }}>
-            <Pulse active={!busy}><Icon name="moon" size={28} tone="text-2" /></Pulse>
+            <Pulse active={!busy}><Icon name="moon" size={24} tone="text-2" /></Pulse>
             <Text size="secondary" medium>{busy ? "Waking" : "Press to wake"}</Text>
           </View>
         </Pressable>

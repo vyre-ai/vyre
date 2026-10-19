@@ -21,7 +21,7 @@ export function placeGroups(o = {}) {
     { id: "top", heading: null, places: [{ id: "all", label: "All files", kind: "all" }, { id: "recent", label: "Recent", kind: "recent" }, { id: "shared-links", label: "Your shared links", kind: "shared" }] },
     ...(projects.length ? [{ id: "projects", heading: "Projects", places: projects }] : []),
     ...(agents.length ? [{ id: "agents", heading: "Agents", places: agents }] : []),
-    ...(!o.labs ? [] : [{ id: "sites", heading: "Sites", places: [...sites.map((s) => /** @type {Place} */ ({ id: `site:${s.id}`, label: s.name, kind: "site", ...(s.live ? { live: true } : { draft: true }) })), { id: "new-site", label: "New site", kind: "newsite" }] }]),
+    ...(!o.labs ? [] : [{ id: "sites", heading: "Sites", places: [...sites.map((s) => /** @type {Place} */ ({ id: `site:${s.id}`, label: s.name, kind: "site", ...(s.live ? { live: true } : { draft: true }) })), /** @type {Place} */ ({ id: "new-site", label: "New site", kind: "newsite" })] }]),
   ];
 }
 
