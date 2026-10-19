@@ -82,6 +82,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 54 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 32 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 3 | 0 | cli |
+| [`requests`](#requests) | `core/requests` | `box`, `local` | 6 | 3 | cli |
 | [`roles`](#roles) | `core/roles` | `box`, `local` | 8 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 25 | 10 | capsule, cli, deck |
@@ -867,6 +868,17 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## requests
+
+Asking to join a Space by its address. A person with no invite may ask a Space that takes requests; an owner or admin sees the ask and answers it through the existing invite path. Off by default for every Space.
+
+- Folder: `core/requests`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [6](tools.md#requests), 1 of them only for other modules
+- Emits: [3 events](events.md#requests)
+- Shows on: cli
 
 ## roles
 
