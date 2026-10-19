@@ -107,7 +107,7 @@ export function fieldSummary(f, types) {
 
 /** What a field is, in one short phrase: "Text", "Pick one, 4 options", "Link". The detail that changes what a person sees (required, unique, where it links) is a badge, not part of this line. @param {Partial<Draft> & { kind: string }} f */
 export function fieldKindLine(f) {
-  const word = f.sealed ? "Sealed" : KIND_WORD[f.kind] ?? f.kind;
+  const word = f.sealed ? "Kept sealed" : KIND_WORD[f.kind] ?? f.kind;
   return f.options?.length ? `${word}, ${f.options.length} options` : word;
 }
 

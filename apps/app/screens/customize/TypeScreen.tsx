@@ -99,7 +99,7 @@ export function TypeScreen() {
   if (!def) return <Page title="Objects" back="/u/settings/customize"><Card><EmptyState title="That type is not here" action={{ label: "Back to Customize", onPress: () => router.push("/u/settings/customize" as never) }} /></Card></Page>;
   const plural = (def.plural as string) ?? `${def.label}s`;
   return (
-    <Page title={def.label ? plural : "Type"} sub="Objects" back="/u/settings/customize">
+    <Page title={def.label ? plural : "Type"} back="/u/settings/customize">
       <Pressable accessibilityRole="link" accessibilityLabel="Back to Objects" onPress={() => router.push("/u/settings/customize" as never)} className="self-start"><Text size="caption" tone="label">Objects /</Text></Pressable>
       <Tabs value={tab} onChange={setTab} items={[["fields", "Fields"], ["access", "Access"], ["history", "History"]]} />
       {tab === "access" ? <TypeAccess type={def.name} label={plural} /> : tab === "history" ? <TypeHistory type={def.name} /> : <TypeFields type={def.name} />}

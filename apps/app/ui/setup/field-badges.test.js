@@ -10,7 +10,7 @@ const types = [{ name: "contact", label: "Contact", plural: "Contacts" }];
 test("a field's line says what it is, with its options counted", () => {
   assert.equal(fieldKindLine({ kind: "text" }), "Text");
   assert.equal(fieldKindLine({ kind: "choice", options: ["a", "b", "c"] }), "Choice, 3 options");
-  assert.equal(fieldKindLine({ kind: "text", sealed: true }), "Sealed");
+  assert.equal(fieldKindLine({ kind: "text", sealed: true }), "Kept sealed");
 });
 
 test("the badges are Required, Unique, where a link goes and hidden roles, in that order", () => {
