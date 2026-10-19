@@ -228,3 +228,25 @@ test("openrouter: one reply is one message: the stream's message_start, its text
   assert.equal(seen[0].message, seen[1].message); assert.equal(seen[0].block, seen[1].block);
   assert.equal(seen[2].message, seen[3].message); assert.notEqual(seen[0].message, seen[2].message, "the second reply is its own message");
 });
+
+test("openrouter: when a door is connected and refuses, the turn ends in the door's words and nothing is sent direct, even for the owner's own account", async t => {
+  const refusals = [{ code: "ledger_hit", class: "ssn" }, { code: "residency" }, { code: "budget", meter: "tokens" }];
+  for (const refusal of refusals) {
+    let asked = 0, direct = 0;
+    const srv = http.createServer((req, res) => { direct++; req.resume(); res.writeHead(200); res.end(); });
+    await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+    t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+    const door = { call: async () => { asked++; throw Object.assign(new Error(refusal.code), { code: refusal.code, refusal }); } };
+    const got = [];
+    const r = openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, door: () => door, chainFor: async () => ({}), warn() {} })
+      .run({ id: crypto.randomUUID(), resume: false, model: "x/y", env: { OPENROUTER_API_KEY: "sk-test", VYRE_OWNER_ACCOUNT: "1" }, onMessage: m => got.push(m), onExit() {} });
+    r.write({ type: "user", message: { role: "user", content: "hi" } });
+    for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
+    await r.stop();
+    const res = got.find(m => m.type === "result");
+    assert.equal(res.is_error, true, refusal.code);
+    assert.equal(asked, 1, "the door was asked");
+    assert.equal(direct, 0, `${refusal.code}: no direct request after a door refusal`);
+    assert.ok(!/sk-test/.test(res.result), "no key in the words");
+  }
+});

@@ -120,12 +120,13 @@ function runChat(entry, store, o) {
       if (!key) throw new Error("no OpenRouter key on this account");
       if (!model) throw new Error("choose a model for OpenRouter (in the routing list, or when the session starts)");
       // The owner's own API-key account (VYRE_OWNER_ACCOUNT, set from the account row by the Switchboard, never from a request) may go direct when no door is connected; its prompt is scrubbed of credentials first. Any other run needs the door.
-      const via = route({ door: entry.door, legacyDirect: entry.legacyDirect, directOk: Boolean(o.env && o.env.VYRE_OWNER_ACCOUNT === "1"), warn: entry.warn }, entry.id || "openrouter");
+      const door = typeof entry.door === "function" ? entry.door() : entry.door;   // a getter: the door is there only on a home with a sealing process
+      const via = route({ door, legacyDirect: entry.legacyDirect, directOk: Boolean(o.env && o.env.VYRE_OWNER_ACCOUNT === "1"), warn: entry.warn }, entry.id || "openrouter");
       if ("refused" in via) throw new Error(via.refused);
       if ("door" in via) {
         // Through the door: scanned, ledgered, residency and budget checked. The door answers whole, so the text arrives as one chunk (a known gap).
         let out;
-        try { out = await via.door.call({ chain: entry.chainFor ? entry.chainFor(o) : o.chain, purpose: "session", provider: entry.id || "openrouter", model, session: String(o.id), messages, credential: { key, base } }); }
+        try { out = await via.door.call({ chain: await (entry.chainFor ? entry.chainFor(o) : o.chain), purpose: "session", provider: entry.id || "openrouter", model, session: String(o.id), messages, credential: { key, base } }); }
         catch (e) { if (isRefusal(e)) throw new Error(doorMessage(e) || "the inference door refused this"); throw e; }
         text = String(out.content || "");
         if (!text) throw new Error("the model returned no answer");

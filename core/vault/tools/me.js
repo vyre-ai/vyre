@@ -196,7 +196,7 @@ export function register({ ctx, people, tool, onRemoved = async () => {} }) {
       let it; try { it = await people.get(person, { name: acct.item }); } catch { throw Object.assign(new Error("unlock your own vault to use this account"), { code: "locked" }); }
       const value = it.fields[String(acct.field || "value")] ?? it.fields.key ?? it.fields.token;
       if (typeof value !== "string" || !value) throw Object.assign(new Error("the key in your vault for this account is empty: add the key to the account in your vault, then try again"), { code: "denied" });
-      people.emit("vault.me.lent", { person, account: String(input.account) });   // who and which account: never the value, and never the item's name (the member's own label for a secret)
+      people.emit("vault.key-lent", { person, account: String(input.account) });   // who and which account: never the value, and never the item's name (the member's own label for a secret)
       return { value };
     },
   });

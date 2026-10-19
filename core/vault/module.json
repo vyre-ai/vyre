@@ -283,6 +283,7 @@
       "vault.agent-granted",
       "vault.agent-carried",
       "vault.lease-lent",
+      "vault.key-lent",
       "vault.lease-ended",
       "vault.scope-converted",
       "vault.mcp-pass-made",
