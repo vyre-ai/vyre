@@ -162,6 +162,7 @@ test("the assistant is always first: with no chat of its own yet, a row that sta
   assert.equal(rows[0].sub, "Your assistant");
   assert.equal(rows[0].chat, "", "nothing is made until the first message");
   assert.equal(convosFrom({ chats: [], agents: [], people: [] }).some((r) => r.id === "assistant:new"), false, "no assistant known, no row");
+});
 
 test("an agent is said as its title, in the list and in a chat that is only with it; a chat with its own title keeps it", () => {
   const items = convosFrom({
