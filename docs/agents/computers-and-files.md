@@ -4,7 +4,7 @@ summary: Your workspace, an agent's own computer, how to watch and take over a s
 audience: agents
 owner: docs
 status: stable
-tokens: 500
+tokens: 700
 when: You need to read or write files, run something on a computer, use a browser, or hand a screen to a person.
 ---
 
@@ -27,7 +27,9 @@ Glass shows an agent's screen live. A person can take it over (`computers.takeov
 
 ## A browser
 
-Use the browser tools on your computer to read a page, fill a form and act. Never type a secret. If a page needs a login, ask for a take-over so the person types it. A purchase, a send or a post is outward: it waits for a yes.
+Whose browser it is depends on the tool. `tools_call computer.use` works on a computer: the cloud one by default, or the one named in `on`; `do` is one of look, open, click, type, fill, signin or route, and `signin` fills a login from the Vault. The `chrome` tools (see `chrome-ops.md`) work in the person's own Chrome when they connected it. If you have your own computer, use it by default for anything that needs a browser or a screen.
+
+Use the browser tools to read a page, fill a form and act. Never type a secret. If a page needs a login, ask for a take-over so the person types it. A purchase, a send or a post is outward: it waits for a yes.
 
 ## The sandbox
 

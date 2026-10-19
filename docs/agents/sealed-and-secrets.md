@@ -4,7 +4,7 @@ summary: Why you see placeholders instead of secrets, how to use one, and what t
 audience: agents
 owner: docs
 status: stable
-tokens: 500
+tokens: 700
 when: A field shows a placeholder instead of a value, you need a password, key or number you cannot see, or you are about to write a secret into text.
 ---
 
@@ -19,6 +19,18 @@ A sealed field (a social security number, a card, a bank account, a passport, a 
 - **In a draft or a message.** Write the placeholder as it is. At the moment the person's approved act is sent, the system puts the real value in, outside you.
 - **In a tool call that needs a credential.** Do not pass one. Name the connection or vault item. The system attaches the key when it makes the call.
 - **In your own reasoning.** Treat a placeholder as an opaque token. Do not try to guess, reconstruct or search for the value, and do not paste text that might contain it into another tool.
+
+## A Vault item, by name
+
+A Vault item is used by its name. You name it; you never see its value, and you never write it down.
+
+- To see what exists, `vault_list` returns names and descriptions only.
+- To call a service with a stored credential, `vault_request` names the credential, a method and a full address on its host (`connections.md`). The system attaches the key outside you.
+- To run a program that needs a value, `vyre vault run <name> -- <command>` puts it in that one process and hides it in the output.
+- To use an item someone shared with the person, `vault_relay` with `{{vault}}` where the value goes in a header or the body. It never reaches this machine.
+- To give a module access to an item, `tools_call vault_grant`. From you it waits as pending until the person approves it.
+
+If an item is missing or has changed, see "When you need the value" below.
 
 ## What not to do
 
