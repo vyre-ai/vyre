@@ -147,6 +147,7 @@ export const MODULES = {
   "core/recall": ["memory", "Search over every turn of every session on this machine."],
   "core/records-tools": ["work", "The app's way into a Space's records: one tool per store call, under the caller's chain."],
   "core/relay": ["identity", "The way to reach a server that always works: it dials out to a relay and paired devices follow."],
+  "core/requests": ["identity", "Asking to join a Space by its address: a person with no invite asks, and the owner approves or declines."],
   "core/rules-tools": ["work", "The app's way into a Space's standing rules."],
   "core/roles": ["work", "A Space's roles: the built-in ones and custom roles built from Member or Admin."],
   "core/runner": ["sessions", "Runs a Space's AI sessions on a computer: sandboxed, in an encrypted workspace."],

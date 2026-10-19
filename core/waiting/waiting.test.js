@@ -33,10 +33,10 @@ const fake = (name, tool, key, extra = "") => [name, [tool],
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
 const GRANT = { id: "g_1", name: "billing-key", module: "mail", status: "pending", by: "mcp", at: T + 5000 };
 const VAULT = { grants: [GRANT], passes: [], agentGrants: [], people: [], accepts: [] };
-const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("vault", "vault.pending", "vault"), fake("flows", "flows.attention", "attn"), fake("models", "models.evals", "evals"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
+const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("vault", "vault.pending", "vault"), fake("flows", "flows.attention", "attn"), fake("models", "models.evals", "evals"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending"), fake("requests", "requests.attention", "reqs")];
 
 async function world(t, fakes = ALL, data = {}, role = "box") {
-  /** @type {any} */ (globalThis).fake = { asks: [], held: [], vault: { grants: [], passes: [], agentGrants: [], people: [], accepts: [] }, attn: { runs: [] }, evals: { evals: [] }, ringing: [], pending: [], ...data };
+  /** @type {any} */ (globalThis).fake = { asks: [], held: [], vault: { grants: [], passes: [], agentGrants: [], people: [], accepts: [] }, attn: { runs: [] }, evals: { evals: [] }, reqs: { requests: [], refusing: [] }, ringing: [], pending: [], ...data };
   /** @type {any} */ (globalThis).calls = {};
   const home = tempHome(t);
   const root = path.join(home, "mods");
@@ -101,7 +101,7 @@ test("waiting.list: a failing, refused or missing source leaves its name in part
     { asks: [ASK_P], held: new Error("gate broke"), ringing: [RING] });
   const r = (await w.call("waiting.list")).data;
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2"]);
-  assert.deepEqual([...r.partial].sort(), ["flows", "gate", "link", "models", "planner", "vault"], "threw, refused module callers, not running here");
+  assert.deepEqual([...r.partial].sort(), ["flows", "gate", "link", "models", "planner", "requests", "vault"], "threw, refused module callers, not running here");
   assert.deepEqual(r.by_kind, { approval: 0, ask: 1, draft: 0, access: 0, run: 0, task: 0, eval: 0, signing: 0, signin: 0, reminder: 0, pairing: 0 });
 });
 
