@@ -914,6 +914,9 @@ export class Presence {
     try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND NOT EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage != 'software')").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
   }
 
+  /** Does any enrolled key turn approvals on? The keys list less notPhoneKeyIds: the one answer the module floor, the kernel's remote path and the cards share. */
+  hasPresenceDevice() { const not = this.notPhoneKeyIds(); return this.keys().some((/** @type {any} */ k) => !not.has(k.id)); }
+
   keys() {
     return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
   }
@@ -1074,7 +1077,20 @@ export async function noPresenceWhy(d, caller, meta) {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
     const soft = presence && typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
-    const kind = f && f.web === true ? "web" : String(caller).startsWith("device:") ? "app" : String(caller).startsWith("tailnet:") ? "tailnet" : "other";
+    const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
     return `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
   } catch { return "(reason unavailable)"; }
+}
+
+/**
+ * The kernel's remote path (kernel/core/authorize.js `presenceNotNeeded`): with no counted presence device, the home's owner as exactly one person passes a presence step, except the acts about owners, roles,
+ * transfers and adoption. The same Presence answers it as the module floor. An agent hop, a viewer or another person never passes. @param {{ presence: any, owner: () => string | null }} d @param {{ chain: any, action: string }} q
+ */
+export function noPresenceForChain(d, q) {
+  try {
+    const c = q.chain, owner = d.owner();
+    if (!c || c.viewer === true || !Array.isArray(c.hops) || c.hops.length !== 1 || !c.hops[0].actor || c.hops[0].actor.kind !== "person" || !owner || String(c.hops[0].actor.id) !== String(owner)) return false;
+    if (/owner|transfer|adopt|role/i.test(String(q.action))) return false;
+    return Boolean(d.presence) && typeof d.presence.hasPresenceDevice === "function" && !d.presence.hasPresenceDevice();
+  } catch { return false; }
 }

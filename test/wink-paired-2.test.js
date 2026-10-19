@@ -22,7 +22,7 @@ import { createRelay } from "../relay/node/server.js";
 import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 import { macCore } from "./fake-core-keys.js";
 import { card } from "../core/wink/cards.js";
 import { pairServer } from "../relay/client/serverpair.js";
@@ -337,6 +337,7 @@ shardTest("a software device key's presence proof is refused by the server witho
   t.after(() => { if (savedSw !== undefined) process.env.VYRE_SEAL_SOFTWARE = savedSw; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
+  enrolDevice(f.w.d); // a hardware phone is enrolled, so presence applies: a computer's own software key is ignored for counting, and must still not prove presence on its own
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
