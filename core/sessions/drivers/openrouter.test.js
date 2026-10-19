@@ -170,8 +170,6 @@ test("openrouter: a 400 from the service, a plain JSON answer, an error sent wit
 
 test("openrouter, a fresh box with no inference door: the owner's own API-key account is sent direct with the prompt scrubbed; any other run is refused; a connected door is used first", async t => {
   const KEY = "sk-or-v1-" + "a".repeat(40);
-  const { seen, turn } = await oneShot(t, (req, res) => sse(res, "hello"));
-  const base = seen; // (the server is reached through the provider below)
   const run = async (entry, env, say = `please use ${KEY}`) => {
     const got = [];
     const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { entry.seen.push(JSON.parse(b || "{}")); sse(res, "hello"); }); });
@@ -184,7 +182,6 @@ test("openrouter, a fresh box with no inference door: the owner's own API-key ac
     await r.stop();
     return got.find(m => m.type === "result");
   };
-  void turn; void base;
   // the owner's own account, no door: sent, and the credential in the prompt is not
   const direct = { seen: [] };
   const ok = await run(direct, { VYRE_OWNER_ACCOUNT: "1" });
