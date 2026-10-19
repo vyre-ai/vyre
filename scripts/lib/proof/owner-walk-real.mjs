@@ -75,23 +75,28 @@ export async function ownerWalkReal(c) {
     await shot("02-thread");
     const id = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
     if (!id || id === "new") throw new Error(`the app did not open a thread (url ${drv.url?.()})`);
-    // what the server holds, read fresh: the Chats list, fetched from the box, shows the thread and its first message
-    await fresh("/u/chats", /Say hello in five words/, "the Chats list showing the thread's first message");
-    await shot("02-chats-list");
-    return `chat ${id} is on the server with its first message`;
+    return `the app opened ${drv.url?.()}`;
   }, { needs: READY });
-  await run.step(W(2, "the Assistant sends a real reply"), async () => {
+  await run.step(W(2, "the first message typed in New chat is in the thread, and the server holds it"), async () => {
+    await fresh("/u/chats", /Juno/, "the Chats screen");
+    try { await press(["Juno"]); } catch { /* the thread is already open */ }
+    try { await until(async () => (await has(/Say hello in five words/)), 30_000, "the first message in the thread"); }
+    catch (e) { await shot("failed-02-first-message"); throw new Error(`${/** @type {Error} */ (e).message}: the thread with Juno shows only "${await show(300)}"`); }
+    await shot("02-first-message");
+  }, { needs: READY });
+  await run.step(W(2, "the Assistant sends a real reply to a message typed in the thread"), async () => {
     if (!process.env.OWNER_WALK_OPENROUTER_KEY) pending("no model key in this run (OWNER_WALK_OPENROUTER_KEY is not set), so there is no real reply to check");
-    // the thread opened in the step above is the current screen's chat; read it as the page shows it, until something more than our own message appears
-    const chat = /\/u\/chats\/([^/?#]+)/.exec(String(drv.url?.() || ""))?.[1];
-    if (!chat) { await screen("/u/chats", /Say hello in five words/, "the Chats list"); await press(["Say hello in five words"]); }
-    const base = (await text()).length;
+    await screen("/u/chats", /Juno/, "the Chats screen");
+    try { await press(["Juno"]); } catch { /* the thread is open */ }
+    await fillAny(["Message Juno"], "Please answer with the single word: ready");
+    await press(["Send"]);
+    const before = (await text()).length;
     let t = "";
-    try { t = await until(async () => { const x = await text(); return x.includes("Say hello in five words") && x.length > base + 12 && !/Thinking|Working on it|Starting/.test(x) ? x : ""; }, 240_000, "the Assistant's reply"); }
+    try { t = await until(async () => { const x = await text(); return x.includes("single word") && x.length > before + 8 && !/Thinking|Working on it|Sending/.test(x) ? x : ""; }, 240_000, "the Assistant's reply"); }
     catch (e) { await shot("failed-02-reply"); throw new Error(`${/** @type {Error} */ (e).message}. The thread says: ${await show(700)}`); }
-    if (/could not|couldn't|sign in again|no AI account|didn't answer|did not answer/i.test(t.replace("Say hello in five words", ""))) throw new Error(`the thread shows an error instead of a reply: ${t.slice(0, 500)}`);
+    if (/could not|couldn't|sign in again|no AI account|didn't answer|did not answer/i.test(t.replace("single word", ""))) throw new Error(`the thread shows an error instead of a reply: ${t.slice(0, 500)}`);
     await shot("02-reply");
-    return `the thread grew from ${base} to ${t.length} characters`;
+    return `the thread grew by ${t.length - before} characters`;
   }, { needs: READY });
 
   // ---- 3. files: a new folder, an upload into it, a move into it; project folders show names
@@ -137,7 +142,7 @@ export async function ownerWalkReal(c) {
   /** @type {string} */ let inviteLink = "";
   await run.step(W(4, "People: Invite someone makes a link"), async () => {
     await screen("/u/wink/invite", /Invite someone|Make the invitation/i, "the invite screen");
-    await fillAny(["Their name, for your own list"], "Walker Two");
+    await fillAny(["Their name or email, for your own list", "Their name, for your own list"], "Walker Two");
     await press(["Make the invitation"]);
     let t = "";
     try { t = await until(async () => { const x = await text(); return /(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.test(x) && !/Making/.test(x) ? x : ""; }, 60_000, "the invitation link showing"); }
@@ -178,7 +183,7 @@ export async function ownerWalkReal(c) {
     await two.click("Skip for now");
     await two.waitFor("You're all set", 120_000);
     // the owner's list shows the new person with a role
-    await screen("/u/settings/roles", /Roles/, "the roles screen");
+    await screen("/u/settings/roles", /roles/i, "the roles screen");
     const l = await op("spaces.members", {}).catch(() => null);
     const seen = JSON.stringify(l);
     if (!new RegExp(`${USERNAME}c|Walker Two|Walker`, "i").test(seen) && !(await has(new RegExp(`${USERNAME}c|Walker`, "i")))) throw new Error(`the new person is not listed: ${seen.slice(0, 300)} ${await show(300)}`);
@@ -187,7 +192,7 @@ export async function ownerWalkReal(c) {
 
   // ---- 5. roles: New role with the defaults succeeds, and the role appears
   await run.step(ROLE_MADE, async () => {
-    await screen("/u/settings/roles", /Roles/, "the roles screen");
+    await screen("/u/settings/roles", /roles/i, "the roles screen");
     await press(["New role"]);
     await fillAny(["Role name", "Name"], "TestRole");
     await shot("05-new-role");
@@ -219,9 +224,16 @@ export async function ownerWalkReal(c) {
     await until(async () => (await has(/Install the Documents app|Running|Stopped|Start it/)), 60_000, "the Documents setup card");
     if (await has(/Install the Documents app/)) {
       await press(["Install the Documents app"]);
-      try { await until(async () => (await has(/Running/)) || (await has(/Approve on your phone|no way to approve/i)), 360_000, "Documents installing"); }
-      catch (e) { await shot("failed-06-install"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
-      if (await has(/Approve on your phone|no way to approve/i) && !(await has(/Running/))) { await shot("failed-06-phone"); throw new Error(`installing Documents asks for a phone: ${await show(500)}`); }
+      // the app does not redraw this card by itself: read it again every minute, the way a person reopens the screen
+      let ok = false;
+      for (let i = 0; i < 6 && !ok; i++) {
+        if (await has(/Approve on your phone|no way to approve/i)) { await shot("failed-06-phone"); throw new Error(`installing Documents asks for a phone: ${await show(500)}`); }
+        await wait(60_000);
+        await drv.go("/u/apps"); await wait(2000); await screen("/u/documents", /Documents/i, "the Documents screen");
+        try { await press(["Setup"]); } catch { /* open */ }
+        ok = await has(/Running/);
+      }
+      if (!ok) { await shot("failed-06-install"); throw new Error(`Documents is not shown running after six minutes and six fresh reads: ${await show(600)}`); }
     }
     await shot("06-documents-running");
     // what the box holds, read fresh: the Documents setup and the Apps screen both show it running
@@ -247,11 +259,17 @@ export async function ownerWalkReal(c) {
     await press(["Turn on"]);
     await until(async () => (await has(/Run now/)), 60_000, "the watcher listed with Run now");
     await press(["Run now"]);
-    await wait(15_000);
-    const after = await text();
+    let after = "";
+    for (let i = 0; i < 6; i++) {
+      await wait(20_000);
+      await screen("/u/flows", /Watchers|Flows/i, "the Flows screen"); try { await press(["Watchers"]); } catch { /* open */ }
+      after = await text();
+      if (/\b[1-9]\d* filed/.test(after)) break;
+    }
     await shot("07-ran");
-    if (/did not|could not|went wrong/i.test(after) && !/filed|item/i.test(after)) throw new Error(`Run now did not file items: ${after.slice(0, 500)}`);
-    return after.slice(0, 200);
+    const filed = /\b([1-9]\d*) filed/.exec(after);
+    if (!filed) throw new Error(`Run now filed nothing: the watcher row says "${after.slice(0, 500)}"`);
+    return `${filed[1]} items filed`;
   }, { needs: READY });
 
   // ---- 8. a webhook Flow
@@ -267,7 +285,8 @@ export async function ownerWalkReal(c) {
     try { await drv.fillPlaceholder?.("x-signature", "x-signature"); } catch { /* the scheme asks for no header */ }
     await shot("08-open-route");
     await press(["Open the route"]);
-    await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening");
+    try { await until(async () => (await has(/listener is off|Turn the listener on|Signing secret/i)), 60_000, "the route opening"); }
+    catch (e) { await shot("failed-08-open"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(900)}`); }
     if (await has(/Turn the listener on/)) { await press(["Turn the listener on"]); await until(async () => !(await has(/listener is off/)), 60_000, "the listener turning on"); }
     await shot("08-route-open");
     await press(["Reveal the secret"]);
@@ -336,14 +355,12 @@ export async function ownerWalkReal(c) {
     await press(["Go live"]);
     await until(async () => !(await has(/Go live/)) || (await has(/Live/)), 45_000, "the playbook going live");
     await shot("09-live");
-    // start a project from it: the new project sheet offers the playbook
-    await screen("/u/projects", /Projects|New project/i, "the Projects screen");
-    await press(["New project"]);
-    await until(async () => (await has(/Start project|Walk playbook/)), 30_000, "the new project sheet");
+    // start a project from it: the playbook page's own button
+    await press(["Start a project"]);
+    await until(async () => (await has(/Start project/)), 30_000, "the new project sheet");
     await fillAny(["Name", "Project name"], "Walk project");
-    try { await press(["Walk playbook"]); } catch { /* the sheet starts from it by default or lists it under another word */ }
     await press(["Start project"]);
-    await until(async () => (await has(/Walk project/)), 60_000, "the project listed");
+    await until(async () => !(await has(/Start project/)) || (await has(/Walk project/)), 60_000, "the project starting");
     await fresh("/u/projects", /Walk project/, "the Projects list showing the project");
     await shot("09-project");
   }, { needs: READY });
