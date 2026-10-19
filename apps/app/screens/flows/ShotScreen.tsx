@@ -2,7 +2,7 @@
 // Playbook "Who does it, reviews and approves" sheet. Sample world only (allowsMock): on a real box this route is not found. The data is made up here and touches nothing.
 import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import { Banner, Button, Card, EmptyState, FlowBuilder, QUOTE_NOTE_TEXT, QuotedAssistants, Text, allowsMock, assistantBoxes } from "@vyre/ui";
+import { Banner, Button, Card, EmptyState, FlowBuilder, Tabs, QUOTE_NOTE_TEXT, QuotedAssistants, Text, allowsMock, assistantBoxes } from "@vyre/ui";
 import type { FlowDraft } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { SlotsSheet } from "../templates/SlotsSheet";
@@ -74,7 +74,7 @@ export default function ShotScreen() {
   const [draft, setDraft] = useState<FlowDraft>(EDITOR);
   if (!allowsMock()) return <Frame title="Not here" back="/u/flows"><EmptyState title="Not here" body="This page is only for the sample world." /></Frame>;
   if (k === "kit") return <KitShot />;
-  if (k === "watchers") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><WatchersTab source={FAKE} /></Frame>;
+  if (k === "watchers") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><Tabs items={[["flows", "Flows"], ["watchers", "Watchers"]]} value="watchers" onChange={() => {}} /><WatchersTab source={FAKE} /></Frame>;
   if (k === "newwatcher") return <Frame back="/u/flows" title="Flows" sub="Jobs Vyre does on its own."><NewWatcherSheet source={FAKE} open initialKind="repo" onClose={() => {}} onCreated={() => {}} /></Frame>;
   if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook", route: "northwind-orders" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
   if (k === "watcherpick") return <Frame back="/u/flows" title="Refund request" sub="Starts when a watcher finds something new."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "watcher", watcher: "mail-intake" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
