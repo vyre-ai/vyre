@@ -2,7 +2,8 @@
 // A member's own thread with an agent acts as HER in the kernel, never as the owner (the owner's rule, 20 Oct 2026: every turn on the account of the person it is for, and with that person's reach). On a real
 // vyred with the kernel on and the fake claude, temp home:
 //   - B1: agents.ask from a member starts her own thread on her account, keeps run_as, and the thread's kernel session token names her as its person;
-//   - B2: a helper the agent starts from her thread (agents.spawn) is hers too: her account, run_as her; a person with no account of her own is refused and nothing is recorded;
+//   - B2: a helper (agents.spawn) is the call of the person on the thread's chain: a member's own session starts none (the door), an admin with no account of her own is refused and nothing is recorded,
+//     and an admin's helper runs on her account with run_as her;
 //   - S2: the owner resuming her thread (agents.resume) brings it back as her, on her account.
 // SHIM(presence) `kernelPresence` accepts any proof, as the other real-daemon suites do.
 import "../../scripts/mac-test-guard.mjs";
@@ -75,20 +76,28 @@ test("a member's own agent thread, its helpers and its resume act as the member,
   assert.equal(s.person, BEN, `the session chain starts with the member: ${diag()}`);
   assert.notEqual(s.person, OWNER, "NEGATIVE: never the owner's chain");
 
-  // B2: a helper started from his thread works for him
+  // B2: now that his thread acts as him, a helper from it is his call: a member's own session starts none (the registry's door keeps agents.spawn to the owner and admins), and nothing is recorded
   const before = subs();
-  const h = await d.registry.call("agents.spawn", { task: "look it up", label: "reader" }, "mcp:agent:kit", { agent: "kit", thread: T, ...benTok });
-  assert.equal(h.error, undefined, JSON.stringify(h.error));
-  assert.equal(row(h.data.thread)?.account, benAcct.data.id, "the helper runs on his account");
-  assert.equal(row(h.data.thread)?.opts.runas, BEN, "and acts as him");
-  const hs = await until(() => seen.find(q => q.thread === h.data.thread), "the helper's kernel session").catch(e => { throw new Error(`${e.message}; ${diag()}`); });
-  assert.equal(hs.person, BEN, `the helper's session is his: ${diag()}`);
-  // an admin with no account of her own: refused in plain words, nothing recorded, never run on the owner's
-  const n = subs();
+  const benSpawn = await d.registry.call("agents.spawn", { task: "look it up", label: "reader" }, "mcp:agent:kit", { agent: "kit", thread: T, ...benTok });
+  assert.equal(benSpawn.error && benSpawn.error.code, "denied", JSON.stringify(benSpawn));
+  assert.equal(subs(), before, "NEGATIVE: no helper for the member, and never one on the owner's account");
+  // an admin with no account of her own: refused by the handler in plain words, nothing recorded, never run on the owner's
   const refused = await d.registry.call("agents.spawn", { task: "look it up" }, "mcp:agent:kit", { agent: "kit", thread: T, ...adaTok });
   assert.match(String(refused.error && refused.error.message), /Connect your own AI account in Settings, AI accounts, to use kit\./, JSON.stringify(refused));
-  assert.equal(subs(), n, "NEGATIVE: no helper was recorded or started for her");
-  assert.equal(n, before + 1);
+  assert.equal(subs(), before, "NEGATIVE: no helper was recorded or started for her");
+  // with her own account: a helper from her own thread with the agent works for her, on her account, its kernel session hers
+  const adaAcct = await d.registry.call("sessions.accounts.add", { provider: "claude", label: "Ada's Claude", kind: "login" }, "deck", adaTok);
+  assert.equal(adaAcct.error, undefined, JSON.stringify(adaAcct.error));
+  const a = await d.registry.call("agents.ask", { agent: "kit", text: "hello", wait: false }, "deck", adaTok);
+  assert.equal(a.error, undefined, JSON.stringify(a.error));
+  assert.notEqual(a.data.thread, T, "her own thread, not his");
+  const h = await d.registry.call("agents.spawn", { task: "look it up", label: "reader" }, "mcp:agent:kit", { agent: "kit", thread: a.data.thread, ...adaTok });
+  assert.equal(h.error, undefined, JSON.stringify(h.error));
+  assert.equal(subs(), before + 1);
+  assert.equal(row(h.data.thread)?.account, adaAcct.data.id, "the helper runs on her account");
+  assert.equal(row(h.data.thread)?.opts.runas, ADA, "and acts as her");
+  const hs = await until(() => seen.find(q => q.thread === h.data.thread), "the helper's kernel session").catch(e => { throw new Error(`${e.message}; ${diag()}`); });
+  assert.equal(hs.person, ADA, `the helper's session is hers: ${diag()}`);
 
   // S2: the owner resuming his thread brings it back as him, on his account
   assert.ok(!(await asOwner("threads.stop", { thread: T })).error);
