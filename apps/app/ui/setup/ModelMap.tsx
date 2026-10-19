@@ -4,6 +4,7 @@ import { Chip } from "../components/Chip";
 import { IconTile } from "../components/IconTile";
 import { Row } from "../components/Row";
 import { SectionLabel } from "../components/SectionLabel";
+import { Text } from "../components/Text";
 import type { IconName } from "../components/Icon";
 import { iconOfType, splitTypes, subLine } from "./model-map.js";
 
@@ -21,7 +22,7 @@ export function ModelMap({ types, onOpen }: { types: MapType[]; onOpen: (name: s
       {items.map((t, i) => (
         <View key={t.name}>
           {i ? <Divider /> : null}
-          <Row lead={<View className="pr-s3"><IconTile name={iconOfType(t.name) as IconName} /></View>} title={t.plural} sub={subLine(t, label)} chevron onPress={() => onOpen(t.name)}
+          <Row lead={<View className="pr-s3"><IconTile name={iconOfType(t.name) as IconName} /></View>} title={t.plural} sub={<Text size="secondary" tone="label" numberOfLines={2}>{subLine(t, label)}</Text>} chevron onPress={() => onOpen(t.name)}
             end={t.kit ? <Chip>Kit</Chip> : undefined} />
         </View>
       ))}
