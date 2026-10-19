@@ -905,6 +905,11 @@ export class Presence {
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
+  /** The ids of the presence keys a browser made when it paired (a relay device whose key is software): they are not phones. Empty when there is no relay table. */
+  softwareKeyIds() {
+    try { return new Set(this.db.prepare("SELECT presence_key AS id FROM relay_devices WHERE key_storage = 'software' AND presence_key IS NOT NULL").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+  }
+
   keys() {
     return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
   }
@@ -1051,6 +1056,21 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
       const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
       if (!owner || String(meta.person.id) !== String(owner)) return false;
     }
-    return (await presence.keys()).length === 0;
+    // A browser's own WebCrypto key (a relay device whose key is software, made when the browser paired) is not a phone: it does not turn approvals on. A paired phone's hardware key does.
+    const soft = typeof presence.softwareKeyIds === "function" ? presence.softwareKeyIds() : new Set();
+    return (await presence.keys()).filter((/** @type {any} */ k) => !soft.has(k.id)).length === 0;
   } catch { return false; }
+}
+
+/**
+ * Why noPresenceDevice said no, in counts and kinds only, never an id or a key: shown after the sign-in refusal so a walk can say which condition failed. @param {any} d @param {string} caller @param {any} meta
+ */
+export async function noPresenceWhy(d, caller, meta) {
+  try {
+    const f = meta && meta.kernelFacts, presence = d.presence;
+    const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
+    const soft = presence && typeof presence.softwareKeyIds === "function" ? presence.softwareKeyIds() : new Set();
+    const kind = f && f.web === true ? "web" : String(caller).startsWith("device:") ? "app" : String(caller).startsWith("tailnet:") ? "tailnet" : "other";
+    return `(keys enrolled: ${keys.length}, browser keys ignored: ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
+  } catch { return "(reason unavailable)"; }
 }
