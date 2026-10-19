@@ -48,7 +48,7 @@ export const ACT_WORDS = {
 export const actWords = (tool) => /** @type {Record<string, string>} */ (ACT_WORDS)[tool] ?? "";
 export const WAITING_LINE = "Open Vyre on your phone and approve it there. Nothing changes until you do.";
 
-/** The words for how an ask ended. @param {"approved" | "refused" | "none" | "timeout"} state */
+/** The words for how an ask ended. @param {"approved" | "refused" | "none" | "timeout" | "noway"} state */
 export function endLine(state, why = /** @type {string[]} */ ([])) {
   if (state === "refused") return "You said no on your phone. Nothing changed.";
   if (state === "none") return "The request ended before it was answered. Try again.";
