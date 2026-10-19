@@ -144,7 +144,7 @@ export async function ownerWalkReal(c) {
   await run.step(W(4, "People: Invite someone makes a link"), async () => {
     await screen("/u/wink/invite", /Invite someone|Make the invitation/i, "the invite screen");
     await fillAny(["Their name or email, for your own list", "Their name, for your own list"], "Walker Two");
-    await press(["Make the invitation"]);
+    await press(["Make invite", "Make the invitation"]);
     let t = "";
     try { t = await until(async () => { const x = await text(); return /(https?:\/\/|vyre:\/\/)\S+|\b[a-z0-9-]+\.vyre\.run\/\S+/i.test(x) && !/Making/.test(x) ? x : ""; }, 60_000, "the invitation link showing"); }
     catch (e) { await shot("failed-04-invite"); throw new Error(`${/** @type {Error} */ (e).message}. The screen says: ${await show(600)}`); }
@@ -264,6 +264,7 @@ export async function ownerWalkReal(c) {
     for (let i = 0; i < 6; i++) {
       await wait(20_000);
       await screen("/u/flows", /Watchers|Flows/i, "the Flows screen"); try { await press(["Watchers"]); } catch { /* open */ }
+      await until(async () => (await has(/Run now|Pause/)), 30_000, "the watcher row").catch(() => {});
       after = await text();
       if (/\b[1-9]\d* filed/.test(after)) break;
     }
