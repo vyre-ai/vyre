@@ -101,6 +101,7 @@ export async function ownerWalkReal(c) {
 
   // ---- 3. files: a new folder, an upload into it, a move into it; project folders show names
   await run.step(W(3, "Files: New folder"), async () => {
+    await drv.viewport?.(1280, 900);   // the file manager (760 px and wider); a narrower window draws the older Drive screen
     await screen("/u/files", /Files|Upload|Nothing here/i, "the Files screen");
     if (!(await has(/New folder/))) pending("the Files screen has no New folder yet (files-move is not on this build)");
     await press(["New folder"]);
