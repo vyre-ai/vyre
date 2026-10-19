@@ -18,6 +18,7 @@
 
 import { rememberTool, screenshotsOf } from "../sessions/providers.js";
 import { redact } from "../transcripts/sanitize.js";
+import { redact as redactSecrets } from "../../lib/sanitize.js";
 import { receiptOf, argsOf } from "../../lib/receipt.js";
 import { vyreSteps } from "../../lib/vyre-steps.js";
 
@@ -28,6 +29,9 @@ export const cut = (v, n = CUT) => {
   const s = String(v ?? "").replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n - 1) + "\u2026" : s;
 };
+
+/** The line vyred.log gets for a turn that failed: what and where, and the reason as the provider said it with anything key-shaped taken out first (another provider's error text is not scrubbed of the key). @param {string} id @param {{ provider?: string, model?: string }} who @param {unknown} error */
+export const failedTurnLine = (id, who, error) => `threads: ${String(id).slice(0, 8)} turn failed on ${who.provider || "claude"}/${who.model || "default"}: ${cut(redactSecrets(String(error || "no reason given")).text.replace(/[\u0000-\u001f]+/g, " "), 200)}`;
 
 /** A string for an ask: secrets redacted, then capped. Whitespace is kept, a diff needs it. */
 export const clip = (v, n) => {

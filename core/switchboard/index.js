@@ -23,7 +23,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translate, cut, clip, CAPS } from "./translate.js";
+import { translate, cut, clip, CAPS, failedTurnLine } from "./translate.js";
 import { validZone, zoneFrom } from "../../lib/time/index.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { hostSafe } from "../../lib/api-endpoint.js";
@@ -1654,7 +1654,7 @@ export class Switchboard {
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
           this.emitRaw("thread.status", { status: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
-          this.states.set(id, "failed"); this.deps.log(`threads: ${String(id).slice(0, 8)} turn failed on ${who.provider || "claude"}/${who.model || "default"}: ${cut(String(e.payload.error || "no reason given").replace(/[\u0000-\u001f]+/g, " "), 200)}`);
+          this.states.set(id, "failed"); this.deps.log(failedTurnLine(id, who, e.payload.error));
         }
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
         // A one-shot thread (a job, not a conversation) ends with its first answer.
