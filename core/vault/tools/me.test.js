@@ -230,8 +230,8 @@ test("vault.me.lend gives a member their own key for their own turn: the person 
   const locked = await lend({ account: "acct_bob" }, BOB);
   assert.equal(locked.error.code, "locked"); assert.equal(JSON.stringify(locked.error.message).includes("sk-ant"), false);
   // every lend is in the audit trail by person, account and item, and the value is in none of it
-  assert.ok(events.some(e => e.type === "vault.me.lent" && e.p.person === BOB && e.p.account === "acct_bob"));
-  assert.equal(JSON.stringify(events.filter(e => e.type === "vault.me.lent")).includes("bob-claude"), false, "the event names the account, never the item the member labelled");
+  assert.ok(events.some(e => e.type === "vault.key-lent" && e.p.person === BOB && e.p.account === "acct_bob"));
+  assert.equal(JSON.stringify(events.filter(e => e.type === "vault.key-lent")).includes("bob-claude"), false, "the event names the account, never the item the member labelled");
   assert.equal(JSON.stringify(events).includes("sk-ant-bob-0001"), false, "no event carries the value");
 });
 
