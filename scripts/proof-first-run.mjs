@@ -150,7 +150,8 @@ async function browserDriver(shared = null) {
       const tag = await el.evaluate((/** @type {any} */ n) => n.tagName).catch(() => "");
       if (tag === "SELECT") { await el.selectOption({ label: option }).catch(async () => { await el.selectOption({ label: new RegExp(option) }); }); return; }
       await el.click({ timeout: 15_000 });
-      await page.getByText(option, { exact: false }).first().click({ timeout: 15_000 });
+      // the opened list is the last thing in the page, so its option is the last match (a sentence on the screen behind may carry the same word)
+      await page.getByText(option, { exact: false }).last().click({ timeout: 15_000 });
     },
     /** Fill the field that has this placeholder (two fields can share a label on one screen). */
     async fillPlaceholder(/** @type {string} */ ph, /** @type {string} */ v) { await page.locator(`input[placeholder="${ph}"], textarea[placeholder="${ph}"]`).first().fill(v, { timeout: 15_000 }); },
