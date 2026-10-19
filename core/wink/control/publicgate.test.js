@@ -171,6 +171,20 @@ test("public ingress: the gate gets the two loopback ports, and the origin links
   assert.equal(g.ingressBase(), null);
 });
 
+test("public ingress: a server that publishes 443 onto the gate gives links the bare origin, another outside port is written out, and devices still dial the gate's own port", async () => {
+  for (const [ingressPort, want] of [[443, "https://alex.vyre.run"], [8443, "https://alex.vyre.run:8443"], [undefined, "https://alex.vyre.run:7443"]]) {
+    const w = world();
+    const told = /** @type {(string | null)[]} */ ([]);
+    const g = w.mk({ ingress: { hooks: () => 7310, share: () => 7311 }, onIngress: (/** @type {string | null} */ b) => told.push(b), publish: true, ...(ingressPort ? { ingressPort } : {}) });
+    await g.start();
+    await g.reachChanged();
+    assert.equal(g.ingressBase(), want, String(ingressPort));
+    assert.deepEqual(told, [want]);
+    assert.equal(g.controlUrl(), "https://alex.vyre.run:7443", "devices dial the gate's own port");
+    await g.stop();
+  }
+});
+
 test("public ingress: a gate with no ingress never has an origin and passes nothing to the TLS gate", async () => {
   const w = world();
   const g = w.mk({ publish: true });
