@@ -385,7 +385,8 @@ export default {
         if (!/^hooks-[a-z0-9][a-z0-9-]{0,40}$/.test(name)) throw new Error("a webhook secret is named hooks- and the route's name, like hooks-northwind-orders");
         if (vault.row(name)) throw new Error(`${name} is already in the Vault; it is not replaced. Name that item as the route's secret, or close the route and retire the item first`);
         const value = crypto.randomBytes(32).toString("hex");
-        await vault.put({ name, kind: "secret", description: `Signing secret for the webhook route ${name.slice(6)}`, fields: { value } }, String(caller));
+        // the origin is stamped from the caller, as vault.put does for a module: a module grants only items it put
+        await vault.put({ name, kind: "secret", description: `Signing secret for the webhook route ${name.slice(6)}`, fields: { value }, origin: String(caller) }, String(caller));
         await vault.grant({ name, module: "hooks" }, String(caller));
         return { item: name };
       },
