@@ -261,7 +261,12 @@ export function createHost(o) {
       const state = await C.verifyChain(chain.ops, { now: o.now ? o.now() : Date.now() });
       const entry = /** @type {any} */ ((state.entries || []).find((/** @type {any} */ e) => e.eid === key.eid && e.kind === "device"));
       if (!entry) { agreeNote.failed = "this Mac's key is not on your list"; trail("agree repair: this device is not on the chain"); return; }
-      if (entry.agree !== undefined) return;
+      if (entry.agree !== undefined) {
+        // The list keeps one point per device, set once. An older build that lost its key on every launch (the ad-hoc Mac window, v0.6.1) may have put a point there this device no longer holds:
+        // say so, because chats on this device cannot open until the device is added again with the key it keeps now.
+        if (entry.agree !== point) { agreeNote.failed = "your list holds an older chat key for this device, one it no longer has; take this device off your list from another device, then sign in here again"; trail("agree repair: the list holds another point"); }
+        return;
+      }
       const op = await C.makeOp(state, { type: "agree", target: entry.eid, agree: point }, { by: entry.eid, ts: Math.max(o.now ? o.now() : Date.now(), state.ts), sign: (/** @type {Uint8Array} */ m) => key.sign(m) });
       const next = await C.applyOp(state, op, { now: (o.now ? o.now() : Date.now()) + C.SKEW_MS });
       const res = await f(`${base}/v1/ids/append`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ name: k.username, ops: [op] }) });
@@ -270,7 +275,8 @@ export function createHost(o) {
       trail("agree repair done");
     } catch (e) {
       const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "error");
-      agreeNote.failed = code === "unreachable" ? "the names directory could not be reached" : `it did not go through (${code})`;
+      // No store kept the key: the page's agreePoint says which refused and why, in words the person reads as is.
+      agreeNote.failed = code === "no_agree_key" ? String(/** @type {any} */ (e).message) : code === "unreachable" ? "the names directory could not be reached" : `it did not go through (${code})`;
       trail(`agree repair failed ${code}`);
     }
   }

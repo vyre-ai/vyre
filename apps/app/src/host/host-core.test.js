@@ -473,6 +473,34 @@ test("when the repair of private chats cannot finish, the host says why and a re
   assert.match((await none.call("identity.agree.status")).failed, /no key for private chats/);
 });
 
+test("the unlock repair never drops the chat key quietly: a store that refused says why in its own words, and a list holding a point this device no longer has is named", async (t) => {
+  const d = directory(t);
+  // every store refused (the ad-hoc Mac app with a Keychain and a page storage that both say no): the page's reason is what Account shows
+  const said = "Vyre couldn't save this device's chat key: the Mac's Keychain said \"OSStatus -34018\", and this page's storage did not give the key back.";
+  const refused = createHost({ store: memoryStore(), directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => { throw Object.assign(new Error(said), { code: "no_agree_key" }); } });
+  await refused.call("onboard.person.create", { username: "ruth", password: PASSWORD, confirm: PASSWORD });
+  assert.equal((await chainEntry(d, "ruth")).entry.agree, undefined, "no point in the genesis entry, and first run went on");
+  await refused.call("identity.lock"); await refused.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await refused.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal((await refused.call("identity.agree.status")).failed, said);
+
+  // an older build put a point on the list that this device lost (a key made new on every launch): the repair cannot set a second one, and says so instead of returning quietly
+  const store = memoryStore();
+  const first = await agreePointOf();
+  const old = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => first });
+  await old.call("onboard.person.create", { username: "lena", password: PASSWORD, confirm: PASSWORD });
+  const now = await agreePointOf();
+  const later = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => now });
+  await later.call("identity.unlock", { password: PASSWORD });
+  for (let i = 0; i < 100 && !(await later.call("identity.agree.status")).failed; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.match((await later.call("identity.agree.status")).failed, /older chat key for this device/);
+  assert.equal((await chainEntry(d, "lena")).entry.agree, first, "the list is unchanged");
+  // the same point: nothing to say
+  const same = createHost({ store, directory: d.base, fetch: d.fetch, now: d.now, kdf: FAST, agreePoint: async () => first });
+  await same.call("identity.unlock", { password: PASSWORD });
+  assert.deepEqual(await same.call("identity.agree.retry"), { failed: "" });
+});
+
 test("a page with no key of its own reads a person's list from the directory, checked, and cannot change it", async (t) => {
   const { publicEntries } = await import("../identity/public-list.js");
   const d = directory(t);

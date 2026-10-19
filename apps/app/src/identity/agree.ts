@@ -4,9 +4,10 @@
 // No react-native import here (Node tests run this file): a phone is told apart by `navigator.product`.
 // Its public point goes in this device's identity entry as `agree` (kernel/identity/chain.js).
 // A browser has no native key: it uses the page's own non-extractable WebCrypto key in IndexedDB (src/crypto/agree-key.ts, app-wire's getAgreeKey), the same key that opens its chats, so the point
-// it publishes is the one that opens them. That module is imported only there (it needs the noble libraries, which Node tests of this file do not load).
+// it publishes is the one that opens them. The Mac app's window goes through that module too: it asks the shell's key first (the login Keychain works on an app signed ad hoc) and falls back to the page's
+// storage only when the Keychain refuses, so the point published here is always the one chats open with, and a key no store would keep is an error in words, never a silent null.
 
-import { shellIdentity } from "../shell/shell.ts";
+import { shellIdentity, shellKind } from "../shell/shell.ts";
 
 const onPhone = () => typeof navigator !== "undefined" && (navigator as { product?: string }).product === "ReactNative";
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -20,16 +21,20 @@ export function validPoint(epk: string): Uint8Array {
   return p;
 }
 
-/** The browser's agreement key, or null where WebCrypto or IndexedDB is not there (a private window). */
-const webKey = async () => { try { return await (await import("../crypto/agree-key.ts")).getAgreeKey(); } catch { return null; } };
+/** The page's agreement key (a browser's; on a Mac the shell's key, else the page's fallback), or why there is none. */
+const webKey = async (): Promise<{ key: import("../crypto/agree-key.ts").AgreeKey; store: string } | { key: null; reason: string }> => {
+  try { return await (await import("../crypto/agree-key.ts")).agreeKeyResult(); } catch (e) { return { key: null, reason: String((e as Error)?.message || e) }; }
+};
+/** A shell whose own agreement key answers directly (the Windows panel). The Mac's goes through agree-key.ts, which falls back when its Keychain refuses. */
+const directShell = () => { const id = shellIdentity(); return id && shellKind() !== "mac" ? id : null; };
 
 /** This device's agreement public point (raw uncompressed, base64url), made on first use. null where this build has no agreement key (a browser, an app without the native module). */
 export async function agreePublic(create = true): Promise<string | null> {
   try {
     if (!onPhone()) {
-      const id = shellIdentity();
+      const id = directShell();
       if (id?.agreePublic) return await id.agreePublic(create);
-      return (await webKey())?.point ?? null;
+      return (await webKey()).key?.point ?? null;
     }
     const m = (await import("../../modules/vyre-signer")) as unknown as { agreePublic?: (create: boolean) => Promise<string> };
     return m.agreePublic ? await m.agreePublic(create) : null;
@@ -41,12 +46,12 @@ export async function agree(epk: string): Promise<Uint8Array> {
   validPoint(epk);
   let out: string;
   if (!onPhone()) {
-    const id = shellIdentity();
+    const id = directShell();
     if (id?.agree) out = await id.agree(epk);
     else {
       const k = await webKey();
-      if (!k) throw Object.assign(new Error("This device has no agreement key."), { code: "no_agree_key" });
-      out = b64u(await k.ecdh(validPoint(epk)));
+      if (!k.key) throw Object.assign(new Error(`Vyre couldn't save this device's chat key: ${k.reason}.`), { code: "no_agree_key" });
+      out = b64u(await k.key.ecdh(validPoint(epk)));
     }
   } else {
     const m = (await import("../../modules/vyre-signer")) as unknown as { agree?: (epk: string) => Promise<string> };

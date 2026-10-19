@@ -64,11 +64,19 @@ final class MacAgree: @unchecked Sendable {
 
     init(store: PresenceKeyStore) { self.store = store }
 
-    /// The raw uncompressed point (65 bytes, 0x04, X, Y). Made on first use with `create`; nil when there is no key and `create` is false, or the Keychain would not keep one.
+    /// Why the last `publicPoint(create: true)` came to nothing, in words the page shows the person ("Vyre couldn't save this device's chat key: ..."); nil after one that worked.
+    private(set) var lastError: String?
+
+    /// The raw uncompressed point (65 bytes, 0x04, X, Y). Made on first use with `create`; nil when there is no key and `create` is false, or the Keychain would not keep one (then `lastError` says why).
+    /// The Secure Enclave first; an ad-hoc-signed app (no entitlement) gets a software key instead, kept in the login Keychain through the bundle (KeyBundle.swift says which class and why).
+    /// BACKLOG: when signed, migrate fallback keys into the Enclave or data-protection Keychain.
     func publicPoint(create: Bool) -> Data? {
-        if let h = store.loadHandle(), let k = keyOf(h) { return k.publicKey.x963Representation }
+        if let h = store.loadHandle(), let k = keyOf(h) { lastError = nil; return k.publicKey.x963Representation }
         guard create else { return nil }
-        guard let handle = makeKey(hasSecureEnclave()) ?? makeKey(false), store.save(handle), let k = keyOf(handle) else { return nil }
+        guard let handle = makeKey(hasSecureEnclave()) ?? makeKey(false) else { lastError = "this Mac could not make a key"; return nil }
+        guard store.save(handle) else { lastError = (store as? BundleHandleStore)?.bundle.lastError ?? "the Keychain would not keep it"; return nil }
+        guard let k = keyOf(handle) else { lastError = "the key it made could not be read back"; return nil }
+        lastError = nil
         return k.publicKey.x963Representation
     }
 
