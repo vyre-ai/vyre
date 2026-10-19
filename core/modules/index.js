@@ -1548,9 +1548,8 @@ export class Registry {
       // own actions there need the person's session too (core/presence/person.js): every tool that declares `reach: person` is one (an owner's app device that has not signed in gets
       // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
-      // way to get it, and the first passkey is enrolled with onboarding's code.
-      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input) && !(await this.noPresenceDevice(caller, meta)) // no device enrolled: the owner's paired device needs no passkey sign-in (noPresenceDevice, core/presence/index.js)
-        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+      // way to get it, and the first passkey is enrolled with onboarding's code. With no presence device enrolled the owner's vouched paired device needs no sign-in (noPresenceDevice, core/presence).
+      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input) && !(await this.noPresenceDevice(caller, meta)) && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
       }
     }
