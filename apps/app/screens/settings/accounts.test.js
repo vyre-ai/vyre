@@ -80,3 +80,21 @@ test("a server that runs Claude on its own login says so in words with a next st
   assert.match(serverCannotWords("on this machine Claude uses the login already on it (run claude and sign in there)") ?? "", /Ask the owner/);
   assert.equal(serverCannotWords("some other failure"), null);
 });
+
+test("Use an API key: the key's prefix picks the kind first run picks, the server's key tool gets it once, and a refusal never carries the key", { skip: !strip }, async () => {
+  const { keyAddInput } = await import("./accounts-model.ts");
+  const OR = "sk-or-v1-fake0000000000000000", XAI = "xai-fake00000000000000000000";
+  assert.deepEqual(keyAddInput(` ${OR} `, ""), { input: { kind: "openrouter", key: OR, label: "OpenRouter key", name: "OpenRouter key" } });
+  assert.deepEqual(keyAddInput(XAI, " Work "), { input: { kind: "openai-compatible", key: XAI, label: "Work", name: "Work", base_url: "https://api.x.ai/v1" } });
+  assert.match(/** @type {any} */ (keyAddInput("short", "")).problem, /does not look like an API key/);
+  assert.match(/** @type {any} */ (keyAddInput("zzzzzzzzzzzzzzzzzzzz", "")).problem, /not look like a key we know/);
+  const { accountsSource } = await import("./accounts-source.ts");
+  const ok = box({ "sessions.accounts.key": { data: { account: "ac_9", provider: "openrouter", label: "OpenRouter key" } } });
+  assert.deepEqual(await accountsSource(ok.call).addKey(OR), { account: "ac_9", provider: "openrouter", label: "OpenRouter key" });
+  assert.deepEqual(ok.seen.map((x) => x.tool), ["sessions.accounts.key"]);
+  const bad = box({ "sessions.accounts.key": { error: { code: "bad_input", message: `refused ${OR}` } } });
+  await assert.rejects(accountsSource(bad.call).addKey(OR), (e) => !String(/** @type {Error} */ (e).message).includes(OR) && /refused \[key\]/.test(/** @type {Error} */ (e).message));
+  const none = box();
+  await assert.rejects(accountsSource(none.call).addKey("nope"), /does not look like an API key/);
+  assert.deepEqual(none.seen, [], "a key that is not one is never sent");
+});

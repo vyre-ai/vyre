@@ -18,7 +18,7 @@
       { "name": "models.eval-record", "reach": "person", "effect": "write" }
     ]
   },
-  "watches": { "emits": ["models.new", "models.changed", "models.evals-changed"] },
+  "watches": { "emits": ["models.new", "models.changed", "models.evals-changed"], "on": ["account.changed"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}

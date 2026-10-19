@@ -16,7 +16,7 @@ import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
-import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, rememberSpace } from "./welcome-model.js";
+import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
 import { returnWaiting } from "../../src/identity/github-return.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import { openExternal } from "../../src/shell/open-external";
@@ -755,10 +755,11 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const who = asName.trim() || ASSISTANT_COPY.suggestion;
     const picked = (models || []).flatMap((a) => a.models.map((m) => ({ key: `${a.id}:${m.id}`, model: m.id })));
     const chosen = picked.find((p) => p.key === modelPick);
+    const stepNow = modelStep(models, Boolean(chosen));
     return (
-      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={models && !models.length ? MODEL_COPY.none : MODEL_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
         secondary={{ label: "Keep the default", onPress: () => go("ready") }}
-        primary={{ label: "Continue", loading: busy, disabled: busy || (models !== null && models.length > 0 && !chosen), onPress: () => void run(async () => {
+        primary={{ label: "Continue", loading: busy, disabled: busy || !stepNow.canContinue, onPress: () => void run(async () => {
           if (chosen) { const r = await setAssistantModel(chosen.model); if (!r.ok) { setFailure(r.message); return; } }
           go("ready");
         }) }}>

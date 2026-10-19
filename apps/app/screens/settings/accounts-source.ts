@@ -1,6 +1,6 @@
 // AI accounts' calls on the real box (sessions.accounts.*), over an injected `call`. Nothing here reads a token: a login's secret is written by the provider's own command into that account's own folder.
 import type { Call } from "./real-source";
-import { accountsOf, flowOf, type Account, type Flow } from "./accounts-model.ts";
+import { accountsOf, flowOf, keyAddInput, type Account, type Flow } from "./accounts-model.ts";
 
 export function accountsSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -17,6 +17,14 @@ export function accountsSource(call: Call) {
     follow: async (flow: string, provider: string): Promise<Flow> => flowOf(await ask("sessions.accounts.signin", { flow }), provider, flow),
     /** The code the provider's page showed. */
     paste: (flow: string, code: string) => ask("sessions.accounts.signin", { flow, code: code.trim() }),
+    /** An API key as an account (the owner's): the server checks it with the provider and keeps it in the Vault; only the account comes back. Throws the line to show when the key is not one. */
+    addKey: (key: string, label = "") => {
+      const k = keyAddInput(key, label);
+      if ("problem" in k) return Promise.reject(new Error(k.problem));
+      // whatever the server or the provider said, the key is never in what is thrown
+      return ask<{ account?: string; provider?: string; label?: string }>("sessions.accounts.key", k.input)
+        .catch((e) => { throw Object.assign(new Error(String((e as Error)?.message || "That key could not be added.").split(k.input.key).join("[key]")), { code: (e as { code?: string })?.code }); });
+    },
     makeDefault: (id: string) => ask("sessions.accounts.bind", { id, is_default: true }),
     remove: (id: string) => ask("sessions.accounts.remove", { id }),
     /** A Grok account's privacy mode, as the person says they set it on the provider's side. */

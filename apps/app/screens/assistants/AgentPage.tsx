@@ -13,7 +13,7 @@ import { agent } from "./agent";
 import { useChats } from "../../src/state/chats";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 import { chatHas } from "../agents/home-model.js";
-import { EFFORT, computerView, modelsFor, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
+import { EFFORT, accountModelsFor, computerView, modelsFor, usageView, type AgentFull, type Computer, type UsageFull } from "./agent-model.ts";
 import { AgentThreads } from "./AgentThreads";
 import { RealSkills } from "../skills/RealSkills";
 
@@ -126,9 +126,14 @@ function Usage({ name }: { name: string }) {
 }
 
 function Model({ a, onSaved }: { a: AgentFull; onSaved: (m: string, e: string) => void }) {
-  const [aliases, setAliases] = useState<unknown>(undefined);
-  useEffect(() => { void agent.models().then(setAliases).catch(() => {}); }, []);
-  const rows = modelsFor(a.model, aliases);
+  // the models the person's own AI accounts offer (the listing the new agent card reads); the box's alias list only when the accounts cannot be read
+  const [rows, setRows] = useState<{ id: string; name: string }[]>(() => modelsFor(a.model, undefined));
+  useEffect(() => {
+    let live = true;
+    agent.accountModels().then((g) => { if (live) setRows(accountModelsFor(a.model, g)); })
+      .catch(() => agent.models().then((al) => { if (live) setRows(modelsFor(a.model, al)); }).catch(() => {}));
+    return () => { live = false; };
+  }, [a.model]);
   const [model, setModel] = useState(a.model || "");
   const [effort, setEffort] = useState(a.effort || "medium");
   const save = (m: string, e: string) => agent.setModel(a.name, m, e).then(() => { onSaved(m, e); showToast("Saved."); }).catch((x) => showToast(say(x)));
