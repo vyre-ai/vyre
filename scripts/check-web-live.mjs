@@ -56,6 +56,13 @@ const csp = page.r.headers.get("content-security-policy") || "";
 const scriptSrc = (csp.split("; ").find(d => d.startsWith("script-src")) || "");
 ok(/default-src 'none'/.test(csp) && !/unsafe-eval/.test(csp) && !/unsafe-/.test(scriptSrc) && /frame-ancestors 'none'/.test(csp) && /script-src 'self'/.test(scriptSrc), "the Content-Security-Policy is strict for scripts (no unsafe-inline or unsafe-eval), with inline styles allowed");
 ok(/max-age=\d{8,}/.test(page.r.headers.get("strict-transport-security") || ""), "HSTS is set");
+// a refresh of a deep link opens the app (200 and the same page), and a missing file is still a 404
+for (const route of ["/app/onboard", "/app/u/chats"]) {
+  const deep = await get(route);
+  ok(deep.r.status === 200 && crypto.createHash("sha256").update(deep.bytes).digest("hex") === info.index, `refreshing ${route} opens the app (200, the signed index.html)`);
+}
+ok((await get("/app/_expo/static/js/web/no-such-file.js")).r.status === 404, "a file the release does not have is a 404, never the page");
+ok(/no-transform/.test(page.r.headers.get("cache-control") || ""), "the page says no-transform, so Cloudflare adds no analytics beacon");
 ok(page.r.headers.get("x-content-type-options") === "nosniff" && !page.r.headers.get("set-cookie"), "nosniff, and no cookie");
 
 if (a.includes("--browser")) {

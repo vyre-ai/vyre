@@ -27,9 +27,12 @@ export const SECURITY = Object.freeze({
   "cross-origin-resource-policy": "same-origin",
 });
 
-const IMMUTABLE = "public, max-age=31536000, immutable";
-const REVALIDATE = "no-cache";
+// no-transform: Cloudflare adds its Web Analytics beacon (a script from another host, which the policy rightly refuses) to a page unless the response says it may not be changed.
+const IMMUTABLE = "public, max-age=31536000, immutable, no-transform";
+const REVALIDATE = "no-cache, no-transform";
 const BUILD = "/vyre-build.json";
+/** A path whose last step has no file extension: a route of the app, not a file. */
+const ROUTE = /\/[^/.]*$/;
 
 /** The build file, read once per deploy and held per assets binding. @type {WeakMap<object, Promise<any>>} */
 const held = new WeakMap();
@@ -64,8 +67,15 @@ export default {
     if (url.pathname.includes("..")) return dress(new Response("not found", { status: 404 }), REVALIDATE, csp);
     if (url.pathname.startsWith("/app/")) {
       const r = await env.ASSETS.fetch(req);
-      // A file the release does not have is a 404, never the page: a script that is missing must fail loudly.
-      if (r.status === 404) return dress(new Response("not found", { status: 404 }), REVALIDATE, csp);
+      if (r.status === 404) {
+        // A route of the app (/app/onboard, /app/u/chats/...: no file extension) is the app's page, so a refresh or a pasted deep link opens it; the app reads the path itself.
+        // A path that names a file (it has an extension) the release does not have is a 404, never the page: a script that is missing must fail loudly.
+        if (ROUTE.test(url.pathname) && (req.method === "GET" || req.method === "HEAD")) {
+          const page = await env.ASSETS.fetch(new Request(new URL("/app/index.html", url), { method: req.method, headers: req.headers }));
+          if (page.ok) return dress(page, REVALIDATE, csp);
+        }
+        return dress(new Response("not found", { status: 404 }), REVALIDATE, csp);
+      }
       return dress(r, url.pathname.startsWith("/app/_expo/static/") ? IMMUTABLE : REVALIDATE, csp);
     }
     // Every other path is a route of the app (/onboard, /join, ...): the app's page, which reads the path itself. The URL fragment never leaves the browser.
