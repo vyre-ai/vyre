@@ -74,6 +74,10 @@ try {
       await page.getByText("Weekly report template.docx").first().click().catch(() => {}); await shot("4-file");
       await page.getByText("Move to…", { exact: true }).first().click().catch(() => {}); await shot("5-picker");
       await page.getByText("Doe estate plan", { exact: true }).last().click().catch(() => {}); await shot("6-picker-in");
+      // New folder on a phone or a narrow window (the Drive screen, not the file manager)
+      await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(5000);
+      await page.getByText("Space", { exact: true }).first().click().catch(() => {});
+      await page.getByRole("button", { name: "New folder" }).first().click().catch(() => {}); await shot("7-new-folder");
     }
     await ctx.close();
   }

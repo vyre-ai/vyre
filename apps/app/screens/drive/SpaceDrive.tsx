@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { AskCard, Banner, Button, Card, Divider, EmptyState, IconTile, Row, Sheet, Text, showToast } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Divider, EmptyState, Field, IconTile, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { boxOrigin } from "../../src/api/box";
 import { bytesOf, textOf } from "./real-model";
-import { children, itemLine, linkAddress, linkAsk, linkRefusal, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
+import { children, itemLine, linkAddress, linkAsk, linkRefusal, newFolderName, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
 import { driveTool, linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
 import { FolderPicker } from "./FolderPicker";
+import { folderNames, learnFolderNames } from "./files-real";
 import { editCalls } from "./file-menu-model.js";
 import { movedLine, plan as movePlan } from "./move-model.js";
 import { Breadcrumb } from "./Breadcrumb";
@@ -27,12 +28,15 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
   const [open, setOpen] = useState<{ item: Item; versions: Version[] | null; text: string | null; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
+  // a new folder in the folder shown: null while closed, else the name being typed
+  const [newName, setNewName] = useState<string | null>(null);
   // "Move to...": a file opened here is moved by picking a folder (the same picker and the same move as the web file manager)
   const [moving, setMoving] = useState<{ item: Item; to: string; busy: boolean; note: string } | null>(null);
 
   const load = useCallback(() => {
     setErr("");
-    spaceList(undefined, prefix).then((r) => { setItems(children(r.entries, prefix, { names: r.names, folders: r.folders })); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
+    // a project's folder is its id; files.places has its name (files-real.ts)
+    Promise.all([spaceList(undefined, prefix), learnFolderNames().then(() => folderNames)]).then(([r, known]) => { setItems(children(r.entries, prefix, { names: { ...known, ...(r.names ?? {}) }, folders: r.folders })); setMore(r.more); }).catch((e) => { setErr(say(e)); setItems(null); });
   }, [prefix]);
   useEffect(() => { setItems(null); load(); }, [load]);
 
@@ -67,6 +71,15 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
       .then(async (l) => { try { await Clipboard.setStringAsync(linkAddress(boxOrigin() || "", l)); showToast("Link made and copied. It is under Shared links."); } catch { showToast("Link made. It is under Shared links."); } setAsking(false); setOpen(null); onLink?.(); })
       .catch((e) => setOpen((o) => (o ? { ...o, note: linkRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "") } : o))).finally(() => setBusy(false));
   };
+  const makeFolder = () => {
+    if (newName === null) return;
+    const v = newFolderName(newName, (items ?? []).map((x) => x.name));
+    if ("error" in v) { showToast(v.error); return; }
+    setBusy(true);
+    driveTool("files.drive.space.mkdir", { ...(prefix ? { parent: prefix } : {}), name: v.name })
+      .then(() => { showToast(`Made ${v.name}.`); setNewName(null); load(); })
+      .catch((e) => showToast(say(e))).finally(() => setBusy(false));
+  };
   const pick = () => {
     const doc = (globalThis as { document?: Document }).document;
     if (!doc) return;
@@ -90,8 +103,8 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
   const parts = prefix.split("/").filter(Boolean);
   return (
     <>
-      <Breadcrumb crumbs={[{ name: "Files", key: "" }, ...parts.map((p, i) => ({ name: p, key: parts.slice(0, i + 1).join("/") }))]} onPress={setPrefix}
-        end={Platform.OS === "web" ? <Button size="sm" kind="primary" icon="plus" label={busy ? "Sending" : "Add a file"} onPress={busy ? () => {} : pick} /> : undefined} />
+      <Breadcrumb crumbs={[{ name: "Files", key: "" }, ...parts.map((p, i) => ({ name: folderNames[parts.slice(0, i + 1).join("/")] || p, key: parts.slice(0, i + 1).join("/") }))]} onPress={setPrefix}
+        end={<View className="flex-row items-center gap-s2">{Platform.OS === "web" ? <Button size="sm" kind="primary" icon="plus" label={busy ? "Sending" : "Add a file"} onPress={busy ? () => {} : pick} /> : null}<Button size="sm" kind="secondary" icon="plus" label="New folder" onPress={() => setNewName("")} /></View>} />
       {err ? <Card flush><EmptyState title="Files did not open" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && items === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
       {!err && items ? (
@@ -104,6 +117,12 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}
         </Card>
       ) : null}
+      <Sheet open={newName !== null} onClose={() => setNewName(null)} title="New folder">
+        <View className="gap-s3">
+          <Field label="Folder name" value={newName ?? ""} onChangeText={setNewName} placeholder="New folder" autoFocus onSubmit={makeFolder} />
+          <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Working" : "Make folder"} onPress={busy ? () => {} : makeFolder} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setNewName(null)} /></View>
+        </View>
+      </Sheet>
       <Sheet open={!!open} onClose={() => { setOpen(null); setAsking(false); }} title={open?.item.name}>
         {open ? (
           <View className="gap-s3">
