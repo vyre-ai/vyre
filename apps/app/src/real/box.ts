@@ -198,7 +198,16 @@ async function answerWithPasskey(ask: (tool: string, input?: Record<string, unkn
 
 /** On the person's own computer (the Mac window), Touch ID gives the yes at once; anywhere else this refuses and the card stays for the phone. */
 async function answerHere(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, id: string): Promise<void> {
-  await ask("approvals.local-yes", { id }).catch(() => {});
+  await ask("approvals.local-yes", { id });
+}
+
+/** Is a phone (a hardware device key) enrolled for presence? Not knowing answers true: the ask keeps waiting for one. */
+async function phoneIsPaired(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>): Promise<boolean> {
+  try {
+    const r = await ask("presence.keys", {});
+    const keys = Array.isArray(r) ? r : Array.isArray(r?.keys) ? r.keys : null;
+    return keys ? keys.some((k: { kind?: string }) => k && k.kind === "device") : true;
+  } catch { return true; }
 }
 
 /** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
@@ -206,8 +215,8 @@ async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: 
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
-    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onAsked: async (id) => { await answerHere(ask, id); await answerWithPasskey(ask, id); }, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
-    if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, phonePaired: () => phoneIsPaired(ask), onAsked: async (id) => { const why: string[] = []; await answerHere(ask, id).catch((e: Error) => { why.push(e.message || "this computer could not confirm it"); }); await answerWithPasskey(ask, id).catch(() => {}); return why; }, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
+    if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended, "why" in out ? out.why : []));
     return await retry(out.approval);
   } catch (e) {
     if (e instanceof BoxError) throw e;
