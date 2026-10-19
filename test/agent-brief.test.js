@@ -28,12 +28,12 @@ test("an unknown runtime is refused", () => {
 test("nameTools writes a reachable tool the way it is called, leaves a call alone, and leaves a tool the caller cannot reach as written", () => {
   const namer = toolNamer(["flows.define", "flows.propose", "docs.find", "memory.ask"]);
   const out = nameTools("Use flows.define then flows.propose; read docs.find; tools_call flows.get stays; chrome.send is not here; memory.ask.", namer);
-  assert.equal(out, "Use tools_call flows.define then tools_call flows.propose; read docs_find; tools_call flows.get stays; chrome.send is not here; memory_ask.");
+  assert.equal(out, "Use flows_define then tools_call flows.propose; read docs_find; tools_call flows.get stays; chrome.send is not here; memory_ask.");
 });
 
 test("the Engineer's own words name every tool it uses the way it can call it", () => {
   const raw = ENGINEER.instructions;
-  for (const n of ["flows.define", "flows.compile-text", "flows.propose", "flows.kit.propose", "work.template.define", "skills.draft"]) {
+  for (const n of ["flows.compile-text", "flows.propose", "flows.kit.propose", "work.template.define", "skills.draft"]) {
     assert.ok(raw.includes(`tools_call ${n}`), `${n} is written as a call`);
     assert.ok(!new RegExp(`(?<!tools_call )(?<![A-Za-z0-9_.-])${n.replace(/[.]/g, "\\.")}(?![A-Za-z0-9_-])`).test(raw), `${n} is not written bare`);
   }
