@@ -100,7 +100,7 @@ export function NewViewSheet({ open, onClose, types, type: first, space, canShar
           {label("Icon")}
           <View className="flex-row flex-wrap gap-s2">{ICONS.map((i) => <Chip key={i} tone={icon === i ? "accent" : "plain"} icon={i as any} onPress={() => setIcon(i)}>{i === "cal" ? "calendar" : i}</Chip>)}</View>
         </View>
-        {canShare ? <Segmented<string> label="Who sees it" value={shared ? "space" : "me"} onChange={(v) => setShared(v === "space")} options={[["me", "Just me"], ["space", "Everyone in the space"]]} /> : null}
+        <Segmented<string> label="Who sees it" value={shared ? "space" : "me"} onChange={(v) => setShared(v === "space")} options={[["me", "Just me"], ["space", "Everyone in the space"]]} />
         {shared ? <Text size="caption" tone="label">Everyone sees it, and each person still sees only the records their role allows.</Text> : null}
         <View className="flex-row items-center gap-s2"><Switch label="Pin to the sidebar" on={pin} onChange={setPin} /><Text>Pin to the sidebar</Text></View>
         {errors.length ? <Banner tone="warn">{errors[0]}</Banner> : null}

@@ -203,7 +203,7 @@ export function createCdpAdapter(deps) {
     const parser = new FrameParser({ max: MAX_MSG });
     const onData = async (/** @type {Buffer} */ chunk) => {
       let frames; try { frames = parser.push(chunk); } catch { return void socket.destroy(); }
-      try { await l.ready; } catch { log(`cdp: ${agent}'s Chrome could not be reached`); return void socket.destroy(); }
+      try { await l.ready; } catch (e) { log(`cdp: ${agent}'s Chrome could not be reached: ${String(/** @type {Error} */ (e) && /** @type {Error} */ (e).message || e).slice(0, 200)}`); return void socket.destroy(); }
       for (const f of frames) {
         if ("control" in f) { if (f.control === "close") return void socket.destroy(); if (f.control === "ping") socket.write(encodeFrame(f.payload, 0xa)); continue; }
         // a client that is not the fill's, while a window is open, is refused whatever it was let in before

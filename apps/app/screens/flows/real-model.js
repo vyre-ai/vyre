@@ -63,3 +63,31 @@ export function groupFlows(flows) {
   for (const f of flows) { const k = f.project || "Personal"; by.set(k, [...(by.get(k) ?? []), f]); }
   return [...by.entries()].sort((x, y) => (x[0] === "Personal" ? -1 : y[0] === "Personal" ? 1 : x[0] < y[0] ? -1 : 1)).map(([name, rows]) => ({ name, rows }));
 }
+
+/** The runs list narrowed by what the person picked: All, Failed (failed or stopped), Waiting (waiting, paused or held), and a search over the run's words (its label, its error and its date text). @template {{ state: string, label?: string, error?: { message?: string } | null, when?: string }} R @param {R[]} runs @param {"all" | "failed" | "waiting"} filter @param {string} query @returns {R[]} */
+export function filterRuns(runs, filter, query) {
+  const want = filter === "failed" ? ["failed", "cancelled"] : filter === "waiting" ? ["waiting", "paused", "queued"] : null;
+  const q = String(query || "").trim().toLowerCase();
+  return runs.filter((r) => (!want || want.includes(r.state)) && (!q || [r.label, r.error && r.error.message, r.when, r.state].filter(Boolean).join(" ").toLowerCase().includes(q)));
+}
+
+/** Whether a stored step sends something outward: an email, a text, a signing link, any comms call, or a web call that is not a plain read. @param {any} s */
+export function isOutwardStep(s) {
+  if (!s) return false;
+  if (s.kind === "call") return /^comms\.|\.send$|signed-link|^esign\./.test(String(s.action || ""));
+  if (s.kind === "service") return !["GET", "HEAD", undefined].includes(s.method);
+  return false;
+}
+
+/** The stored steps in the Flow's order, nested ones after their parent. @param {any[]} list @returns {any[]} */
+const inOrder = (list) => (Array.isArray(list) ? list : []).flatMap((s) => [s, ...inOrder(s.then), ...inOrder(s.else), ...inOrder(s.steps), ...inOrder(s.on_fail && s.on_fail.steps)]);
+
+/** Whether a run can be retried from a step. A step that comes at or before one that already sent something outward cannot (the send would go twice); the one after it can. Null when it can, else the sentence to show. @param {any} flow the stored Flow @param {Record<string, { status?: string }> | undefined} ledger the run's steps @param {string} stepId */
+export function retryFromRefusal(flow, ledger, stepId) {
+  const steps = inOrder(flow && flow.steps);
+  const at = steps.findIndex((s) => s.id === stepId);
+  if (at < 0) return "That step is not in this Flow.";
+  const sent = steps.map((s, i) => (isOutwardStep(s) && ledger && Object.entries(ledger).some(([k, e]) => k.replace(/\?ask$/, "").replace(/[@!].*$/, "") === s.id && e && e.status === "done") ? i : -1)).filter((i) => i >= 0);
+  const last = sent.length ? Math.max(...sent) : -1;
+  return at <= last ? "That run already sent something; start a new run to send again." : null;
+}

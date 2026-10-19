@@ -112,9 +112,9 @@ What to do today: open an interactive artifact from a session like that only whe
 
 ### Vyre Computer: one Chrome, reads in parallel
 
-Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent is not built, and a write goes through the page, asked first.
+This is about your own Chrome on your own computer, which Vyre Computer drives for you; it is not about the agents' browsers on the Space computer, where each agent has its own Linux user and its own Chrome. Vyre Computer tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent in your Chrome is not built, and a write goes through the page, asked first.
 
-What to do today: ask for one job at a time when several agents need Chrome.
+What to do today: ask for one job at a time when several agents need your Chrome.
 
 ### Models side by side
 
@@ -164,10 +164,42 @@ What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.
 
+## The first-run proof's web export holds a software yes
+
+A browser has no hardware key and no phone, so the first-run proof's group walk (an owner approving an ask to join, a second person joining) gives its browsers a software yes: the page's own person key signing the proof body a phone would sign (`apps/app/src/real/proof-yes.ts`). It exists only in the export made with `EXPO_PUBLIC_VYRE_PROOF_YES=1` (the proof export in `first-run-e2e.yml`). That export must never be published, served to anyone or kept past its run: its artifact is for the run only. Every other build compiles the signer out, and `app.yml` fails the release web export, the release APK and the iOS release build if they hold its marker. A release-kind server refuses a software key and a software proof (`kernel/seal/seal.test.js` SW-2), so the signer could not say yes to one even if it got out.
+
+What to do: nothing, unless the proof export is ever linked from somewhere public; then take it down.
+
+Owner: app53, until browser-only people get a passkey yes (`team/BACKLOG.md`, "A real browser yes").
+
 ## A team member's uploaded skill is untrusted text
 
 A skill a member uploads is text from outside, read strictly and kept as a draft of her own personal skill. Only she approves it, and only she uses it; it is never loaded for anyone else. The upload counters (ten an hour, thirty a day) are kept in memory and start again when the server restarts, so a restart gives her a fresh count. The fifty-skill and fifty-draft limits are counted from the library and do not reset.
 
 What to do: nothing for a normal team. An owner who sees a member upload in bursts can remove the member's role.
+
+Owner: comp6 with sec53.
+
+## Some Records features do not reach a person who joined a team
+
+A person who joined a team Space reaches it through the team's member door, which carries a fixed list of calls. In Records that list covers lists, records, moves, connections, layouts, history, board totals, Busy blocks, roles on a record, logging a call, a meeting or a note, and Notes (the team's planner, notes only). It does not yet carry: undo in a record's history; putting a role on a record or moving its stage (records.role.set); sharing a synced event (records.share); and the Space-setup edits an owner or an admin makes (a type's colour or hidden flag, a new field, a new link, sample data). For a joined member those calls are sent to her own home, not the team, so they fail or act on her home.
+
+What to do: do the setup edits and role changes on the team's server itself (or as the owner there). Undo a change by setting the old value by hand.
+
+Owner: flow6b with sec53. Planned for 0.6.3: serve calls for each.
+
+## An agent's Chrome runs without Chrome's own renderer sandbox
+
+Docker's default seccomp profile refuses the namespaces Chrome's sandbox needs, so the computer's Chrome and each agent's Chrome start with `--no-sandbox`. A Chrome renderer exploit therefore runs as that agent's browser user with no renderer sandbox. It reaches that agent's profile and its debugging pipe. It does not reach another agent's files, the computer's own user or its secrets, because each agent has its own users, processes run with no capability and no new privileges, and the folders are private.
+
+What to do: keep the Chrome in the computer image current (the image carries its version). The fix is a seccomp profile that allows user namespaces, planned for 0.7.
+
+Owner: comp6 with sec53.
+
+## An agent's Chrome has no address-space cap
+
+Chrome reserves far more virtual memory than it uses and does not start under a cap on address space, so an agent's Chrome is held by a cap on committed memory (3 GiB per process), the computer's own memory limit and its process count instead. Every other agent process keeps the address-space cap.
+
+What to do: nothing. If one agent's browser grows without bound it is stopped at the per-process cap; the computer's own limit still bounds the whole.
 
 Owner: comp6 with sec53.

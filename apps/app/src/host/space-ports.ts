@@ -52,6 +52,21 @@ export async function spacePorts(): Promise<SpacePorts> {
       const inv = await openInvite(d as never, link);
       return { card: inv.card, accept: async () => { const r = await inv.accept(); void import("../real/space-list-app").then((m) => m.recordJoined()).catch(() => {}); return r; }, close: () => inv.close() };
     },
+    // Asking to join a Space by its address, as the identity the page holds (src/real/join-team.js askToJoin and askStatus)
+    ask: async (address, note, who) => {
+      const { joinDeps } = await import("../real/team-join");
+      const { askToJoin } = await import("../real/join-team.js");
+      const d = await joinDeps({ id: who.id, name: who.name, eid: who.key.eid, key: who.key });
+      if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+      return askToJoin(d as never, address, note);
+    },
+    askStatus: async (address, who) => {
+      const { joinDeps } = await import("../real/team-join");
+      const { askStatus } = await import("../real/join-team.js");
+      const d = await joinDeps({ id: who.id, name: who.name, eid: who.key.eid, key: who.key });
+      if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+      return askStatus(d as never, address);
+    },
     forget: async (box) => {
       const { removePairingFor } = await import("../api/relay");
       await removePairingFor(box);

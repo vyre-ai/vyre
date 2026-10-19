@@ -2,6 +2,8 @@
 // doer, checker and assigned_by are Actors, a record is a urn, the Deck's extras (now, say, note, result) sit under task.ext. The React components in this folder
 // only draw what these functions return, so the words and the buttons are tested in node (model.test.js).
 import { hourOf, longDateOf, sameDay, timeOf, weekdayDayOf } from "../../src/time/show.js";
+import { nowLine } from "./slots-model.js";
+import { needsRead } from "../components/quoted-assistants-model.js";
 import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/store-core/tasks.js";
 import { aid, eventLine } from "../../src/store-core/kernel-view.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
@@ -37,14 +39,16 @@ export const spaceTag = (w, spaceId) => { const s = w.spaces.find((x) => x.id ==
 
 /**
  * What a task is, to a person, as a card: the line it says, the sentence under it, the tags and the buttons.
- * @param {{ task: any, record?: any, recordTitle?: string, actors: any[], me: string, spaceName?: string, showSpace?: boolean, templateName?: string, fieldLabel?: (name: string) => string|undefined }} i
- * @returns {{ reason: "check"|"do"|"stuck"|null, title: string, why: string, lead: string, tags: { text: string, tone?: string, kind?: "record"|"space" }[],
+ * @param {{ page?: boolean, task: any, record?: any, recordTitle?: string, actors: any[], me: string, spaceName?: string, showSpace?: boolean, templateName?: string, fieldLabel?: (name: string) => string|undefined }} i
+ * @returns {{ reason: "check"|"review"|"do"|"stuck"|null, title: string, why: string, lead: string, tags: { text: string, tone?: string, kind?: "record"|"space" }[],
  *   actions: { id: string, label: string, kind: "primary"|"secondary", icon?: string }[], inline?: { name: string, label: string, kind: "text"|"date" } }}
  */
 export function cardModel(i) {
   const { task, actors } = i;
   const reason = needsReason(task, i.me, actors);
-  const title = cardTitle(task, reason, actors);
+  const nameOfActor = (/** @type {string} */ _k, /** @type {string} */ id) => actorOf(id, actors)?.name || id;
+  const line = reason === "review" || (reason === "check" && task.review) ? nowLine(task, nameOfActor, i.me) : null;
+  const title = reason === "review" && line ? line.title : cardTitle(task, reason, actors);
   const rec = i.recordTitle || "";
   const note = typeof task.ext?.note === "string" ? task.ext.note : "";
   const madeBy = actorOf(aid(task.assigned_by), actors);
@@ -62,11 +66,15 @@ export function cardModel(i) {
   if (reason === "check") {
     if (task.output.kind === "sent") {
       why = draft ? howSentence(task, { actors, templateName: i.templateName, usedNotesOf: task.how === "tailor" && i.record?.data?.research ? "Research" : undefined }) : "Needs your approval to send.";
+      if (line) why = `${line.sub} ${why}`;
       actions = [{ id: "send", label: pay ? "Pay with Face ID" : "Send with Face ID", kind: "primary", icon: "faceid" }, draft ? { id: "edit", label: "Edit", kind: "secondary" } : { id: "open", label: "Open", kind: "secondary" }];
     } else {
-      why = "Needs your check.";
+      why = line ? `${line.sub} Needs your check.` : "Needs your check.";
       actions = [{ id: "approve", label: "Approve with Face ID", kind: "primary", icon: "faceid" }, { id: "open", label: "Open", kind: "secondary" }];
     }
+  } else if (reason === "review") {
+    why = line ? line.sub : "Waiting for your review.";
+    actions = [{ id: "open", label: "Review", kind: "primary" }];
   } else if (reason === "stuck") {
     const s = task.stuck;
     why = [s?.reason, s?.suggested_fix?.text].filter(Boolean).join(" ");
@@ -96,6 +104,8 @@ export function cardModel(i) {
     why = STATE_LABEL[task.state] + ".";
     actions = [{ id: "open", label: "Open", kind: "secondary" }];
   }
+  // A Kit that makes assistants is approved from its own page (`page`), after its texts are on screen: a card in a list or a sheet only opens it.
+  if (reason === "check" && !i.page && needsRead(task)) { why = "This Kit makes assistants. Read what they would be told before you approve."; actions = [{ id: "open", label: "Read before approving", kind: "primary" }]; }
   /** @type {ReturnType<typeof cardModel>["tags"]} */
   const tags = [{ text: note && !/^is /.test(note) ? note : "Stage task" }];
   if (rec) tags.push({ text: rec, kind: "record" });
@@ -104,14 +114,14 @@ export function cardModel(i) {
   return { reason, title, why, lead, tags, actions, inline };
 }
 
-/** The card model of a task for the person in the world. @param {World} w @param {any} task @param {{ showSpace?: boolean }} [o] */
+/** The card model of a task for the person in the world. @param {World} w @param {any} task @param {{ showSpace?: boolean, page?: boolean }} [o] `page`: the task's own page, where Approve is offered for a Kit that makes assistants */
 export function cardFor(w, task, o = {}) {
   const rec = w.records.get(task.record);
   const tpl = task.template ? w.records.get(task.template) : null;
   const def = rec ? w.types.get(rec.type) : null;
   return cardModel({
     task, record: rec, recordTitle: recordTitle(w, rec), actors: w.actors, me: w.me, spaceName: spaceTag(w, task.space), showSpace: true,
-    templateName: tpl ? recordTitle(w, tpl) : undefined, fieldLabel: (n) => def?.fields.find((/** @type {any} */ f) => f.name === n)?.label,
+    page: !!o.page, templateName: tpl ? recordTitle(w, tpl) : undefined, fieldLabel: (n) => def?.fields.find((/** @type {any} */ f) => f.name === n)?.label,
   });
 }
 
@@ -258,14 +268,15 @@ function didWhat(t) {
  * The tasks of each stage, in stage order, with "n of m done". A stage with no task is left out unless it is the current one; tasks without a stage (or with one the type
  * does not have) form one group at the end. `done` and `total` count the required tasks, or every task when none is required.
  * @param {any[]} tasks @param {string[]} stages @param {string|undefined} current
- * @returns {{ stage: string|null, label: string, tasks: any[], done: number, total: number, current: boolean, complete: boolean }[]}
+ * @returns {{ stage: string|null, label: string, tasks: any[], done: number, total: number, current: boolean, complete: boolean, declined: any[] }[]}
  */
 export function stageGroups(tasks, stages, current) {
   const make = (/** @type {string|null} */ stage, /** @type {string} */ label, /** @type {any[]} */ list, /** @type {boolean} */ isCurrent) => {
     const req = stage ? stageProgress(tasks, stage) : { done: list.filter(isDone).length, total: list.length };
     const none = req.total === 0 && list.length > 0;
     const total = none ? list.length : req.total, done = none ? list.filter(isDone).length : req.done;
-    return { stage, label, tasks: list, done, total, current: isCurrent, complete: total > 0 && done === total };
+    const declined = list.filter((/** @type {any} */ t) => t.state === "declined");
+    return { stage, label, tasks: list, done, total, current: isCurrent, complete: total > 0 && done === total, declined };
   };
   const known = new Set(stages);
   const out = [];

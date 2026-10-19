@@ -20,7 +20,7 @@ export default function TaskScreen() {
         {q.error && !q.data ? <ErrorState title="This task did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={3} />
           : !task ? <EmptyState title="That task is gone" body="It may have been removed." action={{ label: "Back to Now", onPress: back }} />
-          : <TaskDetail world={q.data} task={task} onAction={(a, input) => void run(task, a, input)}
+          : <TaskDetail key={task.id} world={q.data} task={task} onAction={(a, input) => void run(task, a, input)}
               onHow={async (how) => { try { await store.editTask(task.id, { how: how as never }, q.data!.me); } catch (e) { showToast(String((e as Error)?.message || e)); } }}
               onOpenRecord={(rid) => go(`/u/project/${rid}`)} />}
         {sheets}

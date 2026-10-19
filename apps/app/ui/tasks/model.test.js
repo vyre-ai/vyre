@@ -152,3 +152,33 @@ test("a to-do a Flow gave you says a Flow is waiting; one with no maker and no s
   assert.equal(card({ ...base, source: "manual" }).why, "It is waiting for you.");
   assert.equal(card({ ...base, source: "flow_step", stage: "Intake" }).why, "Due with Intake.");
 });
+
+test("a task In review is a card for its reviewer only, with a Review button and the Now line", () => {
+  const actors = [{ id: "ana", name: "Ana", family: "person" }, { id: "assistant", name: "Assistant", family: "assistant" }];
+  const task = { id: "t1", title: "Launch email", state: "in_review", doer: { kind: "agent", id: "assistant" }, reviewer: { kind: "person", id: "ana" }, output: { kind: "draft" } };
+  const mine = cardModel({ task, actors, me: "ana" });
+  assert.equal(mine.reason, "review");
+  assert.equal(mine.title, "Launch email is waiting for your review");
+  assert.deepEqual(mine.actions.map((a) => a.id), ["open"]);
+  assert.equal(cardModel({ task, actors, me: "bo" }).reason, null);
+  const passed = cardModel({ task: { ...task, state: "needs_check", checker: { kind: "person", id: "ana" }, output: { kind: "draft" }, review: { by: { kind: "person", id: "bo" }, type: "person", result: "pass", checklist: [] } }, actors, me: "ana" });
+  assert.match(passed.why, /reviewed it/);
+});
+
+test("a declined task stays out of the stage's done count and is listed on the stage", () => {
+  const tasks = [{ id: "a", stage: "Draft", state: "done", title: "A" }, { id: "b", stage: "Draft", state: "declined", title: "B" }];
+  const g = stageGroups(tasks, ["Draft"], "Draft")[0];
+  assert.equal(g.done, 1);
+  assert.equal(g.total, 2);
+  assert.equal(g.complete, false, "the stage cannot finish while one is declined");
+  assert.deepEqual(g.declined.map((t) => t.id), ["b"]);
+});
+
+test("a Kit install task that makes assistants shows only 'Read before approving' on a list card, and its own page keeps Approve", () => {
+  const actors = [{ id: "ana", name: "Ana", family: "person" }];
+  const task = { id: "k1", title: "Install Desk", state: "needs_check", doer: { kind: "agent", id: "kernel" }, checker: { kind: "person", id: "ana" }, output: { kind: "note" }, form: { kind: "kit_install", card: { adds: { teammates: [{ name: "a", instructions_quoted: '"x"' }] } } } };
+  assert.deepEqual(cardModel({ task, actors, me: "ana" }).actions.map((a) => a.id), ["open"]);
+  assert.equal(cardModel({ task, actors, me: "ana", page: true }).actions.some((a) => a.id === "approve"), true);
+  const plain = { ...task, form: { kind: "kit_install", card: { adds: { teammates: [] } } } };
+  assert.equal(cardModel({ task: plain, actors, me: "ana" }).actions.some((a) => a.id === "approve"), true);
+});

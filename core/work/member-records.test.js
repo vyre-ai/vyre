@@ -252,3 +252,128 @@ test("a private note and an outside calendar's event are private on every kernel
   { const titles = (await quick(gw.records.query(w.chainOf(ZED), "note", { page: { limit: 50 } }))).rows.map((/** @type {any} */ r) => r.data.title); assert.ok(!titles.includes("A") && !titles.includes("B"), `an admin reads neither, and the check ends: ${titles}`); }
   assert.ok(await quick(gw.records.get(w.chainOf(BEN), "note", a.id)) !== undefined, "and the check ends for the writer too");
 });
+
+test("a joined member's notes go through the team's planner as herself: her own and shared ones, never another's private note, an event or a firing, and only the writer changes a note", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  await gw.grants.setRole(w.ownerChain, { person: ZED, role: "admin" }, { presence: proof() });
+  const ids = (/** @type {any} */ r) => (r.items || []).map((/** @type {any} */ x) => x.title).sort();
+  const idOf = (/** @type {any} */ r) => (r.item || r).id;
+  const asP = (/** @type {string} */ p, /** @type {string} */ door, /** @type {any} */ input) => w.as(p, door, input);
+  // the rows are the door's, with the exact keys
+  for (const [k, tool] of [["planner.list", "planner.serve"], ["planner.get", "planner.serve"], ["planner.add", "planner.serve-write"], ["planner.update", "planner.serve-write"]]) assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].tool, tool, k);
+  assert.ok(/** @type {any} */ (CALLS).planner.includes("update"));
+  // BEN writes a private note and a Space note; ANA writes a private one; the owner writes a private note and an event
+  const benPrivate = await asP(BEN, "planner.add", { title: "BEN private", body: "x" });
+  const benSpace = await asP(BEN, "planner.add", { title: "BEN space", visibility: "space" });
+  await asP(ANA, "planner.add", { title: "ANA private" });
+  const ownerCall = async (/** @type {string} */ tool, /** @type {any} */ input) => w.d.registry.call(tool, input, "cli", { token: (await w.d.kernel.surfaces.open(w.chainOf(w.OWNER), {})).token });
+  const ownerNote = (await ownerCall("planner.add", { kind: "note", title: "OWNER private" })).data;
+  const event = (await ownerCall("planner.add", { kind: "event", title: "Owner meeting", at: "2027-01-01T10:00:00Z" })).data;
+  assert.ok(ownerNote && event);
+  // she lists her own and the Space's, and opens them
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { state: "all" })), ["ANA private", "BEN space"]);
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { scope: "shared", state: "all" })), ["BEN space"]);
+  assert.deepEqual(ids(await asP(BEN, "planner.list", { scope: "mine", state: "all" })), ["BEN private", "BEN space"]);
+  assert.equal((await asP(ANA, "planner.get", { item: idOf(benSpace) })).item.title, "BEN space");
+  // not another member's private note, the owner's, an event, a firing id, or anything unknown
+  assert.equal(await code(asP(ANA, "planner.get", { item: idOf(benPrivate) })), "not_found", "another member's private note");
+  assert.equal(await code(asP(ANA, "planner.get", { item: ownerNote.id })), "not_found", "the owner's private note");
+  assert.equal(await code(asP(ANA, "planner.get", { item: event.id })), "not_found", "an event");
+  assert.equal(await code(asP(ANA, "planner.get", { item: "no-such-item" })), "not_found");
+  assert.equal(await code(asP(ANA, "planner.get", { firing: "f1" })), "not_found", "a firing id is not a key: the door drops it and there is no item");
+  // an unknown key is dropped by the door, so a kind cannot widen a list; and the planner itself refuses one if it is sent straight
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { kind: "reminder", state: "all" })), ["ANA private", "BEN space"], "the kind is ignored: still notes");
+  const straight = (/** @type {string} */ tool, /** @type {any} */ body) => w.d.registry.callInSpace({ name: "vyred" }, w.space, w.d.kernel, tool, body, w.chainOf(BEN)).then((x) => x, (e) => ({ error: e }));
+  for (const [tool, body] of [["planner.serve", { call: "list", input: { kind: "reminder" } }], ["planner.serve-write", { call: "add", input: { title: "x", kind: "alarm" } }], ["planner.serve-write", { call: "add", input: { title: "x", text: "alarm 7am" } }], ["planner.serve-write", { call: "add", input: { title: "x", thread: "t" } }], ["planner.serve-write", { call: "add", input: { title: "x", assignee: "a" } }], ["planner.serve-write", { call: "update", input: { item: idOf(benSpace), at: "2027-01-01T10:00:00Z" } }]]) {
+    const r = /** @type {any} */ (await straight(tool, body));
+    assert.ok(JSON.stringify(r).includes("bad_input") || JSON.stringify(r).includes("cannot be set on a note"), `${tool} ${JSON.stringify(body.input)}: unknown keys are refused: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+  // an admin and the owner are subject to the same sharing rule
+  for (const who of [ZED, w.OWNER]) {
+    assert.ok(!ids(await asP(who, "planner.list", { state: "all" })).some((x) => /private/.test(x) && x !== "OWNER private"), `${who}: no member's private note`);
+    assert.equal(await code(asP(who, "planner.get", { item: idOf(benPrivate) })), "not_found");
+  }
+  // only the writer changes a note: not another member, not an admin, not the owner; and only she shares it
+  for (const who of [ANA, ZED, w.OWNER]) {
+    assert.equal(await code(asP(who, "planner.update", { item: idOf(benSpace), title: "taken" })), "not_found", `${who} cannot change BEN's shared note`);
+    assert.equal(await code(asP(who, "planner.update", { item: idOf(benPrivate), visibility: "space" })), "not_found", `${who} cannot share BEN's note`);
+  }
+  await asP(BEN, "planner.update", { item: idOf(benPrivate), title: "BEN private 2", visibility: "space" });
+  assert.deepEqual(ids(await asP(ANA, "planner.list", { scope: "shared", state: "all" })), ["BEN private 2", "BEN space"], "once she shares it, the other sees it");
+  // a record-level share is judged on the reader's own chain in this Space: a contact everyone reads, then a project only its team reads
+  const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  await asP(ANA, "planner.add", { title: "about Ava", visibility: "record", record: contact.urn });
+  assert.ok(ids(await asP(BEN, "planner.list", { record: contact.urn, state: "all" })).includes("about Ava"), "BEN can read the contact, so he sees the note shared with it");
+  const { PROJECT, TEAM_MEMBER } = await import("../../records/core-types.js");
+  await gw.records.define(w.ownerChain, { add_types: [PROJECT, TEAM_MEMBER] }).catch(() => {});
+  const person = (/** @type {string} */ id) => ({ actor: { kind: "person", id, space: w.space } });
+  const project = await gw.records.create(w.ownerChain, "project", { name: "Hers", slug: "hers", owner: person(ANA) });
+  await asP(ANA, "planner.add", { title: "about the project", visibility: "record", record: project.urn });
+  const sees = async (/** @type {string} */ who) => ids(await asP(who, "planner.list", { record: project.urn, state: "all" })).includes("about the project");
+  assert.equal(await sees(ANA), true, "its owner");
+  assert.equal(await sees(BEN), false, "BEN cannot read the project, so he does not see the note shared with it");
+  const seat = await gw.records.create(w.ownerChain, "team-member", { name: "ben", actor: person(BEN), kind: "person", project: { urn: project.urn } });
+  assert.equal(await sees(BEN), true, "once he is on the project he can read it, and the note");
+  await gw.records.remove(w.ownerChain, "team-member", seat.id, seat.version);
+  assert.equal(await sees(BEN), false, "taking him off the project takes the note out of his list again");
+  assert.equal(await sees(ZED), true, "an admin reads every project, so a note shared with one is read by her too");
+  assert.ok(await code(asP(BEN, "planner.add", { title: "about a note", visibility: "record", record: `vyre://${w.space}/note/0192f5a0-0000-7000-8000-000000000001` })), "a note is about a record, not a note");
+  // the planner's own check of the chain, and a module calling the tools straight
+  const chain = w.chainOf(ANA), hop = { actor: { kind: "agent", id: "kit", space: w.space } };
+  for (const [what, bad] of [["a two-hop chain", { ...chain, hops: [...chain.hops, hop] }], ["an agent hop", { ...chain, hops: [hop] }], ["another Space", { ...chain, space: "spc_zzzzzzzzzzzz" }], ["no hops", { ...chain, hops: [] }], ["a viewer", { ...chain, viewer: true }], ["a delegation", { ...chain, delegated: true }]]) {
+    const r = await w.d.registry.callInSpace({ name: "vyred" }, w.space, w.d.kernel, "planner.serve", { call: "list", input: {} }, bad).then((x) => x, (e) => ({ error: e }));
+    assert.ok(r && (r.error || (r.data && r.data.error)), `${what} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  const direct = await w.d.registry.call("planner.serve", { call: "list", input: {} }, "module", {});
+  assert.ok(direct.error && ["denied", "no_such_tool"].includes(direct.error.code), `a module calling it straight is refused: ${JSON.stringify(direct.error)}`);
+  const directWrite = await w.d.registry.call("planner.serve-write", { call: "add", input: { title: "x" } }, "module", {});
+  assert.ok(directWrite.error, "and so is the write tool");
+});
+
+test("through the member door a joined member reads a record's history, board totals, Busy blocks and roles, and logs a call, a meeting or a note, as herself", { timeout: 150_000 }, async t => {
+  const w = await world(t);
+  const gw = w.d.kernel.gateway;
+  const { DEAL, RELATIONSHIP, ROLE_TYPES, EVENT } = await import("../../records/core-types.js");
+  const strip = (/** @type {any} */ x) => ({ ...JSON.parse(JSON.stringify(x)), fields: x.fields.filter((/** @type {any} */ f) => !(x.name === "deal" && f.name === "organization")) });
+  await gw.records.define(w.ownerChain, { add_types: [strip(DEAL), RELATIONSHIP, ...ROLE_TYPES.filter((x) => x.name === "role-lead").map(strip), strip(EVENT)] }).catch(() => {});
+  const { PLANNER_TYPES } = await import("../planner/types.js");
+  await gw.records.define(w.ownerChain, { add_types: PLANNER_TYPES.filter((x) => x.name === "note").map((x) => JSON.parse(JSON.stringify(x))) }).catch(() => {});
+  for (const [k, tool, call] of [["records.history", "records.serve", "history"], ["records.stats", "records.serve", "stats"], ["records.busy", "records.serve", "busy"], ["records.roles.summary", "records.serve", "roles.summary"], ["records.log", "records.serve-update", "log"]]) {
+    assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].tool, tool, k);
+    assert.equal(/** @type {any} */ (MEMBER_TOOLS)[k].call, call, k);
+    assert.ok(/** @type {any} */ (CALLS).records.includes(call), `${call} is a call of the group`);
+  }
+  const deal = (await w.as(ANA, "records.create", { type: "deal", data: { name: "Okafor", amount: 1000 } })).record;
+  await w.as(ANA, "records.move", { urn: deal.urn, stage: "Qualified" });
+  // history: her change, with her as the actor; a logged call and a note
+  await w.as(ANA, "records.log", { urn: deal.urn, kind: "call", text: "Spoke to Okafor" });
+  assert.equal(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "note", text: "Wants a warmer blue" })), "bad_input", "a note is written from the Notes tab, into the team's planner");
+  await w.as(ANA, "records.log", { urn: deal.urn, kind: "meeting", text: "Met Okafor" });
+  const items = (await w.as(ANA, "records.history", { urn: deal.urn })).items;
+  assert.ok(items.some((/** @type {any} */ x) => /stage/.test(x.text) && x.actor.id === ANA), JSON.stringify(items.map((/** @type {any} */ x) => x.text)));
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "call" && /Okafor/.test(x.text)), "the call");
+  assert.ok(items.some((/** @type {any} */ x) => x.kind === "meeting" && /Okafor/.test(x.text)), "the meeting");
+  // another member does not get a record she cannot read, and a kind that is not a call, meeting or note is refused
+  assert.ok(await code(w.as(BEN, "records.log", { urn: `vyre://${w.space}/deal/0192f5a0-0000-7000-8000-000000000001`, kind: "call", text: "x" })), "a record that is not there");
+  assert.ok(await code(w.as(ANA, "records.log", { urn: deal.urn, kind: "email", text: "x" })), "an email is not logged this way");
+  // totals, roles
+  const stats = await w.as(BEN, "records.stats", { type: "deal" });
+  assert.equal(stats.total.count, 1, JSON.stringify(stats));
+  assert.equal(stats.groups.find((/** @type {any} */ g) => g.key === "Qualified").count, 1, JSON.stringify(stats));
+  const contact = (await w.as(ANA, "records.create", { type: "contact", data: { name: "Ava" } })).record;
+  assert.deepEqual((await w.as(ANA, "records.roles.summary", { urn: contact.urn })).roles, []);
+  assert.ok((await w.as(ANA, "records.roles.summary", {})).roles.some((/** @type {any} */ r) => r.role === "role-lead"));
+  // Busy: another person's private outside-calendar event is a block of time and nothing else
+  const ev = await gw.records.create(w.chainOf(BEN), "event", { title: "Dentist", starts_at: new Date(Date.now() + 86_400_000).toISOString(), source: "google", owner: `person:${BEN}` });
+  assert.ok(ev.urn);
+  const busy = (await w.as(ANA, "records.busy", {})).busy;
+  assert.equal(busy.length, 1, JSON.stringify(busy));
+  assert.ok(!JSON.stringify(busy).includes("Dentist"), "no title reaches her");
+  assert.equal(await code(w.as(ANA, "records.history", { urn: ev.urn })), "not_found", "and the event's history is not hers");
+  // unknown keys are dropped by the door: a limit or a window she names is not obeyed
+  assert.ok((await w.as(ANA, "records.history", { urn: deal.urn, limit: 1, extra: "x" })).items.length >= 1);
+  // an agent behind the chain gets nothing
+  const agentChain = { ...w.chainOf(ANA), hops: [...w.chainOf(ANA).hops, { actor: { kind: "agent", id: "kit", space: w.space } }] };
+  assert.equal(await code(/** @type {any} */ (w.svc).records.history(agentChain, { urn: deal.urn })), "not_found");
+});

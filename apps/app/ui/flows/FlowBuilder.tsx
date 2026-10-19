@@ -1,45 +1,49 @@
-import { useState } from "react";
-import { View } from "react-native";
+import { useEffect, useState } from "react";
+import { ScrollView, View } from "react-native";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
-import { Field } from "../components/Field";
 import { IconTile } from "../components/IconTile";
 import { Row } from "../components/Row";
-import { Select } from "../components/Select";
 import { Switch } from "../components/Switch";
 import { Text } from "../components/Text";
-import { FormulaBox } from "./FormulaBox";
 import { StepCard } from "./StepCard";
+import { TriggerFields } from "./TriggerFields";
 import { FlowSettings } from "./FlowSettings";
 import { StepEditor } from "./StepEditor";
 import { StepPalette } from "./StepPalette";
 import { ContextBox } from "./ContextBox";
-import { EVERY_CHOICES, eventChoices, stageChoices, stagesOf, TIMED, TRIGGERS, choiceOf, flowSentence, isRecordTrigger, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
-import { addTo, canMove, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
+import { choiceOf, flowSentence, newStep, policyWords, stepProblem, stepSummary, triggerOf, triggerPhrase } from "./logic.js";
+import { canTurnOff } from "./failure.js";
+import { useUiTheme } from "../theme";
+import { addTo, canMove, duplicateDeep, flat, laneSteps, lanesOf, mapStep, moveDeep, removeDeep } from "./tree.js";
 import type { Draft, DraftStep, Options } from "./logic.js";
 import type { LaneRef } from "./tree.js";
 
 export type { Draft, DraftStep, Options };
-
-const pick = (list: { name: string; label: string }[]): [string, string][] => list.map((x) => [x.name, x.label]);
 
 /**
  * The Flow builder: a Flow read as a sentence. Across the top the whole Flow in one line ("When a record is created in RefundRequests, create a RefundRequests record, then hand it to the
  * Refunds agent."), under it the trigger ("When") and the steps in order ("Then"), each a closed card that says what it does and opens to its settings, and "Add a step" with the palette of
  * what a Flow can do. It edits a draft; `toDefinition` writes the stored Flow. A step the engine cannot do yet is shown and marked Coming. See docs/design/system/components/flow-builder.md.
  */
-export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: { draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
-  const [open, setOpen] = useState<string | null>(null);
+export function FlowBuilder({ draft, onChange, options, readOnly, accessNote, onTestStep, initialOpen }: { /** A step (or "trigger") open when the page first draws; the sample-world shots use it. */ initialOpen?: string; /** Try one step with nothing changed or sent (flows.step.test): given the step id and the Flow as drawn, the lines to show; absent where a Flow cannot be tried. */ onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; draft: Draft; onChange: (d: Draft) => void; options: Options; readOnly?: boolean; /** What is true about access on this box; the default is the approver rule. */ accessNote?: string }) {
+  const [open, setOpen] = useState<string | null>(initialOpen ?? null);
   const [adding, setAdding] = useState<string | null>(null);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   const setStep = (id: string, patch: Partial<DraftStep>) => {
     const f = (s: DraftStep) => ({ ...s, ...patch });
     set({ steps: mapStep(draft.steps, id, f), ...(draft.onFailure ? { onFailure: mapStep(draft.onFailure, id, f) } : {}) });
   };
-  const ctx: Ctx = { draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
+  const { phone } = useUiTheme();
+  const ctx: Ctx = { onTestStep, docked: !phone, draft, options, readOnly, open, toggle: (id) => setOpen(open === id ? null : id), adding, setAdding, change: (root, steps) => set(root === "steps" ? { steps } : { onFailure: steps }), setStep, setOpen };
+  const docked = !phone;
+  const openStep = open && open !== "trigger" ? flat([...draft.steps, ...(draft.onFailure ?? [])]).find((x) => x.id === open) ?? null : null;
+  const openRoot: Root = openStep && flat(draft.steps).some((x) => x.id === openStep.id) ? "steps" : "onFailure";
   const t = draft.trigger;
   const setTrig = (patch: Record<string, unknown>) => set({ trigger: { ...t, ...patch } });
+  const more = draft.moreTriggers ?? [];
+  const setMore = (i: number, patch: Record<string, unknown>) => set({ moreTriggers: more.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
 
   return (
     <View className="gap-s4">
@@ -50,23 +54,21 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
         </View>
       </Card>
 
+      <View className={docked ? "flex-row items-start gap-s4" : "gap-s4"}>
+      <View className="min-w-0 flex-1 gap-s4">
       <Text size="caption" tone="label">{accessNote ?? "Each step can only read and write what the person who added it can reach. It runs with the access of the person who approved it, and pauses if that is lost."}</Text>
       <View>
-        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${triggerPhrase(t, options)}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
+        <StepCard lead="When" icon={(triggerOf(t.kind)?.icon ?? "bolt") as any} title={more.length ? `${more.length + 1} ways to start` : t.kind === "advanced" ? "Another way to start" : triggerOf(t.kind)?.label ?? "Choose what starts it"} summary={`When ${[t, ...more].map((x) => triggerPhrase(x, options)).join(", or when ")}`} open={open === "trigger"} onToggle={() => ctx.toggle("trigger")}
           last={false}>
-          {t.kind === "advanced" ? <Text tone="muted">This Flow starts in a way the builder cannot show yet. It is kept as it is.</Text> : null}
-          {t.kind === "advanced" ? null : <Select label="What starts the Flow" value={t.kind} options={TRIGGERS.map((x) => [x.id, x.label] as [string, string])} onChange={(kind) => setTrig({ kind })} />}
-          {isRecordTrigger(t) || t.kind === "removed" ? <Select label="Object" value={t.type ?? ""} options={pick(options.types)} placeholder="Choose an object" onChange={(type) => setTrig({ type })} /> : null}
-          {t.kind === "changed" && t.type ? <Select label="Only when this field changes" value={t.field ?? ""} options={[["", "Any field"], ...((options.types.find((x) => x.name === t.type)?.fields ?? []).map((f) => [f.name, f.label] as [string, string]))]} onChange={(field) => setTrig({ field })} /> : null}
-          {t.kind === "changed" ? <Select label="If the record changes again" value={t.again ?? "replace"} options={[["replace", "Start over"], ["keep", "Keep both"]]} onChange={(again) => setTrig({ again })} /> : null}
-          {t.kind === "stage" ? (stagesOf(options, t.type).length ? <Select label="Stage" value={t.stage ?? ""} options={stageChoices(options, t.type, t.stage)} placeholder="Choose a stage" onChange={(stage) => setTrig({ stage })} /> : <Field label="Stage" value={t.stage ?? ""} onChangeText={(stage) => setTrig({ stage })} placeholder="For example Drafting" />) : null}
-          {t.kind === "form" ? <Field label="Form name" value={t.path ?? ""} onChangeText={(path) => setTrig({ path })} placeholder="For example contact" help="Your site's form posts to this name." /> : null}
-          {t.kind === "schedule" ? <Select label="How often" value={t.every ?? ""} options={EVERY_CHOICES.map((x) => [x, x] as [string, string])} placeholder="Choose" onChange={(every) => setTrig({ every })} /> : null}
-          {t.kind === "schedule" && TIMED.has(t.every ?? "") ? <Field label="At what time" value={t.at ?? "09:00"} onChangeText={(at) => setTrig({ at })} placeholder="09:00" help="24-hour time in your space's time zone, such as 09:00 or 17:30." /> : null}
-          {t.kind === "event" ? <Select label="What happens" value={t.event ?? ""} options={eventChoices(options, t.event)} placeholder="Choose" onChange={(event) => setTrig({ event })} /> : null}
-          {t.kind === "watcher" ? <Field label="Watcher name" value={t.watcher ?? ""} onChangeText={(watcher) => setTrig({ watcher })} placeholder="For example new-mail" help="The name of a watcher in your space: a mailbox or a folder it watches. The steps start with the new item." /> : null}
-          {["created", "changed", "removed", "event", "watcher"].includes(t.kind) ? <FormulaBox label="Only when (optional, a formula)" value={t.where ?? ""} onChange={(where) => setTrig({ where })} placeholder="For example trigger.after.amount > 500" /> : null}
-          {t.kind === "signup" ? <Text tone="muted">Runs when someone signs up through your sign-up form. The person's name and email are what the steps start with.</Text> : null}
+          {more.length ? <Text size="caption" tone="label" strong>Starts it, trigger 1</Text> : null}
+          <TriggerFields t={t} setTrig={setTrig} options={options} />
+          {more.map((x, i) => (
+            <View key={i} className="gap-s3 border-t border-edge pt-s3">
+              <View className="flex-row items-center gap-s2"><Chip tone="accent">or</Chip><Text size="caption" tone="label" strong className="flex-1">{`Trigger ${i + 2}`}</Text>{readOnly ? null : <Button kind="ghost" size="sm" icon="x" label="Remove" onPress={() => set({ moreTriggers: more.filter((_, j) => j !== i) })} />}</View>
+              <TriggerFields t={x} setTrig={(patch) => setMore(i, patch)} options={options} />
+            </View>
+          ))}
+          {readOnly || more.length >= 7 ? null : <View className="flex-row"><Button kind="secondary" size="sm" icon="plus" label="Add trigger" onPress={() => set({ moreTriggers: [...more, { kind: "created", type: "" }] })} /></View>}
         </StepCard>
 
         <Lane lane={{ parent: null, key: "" }} steps={draft.steps} root="steps" ctx={ctx} />
@@ -81,12 +83,67 @@ export function FlowBuilder({ draft, onChange, options, readOnly, accessNote }: 
           <Lane lane={{ parent: null, key: "" }} steps={draft.onFailure ?? []} root="onFailure" inHandler ctx={ctx} />
         </View>
       )}
+      </View>
+      {docked && openStep ? <StepPanel s={openStep} ctx={ctx} root={openRoot} inHandler={openRoot === "onFailure"} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** What a step test said: the input it was given, what it would give back, and what it would send or do, with a line that nothing happened. */
+function TestResult({ r }: { r: TestShown }) {
+  if ("problem" in r) return <Text size="caption" tone="warn">{r.problem}</Text>;
+  const rows = (label: string, list: [string, string][]) => (list.length ? <View className="gap-s1"><Text size="caption" tone="label">{label}</Text>{list.map(([k, v]) => <View key={k} className="flex-row gap-s2"><Text size="secondary" tone="muted" className="w-[110px]">{k}</Text><Text size="secondary" className="min-w-0 flex-1">{v}</Text></View>)}</View> : null);
+  return (
+    <View className="gap-s2">
+      {r.error ? <Text size="secondary" tone="err">{r.error}</Text> : null}
+      {rows("Went in", r.input)}
+      {rows("Would come out", r.output)}
+      {r.effects.length ? <View className="gap-s1"><Text size="caption" tone="label">Would do</Text>{r.effects.map((e, i) => <Text key={i} size="secondary">{e}</Text>)}</View> : null}
+      <Text size="caption" tone="label">{r.note}</Text>
+    </View>
+  );
+}
+
+/** The open step's settings, docked beside the steps so the Flow stays in view while it is edited. */
+function StepPanel({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root; inHandler?: boolean }) {
+  const { draft, options, readOnly, change, setStep, setOpen } = ctx;
+  const mine = rootSteps(draft, root);
+  const all = flat([...draft.steps, ...(draft.onFailure ?? [])]);
+  const mv = canMove(mine, s.id);
+  const c = choiceOf(s.kind);
+  const [tried, setTried] = useState<TestShown | null>(null);
+  const [trying, setTrying] = useState(false);
+  useEffect(() => { setTried(null); }, [s.id]);
+  return (
+    <View className="w-[380px] flex-none gap-s3 rounded-card border border-edge-strong bg-surface-2 p-s4">
+      <View className="flex-row items-center gap-s2">
+        <Text strong numberOfLines={1} className="min-w-0 flex-1">{c?.label ?? "Advanced step"}</Text>
+        <Button kind="ghost" size="sm" icon="x" label="Close" onPress={() => setOpen(null)} />
+      </View>
+      <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
+      {ctx.onTestStep ? (
+        <View className="gap-s2 border-t border-edge pt-s3">
+          <View className="self-start"><Button kind="secondary" size="sm" icon="play" label={trying ? "Trying" : "Test this step"} disabled={trying} onPress={async () => { setTrying(true); try { setTried(await ctx.onTestStep!(s.id, draft)); } finally { setTrying(false); } }} /></View>
+          {tried ? <TestResult r={tried} /> : null}
+        </View>
+      ) : null}
+      {readOnly ? null : (
+        <View className="flex-row flex-wrap items-center gap-s2 border-t border-edge pt-s3">
+          {mv.up ? <Button kind="ghost" size="sm" icon="chevron-up" label="Move up" onPress={() => change(root, moveDeep(mine, s.id, -1))} /> : null}
+          {mv.down ? <Button kind="ghost" size="sm" icon="chevron-down" label="Move down" onPress={() => change(root, moveDeep(mine, s.id, 1))} /> : null}
+          <Button kind="ghost" size="sm" icon="copy" label="Duplicate" onPress={() => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }} />
+          {canTurnOff(s.kind) ? <Button kind="ghost" size="sm" icon="eye-off" label={s.enabled === false ? "Turn on" : "Turn off"} onPress={() => setStep(s.id, { enabled: s.enabled === false ? undefined : false })} /> : null}
+          <Button kind="ghost" size="sm" icon="trash" label="Remove step" onPress={() => { change(root, removeDeep(mine, s.id)); setOpen(null); }} />
+        </View>
+      )}
     </View>
   );
 }
 
 type Root = "steps" | "onFailure";
-type Ctx = { draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
+export type TestShown = { ok: boolean; error: string; input: [string, string][]; output: [string, string][]; effects: string[]; note: string } | { problem: string };
+type Ctx = { onTestStep?: (stepId: string, draft: Draft) => Promise<TestShown>; docked?: boolean; draft: Draft; options: Options; readOnly?: boolean; open: string | null; toggle: (id: string) => void; adding: string | null; setAdding: (k: string | null) => void; change: (root: Root, steps: DraftStep[]) => void; setStep: (id: string, patch: Partial<DraftStep>) => void; setOpen: (id: string | null) => void };
 
 const laneKey = (root: Root, l: LaneRef) => `${root}/${l.parent ?? "top"}/${l.key}`;
 const rootSteps = (d: Draft, root: Root) => (root === "steps" ? d.steps : d.onFailure ?? []);
@@ -121,19 +178,32 @@ function Node({ s, ctx, root, inHandler }: { s: DraftStep; ctx: Ctx; root: Root;
   const c = choiceOf(s.kind);
   const lanes = lanesOf(s);
   const mv = canMove(mine, s.id);
+  const { phone } = useUiTheme();
+  const main = lanes.filter((l) => l.key !== "on_fail");
+  const rest = lanes.filter((l) => l.key === "on_fail");
+  const side = !phone && (s.kind === "decide" || s.kind === "parallel") && main.length >= 2;
+  const laneView = (l: (typeof lanes)[number], wide: boolean) => (
+    <View key={l.key} className={wide ? "w-[360px] flex-none gap-s1 rounded-card border border-edge bg-surface-2 p-s3" : "ml-s6 gap-s1 border-l-2 border-edge pl-s3"}>
+          <View className="flex-row items-center gap-s2 pb-s1"><Chip tone={l.key === "else" || l.key === "on_fail" ? "warn" : "accent"}>{l.label}</Chip>{l.key === "on_fail" ? <Text size="caption" tone="label">{s.on_fail?.then === "continue" ? "when it fails, then the Flow carries on" : "when it fails, then the Flow stops"}</Text> : s.kind === "decide" && l.key === "then" ? <Text size="caption" tone="label">when the condition holds</Text> : s.kind === "decide" && l.key === "else" ? <Text size="caption" tone="label">when it does not</Text> : null}</View>
+          <Lane lane={{ parent: s.id, key: l.key }} steps={laneSteps(s, l.key)} ctx={ctx} root={root} inHandler={inHandler || l.key === "on_fail"} />
+        </View>
+  );
   return (
     <View>
       <StepCard lead={`Step ${n}`} icon={(c?.icon ?? "flows") as any} title={c?.label ?? "Advanced step"} summary={`${stepSummary(s, options, draft)}${policyWords(s)}`} problem={stepProblem(s, options)} open={open === s.id} onToggle={() => toggle(s.id)} last={false}
         onUp={!readOnly && mv.up ? () => change(root, moveDeep(mine, s.id, -1)) : undefined} onDown={!readOnly && mv.down ? () => change(root, moveDeep(mine, s.id, 1)) : undefined}
+        docked={ctx.docked}
+        onDuplicate={readOnly ? undefined : () => { const r = duplicateDeep(mine, s.id, all.map((x) => x.id)); change(root, r.steps); if (r.id) setOpen(r.id); }}
+        off={s.enabled === false} onToggleOff={readOnly || !canTurnOff(s.kind) ? undefined : () => setStep(s.id, { enabled: s.enabled === false ? undefined : false })}
         onRemove={readOnly ? undefined : () => { change(root, removeDeep(mine, s.id)); setOpen(null); }}>
         <StepEditor s={s} setStep={setStep} draft={draft} options={options} inHandler={inHandler} />
       </StepCard>
-      {lanes.map((l) => (
-        <View key={l.key} className="ml-s6 gap-s1 border-l-2 border-edge pl-s3">
-          <View className="flex-row items-center gap-s2 pb-s1"><Chip tone={l.key === "else" || l.key === "on_fail" ? "warn" : "accent"}>{l.label}</Chip>{l.key === "on_fail" ? <Text size="caption" tone="label">{s.on_fail?.then === "continue" ? "when it fails, then the Flow carries on" : "when it fails, then the Flow stops"}</Text> : s.kind === "decide" && l.key === "then" ? <Text size="caption" tone="label">when the condition holds</Text> : s.kind === "decide" && l.key === "else" ? <Text size="caption" tone="label">when it does not</Text> : null}</View>
-          <Lane lane={{ parent: s.id, key: l.key }} steps={laneSteps(s, l.key)} ctx={ctx} root={root} inHandler={inHandler || l.key === "on_fail"} />
-        </View>
-      ))}
+      {side ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={main.length > 2} className="ml-s6 flex-none grow-0" contentContainerStyle={{ gap: 12, paddingBottom: 12, alignItems: "flex-start" }}>
+          {main.map((l) => laneView(l, true))}
+        </ScrollView>
+      ) : null}
+      {(side ? rest : lanes).map((l) => laneView(l, false))}
       {s.kind === "parallel" && !readOnly ? (
         <View className="ml-s6 flex-row gap-s2 pb-s3">
           <Button kind="ghost" size="sm" icon="plus" label="Add a side" onPress={() => change(root, mapStep(mine, s.id, (p) => ({ ...p, lanes: [...(p.lanes ?? []), { steps: [] }] })))} />

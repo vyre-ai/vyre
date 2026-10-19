@@ -17,7 +17,7 @@ export const TOOLS = {
   me: "records.me", spaceList: "spaces.list", actors: "records.actors", types: "records.types", define: "records.define",
   list: "records.list", get: "records.get", create: "records.create", update: "records.update",
   seesAs: "records.sees-as", sealPut: "records.seal-put", reveal: "records.reveal", events: "records.events",
-  tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit",
+  tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit", review: "tasks.review",
 };
 
 /**
@@ -119,6 +119,8 @@ export function createGatewayStore({ rpc }) {
       if (cur && typeof cur === "object" && cur.state === "ready") await write(TOOLS.move, { id, to: "working" });
       return one(await write(TOOLS.submit, { id, evidence }), "task");
     },
+    // The reviewer's pass or request for changes, with the checklist and a note. A pass sends nothing; the approver decides.
+    async review(id, input) { return one(await write(TOOLS.review, { id, ...input }), "task"); },
     // The daemon derives the transition (start, stuck, skip, fix) from the kernel's own rules: the screen names where it wants to go.
     async move(id, to, _by, o = {}) { return one(await write(TOOLS.move, { id, to, ...o }), "task"); },
     async reassign() { throw Object.assign(new Error("Reassigning a task is not available on this Vyre yet."), { code: "invalid" }); },

@@ -13,7 +13,8 @@ import { getReal, runReal, runsReal, explainReal } from "./real";
 import { ExplainCard } from "./ExplainCard";
 import { RunSteps } from "./RunSteps";
 import { canRetry, canStop, retryLimits, runHeader, threadOf } from "./run-model";
-import { cancelReal, retryReal } from "./run";
+import { cancelReal, retryFromReal, retryReal } from "./run";
+import { retryFromRefusal } from "./real-model.js";
 import { explainText, shrunkNote, titleOf } from "./real-model.js";
 
 const when = (ms: number | null | undefined) => (ms ? dayTimeOf(ms) : "");
@@ -63,7 +64,7 @@ export function RunPage({ flow, run }: { flow: string; run: string }) {
       {d.run?.cancelled?.reason ? <Banner><Text>{`This run was stopped: ${d.run.cancelled.reason}.`}</Text></Banner> : null}
       <Sec title="Step by step">
         {shrunk ? <Card><Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /></Card>
-          : d.painted ? <Card flush><RunSteps rail painted={d.painted} steps={d.run?.steps} max={retryLimits(d.def)} fmt={when} name={name} threads={threads} openThread={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} /></Card>
+          : d.painted ? <Card flush><RunSteps rail onFrom={{ refusal: (id) => retryFromRefusal(d.def, d.run?.steps, id), go: async (id) => { setBusy(true); try { await retryFromReal(run, id); setN((x) => x + 1); } finally { setBusy(false); } } }} painted={d.painted} steps={d.run?.steps} max={retryLimits(d.def)} fmt={when} name={name} threads={threads} openThread={(t) => router.push(`/u/chats/${encodeURIComponent(t)}` as never)} /></Card>
           : <Card><EmptyState title="No steps to show" body="This run has no record of its steps." /></Card>}
         {canRetry(d.run?.state) ? <View className="self-start gap-s2 pt-s2 flex-row flex-wrap"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={async () => { setBusy(true); try { await retryReal(run); setN((x) => x + 1); } finally { setBusy(false); } }} /><Button kind="ghost" size="sm" label={busy ? "Retrying" : "Retry on the latest version"} disabled={busy} onPress={async () => { setBusy(true); try { await retryReal(run, { version: "latest" }); setN((x) => x + 1); } finally { setBusy(false); } }} /></View> : null}
         {canStop(d.run?.state) && !d.run?.gate ? (confirmStop ? (

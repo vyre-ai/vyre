@@ -59,10 +59,13 @@ export async function joinDeps(identity?: { id: string; name: string; eid: strin
   const client = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => any };
   const peer = (await import("@vyre/relay-client/peerclient.js")) as unknown as { openServerPeer: (c: any, o?: any) => Promise<any> };
   const yes = await yesSigner(mine);
+  // the proof build's own software yes (real/proof-yes.ts): null in every other build
+  const soft = yes ? null : await (await import("./proof-yes")).proofYes(mine.id);
   return {
     who: { id: mine.id, name: mine.name, eid: mine.eid, sign: (m: Uint8Array) => mine.key.sign(m) },
     fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY, connect: client.connect, openServerPeer: peer.openServerPeer, crypto: relayCrypto(), words: WORDS as unknown as string[],
     ...(yes ? { signPresence: (req) => yes.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: (invite: string) => enrolment(yes.kind, invite, yes.kind === "passkey" ? yes.enrolment : undefined) } : {}),
+    ...(soft ? { signPresence: (req) => soft.signer.signPresence({ ...req, prompt: req.prompt ?? "Join this team" }), presenceKey: () => soft.presenceKey() } : {}),
     store,
   };
 }
@@ -131,18 +134,61 @@ export async function invitesHere(): Promise<boolean> {
   return peerWanted() && (await holdsName());
 }
 
+/** A page with no daemon (the hosted web app) keeps the person's name in its own host, not in this store: the Space's door still answers it as the device its server paired, and the calls that need the person's yes go through the server's own tools. */
+const nameHere = async (): Promise<boolean> => Boolean(await loadIdentity().catch(() => null));
+
+/** The proof build's software yes for a page that keeps its name in its host: the person is asked of the host. Null in every other build. */
+async function hostSoftYes() {
+  if (await nameHere()) return null;
+  const { tool } = await import("./box");
+  const me = await tool<{ id?: string }>("onboard.person.status", {}).catch(() => null);
+  return me && typeof me.id === "string" && me.id ? (await import("./proof-yes")).proofYes(me.id) : null;
+}
+
 async function inviteDeps(space: string) {
-  const mine = await loadIdentity();
-  if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
+  const mine = await loadIdentity().catch(() => null);
   const { openPeer } = await import("./peer");
   const { kernelWire } = await import("./kernel-wire.js");
   const { DIRECTORY } = await import("./install");
-  const yes = await yesSigner(mine);
-  const wire = kernelWire(await openPeer(), space, { person: mine.id, ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : {}) });
+  const yes = mine ? await yesSigner(mine) : null;
+  const soft = mine ? null : await hostSoftYes();
+  const wire = kernelWire(await openPeer(), space, { person: mine?.id ?? "", ...(yes ? { signPresence: (card) => yes.signer.signPresence(card) } : soft ? { signPresence: (card) => soft.signer.signPresence(card) } : {}) });
   return { wire, fetch: globalThis.fetch.bind(globalThis), base: DIRECTORY };
 }
 
+/** The asks waiting and whether this Space takes them, through the Space's own door (an owner or an admin). */
+export async function teamRequests(space: string) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.list", []);
+}
+
+/** Turn "let people ask to join" on or off: the owner's own presence over the new value, signed by this device. */
+export async function teamSetting(space: string, accepting: boolean) {
+  if (!(await nameHere()) && !(await hostSoftYes())) { const { tool } = await import("./box"); return tool("requests.accept", { space, accepting }); }
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.setting", [{ accepting }]);
+}
+
+/** Clear every waiting ask (the full-list notice's button). */
+export async function teamClear(space: string) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.clear", []);
+}
+
+/** Answer a request to join through the Space's own door, as the approver (the invite is checked there, under their own chain). */
+export async function teamDecide(space: string, input: { id: string; approve: boolean; invite?: string }) {
+  const d = await inviteDeps(space);
+  return d.wire.call("requests.decide", [input]);
+}
+
 export async function makeTeamInvite(i: { space: string; name: string; role: string; scope?: string[]; expires?: number; to?: string; ttlDays?: number }) {
+  if (!(await nameHere()) && !(await hostSoftYes())) {
+    // no name kept in this page: the paired server makes the invite (and asks for the person's yes itself), as the invite screen does
+    const { tool } = await import("./box");
+    const r = await tool<{ token?: string; needs_proof?: boolean }>("spaces.invites.create", { space: i.space, role: i.role, ...(i.to ? { to: i.to } : {}), ...(i.ttlDays ? { ttlDays: i.ttlDays } : {}) });
+    if (!r || typeof r.token !== "string") throw Object.assign(new Error("The invite needs your yes first. Approve it, then try again."), { code: "needs_presence" });
+    return r as { token: string };
+  }
   const { createTeamInvite } = await import("./team-invite.js");
   return createTeamInvite(await inviteDeps(i.space), i);
 }

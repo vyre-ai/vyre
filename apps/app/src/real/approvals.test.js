@@ -115,3 +115,24 @@ test("askYes lets the caller answer its own ask (a passkey browser's yes) before
   const r2 = await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, onAsked: async () => { throw new Error("no passkey"); }, sleep: async () => {}, now: () => 0 });
   assert.deepEqual(r2, { approval: "ap_1" }, "a failure to self-answer does not stop the ask");
 });
+
+test("yes moments: when no phone is paired and this computer could not give the yes, the ask ends plainly instead of waiting for a phone", async () => {
+  const calls = [];
+  const call = async (tool) => { calls.push(tool); if (tool === "approvals.ask") return { id: "ap_9", line: "" }; return { state: "waiting" }; };
+  const out = await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, phonePaired: async () => false, onAsked: async () => ["no Touch ID on that machine"] });
+  assert.deepEqual(out, { ended: "noway", why: ["no Touch ID on that machine"] });
+  assert.match(endLine("noway", out.why), /no phone is paired/);
+  assert.match(endLine("noway", out.why), /no Touch ID on that machine/);
+  assert.match(endLine("noway", []), /Pair your phone in Settings/);
+  assert.equal(calls.filter((t) => t === "approvals.status").length, 1, "it asked once and stopped");
+});
+
+test("yes moments: a paired phone, or not knowing, keeps the ask waiting; a failed local attempt is never lost", async () => {
+  let n = 0;
+  const call = async (tool) => (tool === "approvals.ask" ? { id: "ap_1" } : ++n < 3 ? { state: "waiting" } : { state: "approved", approval: "ap_1" });
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, phonePaired: async () => true, onAsked: async () => ["no Touch ID here"] }), { approval: "ap_1" });
+  n = 0;
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, phonePaired: async () => { throw new Error("offline"); } }), { approval: "ap_1" }, "an error in the check keeps waiting");
+  n = 0;
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onAsked: async () => { throw new Error("boom"); }, phonePaired: async () => true }), { approval: "ap_1" }, "a throwing local attempt does not end the ask");
+});

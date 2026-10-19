@@ -1,6 +1,6 @@
 // The template studio's visual editor, pure (no React, no calls): every change a person makes to a template is a function from one body to the next, so the screen only binds fields to these and a test
 // can say what each one does. Nothing here talks to the box; the box checks the saved draft again (work.template.define).
-import { whoWords, type Body, type Group, type Noun, type Stage, type Task } from "./model.ts";
+import { whoWords, type Body, type Group, type Noun, type Slot, type Stage, type Task } from "./model.ts";
 
 export const PAGES: [string, string][] = [["", "The usual (stages)"], ["stages", "Stages"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["timeline", "Timeline"], ["team", "Team"]];
 export const OUTPUTS: [string, string][] = [["note", "A note"], ["decision", "A yes or no"], ["file", "A file"], ["record", "A record"]];
@@ -142,12 +142,50 @@ export const assigneeChoices = (b: Body, people: { id: string; name: string }[] 
   ...people.map((p): [string, string] => [`person:${p.id}`, p.name]),
   ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (agent)`]),
 ];
+/** A to-do's reviewer or approver slot. Setting the approver replaces the older `checker` (a to-do never has both); null takes the slot away. */
+export const setSlot = (b: Body, si: number, ti: number, key: "reviewer" | "approver", slot: Slot | null): Body => setOn(b, si, ti, (t) => {
+  const { reviewer: _r, approver: _a, checker: _c, ...rest } = t;
+  const keep = key === "reviewer" ? { approver: t.approver, checker: t.checker } : { reviewer: t.reviewer };
+  const clean = slot ? dropEmpty({ ...slot, skills: slot.skills && slot.skills.length ? slot.skills : undefined, quorum: slot.quorum === "all" ? "all" : undefined }) : undefined;
+  return dropEmpty({ ...rest, ...keep, ...(clean ? { [key]: clean } : {}) }) as Task;
+});
+/** The slot a to-do has for the approver: the `approver` slot, else the older `checker` as a plain one. */
+export const approverOf = (t: Task): Slot | null => t.approver ?? (t.checker ? { who: t.checker === "owner" ? "role:owner" : t.checker } : null);
+/** A slot's problems in words: a time limit and a fallback role come together, and a to-do that needs everyone cannot pass on. */
+export function slotProblems(slot: Slot | null, label: string, doer?: string): string[] {
+  if (!slot) return [];
+  const out: string[] = [];
+  if (slot.quorum === "all" && !slot.who.startsWith("role:")) out.push("Everyone must approve only works when the approver is a team.");
+  if (doer && slot.who === doer) out.push(`The ${label} is also the one assigned. Choose someone else.`);
+  if ((slot.due === undefined) !== (slot.escalate_to === undefined)) out.push(`Set both the time limit and who it passes to for the ${label}, or neither.`);
+  if (slot.quorum === "all" && slot.escalate_to !== undefined) out.push(`The ${label} needs everyone, so it cannot also pass to a role when it runs late.`);
+  return out;
+}
+const spanWords = (ms: number): string => { const d = ms / 86_400_000; if (Number.isInteger(d) && d >= 1) return `${d} day${d === 1 ? "" : "s"}`; const h = Math.round(ms / 360_000) / 10; return `${h} hour${h === 1 ? "" : "s"}`; };
+/** The late rule of a to-do in words, or "": "Reviewer passes to the Designers after 2 days". */
+export function lateWords(t: Task, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
+  return [["Reviewer", t.reviewer], ["Approver", approverOf(t)]].flatMap(([label, s]) => { const slot = s as Slot | null; return slot && slot.due !== undefined && slot.escalate_to ? [`${label} passes to ${assigneeWords(slot.escalate_to, people, agents).replace(/^The /, "the ")} after ${spanWords(slot.due)}`] : []; }).join(". ");
+}
+/** Who a to-do can be assigned to: a role, the project lead, a person, an agent, or whoever on a team takes it first (`group:<role>`: the to-do belongs to the team until one member starts it). */
+export const doerPickChoices = (b: Body, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): [string, string][] => {
+  const base = assigneeChoices(b, people, agents);
+  const groups = [...(b.roles || []).map((r) => r.role), ...((b.roles || []).some((r) => r.role === "owner") ? [] : ["owner"])].map((r): [string, string] => [`group:${r}`, `Whoever on the ${r} team takes it first`]);
+  const i = base.findIndex(([v]) => v === "lead");
+  return [...base.slice(0, i + 1), ...groups, ...base.slice(i + 1)];
+};
+/** The roles a Space has. A reviewer, approver or fallback names one of these (a Space member whose role is that name), not a template role like "attorney", which only means something inside one project. */
+export const SPACE_ROLES: [string, string][] = [["role:owner", "The owners"], ["role:admin", "The admins"], ["role:manager", "The managers"], ["role:member", "The members"]];
+/** Who can review or approve: people, agents and the Space's roles. A value already on the slot that is none of those stays choosable, marked, so it is not lost. */
+export function slotWhoChoices(people: { id: string; name: string }[], agents: { id: string; name: string }[], current = ""): [string, string][] {
+  const list: [string, string][] = [...SPACE_ROLES, ...people.map((p): [string, string] => [`person:${p.id}`, p.name]), ...agents.map((a): [string, string] => [`teammate:${a.id}`, `${a.name} (agent)`])];
+  return current && !list.some(([v]) => v === current) ? [...list, [current, `${assigneeWords(current, people, agents)} (not a Space role)`]] : list;
+}
 export const kindOfDoer = (d: string): "role" | "lead" | "person" | "agent" => (d === "lead" ? "lead" : d.startsWith("person:") ? "person" : d.startsWith("teammate:") ? "agent" : "role");
 /** The doer in words, even when the person or agent is not in the lists. */
 export function assigneeWords(d: string, people: { id: string; name: string }[] = [], agents: { id: string; name: string }[] = []): string {
   const hit = assigneeChoices({ name: "", stages: [] }, people, agents).find(([v]) => v === d);
   if (hit) return hit[1];
-  return d === "lead" ? "The project lead" : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (agent)` : d;
+  return d === "lead" ? "The project lead" : d.startsWith("group:") ? `Whoever on the ${d.slice(6)} team takes it first` : d.startsWith("role:") ? `The ${d.slice(5)}` : d.startsWith("person:") ? "A person" : d.startsWith("teammate:") ? `${d.slice(9).charAt(0).toUpperCase()}${d.slice(10)} (agent)` : d;
 }
 const DAY = 86_400_000;
 /** A task's due, in whole days after the project enters the stage; "" for none. */

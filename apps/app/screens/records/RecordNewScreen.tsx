@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, EmptyState, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
+import { Banner, Button, EmptyState, Text, titleOf, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
+
+import { findDupes } from "./dupes.js";
 
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not save.");
 
@@ -26,6 +28,8 @@ export function RecordNewScreen() {
   const fields = def.fields.map((f: any) => ({ ...f, sealed: f.kind === "sealed" || !!f.seal }));
   const errors = tried ? formErrors(fields, values) : {};
   const noun = def.label.toLowerCase();
+  // Someone who looks like the person being typed: shown as a hint above the form, never in the way.
+  const dupes = findDupes(def, world?.byType[def.name] ?? [], values, (r: any) => titleOf(def, r));
   const create = async (another: boolean) => {
     if (Object.keys(formErrors(fields, values)).length) { setTried(true); return; }
     const { plain, sealed } = createPayload(fields, values);
@@ -42,6 +46,13 @@ export function RecordNewScreen() {
     <View className="min-h-0 flex-1">
       <PageHeader title={`New ${noun}`} context={viewDefOf(def).plural} onBack={back} />
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
+        {dupes.length ? (
+          <Banner tone="warn">
+            <Text strong>{`Looks like ${dupes[0].title} already exists.`}</Text>
+            <Text size="caption" tone="muted">{`It has ${dupes[0].why}. Open it instead, or go on if it is someone else.`}</Text>
+            <View className="flex-row flex-wrap gap-s2">{dupes.map((d) => <Button key={d.urn} kind="secondary" size="sm" label={`Open ${d.title}`} onPress={() => router.push(`/u/record/${d.urn.split("/").pop()}` as never)} />)}</View>
+          </Banner>
+        ) : null}
         {tried && Object.keys(errors).length ? <Banner tone="warn">{`${Object.keys(errors).length} ${Object.keys(errors).length === 1 ? "field needs" : "fields need"} a value.`}</Banner> : null}
         <RecordForm fields={fields} groups={def.groups ?? []} values={values} onChange={(n, v) => setValues({ ...values, [n]: v })} errors={errors} env={env} noun={noun}
           onCreate={() => { if (!busy) void create(false); }} onCreateMore={() => { if (!busy) void create(true); }} onCancel={back} />

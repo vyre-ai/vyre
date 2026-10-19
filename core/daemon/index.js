@@ -6,6 +6,7 @@
 // nowhere else. Networking is the Wink module's and the relay's; the socket
 // is always the local way in and never leaves the machine.
 
+import { rawBody, rawBinary, body } from "./request-body.js";
 import { memberMcpConfig } from "../../lib/member-mcp.js";
 import { createLimitedGate } from "../modules/device-admin.js";
 import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
@@ -329,6 +330,8 @@ async function startLocked(opts, root, p, release) {
       // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
       agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
       callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+      // A tool run as a person, with their session (their own surface): what installing a Kit's assistants needs, so the grants are the ones the person would need doing it themselves.
+      callAs: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ token) => registry.call(tool, input, "deck", { token }),
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
@@ -822,7 +825,7 @@ async function startLocked(opts, root, p, release) {
       registry.deps.lentRows = (/** @type {string} */ space) => { registry.deps.lentHome(space); return lent.rows(space); };
       registry.deps.lentSpaces = () => lent.spaces();
       registry.deps.lentStop = () => lent.stop();
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"), ss = of("sessions"); return { ...(wk && typeof wk.peerServices === "function" ? wk.peerServices({ space, kernel: k, registry }) : {}), ...(of("vault") && typeof of("vault").peerService === "function" ? { myvault: of("vault").peerService({ space, kernel: k, registry }) } : {}), ...(ss && typeof ss.peerService === "function" ? { accounts: ss.peerService({ space, kernel: k, registry }) } : {}), ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent: lent.ensure, services: (/** @type {string} */ space, /** @type {any} */ k) => { const of = (/** @type {string} */ m) => /** @type {any} */ (registry.modules.get(m) && registry.modules.get(m).handle); const sb = of("sidebar"), wk = of("work"), ss = of("sessions"); return { ...(wk && typeof wk.peerServices === "function" ? wk.peerServices({ space, kernel: k, registry }) : {}), ...(of("vault") && typeof of("vault").peerService === "function" ? { myvault: of("vault").peerService({ space, kernel: k, registry }) } : {}), ...(ss && typeof ss.peerService === "function" ? { accounts: ss.peerService({ space, kernel: k, registry }) } : {}), ...(of("requests") && typeof of("requests").peerService === "function" ? { requests: of("requests").peerService({ space, kernel: k, registry }) } : {}), ...(sb && typeof sb.peerService === "function" ? { sidebar: sb.peerService({ space, kernel: k, registry }) } : {}), ...(wk && typeof wk.peerService === "function" ? { chat: wk.peerService({ space, kernel: k, registry }) } : {}) }; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -973,31 +976,6 @@ function fail(res, e) {
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
-}
-
-async function rawBody(req) {
-  let raw = "";
-  for await (const chunk of req) { raw += chunk; if (raw.length > 5_000_000) throw new Error("request too large"); }
-  return raw;
-}
-
-/** A request's body as bytes, capped, for sync.upload's chunks (never JSON: octet-stream only). */
-async function rawBinary(req, max) {
-  const parts = [];
-  let got = 0;
-  for await (const chunk of req) {
-    got += chunk.length;
-    if (got > max) throw Object.assign(new Error(`a chunk is at most ${max} bytes`), { code: "bad_input" });
-    parts.push(chunk);
-  }
-  return Buffer.concat(parts);
-}
-
-async function body(req) {
-  // The router may have read it already, to check a person session's signature over it.
-  const raw = req.vyreRaw !== undefined ? req.vyreRaw : await rawBody(req);
-  if (!raw) return {};
-  try { return JSON.parse(raw); } catch { throw new Error("request body is not JSON"); }
 }
 
 /**

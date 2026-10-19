@@ -14,15 +14,16 @@ import { ripple, setWelcome } from "./field-state.js";
 import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
-import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem } from "./ai-accounts-model.js";
+import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
+import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import {
   chooseSpace, createPerson, finishFirstRun, finishGithub, joinSpace, listAgentProviders, listSpaces,
-  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
+  loadProgress, makeInvite, openSpace, pageHasNoDaemon, addAgentKey, askJoin, askJoinStatus, copyAccounts, currentAssistant, listCopyable, listAssistantModels, removeSpace, renameSpace, setAssistant, setAssistantModel, personStatus, pollSpace, readInvite, saveProgress, signInAgent, signInGithub, signInPassword, startGithub, unlockGithub,
 } from "./real.js";
 
-export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
+export type Screen = "id.choice" | "id.signin" | "id.signin.spaces" | "id.create" | "id.name" | "id.password" | "id.recovery" | "id.ai" | "space.choice" | "join.link" | "join.review" | "create.kind" | "create.wait" | "join.ask" | "setup.assistant" | "setup.model" | "invite.share" | "ready";
 
 type Review = { link: string; role: string; space: string | null };
 type Membership = { id: string; name: string; role: string; server: string | null };
@@ -91,6 +92,10 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [models, setModels] = useState<{ id: string; label: string; provider: string; models: { id: string; label: string }[] }[] | null>(shot?.models || null);
   const [modelPick, setModelPick] = useState("");
   const [holdOpen, setHoldOpen] = useState(false);
+  const [askAddr, setAskAddr] = useState<string>(shot?.askAddr || "");
+  const [askNote, setAskNote] = useState("");
+  const [askSaid, setAskSaid] = useState("");
+  const [askWords, setAskWords] = useState<string>(shot?.askWords || "");
   const [asDone, setAsDone] = useState<boolean>(Boolean(shot?.asDone));
   const [copyable, setCopyable] = useState<{ from: string; accounts: { id: string; label: string; provider: string; copy: boolean; why?: string }[] } | null>(shot?.copyable || null);
   const [copyPick, setCopyPick] = useState<string[]>(shot?.copyPick || []);
@@ -108,6 +113,9 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
   const [agentFlow, setAgentFlow] = useState("");
   const [agentCode, setAgentCode] = useState("");
   const [agentUrl, setAgentUrl] = useState("");
+  const [agentStep, setAgentStep] = useState("");
+  const [agentPaste, setAgentPaste] = useState(false);
+  const [pasted, setPasted] = useState("");
   const [accounts, setAccounts] = useState<{ provider: string; label: string; item?: string }[]>([]);
   const [pick, setPick] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
@@ -169,6 +177,28 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     }, 2500);
     return () => clearTimeout(t);
   }, [shot, screen, holdOpen, failure, spaces.length, router]);
+
+  // Waiting to be let in: ask the home where the ask stands every few seconds. Approved brings the link to join by, and the join is the ordinary invite review; anything else is said in the home's own fixed words.
+  useEffect(() => {
+    if (shot || screen !== "join.ask" || !askAddr) return;
+    let live = true;
+    const tick = () => void askJoinStatus({ address: askAddr }).then((r) => {
+      if (!live) return;
+      if (!r.ok) return;
+      const next = nextForAsk(r);
+      if (next.kind === "join") {
+        void readInvite(String(next.link || "")).then((v) => {
+          if (!live) return;
+          if (!v.ok) { setAskSaid(v.message); return; }
+          setReview({ link: v.link || next.link, role: v.role || "member", space: v.space });
+          setStack((s) => [...s.slice(0, -1), "join.review"]);
+        });
+      } else if (next.kind === "said") setAskSaid(String(next.words || ""));
+    });
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => { live = false; clearInterval(t); };
+  }, [shot, screen, askAddr]);
 
   // Adding another Space: the AI accounts of the Space already there, offered for copying (the sheet below says the count of confirmations first)
   useEffect(() => {
@@ -510,20 +540,27 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
           <View style={{ gap: 12 }}>
             <Field label={ACCOUNTS_COPY.nameLabel} value={acctLabel} onChangeText={setAcctLabel} error={acctLabel && problem ? problem : undefined} disabled={Boolean(agentFlow)} />
             {agentUrl ? <CodeBlock code={agentCode ? `${agentUrl}\n\n${agentCode}` : agentUrl} lang="txt" /> : null}
-            {agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
-            <Button kind="secondary" size="lg" label={agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy} disabled={Boolean(problem) || busy} onPress={() => void run(async () => {
-              const r = await signInAgent({ provider: pick, label: acctLabel.trim(), ...(agentFlow ? { flow: agentFlow } : {}), ...(agentCode ? { code: agentCode } : {}) });
+            {signinMode(agentFlow, agentStep, agentPaste) === "paste" ? (
+              <Field label={ACCOUNTS_COPY.pasteLabel} value={pasted} onChangeText={setPasted} help={ACCOUNTS_COPY.pasteHelp} />
+            ) : agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
+            <Button kind="secondary" size="lg" label={signinMode(agentFlow, agentStep, agentPaste) === "paste" ? ACCOUNTS_COPY.paste : agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy}
+              disabled={Boolean(problem) || busy || (signinMode(agentFlow, agentStep, agentPaste) === "paste" && !pasteOk(pasted))} onPress={() => void run(async () => {
+              const r = await signInAgent(signinInput({ provider: pick, label: acctLabel, flow: agentFlow, step: agentStep, pasted, paste: agentPaste }));
               if (!r.ok) { setFailure(r.message); return; }
               if (r.flow && r.step !== "done") {
                 setAgentFlow(String(r.flow));
-                if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                setAgentStep(typeof r.step === "string" ? r.step : "");
+                setAgentPaste(r.paste === true);
+                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
+                setPasted("");
                 return;
               }
               setAccounts((x) => [...x, { provider: pick, label: acctLabel.trim() }]);
-              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl("");
+              setPick(""); setAcctLabel(""); setAgentFlow(""); setAgentCode(""); setAgentUrl(""); setAgentStep(""); setAgentPaste(false); setPasted("");
             })} />
+            {agentFlow ? <Button kind="ghost" size="lg" label={ACCOUNTS_COPY.cancel} disabled={busy} onPress={() => { setAgentFlow(NO_SIGNIN.flow); setAgentUrl(NO_SIGNIN.url); setAgentCode(NO_SIGNIN.code); setAgentStep(NO_SIGNIN.step); setAgentPaste(NO_SIGNIN.paste); setPasted(NO_SIGNIN.pasted); setFailure(""); }} /> : null}
           </View>
         ) : null}
         {accounts.length ? (
@@ -551,16 +588,38 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     );
   }
 
+  if (screen === "join.ask") {
+    return (
+      <FlowStep steps={steps} onBack={back} mark="working" title={ASK_COPY.waitingTitle} lead={ASK_COPY.waitingLead} failure={askSaid || failure}>
+        {askWords ? (<View style={{ gap: 4, alignItems: "center" }} accessibilityLabel="Your four words"><Text size="caption" tone="label">{ASK_COPY.yourWords}</Text><Text strong size="page">{askWords}</Text></View>) : null}
+        <Text tone="muted">{`Asking ${askAddr}.vyre.run`}</Text>
+      </FlowStep>
+    );
+  }
+
   if (screen === "join.link") {
     return (
       <FlowStep steps={steps} onBack={back} title={isAnother(path, signedIn) ? ANOTHER_COPY.joinTitle : JOIN_COPY.title} lead={isAnother(path, signedIn) ? ANOTHER_COPY.joinLead : JOIN_COPY.lead} failure={failure}
-        primary={{ label: "Continue", disabled: paste.trim().length < 8, loading: busy, onPress: () => void run(async () => {
+        primary={{ label: "Continue", disabled: paste.trim().length < 3, loading: busy, onPress: () => void run(async () => {
+          // a Space's address (not a link) asks to join it: no invite, the Space's owner is asked
+          const addr = askAddressOf(paste);
+          if (addr) {
+            const a = await askJoin({ address: addr, ...(askNote.trim() ? { note: askNote.trim() } : {}) });
+            if (!a.ok) { setFailure(a.message); return; }
+            const next = nextForAsk(a);
+            if (next.kind === "said") { setFailure(String(next.words || "")); return; }
+            setAskAddr(addr); setAskSaid("");
+            try { const { WORDS } = await import("@vyre/relay-client/words.js"); setAskWords(entryWords(WORDS as unknown as string[], String(a.eid || "")) || ""); } catch { setAskWords(""); }
+            go("join.ask");
+            return;
+          }
           const r = await readInvite(paste.trim());
           if (!r.ok) { setFailure(r.message); return; }
           setReview({ link: r.link || paste.trim(), role: r.role || "member", space: r.space });
           go("join.review");
         }) }}>
-        <Field label="Invite link" value={paste} onChangeText={setPaste} placeholder="https://vyre.run/i/…" />
+        <Field label="Invite link" value={paste} onChangeText={setPaste} placeholder="https://vyre.run/i/…" help={ASK_COPY.addressHelp} />
+        {askAddressOf(paste) ? <Field label="A note for the people there (optional)" value={askNote} onChangeText={setAskNote} /> : null}
       </FlowStep>
     );
   }

@@ -218,10 +218,12 @@ export function ownerOf(id, actors) {
  * Why a task needs `me`, or null (DESIGN-tasks.md, Now): I am the checker and it waits for my check; I am the doer and it is ready; it is stuck and I
  * am responsible (I am the doer, or the doer is my assistant).
  * @param {Task} task @param {string} me an actor id @param {Who[]|Record<string, Who>} [actors]
- * @returns {"check"|"do"|"stuck"|null}
+ * @returns {"check"|"review"|"do"|"stuck"|null}
  */
 export function needsReason(task, me, actors = {}) {
   if (aid(task.checker) === me && task.state === "needs_check") return "check";
+  const reviewer = /** @type {any} */ (task).reviewer;
+  if (reviewer && aid(reviewer) === me && task.state === "in_review") return "review";
   if (aid(task.doer) === me && task.state === "ready") return "do";
   if (task.state === "stuck" && (aid(task.doer) === me || ownerOf(aid(task.doer), actors) === me)) return "stuck";
   return null;
@@ -404,7 +406,7 @@ export function howSentence(task, ctx) {
 
 /**
  * The line a card shows as its title. A task can carry its own (`ext.say`); otherwise the title, with "is ready" when a draft waits for its checker.
- * @param {Task} task @param {"check"|"do"|"stuck"|null} reason @param {Who[]|Record<string, Who>} [actors]
+ * @param {Task} task @param {"check"|"review"|"do"|"stuck"|null} reason @param {Who[]|Record<string, Who>} [actors]
  */
 export function cardTitle(task, reason, actors = {}) {
   const say = task.ext?.say;

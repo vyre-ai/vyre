@@ -7,7 +7,10 @@ import { AskCard, Banner, Button, Card, Divider, EmptyState, IconTile, Row, Shee
 import { boxOrigin } from "../../src/api/box";
 import { bytesOf, textOf } from "./real-model";
 import { children, itemLine, linkAddress, linkAsk, linkRefusal, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
-import { linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
+import { driveTool, linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
+import { FolderPicker } from "./FolderPicker";
+import { editCalls } from "./file-menu-model.js";
+import { movedLine, plan as movePlan } from "./move-model.js";
 import { Breadcrumb } from "./Breadcrumb";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { SpaceTag } from "@vyre/ui";
@@ -24,6 +27,8 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
   const [open, setOpen] = useState<{ item: Item; versions: Version[] | null; text: string | null; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState(false);
+  // "Move to...": a file opened here is moved by picking a folder (the same picker and the same move as the web file manager)
+  const [moving, setMoving] = useState<{ item: Item; to: string; busy: boolean; note: string } | null>(null);
 
   const load = useCallback(() => {
     setErr("");
@@ -41,6 +46,19 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
     if (!open) return;
     setBusy(true);
     spaceRestore(undefined, open.item.path, v.ver).then((r) => { showToast(`Version ${v.ver} is back as version ${r.version}. Nothing was lost.`); setOpen(null); load(); }).catch((e) => setOpen((o) => (o ? { ...o, note: say(e) } : o))).finally(() => setBusy(false));
+  };
+  const moveNow = () => {
+    if (!moving) return;
+    const r = { root: "space", path: moving.item.path, name: moving.item.name, dir: false };
+    const { go, said } = movePlan([r], { root: "space", path: moving.to });
+    const c = go.length ? editCalls("move", r, moving.to) : null;
+    if (!c) { setMoving({ ...moving, note: said || "That is already where it is." }); return; }
+    setMoving({ ...moving, busy: true, note: "" });
+    driveTool(c.call.tool, c.call.input).then(() => {
+      const undo = c.undo;
+      showToast(movedLine(1, moving.to ? moving.to.split("/").pop() ?? moving.to : "the top", 0), undo ? { label: "Undo", run: () => { void driveTool(undo.tool, undo.input).then(() => { showToast("Put back."); load(); }).catch((e) => showToast(say(e))); } } : undefined);
+      setMoving(null); setOpen(null); load();
+    }).catch((e) => setMoving((m) => (m ? { ...m, busy: false, note: say(e) } : m)));
   };
   const share = () => {
     if (!open) return;
@@ -93,7 +111,7 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
             {asking ? (
               <AskCard lead={<IconTile name="share" />} {...linkAsk(open.item.name)}
                 actions={[{ label: busy ? "Making it" : "Make the link", kind: "primary", onPress: busy ? () => {} : share }, { label: "Not now", kind: "ghost", onPress: () => setAsking(false) }]} />
-            ) : <View className="self-start"><Button kind="ghost" size="sm" icon="share" label="Share a link" onPress={() => setAsking(true)} /></View>}
+            ) : <View className="flex-row flex-wrap gap-s2"><Button kind="ghost" size="sm" icon="share" label="Share a link" onPress={() => setAsking(true)} /><Button kind="ghost" size="sm" icon="folder" label="Move to…" onPress={() => setMoving({ item: open.item, to: "", busy: false, note: "" })} /></View>}
             <Text size="caption" strong tone="label">Versions</Text>
             {open.versions === null ? <Text tone="muted">Loading.</Text> : open.versions.length === 0 ? <Text tone="muted">No versions listed.</Text> : (
               <Card flush>
@@ -106,6 +124,15 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
             )}
             {open.note ? <Banner tone="warn"><Text>{open.note}</Text></Banner> : null}
             <Text size="caption" tone="label">Putting a version back makes a new version. Nothing is lost.</Text>
+          </View>
+        ) : null}
+      </Sheet>
+      <Sheet open={!!moving} onClose={() => setMoving(null)} title={moving ? `Move ${moving.item.name}` : undefined}>
+        {moving ? (
+          <View className="gap-s3">
+            <FolderPicker root="space" moving={[{ path: moving.item.path, dir: false, name: moving.item.name, root: "space" }]} value={moving.to} onChange={(to) => setMoving((m) => (m && m.to !== to ? { ...m, to, note: "" } : m))} />
+            {moving.note ? <Banner tone="warn"><Text>{moving.note}</Text></Banner> : null}
+            <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={moving.busy ? "Working" : "Move here"} onPress={moving.busy ? () => {} : moveNow} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setMoving(null)} /></View>
           </View>
         ) : null}
       </Sheet>

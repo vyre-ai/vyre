@@ -864,7 +864,7 @@ export default {
       },
     });
     ctx.tool("work.call", {
-      description: "Run one of the listed tools. Returns { result, component }. Outward acts (send, pay, publish, share) are held for a person's approval, never run.",
+      description: "Run one of the listed tools. Returns { result, component }.",
       input: obj({ tool: { type: "string", description: "a tool name from work.tools" }, input: { type: "object", description: "that tool's input" } }, ["tool"]),
       callers: WORK_CALLERS,
       run: async (input, extra) => {

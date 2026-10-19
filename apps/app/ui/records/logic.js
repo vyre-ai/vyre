@@ -111,6 +111,23 @@ export function factsOf(def, rec) {
   return out;
 }
 
+/**
+ * The fields a person pinned under a record's name (the layout's header_fields), in their order, up to eight: a label and the value as it reads, or null when the field is empty so the page can offer to fill it.
+ * A field that is not there, hidden or sealed is left out. @param {{ fields: any[] }} def @param {{ data?: Record<string, any> }} rec @param {string[]} names @returns {[string, string | null][]}
+ */
+export function pinnedFacts(def, rec, names) {
+  /** @type {[string, string | null][]} */ const out = [];
+  for (const n of (Array.isArray(names) ? names : []).slice(0, 8)) {
+    const f = def.fields.find((x) => x.name === n);
+    if (!f || f.hidden || f.seal || f.kind === "sealed") continue;
+    const v = rec.data?.[n];
+    if (blank(v)) { out.push([f.label, null]); continue; }
+    const s = f.kind === "money" ? `$${Number(v.amount ?? v).toLocaleString("en-US")}` : f.kind === "date" || f.kind === "datetime" ? fmtDate(v) : typeof v === "object" ? String(v.name ?? v.title ?? v.urn ?? "") : String(v);
+    out.push([f.label, s]);
+  }
+  return out;
+}
+
 /** The link field of `type` that points at `target`: how a record of that type is tied to this one. @param {{ name: string, fields: any[] }[]} types @param {string} type @param {string} target */
 export const viaOf = (types, type, target) => types.find((t) => t.name === type)?.fields.find((/** @type {any} */ f) => f.kind === "link" && f.to === target)?.name;
 

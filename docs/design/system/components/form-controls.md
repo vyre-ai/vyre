@@ -150,3 +150,7 @@ A scrolling column. On a wide screen the content stops at the wide width with a 
 ### States
 
 Idle, refreshing (the pull indicator), scrolled (the small title shown), with or without a dock.
+
+## Token field
+
+A field whose values are pills inside the text, never raw braces: `apps/app/ui/components/TokenField.web.tsx` (the web build) and `TokenField.tsx` (a plain field showing friendly names, for a phone). The stored text is the same everywhere: words with each value as `{token}`. A pill says the value's own words ("Person · Email", with "(or n/a)" when it has a fallback), has an x to remove it, and is placed by typing `/` or `{` and picking from the list (a value that may be empty on this path is greyed in the list). The words, the splitting and the pill labels are `token-field-model.js`.

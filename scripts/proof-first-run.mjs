@@ -55,15 +55,16 @@ async function until(f, ms, what) {
 /**
  * One interface over the two clients. `click(text)` presses the button, choice or switch showing that text; `fill(label, value)` types into the field with that label; `waitFor(text)` waits for the
  * screen to say it; `text()` is what the screen says now.
- * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, fieldReady(l: string): Promise<boolean>, go(path: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, stop(): Promise<void> }} Driver
+ * @typedef {{ open(): Promise<void>, text(): Promise<string>, waitFor(t: string, ms?: number): Promise<string>, click(t: string): Promise<void>, fill(l: string, v: string): Promise<void>, fieldReady(l: string): Promise<boolean>, go(path: string): Promise<void>, shot(n: string): Promise<void>, reopen(): Promise<void>, errors(): string[], noVyred(): Promise<string>, ed25519(): Promise<boolean>, second?(): Promise<Driver>, stop(): Promise<void> }} Driver
  */
 
 /** Headless Chromium on the proof export, served at /app/ by a small static server on the page's fixed port (the stand-in directory allows that origin). @returns {Promise<Driver>} */
-async function browserDriver() {
+/** @param {{ browser: any, srv: any } | null} [shared] a second person in the same browser and on the same page server (their own storage, their own identity) */
+async function browserDriver(shared = null) {
   const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
   const { chromium } = require("playwright");
   const TYPES = /** @type {Record<string, string>} */ ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" });
-  const srv = http.createServer((req, res) => {
+  const srv = shared ? shared.srv : http.createServer((req, res) => {
     const p = decodeURIComponent(String(req.url).split("?")[0]).replace(/^\/app/, "") || "/";
     let f = path.join(dist, p);
     const missing = !f.startsWith(dist) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
@@ -72,8 +73,8 @@ async function browserDriver() {
     res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
     fs.createReadStream(f).pipe(res);
   }).listen(PORTS.page, "127.0.0.1");
-  await new Promise((r) => srv.once("listening", r));
-  const browser = await chromium.launch({ args: [...CHROME_SAFE] });
+  if (!shared) await new Promise((r) => srv.once("listening", r));
+  const browser = shared ? shared.browser : await chromium.launch({ args: [...CHROME_SAFE] });
   const ctx = await browser.newContext({ viewport: { width: 520, height: 1000 }, serviceWorkers: "block" });
   // Chrome before 137 / Safari before 17 / Firefox before 129: the browser's WebCrypto refuses Ed25519, as the page sees it. The page's own fallback must take over.
   if (NO_ED25519) await ctx.addInitScript(() => {
@@ -99,9 +100,9 @@ async function browserDriver() {
       page.on("worker", (/** @type {any} */ w) => w.on("console", (/** @type {any} */ m) => { if (m.type() === "error") consoleErrors.push(`worker: ${String(m.text()).slice(0, 300)}`); })); await page.goto(`http://127.0.0.1:${PORTS.page}/app/onboard`, { waitUntil: "domcontentloaded" }); },
     text: body,
     async waitFor(/** @type {string} */ t, ms = 30_000) { await until(async () => (await body()).includes(t), ms, `the screen saying "${t}"`).catch(async (e) => { const b = await body(); await d.shot(`fail-${String(t).replace(/[^a-z0-9]+/gi, "-").slice(0, 30)}`); throw new Error(`${e.message}. The screen starts: ${b.slice(0, 260)} | The screen ends: ${b.slice(-260)} | the add-server stages: ${stageTrail.join("; ") || "none seen"} | console errors: ${consoleErrors.slice(-3).join(" || ") || "none"}`); }); return body(); },
-    async click(/** @type {string} */ t) {
+    async click(/** @type {string} */ t, /** @type {boolean} */ exact = false) {
       // By role first, in this order, and the words only when no control has that name: a union of all of them takes the first in the page, which for a switch is the words beside it (they toggle nothing).
-      const candidates = [page.getByRole("button", { name: t }), page.getByRole("radio", { name: t }), page.getByRole("switch", { name: t }), page.getByText(t, { exact: true })];
+      const candidates = [page.getByRole("button", { name: t, exact }), page.getByRole("radio", { name: t, exact }), page.getByRole("switch", { name: t, exact }), page.getByText(t, { exact: true })];
       const end = Date.now() + 15_000;
       for (;;) {
         for (const c of candidates) if (await c.count()) { await c.first().click({ timeout: 15_000 }); return; }
@@ -127,7 +128,9 @@ async function browserDriver() {
     errors: () => pageErrors.filter((e) => !/color scheme|dark mode/i.test(e)),
     // A browser on a static file server has no daemon of any kind: nothing answers /v1 here.
     async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
-    async stop() { await browser.close().catch(() => {}); srv.close(); },
+    /** Another person: a new browser profile on the same server and page (the second identity of the group walk). */
+    async second() { return browserDriver({ browser, srv }); },
+    async stop() { if (shared) { await ctx.close().catch(() => {}); return; } await browser.close().catch(() => {}); srv.close(); },
   };
   return d;
 }
@@ -237,6 +240,7 @@ try {
   /** @type {any} */ let srv = null;
   const S = (/** @type {string} */ n) => n;
   const ASSISTANT = "Juno";
+  let spaceNm = "";
 
   await run.step(S("the first screen offers Sign in to a space, Get started, and GitHub"), async () => {
     await drv.open();
@@ -298,7 +302,8 @@ try {
     await drv.click("Create a space");
     await drv.waitFor("Connect your server.");
     await drv.click(server === "mac" ? "macOS" : "Linux");
-    await drv.fill("Space name", `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`);
+    spaceNm = `${USERNAME}-s${Math.random().toString(36).slice(2, 5)}`;
+    await drv.fill("Space name", spaceNm);
     // The command appears by itself under the name and the switch (no button to show it); Continue then waits for the server.
     const shown = await drv.waitFor("VYRE_CODE=", 90_000);
     await drv.shot("03a-command");
@@ -441,6 +446,77 @@ try {
   await run.step(S("owner walk: Settings, AI accounts, has no \"Pair first\""), async () => {
     await look("AI accounts", "14-ai-accounts", /Other AI accounts|AI accounts|Claude|Codex/i, 60_000, async () => { await drv.go("/u/settings/ai"); });
   }, { needs: READY });
+
+  // ---- The group walk (browser client, real installer server): a SECOND person asks to join the owner's Space by its address, over the real relay; the owner lets people ask, sees the ask, checks the four words and approves
+  // with their own yes; the second person is let in and lands in the Space. Without this the feature does not ship.
+  if (client === "browser" && server === "installer") {
+    /** @type {any} */ let two = null;
+    let words2 = "";
+    await run.step(S("group: the owner lets people ask to join, with their own yes"), async () => {
+      await drv.go("/u/spaces");
+      await drv.waitFor("Let people ask to join", 60_000);
+      await drv.shot("20-people-requests-off");
+      await drv.turnOn("Let people ask to join");
+      await drv.shot("21-people-requests-on");
+    }, { needs: READY });
+    await run.step(S("group: a second person makes an identity and asks to join by the Space's address"), async () => {
+      two = await drv.second?.();
+      if (!two) throw new Error("this client has no second person");
+      cleanups.push(() => two.stop());
+      await two.open();
+      await two.waitFor("Get started", 60_000);
+      await two.click("New here? Get started");
+      await two.waitFor("What should we call you?");
+      await two.fill("First name", "Second"); await two.fill("Last name", "Person");
+      await two.click("Continue");
+      await two.waitFor("Pick a username.");
+      await two.fill("Username", `${USERNAME}b`);
+      await two.click("Continue");
+      await two.waitFor("Make your password.");
+      await two.fill("Password", PASSWORD); await two.fill("Confirm password", PASSWORD);
+      await two.click("Create");
+      await two.waitFor("Save your recovery key", 400_000);
+      await two.turnOn("I saved it");
+      await two.click("Continue");
+      await two.waitFor("Your space", 60_000);
+      await two.click("Join a space");
+      await two.waitFor("Join a space");
+      await two.fill("Invite link", `${spaceNm}.vyre.run`);
+      await two.click("Continue");
+      const t = await two.waitFor("Waiting for someone to let you in.", 60_000);
+      await two.shot("22-asker-waiting");
+      const m = /Your four words\s+([a-z]+ [a-z]+ [a-z]+ [a-z]+)/.exec(t);
+      if (!m) throw new Error(`the asker's waiting screen shows no four words: ${t.slice(0, 300)}`);
+      words2 = m[1];
+    }, { needs: READY });
+    await run.step(S("group: the owner sees the ask with the same four words and approves it"), async () => {
+      await drv.go("/u/spaces");
+      await drv.waitFor("asks to join", 90_000);
+      await drv.shot("23-owner-sees-ask");
+      await drv.click(`${USERNAME}b.vyre.run asks to join`).catch(async () => { await drv.click("asks to join"); });
+      const t = await drv.waitFor(words2, 20_000);
+      await drv.shot("24-owner-review");
+      if (!t.includes(words2)) throw new Error(`the owner is shown other words than the asker's (${words2})`);
+      // exact: the ask's own row says "before you approve" and a loose name would press the row, which only folds it away
+      await drv.click("Approve", true);
+      await until(async () => !/asks to join/.test(await drv.text()), 60_000, "the ask leaving the owner's list once approved").catch(async (e) => {
+        await drv.shot("fail-owner-approve");
+        throw new Error(`${e.message} | the owner's screen: ${(await drv.text()).replace(/\s+/g, " ").replace(/^.*?(?=Let people ask to join)/, "").slice(0, 600)}`);
+      });
+    }, { needs: READY });
+    await run.step(S("group: the second person is let in and lands in the Space"), async () => {
+      await two.waitFor("You are invited", 120_000);
+      await two.shot("25-asker-invited");
+      await two.click("Join");
+      // a member who has joined goes on to connect their own AI (their own accounts, never the owner's); skipping it ends at the last screen
+      await two.waitFor("Connect your AI", 120_000);
+      await two.shot("26a-asker-connect-ai");
+      await two.click("Skip for now");
+      const t = await two.waitFor("You're all set", 120_000);
+      await two.shot("26-asker-in");
+      if (/This Space only takes invites/.test(t)) throw new Error("the second person was told the Space only takes invites");
+    }, { needs: READY });
+  }
 
   await run.step(S("coming back: the unlock screen takes the password, refuses a wrong one"), async () => {
     await drv.reopen();

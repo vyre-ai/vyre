@@ -5,14 +5,16 @@ import { useStoreQuery } from "../store";
 import type { FieldEnv } from "../fields/types";
 import { isHiddenType, linkIndex } from "./logic.js";
 import { tally } from "../tags/model.js";
+import { filtersKey, listQuery } from "./world-load.js";
 import type { RecordsWorld } from "./shared";
 
-export function useRecordsWorld() {
+/** `filters` names a records.list filter for a type, so the box cuts that one list (the Notes a person wrote); every other type, and every caller that names none, reads whole. */
+export function useRecordsWorld(filters?: Record<string, object | undefined>) {
   return useStoreQuery<RecordsWorld>(async (s) => {
     const types = (await s.types()).filter((t: any) => !isHiddenType(t));
-    const lists = await Promise.all(types.map((t: any) => s.list(t.name)));
+    const lists = await Promise.all(types.map((t: any) => s.list(t.name, listQuery(t.name, filters))));
     return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await s.actors()) as any[], me: await (s as { me?: () => Promise<string> }).me?.().catch(() => "") };
-  }, []);
+  }, [filtersKey(filters)]);
 }
 
 /** The Event log filtered to one record: who, what, when, why. */

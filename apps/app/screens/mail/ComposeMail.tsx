@@ -18,8 +18,8 @@ async function filesNamed(query: string): Promise<FileChoice[]> {
 }
 
 /** The compose screen. `account` names the mail account to send from when the person has more than one (mail.accounts). */
-export default function ComposeMail({ account, onDone }: { account?: string; onDone?: () => void }) {
-  const [form, setForm] = useState<MailForm>(blankMail());
+export default function ComposeMail({ account, onDone, to }: { account?: string; onDone?: () => void; /** An address to start with (Send email on a record). */ to?: string }) {
+  const [form, setForm] = useState<MailForm>({ ...blankMail(), ...(to ? { to } : {}) });
   const [busy, setBusy] = useState(false);
   const problem = problemOf(form);
   const send = () => {

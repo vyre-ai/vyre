@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Card, EmptyState, Field, FieldEditor, FieldRows, GroupedList, LoadingState, SectionLabel, Sheet, Tabs, Text, showToast, applyDraft, checkField, draftOf, newDraft, useUiTheme } from "@vyre/ui";
 import type { Draft, Group, Rules } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { useKernelTypes } from "./kernel-types";
 import { TypeAccess } from "./TypeAccess";
 import { TypeHistory } from "./TypeHistory";
 import type { Def } from "./kernel-types";
-import { addStage, moveStage, renameStage } from "./logic.js";
+import { PipelinesEditor } from "./PipelinesEditor";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
 import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
 
@@ -29,7 +29,6 @@ export function TypeFields({ type }: { type: string }) {
   useEffect(() => { if (!defs.length) void load(); }, []);
   const def = defs.find((d) => d.name === type);
   const [label, setLabel] = useState("");
-  const [names, setNames] = useState<Record<number, string>>({});
   const [edit, setEdit] = useState<null | { orig?: any; draft: Draft; rules: Rules; tried: boolean }>(null);
   useEffect(() => { if (def) setLabel(def.label); }, [def?.name]);
   if (!def) return null;
@@ -60,7 +59,6 @@ export function TypeFields({ type }: { type: string }) {
       tried={edit.tried} busy={working} editing={!!edit.orig} groups={groups.map((g) => g.name)} sealLocked={edit.orig && edit.orig.kind !== "sealed" ? "To seal values this field already holds, add a new sealed field. Moving existing values into the vault is not offered here yet." : edit.orig ? "A sealed field stays sealed. Who may reveal it can be changed below." : undefined} onSave={commit} onCancel={() => setEdit(null)} />
   ) : null;
   const stages = (def.stages ?? []).map((s) => s.name);
-  const putStages = (n: string[]) => { const old = new Map((def.stages ?? []).map((s: any) => [s.name, s])); save({ ...def, stages: n.map((x) => old.get(x) ?? { name: x }) } as Def); };
   const list = (
     <View className="min-w-0 flex-1 gap-s3">
       <SectionLabel first>Name</SectionLabel>
@@ -79,27 +77,7 @@ export function TypeFields({ type }: { type: string }) {
           </View>
         )} />
       {!groups.length ? <Text size="caption" tone="label">Add a group to split these fields into sections such as Client details.</Text> : null}
-      {stages.length ? (
-        <>
-          <SectionLabel>Stages</SectionLabel>
-          <Card flush>
-            {stages.map((s, i) => (
-              <View key={i}>
-                {i ? <Divider /> : null}
-                <View className="gap-s2 p-s3">
-                  <Field label={`Stage ${i + 1}`} value={names[i] ?? s} onChangeText={(v) => setNames({ ...names, [i]: v })} />
-                  <View className="flex-row flex-wrap gap-s2">
-                    <Button kind="ghost" size="sm" label="Move up" disabled={i === 0} onPress={() => putStages(moveStage(stages, i, -1))} />
-                    <Button kind="ghost" size="sm" label="Move down" disabled={i === stages.length - 1} onPress={() => putStages(moveStage(stages, i, 1))} />
-                    <Button kind="ghost" size="sm" label="Rename" disabled={(names[i] ?? s) === s} onPress={() => { const n = renameStage(stages, i, names[i] ?? s); if (n === stages) { showToast("A stage needs a name that no other stage has."); setNames({}); } else { putStages(n); setNames({}); } }} />
-                  </View>
-                </View>
-              </View>
-            ))}
-          </Card>
-          <View className="flex-row"><Button size="sm" icon="plus" label="Add a stage" onPress={() => putStages(addStage(stages))} /></View>
-        </>
-      ) : null}
+      {stages.length ? <PipelinesEditor def={def} reload={() => void load()} /> : null}
     </View>
   );
   return (

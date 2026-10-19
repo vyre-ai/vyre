@@ -5,6 +5,7 @@
 //   A sealed field (kind sealed, a definition that seals, or a value that is a seal reference) becomes { k: "sealed", on } and nothing else. The value, its reference and its sort key never enter
 //   the content, so they cannot reach a log, a chat card, an agent or a screenshot through it.
 import { viewDefOf } from "./view-defs.js";
+import { applyLayout, layoutRows } from "./layout.js";
 import { fieldOf, listColumns, optionsOf, titleOf, val, viewRows } from "./logic.js";
 import { isEmpty, isSealedValue, normalizeKind, sortKey, urnOf, actorIdOf } from "../fields/logic.js";
 
@@ -41,14 +42,15 @@ const defOf = f => ({ name: f.name, label: f.label, kind: normalizeKind(f.kind),
 
 /**
  * @param {any} def the type definition @param {any[]} rows its records
- * @param {{ view?: string, noFilter?: boolean, env?: { actors?: any[], links?: Record<string, any> } }} [o]
+ * @param {{ controls?: boolean, roles?: Record<string, { label: string, tone: string, ended: boolean }[]> | null, view?: string, noFilter?: boolean, layout?: any, env?: { actors?: any[], links?: Record<string, any> } }} [o] `layout` is the person's own layout of the type (records.layout.get): its columns, sort and filters lie over the view's
  * @returns {{ props: Record<string, any>, content: Record<string, any> }}
  */
 export function tableFromRecords(def, rows, o = {}) {
   const env = o.env || {};
-  const vd = viewDefOf(def, undefined, o.view);
-  const cols = listColumns(def, vd);
-  const kept = viewRows(rows, o.noFilter ? undefined : vd.list?.filter);
+  const vd = applyLayout(viewDefOf(def, undefined, o.view), o.layout);
+  // With role chips on the table, a plain role column of the same name would say it twice.
+  const cols = listColumns(def, vd).filter((/** @type {any} */ f) => !(o.roles && f.name === "role"));
+  const kept = layoutRows(viewRows(rows, o.noFilter ? undefined : vd.list?.filter), o.noFilter ? undefined : o.layout?.filters);
   const money = cols.find((/** @type {any} */ f) => normalizeKind(f.kind) === "money");
   const dateField = vd.calendar ? fieldOf(def, vd.calendar.date) : null;
   const titleField = fieldOf(def, vd.titleField);
@@ -56,6 +58,7 @@ export function tableFromRecords(def, rows, o = {}) {
   const sortF = fieldOf(def, sortName);
   /** @type {any[]} */
   const columns = [{ id: "_title", title: def.label, sortLabel: titleField ? titleField.label : def.label, kind: "title", role: "title", sort: true, initials: Boolean(vd.initials) }];
+  if (o.roles) columns.push({ id: "_roles", title: "Roles", kind: "roles", role: "col", sort: false });
   for (const f of cols) {
     const k = normalizeKind(f.kind);
     columns.push({ id: f.name, title: f.label, kind: k, role: f === money ? "end" : !sealedOn(f, undefined) && LINE_KINDS.includes(k) ? "line" : "col", sort: !sealedOn(f, undefined), ...((k === "choice" || k === "stage") ? { options: optionsOf(f) } : {}), f: defOf(f) });
@@ -68,11 +71,15 @@ export function tableFromRecords(def, rows, o = {}) {
     const title = titleOf(def, r, vd);
     /** @type {Record<string, any>} */
     const cells = { _title: { k: "title", v: title, id: String(r.id ?? title), s: title.toLowerCase(), ...(vd.initials ? { initials: true } : {}) } };
-    for (const c of columns) if (c.id !== "_title") cells[c.id] = cellOf(fieldOf(def, c.id), r, env);
+    for (const c of columns) {
+      if (c.id === "_title") continue;
+      if (c.id === "_roles") { const mine = o.roles && o.roles[String(r.urn)]; if (mine && mine.length) cells._roles = { k: "roles", v: mine, s: mine.map((x) => x.label).join(" ").toLowerCase() }; continue; }
+      cells[c.id] = cellOf(fieldOf(def, c.id), r, env);
+    }
     return { id: String(r.id ?? r.urn), urn: String(r.urn ?? ""), cells };
   });
   return {
-    props: { controls: true, sort: sortF && sortF === titleField ? "_title" : sortName, desc: vd.list?.sortDir === "desc" },
+    props: { controls: o.controls !== false, ...(o.layout && typeof o.layout.group_by === "string" ? { group: o.layout.group_by } : {}), sort: sortF && sortF === titleField ? "_title" : sortName, desc: vd.list?.sortDir === "desc" },
     content: { columns, rows: outRows, total: rows.length, empty: `No ${vd.plural.toLowerCase()} here yet.` },
   };
 }
@@ -93,4 +100,22 @@ export function orderRows(rows, { sort, desc, filters }) {
     return (desc ? -c : c) || a.i - b.i;
   });
   return keyed.map(x => x.r);
+}
+
+/**
+ * The rows of a table in groups by one column ("Group"): a section per distinct value, in first-seen order of the sorted rows, "None" for the empty ones. Null when no column is named or it is not one of the table's.
+ * @param {any[]} rows @param {{ id: string }[]} cols @param {string | undefined} by
+ * @returns {{ label: string, rows: any[] }[] | null}
+ */
+export function groupRows(rows, cols, by) {
+  if (!by || by === "_title" || !cols.some((c) => c.id === by)) return null;
+  /** @type {Map<string, any[]>} */ const m = new Map();
+  for (const r of rows) {
+    const x = r.cells && r.cells[by];
+    const label = x && typeof x === "object" ? String((x.link && x.link.title) || (x.who && x.who.name) || (x.v === null || x.v === undefined ? "" : typeof x.v === "object" ? "" : x.v)) : x === null || x === undefined ? "" : String(x);
+    const key = label || "None";
+    if (!m.has(key)) m.set(key, []);
+    /** @type {any[]} */ (m.get(key)).push(r);
+  }
+  return [...m.entries()].map(([label, rs]) => ({ label, rows: rs }));
 }
