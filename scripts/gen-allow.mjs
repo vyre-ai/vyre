@@ -687,6 +687,13 @@ export const PRESENCE_RULINGS = Object.freeze({
  * caller. Written into kernel/golden/presence.json beside the presence rulings.
  */
 export const SURFACE_RULINGS = Object.freeze({
+  "requests.attention": Object.freeze({
+    ruling: "team/ROADMAP.md R062-02, ask to join: the owner's Needs-you card lists the asks through the approvals module",
+    commit: "37d92c74b",
+    was: "denied",
+    callers: Object.freeze(["module:first-party", "module:added"]),
+    note: "the approvals queue, a module, reads the strangers' names and device keys for the owner's Needs-you card; the tool is internal (callers module, reach modules) and its body refuses every module but module:approvals, so no person, agent, model, guest or other module can read it",
+  }),
   "vault.import": Object.freeze({
     ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
     commit: "work/vault-ux-031",
