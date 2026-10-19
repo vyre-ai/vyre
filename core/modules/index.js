@@ -1358,7 +1358,7 @@ export class Registry {
     return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
-  noPresenceDevice(caller, meta, tool, input, why) { const d = { presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder, log: this.deps.log }; return why ? noPresenceWhy(d, caller, meta, tool) : noPresenceDevice(d, caller, meta, tool, input); } // core/presence/index.js
+  noPresenceDevice(caller, meta, tool, input, why) { const d = { presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder, log: this.deps.log }; return why ? noPresenceWhy(d, caller, meta, tool, why) : noPresenceDevice(d, caller, meta, tool, input); } // core/presence/index.js
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
@@ -1803,7 +1803,7 @@ export class Registry {
     };
     // `sign`: the exact act (name, Space, fields) a device's key signs for a direct yes (x-vyre-yes); only where this home has a Space and the call's fields are plain
     const sign = plain && typeof this.deps.homeSpace === "string" ? (() => { const g = signOf(moment, { op: tool, fields: plain }); return { op: g.op, space: this.deps.homeSpace, fields: g.fields }; })() : null;
-    const refuse = async (/** @type {string} */ message, code = "presence_required") => ({ error: { code, message, methods: presence && typeof presence.methods === "function" ? await presence.methods().catch(() => []) : [], moment, ...(plain ? { request: { op: tool, fields: plain } } : {}), ...(sign ? { sign } : {}) } });
+    const refuse = async (/** @type {string} */ message, code = "presence_required") => { await this.noPresenceDevice(caller, meta, tool, input, code); return { error: { code, message, methods: presence && typeof presence.methods === "function" ? await presence.methods().catch(() => []) : [], moment, ...(plain ? { request: { op: tool, fields: plain } } : {}), ...(sign ? { sign } : {}) } }; }; // the call above writes the reason to the home's log
     if (c.startsWith("module:") || !plain) return refuse(`${tool} needs your yes, and this call cannot carry one`);
     // 1. a card the person's phone or this device's own confirmation approved
     if (approval && dev) { const r = await yes(moment, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) return open(r, "approval"); }
