@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## 0.6.2
 
+- test: test/app-tool-names.test.js lists onboard.space.ask and onboard.space.ask.status with the other tools the page host answers itself (the check that host-core.js defines each still runs), so the join-by-address screen's calls are not reported as missing server tools.
 - fix(app): the typecheck is clean again. host-core.js reads the device's identity entry as any where it checks for `agree` (the chain's Entry type does not list it), and endLine's state type in approvals.js lists the "noway" outcome.
 - feat(tasks): a task page shows its slots and where it stands: the strip of states (To do, Doing, In review, Awaiting approval, Done, with Changes requested or Declined in place), who is Assigned and, when set, the Reviewer and Approver, and what the review said (the checklist ticked or not, an agent's ticks marked, the note, or "No one else to check this"). Built on the tasks v2 shapes; it draws nothing for a task without them.
 - feat(ui): TokenField, a field whose values are pills inside the text (web: remove with the x, type / or { to pick; phone: a plain field in friendly names); every value field of a Flow step uses it.
