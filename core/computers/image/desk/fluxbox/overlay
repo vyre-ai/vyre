@@ -1,0 +1,2 @@
+! agentd sets the wallpaper; fluxbox sets none (its fbsetbg would otherwise show an error dialog on the screen)
+background: none

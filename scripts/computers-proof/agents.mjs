@@ -276,7 +276,47 @@ try {
   check(outside.registered === false, "a folder outside the home is refused when the ticket is registered", outside.why);
   const asOther = shOk(["exec", "-u", "20001", CONTAINER, "ls", AH]);
   check(denied(asOther), "another agent cannot list this agent's home", asOther.slice(-80));
-  await b.close(); await adapter.close();
+  // (5) the desk (owner, 20 Oct 2026): the agent's folders, the wallpaper, and a dock of Chrome, Terminal and Files whose programs are the agent's, in its folder. A woke after sleeping, so this is the desk a wake gives.
+  const desk = shOk(["exec", "-u", "20000", CONTAINER, "sh", "-c", `cd ${AH} && ls -1d Inbox Work Done Downloads Scripts Notes && readlink Downloads && touch Inbox/.proof && rm Inbox/.proof && echo writable`]);
+  check(["Inbox", "Work", "Done", "Downloads", "Scripts", "Notes"].every(n => desk.split("\n").includes(n)) && desk.includes("/var/lib/vyre/downloads/ag20000") && /writable$/.test(desk), "the agent's folder has Inbox, Work, Done, Downloads, Scripts and Notes, its own to write, and Downloads is Chrome's download folder", desk.replace(/\n/g, " "));
+  const dockPid = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "pgrep -u 20000 -f 'agentd-dock.py$' | head -1"]);
+  check(/^\d+$/.test(dockPid), "the dock runs as the agent's uid", dockPid);
+  const dockEnv = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", `tr '\\0' '\\n' < /proc/${dockPid}/environ | grep XAUTHORITY`]);
+  check(dockEnv === "XAUTHORITY=/var/lib/vyre/x/ag20000/xauth", "the dock holds the agent's untrusted cookie, not the screen's", dockEnv);
+  const wm = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 21000 -o args= | grep -m1 '^/usr/bin/fluxbox'"]);
+  check(/-rc \/etc\/vyre-desk\/fluxbox\/init/.test(wm), "the window manager runs with the desk's settings (no toolbar, no desktop menu, no key that starts a program)", wm);
+  const fifo = shOk(["exec", "-u", "0", CONTAINER, "stat", "-c", "%F %a %U %G", "/var/lib/vyre/x/ag20000/show-chrome"]);
+  check(fifo === "fifo 620 agb21000 ag20000", "the dock's Chrome button is a FIFO the browser uid owns, which only the agent's group may write", fifo);
+  const otherWrite = shOk(["exec", "-u", "20001", CONTAINER, "sh", "-c", "echo 1 > /var/lib/vyre/x/ag20000/show-chrome"]);
+  check(denied(otherWrite), "another agent cannot press this agent's Chrome button", otherWrite.slice(-80));
+  const shoot = async name => {
+    shOk([...asOwner, CONTAINER, "import", "-window", "root", `/var/lib/vyre/browsers/agb21000/${name}`]);
+    shOk(["cp", `${CONTAINER}:/var/lib/vyre/browsers/agb21000/${name}`, path.join(OUT, name)]);
+    return fs.existsSync(path.join(OUT, name)) ? fs.statSync(path.join(OUT, name)).size : 0;
+  };
+  // the probe window from the keystroke checks is the owner's and still up; close it so the picture is the desk
+  shOk([...asOwner, CONTAINER, "sh", "-c", `xdotool windowkill ${wid} 2>/dev/null; true`]);
+  await sleep(1000);
+  check((await shoot("agent-desk.png")) > 1000, "a picture of agent A's desk is saved (agent-desk.png)");
+  // press the dock as a person would: it is centred at the bottom, three 76 px tiles (agentd-dock.py), on a 1440x900 screen
+  const pages = async () => (await a2.send("Target.getTargets", {})).targetInfos.filter(t => t.type === "page").length;
+  const tabsBefore = await pages().catch(e => `ERR ${e.message}`);
+  const press = x => shOk([...asOwner, CONTAINER, "xdotool", "mousemove", String(x), "843", "click", "1"]);
+  press(720); await sleep(3000);
+  const term = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 '^/usr/bin/xterm'"]);
+  check(/tmux -S \/var\/lib\/vyre\/agents\/ag20000\/tmux\.sock new-session -A -s desk -c \/var\/lib\/vyre\/agents\/ag20000\/home/.test(term), "Terminal opens a terminal as the agent, in its folder, on its own tmux", term);
+  const sessions = await ctl.terminals(A).catch(e => `ERR ${e.message}`);
+  check(Array.isArray(sessions) && sessions.some(s => s.name === "desk"), "the dock's terminal is one of the agent's terminals in Vyre", sessions);
+  press(802); await sleep(4000);
+  const fm = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 pcmanfm"]);
+  check(/pcmanfm \/var\/lib\/vyre\/agents\/ag20000\/home$/.test(fm), "Files opens the file manager as the agent, on its folder", fm);
+  press(638); await sleep(3000);
+  const tabsAfter = await pages().catch(e => `ERR ${e.message}`);
+  check(typeof tabsBefore === "number" && typeof tabsAfter === "number" && tabsAfter === tabsBefore + 1, "Chrome brings Chrome to the front with a new tab (the holder opens it; the agent never reaches Chrome's pipe)", `${tabsBefore} -> ${tabsAfter}`);
+  await sleep(1000);
+  check((await shoot("agent-desk-open.png")) > 1000, "a picture of the desk with Terminal, Files and Chrome open is saved (agent-desk-open.png)");
+
+  await b.close(); await a2.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");
   if (failedChecks.length) throw new Error(`${failedChecks.length} checks failed: ${failedChecks.join("; ")}`);
   console.log("agent computer proof: all checks passed");
