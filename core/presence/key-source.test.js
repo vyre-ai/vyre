@@ -56,10 +56,30 @@ test("the kernel's remote path: the owner as one person passes an invite with no
   await assert.rejects(() => g.invites.create(dev(BOB, "d-b"), { role: "member" }), /./, "another person is refused");
   const asst = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "kit", session: "s-k" });
   await assert.rejects(() => g.invites.create(asst, { role: "member" }), /./, "an assistant is refused");
+  // owner-making routes keep asking: an invite whose role is owner; a member's, an admin's and a custom role's pass
+  await assert.rejects(() => g.invites.create(owner, { role: "owner" }), e => e.code === "needs_presence" || /presence/i.test(e.message), "an owner invite asks");
+  assert.ok((await g.invites.create(owner, { role: "admin" })).id, "an admin invite passes");
+  await g.setRole(owner, { person: ADA, role: "member" });   // grants.member: giving a role below owner passes
+  await g.setRole(owner, { person: ADA, role: "manager" });
   // the ownership acts keep asking
   await assert.rejects(() => g.setRole(owner, { person: ADA, role: "owner" }), e => e.code === "needs_presence" || /presence/i.test(e.message));
   await assert.rejects(() => g.transferOwner(owner, { to: ADA }), e => e.code === "needs_presence" || /presence/i.test(e.message));
   // a phone counts: the proof is asked again
   device = true;
   await assert.rejects(() => g.invites.create(owner, { role: "member" }), e => e.code === "needs_presence" || /presence/i.test(e.message), "with a counted phone the proof is asked");
+});
+
+test("the hook's exact names: grants.role asks; an invite confirm asks unless the STORED role is a member's or admin's; a confirm with no role asks; requests.setting passes", () => {
+  const OWNER = "per_owner";
+  const chain = { viewer: false, hops: [{ actor: { kind: "person", id: OWNER } }] };
+  const ask = (/** @type {string} */ action, /** @type {any} */ payload) => noPresenceForChain({ presence: { hasPresenceDevice: () => false }, owner: () => OWNER }, { chain, action, payload });
+  assert.equal(ask("grants.role", { transfer: { to: "per_x" } }), false, "transfer asks");
+  assert.equal(ask("grants.role", {}), false, "making an owner asks");
+  assert.equal(ask("grants.member", { person: "per_x", role: "admin" }), true, "a member's role change passes");
+  assert.equal(ask("grants.invite", { role: "member" }), true, "a member invite passes");
+  assert.equal(ask("grants.invite", { role: "owner" }), false, "an owner invite asks");
+  assert.equal(ask("grants.invite", { confirm: "inv", words: "w", role: "admin" }), true, "confirming an admin invite passes");
+  assert.equal(ask("grants.invite", { confirm: "inv", words: "w", role: "owner" }), false, "confirming an owner invite asks");
+  assert.equal(ask("grants.invite", { confirm: "inv", words: "w" }), false, "a confirm with no stored role asks");
+  assert.equal(ask("requests.setting", { accepting: true }), true, "requests.setting passes");
 });

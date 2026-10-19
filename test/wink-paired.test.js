@@ -21,7 +21,7 @@ import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { pairTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, enrolDevice } from "./helpers.js";
 import { authenticator } from "../apps/app/src/identity/soft-authenticator.js";
 import { claimIdentityWithPasskey } from "../apps/app/src/identity/claim.js";
 import { macCore } from "./fake-core-keys.js";
@@ -540,6 +540,7 @@ shardTest("a computer's own device key makes the owner's proof for an act that n
   t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
+  enrolDevice(f.w.d); // a hardware phone is enrolled, so presence applies: a computer's own software key is ignored for counting, and must still not prove presence on its own
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
   assert.equal((await deviceRow(f.w, f.done.device)).presence, true, "the server enrolled the computer's key as its presence key");
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,

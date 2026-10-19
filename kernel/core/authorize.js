@@ -199,7 +199,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string, outward?: boolean }) => boolean | Promise<boolean>} [approvedPeek] the same check as approvedAct that spends nothing: an approval is a single-use authority for exactly its act, for the task's doer
  * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
- * @property {(q: { chain: any, action: string }) => boolean} [presenceNotNeeded] the home's answer that no presence step is needed for this chain (the owner's own acts, with no presence device enrolled)
+ * @property {(q: { chain: any, action: string, payload?: any }) => boolean} [presenceNotNeeded] the home's answer that no presence step is needed for this chain (the owner's own acts, with no presence device enrolled)
  * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | { ok: boolean, reason?: string } | Promise<boolean | { ok: boolean, reason?: string }>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
@@ -404,7 +404,7 @@ export function createAuthorizer(cfg) {
         // The owner's approval of a Kit's install card, held by the kernel as a waiver only it can make (kernel/tasks/kit-apply.js): presence for that install and no other act.
         || (input.waiver !== undefined && typeof cfg.waives === "function" ? cfg.waives(input.waiver, { chain, action, resource }) === true : false)
         // The owner's ruling: with no enrolled presence device the home supplies the answer for the owner's own acts (core/presence noPresenceForChain); a home with no such function never passes here.
-        || (typeof cfg.presenceNotNeeded === "function" ? cfg.presenceNotNeeded({ chain, action }) === true : false);
+        || (typeof cfg.presenceNotNeeded === "function" ? cfg.presenceNotNeeded({ chain, action, payload: input.payload }) === true : false);
       // The same obligation reached by two grants of a delegation chain (a child and the parent it came from) is one obligation.
       const out = obligations.filter((o, i) => obligations.findIndex(x => JSON.stringify(x) === JSON.stringify(o)) === i);
       if (presence !== "none") out.push({ type: "presence", method: presence });

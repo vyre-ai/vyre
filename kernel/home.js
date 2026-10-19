@@ -47,7 +47,7 @@ export function homeIdentity(root) {
 /**
  * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
  *   resolveCredential?: (i: { space: string, ref: string, route: string, method?: string, path?: string }) => Promise<string>,
- *   approvals?: (name: string) => string[], presence?: any, presenceNotNeeded?: (q: { chain: any, action: string }) => boolean, sealer?: any, door?: any, packageRoot?: string, onStageEnter?: any, stageTasks?: any, stageFactory?: (space: string, kernel: any, meta: any) => Promise<any> | any, forwardCredential?: (q: any) => Promise<any>, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
+ *   approvals?: (name: string) => string[], presence?: any, presenceNotNeeded?: (q: { chain: any, action: string, payload?: any }) => boolean, sealer?: any, door?: any, packageRoot?: string, onStageEnter?: any, stageTasks?: any, stageFactory?: (space: string, kernel: any, meta: any) => Promise<any> | any, forwardCredential?: (q: any) => Promise<any>, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);

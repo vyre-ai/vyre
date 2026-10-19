@@ -1083,20 +1083,23 @@ export async function noPresenceWhy(d, caller, meta) {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
     const soft = presence && typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
-    const kind = f && f.web === true ? "web" : String(caller).startsWith("device:") ? "app" : String(caller).startsWith("tailnet:") ? "tailnet" : "other";
+    const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
     return `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
   } catch { return "(reason unavailable)"; }
 }
 
 /**
- * The kernel's remote path (kernel/core/authorize.js `presenceNotNeeded`): with no counted presence device, the home's owner as exactly one person passes a presence step, except the acts that make an owner or change
- * roles. The same rule as noPresenceDevice, from the same Presence. An agent hop, a viewer or another person never passes. @param {{ presence: any, owner: () => string | null }} d @param {{ chain: any, action: string }} q
+ * The kernel's remote path (kernel/core/authorize.js `presenceNotNeeded`): with no counted presence device, the home's owner as exactly one person passes a presence step, except the acts that make an owner: `grants.role`
+ * (making an owner, handing the Space on), a `grants.invite` whose role is owner, and the confirm of an invite whose STORED role is owner (the kernel puts that role in the payload itself; a confirm with none asks).
+ * Member and admin invites, their confirms and `grants.member` role changes pass. The same Presence answers it as the module floor. An agent hop, a viewer or another person never passes.
+ * @param {{ presence: any, owner: () => string | null }} d @param {{ chain: any, action: string, payload?: any }} q
  */
 export function noPresenceForChain(d, q) {
   try {
-    const c = q.chain, owner = d.owner();
+    const c = q.chain, owner = d.owner(), pl = q.payload && typeof q.payload === "object" ? q.payload : {};
     if (!c || c.viewer === true || !Array.isArray(c.hops) || c.hops.length !== 1 || !c.hops[0].actor || c.hops[0].actor.kind !== "person" || !owner || String(c.hops[0].actor.id) !== String(owner)) return false;
-    if (/owner|transfer|adopt|role/i.test(String(q.action))) return false;
+    if (q.action === "grants.role") return false;
+    if (q.action === "grants.invite" && (pl.role === "owner" || (pl.confirm !== undefined && (typeof pl.role !== "string" || pl.role === "owner")))) return false;
     return Boolean(d.presence) && typeof d.presence.hasPresenceDevice === "function" && !d.presence.hasPresenceDevice();
   } catch { return false; }
 }
