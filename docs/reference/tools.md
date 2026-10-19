@@ -5879,7 +5879,10 @@ Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme
 
 - Input:
   - `name` string, required
-  - `verify` object, required
+  - `header` string
+  - `scheme` one of "hmac-sha256", "github", "stripe"
+  - `secret` string
+  - `verify` object
     - `scheme` one of "hmac-sha256", "github", "stripe", required
     - `header` string
     - `secret` string
