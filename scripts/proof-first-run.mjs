@@ -22,6 +22,7 @@ import { startStandins } from "./lib/proof/standins.mjs";
 import { startInstallerServer } from "./lib/proof/server-installer.mjs";
 import { startMacServer } from "./lib/proof/server-mac.mjs";
 import { MacPage } from "./lib/first-run/page.mjs";
+import { ownerWalkReal } from "./lib/proof/owner-walk-real.mjs";
 import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import { AI_SIGNIN_COPY } from "../lib/first-run-shape.js";
 
@@ -33,6 +34,7 @@ const server = /** @type {"installer" | "mac"} */ (take("--server", client === "
 const dist = path.resolve(take("--dist", ""));
 const appPath = take("--app", "/Applications/Vyre.app");
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `proof-first-run-${process.pid}`)));
+const OWNER_WALK = argv.includes("--owner-walk"); // after the first run and the group walk: the ten walks of a real owner on this fresh box (scripts/lib/proof/owner-walk-real.mjs); OWNER_WALK_STRICT=1 fails any pending walk
 const NO_ED25519 = argv.includes("--no-ed25519"); // an old browser: WebCrypto without Ed25519 (the app's fallback must carry the identity); the walk stops at the space choice
 const PORTS = { names: Number(take("--names-port", "8787")), relay: Number(take("--relay-port", "8788")), page: Number(take("--page-port", "8789")) };
 if (!["browser", "mac-app"].includes(client) || !["installer", "mac"].includes(server)) { console.error("proof-first-run: --client browser|mac-app, --server installer|mac"); process.exit(64); }
@@ -130,6 +132,15 @@ async function browserDriver(shared = null) {
     async noVyred() { const r = await fetch(`http://127.0.0.1:${PORTS.page}/v1/tools/identity.status`, { method: "POST" }); const t = await r.text(); if (/"data"|"error"/.test(t) && r.headers.get("content-type") === "application/json") throw new Error("something on the client answers /v1"); return "the page's origin serves files only"; },
     /** Another person: a new browser profile on the same server and page (the second identity of the group walk). */
     async second() { return browserDriver({ browser, srv }); },
+    /** Press a button that opens a file chooser and give it one file (the web app\'s Upload). */
+    async upload(/** @type {string} */ button, /** @type {string} */ name, /** @type {string} */ content) {
+      const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 20_000 }), d.click(button)]);
+      await chooser.setFiles({ name, mimeType: "text/plain", buffer: Buffer.from(content) });
+    },
+    async viewport(/** @type {number} */ w, /** @type {number} */ h) { await page.setViewportSize({ width: w, height: h }); },
+    url() { return page.url(); },
+    async rightClick(/** @type {string} */ t) { await page.getByText(t, { exact: false }).first().click({ button: "right", timeout: 15_000 }); },
+    async links() { return page.evaluate(() => [...document.querySelectorAll("a[href]")].map((a) => /** @type {HTMLAnchorElement} */ (a).href)); },
     async stop() { if (shared) { await ctx.close().catch(() => {}); return; } await browser.close().catch(() => {}); srv.close(); },
   };
   return d;
@@ -516,6 +527,10 @@ try {
       await two.shot("26-asker-in");
       if (/This Space only takes invites/.test(t)) throw new Error("the second person was told the Space only takes invites");
     }, { needs: READY });
+  }
+
+  if (OWNER_WALK && client === "browser" && server === "installer") {
+    await ownerWalkReal({ run, drv, srv, ins, S, READY, USERNAME, PASSWORD, until, wait, out, spaceName: () => spaceNm, cleanups });
   }
 
   await run.step(S("coming back: the unlock screen takes the password, refuses a wrong one"), async () => {

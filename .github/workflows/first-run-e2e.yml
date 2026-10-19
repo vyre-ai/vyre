@@ -10,6 +10,15 @@ name: first-run-e2e
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      owner_walk:
+        description: "Also walk the ten owner walks on the fresh box (scripts/lib/proof/owner-walk-real.mjs)"
+        type: boolean
+        default: false
+      strict:
+        description: "Fail any owner walk that is still pending (the gate on the final candidate)"
+        type: boolean
+        default: false
   push:
     # full on main, release/**, integrate/** and the train (no path filter); a pull request or other branch runs it only when its own paths change (the pull_request paths below)
     branches: ["release/**", "integrate/**", "work/**/train"]
@@ -59,7 +68,9 @@ jobs:
       - name: The first run, on a real Linux server
         env:
           PW_FROM: ${{ runner.temp }}/pw/
-        run: node scripts/proof-first-run.mjs --client browser --server installer --dist "$RUNNER_TEMP/proof-web" --names-port "$FIRST_RUN_NAMES_PORT" --relay-port "$FIRST_RUN_RELAY_PORT" --out "$RUNNER_TEMP/first-run-linux"
+          OWNER_WALK_FLAG: ${{ inputs.owner_walk && '--owner-walk' || '' }}
+          OWNER_WALK_STRICT: ${{ inputs.strict && '1' || '' }}
+        run: node scripts/proof-first-run.mjs --client browser --server installer --dist "$RUNNER_TEMP/proof-web" --names-port "$FIRST_RUN_NAMES_PORT" --relay-port "$FIRST_RUN_RELAY_PORT" --out "$RUNNER_TEMP/first-run-linux" $OWNER_WALK_FLAG
       - name: "The identity in an old browser (no Ed25519 in WebCrypto), carried by the app's own fallback"
         env:
           PW_FROM: ${{ runner.temp }}/pw/
