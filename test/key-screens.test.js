@@ -26,6 +26,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^mail\/(index|compose)\.tsx$/, "the mail inbox (MailScreen) and the composer (ComposeScreen): a live message list with threads, attachments and a draft of their own, owned by the mail team; they move to blocks when mail does"],
   [/^tags\/index\.tsx$/, "the tag directory: a list of tags with counts and a tag editor of its own, owned by the records team"],
   [/^(documents|files|vault-more)\.tsx$/, "Files, Documents and the vault's second page: a tree, a viewer and an upload of their own, owned by the files and vault teams"],
+  [/^flows\/shot\.tsx$/, "the shot fixtures for the screenshot pass: the Flow editor, a run, the Playbook sheet, the Kit card, the Watchers tab and the webhook trigger drawn from made-up data; sample world only, and left out of every real build (apps/app/scripts/sample-routes.js); owned by the flows team"],
   [/^(flows\/new|playbooks|playbooks\/\[id\]|record\/new)\.tsx$/, "creation and board pages (a new Flow, a Playbook and its board, a new record): forms and a board of their own, owned by the flows, projects and records teams"],
   [/^chats\//, "the Chat screen (the list of chats, group chats, agents and people with its side panel), the conversation and the new-chat page: a live stream with a composer and a pane of their own (ChatsScreen), owned by the chat team; wave 0.6"],
   [/^glass\/|^wink\/|^setup\//, "a live device or screen stream, a pairing flow"],

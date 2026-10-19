@@ -181,7 +181,7 @@ export default {
         if (make) {
           secretItem = `hooks-${name}`;
           const made = /** @type {any} */ (await ctx.call("vault.make-hook-secret", { name: secretItem }));
-          if (made.error) throw refuse(`the signing secret could not be made: ${String(made.error.message || made.error.code).slice(0, 200)}`, "unavailable");
+          if (made.error) throw refuse(`the signing secret could not be made: ${String(made.error.message || made.error.code).slice(0, 200)}. Name a Vault item that already holds the secret in verify.secret instead, or ask the owner to check the Vault.`, "unavailable");
         }
         // Whether the secret can be fetched now. The value is dropped at once; this only tells
         // the person whether a grant is still missing.
