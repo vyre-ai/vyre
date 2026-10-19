@@ -23,10 +23,20 @@ test("appmods.install runs for the signed-in owner with no proof; an agent, a gu
   const asOwner = async (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli", await meta());
   const code = (/** @type {any} */ r) => (r && r.error ? String(r.error.code) : "");
 
-  // the owner's own computer or phone, reached over a pairing or the tailnet, names itself device:<id> or tailnet:<login>: no proof for it either (this is the Mac with no phone paired)
+  // what the presence floor itself says about these tools (the same question the registry asks before every call)
+  const floor = /** @type {any} */ (d.registry.deps.presence), def = (/** @type {string} */ n) => /** @type {any} */ (d.registry).tools.get(n);
+  assert.equal(floor.required("appmods.install", def("appmods.install"), { name: "documents" }), false, "installing asks for no proof");
+  assert.equal(floor.required("appmods.remove", def("appmods.remove"), { name: "documents" }), false, "removing and keeping the data asks for none");
+  assert.equal(floor.required("appmods.remove", def("appmods.remove"), { name: "documents", data: false }), false);
+  assert.equal(floor.required("appmods.remove", def("appmods.remove"), { name: "documents", data: true }), true, "deleting the data asks");
+  assert.equal(floor.required("appmods.remove", def("appmods.remove")), true, "a listing of the tool (no input) counts as asking");
+
+  // the owner's paired device or tailnet node still needs the person's session (the sign-in rule, unchanged: reach person), and with it the install runs with no proof
   for (const who of ["device:abcdefghijklmnop", "tailnet:alex@example.com"]) {
-    const r = await d.registry.call("appmods.install", { name: "not-an-app" }, who, await meta());
-    assert.ok(r.error && !/presence|held|approval/.test(String(r.error.code)) && /no app module called/.test(String(r.error.message)), `${who}: it reached the install and was refused for the name: ${JSON.stringify(r).slice(0, 300)}`);
+    const without = await d.registry.call("appmods.install", { name: "not-an-app" }, who, {});
+    assert.equal(String(without.error && without.error.code), "person_session_required", `${who} without a person session: ${JSON.stringify(without).slice(0, 200)}`);
+    const withSession = await d.registry.call("appmods.install", { name: "not-an-app" }, who, { person: { id: owner } });
+    assert.ok(withSession.error && /no app module called/.test(String(withSession.error.message)) && !/presence|held|approval/.test(String(withSession.error.code)), `${who} with a person session reaches the install: ${JSON.stringify(withSession).slice(0, 300)}`);
   }
   // the owner, no proof: past the gate (the fake runtime then refuses to start, which is not a presence refusal)
   const ok = await asOwner("appmods.install", { name: "documents" });
@@ -47,8 +57,4 @@ test("appmods.install runs for the signed-in owner with no proof; an agent, a gu
   // remove: the container without a proof, the data only with one
   const keep = await asOwner("appmods.remove", { name: "documents" });
   assert.ok(!/presence/.test(code(keep)) && keep.data && keep.data.removed === true, "the failed install left a row, and removing it asks no proof: " + JSON.stringify(keep).slice(0, 200));
-  // deleting the data asks: not from the person's own surface (that is the person), but from a device or the tailnet the caller is not the proof
-  const wipe = await d.registry.call("appmods.remove", { name: "documents", data: true }, "device:abcdefghijklmnop", await meta());
-  console.log("remove data:true from a device ->", JSON.stringify(wipe).slice(0, 300));
-  assert.ok(wipe.error, "deleting the data is not done without more than a device label: " + JSON.stringify(wipe).slice(0, 200));
 });
