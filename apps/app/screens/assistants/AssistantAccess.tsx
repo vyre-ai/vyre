@@ -87,7 +87,6 @@ function TurnOffPicker({ catalog, advanced, setAdvanced, off, busy, onPick, type
 const MORE = [
   { title: "Standing permissions", sub: "Decide what may go ahead without asking you", href: "/u/settings/permissions" },
   { title: "What my agents can see", sub: "Choose, Space by Space, what your agents may read", href: "/u/settings/seeing" },
-  { title: "Rules", sub: "Set what an agent never does, drafts only, or asks about first", href: "/u/settings/rules" },
   { title: "Spending limits", sub: "Cap what each AI provider can spend in a day", href: "/u/settings/spend" },
   { title: "Outside agents", sub: "Let agents running elsewhere reach what you choose", href: "/u/settings/outside" },
 ];

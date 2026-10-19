@@ -7,6 +7,7 @@ import { Group, Page } from "../places/Frame";
 import { autoLine, checkedLine, howLine, KIND_ROWS, noteLines, QUIET_DEFAULT, quietLine, updateLine, type PushDevice, type PushSettings, type UpdateStatus } from "./real-model";
 import { pushDevices, pushSet, pushSettings, updateApply, updateCheck, updateStatus } from "./real";
 import { askLine } from "./update-model.js";
+import { BackupsSection } from "./BackupsScreen";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
@@ -20,7 +21,7 @@ export function RealUpdates() {
   const check = () => { setBusy(true); updateCheck().then(setS).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const apply = () => { setBusy(true); setAsking(false); updateApply().then((r) => { showToast(r.requested === false ? r.reason ?? "Not started." : "Update requested."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
-    <Page title="Updates" back="/u/settings">
+    <Page title="Updates and backups" back="/u/settings">
       <ServerLine />
       {err ? <Card flush><ErrorState title="Updates did not load" reason={err} retry={load} /></Card> : null}
       {s ? (
@@ -42,6 +43,7 @@ export function RealUpdates() {
           <Card className="gap-s1"><Text size="caption" strong tone="label">Safety</Text><Text tone="muted">Updates are signed. Vyre refuses a release that is unsigned, altered or older.</Text></Card>
         </>
       ) : !err ? <LoadingState rows={3} /> : null}
+      <Group title="Backups"><BackupsSection /></Group>
     </Page>
   );
 }

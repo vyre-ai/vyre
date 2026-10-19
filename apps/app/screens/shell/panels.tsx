@@ -17,7 +17,8 @@ import { BUILD_SECTIONS } from "../build/sections.js";
 import { FilesTreePanel } from "../drive/FilesTreePanel";
 import { VaultPanel } from "../vault/VaultPanel";
 import { VAULT_PANEL_MIN } from "../vault/vault-nav";
-import { SETTINGS_ITEMS } from "./settings-items.js";
+import { settingsItems } from "./settings-items.js";
+import { useLabs } from "../settings/labs";
 
 /** What each panel has loaded: a loader component (below) mounts only while its panel shows, so a list is read only when it is wanted. */
 const useLoaded = create<{ items: Record<string, PanelItem[]>; put: (id: string, items: PanelItem[]) => void }>((set) => ({
@@ -58,7 +59,7 @@ function FlowsLoader() {
 const BUILD: PanelItem[] = BUILD_SECTIONS.map(([id, label, icon, href]) => ({ id, label, href, icon: icon as PanelItem["icon"] }));
 
 /** The sections of Settings: what the owner moved under it (sidebar-ia). */
-const SETTINGS = SETTINGS_ITEMS as unknown as PanelItem[];
+const SETTINGS = (labs: boolean) => settingsItems(labs) as unknown as PanelItem[];
 
 /** The scope the main search opens on from each section's Search button (the section's own search box is gone: there is one search bar). */
 const SEARCH_SCOPE: Record<string, import("../find/model").Scope> = { projects: "projects", chats: "chats", settings: "settings" };
@@ -86,6 +87,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
   const { base, mine, load } = useSidebar();
   const space = useSpaces((s) => s.space);
   const loaded = useLoaded((s) => s.items);
+  const labs = useLabs((s) => s.on);
   const search = new URLSearchParams(Object.entries(params).filter(([k, v]) => k !== "id" && k !== "type" && typeof v === "string") as [string, string][]).toString();
   const { width } = useWindowDimensions();
   const id = panelFor(path, search);
@@ -100,7 +102,7 @@ export function usePanel(onNavigate: (href: string) => void): { panel: PanelDef 
     id,
     panel: {
       id, title: meta.title, icon: meta.icon, search: meta.search, ...(meta.search ? { onSearch: () => openFind(SEARCH_SCOPE[id] ?? "all") } : {}), ...(id === "chats" ? { plus: <ChatsPlusButton /> } : {}), empty: meta.empty, onBack: goBack, currentHref: path,
-      items: id === "settings" ? SETTINGS : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
+      items: id === "settings" ? SETTINGS(labs) : id === "build" ? BUILD : id === "records" ? [] : loaded[id] ?? [],
       before: id === "chats" ? <ChatsSidebar /> : id === "drive" ? <FilesTreePanel /> : id === "vault" ? <VaultPanel /> : id === "records" ? <><SidebarRow label="Contacts" icon="contacts" on={path === "/u/records/contact"} onPress={() => onNavigate("/u/records/contact")} />
         <PinnedViews entries={all} onOpen={onNavigate}
           onMove={(i, before) => void edit(reorderPinned(all, i, before))} onRename={(i, label) => void edit(renameView(all, i, label))} onUnpin={(i) => void edit(unpinList(all, i))} /></> : undefined,

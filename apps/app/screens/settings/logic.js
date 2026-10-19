@@ -1,5 +1,6 @@
 // @ts-check
-// Settings, pure parts: AI budgets, the privacy defaults, notifications, updates. Node tests them.
+// Settings, pure parts: AI budgets, the privacy defaults, notifications, updates, the Settings list. Node tests them.
+import { labsRows } from "./archived.js";
 
 export const money = (/** @type {number} */ n) => `$${n.toLocaleString("en-US")}`;
 
@@ -46,22 +47,25 @@ export const PRIVACY_ROWS = [
   ["mem", "Memory learns from what agents read", "Sealed values are never read, so they are never remembered."],
 ];
 
-/** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
+/** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): People and roles, sealing policy, and the archived Audit and Groups when Labs shows them. */
 const ADMIN_ROWS = ["/u/settings/audit", "/u/settings/roles", "/u/settings/groups", "/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer", "/u/playbooks"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules", "/u/settings/assistant-access"];
 
 /**
- * Settings home: a profile row, then three groups (You, the Space, Devices) of about eleven rows, and the rest under Advanced (the home shows it behind "Show advanced"). Every row has its own
- * icon from the family (logic.test.js keeps it so). `space` names the group for the space showing. `role` is the person's role there: a row an owner or admin uses is not offered to others, and a
- * temp member is not offered the space-wide places. No role (All spaces showing, or not known yet) shows every row, and the screen behind each row still decides.
- * @param {string} space @param {string} [role]
+ * Settings home: four calm groups (You, the Space, Devices, Vyre) and nothing behind an Advanced switch. The pages taken off the list are in archived.js with one line of why each; with Labs on
+ * (About, at the bottom) the archived ones come back as a last group, Labs. Every row has its own icon from the family (logic.test.js keeps it so). `space` names the group for the space showing.
+ * `role` is the person's role there: a row an owner or admin uses is not offered to others, and a temp member is not offered the space-wide places. No role (All spaces showing, or not known yet)
+ * shows every row, and the screen behind each row still decides.
+ * @param {string} space @param {string} [role] @param {{ labs?: boolean }} [opts]
  */
-export function settingsGroups(space, role) {
+export function settingsGroups(space, role, opts = {}) {
   const hide = (/** @type {string} */ href) => !!role && ((role !== "owner" && role !== "admin" && ADMIN_ROWS.includes(href)) || (role === "temp" && NOT_FOR_TEMP.includes(href)));
-  return all(space).map((g) => ({ ...g, rows: g.rows.filter((r) => !hide(r[2])) })).filter((g) => g.rows.length);
+  const groups = [...all(space), ...(opts.labs ? [{ title: "Labs", labs: true, rows: labsRows() }] : [])];
+  return groups.map((g) => ({ ...g, rows: g.rows.filter((r) => !hide(r[2])) })).filter((g) => g.rows.length);
 }
 
+/** @returns {{ title: string, labs?: boolean, rows: string[][] }[]} */
 function all(/** @type {string} */ space) {
   return [
     { title: "You", rows: [
@@ -69,34 +73,22 @@ function all(/** @type {string} */ space) {
       ["AI accounts", "Connect Claude, OpenAI and others, each with a budget", "/u/settings/ai", "spark"],
       ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
       ["Notifications", "Choose what can reach you, and when", "/u/settings/notifications", "bell"],
-      ["Skills and plugins", "The skills and plugins only you use", "/u/skills?level=personal", "board"],
+      ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
     ] },
     { title: space, rows: [
-      ["People and roles", "Who is in this Space and what each person can do, see and use", "/u/settings/roles", "users"],
-      ["What agents may do", "The areas and tools your agents may use, and what they ask first", "/u/settings/assistant-access", "shield"],
-      ["Connections", "Link services, MCP servers, Google and GitHub", "/u/connections", "link"],
-      ["Privacy", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
       ["Look and name", "Switch Space, and change a Space's name, colour and logo", "/u/spaces", "space"],
-      ["Skills and plugins for the Space", "What members draft and admins approve for everyone", "/u/skills?level=space", "box"],
+      ["People and roles", "Who is in this Space and what each person can do, see and use", "/u/settings/roles", "users"],
+      ["Skills and plugins", "Yours and the Space's; members draft, admins approve for everyone", "/u/skills", "box"],
+      ["Connections", "Link services, Google and GitHub", "/u/connections", "link"],
+      ["What agents may do", "The areas and tools your agents may use, and what they ask first", "/u/settings/assistant-access", "shield"],
+      ["Privacy", "Choose which fields are sealed (admins only)", "/u/settings/privacy", "sealed"],
     ] },
     { title: "Devices", rows: [
       ["Devices and computers", "Your phone and computers; approve a new one, remove one you lost", "/u/settings/devices", "devices"],
-      ["Updates and backups", "Check for and install a new version, and see what is backed up", "/u/settings/updates", "download"],
-    ] },
-    { title: "Advanced", advanced: true, rows: [
-      ["Audit", "See who changed what on a record, with the value before and after", "/u/settings/audit", "clock"],
-      ["Roles in detail and groups", "Sets of people and agents you give things to at once", "/u/settings/groups", "contacts"],
-      ["Rules", "Set what an agent never does, drafts only, or asks about first", "/u/settings/rules", "hand"],
-      ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
-      ["Build", "Playbooks, objects, templates and Kits for a kind of work", "/u/playbooks", "kits"],
-      ["Customize", "Add and change object types, fields and stages", "/u/settings/customize", "records"],
-      ["Engineer", "Set up your Space by describing what you want", "/u/settings/engineer", "bolt"],
-      ["Servers and outside agents", "The servers you use, and agents running elsewhere", "/u/settings/servers", "server"],
-      ["Your AI keys", "Name a key for each AI tool that acts as you", "/u/settings/mcp", "key"],
-      ["Backups", "Choose which Spaces are backed up", "/u/settings/backups", "storage"],
-      ["Access", "See who and what can reach this Space: people, agents, Kits and Flows", "/u/access", "access"],
       ["This computer", "What runs on this computer: its hooks, history and shares", "/u/settings/system", "laptop"],
-      ["All settings", "Every setting this server offers; find one with the main search", "/u/settings/all", "settings"],
+    ] },
+    { title: "Vyre", rows: [
+      ["Updates and backups", "Check for and install a new version, and see what is backed up", "/u/settings/updates", "download"],
       ["About", "Version, who made Vyre, and where to star it", "/u/about", "info"],
     ] },
   ];

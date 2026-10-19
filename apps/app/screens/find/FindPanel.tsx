@@ -7,6 +7,8 @@ import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, Icon, LoadingState, Row, Segmented, Sheet, SpaceTag, Text, useRecordsWorld, type IconName } from "@vyre/ui";
 import { NAV } from "../shell/nav";
 import { settingsGroups } from "../settings/logic.js";
+import { archivedAt } from "../settings/archived.js";
+import { useLabs } from "../settings/labs";
 import { find } from "./source-real";
 import { MIN, SCOPES, SHOW, addRecent, doneLine, emptyBase, flatRows, idle, mentionSections, missingNote, planLine, previewOf, queryOf, readCommand, recordRows, sections, stepHi, type Base, type Fetched, type FileHit, type Row as Hit, type Scope } from "./model";
 import { loadRecents, saveRecents } from "./recents";
@@ -42,8 +44,10 @@ export default function FindPanel({ onDone, initial = "", initialScope = "all" }
 
   const places = useMemo(() => [...NAV.items, ...(NAV.more ?? []), ...(NAV.bottom ?? [])].filter((i) => i.id !== "search").map((i) => ({ id: i.id, label: i.label, href: i.href })), []);
   const records = useMemo(() => (world ? recordRows(world.types, world.byType) : []), [world]);
-  const settings = useMemo(() => settingsGroups("this Space").flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), []);
-  const all: Base = useMemo(() => ({ ...base, records, places, settings }), [base, records, places, settings]);
+  // the archived pages (settings/archived.js) are not searched unless Labs is on; the server's raw keys open All settings, which is archived, so they wait for Labs too
+  const labs = useLabs((s) => s.on);
+  const settings = useMemo(() => settingsGroups("this Space", undefined, { labs }).flatMap((g: { rows: string[][] }) => g.rows.map(([title, sub, href]) => ({ title, sub, href }))), [labs]);
+  const all: Base = useMemo(() => ({ ...base, records, places, settings, settingKeys: (base.settingKeys || []).filter((k) => labs || !archivedAt(k.href)) }), [base, records, places, settings, labs]);
 
   // A query asks the three tools, 150 ms after typing stops; an answer for an old query is dropped.
   useEffect(() => {

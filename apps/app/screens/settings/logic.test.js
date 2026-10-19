@@ -38,31 +38,50 @@ test("three autonomy levels and five budget steps", () => {
   assert.equal(BUDGET_STEPS.length, 5);
 });
 
-test("settings is You, the Space, Devices and Advanced, and the space group carries the space name", () => {
+test("settings is You, the Space, Devices and Vyre with nothing behind an Advanced switch, and the space group carries the space name", () => {
   const g = settingsGroups("Juniper Studio");
-  assert.deepEqual(g.map((x) => x.title), ["You", "Juniper Studio", "Devices", "Advanced"]);
-  assert.equal(g[3].advanced, true, "Advanced is the group the home puts behind Show advanced");
+  assert.deepEqual(g.map((x) => x.title), ["You", "Juniper Studio", "Devices", "Vyre"]);
+  assert.ok(g.every((x) => !("advanced" in x)), "no Advanced group: the owner found half-built pages there (owner, 20 Oct)");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
-  assert.deepEqual(g.slice(0, 3).map((x) => x.rows.length), [5, 6, 2], "about eleven rows up front, plus Skills and plugins in both groups");
+  assert.deepEqual(g.map((x) => x.rows.length), [5, 6, 2, 2], "a short list an owner reads in one look");
 });
 
-test("Skills and plugins is a row in both groups, opening the library at the level", () => {
+test("Skills and plugins is one row, opening the library with its own Personal and Space switch", () => {
   const rows = settingsGroups("Juniper Studio").flatMap((x) => x.rows);
-  assert.ok(rows.some((r) => r[2] === "/u/skills?level=personal"));
-  assert.ok(rows.some((r) => r[2] === "/u/skills?level=space"));
+  assert.deepEqual(rows.filter((r) => r[2].startsWith("/u/skills")).map((r) => r[2]), ["/u/skills"]);
 });
 
 test("settings hides what a role cannot use", () => {
-  const hrefs = (role) => settingsGroups("Juniper Studio", role).flatMap((g) => g.rows).map((r) => r[2]);
-  assert.ok(hrefs(undefined).includes("/u/settings/rules"));
-  assert.ok(hrefs("admin").includes("/u/settings/customize"));
-  assert.ok(!hrefs("member").includes("/u/settings/customize"));
+  const hrefs = (role, labs = false) => settingsGroups("Juniper Studio", role, { labs }).flatMap((g) => g.rows).map((r) => r[2]);
+  assert.ok(hrefs("admin").includes("/u/settings/roles"));
+  assert.ok(!hrefs("member").includes("/u/settings/roles"));
   assert.ok(!hrefs("manager").includes("/u/settings/privacy"));
-  assert.ok(hrefs("member").includes("/u/settings/rules"));
-  assert.ok(!hrefs("temp").includes("/u/settings/rules"));
   assert.ok(!hrefs("temp").includes("/u/settings/assistant-access"), "a temp member is not offered what agents may do");
   assert.ok(hrefs("member").includes("/u/spaces"));
   assert.ok(hrefs("temp").includes("/u/sidebar"), "everyone arranges their own sidebar");
+  // the archived pages, shown with Labs on, keep their role limits
+  assert.ok(hrefs("admin", true).includes("/u/settings/audit"));
+  assert.ok(!hrefs("member", true).includes("/u/settings/audit"));
+  assert.ok(hrefs("member", true).includes("/u/settings/rules"));
+  assert.ok(!hrefs("temp", true).includes("/u/settings/rules"));
+});
+
+test("archived pages: off the list by default, back as a last Labs group with Labs on, each with a reason", async () => {
+  const { ARCHIVED, archivedAt, labsRows } = await import("./archived.js");
+  const shown = settingsGroups("Juniper Studio").flatMap((g) => g.rows).map((r) => r[2]);
+  for (const a of ARCHIVED) {
+    assert.ok(!shown.includes(a.href), `${a.title} (${a.href}) is archived but still on the Settings list`);
+    assert.ok(a.reason && a.reason.length > 20 && !/[—§]/.test(a.reason), `${a.title} needs a one-line reason`);
+    assert.ok(["archived", "merged", "moved"].includes(a.kind));
+    if (a.kind === "merged") assert.ok(a.into, `${a.title} says where it went`);
+  }
+  for (const href of ["/u/settings/audit", "/u/settings/rules"]) assert.ok(archivedAt(href), `${href} is archived (owner, 20 Oct)`);
+  assert.equal(archivedAt("/u/settings/devices"), null);
+  assert.equal(archivedAt("/u/settings/backups"), null, "a merged page is not gated: its route goes to where it went");
+  const labs = settingsGroups("Juniper Studio", undefined, { labs: true });
+  assert.equal(labs.at(-1).title, "Labs");
+  assert.deepEqual(labs.at(-1).rows, labsRows());
+  assert.deepEqual(labs.slice(0, -1), settingsGroups("Juniper Studio"), "Labs only adds a group at the end");
 });
 
 test("every place in Settings has its own icon, and each one is in the family", () => {
