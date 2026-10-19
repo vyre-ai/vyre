@@ -22,6 +22,7 @@ import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
 import { FindHost, openFind } from "../find/FindHost";
 import { startKeepingAppearance } from "../../src/state/keep-appearance";
+import { startKeepingMyLook, useMyLook } from "../../src/state/my-look";
 import { lockIdentity } from "../unlock/real.js";
 import { lockChanged } from "../../src/shell/lock-setting";
 import { setScheme } from "../settings/appearance";
@@ -33,6 +34,8 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const { space, looks, setShowing } = useSpaces();
   const { data: DATA, set, fail } = useShell();
   useEffect(() => { startKeepingAppearance(); }, []);
+  const myLook = useMyLook((x) => x.look);
+  useEffect(() => { startKeepingMyLook(); }, []);
   // The sidebar: the arrangement for the showing Space, loaded when the box is reached and again whenever the box says it changed (this device or another).
   const arranged = useNavDef(space);
   const loadSidebar = useSidebar((x) => x.load);
@@ -103,7 +106,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const { panel, id: panelId } = usePanel(go);
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
+    <Shell {...nav} recent={recent} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : go(href))} onSearch={openFind} onTheme={(v) => { if (!allowsMock()) setScheme(v).catch(() => showToast("The theme changed here, but it could not be saved.")); }} onLock={() => { void lockIdentity().then((r: { ok: boolean; message?: string }) => { if (r.ok) lockChanged(); else showToast(r.message ?? "That did not go through."); }); }} panel={panel} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName, look: myLook || undefined }}>
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />

@@ -38,7 +38,7 @@ export type ShellProps = NavDef & {
   spaces: ShellSpace[];
   space: string;
   onSpace: (id: string) => void;
-  user: { name: string; sub?: string };
+  user: { name: string; sub?: string; /** How the person is drawn when they picked a look (a seed like s3~c5), else from their name. */ look?: string };
   /** What the sidebar becomes inside a place (its list with Back); null or absent is the main sidebar. Built by the caller from the path (ui/shell/sidebar-stack.js). */
   panel?: PanelDef | null;
   /** Force the rail folded or open (a picture, a test); without it the device's remembered state decides. */
@@ -145,7 +145,7 @@ function RailFoot({ p, folded, toggle }: { p: RailProps; folded: boolean; toggle
     </View>
   );
   const label = `${name}: profile, appearance, spaces, lock and the sidebar`;
-  const face = <Avatar of={markRef("person", name)} size={RAIL.face} />;
+  const face = <Avatar of={markRef("person", name, undefined, p.user.look)} size={RAIL.face} />;
   const trigger = folded ? (
     <Tip label={name}>
       <Pressable accessibilityRole="button" accessibilityLabel={label} style={({ hovered, focused }: any) => [{ width: RAIL.foldedRow, height: RAIL.foldedRow, borderRadius: RAIL.rowRadius, alignItems: "center", justifyContent: "center", backgroundColor: hovered || focused ? color.hover : "transparent" } as any]}>{face}</Pressable>
