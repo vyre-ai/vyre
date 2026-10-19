@@ -295,7 +295,11 @@
     "agents/computers-and-files.md",
     "agents/skills.md",
     "agents/errors.md",
-    "agents/behaviour.md"
+    "agents/behaviour.md",
+    "agents/chrome-ops.md",
+    "agents/notify.md",
+    "agents/woken.md",
+    "agents/projects.md"
   ],
   "unpublished": ["proposals/", "design/boards/", "agents/", "release/"]
 }

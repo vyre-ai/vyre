@@ -4619,7 +4619,7 @@ export default {
       ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched, then clears itself.",
-      { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"], description: "finished, asks or either (the default)." }, notify: str, note: str } },
+      { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"], description: "finished, asks or either (the default)." }, notify: { type: "string", description: "capsule shows it on the person's devices." }, note: { type: "string", description: "A short label for the notice." } } },
       async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); });
 
     tool("threads.unwatch", "Stop waiting on a watch.",
