@@ -153,8 +153,8 @@ export function DocumentsHome() {
           <Card className="gap-s2">
             <View className="flex-row items-center gap-s2"><Text strong>Signing</Text><Chip tone={app?.running ? "ok" : "plain"}>{app?.word ?? "Checking..."}</Chip></View>
             <Text tone="muted">Documents go out for signature through the Documents app on this server.</Text>
-            {app && !app.installed ? <View className="flex-row"><Button kind="primary" label="Install the Documents app" loading={busy === "install"} onPress={() => { setBusy("install"); tool("appmods.install", { name: "documents" }).then(() => { showToast("Installing. This can take a few minutes."); loadApp(); }).catch((e) => showToast(say(e))).finally(() => setBusy("")); }} /></View> : null}
-            {app && app.installed && !app.running ? <View className="flex-row"><Button kind="primary" label="Start it" loading={busy === "start"} onPress={() => { setBusy("start"); tool("appmods.start", { name: "documents" }).then(() => { showToast("Started."); loadApp(); }).catch((e) => showToast(say(e))).finally(() => setBusy("")); }} /></View> : null}
+            {app && !app.installed ? <View className="flex-row"><Button kind="primary" label="Install the Documents app" loading={busy === "install"} onPress={() => { setBusy("install"); tool("appmods.install", { name: "documents" }).then(() => { showToast("Installing. This can take a few minutes."); }).catch((e) => showToast(say(e))).finally(() => { setBusy(""); loadApp(); }); }} /></View> : null}
+            {app && app.installed && !app.running && !app.installing ? <View className="flex-row"><Button kind="primary" label="Start it" loading={busy === "start"} onPress={() => { setBusy("start"); tool("appmods.start", { name: "documents" }).then(() => { showToast("Started."); loadApp(); }).catch((e) => showToast(say(e))).finally(() => setBusy("")); }} /></View> : null}
             {app?.running ? <Text size="caption" tone="label">{`${signing.length} signing ${signing.length === 1 ? "template" : "templates"} ready. Make them in the app's own screen.`}</Text> : null}
           </Card>
           <Card className="gap-s2">
