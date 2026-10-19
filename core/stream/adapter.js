@@ -211,8 +211,13 @@ export function createAdapter() {
           return p.ask ? [spec("ask", { ask_id: String(p.ask), kind: ["permission", "question", "approval"].includes(p.kind) ? p.kind : "permission", ...(p.tool ? { tool: String(p.tool) } : {}), ...(p.summary ? { summary: String(p.summary) } : {}) })] : [];
         case "ask.answered": case "ask.cancelled":
           return p.ask ? [spec("ask-answered", { ask_id: String(p.ask), decision: e.type === "ask.cancelled" ? "cancelled" : p.decision ?? null })] : [];
-        case "thread.finished":
-          return statusSeen ? [] : [spec("status", { state: p.ok === false || p.error ? "failed" : "waiting", ...(turn ? { turn } : {}) })];
+        case "thread.finished": {
+          const failed = p.ok === false || Boolean(p.error);
+          /** @type {Spec[]} */ const out = statusSeen ? [] : [spec("status", { state: failed ? "failed" : "waiting", ...(turn ? { turn } : {}) })];
+          // A turn that failed says so in the thread, in plain words with the reason (never a key: redacted), so the person is not left looking at a message that was never answered.
+          if (failed) out.push(...text({ message: `vyre-failed-${turn ?? e.id ?? "turn"}`, text: `The AI could not answer: ${redact(String(p.error || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200)}. Check AI accounts.`, done: true, notice: true }));
+          return out;
+        }
         case "thread.stopped":
           return statusSeen ? [] : [spec("status", { state: stoppedState(p.reason) })];
         default: return [];

@@ -239,3 +239,21 @@ test("an artifact that is a picture tells the chat its type, so the chat can sho
   const doc = ad.event({ type: "thread.artifact", payload: { artifact: "a_2", version: 1, title: "Notes", mime: "text/html" } });
   assert.equal(doc[0].data.result.mime, undefined);
 });
+
+test("adapter: a failed turn says so in the thread, with the reason and the next step, and never a key; a good turn says nothing more", () => {
+  const KEY = "sk-or-v1-" + "a".repeat(40);
+  const a = createAdapter();
+  const out = a.event(ev("thread.finished", { ok: false, error: `OpenRouter answered 401: bad key ${KEY}\nsecond line` }));
+  assert.equal(out[0].data.state, "failed");
+  const words = out.filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
+  assert.match(words, /^The AI could not answer: OpenRouter answered 401/);
+  assert.match(words, /Check AI accounts\.$/);
+  assert.ok(!words.includes(KEY), "no key in the words");
+  assert.ok(!/\n/.test(words), "one line");
+  assert.ok(out.some(x => x.kind === "text-delta" && x.data.notice === true), "Vyre's own words, shown with no turn open");
+  assert.equal(createAdapter().event(ev("thread.finished", { ok: true })).filter(x => x.kind === "text-delta").length, 0);
+  // with a status already said by thread.status, the words still come
+  const b = createAdapter();
+  b.event(ev("thread.status", { status: "failed" }));
+  assert.ok(b.event(ev("thread.finished", { ok: false, error: "boom" })).some(x => x.kind === "text-delta"));
+});
