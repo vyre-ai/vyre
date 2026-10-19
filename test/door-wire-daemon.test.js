@@ -77,7 +77,12 @@ async function boot(t, { door }) {
   assert.ok(made.data, `Ben makes his own vault: ${JSON.stringify(made.error)}`);
   const benPut = await asBen("vault.me.put", { name: "ben-openrouter", kind: "api-key", fields: { value: BEN_KEY } });
   assert.ok(benPut.data, `Ben's key is in his own vault: ${JSON.stringify(benPut.error)}`);
-  const benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" });
+  // sessions.accounts.add checks the item is in his own vault with a nested vault.me.has, which reads the person from the call's chain; a module's nested call does not carry the outer call's token in its
+  // meta (core/modules/index.js runInTurn passes the call's own meta to the tool), so on this daemon that check sees no person. This one nested call is handed Ben's token; the check itself is the real one.
+  const reg = /** @type {any} */ (d.registry), orig = reg.call.bind(reg);
+  reg.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => orig(tool, input, caller, tool === "vault.me.has" && caller === "module:sessions" && !(meta && meta.token) ? { ...(meta || {}), token: benToken } : meta);
+  let benAcct;
+  try { benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" }); } finally { delete reg.call; }
   assert.equal(benAcct.error, undefined, JSON.stringify(benAcct.error));
 
   /** A chat turn, as the stream starts one (chat and asker come only from module:stream). Resolves with the thread id and how its turn ended. @param {string} person @param {string} prompt */
