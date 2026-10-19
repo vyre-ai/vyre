@@ -1,11 +1,13 @@
 import { memo } from "react";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 import { SvgAst } from "react-native-svg";
 import Animated, { Easing, interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useUiTheme } from "../theme";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { motion } from "../motion/tokens";
 import { useMark, type MarkRef } from "../marks/useMark";
+import { usePersonPhoto } from "../marks/usePersonLooks";
+import { picture } from "../marks/photo-model.js";
 import { Text } from "./Text";
 import { SpaceTile } from "./SpaceTile";
 import { useCardFill } from "../lib/cardFill";
@@ -27,11 +29,15 @@ export function kindOf(family?: string): AvatarKind {
   return family === "assistant" ? "assistant" : family === "teammate" ? "teammate" : family === "service" || family === "agent" ? "agent" : family === "device" || family === "space" || family === "project" ? family : "person";
 }
 
-function Mark({ of, size }: { of: AvatarRef; size: number }) {
+function Mark({ of, size, face }: { of: AvatarRef; size: number; face?: boolean }) {
   // A space is its logo or a monogram on a calm tile, and a project a monogram on one: never the generated pattern.
   if (of.kind === "project") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
   if (of.kind === "space") return <SpaceTile space={{ id: of.id, name: of.name }} size={size as 16} />;
+  // A person with a profile photo in the Space is drawn with it, in a circle; until it is here (and for everyone with none, and every agent) the face, in the same box, so nothing moves.
+  const uri = usePersonPhoto(of, face);
   const ast = useMark(of, size);
+  const show = picture(of, uri, face);
+  if ("photo" in show) return <Image source={{ uri: show.photo }} accessibilityIgnoresInvertColors style={{ width: size, height: size, borderRadius: size / 2 }} />;
   if (!ast) return <View style={{ width: size, height: size }} />;
   return <SvgAst ast={ast} override={{ width: size, height: size }} />;
 }
@@ -56,10 +62,10 @@ const NOD = motion.duration.nod;
 /**
  * Who or what, as a mark. No letters, ever: a person or assistant has a Wink face, a teammate or agent a character, a project or matter an emblem,
  * a space its space emblem, a device its drawing. Every one is the Deck's generator on the entity's seed (`seed`, else `id`), so the same record
- * looks the same everywhere. `space` draws the space's emblem badge. With `onPress` it is a button and nods (scale 0.86, 1.1, 1 with a 5 degree
+ * looks the same everywhere. A person with a profile photo is drawn with the photo instead (`face` keeps the look, for the look picker's preview). `space` draws the space's emblem badge. With `onPress` it is a button and nods (scale 0.86, 1.1, 1 with a 5 degree
  * tilt over 460 ms and an accent ring); under reduced motion only the ring flashes, 160 ms.
  */
-export const Avatar = memo(function Avatar({ of, size = 32, space, onPress, ring, label }: { of: AvatarRef; size?: AvatarSize; space?: AvatarRef; onPress?: () => void; ring?: string; label?: string }) {
+export const Avatar = memo(function Avatar({ of, size = 32, space, onPress, ring, label, face }: { of: AvatarRef; size?: AvatarSize; space?: AvatarRef; onPress?: () => void; ring?: string; label?: string; /** Draw the look even when the person has a photo (the look picker's preview). */ face?: boolean }) {
   const { color } = useUiTheme();
   const reduced = useReducedMotion();
   const p = useSharedValue(0);
@@ -70,7 +76,7 @@ export const Avatar = memo(function Avatar({ of, size = 32, space, onPress, ring
   const box = { width: size, height: size };
   const body = (
     <Animated.View style={[box, style]}>
-      <Mark of={of} size={size} />
+      <Mark of={of} size={size} face={face} />
       <Animated.View pointerEvents="none" style={[{ position: "absolute", left: -2, top: -2, right: -2, bottom: -2, borderRadius: of.kind === "person" || of.kind === "assistant" ? size : size * 0.3, borderWidth: 2, borderColor: color.accent }, flash]} />
       {space ? <Badge space={space} size={size} ring={ring} /> : null}
     </Animated.View>
