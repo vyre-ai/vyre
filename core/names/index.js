@@ -50,7 +50,6 @@ export default {
       if (!ok) throw Object.assign(new Error("changing the box's name or owner is the person's own"), { code: "denied" });
     };
     const ownerOnly = steward([]);
-    const serveSteward = steward(["spaces"]);
     ctx.tool("names.status", {
       description: "This box's name and whether it is held: the name, its address once the built-in network publishes one, and why not when it cannot.",
       input: obj(),
@@ -65,8 +64,7 @@ export default {
       description: "Set the space this server serves: <name>.vyre.run. The directory points the name at this server only when the space listed this server's route, so a wrong name here publishes nothing.",
       input: obj({ name: { type: "string" } }, ["name"]),
       callers: WHO,
-      // The spaces module may serve a name too: it calls this only after the owner's own name-here call and the directory's answer for that very Space (core/spaces/index.js serveName).
-      run: async ({ name }, meta = {}) => { serveSteward(meta); return svc.serve(name); },
+      run: async ({ name }, meta = {}) => { ownerOnly(meta); return svc.serve(name); },
     });
     ctx.tool("names.domain.check", {
       description: "Live DNS check of the records for using your own domain: _acme-challenge.<domain> as a CNAME to <routehash>.acme.vyre.run (required) and an optional CAA record.",
@@ -120,6 +118,12 @@ export default {
     watch.unref();
     const soon = setTimeout(watching, 30_000);
     soon.unref();
-    return { async stop() { clearTimeout(soon); clearInterval(watch); } };
+    // The spaces module says "space.named" once the owner's own name-here call has been answered by the directory for this home's Space (core/spaces/index.js): this box then serves that name, as names.serve does. Only the spaces
+    // module's own event counts; names.serve itself stays the person's (a module cannot call it).
+    const offNamed = ctx.events.on("space.named", (/** @type {any} */ e) => {
+      if (!e || e.source !== "spaces") return;
+      try { svc.serve(String((e.payload && e.payload.name) || "")); } catch (err) { ctx.log(`names: the server could not start serving ${String(e.payload && e.payload.name)}: ${/** @type {Error} */ (err).message}`); }
+    });
+    return { async stop() { clearTimeout(soon); clearInterval(watch); offNamed(); } };
   },
 };

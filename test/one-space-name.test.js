@@ -141,7 +141,7 @@ test("a server whose own Space is named as a team's hosts no new Space beside it
   assert.ok(!again.error && again.data.existed === true, "an existing id is untouched: " + JSON.stringify(again));
 });
 
-test("the server takes the name it was given: names.serve is the spaces module's to call (name-here done does), another module's is refused, and names.status then shows the name", async t => {
+test("the server takes the name it was given: the spaces module's space.named makes it serve (names.status then shows the name); another source's event, and a direct names.serve from a module, do not", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
@@ -149,14 +149,13 @@ test("the server takes the name it was given: names.serve is the spaces module's
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: null, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const before = await d.registry.call("names.status", {}, "cli");
-  assert.ok(!before.error, JSON.stringify(before.error));
-  assert.equal(before.data.name, null, "a fresh box holds no name: this is the state the owner's server was left in");
-  const refused = await d.registry.call("names.serve", { name: "teamone" }, "module:threads");
-  assert.equal(refused.error?.code, "denied", "another module may not name the box");
-  const done = await d.registry.call("names.serve", { name: "teamone" }, "module:spaces");
-  assert.ok(!done.error, JSON.stringify(done.error));
-  const after = await d.registry.call("names.status", {}, "cli");
-  assert.equal(after.data.name, "teamone");
-  assert.equal(after.data.phase, "named");
+  const status = async () => { const r = await d.registry.call("names.status", {}, "cli"); assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
+  assert.equal((await status()).name, null, "a fresh box holds no name: this is the state the owner's server was left in");
+  assert.equal((await d.registry.call("names.serve", { name: "teamone" }, "module:spaces")).error?.code, "denied", "a module does not call names.serve; it says space.named");
+  d.events.emit("threads", "space.named", { name: "teamone" });
+  assert.equal((await status()).name, null, "only the spaces module's event counts");
+  d.events.emit("spaces", "space.named", { name: "teamone" });
+  const after = await status();
+  assert.equal(after.name, "teamone");
+  assert.equal(after.phase, "named");
 });
