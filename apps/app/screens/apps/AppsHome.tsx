@@ -64,7 +64,7 @@ export function AppsHome() {
   const others = (installed ?? []).filter((a) => !BUILT.some((b) => b.id === a.name));
   const tiles: { key: string; icon: IconName; label: string; sub: string; open?: () => void }[] = [
     ...BUILT.map((t) => ({ key: t.id, icon: t.icon, label: t.label, sub: stateOf(t.id) ? `${t.sub}. ${stateOf(t.id) === "running" ? "Running" : "Stopped"}.` : t.sub, open: t.route ? () => router.push(t.route as any) : undefined })),
-    ...others.map((a) => ({ key: `app:${a.name}`, icon: "box" as IconName, label: a.name, sub: a.state === "running" ? "Running" : "Stopped" })),
+    ...others.map((a) => ({ key: `app:${a.name}`, icon: "box" as IconName, label: a.name.charAt(0).toUpperCase() + a.name.slice(1), sub: a.state === "running" ? "Running" : "Stopped" })),
     ...screens.map((sc) => { const native = nativeOf(sc); return { key: `${sc.module}:${sc.id}`, icon: "box" as IconName, label: sc.label, sub: native ? "Vyre screen" : `Opens in ${sc.label}'s own editor`, open: () => (native ? router.push(native as any) : openScreen(sc)) }; }),
   ];
   const [width, setWidth] = useState(0);
