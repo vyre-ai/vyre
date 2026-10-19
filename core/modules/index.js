@@ -27,7 +27,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate, open as openStore } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof, noPresenceDevice } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof, noPresenceDevice, noPresenceWhy } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/module-sdk/manifest.js";
@@ -1358,7 +1358,7 @@ export class Registry {
     return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
-  noPresenceDevice(caller, meta, tool, input) { return noPresenceDevice({ presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder }, caller, meta, tool, input); } // core/presence/index.js
+  noPresenceDevice(caller, meta, tool, input, why) { const d = { presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder }; return why ? noPresenceWhy(d, caller, meta) : noPresenceDevice(d, caller, meta, tool, input); } // core/presence/index.js
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
@@ -1550,7 +1550,7 @@ export class Registry {
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code. With no presence device enrolled the owner's vouched paired device needs no sign-in (noPresenceDevice, core/presence).
       if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input) && !(await this.noPresenceDevice(caller, meta, tool, input)) && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
-        return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
+        return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you. " + await this.noPresenceDevice(caller, meta, tool, input, true) } };
       }
     }
     // The tools that hand out credentials, names, access or devices check the ORIGINAL caller on a module hop whatever their callers list says (a module relaying for an agent is not the person).

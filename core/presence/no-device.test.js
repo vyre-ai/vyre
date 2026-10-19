@@ -4,6 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { Presence } from "./index.js";
@@ -73,6 +74,21 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, tool, {}), true, `${tool}: the app device is not asked`);
   }
   assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: { ...devFacts, web: true } }, "spaces.invites.create", {}), true, "a web browser still makes an invite");
+  // 4e. a browser's own software key (a relay device whose key is software) is not a phone and does not turn approvals on; a hardware key is, and the refusal says why in counts and kinds
+  {
+    const kp = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const added = presence.enroll({ kind: "device", name: "browser", public_key: kp.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
+    const db = d.registry.deps.db;
+    db.prepare("INSERT OR REPLACE INTO relay_devices (id, name, pub, presence_key, paired_at, kind, trusted, removed_at, key_storage) VALUES ('softbrowser00000a', 'browser', 'p', ?, 1, 'app', 0, NULL, 'software')").run(added.id);
+    assert.equal(presence.keys().length, 1);
+    assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}), true, "a browser's own software key does not count as a phone");
+    db.prepare("UPDATE relay_devices SET key_storage = 'hardware' WHERE id = 'softbrowser00000a'").run();
+    assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}), false, "a hardware key does");
+    const why = await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts }, "spaces.invites.create", {}, true);
+    assert.match(why, /keys enrolled: 1.*caller kind: app; owner device: yes; facts: yes/, why);
+    assert.doesNotMatch(why, /per_|abcdefghijklmnop/, "no ids in the reason");
+    presence.remove(added.id);
+  }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
   const was = presence.keys;
   presence.keys = () => [{ id: "k1", kind: "device", name: "phone" }];
