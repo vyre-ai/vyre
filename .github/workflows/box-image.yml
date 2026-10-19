@@ -270,15 +270,22 @@ jobs:
           echo "docker-api before vyred: $(docker logs "$api" 2>&1 | tail -2)"
           docker compose $F up -d vyre
           V=$(docker compose $F ps -q vyre); export V
-          C="$V" sh "$RUNNER_TEMP/health.sh" 300
+          # every look inside is as uid vyre (1000): the box's container drops every capability, so root there cannot open vyred's home or the bearer's folder
           cat > "$RUNNER_TEMP/call.sh" <<'EOF'
-          # call.sh <tool> <json>: one call as the person at vyred's socket, in the vyre container; prints the answer
-          docker exec -e T="$1" -e I="$2" "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.call(process.env.T, JSON.parse(process.env.I), { caller: "cli", timeout: 240000 }); console.log(JSON.stringify(r)); }).catch(e => console.log(JSON.stringify({ error: { message: String(e && e.message || e) } })))'
+          # call.sh <tool> <json>: one call as the person at vyred's socket (the CLI's own uid), in the vyre container; prints the answer
+          docker exec -u 1000:1000 -e T="$1" -e I="$2" "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.call(process.env.T, JSON.parse(process.env.I), { caller: "cli", timeout: 240000 }); console.log(JSON.stringify(r)); }).catch(e => console.log(JSON.stringify({ error: { message: String(e && e.message || e) } })))'
           EOF
+          i=0
+          until docker exec -u 1000:1000 "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))' 2>/dev/null; do
+            i=$((i + 1)); [ $i -lt 300 ] || { echo "no health in 300 s"; exit 1; }
+            [ "$(docker inspect -f '{{.State.Running}}' "$V")" = true ] || { echo "the vyre container stopped"; exit 1; }
+            sleep 1
+          done
+          echo "vyred answers after ${i} s"
           # nothing was edited: the home's config.json names no computers
-          if docker exec "$V" sh -c 'test -f /home/vyre/.vyre/config.json && grep -q "\"computers\"" /home/vyre/.vyre/config.json'; then echo "config.json names computers"; exit 1; fi
+          if docker exec -u 1000:1000 "$V" sh -c 'test -f /home/vyre/.vyre/config.json && grep -q "\"computers\"" /home/vyre/.vyre/config.json'; then echo "config.json names computers"; exit 1; fi
           echo "config.json has no computers key"
-          docker exec "$V" test -s /var/lib/vyre-secrets/docker-api-bearer || { echo "vyred wrote no bearer for docker-api"; exit 1; }
+          docker exec -u 1000:1000 "$V" test -s /var/lib/vyre-secrets/docker-api-bearer || { echo "vyred wrote no bearer for docker-api"; exit 1; }
           echo "vyred wrote docker-api's bearer"
           a=$(sh "$RUNNER_TEMP/call.sh" agents.create '{"name":"kit","computer":true}'); echo "agents.create: $a"
           echo "$a" | grep -q '"error"' && exit 1
@@ -309,7 +316,7 @@ jobs:
           docker compose -f box/compose.yml --profile computers logs --tail 60 docker-api 2>&1 || true
           docker compose -f box/compose.yml --profile computers logs --tail 150 vyre 2>&1 || true
           v=$(docker compose -f box/compose.yml --profile computers ps -aq vyre)
-          [ -n "$v" ] && docker exec "$v" sh -c 'ls -la /home/vyre/.vyre /home/vyre/.vyre/logs 2>&1; for f in /home/vyre/.vyre/logs/*; do echo "== $f"; tail -n 80 "$f"; done; ps -eo user,pid,args | head -30' 2>&1 | tail -250 || true
+          [ -n "$v" ] && docker exec -u 1000:1000 "$v" sh -c 'ls -la /home/vyre/.vyre /home/vyre/.vyre/logs 2>&1; for f in /home/vyre/.vyre/logs/*; do echo "== $f"; tail -n 80 "$f"; done; ps -eo user,pid,args | head -30' 2>&1 | tail -250 || true
           for c in $(docker ps -aq --filter label=run.vyre.computers.managed=true); do docker logs --tail 60 "$c" 2>&1 || true; done
       - name: Compose down
         if: always() && hashFiles('core/daemon/loop.sh') != ''
