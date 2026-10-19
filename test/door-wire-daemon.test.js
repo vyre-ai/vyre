@@ -43,7 +43,8 @@ async function boot(t, { door }) {
     await real.health();
     sealer = { ...real, detect: async (/** @type {any} */ i) => { scans.push({ person: firstPerson(i.chain), session: String(i.session), text: String(i.text) }); return real.detect(i); } };
   } else process.env.VYRE_KERNEL_FILE_KEY = "1";   // a development home with no sealing process: no door
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null }, ...(sealer ? { kernelSealer: sealer } : {}) });
+  /** The daemon's last lines, said when a turn is refused. @type {string[]} */ const logs = [];
+  const d = await start({ root, presence: present, log: (/** @type {any} */ m) => { logs.push(String(m)); if (logs.length > 80) logs.shift(); }, kernel: true, kernelPresence: { check: async () => null }, ...(sealer ? { kernelSealer: sealer } : {}) });
   t.after(async () => {
     await d.stop();
     if (sealer) await sealer.close().catch(() => {});
@@ -84,12 +85,16 @@ async function boot(t, { door }) {
   let benAcct;
   try { benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" }); } finally { delete reg.call; }
   assert.equal(benAcct.error, undefined, JSON.stringify(benAcct.error));
+  // the daemon lends her key for her own turn (core/daemon/lend-key.js -> vault.me.lend), and only hers
+  const lent = await /** @type {any} */ (d.registry.deps).lendKey({ asker: BEN, account: String(benAcct.data.id || benAcct.data.account) });
+  assert.equal(lent.error, undefined, `her key is lendable for her own turn: ${JSON.stringify(lent.error)}`);
+  assert.ok(lent.data.value === BEN_KEY, "the lent key is her own");
 
   /** A chat turn, as the stream starts one (chat and asker come only from module:stream). Resolves with the thread id and how its turn ended. @param {string} person @param {string} prompt */
   const chatTurn = async (person, prompt) => {
     const c = await K.gateway.grants.chats.create(chain(person), {});
     const th = await d.registry.call("threads.start", { cwd: process.cwd(), provider: "openrouter", model: "x/y", prompt, chat: c.id, asker: person, surface: "deck" }, "module:stream");
-    assert.equal(th.error, undefined, JSON.stringify(th.error));
+    assert.equal(th.error, undefined, `${JSON.stringify(th.error)}\n${logs.slice(-25).join("\n")}`);
     const id = String(th.data.id);
     return { id, end: await until(() => finished.get(id), `the turn on ${id} to end`) };
   };
