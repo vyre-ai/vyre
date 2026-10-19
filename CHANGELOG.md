@@ -53,6 +53,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(roles): New role on a real box was refused with 'There is no record type "invoice" in this Space'. The screen read the box's record types by an `id` the box does not send (it names a type by `name`), so it fell back to its sample types and sent them as the new role's data. It now reads the types by name and makes the role from the Space's own types. Found by the real-box owner walk.
+
 - test(daemon): the ask-door test of forged asks from fresh channels now says what the door does. They fill the box-wide lookup cap (50 a minute), so a valid ask in that minute waits for the next one; they do not spend the Space's three an hour, which three valid asks a minute later still get (the fourth is refused by the Space-wide cap). The door's code is unchanged.
 - fix(app): one way to open a link. In the Mac app window.open and Linking.openURL did nothing ("Open the sign-in" and Link GitHub said the popup was blocked); every link now goes through openExternal (src/shell/open-external.ts), which uses the shell's own open in the Mac app, a window in a browser and the system on a phone, and only opens web, mail and phone links. Where a sign-in link matters it is also shown as text to copy. The GitHub sign-in in the Mac app still waits on a return page that lands in the browser, not the window (not fixed here).
 - fix(settings): AI accounts has one Claude sign-in. The Claude card is the one place; the other accounts list no longer shows a second Claude row for the owner. A pasted Claude code whose state (the part after #) is not the open sign-in's says "That code is from a different sign-in. Open the sign-in again."

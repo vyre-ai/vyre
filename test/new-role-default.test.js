@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { checkRole } from "../lib/roles/definition.js";
 import { CAN, CUSTOM_BASES } from "../lib/roles/catalogue.js";
 import { ADMIN_ONLY, builtInRoles, newRole, starting } from "../apps/app/screens/roles/model.js";
-import { bodyOf } from "../apps/app/screens/roles/source.js";
+import { bodyOf, rolesSource } from "../apps/app/screens/roles/source.js";
 
 test("the New role dialog's default is accepted by the box for every base a custom role may start from", () => {
   assert.deepEqual([...CUSTOM_BASES], ["member"], "the bases the box takes (add a base here and it is held to the same rule)");
@@ -26,4 +26,18 @@ test("a new role never starts with a switch only an admin may hold, and the scre
   assert.deepEqual([...ADMIN_ONLY].sort(), want, "ADMIN_ONLY in the app is the catalogue's admin-only switches");
   const on = Object.entries(starting("member").can).filter(([, v]) => v).map(([k]) => k);
   assert.deepEqual(on.filter(k => ADMIN_ONLY.includes(k)), [], "the default holds none of them");
+});
+
+test("the dialog makes a role from the Space's own record types, so a Space with no invoice type is not refused for one", async () => {
+  const types = [{ name: "contact", fields: [{ name: "name" }] }, { name: "organization", fields: [{ name: "name" }] }];
+  /** @type {any} */ let made = null;
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (tool === "records.types") return { data: { types } };
+    if (tool === "roles.create") { made = input.role; return { data: { role: { ...input.role, builtin: false } } }; }
+    return { data: [] };
+  };
+  await rolesSource(call).create("member", "TestRole");
+  assert.ok(made, "the dialog asked the box to make the role");
+  assert.deepEqual(Object.keys(made.data).sort(), ["contact", "organization"], "the role names only the Space's own types");
+  assert.doesNotThrow(() => checkRole(made, { types }), "and the box takes it");
 });
