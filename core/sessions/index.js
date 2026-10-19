@@ -16,6 +16,7 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf, withRefsResolved } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { environmentOf } from "./environment.js";
+import { accountModel } from "./account-model.js";
 import { timeLine, zoneFrom } from "../../lib/time/index.js";
 import { OPEN as AGENT_OPEN } from "../modules/agent-reach.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
@@ -557,7 +558,7 @@ export default {
         const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
-        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, person: await ownerOfAccount(meta), ...(k.custom ? { base_url: base } : {}), ...(accountModel(k.provider, i.model) ? { model: accountModel(k.provider, i.model) } : {}) });
         accountChanged(row, true, "key");
         return { account: row.id, provider: row.provider, label: row.label, item, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
