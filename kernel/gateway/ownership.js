@@ -151,9 +151,10 @@ export async function mayWrite(chain, type, row, patch, ctx) {
  */
 function mayWriteProfile(chain, row, patch, ctx) {
   if (ctx.op === "remove" && ctx.trusted) return true;
+  // exactly one hop, the person's own: a person calling through a module, a hook, a Flow step or an agent carries a service or agent hop and is refused
   const acting = actorsOf(chain);
-  const me = acting.find((/** @type {any} */ a) => a.kind === "person");
-  if (!me || acting.some((/** @type {any} */ a) => a.kind === "agent")) throw no("a profile is changed only by its person, from their own device. An agent cannot change it.");
+  const me = acting.length === 1 && acting[0].kind === "person" ? acting[0] : null;
+  if (!me) throw no("a profile is changed only by its person, from their own device. A module, a Flow or an agent cannot change it.");
   const person = String(me.id), p = patch && typeof patch === "object" ? patch : {};
   if (ctx.op === "create") { if (idOf(p.person) !== person) throw no("a profile you make is your own: name yourself as its person."); return true; }
   if (idOf(row && row.data && row.data.person) !== person) throw no("only the person a profile is about changes it. Ask them.");
