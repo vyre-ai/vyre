@@ -86,7 +86,11 @@ test("a member starts her own projects through the door: a blank project, one fr
 test("a member's daily Records and tasks go through the door under the same name; presence and admin calls stay on her own home", async () => {
   const { memberWire, isTeamWork } = await import("./with-space.js");
   for (const t of ["records.me", "records.actors", "records.types", "records.list", "records.get", "records.events", "records.create", "records.update", "tasks.list", "tasks.get", "tasks.request", "tasks.move", "tasks.submit"]) assert.equal(memberWire(t), t, t);
-  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.add"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
+  for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
+  // a joined member's Records reads and her call or meeting log go through the door too (history, totals, Busy blocks, roles, log)
+  for (const t of ["records.history", "records.stats", "records.busy", "records.roles.summary", "records.log", "records.move", "records.layout.get", "records.layout.set", "records.relationship.list"]) assert.equal(memberWire(t), t, t);
+  // the four planner NOTE calls have door rows (core/work/member-tools.js), but box.ts sends a planner call there only when the Notes tab marks it { notes: true }: the table alone does not route the planner, and the rest of the planner has no row
+  for (const t of ["planner.list", "planner.get", "planner.add", "planner.update"]) { assert.equal(memberWire(t), t, t); assert.ok(!isTeamWork(t), `${t} is not refused`); }
 });
 
 test("a member's project files go through the door: list, read and upload, and nothing else of Drive", async () => {
