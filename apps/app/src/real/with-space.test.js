@@ -110,3 +110,41 @@ test("a member's project files go through the door: list, read and upload, and n
   for (const t of ["files.list", "files.read", "files.upload"]) assert.equal(memberWire(t), t, t);
   for (const t of ["files.drive.list", "files.drive.read", "files.drive.upload", "files.drive.restore", "files.drive.link.create"]) assert.equal(memberWire(t), null, `${t} stays on her own home`);
 });
+
+test("while a team shows, only the Notes tab's marked planner note calls reach the team's door, with the marker, the kind and the Space taken off", async () => {
+  const { teamRoute, planWire } = await import("./with-space.js");
+  const SPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any[]} */ const teamCalls = [];
+  const joined = async (/** @type {string} */ s) => s === SPACE;
+  /** a fake team door: the call box.ts makes when teamRoute names a route */
+  const send = async (/** @type {string} */ name, /** @type {any} */ given, showing = SPACE, isJoined = joined) => { const r = await teamRoute(name, given, showing, isJoined); if (r) teamCalls.push([r.space, r.wire, r.input]); return r; };
+  const notes = ["planner.add", "planner.list", "planner.get", "planner.update"];
+  // (a) unmarked: no team call
+  for (const t of notes) assert.equal(await send(t, { title: "x", kind: "note", item: "i" }), null, `${t} unmarked stays home`);
+  assert.equal(teamCalls.length, 0);
+  // (b) marked: exactly one call each, to the right wire, with notes, kind and space stripped
+  for (const t of notes) {
+    const before = teamCalls.length;
+    await send(t, { title: "x", kind: "note", item: "i", notes: true, space: SPACE });
+    assert.equal(teamCalls.length, before + 1, `${t} marked makes one team call`);
+    assert.deepEqual(teamCalls[teamCalls.length - 1], [SPACE, t, { title: "x", item: "i" }], t);
+  }
+  // (c) the rest of the planner: no team call, marked or not
+  for (const t of ["planner.delete", "planner.done", "planner.agenda", "planner.snooze"]) { const before = teamCalls.length; assert.equal(await send(t, { item: "i", notes: true }), null, t); assert.equal(teamCalls.length, before, `${t} makes no team call`); }
+  // (d) at home, with no team showing or a Space she has not joined: a marked call is not routed, and only loses the marker
+  for (const t of notes) {
+    const before = teamCalls.length;
+    assert.equal(await teamRoute(t, { title: "x", notes: true }, undefined, joined), null, `${t}: no team showing`);
+    assert.equal(await send(t, { title: "x", notes: true }, SPACE, async () => false), null, `${t}: a Space she has not joined`);
+    assert.equal(teamCalls.length, before);
+    assert.deepEqual(planWire(t, { title: "x", notes: true }).given, { title: "x" }, `${t}: only the marker is dropped`);
+  }
+  // other tools keep their input whole (the kind and other keys are only dropped from planner calls)
+  assert.deepEqual(await teamRoute("records.list", { type: "deal", kind: "x" }, SPACE, joined), { space: SPACE, wire: "records.list", input: { type: "deal", kind: "x" } });
+  // box.ts makes the team call from exactly this route, and nothing else sends a planner call to the team (box.ts needs React Native, so this part is a source-pattern check)
+  const { readFileSync } = await import("node:fs");
+  const box = readFileSync(new URL("./box.ts", import.meta.url), "utf8");
+  assert.match(box, /const routed = await teamRoute\(name, given, useSpaces\.getState\(\)\.space/);
+  assert.match(box, /team\.teamCall\(routed\.space, routed\.wire, \[routed\.input\]\)/);
+  assert.doesNotMatch(box, /memberChatWire\(/, "box.ts reaches the member table only through planWire and teamRoute");
+});
