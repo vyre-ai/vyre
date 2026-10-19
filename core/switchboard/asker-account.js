@@ -1,6 +1,7 @@
 // @ts-check
 import { carriesPickedCredential, OPENROUTER_DEFAULT_MODEL } from "../sessions/providers.js";
 import { connectOwn } from "../../lib/own-account.js";
+import { CREDENTIAL_VARS } from "../../lib/credential-env.js";
 // A shared chat's turn runs on the ASKER's own account of the thread's provider (0.3.3 G04). Accounts belong to people (sessions_accounts.person; Accounts.resolve({ provider, person }) considers only the
 // accounts that serve that person), so a turn is never run on another member's sign-in:
 //   - the asker has an own account for the provider: the turn runs on it (one turn, the conversation handed over, then the thread goes back to its own);
@@ -66,6 +67,17 @@ export async function accountProviderFor(sb, o) {
     if (acct && acct.id) return { provider: String(provider), account: String(acct.id), ...(provider === "openrouter" && !acct.model && !o.model ? { model: OPENROUTER_DEFAULT_MODEL } : {}) };
   }
   return null;
+}
+
+/**
+ * The launch options with every credential PICKED for the agent taken out (a token or key in any variable a model key can ride in, a descriptor naming one, and the API-key fallback) when the account the run uses
+ * is a person's own: her turn runs on her sign-in alone, and the agent's credentials, which are the owner's, are never in her child nor carried on as its fallback. Any other account: as they were. @param {any} o @param {any} acct
+ */
+export function withoutPicked(o, acct) {
+  if (!o || !acct || !acct.person) return o;
+  const env = o.env && typeof o.env === "object" ? Object.fromEntries(Object.entries(o.env).filter(([k]) => !CREDENTIAL_VARS.includes(k) && !/FILE_DESCRIPTOR$/.test(k))) : o.env;
+  const { fallback: _drop, ...rest } = o;
+  return { ...rest, ...(env !== undefined ? { env } : {}) };
 }
 
 /** The launch options with the direct-call marker taken out of any env the caller gave: the marker is set only by ownerDirect, at the account merge, never by a caller. @param {any} o */
@@ -296,12 +308,17 @@ export async function agentLaunchGuard(sb, i, who, owner) {
 export const trustedLaunch = (i, meta) => {
   if (!i) return i;
   const first = Boolean(meta && meta.firstParty === true && String(meta.caller || "").startsWith("module:"));
-  const { for_person, read_only, run_as, flow_origin, account, person, ...rest } = i;
+  const { for_person, read_only, run_as, flow_origin, account, person, own_run: _never, ...rest } = i;   // own_run is never a caller's word: it is set here or not at all
+  // A run on a person's own account, for that person, launched by one of the two modules that run agents for people (agents: her thread, a wake, a schedule, a helper; team: her request to a teammate). Only this
+  // marker lets lend-turn.js lend her key to a run with no chat turn of hers: any other first-party module's for_person never does.
+  const ownRun = first && ["module:agents", "module:team"].includes(String(meta.caller)) && typeof for_person === "string" && for_person && typeof account === "string" && account && person === for_person;
   // `for_person` from any first-party module; `read_only` (one folder the session may read, its own agent folder) only from the agents module: nobody else widens what a sandbox can read.
   // `account` and `person` (the AI sign-in a launch runs on, and whose it is) only from a first-party module: from anyone else a launch could name another person's login.
   return { ...rest, ...(for_person !== undefined && first ? { for_person } : {}), ...(account !== undefined && first ? { account } : {}), ...(person !== undefined && first ? { person } : {}), ...(read_only !== undefined && first && String(meta.caller) === "module:agents" ? { read_only } : {}),
-    // `run_as` (the person a Flow's job acts as, so its kernel session is theirs and not the owner's) and `flow_origin` (where the job came from) only from the agents module, which got them from the host.
-    ...(run_as !== undefined && first && String(meta.caller) === "module:agents" ? { run_as } : {}), ...(flow_origin !== undefined && first && String(meta.caller) === "module:agents" ? { flow_origin } : {}) };
+    // `run_as` (the person a run acts as, so its kernel session is theirs and not the owner's) from the agents module, which got it from the host or the call's chain, and from the team module for a person's own request;
+    // `flow_origin` (where a Flow's job came from) only from the agents module.
+    ...(run_as !== undefined && first && ["module:agents", "module:team"].includes(String(meta.caller)) ? { run_as } : {}), ...(flow_origin !== undefined && first && String(meta.caller) === "module:agents" ? { flow_origin } : {}),
+    ...(ownRun ? { own_run: true } : {}) };
 };
 
 /** The first person on a kernel chain (a member's session chain carries her and the assistant: she is who asks). @param {any} chain @returns {string | null} */

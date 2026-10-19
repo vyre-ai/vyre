@@ -2,8 +2,10 @@
 // Stages made of tasks (team/0.3/DESIGN-tasks.md, idea 5). A stage in a type's definition lists task templates. When a record enters a stage
 // this module creates those tasks through `ask.request`; when the stage's required tasks are done it moves the record to the next stage, once.
 // It is a module over kernel events: record.stage-entered (or a record created at a stage) in, task state events in, record updates out. It
-// holds no permission of its own: every call runs under the module's chain, [the person who installed the Kit, service:stages], so the tasks
-// it assigns carry that person as the assigner and never exceed what they could do.
+// holds no permission of its own: every call runs under the module's chain, [the person who moved the record into the stage, service:stages], so the
+// tasks it assigns carry that person as the assigner and never exceed what they could do. The person is read from the chain of the write that
+// entered the stage and carried through the automatic move to the next stage (whose write is then theirs too) and kept on the gate across a
+// restart; an early move is the chain of the person who makes it. Only a write with no person on it (the home's own services) is the owner's.
 //
 //   const stages = createStages({ kernel, catalog, chain, ports, clock, emit });
 //   kernel events -> stages.onEvent(event)
@@ -35,7 +37,7 @@ const FINISHED = new Set(["done", "skipped"]);
 
 /**
  * @param {{
- *   kernel: any, catalog: () => any, chain: () => any,
+ *   kernel: any, catalog: () => any, chain: (person?: string) => any,  the stage's chain for the person on the write (the owner's when there is none)
  *   ports?: { roles?: (space: string, role: string) => any[] | Promise<any[]>, doer?: (role: string, ctx: any) => any },
  *   clock?: () => number, emit?: (type: string, data: any) => void,
  *   hook?: boolean,  // the gateway calls onStageEnter itself, so the record.stage-entered event is not a second way in
@@ -136,21 +138,24 @@ export function createStages(o) {
     }
   }
 
-  /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string }} e */
+  /**
+   * A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. `by` is the person on the write that entered it: the tasks are theirs to assign.
+   * @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string, by?: string }} e
+   */
   async function enter(e) {
     const stage = e.templates ? { tasks: e.templates, owner: e.owner } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
-    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]) };
+    const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false, unmade: /** @type {{ title: string, why: string }[]} */ ([]), ...(e.by ? { by: e.by } : {}) };
     // A task with a checker, an approver or a reviewer that could not be made holds the stage: the stage never settles on the tasks that were made while the check that was meant to stand in front of it is missing.
     const held = (/** @type {any} */ t, /** @type {string} */ why) => { if (t.checker || t.approver || t.reviewer) ent.unmade.push({ title: t.title, why }); };
     entries.set(key, ent);
     latest.set(`${e.urn}|${e.stage}`, key);
     if (o.startFlow) await automate(e, key);
     if (!templates.length) return;
-    const chain = o.chain();
+    const chain = o.chain(e.by);
     // The stage owner (role:x or person:x) is told when one of its tasks is not done by its due offset: the task's escalate_to, read by the planner.
     const data = (await recordData(e.type, e.id)) || {};
     const owner = stage && stage.owner ? await actorFor(stage.owner, space, { record: e.urn, type: e.type, stage: e.stage }) : null;
@@ -213,7 +218,7 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, ...(ent.by ? { by: ent.by } : {}), unmade: ent.unmade, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
   }
 
@@ -233,7 +238,7 @@ export function createStages(o) {
       return;
     }
     if (!ent || ent.advanced || !ent.tasks.length) return;
-    const chain = o.chain();
+    const chain = o.chain(ent.by);   // the person who moved it in: reading their tasks and moving it on are theirs
     const rows = [];
     for (const t of ent.tasks) { const row = await o.kernel.ask.get(chain, t.id); if (!row) return; t.state = row.state; rows.push({ ...t, state: row.state }); }
     // A task the kernel calls done counts only when its checklist holds (s2): the gate looks, the doer's word is not enough.
@@ -242,7 +247,7 @@ export function createStages(o) {
       const t = ent.tasks.find(/** @param {any} x */ x => x.id === r.id);
       if (!DONE.has(r.state) || !t || !t.checklist) continue;
       const data = (await recordData(ent.type, ent.id)) || {};
-      const ev = await evalChecklist(t.checklist, { data, since: t.since || 0, now: now(), seen, memo: t.memo, ...(o.gates && o.gates.read ? { read: (/** @type {any} */ spec) => /** @type {any} */ (o.gates).read(spec, o.chain()) } : {}) });
+      const ev = await evalChecklist(t.checklist, { data, since: t.since || 0, now: now(), seen, memo: t.memo, ...(o.gates && o.gates.read ? { read: (/** @type {any} */ spec) => /** @type {any} */ (o.gates).read(spec, chain) } : {}) });
       t.memo = ev.memo; t.due = ev.due;
       if (!ev.ok) {
         r.state = "checking"; t.state = "checking"; listed = true;
@@ -282,15 +287,19 @@ export function createStages(o) {
     await mark(ent, "move", { status: "done", output: { to: next.name } });
     await closeGate(ent);
     // a template project's next stage is entered here: the gateway's hook does not see its text field
-    if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: next.name, entry: advEntry(key) });
+    if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: next.name, entry: advEntry(key), ...(ent.by ? { by: ent.by } : {}) });
   }
 
-  /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[], owner?: string }} e */
+  /** The person on a write's chain (its first person hop), or undefined for a write by the home's own services. @param {any} chain */
+  const personOn = chain => { const h = chain && Array.isArray(chain.hops) ? chain.hops.find((/** @type {any} */ x) => x && x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : undefined; };
+
+  /** The gateway's onStageEnter hook: the record, the stage, the stage's task templates and the write's chain, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[], owner?: string, chain?: any }} e */
   function onStageEnter(e) {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(e.record);
     if (!m) return Promise.resolve();
+    const by = personOn(e.chain);
     // Not awaited: the gateway calls this inside the write, and the queue may be mid-advance on this very record (an awaited call would wait on itself).
-    void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates, owner: e.owner })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
+    void serial(() => enter({ urn: e.record, type: m[1], id: m[2], stage: e.stage, entry: `gw${++entrySeq}`, templates: e.templates, owner: e.owner, ...(by ? { by } : {}) })).catch(err => emit("stage.error", { record: e.record, stage: e.stage, why: String(err && err.message) }));
     return Promise.resolve();
   }
   let entrySeq = 0;
@@ -330,7 +339,7 @@ export function createStages(o) {
     for (const run of await o.gates.list()) {
       const g = run.gate;
       if (!g || entries.has(g.key)) continue;
-      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next };
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, unmade: Array.isArray(g.unmade) ? g.unmade : (run.steps.tasks && run.steps.tasks.output && Array.isArray(run.steps.tasks.output.unmade) ? run.steps.tasks.output.unmade : []), run: run.id, owner: g.owner, next: g.next, ...(typeof g.by === "string" && g.by ? { by: g.by } : {}) };
       entries.set(g.key, ent);
       latest.set(`${g.urn}|${g.stage}`, g.key);
       for (const t of ent.tasks) taskEntry.set(t.id, g.key);
@@ -370,7 +379,9 @@ export function createStages(o) {
       if (!ent.next) throw fail("bad_state", "this is the last stage; there is nowhere to move it");
       if (!(await mayAdvance(ent, who))) throw fail("not_allowed", "only the stage's owner or an admin moves a record on early");
       if (!reason || !String(reason).trim()) throw fail("bad_input", "reason is required: say why it moves on early");
-      const chain = o.chain();
+      // the early move is the act of the person who makes it: the next stage's tasks are theirs to assign (the person who moved it in when the mover is not a person)
+      const mover = who && who.kind === "person" && who.id ? String(who.id) : ent.by;
+      const chain = o.chain(mover);
       const cur = await o.kernel.records.get(chain, ent.type, ent.id);
       if (!cur || cur.data[fieldOf(cur.data)] !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
       await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` });
@@ -378,7 +389,7 @@ export function createStages(o) {
       await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
       await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
       emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
-      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key) });
+      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key), ...(mover ? { by: mover } : {}) });
       return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
     });
   }

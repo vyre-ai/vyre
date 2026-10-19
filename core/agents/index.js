@@ -400,7 +400,11 @@ export default {
     const launch = async (a, { prompt, resume, job, project, forPerson, own, runAs, flowOrigin } = {}) => {
       // An agent whose model is on another provider (an OpenRouter model) is not run on its Claude credentials: the run takes that provider's account of whoever it is for (accountProviderFor).
       const onPicked = !own && Boolean(a.model_provider) && a.model_provider !== "claude";
-      const creds = own || onPicked ? { auth: "ambient" } : await credentials(a);
+      // That run is paid by a key as the API-key fallback is, so the agent's budget holds it too: refused once spent, and given what is left as its own backstop.
+      const budget = typeof a.auth.budget_usd === "number" ? a.auth.budget_usd : null;
+      const left = onPicked && budget != null ? Math.max(0, budget - spent(a.name)) : null;
+      if (left === 0) throw new Error(`${a.name} has spent its $${budget} budget on the API key`);
+      const creds = own || onPicked ? { auth: "ambient", ...(left != null ? { budget_usd: left } : {}) } : await credentials(a);
       // The model: the agent's own when it is on the provider the run uses (its stored provider, or Claude's when none is stored), else the account's own model (OpenRouter's default when it has none).
       const provider = own ? String(own.provider || "claude") : null;
       const model = own ? ((a.model && (a.model_provider || "claude") === provider) ? a.model : (own.model || undefined)) : (creds.model || a.model);
@@ -426,8 +430,8 @@ export default {
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}),
         // the person this launch is FOR, so the agent gate (core/switchboard/asker-account.js agentLaunchGuard) judges them and not this module's own empty chain
         ...(forPerson ? { for_person: forPerson } : {}),
-        // a Flow's job: its kernel session is the approver's (never the owner's), and the thread says which Flow, run, step and task it came from
-        ...(runAs ? { run_as: runAs } : {}), ...(flowOrigin ? { flow_origin: flowOrigin } : {}),
+        // a Flow's job: its kernel session is the approver's (never the owner's), and the thread says which Flow, run, step and task it came from; a run on a person's own account always acts as that person
+        ...(runAs || (own && forPerson) ? { run_as: runAs || forPerson } : {}), ...(flowOrigin ? { flow_origin: flowOrigin } : {}),
         // the chatter's own sign-in: named, so the switchboard runs the turn on it and the agent's credentials are not in the child at all
         ...(own ? { provider, account: String(own.id), person: forPerson } : {}),
         // an agent working in a project runs in the PROJECT folder: its own agent folder (instructions, context, notes) is then the one extra folder it may read, never another agent's
@@ -533,7 +537,18 @@ export default {
     const snapOf = a => ({ instructions: a.instructions ?? null, skills: a.skills || [], model: a.model ?? null, effort: a.effort ?? null, tags: a.tags || "" });
     const hashOf = o => createHash("sha256").update(JSON.stringify(o)).digest("hex").slice(0, 24);
     /** The person a call is for: its chain's first hop when that is a person, else the Space's owner (the CLI and the Deck are the owner's). */
-    const personOf = async meta => { if (!K) return ""; try { const c = await K.chain(meta); const h = c && c.hops && c.hops[0]; if (h && h.actor.kind === "person") return h.actor.id; } catch { /* no chain: the owner's surface */ } return String(K.owner || ""); };
+    // A chain that cannot be read, or one whose first hop is not a person while an agent or a person is on it, is no one's call: refused, never the owner's (whose account and grants it would otherwise spend).
+    // Only a chain of the home's own services (the owner's surfaces with no session, the daemon, a module's own call) is the owner's.
+    const personOf = async meta => {
+      if (!K) return "";
+      const nobody = () => Object.assign(new Error("Vyre could not tell which person this call is for, so nothing was done. Sign in again, then retry."), { code: "denied" });
+      let c; try { c = await K.chain(meta); } catch { throw nobody(); }
+      const hops = c && Array.isArray(c.hops) ? c.hops : [];
+      const h = hops[0];
+      if (h && h.actor && h.actor.kind === "person") return h.actor.id;
+      if (hops.some((/** @type {any} */ x) => !x || !x.actor || x.actor.kind !== "service")) throw nobody();
+      return String(K.owner || "");
+    };
     /**
      * Whether a call may see an agent's whole row (its instructions, tools, projects, credentials' mode): a call with no person on its chain (the owner's surfaces, the daemon), the owner, or an admin. Any other
      * person on the chain, a member, sees the roster only (see rosterRow).
@@ -570,6 +585,8 @@ export default {
       const n = (db.prepare("SELECT COALESCE(MAX(n), 0) AS n FROM agents_versions WHERE agent = ?").get(a.name)?.n ?? 0) + 1;
       db.prepare("UPDATE agents_agents SET instructions = ?, skills = ?, model = ?, effort = ?, tags = ?, updated_at = ? WHERE name = ?").run(next.instructions || null, JSON.stringify(next.skills || []), next.model || null, next.effort || null, next.tags || null, Date.now(), a.name);
       db.prepare("INSERT INTO agents_versions (agent, n, before, after, by, approved_by, note, at) VALUES (?,?,?,?,?,?,?,?)").run(a.name, n, JSON.stringify(before), JSON.stringify(next), by, approved_by, note, Date.now());
+      // a new model by any road (an edit, an approved proposal, a rollback) is Claude's until its provider is named with it: an old provider never carries over to it
+      if ((next.model || null) !== (before.model || null)) db.prepare("UPDATE agents_agents SET model_provider = NULL WHERE name = ?").run(a.name);
       return n;
     };
     /** Whose say it is over an agent: its owner, else any owner or admin of the Space (asked of the kernel by the host). */
@@ -848,8 +865,6 @@ export default {
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
         if (i.look !== undefined) db.prepare("UPDATE agents_agents SET look = ? WHERE name = ?").run(i.look ? fullLook(i.look, a.name) : null, a.name);
         if (i.fallback_model !== undefined) db.prepare("UPDATE agents_agents SET fallback_model = ? WHERE name = ?").run(i.fallback_model ? modelName(i.fallback_model) : null, a.name);
-        // a model picked anew names its provider, or none (Claude's): a provider left from an earlier pick never carries over to a new model
-        if (i.model !== undefined || i.model_provider !== undefined) db.prepare("UPDATE agents_agents SET model_provider = ? WHERE name = ?").run(i.model_provider ? providerName(i.model_provider) : null, a.name);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)
@@ -864,6 +879,8 @@ export default {
         }
         const person = await personOf(meta);
         writeVersion(a, after, { by: person, approved_by: person, note });
+        // a model picked anew names its provider, or none (Claude's): written after the version, which clears a provider left from an earlier pick
+        if (i.rollback === undefined && (i.model !== undefined || i.model_provider !== undefined)) db.prepare("UPDATE agents_agents SET model_provider = ? WHERE name = ?").run(i.model_provider ? providerName(i.model_provider) : null, a.name);
         await mirror.soon();
         return get(a.name);
       },
@@ -942,13 +959,13 @@ export default {
           if (!cur) {
             // A new thread learns its id only from the launch, so the listeners key on it after;
             // the reply cannot beat a model's first token back.
-            const t = await launch(a, { forPerson, own });
+            const t = await launch(a, { forPerson, own, ...(own ? { runAs: forPerson } : {}) });   // her own thread acts as HER in the kernel (run_as), never as the owner
             thread = t.id;
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
-            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson, own });
+            if (cur.status === "stopped") await launch(a, { resume: cur.id, forPerson, own, ...(own ? { runAs: forPerson } : {}) });
             const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
@@ -1167,6 +1184,9 @@ export default {
           only = i.tools;
         } else only = mine;
         if (i.project && parent.projects !== "*" && !parent.projects.includes(String(i.project))) throw Object.assign(new Error(`${parent.name} has no access to ${i.project}: the person must give it that project first`), { code: "denied" });
+        // the helper works for the person on the parent's chain (a member's own thread carries her): as her, on her own AI account; a member with none is refused before anything is recorded, never run on the owner's
+        const forPerson = (await personOf(meta)) || undefined;
+        const own = await accountFor(parent, forPerson);
         const id = `sub_${mintUuid()}`, label = String(i.label || "helper").replace(/[^\w .-]/g, "").slice(0, 40) || "helper";
         db.prepare("INSERT INTO agents_subs (id, parent, parent_thread, label, only, project, at) VALUES (?,?,?,?,?,?,?)").run(id, parent.name, String(meta.thread), label, only ? JSON.stringify(only) : null, i.project ? String(i.project) : null, Date.now());
         const ev = (/** @type {string} */ type, /** @type {any} */ more = {}) => ctx.events.emit(type, { request: id, teammate: parent.name, project: i.project ? String(i.project) : "", reply_to: String(meta.thread), role: `helper: ${label}`, sub: true, ...more });
@@ -1175,7 +1195,7 @@ export default {
           const early = new Set();
           const off = ctx.events.on("thread.finished", e => early.add(e.thread));
           let t;
-          try { t = await launch(parent, { prompt: task, job: true, project: i.project }); } finally { off(); }
+          try { t = await launch(parent, { prompt: task, job: true, project: i.project, ...(forPerson ? { forPerson } : {}), ...(own ? { own } : {}) }); } finally { off(); }   // on her own account the launch acts as her (run_as)
           db.prepare("UPDATE agents_subs SET thread = ? WHERE id = ?").run(t.id, id);
           ev("summon.started"); ev("summon.thread", { thread: t.id });
           const done = async () => {
@@ -1324,9 +1344,16 @@ export default {
         const { caller } = meta0;
         const a = must(agent);
         if (!(await mayChange(meta0, a))) throw notYours("resumes it");
+        // A person's own thread with the agent (agents_person_threads) comes back as HER, on her own AI account, whoever asks for it: never on the agent's credentials, which are the owner's. One whose account is gone is refused.
+        const resumeOf = async (/** @type {string} */ id) => {
+          const row = /** @type {any} */ (db.prepare("SELECT person FROM agents_person_threads WHERE agent = ? AND thread = ?").get(a.name, String(id)));
+          if (!row) return launch(a, { resume: id });
+          const forPerson = String(row.person), own = await accountFor(a, forPerson);
+          return launch(a, { resume: id, forPerson, runAs: forPerson, ...(own ? { own } : {}) });
+        };
         if (String(caller || "").startsWith("module:")) {
           if (!thread) throw new Error("thread is required");
-          return launch(a, { resume: thread });
+          return resumeOf(thread);
         }
         const id = thread || a.thread;
         if (!id) throw new Error(`${a.name} has no thread to resume yet; vyre agents ask ${a.name} <text> starts one`);
@@ -1334,7 +1361,7 @@ export default {
         const t = r.data && r.data.thread;
         if (!t || t.agent !== a.name) throw new Error(`${id} is not one of ${a.name}'s threads`);
         if (t.status !== "stopped") return { ...t, running: true };
-        return launch(a, { resume: id });
+        return resumeOf(id);
       },
     });
 

@@ -65,7 +65,7 @@ async function world(/** @type {any} */ t) {
   let n = 0;
   const wake = (/** @type {string | undefined} */ approver) => call("agents.wake", { task: `t${++n}`, agent: "juno", title: "Refund R-9", ...(approver ? { approver } : {}) }, "module:vyred");
   const job = (/** @type {string | undefined} */ person) => call("agents.job", { agent: "juno", prompt: "Draft the digest", ...(person ? { person } : {}) }, "module:planner");
-  return { call, accounts, home0, last, count, wake, job };
+  return { call, accounts, home0, last, count, wake, job, db };
 }
 const NONE = /Connect your own AI account in Settings, AI accounts, to use juno\./;
 
@@ -153,4 +153,56 @@ test("a model picked on OpenRouter runs on OpenRouter even with Claude connected
   assert.equal(w.last().provider, "claude");
   assert.equal(w.last().model, "opus");
   assert.equal((await w.call("agents.update", { name: "juno", model: "x", model_provider: "Not A Provider!" })).error.code, "bad_input");
+});
+
+test("a rollback to a version with another model clears the provider: the old provider never carries over to the model it restores", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter" })).error, undefined);
+  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal(w.last().model_provider, "openrouter", "picked on OpenRouter");
+  // back to how it began (no model): Claude's, never the OpenRouter provider left from the pick
+  const back = await w.call("agents.update", { name: "juno", rollback: 0 });
+  assert.equal(back.error, undefined, JSON.stringify(back.error));
+  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal(w.last().model_provider, undefined, "NEGATIVE: no stale provider on the restored model");
+  assert.notEqual(w.last().model, "x-ai/grok-4");
+  // a model picked again with its provider: as named
+  assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter" })).error, undefined);
+  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal(w.last().model_provider, "openrouter");
+});
+
+test("a run on a model picked on another provider is held to the agent's budget: what is left goes with it, and none left is refused before anything starts", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("agents.update", { name: "juno", model: "x-ai/grok-4", model_provider: "openrouter", auth: { budget_usd: 1 } })).error, undefined);
+  w.db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run("t-old", "juno", Date.now(), 0.25);
+  assert.equal((await w.job(undefined)).error, undefined);
+  assert.equal(w.last().budget_usd, 0.75, "what is left of the budget is the run's own backstop");
+  w.db.prepare("INSERT INTO agents_spend (thread, agent, at, usd) VALUES (?,?,?,?)").run("t-old2", "juno", Date.now(), 0.75);
+  const before = w.count();
+  const r = await w.job(undefined);
+  assert.match(String(r.error && r.error.message), /has spent its \$1 budget/, JSON.stringify(r));
+  assert.equal(w.count(), before, "NEGATIVE: nothing started past the budget");
+});
+
+test("resuming a member's own thread with the agent brings it back as her, on her own account; one whose account is gone is refused", async t => {
+  const w = await world(t);
+  const hers = await w.accounts.add({ provider: "claude", label: "Ana's Claude", kind: "login", person: ANA });
+  w.db.prepare("INSERT INTO agents_person_threads (agent, person, thread, at) VALUES (?,?,?,?)").run("juno", ANA, "th-ana", Date.now());
+  const r = await w.call("agents.resume", { agent: "juno", thread: "th-ana" }, "module:switchboard");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  const l = w.last();
+  assert.deepEqual([l.resume, l.account, l.person, l.for_person, l.run_as], ["th-ana", hers.id, ANA, ANA, ANA]);
+  assert.equal(l.env, undefined, "NEGATIVE: none of the agent's credentials in her resume");
+  // a thread that is no person's (the agent's own) resumes as before
+  assert.equal((await w.call("agents.resume", { agent: "juno", thread: "th-own" }, "module:switchboard")).error, undefined);
+  assert.equal(w.last().account, undefined);
+  assert.equal(w.last().run_as, undefined);
+  // her account gone: refused, never resumed on the agent's or the owner's
+  w.accounts.remove(hers.id);
+  w.db.prepare("INSERT INTO agents_person_threads (agent, person, thread, at) VALUES (?,?,?,?) ON CONFLICT(agent, person) DO UPDATE SET thread = excluded.thread").run("juno", ANA, "th-ana", Date.now());
+  const before = w.count();
+  const g = await w.call("agents.resume", { agent: "juno", thread: "th-ana" }, "module:switchboard");
+  assert.match(String(g.error && g.error.message), NONE, JSON.stringify(g));
+  assert.equal(w.count(), before, "NEGATIVE: nothing resumed on anyone else's account");
 });

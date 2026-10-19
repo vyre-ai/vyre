@@ -586,6 +586,8 @@ export default {
       if (i.parent !== undefined) { if (i.parent && !st.item(i.parent)) throw fail("no such parent item", "not_found"); patch.parent = i.parent || null; }
       if (i.waits_on !== undefined) { if (i.waits_on && !st.item(i.waits_on)) throw fail("no such item to wait on", "not_found"); patch.waits_on = i.waits_on || null; }
       if (i.paused !== undefined) patch.paused = Boolean(i.paused);
+      // A task's words and where it runs are what its run does: whoever changes them is who it runs as from now on (on their own account), never the person who first made it. The editor is an owner or an admin (mayScheduleJobs above).
+      if (item.kind === "task" && ["title", "body", "thread", "project"].some(k => i[k] !== undefined)) { const editor = callerPerson(w.chain); if ((editor ?? null) !== (item.by ?? null)) patch.by = editor; }
       if (item.kind === "note" && (i.visibility !== undefined || i.record !== undefined)) Object.assign(patch, noteShare({ visibility: i.visibility ?? item.visibility, record: i.record !== undefined ? i.record : item.record }));
       if (i.state !== undefined) {
         if (!STATES.includes(i.state)) throw fail(`state is one of ${STATES.join(", ")}`);

@@ -9,7 +9,7 @@ import { createStages } from "../stages.js";
 export const ALEX = { kind: "person", id: "per_alex", space: SPACE };
 export const BOB = { kind: "person", id: "per_bob", space: SPACE };
 
-/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, policy?: any, settings?: any, cat?: any }} [o] */
+/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, policy?: any, settings?: any, cat?: any, kernel?: string, stagesAs?: boolean }} [o] */
 export async function world(o = {}) {
   const clock = { t: Date.UTC(2026, 9, 3, 12, 0, 0) };
   const which = "real"; // the one kernel there is: the real gateway, tasks and chains (the Fake is gone)
@@ -35,7 +35,9 @@ export async function world(o = {}) {
   });
   // stages made of tasks: a module over the same events, working under [ALEX, service:stages]
   const stageEvents = [];
-  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }), gates: runner.gatePort(), isAdmin: who => who.id === ALEX.id,
+  // stagesAs: the chain is the person's on the write, as the daemon builds it (core/daemon/flows-host.js), ALEX's when none is given
+  const stageChain = o.stagesAs ? (/** @type {string | undefined} */ p) => kernel.moduleChain({ module: "stages", approver: p ? { kind: "person", id: p, space: SPACE } : ALEX }) : () => kernel.moduleChain({ module: "stages", approver: ALEX });
+  const stages = createStages({ kernel, catalog: () => cat, chain: stageChain, clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }), gates: runner.gatePort(), isAdmin: who => who.id === ALEX.id,
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
   /** @type {Array<() => void>} */ const offs = [];
   offs.push(kernel.onEvent(e => stages.onEvent(e), "stages"));

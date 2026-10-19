@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount, movesAccount } from "./asker-account.js";
+import { agentLaunchGuard, checkLaunch, trustedLaunch, askerOver, memberAccount, movesAccount, withoutPicked } from "./asker-account.js";
 
 const OWNER = "per_owner", ANA = "per_ana", BEN = "per_ben";
 /** A Switchboard-shaped stand-in: accounts by id with their person (null: the home's own, the owner's), the thread record, and whether the machine holds a login of its own. */
@@ -291,4 +291,28 @@ test("withAccountProvider: a launch naming an OpenRouter account and no model ge
   const sb0 = sbFor({ accounts: [] });
   assert.equal((await withAccountProvider(sb0, { provider: "openrouter", account: "anaor" })).model, "anthropic/claude-sonnet-4.5");
   assert.equal((await withAccountProvider(sb0, { provider: "openrouter", account: "anaor", model: "x/y" })).model, "x/y");
+});
+
+test("trustedLaunch: the own-run marker is set only for the agents and team modules' run on that person's own account, and never comes from input", () => {
+  const own = { agent: "kit", account: "anas", person: ANA, for_person: ANA };
+  for (const c of ["module:agents", "module:team"]) assert.equal(/** @type {any} */ (trustedLaunch(own, { firstParty: true, caller: c })).own_run, true, c);
+  // NEGATIVE: another first-party module's for_person, a pairing of two people, no account, or a caller's own word: no marker
+  assert.equal(/** @type {any} */ (trustedLaunch(own, { firstParty: true, caller: "module:planner" })).own_run, undefined, "another first-party module");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, person: BEN }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "someone else's account");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, account: undefined }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "no account named");
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", own_run: true }, { firstParty: true, caller: "module:agents" })).own_run, undefined, "an input's own_run is dropped");
+  assert.equal(/** @type {any} */ (trustedLaunch({ ...own, own_run: true }, { firstParty: false, caller: "mcp" })).own_run, undefined);
+  // run_as: from the team module too (a member's own request acts as her), never from another module
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", run_as: ANA }, { firstParty: true, caller: "module:team" })).run_as, ANA);
+  assert.equal(/** @type {any} */ (trustedLaunch({ agent: "kit", run_as: ANA }, { firstParty: true, caller: "module:planner" })).run_as, undefined);
+});
+
+test("withoutPicked: a person's own account run carries none of the agent's picked credentials nor its fallback; any other account keeps them", () => {
+  const o = { agent: "kit", env: { ANTHROPIC_API_KEY: "sk-owner", CLAUDE_CODE_OAUTH_TOKEN: "tok-owner", OPENROUTER_API_KEY: "or-owner", CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "4", KEEP: "1" }, fallback: { env: { ANTHROPIC_API_KEY: "sk-fb" } } };
+  const hers = withoutPicked(o, { id: "anas", person: ANA });
+  assert.deepEqual(hers.env, { KEEP: "1" }, "only the variables that hold no key");
+  assert.equal(hers.fallback, undefined, "no fallback onto the owner's key");
+  assert.equal(JSON.stringify(hers).includes("owner"), false, "NEGATIVE: no owner credential anywhere in her launch");
+  assert.equal(withoutPicked(o, { id: "home", person: null }), o, "the home's account: as it was");
+  assert.equal(withoutPicked(o, null), o, "no account: as it was");
 });

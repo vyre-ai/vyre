@@ -19,9 +19,9 @@ export async function lendTurn(sb, id, rec, o, acct) {
   const verified = o && o.kernelTurn && o.kernelTurn.asker ? String(o.kernelTurn.asker) : null;
   const stored = sb.turnAsker.get(id) || null;
   if (verified && stored && canon(verified) !== canon(String(stored))) throw not();
-  // An agent's run for a person with no chat turn of theirs (their own thread with an agent, a wake, a schedule, a Flow's job): the agents module named the person it is for (`for_person`, kept only from a
-  // first-party module) AND that same person's own account (`person`, the same rule; checkLaunch refuses any other pairing). Only that person, only their own account; no chat to be in.
-  if (!verified && !stored && o && o.agent && typeof o.for_person === "string" && o.for_person && o.person && canon(String(o.for_person)) === canon(String(o.person)) && acct && acct.person && canon(String(acct.person)) === canon(String(o.person))) return { asker: String(o.person), space: null };
+  // An agent's run for a person with no chat turn of theirs (their own thread with an agent, a wake, a schedule, a Flow's job, her request to a teammate): marked an own run by trustedLaunch (only for the agents
+  // and team modules, never from input), naming the person it is for AND that same person's own account (`person`; checkLaunch refuses any other pairing). Only that person, only their own account; no chat to be in.
+  if (!verified && !stored && o && o.agent && o.own_run === true && typeof o.for_person === "string" && o.for_person && o.person && canon(String(o.for_person)) === canon(String(o.person)) && acct && acct.person && canon(String(acct.person)) === canon(String(o.person))) return { asker: String(o.person), space: null };
   const asker = verified || (stored ? String(stored) : null);
   if (!asker || !acct || !acct.person || canon(String(acct.person)) !== canon(asker)) throw not();
   const chat = (o && o.kernelTurn && o.kernelTurn.chat) || (rec && rec.chat) || null;
