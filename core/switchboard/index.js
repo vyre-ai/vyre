@@ -64,7 +64,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { ACCOUNT_ENV } from "../../lib/credential-env.js"; import { accountNative } from "./account-native.js"; import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { noOwnerMarker, ownerDirect, withAccountProvider, askerOver, busyTurn, chipOver, memberAccount, movesAccount, libraryPerson, hopMovedAway, probeBase, projectMay, projectPerson, revertSettled, runQueuedOver, servesChip, checkLaunch, trustedLaunch } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -889,7 +889,7 @@ export class Switchboard {
   async launchInner(o, person, box) {
     let id, rec;
     const at = (/** @type {string} */ step) => { if (box.cancelled) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); box.step = step; if (box.id) this.deps.log(`threads: ${box.id.slice(0, 8)} start step ${step}`); };
-    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
+    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined }; o = noOwnerMarker(o);   // the direct-call marker is never a caller's
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
@@ -985,7 +985,7 @@ export class Switchboard {
     if (o.account) {
       acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: (o.kernelTurn && o.kernelTurn.asker) || hopPersonOf(this, id) || o.person, ...(o.purpose === "job" || o.once === true ? { job: true } : {}) }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct, acct.person ? () => lendTurn(this, id, rec, o, acct) : undefined) : { auth: "subscription", env: {} };
-      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
+      o = { ...o, env: { ...(o.env || {}), ...c.env, ...(ownerDirect(this, o, acct) ? { VYRE_OWNER_ACCOUNT: "1" } : {}) }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, person: acct.person || null, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
     }
     // Project folders on a team server (core/switchboard/project-access.js): this session's folder goes to its project's group, and an account's session joins only its person's projects' groups.

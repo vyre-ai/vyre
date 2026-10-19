@@ -248,6 +248,8 @@ test("adapter: a failed turn says so in the thread, with the reason and the next
   const words = out.filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
   assert.match(words, /^The AI could not answer: OpenRouter answered 401/);
   assert.match(words, /Check AI accounts\.$/);
+  const dotted = createAdapter().event(ev("thread.finished", { ok: false, error: "none connected, so this was not sent." })).filter(x => x.kind === "text-delta").map(x => x.data.text).join("");
+  assert.ok(!dotted.includes(".."), "no double period when the reason ends in one");
   assert.ok(!words.includes(KEY), "no key in the words");
   assert.ok(!/\n/.test(words), "one line");
   assert.ok(out.some(x => x.kind === "text-delta" && x.data.notice === true), "Vyre's own words, shown with no turn open");

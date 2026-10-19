@@ -215,7 +215,7 @@ export function createAdapter() {
           const failed = p.ok === false || Boolean(p.error);
           /** @type {Spec[]} */ const out = statusSeen ? [] : [spec("status", { state: failed ? "failed" : "waiting", ...(turn ? { turn } : {}) })];
           // A turn that failed says so in the thread, in plain words with the reason (never a key: redacted), so the person is not left looking at a message that was never answered.
-          if (failed) out.push(...text({ message: `vyre-failed-${turn ?? e.id ?? "turn"}`, text: `The AI could not answer: ${redact(String(p.error || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200)}. Check AI accounts.`, done: true, notice: true }));
+          if (failed) out.push(...text({ message: `vyre-failed-${turn ?? e.id ?? "turn"}`, text: `The AI could not answer: ${redact(String(p.error || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200).replace(/[.\s]+$/, "")}. Check AI accounts.`, done: true, notice: true }));
           return out;
         }
         case "thread.stopped":

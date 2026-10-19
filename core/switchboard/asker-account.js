@@ -57,6 +57,26 @@ export async function accountProviderFor(sb, o) {
   return null;
 }
 
+/** The launch options with the direct-call marker taken out of any env the caller gave: the marker is set only by ownerDirect, at the account merge, never by a caller. @param {any} o */
+export function noOwnerMarker(o) {
+  if (!o || !o.env || typeof o.env !== "object" || !("VYRE_OWNER_ACCOUNT" in o.env)) return o;
+  const { VYRE_OWNER_ACCOUNT: _drop, ...rest } = o.env;
+  return { ...o, env: rest };
+}
+
+/**
+ * May this run call its provider directly when no inference door is connected? Only the Space owner's own turn in their own chat (the asker is the kernel turn's, never a caller's word), on the owner's own API-key
+ * account (no person on it, not Claude), answered by no agent or by the person's Assistant or the built-in Engineer, and not started by a Flow, a schedule or a job. Everything else keeps needing the door.
+ * The driver scrubs the prompt of credentials on this path. @param {any} sb @param {any} o the launch options @param {any} acct the account the run uses
+ */
+export function ownerDirect(sb, o, acct) {
+  if (!acct || acct.person || acct.provider === "claude" || !o || !o.kernelTurn || !o.kernelTurn.asker) return false;
+  if (o.flow_origin || o.run_as || o.runas || o.once === true || o.purpose === "job") return false;
+  if (o.agent && o.agent_kind !== "assistant" && o.agent !== "engineer") return false;
+  const owner = ownerOf(sb);
+  return Boolean(owner) && isOwner(sb, owner, o.kernelTurn.asker);
+}
+
 /** A NEW thread's launch options with the provider and account it should run on (accountProviderFor), or as they were. @param {any} sb @param {any} o */
 export async function withAccountProvider(sb, o) {
   const own = await accountProviderFor(sb, o);

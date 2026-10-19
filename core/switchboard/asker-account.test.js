@@ -222,3 +222,35 @@ test("the person's Assistant, with no credentials of its own on a box with no Cl
   assert.equal(await accountProviderFor(sb, { agent: "juno", agent_kind: "assistant", env: { ANTHROPIC_API_KEY: "x" } }), null);
   assert.equal(await accountProviderFor(sb, { agent: "kit", agent_kind: "agent", auth: "ambient" }), null);
 });
+
+// Direct (no inference door) only for the owner's own turn on the owner's own API-key account.
+import { ownerDirect, noOwnerMarker } from "./asker-account.js";
+const OWN = { id: "or1", provider: "openrouter", person: null };
+const turn = (/** @type {any} */ over = {}) => ({ kernelTurn: { asker: "per_owner" }, purpose: "project", ...over });
+test("ownerDirect: the owner's own turn on the owner's own API-key account, with no agent or with the Assistant or the Engineer, is direct", () => {
+  const s = sb({});
+  assert.equal(ownerDirect(s, turn(), OWN), true, "an agentless model slot in the owner's chat");
+  assert.equal(ownerDirect(s, turn({ agent: "juno", agent_kind: "assistant" }), OWN), true);
+  assert.equal(ownerDirect(s, turn({ agent: "engineer", agent_kind: "agent" }), OWN), true);
+});
+test("ownerDirect: a member, another agent, a Flow, a job, a member's account, Claude, or no kernel turn each keep needing the door", () => {
+  const s = sb({});
+  assert.equal(ownerDirect(s, turn({ kernelTurn: { asker: "per_ben" } }), OWN), false, "a member's turn");
+  assert.equal(ownerDirect(s, turn({ agent: "kit", agent_kind: "agent" }), OWN), false, "another agent");
+  assert.equal(ownerDirect(s, turn({ flow_origin: { flow: "f" } }), OWN), false, "started by a Flow");
+  assert.equal(ownerDirect(s, turn({ run_as: "per_owner" }), OWN), false, "a job run as the approver");
+  assert.equal(ownerDirect(s, turn({ purpose: "job" }), OWN), false, "a job");
+  assert.equal(ownerDirect(s, turn(), { ...OWN, person: "per_ben" }), false, "a member's own account");
+  assert.equal(ownerDirect(s, turn(), { ...OWN, provider: "claude" }), false, "Claude");
+  assert.equal(ownerDirect(s, { purpose: "project" }, OWN), false, "no kernel turn: no asker to judge");
+  assert.equal(ownerDirect(s, turn(), null), false, "no account");
+  assert.equal(ownerDirect(sb({}), turn({ kernelTurn: { asker: "" } }), OWN), false);
+});
+
+test("a direct-call marker a caller puts in its own env is taken out, so such a launch has no marker unless ownerDirect sets it", () => {
+  assert.deepEqual(noOwnerMarker({ env: { VYRE_OWNER_ACCOUNT: "1", OPENROUTER_API_KEY: "k" }, agent: "kit" }), { env: { OPENROUTER_API_KEY: "k" }, agent: "kit" });
+  const none = { env: { A: "b" } };
+  assert.equal(noOwnerMarker(none), none, "nothing to take out: unchanged");
+  assert.deepEqual(noOwnerMarker({}), {});
+  assert.equal(noOwnerMarker(undefined), undefined);
+});
