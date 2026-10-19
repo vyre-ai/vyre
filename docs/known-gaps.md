@@ -16,9 +16,13 @@ The 0.7 plan is in [roadmap/0.7.md](../roadmap/0.7.md); the line list is on the 
 
 ## Known gaps in 0.6
 
-### The shared browser and a Linux user for each agent are opt-in
+### The shared browser and a Linux user for each agent
 
 Each agent that has a computer gets its own, with its own screen and its own Chrome. A separate Linux user for each agent on the space's computer is used only when you set `computers.agentUsers` to `true` in a server's config, and the one shared browser only when you set `computers.browse` to `browser`; each is its own setting. In 0.6.2 the service that makes those users (agentd) starts correctly. With `computers.agentUsers` on, if agentd is not ready, an agent's browser call waits up to 90 seconds (`computers.agentdWaitMs`) and is then refused with a plain message; it never falls back to the shared browser.
+
+### Downloads in an agent's computer
+
+Fixed in 0.6.2, for an agent that has its own Linux user. Chrome's downloads land in a folder the browser's user owns and outside every folder the agent owns: the agent can read a download and cannot place or swap anything in it, and Files shows it read-only as Downloads. An agent that has its own desktop computer (the default) is not affected.
 
 ### A member's own AI account in chats
 
