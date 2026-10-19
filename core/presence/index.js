@@ -1070,8 +1070,8 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
       if (!owner || String(meta.person.id) !== String(owner)) return false;
     }
     // Only a paired phone's key, a passkey or a Lumen key turns approvals on (Presence.notPhoneKeyIds says which device keys are not a phone's).
-    const soft = typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
-    return (await presence.keys()).filter((/** @type {any} */ k) => !soft.has(k.id)).length === 0;
+    if (typeof presence.hasPresenceDevice === "function") return !presence.hasPresenceDevice();
+    return (await presence.keys()).length === 0;
   } catch { return false; }
 }
 
