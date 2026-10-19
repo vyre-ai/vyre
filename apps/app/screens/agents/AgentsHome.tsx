@@ -96,7 +96,7 @@ export function AgentsHome() {
         <View className="flex-row items-center gap-s3">
           <Avatar of={markRef("agent", r.name, undefined, r.look || undefined)} size={40} />
           <View className="min-w-0 flex-1 gap-s1">
-            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.name}</Text>{r.kind === "assistant" ? <Chip>Your assistant</Chip> : null}{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
+            <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{r.title}</Text>{r.kind === "assistant" ? <Chip>Your assistant</Chip> : null}{homeTag ? <SpaceTag text={homeTag} /> : null}{status}{r.builtin ? <Chip>Admins only</Chip> : null}{r.mine ? <Chip>{r.mine}</Chip> : null}{r.sharedWith > 1 && !r.mine ? <Chip>{`Shared with ${r.sharedWith}`}</Chip> : null}</View>
             <Text size="secondary" tone="muted" numberOfLines={phone ? 2 : 1}>{r.role}</Text>
             <Text size="caption" tone="label" numberOfLines={phone ? 3 : 1}>{[r.model, r.works].join(", ")}</Text>
             {typeof r.last_active === "number" ? <Text size="caption" tone="muted">{`Last active ${ageOf(r.last_active, Date.now())}`}</Text> : null}
