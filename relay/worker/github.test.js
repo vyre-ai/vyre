@@ -70,10 +70,10 @@ function world(t, { names = {}, user = { id: 4242, login: "alex-gh", name: "Alex
 }
 
 /** Walk the browser's side: start, then the callback GitHub sends back. Returns the ticket and the cv the app kept. */
-async function signIn(w, { code = "good", app = APP, ip } = {}) {
+async function signIn(w, { code = "good", app = APP, ip, claim = false } = {}) {
   const cv = crypto.randomBytes(32).toString("base64url");
   const cc = crypto.createHash("sha256").update(cv).digest("base64url");
-  const s = await w.req(`/v1/github/start?cc=${cc}&app=${encodeURIComponent(app)}`, { ip });
+  const s = await w.req(`/v1/github/start?cc=${cc}&app=${encodeURIComponent(app)}${claim ? "&claim=1" : ""}`, { ip });
   assert.equal(s.status, 302);
   const loc = new URL(s.headers.get("location") || "");
   const cookie = (s.headers.get("set-cookie") || "").split(";")[0];
@@ -144,6 +144,58 @@ test("callback: a state from another browser, a spent state, a bad code and a de
   const st3 = new URL(s3.headers.get("location") || "").searchParams.get("state");
   const den = await w.req(`/v1/github/callback?error=access_denied&state=${st3}`, { headers: { cookie: (s3.headers.get("set-cookie") || "").split(";")[0] } });
   assert.equal(den.headers.get("location"), "https://app.vyre.run/github-return#error=denied");
+});
+
+test("claim: the Mac app's sign-in ends on a page in the browser, and the app claims the ticket once with its verifier", async t => {
+  const w = world(t);
+  const app = "vyreapp://box";
+  const cv = crypto.randomBytes(32).toString("base64url");
+  // Before the person is back from GitHub there is nothing to claim yet.
+  const early = await w.post("/v1/github/claim", { cv }, { origin: app });
+  assert.equal(early.status, 202);
+  assert.deepEqual(await early.json(), { waiting: true });
+  const r = await signIn(w, { app, claim: true });
+  // The browser is not sent to vyreapp:// (no browser can open that); it gets a page, and the state cookie is cleared.
+  assert.equal(r.cb.status, 200);
+  assert.equal(r.cb.headers.get("location"), null);
+  assert.match(await r.cb.text(), /Go back to the Vyre app/);
+  assert.match(r.cb.headers.get("set-cookie") || "", /vyre_gh=; Max-Age=0/);
+  // Somebody else's verifier claims nothing; the app's claims the ticket, once; the ticket then works like any other.
+  assert.equal((await w.post("/v1/github/claim", { cv: crypto.randomBytes(32).toString("base64url") })).status, 202);
+  assert.equal((await w.post("/v1/github/claim", { cv: "short" })).status, 400);
+  const got = await w.post("/v1/github/claim", { cv: r.cv }, { origin: app });
+  assert.equal(got.status, 200);
+  assert.equal(got.headers.get("access-control-allow-origin"), app);
+  const { ticket } = await got.json();
+  assert.match(ticket, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal((await w.post("/v1/github/claim", { cv: r.cv })).status, 202, "claimed once");
+  const me = await w.post("/v1/github/me", { ticket, cv: r.cv });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).github.login, "alex-gh");
+  // A denial at GitHub reaches the app as a denial, and a start without claim=1 still goes back to the app's return page.
+  const cv2 = crypto.randomBytes(32).toString("base64url");
+  const cc2 = crypto.createHash("sha256").update(cv2).digest("base64url");
+  const s2 = await w.req(`/v1/github/start?cc=${cc2}&app=${encodeURIComponent(app)}&claim=1`);
+  const st2 = new URL(s2.headers.get("location") || "").searchParams.get("state");
+  const den = await w.req(`/v1/github/callback?error=access_denied&state=${st2}`, { headers: { cookie: (s2.headers.get("set-cookie") || "").split(";")[0] } });
+  assert.equal(den.status, 400);
+  assert.match(await den.text(), /did not finish/);
+  assert.deepEqual(await (await w.post("/v1/github/claim", { cv: cv2 })).json(), { error: "denied" });
+  const plain = await signIn(w, { app });
+  assert.match(plain.cb.headers.get("location") || "", /^vyreapp:\/\/box\/github-return#ticket=/);
+  // A claim nobody collects runs out with the start.
+  const late = await signIn(w, { app, claim: true });
+  w.clock.t += G.GH_LIMITS.stateMs + 1;
+  assert.equal((await w.post("/v1/github/claim", { cv: late.cv })).status, 202);
+});
+
+test("claims are limited per address", async t => {
+  const w = world(t);
+  const cv = crypto.randomBytes(32).toString("base64url");
+  let last = 0;
+  for (let i = 0; i < G.GH_LIMITS.claimPerMin + 1; i++) last = (await w.post("/v1/github/claim", { cv })).status;
+  assert.equal(last, 429);
+  assert.equal((await w.post("/v1/github/claim", { cv }, { ip: "198.51.100.9" })).status, 202, "another address is not held up");
 });
 
 test("me: the ticket needs the verifier the app kept; a few wrong verifiers burn it; the answer is the numeric id, login and avatar", async t => {
