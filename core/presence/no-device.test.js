@@ -63,9 +63,8 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     assert.ok(r.error && ["person_session_required", "presence_required", "denied", "approval_refused", "held_for_approval", "held_unavailable"].includes(String(r.error.code)), `${who} ${JSON.stringify(m).slice(0, 60)} cannot make an invite: ${JSON.stringify(r).slice(0, 200)}`);
   }
   // 4c. making an owner and handing the Space over keep their presence step with no device enrolled, for the owner's own session too
-  for (const [tool, input] of /** @type {[string, any][]} */ ([["spaces.owner.transfer", {}], ["spaces.members.transfer", {}], ["spaces.members.set-role", { person: "per_" + "y".repeat(26), role: "owner" }]])) {
+  for (const [tool, input] of /** @type {[string, any][]} */ ([["spaces.owner.transfer", { space: K.id.space, to: "per_" + "y".repeat(26) }], ["spaces.members.transfer", { space: K.id.space, to: "per_" + "y".repeat(26) }], ["spaces.members.set-role", { person: "per_" + "y".repeat(26), role: "owner" }]])) {
     const r = await d.registry.call(tool, input, "cli", await meta());
-    assert.ok(!(r.error && /^(not_found|no_such_tool)$/.test(String(r.error.code))) || true);
     assert.ok(r.error && ["presence_required", "needs_presence", "held_for_approval", "person_session_required"].includes(String(r.error.code)), `${tool} still asks for presence: ${JSON.stringify(r).slice(0, 200)}`);
   }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
