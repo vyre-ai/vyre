@@ -150,3 +150,13 @@ test("an update's notes are lines of words, whether the box gives releases ({ ve
   assert.deepEqual(m.noteLines([{ version: "0.3.1", notes: "Calmer Now." }, "plain line", { version: "", notes: "no version" }, { version: "0.3.2", notes: "  " }]), ["Vyre 0.3.1: Calmer Now.", "plain line", "no version", "Vyre 0.3.2"]);
   assert.deepEqual(m.noteLines(null), []);
 });
+
+test("Privacy says approvals are not needed while no phone or passkey is enrolled, and nothing once one is or the reply is unreadable", async () => {
+  const { approvalsLine, NO_APPROVALS_LINE } = await import("./account-model.ts");
+  assert.equal(approvalsLine([]), NO_APPROVALS_LINE);
+  assert.equal(approvalsLine({ keys: [] }), NO_APPROVALS_LINE);
+  assert.equal(approvalsLine([{ id: "k", kind: "device" }]), null);
+  assert.equal(approvalsLine(undefined), null);
+  assert.equal(approvalsLine("nope"), null);
+  assert.equal(NO_APPROVALS_LINE, "Approvals: none needed until you pair a phone. Pair a phone to require approvals for sensitive actions.");
+});

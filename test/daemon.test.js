@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { start, retryUnknown } from "../core/daemon/index.js";
 import { htmlWithBuild } from "../core/daemon/build.js";
 import { request, call } from "../core/daemon/client.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, enrolDevice } from "./helpers.js";
 
 test("daemon: retryUnknown gives a /proc TOCTOU race a second look, bounded, still failing closed", async () => {
   // A flat unknown (no named server) succeeds on a later attempt: the race resolved, trusted.
@@ -290,6 +290,7 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
   writeModule(path.join(root, "modules"), "held", { does: { tools: [{ name: "held.release", outward: true }] } },
     `export default { async start(ctx) { ctx.tool("held.release", { effect: "read", presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  enrolDevice(d); // a phone is enrolled, so the presence floor asks for the proof (without one the owner's own acts pass)
   t.after(() => d.stop());
   const sock = d.paths.socket;
   const input = { id: "a1" };
