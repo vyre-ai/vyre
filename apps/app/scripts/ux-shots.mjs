@@ -60,6 +60,26 @@ const facts = () => {
 };
 
 try {
+  // Settings > People and roles: FIRST, because the full pass can run out of time: the page, the invite sheet, and the made invite, at 1400 and at phone width (people-<width>-<step>.png).
+  for (const w of [1400, 390]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: w === 390 ? 844 : 900 }, colorScheme: "dark", deviceScaleFactor: 1 });
+    const page = await ctx.newPage();
+    const thrown = [];
+    page.on("pageerror", (e) => thrown.push(String(e).slice(0, 300)));
+    await page.goto(base + "u/settings/roles", { waitUntil: "load" }).catch(() => {});
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: path.join(out, `people-${w}-page.png`), fullPage: true }).catch(() => {});
+    await page.getByRole("button", { name: "Invite someone" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Invite someone button: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: path.join(out, `people-${w}-sheet.png`) }).catch(() => {});
+    await page.getByRole("button", { name: "Make invite" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Make invite button: " + String(e).slice(0, 100)));
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: path.join(out, `people-${w}-made.png`) }).catch(() => {});
+    report.people = [...(report.people || []), { width: w, thrown }];
+    await ctx.close();
+  }
+
   for (const s of SIZES) for (const theme of THEMES) {
     const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, colorScheme: theme === "paper" ? "light" : "dark", deviceScaleFactor: 1 });
     const page = await ctx.newPage();
@@ -103,26 +123,6 @@ try {
         }
       }
     }
-    await ctx.close();
-  }
-
-  // Settings > People and roles: the page, the invite sheet, and the made invite, at 1400 and at phone width (people-<width>-<step>.png).
-  for (const w of [1400, 390]) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: w === 390 ? 844 : 900 }, colorScheme: "dark", deviceScaleFactor: 1 });
-    const page = await ctx.newPage();
-    const thrown = [];
-    page.on("pageerror", (e) => thrown.push(String(e).slice(0, 300)));
-    await page.goto(base + "u/settings/roles", { waitUntil: "load" }).catch(() => {});
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(900);
-    await page.screenshot({ path: path.join(out, `people-${w}-page.png`), fullPage: true }).catch(() => {});
-    await page.getByRole("button", { name: "Invite someone" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Invite someone button: " + String(e).slice(0, 100)));
-    await page.waitForTimeout(700);
-    await page.screenshot({ path: path.join(out, `people-${w}-sheet.png`) }).catch(() => {});
-    await page.getByRole("button", { name: "Make invite" }).first().click({ timeout: 4000 }).catch((e) => thrown.push("no Make invite button: " + String(e).slice(0, 100)));
-    await page.waitForTimeout(900);
-    await page.screenshot({ path: path.join(out, `people-${w}-made.png`) }).catch(() => {});
-    report.people = [...(report.people || []), { width: w, thrown }];
     await ctx.close();
   }
 
