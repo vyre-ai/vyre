@@ -134,7 +134,7 @@ async function oneShot(t, handler) {
     r.write({ type: "user", message: { role: "user", content: "hi" } });
     for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
     await r.stop();
-    return { result: got.find(m => m.type === "result"), said: got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join("") };
+    return { result: got.find(m => m.type === "result"), said: got.filter(m => m.type === "stream_event" && m.event.delta).map(m => m.event.delta.text).join("") };
   };
   return { seen, turn };
 }
@@ -201,4 +201,30 @@ test("openrouter, a fresh box with no inference door: the owner's own API-key ac
   assert.equal(via.is_error, false);
   assert.equal(doorCalled, 1);
   assert.equal(withDoor.seen.length, 0, "the door answered; no direct request");
+});
+
+test("openrouter: one reply is one message: the stream's message_start, its text and the finished message share one id and block, so a thread draws one bubble", async t => {
+  const { translate } = await import("../../switchboard/translate.js");
+  const s = await server(t);
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url });
+  const got = [];
+  const r = p.run({ id: crypto.randomUUID(), resume: false, model: "x/y", env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {} });
+  for (const text of ["first", "second"]) {
+    const before = got.filter(m => m.type === "result").length;
+    r.write({ type: "user", message: { role: "user", content: text } });
+    for (let i = 0; i < 150 && got.filter(m => m.type === "result").length === before; i++) await new Promise(x => setTimeout(x, 20));
+  }
+  await r.stop();
+  // what the Switchboard makes of it: the id the stream announced is the id of the finished text, block 0 in both
+  let current = null;
+  const seen = [];
+  for (const m of got) {
+    const x = translate(m);
+    if (x.message) current = x.message;
+    if (x.delta) seen.push({ kind: "delta", message: current, block: x.block });
+    for (const e of x.events) if (e.type === "thread.text" && e.payload.done) seen.push({ kind: "done", message: e.payload.message, block: e.payload.block });
+  }
+  assert.deepEqual(seen.map(x => x.kind), ["delta", "done", "delta", "done"]);
+  assert.equal(seen[0].message, seen[1].message); assert.equal(seen[0].block, seen[1].block);
+  assert.equal(seen[2].message, seen[3].message); assert.notEqual(seen[0].message, seen[2].message, "the second reply is its own message");
 });
