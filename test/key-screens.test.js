@@ -19,7 +19,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^apps\.tsx$/, "the Apps place: tiles for the apps on this Space (appmods.list and appmods.screens), with Make an app and Browse apps; owned by the polish team, drawn with the Vyre UI library"],
   [/^_layout\.tsx$/, "the shell, not a screen"],
   [/^\+not-found\.tsx$/, "the page for an address that matches nothing: a message and a way back, no data"],
-  [/^(agents\/index|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page: live status and a conversation entry of their own, owned by the agents team"],
+  [/^(agents\/index|agents\/\[name\]|assistants\/\[name\]|assistants\/index)\.tsx$/, "the agents list and an assistant's page (agents/[name] is the same page as assistants/[name], so a link written either way lands): live status and a conversation entry of their own, owned by the agents team"],
   [/^skills\/index\.tsx$/, "the skills library (skills 0.6): drafts, versions and an approve or decline of their own, owned by the skills team; wave 0.6"],
   [/^vaults\.tsx$/, "the Vaults page over vault.named.*: named vaults, who holds each and at what level, with sharing controls of their own, owned by the vault team; wave 0.6"],
   [/^vault-design\.tsx$/, "the vault sharing design page (ShareDesign): the levels Fill in, Read and Edit and rotate shown as the owner shapes them, with its own part and open parameters, owned by the vault team; wave 0.6"],
@@ -35,6 +35,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|flows\/\[id\]\/runs\/\[run\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
+  [/^flows\/shot\.tsx$/, "the Flow editor's picture fixtures (two triggers, If lanes, a reviewed task), drawn by the picture tests; a canvas of its own, owned by the flows team"],
   [/^(index|about|access|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
 ]);
 
