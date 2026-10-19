@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Linking, Platform, View } from "react-native";
+import { Platform, View } from "react-native";
 import { createElement } from "react";
 import { Banner, Button, Text } from "@vyre/ui";
 import { Page } from "../places/Frame";
@@ -7,6 +7,7 @@ import { tool } from "../../src/real/box";
 import { useSidebar } from "./sidebar";
 import { openHow, screenUrl, withTicket } from "./module-screen.js";
 import { ViewHost } from "./ViewHost";
+import { openLink } from "../../src/real/open-link";
 
 /**
  * A module's screen, from the sidebar. It lives on the module's own origin: the app asks the box for a one-time ticket that signs this person in there, then shows the page in the main pane
@@ -26,7 +27,7 @@ export function ModuleScreenHost({ module, screen, q }: { module: string; screen
     return () => { live = false; };
   }, [plain, module, screen]);
   const how = openHow(Platform.OS);
-  useEffect(() => { if (url && how === "window") Linking.openURL(url).catch((e) => setFailed(e instanceof Error ? e.message : "The window did not open.")); }, [url, how]);
+  useEffect(() => { if (url && how === "window") openLink(url).then((ok) => { if (!ok) setFailed("The window did not open."); }); }, [url, how]);
   if (!loaded) return <Page title={label} back="/u/now"><Text tone="muted">Loading.</Text></Page>;
   if (drawn) return <ViewHost module={module} view={screen} label={label} {...(q ? { initialQ: q } : {})} />;
   if (!plain) return <Page title={label} back="/u/now"><Banner>This screen is not available here yet. Its module may not be installed on this server, or the server has not given it an address.</Banner></Page>;
@@ -40,7 +41,7 @@ export function ModuleScreenHost({ module, screen, q }: { module: string; screen
   return (
     <Page title={label} back="/u/now">
       {failed ? <Banner tone="warn">{failed}</Banner> : <Text tone="muted">{`${label} opened in a new window.`}</Text>}
-      {url ? <View className="flex-row"><Button label="Open it again" onPress={() => { void Linking.openURL(url); }} /></View> : null}
+      {url ? <View className="flex-row"><Button label="Open it again" onPress={() => { void openLink(url); }} /></View> : null}
     </Page>
   );
 }

@@ -72,3 +72,17 @@ export function flowOf(d: any, provider: string, id = ""): Flow {
 }
 /** The box holds each status call open, so the follow loop goes on only while the flow is waiting; a pasted code (step "url"), done and failed all end it. */
 export const keepFollowing = (f: Flow): boolean => f.step !== "done" && f.step !== "failed" && f.step !== "url";
+
+/** The `state` of a sign-in link (the part the provider's page ends its code with, after "#"), or "". @param url */
+export const stateOfLink = (url: string | undefined): string => { try { return url ? new URL(url).searchParams.get("state") ?? "" : ""; } catch { return ""; } };
+
+/**
+ * Whether a pasted code belongs to the open sign-in. Claude's page shows "<code>#<state>"; the state is the one in the link this flow opened, and a code from another sign-in (the other Claude card, an older link) carries another and is refused by the provider
+ * with "OAuth error 400". A code with no "#", or a link with no state, cannot be told apart and is sent. @param url the open flow's link @param pasted what the person pasted
+ */
+export const codeIsForFlow = (url: string | undefined, pasted: string): boolean => {
+  const want = stateOfLink(url), at = pasted.trim().indexOf("#");
+  return !want || at < 0 || pasted.trim().slice(at + 1) === want;
+};
+
+export const WRONG_FLOW = "That code is from a different sign-in. Open the sign-in again.";

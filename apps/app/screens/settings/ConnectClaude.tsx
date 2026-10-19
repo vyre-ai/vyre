@@ -1,19 +1,21 @@
 // Connect Claude from the owner's device: the home starts the sign-in and gives a link, the person finishes it in the browser and brings the code back, the home keeps the credential in the vault
 // (never shown again). Used in space setup and in Settings, AI accounts. The states are the box's: not connected, waiting, connected, blocked with its reason, failed with its reason.
 import { useCallback, useEffect, useState } from "react";
-import { Linking, View } from "react-native";
-import { Button, Card, Chip, Field, LoadingState, Text, showToast } from "@vyre/ui";
+import { View } from "react-native";
+import { Button, Card, Chip, CodeBlock, Field, LoadingState, Text, showToast } from "@vyre/ui";
 import { tool } from "../../src/real/box";
 import { Platform } from "react-native";
 import { claimBlocked } from "../shell/rc";
 import { DISCONNECT_NOTE, aiRefusal, claudeOf, claudeState, codeInput, disconnectInput, keyInput, safeLink, startInput } from "../../src/real/ai-connect.js";
+import { openLink } from "../../src/real/open-link";
 
 // tool() answers a presence ask the way this build does (the phone's biometric; a browser says to do it on the phone), so onboard.claude, which needs the person's presence, works from here.
 const ask = (name: string, input: Record<string, unknown> = {}) => tool<any>(name, input);
 
 const surfaceNow = (): "browser" | "mac" | "phone" => (Platform.OS !== "web" ? "phone" : typeof window !== "undefined" && (window as any).__vyreShell ? "mac" : "browser");
 
-export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
+/** `keyOnly`: Settings, AI accounts has one Claude sign-in (Other AI accounts, the login flow); this card then only adds an API key. A code from one sign-in does not work in the other (each is bound to its own state), so the page offers one. */
+export function ConnectClaude({ onConnected, keyOnly }: { onConnected?: () => void; keyOnly?: boolean }) {
   const [claude, setClaude] = useState<any>(null);
   const [link, setLink] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -40,6 +42,17 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const disconnect = () => run(disconnectInput(), () => { setLink(null); showToast("Claude is disconnected."); });
   const useKey = () => run(keyInput(key), () => { setKey(""); showToast("Claude is connected."); });
 
+  if (keyOnly) {
+    return (
+      <Card className="gap-s3">
+        <Text strong>Claude API key</Text>
+        <Text size="caption" tone="label">To sign in to Claude with your account, use Other AI accounts below. Here you can add an Anthropic API key instead.</Text>
+        {failed ? <Text size="caption" tone="warn">{failed}</Text> : null}
+        <Field label="Anthropic API key" value={key} onChangeText={setKey} kind="password" help="It goes to your home's vault and is not shown again." />
+        <View className="self-start"><Button kind="primary" size="sm" label={busy ? "Adding" : "Add the key"} disabled={busy || !key.trim()} onPress={() => void useKey()} /></View>
+      </Card>
+    );
+  }
   return (
     <Card className="gap-s3">
       <View className="flex-row flex-wrap items-center gap-s2"><Text strong>Claude</Text><Chip tone={st.state === "connected" ? "ok" : st.state === "failed" || st.state === "blocked" || st.state === "pair_first" ? "warn" : "plain"}>{{ not_connected: "Not connected", blocked: "Cannot connect yet", waiting: "Waiting for you", connected: "Connected", failed: "Did not connect", pair_first: "Pair first", on_phone: "On your phone" }[st.state]}</Chip></View>
@@ -57,7 +70,8 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
           {link ? (
             <View className="gap-s2">
               <Text>Open the link, sign in to Claude, and copy the code it shows. Paste the code here.</Text>
-              <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void Linking.openURL(link)} /></View>
+              <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void openLink(link)} /></View>
+              <CodeBlock code={link} lang="txt" />
               <Field label="Code from Claude" value={code} onChangeText={setCode} />
               <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={busy ? "Connecting" : "Connect"} disabled={busy || !code.trim()} onPress={() => void finish()} /><Button kind="ghost" size="sm" label="Start over" onPress={() => { setLink(null); setCode(""); }} /></View>
             </View>

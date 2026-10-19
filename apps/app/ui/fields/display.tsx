@@ -1,4 +1,4 @@
-import { Linking, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
@@ -8,6 +8,7 @@ import { addrText, actorIdOf, actorName, fmtDate, linkHref, linkLabel, fmtMoney,
 import { TagRow } from "../components/TagRow";
 import { tagsOf } from "../tags/model.js";
 import type { ViewProps } from "./types";
+import { openLink } from "../../src/real/open-link";
 
 const Empty = () => <Text tone="faint">Empty</Text>;
 const str = (v: any) => (typeof v === "object" && v ? String(v.name ?? v.title ?? "") : String(v ?? ""));
@@ -25,7 +26,7 @@ export function UrlLinkView({ p }: ViewProps) {
   const href = linkHref(p.value);
   if (!href || p.mode === "compact") return <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
   return (
-    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${linkLabel(href)}`} onPress={() => { void Linking.openURL(href); }} className="self-start">
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${linkLabel(href)}`} onPress={() => { void openLink(href); }} className="self-start">
       <Text numberOfLines={1} className="hover:underline">{linkLabel(href)}</Text>
     </Pressable>
   );

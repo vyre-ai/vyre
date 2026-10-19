@@ -15,6 +15,8 @@ import { Welcome } from "./Welcome";
 import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
+import { openAside } from "../../src/real/open-link";
+import { WRONG_FLOW, codeIsForFlow } from "../settings/accounts-model";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
 import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
@@ -330,7 +332,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const r = await startGithub();
     if (!r.ok) { setFailure(r.message); return; }
     const login = r.user && r.user.login ? String(r.user.login) : "";
-    if (typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, "vyre-github", "width=520,height=720");
+    if (typeof r.url === "string" && r.url) void openAside(r.url, "vyre-github");
     if (!login && !r.exchange) return;
     const done = await finishGithub(login);
     if (!done.ok) { setFailure(done.message); return; }
@@ -545,13 +547,14 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
             ) : agentFlow ? <Text tone="muted">{ACCOUNTS_COPY.signing}</Text> : null}
             <Button kind="secondary" size="lg" label={signinMode(agentFlow, agentStep, agentPaste) === "paste" ? ACCOUNTS_COPY.paste : agentFlow ? ACCOUNTS_COPY.check : ACCOUNTS_COPY.add} loading={busy}
               disabled={Boolean(problem) || busy || (signinMode(agentFlow, agentStep, agentPaste) === "paste" && !pasteOk(pasted))} onPress={() => void run(async () => {
+              if (signinMode(agentFlow, agentStep, agentPaste) === "paste" && !codeIsForFlow(agentUrl, pasted)) { setFailure(WRONG_FLOW); return; }
               const r = await signInAgent(signinInput({ provider: pick, label: acctLabel, flow: agentFlow, step: agentStep, pasted, paste: agentPaste }));
               if (!r.ok) { setFailure(r.message); return; }
               if (r.flow && r.step !== "done") {
                 setAgentFlow(String(r.flow));
                 setAgentStep(typeof r.step === "string" ? r.step : "");
                 setAgentPaste(r.paste === true);
-                if (!agentFlow && typeof r.url === "string" && r.url && typeof window !== "undefined") window.open(r.url, `vyre-ai-${pick}`, "width=520,height=720");
+                if (!agentFlow && typeof r.url === "string" && r.url) void openAside(r.url, `vyre-ai-${pick}`);
                 if (typeof r.url === "string") setAgentUrl(r.url);
                 if (typeof r.code === "string") setAgentCode(r.code);
                 setPasted("");

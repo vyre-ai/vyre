@@ -1,11 +1,12 @@
 // AI accounts beyond Claude: every account sessions can run on (Codex, Grok, ...), who each is signed in as, which is the default, and a way to add one with the provider's own sign-in
 // (the Deck's settings-accounts.js, ported). The sign-in is the provider's: Vyre shows its link and code and never sees a password or token.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Linking, View } from "react-native";
-import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
-import { addableFor, serverCannotWords, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
+import { View } from "react-native";
+import { Button, Card, Chip, CodeBlock, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
+import { WRONG_FLOW, addableFor, codeIsForFlow, serverCannotWords, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
 import { showingJoined } from "../../src/real/team-join";
+import { openLink } from "../../src/real/open-link";
 
 const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
 
@@ -55,6 +56,7 @@ export function AccountsCard() {
   };
   const cancel = () => { run.current++; setFlow(null); setAdding(false); setProblem(""); setCode(""); load(); };
   const submit = async (f: Flow) => {
+    if (!codeIsForFlow(f.url, code)) { setProblem(WRONG_FLOW); return; }
     try { await accounts.paste(f.id, code); setProblem(""); setCode(""); setFlow({ ...f, step: "waiting" }); void follow(f.id, f.provider, run.current); }
     catch (e) { setProblem(say(e, "That did not look like the code.")); }
   };
@@ -107,7 +109,8 @@ export function AccountsCard() {
         ) : (
           <View className="gap-s2">
             <Text>{flow.url ? `Open this page, sign in to ${name}, and approve.` : `Starting the ${name} sign-in.`}</Text>
-            {flow.url && safeUrl(flow.url) ? <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void Linking.openURL(flow.url as string)} /></View> : null}
+            {flow.url && safeUrl(flow.url) ? <View className="self-start"><Button size="sm" label="Open the sign-in" onPress={() => void openLink(flow.url as string)} /></View> : null}
+            {flow.url && safeUrl(flow.url) ? <CodeBlock code={flow.url} lang="txt" /> : null}
             {flow.code ? <Text mono>{`Code: ${flow.code}`}</Text> : null}
             {flow.step === "url" ? (
               <View className="gap-s2">

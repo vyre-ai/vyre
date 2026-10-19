@@ -37,7 +37,10 @@ async function ticketFromGithub(cc: string): Promise<string | { code: string }> 
   const parse = (hash: string) => { const p = new URLSearchParams(hash.replace(/^#/, "")); return p.get("ticket") ?? ({ code: p.get("error") === "denied" ? "denied" : "failed" } as const); };
   if (Platform.OS === "web") {
     try { localStorage.removeItem(RETURN_KEY); } catch { /* none */ }
-    const w = window.open(url, "vyre-github", "width=520,height=720");
+    // The Mac app's window opens no pop-ups: its shell opens the page in the person's browser, and the return page (the app's /github-return) hands the ticket back through the same storage key.
+    const { shell } = await import("../shell/shell");
+    const inShell = Boolean(shell());
+    const w = inShell ? ((await (await import("./open-link")).openLink(url)) ? ({ closed: false, close() {} } as unknown as Window) : null) : window.open(url, "vyre-github", "width=520,height=720");
     if (!w) return { code: "popup" };
     for (let i = 0; i < 600; i++) {
       await sleep(500);

@@ -11,6 +11,7 @@ import { RealSite, Serving, type Tab } from "../sites/RealSites";
 import { sites, nextStep, domainLine, heldOf, planLines, decision, publishRefusal, type Held, type Site, type Status } from "../sites/real-model";
 import { siteAddress, unpublished } from "./site-page-model.js";
 import { startThread } from "./new-thread";
+import { openLink } from "../../src/real/open-link";
 
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
@@ -56,7 +57,7 @@ export function SitePage({ name, onBack }: { name: string; onBack: () => void })
         <Chip tone={site.status.tone}>{site.status.label}</Chip>
         <View className="flex-1" />
         <Button kind="ghost" size="sm" label="Change it with Engineer" onPress={() => { void startThread(router, "engineer", `Change my site ${site.name}: `, `Change ${site.name}`); }} />
-        {address.url ? <Button kind="ghost" size="sm" label="Visit" onPress={() => { window.open(address.url!, "_blank", "noopener"); }} /> : null}
+        {address.url ? <Button kind="ghost" size="sm" label="Visit" onPress={() => { openLink(address.url!); }} /> : null}
         {site.live ? <Button kind="holdText" size="sm" label="Unpublish" disabled={busy} onPress={() => { setBusy(true); retire(site.live!.id).then(() => { showToast("Unpublished."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); }} /> : null}
         {next && !held ? <Button kind="primary" size="sm" label={busy ? "Working" : waiting ? "Publish changes" : next.label} disabled={busy} onPress={publish} /> : null}
       </View>

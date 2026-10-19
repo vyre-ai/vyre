@@ -80,3 +80,16 @@ test("a server that runs Claude on its own login says so in words with a next st
   assert.match(serverCannotWords("on this machine Claude uses the login already on it (run claude and sign in there)") ?? "", /Ask the owner/);
   assert.equal(serverCannotWords("some other failure"), null);
 });
+
+test("a pasted code is checked against the open sign-in: a code from another sign-in is named, one with no state is sent", { skip: !strip }, async () => {
+  const m = await import("./accounts-model.ts");
+  const link = "https://claude.com/cai/oauth/authorize?code=true&client_id=x&state=abc123";
+  assert.equal(m.stateOfLink(link), "abc123");
+  assert.equal(m.stateOfLink("not a link"), "");
+  assert.equal(m.codeIsForFlow(link, "longcode#abc123"), true);
+  assert.equal(m.codeIsForFlow(link, " longcode#abc123 "), true, "trimmed");
+  assert.equal(m.codeIsForFlow(link, "longcode#other"), false, "another sign-in's state");
+  assert.equal(m.codeIsForFlow(link, "longcode"), true, "no state in what was pasted: the provider decides");
+  assert.equal(m.codeIsForFlow("https://example.com/x", "longcode#other"), true, "a link with no state cannot be compared");
+  assert.equal(m.WRONG_FLOW, "That code is from a different sign-in. Open the sign-in again.");
+});

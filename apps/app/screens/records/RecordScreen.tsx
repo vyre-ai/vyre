@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { Linking } from "react-native";
 import { useRouter } from "expo-router";
 import { Appear, allowsMock, Banner, Button, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { href } from "../../../../lib/tags.js";
@@ -19,6 +18,7 @@ import { isShareable } from "./share-model.js";
 import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
 import { emailOf } from "../shell/module-view.js";
+import { openLink } from "../../src/real/open-link";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
@@ -70,7 +70,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
             {v === null ? <Text tone="faint">Add</Text> : <Text strong numberOfLines={1}>{String(v)}</Text>}
           </View>
         ))}
-        {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void Linking.openURL(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
+        {typeof rec.data?.phone === "string" && rec.data.phone ? <Button kind="secondary" size="sm" icon="phone" label="Call" onPress={() => void openLink(`tel:${String(rec.data.phone).replace(/\s/g, "")}`)} /> : null}
         <View className="ml-auto">
           <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
         </View>
