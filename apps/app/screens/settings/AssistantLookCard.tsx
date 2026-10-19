@@ -17,9 +17,9 @@ export function AssistantLookCard({ person }: { person: string }) {
   return (
     <Group title="You and your Assistant" note="How you and your Assistant are drawn, in chats and everywhere your name shows.">
       <Card flush>
-        <Row lead={<Avatar of={markRef("person", person)} size={48} />} title={person} sub="You. Drawn from your name." />
+        <Row lead={<Avatar of={markRef("person", person)} size={44} />} title={person} sub="You. Drawn from your name." />
         {assistant ? (
-          <Row lead={<Avatar of={markRef("agent", assistant.name, undefined, assistant.look || undefined)} size={48} />} title={assistant.name} sub="Your Assistant"
+          <Row lead={<Avatar of={markRef("agent", assistant.name, undefined, assistant.look || undefined)} size={44} />} title={assistant.name} sub="Your Assistant"
             end={<Button size="sm" kind="ghost" icon="spark" label="Change its look" onPress={() => setLooking(true)} />} />
         ) : assistant === null ? <View className="p-s3"><Text tone="muted">Your Assistant has not been made yet. It is made when you finish setup.</Text></View> : null}
       </Card>

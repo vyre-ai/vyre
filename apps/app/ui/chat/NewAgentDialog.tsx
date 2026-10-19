@@ -68,7 +68,7 @@ export function AgentLookPicker({ shape, color: col, parts, onChange, onPart }: 
                   {p.words.map((w, i) => (
                     <Pressable key={w} accessibilityRole="radio" accessibilityLabel={`${p.label}: ${w}`} accessibilityState={{ selected: parts[p.key] === i }} onPress={() => onPart(p.key, i)}
                       style={{ width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: parts[p.key] === i ? color.selected : color["surface-3"], borderWidth: parts[p.key] === i ? 2 : 0, borderColor: color.primary }}>
-                      <Avatar of={markRef("agent", `${p.key}${i}`, undefined, withOne(p.key, i))} size={34} />
+                      <Avatar of={markRef("agent", `${p.key}${i}`, undefined, withOne(p.key, i))} size={32} />
                     </Pressable>
                   ))}
                 </View>
