@@ -52,6 +52,19 @@ export function inviteRow(i) {
   return { who, device, id: String(i?.id ?? ""), title: `${role[0].toUpperCase()}${role.slice(1)} invite${i?.to_label ? ` for ${i.to_label}` : ""}`, sub: [status === "open" || status === "pending" ? "" : status, until ? `until ${dayOf(new Date(until).getTime(), { year: false })}` : ""].filter(Boolean).join(" · "), open: status === "open" || status === "pending" || status === "waiting_confirm" || status === "needs_confirm" };
 }
 
+/**
+ * Make the invite link: ONE call to the box (onboard.member.link), nothing asked or refused first. The box decides who may invite, and its own words come back when it says no (person_session_required, presence_required and the rest), so
+ * the screen shows the box's reason, never one of its own. @param {(tool: string, input: any) => Promise<any>} ask @param {{ space: string, role: string, days: number }} i @param {{ owner?: string, phone?: boolean }} [o]
+ * @returns {Promise<{ ok: true, made: ReturnType<typeof madeNote> } | { ok: false, why: string, code: string }>}
+ */
+export async function requestInvite(ask, i, o = {}) {
+  try { return { ok: true, made: madeNote(await ask("onboard.member.link", { space: i.space, role: i.role === "temp" ? "guest" : i.role, ttlDays: Number(i.days) })) }; }
+  catch (e) {
+    const x = /** @type {any} */ (e);
+    return { ok: false, code: String(x && x.code || ""), why: inviteRefusal(x && x.code, String((x && x.message) || ""), o.owner || "", o.phone === true) };
+  }
+}
+
 /** The words for a refused invite call. @param {string | undefined} code @param {string} message */
 export function inviteRefusal(code, message, owner = "", phone = false) {
   if (code === "not_allowed" || code === "denied") return "Only an owner or admin can invite people to this space.";

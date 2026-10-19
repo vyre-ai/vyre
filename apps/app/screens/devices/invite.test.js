@@ -71,3 +71,26 @@ test("a phone is never told about a server", () => {
   assert.doesNotMatch(inviteRefusal("this_computer", "x", "", true), /server/i);
   assert.doesNotMatch(inviteRefusal("unreachable", "x", "Chris", true), /server/i);
 });
+
+test("the invite is one call to the box, with nothing asked or refused first: a box that allows it gives a link, a box that refuses gives its own words", async () => {
+  const { requestInvite } = await import("./invite.js");
+  // a box that allows it
+  const seen = [];
+  const allow = async (tool, input) => { seen.push([tool, input]); return { link: "https://vyre.run/i/inv_0123456789abcdef0123456789abcdef.abc", id: "inv_1", valid_until: 0 }; };
+  const ok = await requestInvite(allow, { space: "spc_aaaaaaaaaaaa", role: "temp", days: 7 }, { phone: false });
+  assert.equal(ok.ok, true);
+  assert.match(ok.made.link, /^https:\/\/vyre\.run\/i\/inv_/);
+  assert.deepEqual(seen, [["onboard.member.link", { space: "spc_aaaaaaaaaaaa", role: "guest", ttlDays: 7 }]], "exactly one call, and a temp role goes as guest");
+  // a box that refuses: its own reason text comes back, whatever the code
+  const words = "Sign in on this device with your passkey first. This is something only you can do.";
+  const refuse = async () => { throw Object.assign(new Error(words), { code: "person_session_required" }); };
+  const no = await requestInvite(refuse, { space: "spc_aaaaaaaaaaaa", role: "member", days: 7 });
+  assert.deepEqual([no.ok, no.why, no.code], [false, words, "person_session_required"]);
+  // the screen's own mapped codes still say their own words
+  const denied = async () => { throw Object.assign(new Error("x"), { code: "denied" }); };
+  assert.equal((await requestInvite(denied, { space: "s", role: "member", days: 7 })).why, "Only an owner or admin can invite people to this space.");
+  // the screen never decides alone: its source has no passkey or session check before the call
+  const fs = await import("node:fs");
+  const body = fs.readFileSync(new URL("./InviteBody.tsx", import.meta.url), "utf8");
+  assert.ok(!/passkey|person_session|loadIdentity|personSession/i.test(body.slice(body.indexOf("const make = "), body.indexOf("const confirm = "))), "make() calls the box without a local check first");
+});
