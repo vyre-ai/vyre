@@ -173,8 +173,8 @@ export default {
 
     ctx.tool("hooks.open", {
       description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. It is stored and verified here; it is reachable from the internet at the box's public address once that is up (hooks.status says when).",
-      input: obj({ name: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme", "secret"]) }, ["name", "verify"]),
-      presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && i.verify && i.verify.scheme} signature` },
+      input: obj({ name: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme"]) }, ["name", "verify"]),
+      presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && i.verify && i.verify.scheme} signature${i && i.verify && !i.verify.secret ? `; make a signing secret for it in your Vault (hooks-${i.name}) and let the hooks module use it` : ""}` },
       run: async ({ name, verify: v }, { caller }) => {
         owner(caller, "opening a webhook route");
         if (!NAME.test(name) || name.length > 40) throw refuse(`"${name}" is not a route name: lowercase words joined by dashes, like northwind-orders`, "bad_input");
@@ -183,22 +183,30 @@ export default {
         const header = String(v.header || SCHEMES[scheme].header || "").toLowerCase();
         if (!header) throw refuse("hmac-sha256 needs the header the sender puts its signature in", "bad_input");
         if (!HEADER.test(header) || NOT_A_SIGNATURE.test(header)) throw refuse(`${header} cannot carry a signature`, "bad_input");
-        if (!VAULT_NAME.test(String(v.secret || ""))) throw refuse("secret is the name of a vault item, like northwind-orders-hook", "bad_input");
+        const make = v.secret === undefined || v.secret === "";
+        if (!make && !VAULT_NAME.test(String(v.secret || ""))) throw refuse("secret is the name of a vault item, like northwind-orders-hook", "bad_input");
         const routes = cfg().routes;
         if (routeOf(name)) throw refuse(`${name} is already open; close it first to change how it is checked`, "conflict");
+        // No item named: the Vault makes the signing secret (32 random bytes) as hooks-<name> and grants it to this module. The value is never in this reply, the log or an event; the person reads it from the Vault.
+        let secretItem = String(v.secret || "");
+        if (make) {
+          secretItem = `hooks-${name}`;
+          const made = /** @type {any} */ (await ctx.call("vault.make-hook-secret", { name: secretItem }));
+          if (made.error) throw refuse(`the signing secret could not be made: ${String(made.error.message || made.error.code).slice(0, 200)}`, "unavailable");
+        }
         // Whether the secret can be fetched now. The value is dropped at once; this only tells
         // the person whether a grant is still missing.
         let ready = true, why = null;
-        try { await ctx.vault.fetch(v.secret); } catch (e) { ready = false; why = /** @type {Error} */ (e).message; }
-        const route = { scheme, header, secret: String(v.secret), opened: new Date(now()).toISOString() };
+        try { await ctx.vault.fetch(secretItem); } catch (e) { ready = false; why = /** @type {Error} */ (e).message; }
+        const route = { scheme, header, secret: secretItem, opened: new Date(now()).toISOString() };
         save({ routes: { ...routes, [name]: route } });
         ctx.events.emit("hook.opened", { route: name, scheme });
         ctx.log(`route ${name} opened (${scheme}) by ${caller}`);
         return {
-          ...routeOut(name, route), ready, ...(why ? { why, grant: `vyre vault grant ${v.secret} hooks` } : {}), listener: state(),
+          ...routeOut(name, route), ready, ...(make ? { secret_made: secretItem, reveal: `The signing secret is in your Vault as ${secretItem}; read it there (a reveal needs you present)` } : {}), ...(why ? { why, grant: `vyre vault grant ${secretItem} hooks` } : {}), listener: state(),
           next: [
             ...(cfg().enabled ? [] : ["turn the listener on with hooks.enable { on: true }"]),
-            ...(ready ? [] : [`let the hooks module use the secret: vyre vault grant ${v.secret} hooks`]),
+            ...(ready ? [] : [`let the hooks module use the secret: vyre vault grant ${secretItem} hooks`]),
             "the route is stored and verified here; hooks.status gives the public address to hand the sender once the box has one",
           ],
         };
@@ -212,6 +220,7 @@ export default {
       run: async ({ name }, { caller }) => {
         owner(caller, "closing a webhook route");
         const routes = { ...cfg().routes };
+        const gone = routeOf(name);
         if (!routeOf(name)) throw refuse(`no open route ${name} (hooks.list shows the open ones)`, "not_found");
         delete routes[name];
         // Replacing the whole routes object: save() merges one level deep, so a patch of
@@ -223,6 +232,7 @@ export default {
         return {
           route: name, closed: true, last,
           note: "vyred answers 404 on the path at once, so nothing gets in",
+          ...(gone && gone.secret ? { secret_kept: `its signing secret is still in the Vault as ${gone.secret}; retire it there when you no longer need it` } : {}),
         };
       },
     });

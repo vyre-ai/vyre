@@ -28,6 +28,7 @@
       { "name": "vault.me.who", "reach": "modules" },
       { "name": "vault.connection.revoke", "reach": "modules" },
       { "name": "vault.granted", "reach": "modules" },
+      { "name": "vault.make-hook-secret", "reach": "modules" },
       { "name": "vault.inject", "effect": "write", "reach": "anyone" },
       { "name": "vault.totp", "effect": "write", "reach": "anyone" },
       { "name": "vault.codes", "effect": "write", "reach": "anyone" },

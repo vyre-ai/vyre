@@ -60,6 +60,9 @@
     "daemon": [
       "flowsHost"
     ],
+    "tools": [
+      "vault.make-hook-secret"
+    ],
     "vault": [
       "per-route"
     ]
