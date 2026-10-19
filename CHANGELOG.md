@@ -54,6 +54,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(app): no screen puts an id the app made (spc_, per_, tpl_) or a Space's id on the page as text (apps/app/src/state/no-raw-ids.test.js reads every screen's source).
+
 - feat(settings): Settings > Account > You and your Assistant has Change your look: the same picker as an agent's (sixteen colours, shape, and the Customize faces) for your own avatar. A person who picked a look is drawn as that little character (ui/marks/source.js), in the sidebar foot and in Settings. It is kept on this device only (src/state/my-look.ts): the settings hub's account level belongs to the whole Space, and the box keeps no profile for a person yet, so other people still see you drawn from your name until the box keeps one (0.6.3, with the members list carrying it).
 - fix(shell): the sidebar foot's light or dark theme choice is saved where Appearance keeps it (the settings hub's appearance.scheme, at the account), so it stays after a restart. A save that fails says so; the theme still changes on screen.
 - feat(shell): the sidebar's foot is a profile row: your face, your name ("You" until it is known) and a muted line (your name on the box, else the space), with a chevron. It opens a short menu: Your profile and Assistant, Appearance, the light or dark theme, the other spaces, Lock now, Collapse sidebar and Help and About. Folded, only the face shows and the name is its tip. The look picker's Customize button now uses the spark icon, and the sixteen colours sit in two rows of eight.
