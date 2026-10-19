@@ -87,14 +87,15 @@ export function createFolder() {
   /** @type {Map<string, { group: string, question: string, members: { who: string, message: string }[], keep: string|null }>} */ const groups = new Map();
   /** @type {Map<string, string>} answer message -> group */ const groupOf = new Map();
   const read = { upto: 0 };
-  /** Messages the person just sent that the box has not echoed yet: they show at once, dimmed, and go when the box's own row arrives (or the send fails). @type {{ key: string, text: string, message?: string }[]} */
+  /** Messages the person just sent that the box has not echoed yet: they show at once, dimmed, and go when the box's own row arrives. A send the box did not take stays as "Not sent" (failOptimistic) until the person retries or deletes it. @type {{ key: string, text: string, message?: string }[]} */
   let optimistic = [];
   let optimisticN = 0;
-  /** The echo of a send takes the placeholder's place. @param {string} text @param {string} [message] client message id from stream.send */
+  /** The echo of a send takes the placeholder's place, a "Not sent" one too (the box took it after all). @param {string} text @param {string} [message] client message id from stream.send */
   function settleOptimistic(text, message) {
+    const sameText = (/** @type {{ text: string }} */ o) => o.text.trim() === text.trim();
     const i = message
       ? optimistic.findIndex((o) => o.message === message)
-      : optimistic.findIndex((o) => o.text.trim() === text.trim());
+      : (() => { const live = optimistic.findIndex((o) => sameText(o) && !items.get(o.key)?.failed); return live >= 0 ? live : optimistic.findIndex(sameText); })();
     if (i < 0) return false;
     dropRow(optimistic[i].key);
     optimistic.splice(i, 1);
@@ -424,7 +425,10 @@ export function createFolder() {
         break;
       }
       case "reset": {
+        // the person's own words in flight or not sent are not the box's to clear: they are put back after the reset
+        const mine = optimistic.map((o) => ({ o, it: items.get(o.key) }));
         rows = []; items.clear(); queued.clear(); queueSnap = []; layoutRev++; optimistic = [];
+        for (const { o, it } of mine) if (it) { optimistic.push(o); put(o.key, "user", it); }
         open.clear(); participants.clear(); names.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
         last = typeof d.head === "number" ? d.head : f.cur;
         bump("@status");
@@ -461,7 +465,21 @@ export function createFolder() {
       put(key, "user", { key, kind: "user", text, queued: false, pickedUp: false, pending: true });
       return key;
     },
-    /** The send failed: the placeholder goes. @param {string} key */
+    /** The box did not take the send: the words stay, marked "Not sent" with the reason in plain words. @param {string} key @param {string} reason */
+    failOptimistic(key, reason) {
+      if (!optimistic.some((o) => o.key === key) || !items.has(key)) return false;
+      patch(key, { pending: false, failed: String(reason || "This message was not sent.") });
+      bump(key);
+      return true;
+    },
+    /** The person retries a "Not sent" message: it shows as sending again. @param {string} key */
+    retryOptimistic(key) {
+      if (!optimistic.some((o) => o.key === key) || !items.has(key)) return false;
+      patch(key, { pending: true, failed: undefined });
+      bump(key);
+      return true;
+    },
+    /** The person deleted a message that was not sent (or nothing was ever said): the placeholder goes. @param {string} key */
     dropOptimistic(key) {
       const i = optimistic.findIndex((o) => o.key === key);
       if (i < 0) return false;

@@ -383,11 +383,9 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
-      if (why) setNote(why);
-      else {
-        att.clear();
-        if (/^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
-      }
+      // A send the box did not take stays in the thread as "Not sent", with its reason, Retry and Delete (store.ts), so the composer lets go of it either way.
+      att.clear();
+      if (!why && /^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
     },
     [store, editing, actions, replyTo, highlights, att, later],
   );

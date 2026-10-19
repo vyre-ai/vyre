@@ -4,6 +4,7 @@
 
 import type { Peer } from "@vyre/relay-client/peerclient.js";
 import { withTimeout } from "./with-timeout.js";
+import { callAgainOnce, retriesOnce } from "./peer-retry.js";
 
 /** How long a call to one of several servers waits before that server is called offline. */
 const ANSWER_MS = 60_000;
@@ -94,11 +95,10 @@ async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unk
     if (code === "relay_removed") { await (await import("../identity/removed")).ifRemoved(code); throw e; }
     // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
     if (code === "person_session_required" && (await renewSession(id))) { p = await openPeer(id); return await sent(p); }
-    // a closed connection is reopened once; anything the server answered is the answer
-    if (code !== "unreachable") throw e;
-    peers.delete(id);
-    p = await openPeer(id);
-    return await sent(p);
+    // a closed connection, or one that took the call and never answered (timeout), is dropped and reopened once and the call made once more (peer-retry.js); anything the server answered is the answer
+    if (!retriesOnce(e)) throw e;
+    const drop = (x: Peer) => { if (peers.get(id) === x) peers.delete(id); if (!x.closed) { try { x.close(); } catch { /* closed */ } } };
+    return await callAgainOnce({ stuck: p, drop, reopen: () => openPeer(id), call: sent });
   }
 }
 
