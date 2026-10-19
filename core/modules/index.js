@@ -1358,6 +1358,28 @@ export class Registry {
     return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
+  /**
+   * Does this person's own call pass the presence floor because they have no presence device to prove with? The person is a person surface or the owner's own paired device/tailnet node WITH its signed-in session
+   * (a module relaying a model, an agent, a guest or a module is never the person), the session names the Space's owner when it names anyone, vyre-core is not holding the keys, and the server's table of
+   * enrolled presence keys is empty. Fails closed on any doubt.
+   * @param {string} caller @param {any} meta
+   */
+  async noPresenceDevice(caller, meta) {
+    try {
+      const presence = /** @type {any} */ (this.deps.presence);
+      if (!presence || typeof presence.keys !== "function" || coreHolder.link) return false;
+      const label = String(caller);
+      if (!isPerson(label)) return false;
+      if (meta && meta.origin && !isPerson(String(meta.origin))) return false;
+      if (ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
+      if (meta && meta.person && meta.person.id) {
+        const owner = typeof this.deps.ownerId === "function" ? this.deps.ownerId() : null;
+        if (!owner || String(meta.person.id) !== String(owner)) return false;
+      }
+      return (await presence.keys()).length === 0;
+    } catch { return false; }
+  }
+
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
@@ -1669,12 +1691,17 @@ export class Registry {
     // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
     const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && this.deps.config.confirm[{ pair: "pairing", vault: "vault", outward: "outward" }[moment]] === false);
     if (switchedOff) meta = { ...meta, presence: { method: "switch", keyId: null } };
+    // The owner's ruling (19 Oct): a person who has NO presence device enrolled (no phone, no passkey, no Lumen key: the server's own records say so) has nothing to prove presence with, so every presence step for
+    // their own act passes on their signed-in session, the floor's HUMAN_ONLY list included. Once a device is enrolled, the proof is asked as before. Never for an agent, a model, a module or a guest, and never for
+    // another person's session. The decision is made here from the enrolment records, not from anything the call carries (an incoming meta.presence is not read).
+    const noDevice = !switchedOff && !(def.core && coreHolder.link) && await this.noPresenceDevice(caller, meta);
+    if (noDevice) meta = { ...meta, presence: { method: "no-device", keyId: null } };
     // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
     // itself, over the exact input, so vyred passes it through untouched rather than checking (and
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && !switchedOff && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input, { caller, meta }))) {
+    } else if (presence && !switchedOff && !noDevice && !presenceOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input, { caller, meta }))) {
       if (SIGN_IN.has(tool)) {
         // Signing in is authentication, not one of the three moments: the passkey or device key that opens a person session is checked by the presence verifier, as before (BACKLOG 0.3.2: move sign-in to the yes form too).
         const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
