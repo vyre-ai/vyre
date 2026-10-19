@@ -61,6 +61,8 @@ export function WebhookFields({ route, onRoute, sources }: { route: string; onRo
           <View className="gap-s2">
             <Banner tone={f.next === "none" ? "plain" : "warn"} icon={f.next === "none" ? "info" : "warning"}><Text>{f.line}</Text></Banner>
             {f.next === "enable" && sources.enableHooks ? <View className="flex-row"><Button kind="primary" label={busy ? "Turning on" : "Turn the listener on"} disabled={busy} onPress={() => void run(async () => { await sources.enableHooks!(); load(); })} /></View> : null}
+            {f.next === "wait" ? <View className="flex-row"><Button kind="secondary" size="sm" label="Check again" onPress={load} /></View> : null}
+            {f.next === "wait" ? <Text size="caption" tone="label">A box on a vyre.run name gets its public address once its public port answers from the internet. Until then the route is stored and checked here, and reachable from this machine only.</Text> : null}
             <Row dense title="Address" sub={f.url || "None yet: the box is not reachable from the internet"} />
             {f.url ? <CodeBlock code={f.url} lang="" /> : null}
             <Row dense title="Signed by" sub={`${f.scheme}: ${schemeWords(f.scheme)}`} />
