@@ -6,10 +6,9 @@ import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
 import { agentRow, visibleAgents } from "../agents/home-model.js";
 import { agentThreads } from "../../src/chat/threads-source";
-import { writeDraft } from "../../src/chat/drafts";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { SURFACE, refresh } from "../../src/state/live";
-import { tool } from "../../src/real/box";
+import { callT } from "../../src/real/call-tool";
 import { deviceReadiness } from "../../src/state/chat-start";
 import { sendFirst, watchReadiness } from "./new-thread-model.js";
 
@@ -28,6 +27,8 @@ export default function NewThreadScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const live = useRef(true);
+  // a thread a refused first try already made: Send again posts into it, so a second thread is never made
+  const made = useRef("");
   useEffect(() => () => { live.current = false; }, []);
   useEffect(() => {
     let on = true;
@@ -53,12 +54,12 @@ export default function NewThreadScreen() {
   const send = async () => {
     setBusy(true); setErr("");
     try {
-      const r = await sendFirst({ name: name ?? "", text }, {
+      const r = await sendFirst({ name: name ?? "", text, thread: made.current }, {
         start: (agent) => agentThreads.start(agent),
-        send: async (chat, words) => { await tool("stream.send", { chat, text: words, message: newUuid(), surface: SURFACE }); },
-        keep: (chat, words) => writeDraft(chat, words),
+        send: async (chat, words) => { const x = await callT<unknown>("stream.send", { chat, text: words, message: newUuid(), surface: SURFACE }); if (x.error) throw new Error(x.error.message || x.error.code || "The message was not sent."); },
       });
       if (!r) return;
+      if ("thread" in r && r.thread) made.current = r.thread;
       if ("problem" in r) { setErr(r.problem); return; }
       refresh();
       router.replace({ pathname: "/u/chats/[id]", params: { id: r.thread } });
@@ -81,7 +82,7 @@ export default function NewThreadScreen() {
           <Card>
             <View className="gap-s3">
               <Field name={`Message ${title}`} value={text} onChangeText={setText} placeholder={`Message ${title}`} multiline lines={4} autoFocus />
-              {err ? <Text tone="warn">{err}</Text> : null}
+              {err ? <Banner tone="warn" icon="warning"><Text>{err}</Text></Banner> : null}
               <View className="flex-row justify-end"><Button kind="primary" label={busy ? "Starting" : "Send"} disabled={busy || !text.trim() || !!gap} onPress={() => void send()} /></View>
             </View>
           </Card>

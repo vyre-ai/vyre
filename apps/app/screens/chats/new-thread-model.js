@@ -2,18 +2,30 @@
 // The New thread page's two acts, with their calls handed in so Node can test them: the first message makes the thread (once) and posts the words, and a device that is not ready is asked again until it is.
 
 /**
- * Send the first message of a new thread. Nothing exists on the server before this: `start` makes the one thread, `send` posts the words into it, and if the post fails the words wait in that thread's box.
- * An empty message makes nothing. @param {{ name: string, text: string }} o
- * @param {{ start: (agent: string) => Promise<{ thread: string } | { problem: string }>, send: (thread: string, text: string) => Promise<void>, keep: (thread: string, text: string) => void }} calls
- * @returns {Promise<{ thread: string } | { problem: string } | null>}
+ * Send the first message of a new thread. Nothing exists on the server before this: `start` makes the one thread, `send` posts the words into it. An empty message makes nothing.
+ * When the post is refused the person stays on the page with the refusal in plain words and the words in the box: the result is `{ thread, problem }` (the thread is made and kept, so Send again posts into
+ * the same thread and never makes a second). A page that opens the thread on a refusal would show an empty thread, which is what this replaces.
+ * @param {{ name: string, text: string, thread?: string }} o `thread` is one a refused first try already made
+ * @param {{ start: (agent: string) => Promise<{ thread: string } | { problem: string }>, send: (thread: string, text: string) => Promise<void> }} calls
+ * @returns {Promise<{ thread: string } | { thread?: string, problem: string } | null>}
  */
 export async function sendFirst(o, calls) {
   const text = String(o.text || "").trim();
   if (!text || !o.name) return null;
-  const made = await calls.start(o.name);
-  if ("problem" in made) return made;
-  try { await calls.send(made.thread, text); } catch { calls.keep(made.thread, text); }
-  return { thread: made.thread };
+  let thread = o.thread || "";
+  if (!thread) {
+    const made = await calls.start(o.name);
+    if ("problem" in made) return made;
+    thread = made.thread;
+  }
+  try { await calls.send(thread, text); } catch (e) { return { thread, problem: refusalWords(e) }; }
+  return { thread };
+}
+
+/** What a refusal says, as one plain line: the box's own sentence, never a code or a stack. @param {any} e */
+export function refusalWords(e) {
+  const m = String(e && e.message ? e.message : e || "").replace(/\s+/g, " ").trim();
+  return m && !/^(Error|\[object)/i.test(m) ? m.slice(0, 240) : "The message was not sent. Try again.";
 }
 
 /**

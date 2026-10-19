@@ -1,30 +1,42 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sendFirst, watchReadiness } from "./new-thread-model.js";
+import { refusalWords, sendFirst, watchReadiness } from "./new-thread-model.js";
 
 const calls = () => {
   const log = [];
-  return { log, c: { start: async (a) => { log.push(["start", a]); return { thread: "t1" }; }, send: async (t, x) => { log.push(["send", t, x]); }, keep: (t, x) => log.push(["keep", t, x]) } };
+  return { log, c: { start: async (a) => { log.push(["start", a]); return { thread: "t1" }; }, send: async (t, x) => { log.push(["send", t, x]); } } };
 };
 
-test("a new thread makes nothing on the server until the first message, and the first message makes exactly one thread and posts the words", async () => {
+test("a new thread makes nothing on the server until the first message, and the first message makes exactly one thread and posts the words into it", async () => {
   const { log, c } = calls();
   assert.equal(await sendFirst({ name: "Qi", text: "   " }, c), null, "an empty message makes nothing");
   assert.deepEqual(log, [], "nothing was called before there were words");
   const r = await sendFirst({ name: "Qi", text: "  Draft the lease reply  " }, c);
   assert.deepEqual(r, { thread: "t1" });
-  assert.deepEqual(log, [["start", "Qi"], ["send", "t1", "Draft the lease reply"]], "one thread, then the trimmed words into it");
+  assert.deepEqual(log, [["start", "Qi"], ["send", "t1", "Draft the lease reply"]], "one thread, then the trimmed words into it: the message is in the thread it opens");
 });
 
-test("a thread that cannot be made says why and posts nothing; words that cannot be posted wait in the thread's box", async () => {
+test("a refusal is a plain line and the person stays: the thread is kept, so Send again posts into the same thread and makes no second", async () => {
   const log = [];
-  assert.deepEqual(await sendFirst({ name: "Qi", text: "hi" }, { start: async () => ({ problem: "This device isn't ready for private chats yet." }), send: async () => { log.push("sent"); }, keep: () => log.push("kept") }), { problem: "This device isn't ready for private chats yet." });
-  assert.deepEqual(log, [], "no message was posted and no draft kept");
-  const { log: l2, c } = calls();
-  c.send = async () => { throw new Error("offline"); };
-  assert.deepEqual(await sendFirst({ name: "Qi", text: "hi" }, c), { thread: "t1" });
-  assert.deepEqual(l2, [["start", "Qi"], ["keep", "t1", "hi"]]);
+  const refusing = { start: async (a) => { log.push(["start", a]); return { thread: "t9" }; }, send: async (t, x) => { log.push(["send", t, x]); throw new Error("an assistant in a chat belongs to the Space"); } };
+  const first = await sendFirst({ name: "Juno", text: "hello" }, refusing);
+  assert.deepEqual(first, { thread: "t9", problem: "an assistant in a chat belongs to the Space" }, "the box's own sentence, with the thread that was made");
+  assert.equal("problem" in first && !!first.thread, true);
+  const accepting = { start: async () => { log.push(["start-again"]); return { thread: "t10" }; }, send: async (t, x) => { log.push(["send", t, x]); } };
+  const second = await sendFirst({ name: "Juno", text: "hello", thread: first.thread }, accepting);
+  assert.deepEqual(second, { thread: "t9" }, "the retry lands in the same thread");
+  assert.equal(log.some((l) => l[0] === "start-again"), false, "no second thread was made");
+  assert.deepEqual(log.filter((l) => l[0] === "send").map((l) => l[1]), ["t9", "t9"]);
+});
+
+test("a thread that cannot be made says why and posts nothing; a refusal with no sentence says it was not sent", async () => {
+  const log = [];
+  assert.deepEqual(await sendFirst({ name: "Qi", text: "hi" }, { start: async () => ({ problem: "This device isn't ready for private chats yet." }), send: async () => { log.push("sent"); } }), { problem: "This device isn't ready for private chats yet." });
+  assert.deepEqual(log, [], "no message was posted");
+  const r = await sendFirst({ name: "Qi", text: "hi" }, { start: async () => ({ thread: "t2" }), send: async () => { throw new Error(""); } });
+  assert.deepEqual(r, { thread: "t2", problem: "The message was not sent. Try again." });
+  assert.equal(refusalWords("Error: boom").startsWith("The message"), true, "a bare Error label is not shown");
 });
 
 test("a device that is not ready is asked again on a timer and becomes ready when the check passes; coming back asks at once", async () => {

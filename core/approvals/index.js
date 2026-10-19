@@ -52,6 +52,21 @@ export default {
       for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; fields[k] = v; }
       return { op: request.op, fields };
     };
+    /** Why a request does not fit its card, in a few words a person or a developer can act on (the refusal says it; nothing here is shown as an instruction). @param {string} moment @param {any} request */
+    const whyNoCard = (moment, request) => {
+      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string") return "the request names no act";
+      if (!["pair", "vault", "outward"].includes(moment)) return `${moment} is not a kind of yes`;
+      if (!opFitsMoment(moment, request.op, n => Boolean(ctx.modules && typeof ctx.modules.isOutward === "function" && ctx.modules.isOutward(n)))) return `${request.op} is not an act the ${moment} yes covers`;
+      const f = request.fields && typeof request.fields === "object" && !Array.isArray(request.fields) ? request.fields : {};
+      const keys = Object.keys(f);
+      if (keys.length > 12) return `it has ${keys.length} fields, and a card takes at most 12`;
+      for (const k of keys) {
+        if (!/^[a-z][a-z0-9_]{0,31}$/.test(k)) return `field "${String(k).slice(0, 20)}" is not a plain field name`;
+        const v = f[k];
+        if (!(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return `field ${k} is not a short plain value`;
+      }
+      return "";
+    };
     // Which device is calling comes from the transport's verified peer (the kernel's own facts: `meta.peer`, set by the daemon from a vouched connection), never from the caller LABEL a string says (person-label-hygiene).
     const deviceOf = (/** @type {any} */ meta) => { const p = meta && meta.peer; return p && p.kind === "device" ? (String(p.stableId || p.node || "") || null) : null; };
     const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
@@ -108,7 +123,7 @@ export default {
           // a yes for one of the three moments: the card is made here from a validated request
           const moment = String(input.moment);
           const request = cardRequest(moment, input.request);
-          if (!request) throw refuse("that request does not fit this kind of card", "bad_input");
+          if (!request) throw refuse(`that request does not fit this kind of card${(w => (w ? ` (${w})` : ""))(whyNoCard(moment, input.request))}`, "bad_input");
           const from = String(meta.caller || "");
           const hold = refusedUntil.get(from);
           if (hold && hold > now()) throw refuse("the owner said no to this device a moment ago; try again in a few minutes", "rate_limited");
