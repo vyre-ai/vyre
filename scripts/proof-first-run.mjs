@@ -376,7 +376,6 @@ try {
         await drv.click("Add API key");
         await drv.fill("API key", process.env.OWNER_WALK_OPENROUTER_KEY);
         if (await drv.fieldReady("Your password, to open your own Vault")) await drv.fill("Your password, to open your own Vault", PASSWORD);
-        await drv.shot("04b2-api-key");
         await drv.click("Add account");
         await until(async () => /OpenRouter/i.test(await drv.text()), 90_000, "the OpenRouter account listed");
         await drv.shot("04b3-account-added");
