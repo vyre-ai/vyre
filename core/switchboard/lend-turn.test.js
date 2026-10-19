@@ -56,6 +56,18 @@ test("the asker comes only from the verified asker or the stored one: a person n
   await assert.rejects(lendTurn(sbOf().sb, "t1", recOf, { person: "per_ada" }, acct({ person: "per_ada" })), /not available to this turn/);
 });
 
+test("an agent's run for a person (no chat turn): lent only when the module named that person for the run AND the account is that same person's; anything else is refused", async () => {
+  const forBen = { agent: "intake", for_person: "per_ben", person: "per_ben", own_run: true };
+  assert.deepEqual(await lendTurn(sbOf().sb, "t1", rec, forBen, acct()), { asker: "per_ben", space: null }, "her own key for her own agent run");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, { ...forBen, own_run: undefined }, acct()), /not available to this turn/, "NEGATIVE: for_person alone (another first-party module's launch) lends nothing without the own-run marker");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, { ...forBen, for_person: "per_ada" }, acct()), /not available to this turn/, "the run is for someone else");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, { ...forBen, agent: undefined }, acct()), /not available to this turn/, "no agent: no lend without a turn");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, { agent: "intake", person: "per_ben" }, acct()), /not available to this turn/, "no person named by the module");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, { agent: "intake", for_person: "per_ada", person: "per_ada", own_run: true }, acct()), /not available to this turn/, "NEGATIVE: ada's run never gets ben's key");
+  await assert.rejects(lendTurn(sbOf().sb, "t1", rec, forBen, acct({ person: null })), /not available to this turn/, "NEGATIVE: the home's account is never lent as hers");
+  await assert.rejects(lendTurn(sbOf({ stored: "per_ada" }).sb, "t1", rec, forBen, acct()), /not available to this turn/, "a turn of another person running: the stored asker decides");
+});
+
 import { callLend } from "../modules/lend-call.js";
 test("the registry's lend call is vault.me.lend as module:threads on the given token, and nothing without a token", async () => {
   /** @type {any[]} */ const calls = [];
