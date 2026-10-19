@@ -134,7 +134,7 @@ test("while a team shows, only the Notes tab's marked planner note calls reach t
   // (d) at home, with no team showing or a Space she has not joined: a marked call is not routed, and only loses the marker
   for (const t of notes) {
     const before = teamCalls.length;
-    assert.equal(await send(t, { title: "x", notes: true }, undefined), null, `${t}: no team showing`);
+    assert.equal(await teamRoute(t, { title: "x", notes: true }, undefined, joined), null, `${t}: no team showing`);
     assert.equal(await send(t, { title: "x", notes: true }, SPACE, async () => false), null, `${t}: a Space she has not joined`);
     assert.equal(teamCalls.length, before);
     assert.deepEqual(planWire(t, { title: "x", notes: true }).given, { title: "x" }, `${t}: only the marker is dropped`);
