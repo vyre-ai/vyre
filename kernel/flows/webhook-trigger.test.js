@@ -1,41 +1,39 @@
-// A webhook starts a Flow: the listener announces hook.received { route, id, bytes, at } (core/hooks), and a Flow whose trigger is that event with the condition trigger.route == "<route>" starts for its own route and
-// no other. What the Flow can read is the announcement, not the body: the body is read with hooks.delivery by the owner's watchers, never by a model (core/hooks/index.js).
+// A webhook starts a Flow with its body. The hooks module (core/hooks) checks a delivery's signature, stores it, and hands the Flow whose web trigger is hook-<route> the body as plain data with trust "untrusted" (the
+// same call a form or an app's webhook makes: runner.handleWeb). The Flow reads the fields as trigger.*, and a condition on them decides the run. A route no Flow answers is refused as not_found.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle } from "./testing/world.js";
 import { checkFlow } from "./schema.js";
 
-const flow = route => ({ format: 1, name: "t", label: "T", authorship: "human", trigger: { on: "event", event: "hook.received", where: `trigger.route == "${route}"` }, steps: [{ id: "a", kind: "assign", to: "role:attorney", title: "Look at the delivery", output: { kind: "note" } }] });
-const runs = async (/** @type {any} */ w, /** @type {string} */ id) => w.runner.listRuns({ flow: id });
+const flow = route => ({
+  format: 1, name: "t", label: "Refund request", authorship: "human", trigger: { on: "web", path: `hook-${route}` },
+  steps: [{ id: "big", kind: "decide", if: "trigger.amount > 50", then: [{ id: "a", kind: "assign", to: "role:attorney", title: "Approve a large refund", output: { kind: "note" } }], else: [] }],
+});
 
 test("the webhook trigger is a valid Flow trigger", () => {
   assert.deepEqual(checkFlow(flow("northwind-orders")), []);
 });
 
-test("a delivery on the Flow's route starts it, and one on another route does not", async () => {
+test("a delivery's body reaches the Flow as trigger.*, and a condition on it decides the run", async () => {
   const w = await world();
   const { id } = await install(w, flow("orders"));
-  w.kernel.inbound("hook.received", { route: "other", id: "d0", bytes: 10, at: "2026-10-19T00:00:00Z" });
-  await settle(w);
-  assert.equal((await runs(w, id)).length, 0, "another route starts nothing");
-  w.kernel.inbound("hook.received", { route: "orders", id: "d1", bytes: 42, at: "2026-10-19T00:00:01Z" });
-  await settle(w);
-  const list = await runs(w, id);
-  assert.equal(list.length, 1, "its own route starts one run");
-  assert.equal(list[0].trigger.event.data.route, "orders");
-  assert.equal(list[0].trigger.event.data.id, "d1", "the Flow sees the delivery's id, which the owner's tools read the body from");
-  w.kernel.inbound("hook.received", { route: "orders", id: "d2", bytes: 7, at: "2026-10-19T00:00:02Z" });
-  await settle(w);
-  assert.equal((await runs(w, id)).length, 2, "each delivery is its own run");
+  const run = async (/** @type {any} */ body, /** @type {string} */ key) => { const r = await w.runner.handleWeb("hook-orders", { body, trust: "untrusted", key }); await settle(w); return r; };
+  await run({ amount: 80, email: "pat@example.com" }, "d1");
+  await w.kernel.idle();
+  assert.equal(w.kernel.tasks.filter((/** @type {any} */ t) => t.title === "Approve a large refund").length, 1, "an amount over 50 makes the task");
+  await run({ amount: 20, email: "sam@example.com" }, "d2");
+  await w.kernel.idle();
+  assert.equal(w.kernel.tasks.filter((/** @type {any} */ t) => t.title === "Approve a large refund").length, 1, "an amount of 20 makes none");
+  const runs = await w.runner.listRuns({ flow: id });
+  assert.equal(runs.length, 2, "each delivery is its own run");
+  assert.equal(runs.every((/** @type {any} */ r) => r.state === "done"), true, JSON.stringify(runs.map((/** @type {any} */ r) => r.error)));
 });
 
-test("two Flows on two routes each start only on their own", async () => {
+test("a delivery to a route no Flow answers starts nothing and says not_found", async () => {
   const w = await world();
-  const a = await install(w, { ...flow("orders"), name: "a" });
-  const b = await install(w, { ...flow("invoices"), name: "b" });
-  w.kernel.inbound("hook.received", { route: "invoices", id: "i1", bytes: 1, at: "2026-10-19T00:00:00Z" });
+  const { id } = await install(w, flow("orders"));
+  await assert.rejects(() => w.runner.handleWeb("hook-invoices", { body: { amount: 99 }, trust: "untrusted", key: "d3" }), (/** @type {any} */ e) => e.code === "not_found");
   await settle(w);
-  assert.equal((await runs(w, a.id)).length, 0);
-  assert.equal((await runs(w, b.id)).length, 1);
+  assert.equal((await w.runner.listRuns({ flow: id })).length, 0, "the other route's Flow did not start");
 });

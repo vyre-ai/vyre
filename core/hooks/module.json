@@ -57,6 +57,9 @@
     ]
   },
   "needs": {
+    "daemon": [
+      "flowsHost"
+    ],
     "vault": [
       "per-route"
     ]

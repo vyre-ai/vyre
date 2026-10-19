@@ -19,6 +19,7 @@ import * as config from "../config/index.js";
 import { listen, HOST, BODY_LIMIT, PER_MINUTE } from "./listener.js";
 import { SCHEMES, verify } from "./verify.js";
 import { Deliveries, MIGRATIONS } from "./deliveries.js";
+import { flowBody, flowPath } from "./flow-body.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { now }. Production never sets them.
@@ -99,7 +100,22 @@ export default {
       const at = new Date(d.at).toISOString();
       ctx.events.emit("hook.received", { route: name, id: d.id, bytes: body.length, at });
       ctx.log(`${who}: stored ${d.id}, ${body.length} bytes`);
+      void startFlows(name, d.id, body).catch(e => ctx.log(`internet:${name}: ${String(e && e.message || e).slice(0, 160)}`));
       return 200;
+    }
+
+    /**
+     * A Flow whose trigger is the web path hook-<route> starts on a verified delivery, with the body as its input (capped plain data). It starts as an outside call: untrusted, so the run is tainted and
+     * cannot drive a grant or an admin act. A route no Flow answers is the normal case, and a Flow that cannot start never fails the delivery (the sender got its 200 once it was stored and announced).
+     */
+    async function startFlows(name, id, body) {
+      const host = ctx.flowsHost;
+      if (!host) return;
+      const data = flowBody(Buffer.isBuffer(body) || body instanceof Uint8Array ? Buffer.from(body).toString("utf8") : String(body));
+      for (const space of host.spaces()) {
+        try { await host.get(space).flows.handleWeb(flowPath(name), { body: data, trust: "untrusted", key: id }); }
+        catch (e) { if (/** @type {any} */ (e).code !== "not_found") ctx.log(`internet:${name}: a Flow could not start on ${id} (${String(/** @type {Error} */ (e).message).slice(0, 160)})`); }
+      }
     }
 
     /** @type {{ port: number, close: () => Promise<void> } | null} */

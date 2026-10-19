@@ -470,9 +470,9 @@ export function triggerDefinition(t) {
 /** The triggers that take an optional `where` condition (kernel/flows/triggers.js: record events and watchers). */
 const WHERE_KINDS = new Set(["created", "changed", "removed", "event", "watcher"]);
 /** @param {Trigger} t */
-/** A webhook route as the trigger condition: the listener announces hook.received { route, id, bytes, at }, and this Flow starts for its own route only. @param {string} route */
-const webhookWhere = (route) => `trigger.route == "${route}"`;
-const WEBHOOK_WHERE = /^trigger\.route == "([a-z0-9][a-z0-9-]*)"$/;
+/** A webhook route as the Flow's web path: a verified delivery to /hooks/<route> starts the Flow that answers hook-<route>, with the body as its input (core/hooks/flow-body.js). @param {string} route */
+const webhookPath = (route) => `hook-${route}`;
+const WEBHOOK_PATH = /^hook-([a-z0-9][a-z0-9-]*)$/;
 
 function triggerBase(t) {
   switch (t.kind) {
@@ -481,7 +481,7 @@ function triggerBase(t) {
     case "removed": return { on: "event", event: `${t.type}.removed` };
     case "event": return { on: "event", event: String(t.event) };
     case "watcher": return { on: "watcher", watcher: String(t.watcher).trim() };
-    case "webhook": return { on: "event", event: "hook.received", where: webhookWhere(String(t.route).trim()) };
+    case "webhook": return { on: "web", path: webhookPath(String(t.route).trim()) };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
     case "signup": return { on: "web", path: "signup" };
     case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
@@ -810,9 +810,9 @@ const keys = (/** @type {any} */ o, /** @type {string[]} */ allowed) => Object.k
 
 /** A stored trigger as a draft trigger: its kind's settings and its optional `where` condition. @param {any} t @returns {Trigger} */
 function triggerFrom(t) {
-  // A webhook: the listener's own event, for one route.
-  if (t && typeof t === "object" && t.on === "event" && t.event === "hook.received" && typeof t.where === "string" && Object.keys(t).every((k) => ["on", "event", "where"].includes(k))) {
-    const m = WEBHOOK_WHERE.exec(t.where);
+  // A webhook: a verified delivery to one route starts the Flow at the web path hook-<route>.
+  if (t && typeof t === "object" && t.on === "web" && typeof t.path === "string" && Object.keys(t).every((k) => ["on", "path"].includes(k))) {
+    const m = WEBHOOK_PATH.exec(t.path);
     if (m) return { kind: "webhook", route: m[1] };
   }
   if (t && typeof t === "object" && t.where !== undefined) {
