@@ -114,6 +114,8 @@ test("in a chat an agent runs on the chatter's own AI sign-in, never on the agen
   try { run = db.prepare("SELECT account, agent FROM threads_runs WHERE id = ?").get(r.data.thread); } finally { db.close(); }
   assert.equal(run.agent, "intake");
   assert.equal(run.account, added.data.id, "the turn runs on her account");
+  // the session is spawned after the ask has answered (wait: false), so its launch line is waited for, not read at once
+  for (const end = Date.now() + 15_000; launches().length < 1 && Date.now() < end;) await new Promise(r => setTimeout(r, 40));
   const ran = launches();
   assert.equal(ran.length, 1, "one launch");
 });
