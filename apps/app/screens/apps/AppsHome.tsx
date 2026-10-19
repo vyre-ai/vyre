@@ -7,7 +7,6 @@ import { columnsFor, tileWidth } from "./grid.js";
 import { Page } from "../places/Frame";
 import { tool } from "../../src/real/box";
 import { openExternal } from "../../src/shell/open-external";
-import { openExternal } from "../../src/shell/open-external";
 
 /** A tile on the Apps place. `route` is where it opens; a tile with no route says what it is waiting for. */
 type Tile = { id: string; label: string; sub: string; icon: IconName; route?: string; waiting?: string };
