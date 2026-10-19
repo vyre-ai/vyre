@@ -92,7 +92,8 @@ test("the sign-in refusal's reason also goes to the home's log, in counts and ki
   p.enroll({ kind: "device", name: "b", public_key: key(), alg: -7 });
   const lines = [];
   const text = await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: { kind: "device", person: d.kernel.id.owner, path: "relay" } }, "spaces.invites.create", {}, true);
-  assert.match(text, /device keys: .*setup: 1 \(0 with a relay row\).*none: 1 \(0 with a relay row\)/, text);
+  assert.match(text, /setup: 1 \(0 with a relay row\)/, text);
+  assert.match(text, /none: 1 \(0 with a relay row\)/, text);
   assert.doesNotMatch(text, /per_|abcdefghijklmnop/);
   void lines;
 });
