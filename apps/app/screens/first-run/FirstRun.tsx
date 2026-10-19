@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -16,7 +16,8 @@ import { AgentLookPicker } from "../../ui/chat/NewAgentDialog";
 import { PARTS, lookOf, lookSeed, partsOf, setPart, withParts } from "../../ui/chat/agent-look.js";
 import { ASK_COPY, askAddressOf, entryWords, nextForAsk } from "../spaces/join-requests-model.js";
 import { ACCOUNTS_COPY, copyWords, defaultLabel, keyKindOf, keyShapeOk, labelProblem, NO_SIGNIN, pasteOk, signinInput, signinMode } from "./ai-accounts-model.js";
-import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, rememberSpace } from "./welcome-model.js";
+import { ASSISTANT_COPY, MODEL_COPY, NAME_COPY, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
+import { returnWaiting } from "../../src/identity/github-return.js";
 import { nameFromLogin, SHOT_TABLE } from "./mock.js";
 import { openExternal } from "../../src/shell/open-external";
 import {
@@ -326,6 +327,30 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     setBusy(false);
   }, [busy]);
 
+  // Sign in with GitHub. In a browser the tab goes to GitHub and comes back to this page (src/identity/github-return.js), so the space typed on the sign-in screen is kept for the
+  // way back; while the tab leaves, the answer is "redirect" and nothing is shown as a failure.
+  const page = () => { try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; } };
+  const githubSignIn = (typed?: string) => run(async () => {
+    if (typed) rememberSpace(page(), typed);
+    const r = await signInGithub(typed);
+    if (!r.ok) { if (r.code !== "redirect") setFailure(r.message); return; }
+    const list = Array.isArray(r.spaces) ? r.spaces : [];
+    if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
+    setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
+    setPassword("");
+    go("id.signin.spaces");
+  });
+
+  // Back from GitHub: the sign-in this tab started carries on by itself, once.
+  const githubResumed = useRef(false);
+  useEffect(() => {
+    if (shot || MOCK || githubResumed.current || (screen !== "id.choice" && screen !== "id.signin")) return;
+    if (!returnWaiting(page(), Date.now())) return;
+    githubResumed.current = true;
+    void githubSignIn(lastSpace(page()) || undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot, screen]);
+
   const continueWithGithub = async (suggestName: boolean) => {
     const r = await startGithub();
     if (!r.ok) { setFailure(r.message); return; }
@@ -352,15 +377,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
       <Welcome phone={phone} failure={failure}
         onSignIn={(sp) => { setSignSpace(`${sp}.vyre.run`); setFailure(""); go("id.signin"); }}
         onStart={() => { setFailure(""); go("id.name"); }}
-        onGithub={() => void run(async () => {
-          const r = await signInGithub(undefined);
-          if (!r.ok) { setFailure(r.message); return; }
-          const list = Array.isArray(r.spaces) ? r.spaces : [];
-          if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
-          setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
-          setPassword("");
-          go("id.signin.spaces");
-        })} />
+        onGithub={() => void githubSignIn(undefined)} />
     );
   }
 
@@ -390,15 +407,7 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
         <Field label="Space address" name="Space address" value={signSpace} onChangeText={setSignSpace} placeholder="juniper.vyre.run" error={signSpace && !addr ? "Use the address of a space, like juniper.vyre.run." : undefined} />
         <Field label="Username" value={username} onChangeText={setUsername} />
         <PasswordField label="Password" value={password} onChangeText={setPassword} />
-        <ProviderSignInButton disabled={busy} onPress={() => void run(async () => {
-          const r = await signInGithub(addr ? addr.space : undefined);
-          if (!r.ok) { setFailure(r.message); return; }
-          const list = Array.isArray(r.spaces) ? r.spaces : [];
-          if (!list.length) { setFailure(SIGNIN_COPY.none); return; }
-          setFound(list.map((x: any) => ({ id: x.id, name: String(x.name), role: String(x.role || "member") })));
-          setPassword("");
-          go("id.signin.spaces");
-        })} />
+        <ProviderSignInButton disabled={busy} onPress={() => void githubSignIn(addr ? addr.space : undefined)} />
       </FlowStep>
     );
   }
@@ -746,10 +755,11 @@ function FirstRunScreens({ onScreen }: { onScreen: (s: Screen) => void }) {
     const who = asName.trim() || ASSISTANT_COPY.suggestion;
     const picked = (models || []).flatMap((a) => a.models.map((m) => ({ key: `${a.id}:${m.id}`, model: m.id })));
     const chosen = picked.find((p) => p.key === modelPick);
+    const stepNow = modelStep(models, Boolean(chosen));
     return (
-      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={models && !models.length ? MODEL_COPY.none : MODEL_COPY.lead} failure={failure}
+      <FlowStep steps={steps} onBack={back} title={MODEL_COPY.title(who)} lead={stepNow.lead} failure={failure}
         secondary={{ label: "Keep the default", onPress: () => go("ready") }}
-        primary={{ label: "Continue", loading: busy, disabled: busy || (models !== null && models.length > 0 && !chosen), onPress: () => void run(async () => {
+        primary={{ label: "Continue", loading: busy, disabled: busy || !stepNow.canContinue, onPress: () => void run(async () => {
           if (chosen) { const r = await setAssistantModel(chosen.model); if (!r.ok) { setFailure(r.message); return; } }
           go("ready");
         }) }}>

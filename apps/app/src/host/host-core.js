@@ -892,6 +892,8 @@ export function createHost(o) {
       if (!o.space) throw unsupported();
       const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
       const ports = await o.space.load();
+      // a fresh Space's model registry may not have looked yet: ask it to look now (it looks at most once a minute, and waits for a look already under way). A refusal still lists what it has.
+      try { await ports.call("models.refresh", {}, box); } catch { /* the lists below say what is known */ }
       const list = /** @type {any} */ (await ports.call("sessions.accounts.list", {}, box));
       const rows = (Array.isArray(list) ? list : list && Array.isArray(list.accounts) ? list.accounts : []).filter((/** @type {any} */ a) => a && !a.synthetic && !a.pending && typeof a.id === "string");
       const modelsOf = async (/** @type {any} */ a) => {

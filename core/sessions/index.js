@@ -213,7 +213,7 @@ export default {
     const modelsOf = async (/** @type {string} */ provider) => {
       const extra = ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [];
       const base = provider === "claude" ? MODEL_ALIASES.map(({ id, label }) => ({ id, label })) : [];
-      const reg = await ctx.call("models.list", { provider, available: true }).then(r => (r && r.data && Array.isArray(r.data.models) ? r.data.models : [])).catch(() => []);
+      const reg = await ctx.call("models.list", { provider, available: true, limit: 500 }).then(r => (r && r.data && Array.isArray(r.data.models) ? r.data.models : [])).catch(() => []);
       const seen = new Set(base.map(m => m.id));
       const fromRegistry = reg.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }));
       for (const m of fromRegistry) seen.add(m.id);

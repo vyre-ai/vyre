@@ -23,8 +23,19 @@ export const MODEL_COPY = Object.freeze({
   /** @param {string} name */
   title: (name) => `How should ${name} think?`,
   lead: "Its default. You can pick a different one in any chat.",
-  none: "No AI account is connected yet. You can pick a model later in Settings.",
+  none: "No AI account is connected yet. Go back to connect one, or continue and pick a model later in Settings.",
+  noModels: "Your AI account has not listed its models yet. Continue to use its default, and pick another later in Settings.",
 });
+
+/**
+ * The model step from what the accounts offer: the line under the title, and whether Continue works. Continue needs a pick only when there is a model to pick; with none it goes on with the default.
+ * @param {{ models: unknown[] }[] | null} accounts null while still looking @param {boolean} picked a model is chosen
+ */
+export function modelStep(accounts, picked) {
+  const count = (accounts || []).reduce((n, a) => n + (Array.isArray(a.models) ? a.models.length : 0), 0);
+  const lead = accounts === null || count ? MODEL_COPY.lead : accounts.length ? MODEL_COPY.noModels : MODEL_COPY.none;
+  return { lead, count, canContinue: accounts !== null && (count === 0 || picked) };
+}
 
 /** The Assistant step: its words, and the name offered until the person types one (the server's own fallback is the same). */
 export const ASSISTANT_COPY = Object.freeze({
@@ -46,6 +57,34 @@ export const NAME_COPY = Object.freeze({
 
 /** The three theme choices, in order: the person's setting and its label. "system" follows the device or browser and switches live when it changes. */
 export const THEME_CHOICES = Object.freeze([["paper", "Light"], ["system", "Match this device"], ["dark", "Dark"]]);
+
+/** The icon for each theme choice: the switch shows only these, each named by its label for screen readers and in its tooltip. Names from the one icon set (src/ui/icons.generated.ts). */
+export const THEME_ICONS = Object.freeze({ paper: "sun", system: "laptop", dark: "moon" });
+
+/**
+ * The colour role of every word and line on the welcome screen and the unlock cover: token names from tokens v2 (lib/theme/tokens.json, kebab-cased as the theme reads them),
+ * each present in light and in dark, so nothing is drawn in a colour the theme does not have (an unknown name falls back to black, unreadable on dark).
+ */
+export const WELCOME_TONES = Object.freeze({
+  wordmark: "text", sub: "label", greeting: "text", line: "text-2", fieldLead: "label", fieldText: "text", placeholder: "label",
+  link: "label", footer: "text", error: "err", go: "primary", goInk: "primary-ink", edge: "edge-strong", surface: "surface-1",
+});
+
+/** The unlock cover's words: it wears the welcome's look (greeting, a muted line, the round-arrow field). */
+export const UNLOCK_COPY = Object.freeze({
+  line: "Locked to keep your Space safe.",
+  password: "Password",
+  recoveryKey: "Recovery key",
+  passwordHint: "Type your password",
+  recoveryHint: "Type your recovery key",
+  unlock: "Unlock",
+  unlocking: "Unlocking...",
+  useRecovery: "Use my recovery key",
+  usePassword: "Use my password",
+  show: "Show password",
+  hide: "Hide password",
+  note: "Vyre locks itself after a quiet spell. You can change how long in Settings, under Account.",
+});
 
 /** The key the last Space used is kept under. */
 export const SPACE_KEY = "vyre-space";

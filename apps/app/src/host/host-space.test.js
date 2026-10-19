@@ -663,9 +663,11 @@ test("the model step lists what each signed-in account offers (its own list, els
   const first = pp.call;
   const say = { "sessions.accounts.list": [{ id: "ac_1", provider: "claude", label: "Work", kind: "login", token: "SECRET" }, { id: "ac_2", provider: "codex", label: "Key", kind: "api-key", vault_item: "k" }, { id: "ac_3", provider: "claude", label: "Nope", pending: true }, { id: "default", provider: "claude", label: "Default", synthetic: true }],
     "agents.list": [{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }] };
+  /** @type {string[]} */ const order = [];
   pp.call = async (name, input, box) => {
+    if (name === "models.refresh") { order.push(name); return { refreshed: true }; }
     if (name === "sessions.accounts.list" || name === "agents.list") return say[name];
-    if (name === "sessions.accounts.models") { if (input.account === "ac_1") return { models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }], secret: "S" }; throw new Error("not offered"); }
+    if (name === "sessions.accounts.models") { order.push(name); if (input.account === "ac_1") return { models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }], secret: "S" }; throw new Error("not offered"); }
     if (name === "sessions.models") { pp.seen.calls.push({ name, input, box }); return [{ id: "gpt-5", label: "GPT 5" }]; }
     if (name === "agents.update") { pp.seen.calls.push({ name, input, box }); return { ok: true }; }
     return first(name, input, box);
@@ -673,6 +675,14 @@ test("the model step lists what each signed-in account offers (its own list, els
   const r = await host.call("onboard.assistant.models", {});
   assert.deepEqual(r.accounts.map((a) => [a.id, a.label, a.provider, a.models.map((m) => m.id)]), [["ac_1", "Work", "claude", ["opus", "sonnet"]], ["ac_2", "Key", "codex", ["gpt-5"]]], "pending and synthetic accounts are left out; an account with no list of its own shows its provider's");
   assert.ok(!JSON.stringify(r).includes("SECRET") && !JSON.stringify(r).includes("vault_item"), "no credential or vault item comes back");
+  assert.equal(order[0], "models.refresh", "the registry is asked to look before any account's models are read");
+  pp.call = async (name, input, box) => (name === "models.refresh" ? Promise.reject(new Error("not yours")) : name === "sessions.accounts.list" ? say[name] : name === "sessions.accounts.models" ? { models: [{ id: "opus", label: "Opus" }] } : first(name, input, box));
+  assert.equal((await host.call("onboard.assistant.models", {})).accounts.length, 2, "a refused look still lists what is known");
+  pp.call = async (name, input, box) => {
+    if (name === "sessions.accounts.list" || name === "agents.list") return say[name];
+    if (name === "agents.update") { pp.seen.calls.push({ name, input, box }); return { ok: true }; }
+    return first(name, input, box);
+  };
   await assert.rejects(() => host.call("onboard.assistant.model", { model: "a b; rm" }), (e) => e.code === "bad_model");
   const m = await host.call("onboard.assistant.model", { model: "opus" });
   assert.deepEqual(m, { name: "juno", model: "opus" });

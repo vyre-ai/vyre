@@ -2,7 +2,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SPACE_KEY, THEME_CHOICES, WELCOME_COPY, addressFrom, lastSpace, rememberSpace } from "./welcome-model.js";
+import { readFileSync } from "node:fs";
+import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, THEME_ICONS, UNLOCK_COPY, WELCOME_COPY, WELCOME_TONES, addressFrom, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
 
 const store = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => void m.set(k, v), m }; };
 
@@ -42,4 +43,8 @@ test("a name and a full address are the same Space", () => {
   assert.equal(addressFrom(" Juniper.vyre.run ").address, "https://juniper.vyre.run");
   assert.equal(addressFrom(""), null);
   assert.equal(addressFrom("a b"), null);
+});
+
+import { readFileSync } from "node:fs";
+import { MODEL_COPY, SPACE_KEY, THEME_CHOICES, THEME_ICONS, UNLOCK_COPY, WELCOME_COPY, WELCOME_TONES, addressFrom, lastSpace, modelStep, rememberSpace } from "./welcome-model.js";
 });

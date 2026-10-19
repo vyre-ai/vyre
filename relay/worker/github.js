@@ -2,10 +2,12 @@
 // Sign in with GitHub (rc.4): GitHub proves WHO a person is and nothing else. It never opens a vault, and nothing here holds a key, a Secret Key or a recovery code.
 //
 //   GET  /v1/github/start?cc=&app=   the app opens this in the browser. cc = base64url(sha256(cv)), cv a secret the app keeps; app = one allowlisted origin, matched exactly.
-//                                    Binds a `state` to this browser by a cookie, then redirects to GitHub (PKCE on the GitHub leg too, NO scope).
+//                                    Binds a `state` to this browser by a cookie, then redirects to GitHub (PKCE on the GitHub leg too, NO scope). With `&claim=1` (the Mac app, whose
+//                                    window cannot be sent back to: the sign-in runs in the person's own browser) the callback keeps the ticket for POST /claim and shows a short page instead.
 //   GET  /v1/github/callback         GitHub comes back here (the one redirect URI registered at GitHub). Checks state against the cookie, exchanges the code, reads /user
 //                                    (numeric id, login, avatar), revokes the token at once and keeps nothing of it, then sends the browser to the app with a one-use
 //                                    ticket in the URL FRAGMENT (never in a log).
+//   POST /v1/github/claim            {cv}: the ticket a claim start ended with, once, to the app that holds the verifier; 202 while the person is still at GitHub.
 //   POST /v1/github/me               {ticket, cv}: who GitHub says this is, and the Vyre name linked to that numeric id, if any. cv must match the cc the start gave.
 //   POST /v1/github/link             {ticket, cv, name, eid, ts, sig}: link this GitHub id to the identity `name`. The request is signed by a device entry that is on the
 //                                    identity's chain NOW (fetched from the directory and verified here), is not a newcomer, and names this ticket, this host and a time.
@@ -34,6 +36,8 @@ export const GH_LIMITS = Object.freeze({
   /** per address, a minute */
   startPerMin: 10,
   callbackPerMin: 20,
+  /** the Mac app asks every two seconds while the person is at GitHub */
+  claimPerMin: 40,
   readPerMin: 30,
   writePerMin: 10,
   /** wrong verifiers or bad signatures per ticket before it is burnt */
@@ -90,8 +94,9 @@ async function readBody(request) {
   try { const v = JSON.parse(text); return v && typeof v === "object" && !Array.isArray(v) ? v : null; } catch { return null; }
 }
 
+const CLEAR_COOKIE = `${COOKIE}=; Max-Age=0; Path=/v1/github/callback; HttpOnly; Secure; SameSite=Lax`;
 /** @param {string} app @param {string} frag */
-const back = (app, frag) => new Response(null, { status: 302, headers: { location: `${app}${RETURN_PATH}#${frag}`, "cache-control": "no-store", "referrer-policy": "no-referrer", "set-cookie": `${COOKIE}=; Max-Age=0; Path=/v1/github/callback; HttpOnly; Secure; SameSite=Lax` } });
+const back = (app, frag) => new Response(null, { status: 302, headers: { location: `${app}${RETURN_PATH}#${frag}`, "cache-control": "no-store", "referrer-policy": "no-referrer", "set-cookie": CLEAR_COOKIE } });
 
 /** The Worker's door for /v1/github/*. @param {Request} request @param {URL} url @param {any} env */
 export async function onGithub(request, url, env) {
@@ -103,7 +108,7 @@ export async function onGithub(request, url, env) {
   if (request.method !== "POST") return json(405, { error: "not a way in" });
   const origin = request.headers.get("origin");
   if (origin && !appOrigins(env).includes(origin)) return json(403, { error: "not from here" });
-  const run = path === "/me" ? me : path === "/assert" ? assertion : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : path === "/enter" ? enter : null;
+  const run = path === "/me" ? me : path === "/claim" ? claim : path === "/assert" ? assertion : path === "/link" ? link : path === "/challenge" ? challenge : path === "/account" ? account : path === "/enter" ? enter : null;
   if (!run) return json(404, { error: "no such call" });
   return withCors(request, env, await run(request, url, env));
 }
@@ -116,7 +121,7 @@ async function start(request, url, env) {
   if (!CC_RE.test(cc)) return json(400, { error: "bad request" });
   if (!appOrigins(env).includes(app)) return json(400, { error: "that app is not one this relay sends people back to" });
   const sid = rand(24), gv = rand(32);
-  await ask(env, { op: "state.put", sid, rec: { cc, app, gv }, exp: now(env) + GH_LIMITS.stateMs });
+  await ask(env, { op: "state.put", sid, rec: { cc, app, gv, ...(url.searchParams.get("claim") === "1" ? { claim: true } : {}) }, exp: now(env) + GH_LIMITS.stateMs });
   const redirect = String(env.GITHUB_REDIRECT_URI || `${url.origin}/v1/github/callback`);
   const q = new URLSearchParams({ client_id: String(env.GITHUB_OAUTH_CLIENT_ID), redirect_uri: redirect, state: sid, code_challenge: await sha256b64(gv), code_challenge_method: "S256", allow_signup: "true" });
   // No `scope`: GET /user answers the numeric id, login and avatar for any token.
@@ -133,6 +138,20 @@ async function callback(request, url, env) {
   if (!/^[A-Za-z0-9_-]{32}$/.test(sid) || !cookie || !same(cookie.slice(COOKIE.length + 1), sid)) return bad();
   const st = (await ask(env, { op: "state.take", sid })).rec;
   if (!st) return bad();
+  if (st.claim) {
+    // The Mac app: the browser cannot hand the ticket to the app's window, so it waits here for the app to claim it with its verifier, and the browser gets a page that says where to go.
+    const r = await finish(request, url, env, st);
+    const frag = String(r.headers.get("location") || "").split("#")[1] || "error=failed";
+    await ask(env, { op: "claim.put", cc: st.cc, frag, exp: now(env) + GH_LIMITS.stateMs });
+    const ok = frag.startsWith("ticket=");
+    return new Response(ok ? "You are signed in with GitHub. Go back to the Vyre app; you can close this tab." : "GitHub sign-in did not finish. Go back to the Vyre app and try again.",
+      { status: ok ? 200 : 400, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer", "set-cookie": CLEAR_COOKIE } });
+  }
+  return finish(request, url, env, st);
+}
+
+/** The callback's work once the state is this browser's: the code for the GitHub user, the token revoked, a ticket. Answers the redirect to the app with the fragment. @param {Request} request @param {URL} url @param {any} env @param {any} st */
+async function finish(request, url, env, st) {
   const code = url.searchParams.get("code") || "";
   if (url.searchParams.get("error") || !code || code.length > 200) return back(st.app, "error=denied");
   const f = typeof env.GITHUB_FETCH === "function" ? env.GITHUB_FETCH : globalThis.fetch.bind(globalThis);
@@ -162,6 +181,19 @@ async function callback(request, url, env) {
     // GitHub tells the account's own two-factor setting only when it chooses to; unknown stays null, never a guess.
     twofa: typeof user.two_factor_authentication === "boolean" ? user.two_factor_authentication : null, cc: st.cc, bad: 0 }, exp: now(env) + GH_LIMITS.ticketMs });
   return back(st.app, `ticket=${ticket}`);
+}
+
+/** POST /v1/github/claim {cv}: the end of a claim start, once, for the verifier whose hash it started with. 202 while the person is still at GitHub. @param {Request} request @param {URL} _url @param {any} env */
+async function claim(request, _url, env) {
+  if (!(await allowed(env, `claim:${who(request)}`, GH_LIMITS.claimPerMin))) return json(429, { error: "too many tries; wait a minute" });
+  const b = await readBody(request);
+  const cv = b ? String(b.cv || "") : "";
+  if (!CV_RE.test(cv)) return json(400, { error: "bad request" });
+  const rec = (await ask(env, { op: "claim.take", cc: await sha256b64(cv) })).rec;
+  if (!rec) return json(202, { waiting: true });
+  const p = new URLSearchParams(String(rec.frag || ""));
+  const ticket = p.get("ticket");
+  return ticket && TICKET_RE.test(ticket) ? json(200, { ticket }) : json(200, { error: p.get("error") === "denied" ? "denied" : "failed" });
 }
 
 /** A ticket the caller holds the verifier for, or a refusal. Wrong verifiers burn the ticket after a few. @param {any} env @param {any} b @param {string} ip */
@@ -342,7 +374,7 @@ export class GithubLinks {
 
   async alarm() {
     const t = Date.now();
-    for (const prefix of ["s/", "t/", "n/", "h/"]) {
+    for (const prefix of ["s/", "t/", "n/", "h/", "c/"]) {
       const all = await this.ctx.storage.list({ prefix });
       const dead = [...all].filter(([, v]) => v && typeof v.exp === "number" && v.exp <= t).map(([k]) => k);
       if (dead.length) await this.ctx.storage.delete(dead.slice(0, 128));
@@ -362,6 +394,8 @@ export class GithubLinks {
       case "ticket.get": return out({ rec: await live(`t/${b.tid}`) });
       case "ticket.take": { const v = await live(`t/${b.tid}`); await s.delete(`t/${b.tid}`); return out({ rec: v || null }); }
       case "ticket.bad": { const v = await live(`t/${b.tid}`); if (!v) return out({}); if (v.bad + 1 >= b.max) await s.delete(`t/${b.tid}`); else await s.put(`t/${b.tid}`, { ...v, bad: v.bad + 1 }); return out({}); }
+      case "claim.put": await s.put(`c/${b.cc}`, { frag: b.frag, exp: b.exp }); await sweep(b.exp); return out({});
+      case "claim.take": { const v = await live(`c/${b.cc}`); if (v) await s.delete(`c/${b.cc}`); return out({ rec: v || null }); }
       case "nonce.put": await s.put(`n/${b.nonce}`, { name: b.name, exp: b.exp }); await sweep(b.exp); return out({});
       case "nonce.take": { const v = await live(`n/${b.nonce}`); if (!v || v.name !== b.name) return out({ ok: false }); await s.delete(`n/${b.nonce}`); return out({ ok: true }); }
       case "hit": {

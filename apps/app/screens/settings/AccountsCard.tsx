@@ -1,11 +1,13 @@
 // AI accounts beyond Claude: every account sessions can run on (Codex, Grok, ...), who each is signed in as, which is the default, and a way to add one with the provider's own sign-in
-// (the Deck's settings-accounts.js, ported). The sign-in is the provider's: Vyre shows its link and code and never sees a password or token.
+// (the Deck's settings-accounts.js, ported). The sign-in is the provider's: Vyre shows its link and code and never sees a password or token. "Use an API key" adds one the way first run does
+// (sessions.accounts.key: OpenRouter, an OpenAI or xAI key, an Anthropic key).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { openExternal } from "../../src/shell/open-external";
 import { Button, Card, Chip, CodeBlock, Divider, ErrorState, Field, LoadingState, Segmented, Text, showToast } from "@vyre/ui";
 import { addableFor, serverCannotWords, canMakeDefault, canSignIn, keepFollowing, providerName, safeUrl, stateWord, type Account, type Flow } from "./accounts-model";
 import { accounts } from "./accounts";
+import { ACCOUNTS_COPY } from "../first-run/ai-accounts-model.js";
 import { showingJoined } from "../../src/real/team-join";
 
 const say = (e: unknown, f = "That did not go through.") => ((e as { code?: string })?.code === "not_found" ? "This box has no AI accounts yet." : e instanceof Error && e.message ? (serverCannotWords(e.message) ?? e.message) : f);
@@ -23,6 +25,9 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
   const [label, setLabel] = useState("");
   const [flow, setFlow] = useState<Flow | null>(null);
   const [code, setCode] = useState("");
+  // "Use an API key": the key typed here goes once to the server's key tool and is cleared; it is never kept or shown again
+  const [keyMode, setKeyMode] = useState(false);
+  const [key, setKey] = useState("");
   const run = useRef(0);
   const load = useCallback(() => { setErr(""); accounts.list().then(setRows).catch((e) => { setRows([]); setErr(say(e, "Your AI accounts could not be read.")); }); }, []);
   useEffect(() => { load(); return () => { run.current++; }; }, [load]);
@@ -54,7 +59,7 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
       if (f.id && keepFollowing(f)) void follow(f.id, prov, mine);
     } catch (e) { if (run.current === mine) { setFlow(null); setProblem(say(e)); } }
   };
-  const cancel = () => { run.current++; setFlow(null); setAdding(false); setProblem(""); setCode(""); load(); };
+  const cancel = () => { run.current++; setFlow(null); setAdding(false); setKeyMode(false); setKey(""); setProblem(""); setCode(""); load(); };
   const submit = async (f: Flow) => {
     try { await accounts.paste(f.id, code); setProblem(""); setCode(""); setFlow({ ...f, step: "waiting" }); void follow(f.id, f.provider, run.current); }
     catch (e) { setProblem(say(e, "That did not look like the code.")); }
@@ -66,7 +71,7 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
   return (
     <Card className="gap-s3">
       <Text strong>Other AI accounts</Text>
-      <Text size="caption" tone="label">The accounts chats can run on. Each signs in with its own provider, and Vyre never sees the password or token.</Text>
+      <Text size="caption" tone="label">The accounts chats can run on. Each signs in with its own provider, and Vyre never sees the password or token. An API key goes to your Vault and is not shown again.</Text>
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       {rows === null ? <LoadingState rows={2} /> : null}
       {err ? <ErrorState title="AI accounts did not load" reason={err} retry={load} /> : null}
@@ -122,12 +127,23 @@ export function AccountsCard({ skipClaude = false }: { skipClaude?: boolean } = 
             <View className="self-start"><Button kind="ghost" size="sm" label="Cancel" onPress={cancel} /></View>
           </View>
         )
+      ) : adding && keyMode ? (
+        <View className="gap-s2">
+          <Field label={ACCOUNTS_COPY.keyLabel} value={key} onChangeText={setKey} kind="password" help={ACCOUNTS_COPY.keyHelp} />
+          <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
+          <View className="flex-row flex-wrap gap-s2">
+            <Button size="sm" label={busy === "key" ? "Adding" : "Add key"} disabled={busy === "key" || !key.trim()} onPress={() => void act("key", () => accounts.addKey(key, label).then(() => { setKey(""); setLabel(""); setKeyMode(false); setAdding(false); showToast("The account is added."); }))} />
+            <Button kind="ghost" size="sm" label="Sign in instead" onPress={() => { setKey(""); setKeyMode(false); }} />
+            <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
+          </View>
+        </View>
       ) : adding ? (
         <View className="gap-s2">
           <Segmented label="Which AI" value={provider} onChange={setProvider} options={addable.map((p) => [p, providerName(p)] as [string, string])} />
           <Field name="A name for it" value={label} onChangeText={setLabel} placeholder="A name, like work (optional)" />
           <View className="flex-row flex-wrap gap-s2">
             <Button size="sm" label="Sign in" onPress={() => void start(provider, label.trim())} />
+            {member ? null : <Button kind="ghost" size="sm" label="Use an API key" onPress={() => { setProblem(""); setKeyMode(true); }} />}
             <Button kind="ghost" size="sm" label="Cancel" onPress={cancel} />
           </View>
         </View>

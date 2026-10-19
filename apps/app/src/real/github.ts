@@ -13,12 +13,13 @@ import { accountMessage, githubSay, homeHintText, linkMessage, newVerifier, open
 import type { GithubUser, Outcome } from "./github-types";
 import * as C from "../../../../kernel/identity/chain.js";
 import { openExternal } from "../shell/open-external";
+import { shellKind } from "../shell/shell";
+import { claimTicket, githubWay, parseReturn, rememberStart, returnWaiting, startUrl, takeReturn } from "../identity/github-return.js";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 const base = () => (process.env.EXPO_PUBLIC_VYRE_RELAY_HTTP || relayUrl().replace(/^ws/, "http")).replace(/\/+$/, "");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fail = (code: string): { ok: false; say: string; code: string } => ({ ok: false, say: githubSay(code), code });
-const RETURN_KEY = "vyre.gh.return";
 
 export type GithubSession = { ticket: string; cv: string };
 
@@ -30,43 +31,52 @@ const post = async (path: string, body: unknown) => {
 };
 
 /** The app's own origin, which the relay sends the browser back to: matched exactly there. */
-const appOrigin = () => (Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : "vyreapp://box");
+const appOrigin = () => (Platform.OS === "web" && typeof window !== "undefined" && shellKind() !== "mac" ? window.location.origin : "vyreapp://box");
 
-/** Go to GitHub and wait for the ticket. On the web a window opens and the app's /github-return page hands the ticket back; on a phone the system browser session does. */
-async function ticketFromGithub(cc: string): Promise<string | { code: string }> {
-  const url = `${base()}/v1/github/start?cc=${encodeURIComponent(cc)}&app=${encodeURIComponent(appOrigin())}`;
-  const parse = (hash: string) => { const p = new URLSearchParams(hash.replace(/^#/, "")); return p.get("ticket") ?? ({ code: p.get("error") === "denied" ? "denied" : "failed" } as const); };
-  if (Platform.OS === "web") {
-    try { localStorage.removeItem(RETURN_KEY); } catch { /* none */ }
-    const opened = await openExternal(url, { name: "vyre-github", features: "width=520,height=720" });
-    if (!opened.opened) return { code: "popup" };
-    // in the Mac app the sign-in is in the browser, which hands no window back: the wait is the same, without the closed-window shortcut
-    const w = opened.window;
-    for (let i = 0; i < 600; i++) {
-      await sleep(500);
-      let got: string | null = null;
-      try { got = localStorage.getItem(RETURN_KEY); } catch { /* none */ }
-      if (got) {
-        try { localStorage.removeItem(RETURN_KEY); } catch { /* none */ }
-        try { w?.close?.(); } catch { /* closed */ }
-        return parse(got);
-      }
-      if (w && w.closed && i > 4) return { code: "denied" };
-    }
-    return { code: "timeout" };
+/** This page's storage, or null where there is none (a phone, a private window that refuses it). */
+const pageStore = () => { try { return Platform.OS === "web" && typeof localStorage !== "undefined" ? localStorage : null; } catch { return null; } };
+
+/** A sign-in came back from GitHub to this page and waits to be finished (the screen that started it calls its GitHub step again, which takes it). */
+export function githubReturnWaiting(): boolean {
+  return !MOCK && returnWaiting(pageStore(), Date.now());
+}
+
+/**
+ * Go to GitHub and come back with a ticket and the verifier it was started with (see identity/github-return.js). In a browser the tab itself goes to GitHub, with no popup to block,
+ * and this answers `redirect` while it leaves; back on the page, the same step runs again and takes the ticket. The Mac app opens the person's browser and claims the ticket from
+ * the relay; a phone uses the system's sign-in sheet.
+ */
+async function ticketFromGithub(): Promise<{ ticket: string; cv: string } | { code: string }> {
+  const way = githubWay({ web: Platform.OS === "web" && typeof window !== "undefined", mac: shellKind() === "mac" });
+  if (way === "redirect") {
+    const store = pageStore();
+    const back = takeReturn(store, Date.now());
+    if (back) return back;
+    const { cv, cc } = await newVerifier();
+    if (!store || !rememberStart(store, { cv, back: `${window.location.pathname}${window.location.search}`, now: Date.now() })) return { code: "no_storage" };
+    window.location.assign(startUrl(base(), cc, appOrigin(), false));
+    return { code: "redirect" };
+  }
+  const { cv, cc } = await newVerifier();
+  if (way === "claim") {
+    const opened = await openExternal(startUrl(base(), cc, appOrigin(), true));
+    if (!opened.opened) return { code: "failed" };
+    const t = await claimTicket((v) => post("/claim", { cv: v }), cv, { sleep });
+    return typeof t === "string" ? { ticket: t, cv } : t;
   }
   const WebBrowser = await import("expo-web-browser");
-  const res = await WebBrowser.openAuthSessionAsync(url, "vyreapp://box/github-return");
+  const res = await WebBrowser.openAuthSessionAsync(startUrl(base(), cc, appOrigin(), false), "vyreapp://box/github-return");
   if (res.type !== "success" || !res.url) return { code: "denied" };
-  return parse(res.url.includes("#") ? res.url.slice(res.url.indexOf("#")) : "");
+  const t = parseReturn(res.url.includes("#") ? res.url.slice(res.url.indexOf("#")) : "");
+  return typeof t === "string" ? { ticket: t, cv } : t;
 }
 
 /** Sign in with GitHub: who GitHub says this is, and the Vyre name already linked to that numeric id, if any. */
 export async function signInWithGithub(opts: { signin: boolean }): Promise<Outcome<{ user: GithubUser; session: GithubSession | null }>> {
   if (MOCK) return { ok: true, user: opts.signin ? GITHUB_MOCK.linked : GITHUB_MOCK.fresh, session: null };
-  const { cv, cc } = await newVerifier();
-  const t = await ticketFromGithub(cc);
-  if (typeof t !== "string") return fail(t.code);
+  const got = await ticketFromGithub();
+  if (!("ticket" in got)) return fail(got.code);
+  const { ticket: t, cv } = got;
   const r = await post("/me", { ticket: t, cv });
   if (r.status === 0 || r.status >= 500) return fail("unreachable");
   if (r.status !== 200 || !r.json?.github) return fail("expired");

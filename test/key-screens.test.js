@@ -35,7 +35,8 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|flows\/\[id\]\/runs\/\[run\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
-  [/^(index|about|access|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
+  [/^(access|settings\/(audit|rules|groups|servers|mcp|all))\.tsx$/, "archived Settings pages (apps/app/screens/settings/archived.js, one line of why each; owner, 20 Oct: half-built pages must not be visible): the route files are kept, but each opens only with Labs on (ArchivedGate) and none is on the Settings list, the Settings panel or the search"],
+  [/^(index|about|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],
 ]);
 
 const walk = (/** @type {string} */ dir, /** @type {string} */ rel = "") => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name), path.join(rel, e.name)) : e.name.endsWith(".tsx") ? [path.join(rel, e.name)] : []);
@@ -100,4 +101,15 @@ test("key screens: every route is drawn from blocks or named as hand-written wit
 test("key screens: a hand-written entry that no route matches is dropped, so the list cannot go stale", () => {
   const routes = walk(ROUTES);
   for (const [p, why] of HAND) assert.ok(routes.some(r => p.test(r)), `no route matches ${p} (${why}); remove the entry`);
+});
+
+test("key screens: every archived Settings page is named here with the reason, and its route file is kept behind Labs", async () => {
+  const { ARCHIVED } = await import("../apps/app/screens/settings/archived.js");
+  const entry = HAND.find(([, why]) => why.startsWith("archived Settings pages"));
+  assert.ok(entry, "the archived entry is in HAND");
+  for (const a of ARCHIVED.filter(x => x.kind === "archived")) {
+    const rel = a.href.replace(/^\/u\//, "") + ".tsx";
+    assert.ok(entry[0].test(rel), `${a.href} is archived but not named in the archived HAND entry`);
+    assert.ok(fs.readFileSync(path.join(ROUTES, rel), "utf8").includes("ArchivedGate"), `${rel} opens only with Labs on`);
+  }
 });

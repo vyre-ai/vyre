@@ -4,7 +4,7 @@
 //   Sources (lib/model-registry.js SOURCE_RANK):
 //     api         each provider's own /models, fetched by the switchboard with the account's key (threads.models-fetch: it returns the answer, never the key)
 //     cli         what a CLI or a subscription login reported when a session started (sessions.providers.snapshot): Claude Code, Codex with a ChatGPT login, the Grok CLI
-//     openrouter  openrouter.ai/api/v1/models, public and keyless: price, context and capabilities, joined to an entry by id
+//     openrouter  openrouter.ai/api/v1/models, public and keyless: price, context and capabilities, joined to an entry by id, and the entries of provider openrouter
 //     fallback    the aliases the Claude CLI takes, only when nothing else is known
 //   A refresh runs daily and on demand (at most once a minute). A source that fails keeps its last rows and the failure is on `models.status`. The first fill is silent; a model first seen after it
 //   is `models.new`, and writes ONE pending eval proposal for the owner. Approving writes a queue; nothing here runs an eval or spends anything.
@@ -84,12 +84,13 @@ export default {
         noteSource("api", errors.length === 0, errors.join("; ") || null, n, undefined);
       } else noteSource("api", false, "no way to fetch with the accounts' keys here", 0, undefined);
       // openrouter: public metadata, joined by id; a failure keeps the last rows
-      let orRows = /** @type {any[] | null} */ (null);
+      let orRows = /** @type {any[] | null} */ (null), orFresh = false;
       try {
         const res = await httpFetch(openrouterUrl(), { headers: { accept: "application/json" }, timeoutMs: 15_000 });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         orRows = normalizeApi("openrouter", await res.json());
         noteSource("openrouter", true, null, orRows.length, orRows.slice(0, 1500));
+        orFresh = true;
       } catch (e) {
         noteSource("openrouter", false, e instanceof Error ? e.message.slice(0, 120) : "could not be read", 0, undefined);
         const last = /** @type {any} */ (db.prepare("SELECT body FROM models_sources WHERE name = 'openrouter'").get());
@@ -101,6 +102,12 @@ export default {
         const got = await quiet(() => ctx.call("sessions.models.get", {}));
         const rows = (got && Array.isArray(got.aliases) ? got.aliases : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id), context: null, price: null, capabilities: null }));
         if (rows.length) { const r = mergeSource(entries, "claude", "fallback", rows, at); entries = r.entries; added = []; noteSource("fallback", true, null, rows.length, undefined); }
+      }
+      // OpenRouter's own models (#275): its public list is what an OpenRouter account can run, so each row is also an entry of provider "openrouter". The list is large and changes often, so a model
+      // first seen there proposes no eval card; it ages like any live source only when the list was read this time.
+      if (orRows && orRows.length) {
+        entries = mergeSource(entries, "openrouter", "openrouter", orRows, at).entries;
+        if (orFresh) for (const row of orRows) seen.add(keyOf("openrouter", row.id));
       }
       // a model no source listed this time has missed one more refresh (only for providers that have a live source)
       const live = new Set([...seen].map((k) => k.split("/")[0]));
@@ -242,6 +249,16 @@ export default {
     // The first look a few minutes after start (a start is never slowed by the network), then daily.
     const first = setTimeout(() => { refreshOnce().catch(() => {}); }, FIRST_LOOK_MS); first.unref();
     const daily = setInterval(() => { refreshOnce().catch(() => {}); }, DAY); daily.unref();
-    return { async stop() { clearTimeout(first); clearInterval(daily); try { await looking; } catch { /* stopping */ } } };
+    // An AI account that becomes usable (a key added, a sign-in done) is looked at soon after, so a fresh Space's pickers list its models without waiting for the first look. A look already under way
+    // may have read the accounts before this one, so the new look follows it.
+    const afterAccount = ctx.config && ctx.config.models && Number.isFinite(Number(ctx.config.models.after_account_ms)) ? Number(ctx.config.models.after_account_ms) : 2000;
+    let stopped = false, soon = /** @type {any} */ (null);
+    const offAccount = ctx.events.on("account.changed", (/** @type {any} */ e) => {
+      if (stopped || !e || !e.payload || e.payload.signed_in !== true) return;
+      clearTimeout(soon);
+      soon = setTimeout(() => { void Promise.resolve(looking).catch(() => {}).then(() => { if (!stopped) refreshOnce().catch(() => {}); }); }, afterAccount);
+      if (soon && typeof soon.unref === "function") soon.unref();
+    });
+    return { async stop() { stopped = true; clearTimeout(soon); if (typeof offAccount === "function") offAccount(); clearTimeout(first); clearInterval(daily); try { await looking; } catch { /* stopping */ } } };
   },
 };

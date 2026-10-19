@@ -12,6 +12,20 @@ export const EFFORT: [string, string][] = [["low", "Low"], ["medium", "Medium"],
 export const modelsFor = (current?: string | null, aliases?: unknown): { id: string; name: string }[] =>
   modelChoices({ current, aliases }).map((m) => ({ id: m.id, name: m.label }));
 
+/** One AI account and the models it offers (sessions.accounts.models). */
+export type ModelGroup = { account: string; label: string; models: { id: string; label: string }[] };
+/**
+ * The agent page's model picker from the person's own AI accounts: only models an account of theirs offers, each once, named with its account when there is more than one, then the agent's own
+ * model when no account offers it (so the picker still shows what it runs on).
+ */
+export function accountModelsFor(current: string | null | undefined, groups: ModelGroup[] | null | undefined): { id: string; name: string }[] {
+  const withModels = (groups || []).filter((g) => g && Array.isArray(g.models) && g.models.length);
+  const out = new Map<string, { id: string; name: string }>();
+  for (const g of withModels) for (const m of g.models) if (m && typeof m.id === "string" && !out.has(m.id)) out.set(m.id, { id: m.id, name: withModels.length > 1 ? `${m.label || m.id} (${g.label})` : m.label || m.id });
+  if (current && !out.has(current)) out.set(current, { id: current, name: current });
+  return [...out.values()];
+}
+
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 const since = (at: number, now: number) => {
   const m = Math.max(0, Math.round((now - at) / 60000));
