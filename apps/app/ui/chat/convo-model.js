@@ -82,6 +82,10 @@ export function convosFrom(i) {
   for (const f of i.flows ?? []) {
     out.push({ id: `flow:${f.id}`, kind: "flow", title: f.title, sub: f.line ?? "", last: f.last ?? 0, project: "", projects: [], chat: f.id, agent: "", person: "", open: true, asks: f.needs ?? 0, unread: 0, pinned: false, status: "", dot: (f.needs ?? 0) > 0 ? "ask" : "", names: [], look: "", lone: "", section: "flows", threads: Math.max(1, f.runs ?? 1) });
   }
+  // Your assistant is always at the top: with no chat of its own yet, a row that starts a new thread with it.
+  if (asst && !out.some((r) => r.pinned && r.section === "pinned" && r.chat)) {
+    out.push({ id: "assistant:new", kind: "agent", title: asst, sub: "Your assistant", last: Number.MAX_SAFE_INTEGER, project: "", projects: [], chat: "", agent: asst, person: "", open: true, asks: 0, unread: 0, pinned: true, status: "", dot: "", names: [asst], look: "", lone: "agent", section: "pinned", threads: 1 });
+  }
   // The second line never repeats the name above it: an agent says what it is, the assistant says whose it is.
   for (const r of out) {
     const same = !r.sub || r.sub.trim().toLowerCase() === r.title.trim().toLowerCase() || r.sub.trim().toLowerCase() === r.agent.trim().toLowerCase();

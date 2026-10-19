@@ -161,11 +161,11 @@ test("the Engineer's Space chat carries engineer_chat through to the row", () =>
   assert.equal(b.engineer, false);
 });
 
-test("pressing Chat opens the Assistant's chat, makes it when it is not there, and stays on the list when asked or while the box is silent", async () => {
+test("pressing Chat opens a new thread with the Assistant, and stays on the list when asked or while the box is silent", async () => {
   const { chatsLanding } = await import("./chats-model.js");
-  assert.equal(chatsLanding({ assistant: true, from: "chats" }), "open");
-  assert.equal(chatsLanding({ assistant: false, from: "chats" }), "make");
-  assert.equal(chatsLanding({ assistant: false, from: "none" }), "list");
-  assert.equal(chatsLanding({ assistant: false, from: "unsupported" }), "list");
-  assert.equal(chatsLanding({ assistant: true, from: "chats", list: "1" }), "list");
+  assert.equal(chatsLanding({ from: "chats" }), "new");
+  assert.equal(chatsLanding({ from: "sample" }), "new");
+  assert.equal(chatsLanding({ from: "none" }), "list");
+  assert.equal(chatsLanding({ from: "unsupported" }), "list");
+  assert.equal(chatsLanding({ from: "chats", list: "1" }), "list");
 });

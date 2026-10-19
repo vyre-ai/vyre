@@ -84,6 +84,7 @@ export function ChatsSidebar() {
   const marked = convos.map((c) => (c.chat && prefs.pinned.includes(c.chat) && c.section !== "pinned" ? { ...c, section: "pinned" as const } : c));
   const found = [...convosShown(marked, { project: f.project, query: f.q, type: f.type })].sort((a, b) => pinnedFirst(a) - pinnedFirst(b));
   const open = (c: Convo) => {
+    if (c.id === "assistant:new") { router.push("/u/chats/new-thread" as never); return; }
     if (c.kind === "flow") { router.push(`/u/chats/flow/${encodeURIComponent(c.chat)}` as never); return; }
     if (c.chat) { router.push({ pathname: "/u/chats/[id]", params: { id: c.chat } }); return; }
     void startChat({ people: c.person ? [c.person] : [], agents: c.agent ? [c.agent] : [] }).then((x) => { if ("chat" in x) { void refresh(); router.push({ pathname: "/u/chats/[id]", params: { id: x.chat } }); } else showToast(x.say); }).catch(() => showToast("That did not go through."));

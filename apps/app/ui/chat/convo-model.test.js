@@ -152,3 +152,13 @@ test("the assistant's pinned chat is listed under the assistant's own name, firs
   assert.equal(rows[0].sub, "Your assistant");
   assert.equal(rows[0].pinned, true);
 });
+
+test("the assistant is always first: with no chat of its own yet, a row that starts a new thread with it", async () => {
+  const { convosFrom } = await import("./convo-model.js");
+  const rows = convosFrom({ assistantName: "Qi", chats: [{ id: "c2", title: "Lease", project: "", people: [], agents: [], status: "idle", last: 99, line: "", asks: 0, unread: 0, open: true }], agents: [{ name: "engineer", role: "engineer" }], people: [] });
+  assert.equal(rows[0].id, "assistant:new");
+  assert.equal(rows[0].title, "Qi");
+  assert.equal(rows[0].sub, "Your assistant");
+  assert.equal(rows[0].chat, "", "nothing is made until the first message");
+  assert.equal(convosFrom({ chats: [], agents: [], people: [] }).some((r) => r.id === "assistant:new"), false, "no assistant known, no row");
+});
