@@ -8,9 +8,16 @@
 import { agentClaim } from "../modules/index.js";
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 import { quotedCommand } from "../../lib/skill-library.js";
+import { within } from "../../lib/within.js";
 
 export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing", "signin"]);
 const DEBOUNCE_MS = 200;
+/**
+ * How long one owner may take before the list goes on without it. Home waits on this list, and one owner that hangs (an app's signing list fetched over the network with a 15 s limit, a module
+ * still starting) used to hold back every card. A slow owner keeps its cards as they were and is named in `partial`; when its answer lands the list is read again.
+ */
+export const OWNER_BUDGET_MS = 1500;
+const SLOW = Symbol("slow");
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
 
@@ -240,27 +247,42 @@ export const OWNERS = [
 ];
 
 /**
- * @param {{ call: (tool: string, input?: any) => Promise<any>, on: (pattern: string, fn: (e: any) => void) => (() => void), now: () => number, log?: (m: string) => void, emit?: (type: string, payload: any) => void, extra?: () => any[] }} deps `extra`: the cards this queue holds itself (a yes waiting on the phone), which need no owner
+ * @param {{ call: (tool: string, input?: any) => Promise<any>, on: (pattern: string, fn: (e: any) => void) => (() => void), now: () => number, log?: (m: string) => void, emit?: (type: string, payload: any) => void, extra?: () => any[], extraRecent?: () => any[], budgetMs?: number }} deps `extra`: the cards this queue holds itself (a yes waiting on the phone), which need no owner; `budgetMs`: one owner's time per read
  */
-export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [], extraRecent = () => [] }) {
+export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [], extraRecent = () => [], budgetMs = OWNER_BUDGET_MS }) {
   /** @type {Map<string, any>} */ const open = new Map();
   /** @type {Map<string, any>} */ const recent = new Map();
   /** Outcomes the owners' events told us, until the card they belong to closes. @type {Map<string, string>} */ const hints = new Map();
   /** Owners whose list could not be read now: their cards are left as they were, and named. @type {Set<string>} */ const partial = new Set();
   let said = "", timer = /** @type {any} */ (null), running = /** @type {Promise<void> | null} */ (null), again = false, stopped = false;
 
-  const read = async (/** @type {typeof OWNERS[number]} */ o) => {
+  /** An owner's read still running and when it began: a slow owner is asked once, and a refresh waits only for what is left of its budget. @type {Map<string, { p: Promise<any[] | null>, since: number }>} */ const inflight = new Map();
+  const ask = async (/** @type {typeof OWNERS[number]} */ o) => {
     try {
       const r = await call(o.tool, {});
       if (!r || r.error || r.data === undefined || r.data === null) return null;
       return o.map(r.data);
     } catch { return null; }
   };
+  /** The owner's rows; null when it failed or is not running here; SLOW when it did not answer within the budget (its late answer reads the list again). */
+  const read = async (/** @type {typeof OWNERS[number]} */ o) => {
+    let f = inflight.get(o.name);
+    if (!f) {
+      const mine = { p: ask(o), since: Date.now() };
+      inflight.set(o.name, mine);
+      void mine.p.then(() => { if (inflight.get(o.name) === mine) inflight.delete(o.name); });
+      f = mine;
+    }
+    const got = await within(f.p, Math.max(0, budgetMs - (Date.now() - f.since)), SLOW);
+    if (got === SLOW) void f.p.then(() => schedule());
+    return got;
+  };
   const reconcile = async () => {
     const got = await Promise.all(OWNERS.map(read));
     const t = now();
     for (let i = 0; i < OWNERS.length; i++) {
       const o = OWNERS[i], rows = got[i];
+      if (rows === SLOW) { partial.add(o.name); continue; }
       if (rows === null) { if (!(/** @type {any} */ (o)).quiet) partial.add(o.name); continue; }
       partial.delete(o.name);
       const live = new Set(rows.map(r => r.id));

@@ -156,11 +156,84 @@ let keyBundleSuite = Suite("key bundle") { t in
         t.eq(enclave.loadHandle(), Data("E".utf8))
     }
 
+    // The Keychain backing with SecItemAdd and SecItemUpdate faked: how a write falls back on an ad-hoc-signed app. (SecItemDelete is the real one, on a test service and an account no one has.)
+    func fakeBacking(_ add: @escaping (String?) -> OSStatus, update: @escaping () -> OSStatus = { errSecSuccess }) -> (KeychainBundleBacking, () -> [String]) {
+        let b = KeychainBundleBacking(home: "test-" + UUID().uuidString, service: "sh.vyre.keys.test")
+        var tried: [String] = []
+        b.addItem = { q in let cls = (q[kSecAttrAccessible as String] as! CFString?).map { $0 as String }; tried.append(cls ?? "none"); return add(cls) }
+        b.updateItem = { _, _ in tried.append("update"); return update() }
+        return (b, { tried })
+    }
+
+    t.test("an ad-hoc app: the this-device-only class is refused (errSecMissingEntitlement), so the item goes to the login Keychain with the next class, and nothing is reported") {
+        let (b, tried) = fakeBacking { cls in cls == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String) ? errSecMissingEntitlement : errSecSuccess }
+        t.ok(b.write(Data("x".utf8)))
+        t.eq(tried(), [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String, kSecAttrAccessibleAfterFirstUnlock as String], "the stronger class first, the fallback only on refusal")
+        t.eq(b.lastError, nil)
+    }
+
+    t.test("a signed app keeps using the stronger class: no fallback is tried when it works") {
+        let (b, tried) = fakeBacking { _ in errSecSuccess }
+        t.ok(b.write(Data("x".utf8)))
+        t.eq(tried(), [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String])
+    }
+
+    t.test("an item an earlier build left is written over in place, not given up on") {
+        let (b, tried) = fakeBacking { cls in cls == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String) ? errSecMissingEntitlement : errSecDuplicateItem }
+        t.ok(b.write(Data("x".utf8)))
+        t.eq(tried(), [kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String, kSecAttrAccessibleAfterFirstUnlock as String, "update"])
+    }
+
+    t.test("when every class is refused, the write fails with the Keychain's reason, and the bundle says it") {
+        let (b, tried) = fakeBacking { _ in errSecMissingEntitlement }
+        t.ok(!b.write(Data("x".utf8)))
+        t.eq(tried().count, 3, "all three classes were tried")
+        t.ok(b.lastError?.contains("OSStatus -34018") == true, b.lastError ?? "no reason")
+        let bundle = KeyBundle(backing: b)
+        t.ok(!bundle.set(.agree, handle))
+        t.ok(bundle.lastError?.hasPrefix("the Keychain said") == true)
+        let agree = MacAgree(store: BundleHandleStore(bundle: bundle, slot: .agree))
+        agree.hasSecureEnclave = { false }
+        t.eq(agree.publicPoint(create: true), nil)
+        t.ok(agree.lastError?.contains("OSStatus -34018") == true, "the agreement key carries the reason to the page: \(agree.lastError ?? "none")")
+    }
+
+    // The real login Keychain, from this test binary, which is signed ad hoc with no entitlements (as the app is until it has a Developer ID): proof that the fallback keeps a key there.
+    // Only on CI (GitHub's macOS runner), never on a person's Mac; an item of its own, taken away after.
+    t.test("on CI: the real Keychain keeps a bundle for an ad-hoc binary with no entitlements, and gives it back") {
+        let env = ProcessInfo.processInfo.environment
+        guard env["GITHUB_ACTIONS"] == "true" else { FileHandle.standardError.write(Data("# key bundle: real Keychain test runs on CI only\n".utf8)); return }
+        let b = KeychainBundleBacking(home: "ci-" + UUID().uuidString, service: "sh.vyre.keys.ci-test")
+        var used = "none"
+        b.addItem = { q in
+            let s = SecItemAdd(q as CFDictionary, nil)
+            if s == errSecSuccess { used = (q[kSecAttrAccessible as String] as! CFString?).map { $0 as String } ?? "login keychain default" }
+            FileHandle.standardError.write(Data("# key bundle: SecItemAdd \((q[kSecAttrAccessible as String] as! CFString?).map { $0 as String } ?? "no class") -> OSStatus \(s)\n".utf8))
+            return s
+        }
+        defer { b.delete() }
+        let bundle = KeyBundle(backing: b)
+        let agree = MacAgree(store: BundleHandleStore(bundle: bundle, slot: .agree))
+        agree.hasSecureEnclave = { false }
+        let point = agree.publicPoint(create: true)
+        FileHandle.standardError.write(Data("# key bundle: kept with class \(used); lastError \(agree.lastError ?? "none")\n".utf8))
+        t.eq(point?.count, 65, "the agreement key was kept: \(agree.lastError ?? "")")
+        // a new launch reads it back from the Keychain itself
+        let again = MacAgree(store: BundleHandleStore(bundle: KeyBundle(backing: KeychainBundleBacking(home: String(b.account.dropFirst("bundle:".count)), service: "sh.vyre.keys.ci-test")), slot: .agree))
+        t.eq(again.publicPoint(create: false), point, "the same key after a new launch")
+    }
+
     t.test("the app keeps all four keys in the one bundle") {
         let app = (try? String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/KeyBundleTests.swift", with: "Sources/Host/App.swift"), encoding: .utf8)) ?? ""
         for piece in ["KeyBundle.keychain(home: home)", "BundleSeedStore(bundle: keys)", "BundleHandleStore(bundle: keys, slot: .enclave)", "BundleHandleStore(bundle: keys, slot: .agree)", "BundleHandleStore(bundle: keys, slot: .presence)"] {
             t.ok(app.contains(piece), piece)
         }
         t.ok(!app.contains("KeychainSeedStore(home") && !app.contains("KeychainEnclaveStore(home") && !app.contains("KeychainAgreeStore(home"), "no separate item is opened by the app any more")
+    }
+
+    t.test("the page is told why the agreement key was not kept, never a bare refusal") {
+        let window = (try? String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/KeyBundleTests.swift", with: "Sources/Host/VyreAppWindow.swift"), encoding: .utf8)) ?? ""
+        t.ok(window.contains("This Mac could not keep its chat key: \\(agreement?.lastError"), "agree.public replies with the reason")
+        t.ok(!window.contains("This Mac has no agreement key.\"]"), "the old reason-less reply is gone")
     }
 }

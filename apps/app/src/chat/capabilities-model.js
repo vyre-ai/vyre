@@ -35,8 +35,6 @@ export function laterNoteFromLine(line) {
   return { title, when };
 }
 
-/** The providers a model the chat does not have yet can join as (core/stream/group.js secondOpinion). */
-const JOINS = ["claude", "codex", "grok", "openrouter", "openai-compatible"];
 /** A model slot's provider: "model:codex/default#12" is codex. @param {string} id */
 const providerOf = (id) => /^model:([a-z][a-z0-9-]*)\//.exec(String(id).toLowerCase())?.[1] ?? null;
 
@@ -56,7 +54,8 @@ export function secondOpinionTargets(faces, authorId, providerRows = []) {
   const names = new Map((Array.isArray(providerRows) ? providerRows : []).map((/** @type {any} */ r) => [String(r?.id ?? "").toLowerCase(), String(r?.label || r?.id || "")]));
   /** @type {{ id: string, label: string, sub: string }[]} */ const join = [];
   for (const r of answerRows(providerRows)) {
-    if (!JOINS.includes(r.provider) || taken.has(r.provider)) continue;
+    // providers.list answers only the chat providers this person has connected (the server owns that list), so each one the chat lacks can join
+    if (!r.provider || taken.has(r.provider)) continue;
     taken.add(r.provider);
     join.push({ id: r.provider, label: names.get(r.provider) || r.label, sub: "Joins this chat" });
   }

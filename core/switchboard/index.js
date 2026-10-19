@@ -3282,7 +3282,7 @@ export class Switchboard {
     const drv = this.deps.providers && this.deps.providers.get(provider);
     const caps = normalizeCaps(drv && drv.capabilities);
     const ok = what === "rewind" ? caps.rewind.conversation : caps.fork;
-    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed`), { code: "unsupported", provider, capability: what });
+    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed. Use a Claude chat to ${words}`), { code: "unsupported", provider, capability: what });
   }
 
   /** Who wrote this message, from the event that sent or queued it (null when it was not recorded). @param {string} id @param {string} uuid */

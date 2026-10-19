@@ -93,8 +93,20 @@ test("a template is a draft until its owner puts it live; test mode shows every 
   assert.deepEqual(versions.map((/** @type {any} */ v) => [v.version, v.state]), [[2, "live"], [1, "retired"]]);
   assert.equal(JSON.parse((await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data.template_snapshot).stages.length, 3, "the running project keeps version 1");
 
+  // The stage's task wakes its agent. Since 7498cac60 (to-dos wake agents) a task given to an agent wakes it whatever made it; a stage's task carries no source, so it was a "manual" one the wake used to skip.
+  // This home runs no model for research, so the wake fails and the task says so (stuck, with the reason in words) instead of sitting ready. agents.wake allows one retry, which fails the same way; the owner
+  // unblocks it twice, after which nothing wakes it again and the stand-in agent below works it from ready.
+  const ask = d.kernel.gateway.ask;
+  const stuckNow = (/** @type {string} */ what) => until(async () => { const x = await ask.get(ownerChain, task.id); return x && x.state === "stuck" ? x : null; }, what);
+  const unblock = () => ask.unblock(ownerChain, task.id, { proof: { op: "task.unblock", fields: { task: task.id, reassign_to: null }, n: Math.random() } });
+  const stuck = await stuckNow("the failed wake to mark the task stuck");
+  assert.match(String(stuck.stuck && stuck.stuck.reason), /research/, `the reason names the agent: ${JSON.stringify(stuck.stuck)}`);
+  await unblock();
+  await stuckNow("the one retry to fail the same way");
+  await unblock();
+
   // the agent does the task; the module moves the project to the next stage and makes its tasks
-  const agent = d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: owner, agent: "research", session: "s9", thread: "t9" });
+  const agent =d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: owner, agent: "research", session: "s9", thread: "t9" });
   await d.kernel.gateway.ask.start(agent, task.id);
   await d.kernel.gateway.ask.complete(agent, task.id, { note: "all documents gathered", sources: ["session:s9"] });
   const moved = await until(async () => { const r = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data; return r.template_stage === "Drafting" ? r : null; }, "the project to move to Drafting");
@@ -334,6 +346,8 @@ test("an agent deleted and made again under the same name inherits none of the o
   // The new agent of that name is seated in the old chat again, and the old agent's open task can be worked by it. Grants are the part delete can and does take back.
   assert.deepEqual(g.chats.read(ownerChain, chat.id).assistants, ["research"], "the old chat still lists the name");
   const tasks = (await d.kernel.gateway.ask.list(ownerChain, { doer: "research" })) || [];
-  assert.deepEqual(tasks.map((/** @type {any} */ x) => [x.title, x.state]), [["Gather documents", "ready"]], "the old open task is still the name's");
+  assert.deepEqual(tasks.map((/** @type {any} */ x) => x.title), ["Gather documents"], "the old open task is still the name's");
+  // still open: the old agent was woken for it (7498cac60), and with no model in this home that wake marks it stuck, so it is ready or stuck depending on when the wake lands
+  assert.ok(["ready", "stuck"].includes(tasks[0].state), `and still open: ${tasks[0].state}`);
   assert.equal((await mine()).length, 0, "the new agent holds nothing of the old one");
 });

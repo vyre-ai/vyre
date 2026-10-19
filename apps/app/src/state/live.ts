@@ -15,6 +15,7 @@ import { needsStore, setNeeds } from "./needs";
 import { threadsStore, toThreads, type ThreadRow } from "./threads";
 import { MOCK } from "../real/box";
 import { startUnlockAnswerer } from "../personal/answerer";
+import { within } from "../../../../lib/within.js";
 
 /** Who the box hears typing and answering from (team/archive/CONTRACT-native-apps.md 3.2: always the same explicit surface). */
 export const SURFACE: string = Platform.OS === "web" ? "web" : Platform.OS;
@@ -39,6 +40,19 @@ function contextFrom(threads: readonly ThreadRow[], projects: unknown): NeedsCon
 let reading: Promise<void> | null = null;
 let again = false;
 
+/** How long a side list (chats, project names, publishing holds) may take before the needs are drawn without it. */
+const SECTION_MS = 2000;
+const SLOW = { error: { code: "slow", message: "did not answer in time" }, data: undefined } as const;
+
+/** The chats list and the names the needs rows use, from threads.list and projects.list. */
+function chats(threads: { data?: unknown; error?: unknown }, projects: { data?: unknown }) {
+  if (threads.error) return;
+  ctx = contextFrom(toThreads(threads.data), projects.data);
+  const rows = toThreads(threads.data).map((r) => ({ ...r, projectName: r.project ? (ctx.projects?.[r.project] ?? r.project) : null }));
+  threadsStore.set({ items: rows, from: "box" });
+  void viewCache.set(CHATS_KEY, rows);
+}
+
 /** Read both lists from the box. One read at a time; a request during a read runs once after it. */
 function read(): Promise<void> {
   if (reading) {
@@ -46,20 +60,20 @@ function read(): Promise<void> {
     return reading;
   }
   reading = (async () => {
+    // Each list is its own section: the chats, the project names and the publishing holds get a short budget, so one that is slow never holds back what needs the person.
+    // A late chats answer still lands when it comes; the needs are drawn now with the names already known.
+    const threadsP = call("threads.list");
+    const projectsP = ctx.projects ? Promise.resolve({ data: null }) : call("projects.list");
     const [held, asks, threads, projects, holds] = await Promise.all([
       call("gate.held"),
       call("threads.asks"),
-      call("threads.list"),
-      ctx.projects ? Promise.resolve({ data: null }) : call("projects.list"),
+      within(threadsP, SECTION_MS, SLOW),
+      within(projectsP, SECTION_MS, SLOW),
       // Publishing acts waiting for a yes. A box with no Publish, or a person who cannot see sites, simply has none.
-      call("publish.holds"),
+      within(call("publish.holds"), SECTION_MS, SLOW),
     ]);
-    if (!threads.error) {
-      ctx = contextFrom(toThreads(threads.data), projects.data);
-      const rows = toThreads(threads.data).map((r) => ({ ...r, projectName: r.project ? (ctx.projects?.[r.project] ?? r.project) : null }));
-      threadsStore.set({ items: rows, from: "box" });
-      void viewCache.set(CHATS_KEY, rows);
-    }
+    if (threads === SLOW) void Promise.all([threadsP, projectsP]).then(([t, p]) => chats(t, p));
+    else chats(threads, projects === SLOW ? { data: null } : projects);
     // Keep what shows when a read fails: the cache or the last read stands until one works.
     if (held.error || asks.error) return;
     const list = merge(held.data, asks.data, ctx, holds.error ? null : (holds.data as { holds?: unknown } | null)?.holds);
