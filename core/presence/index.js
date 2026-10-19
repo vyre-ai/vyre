@@ -1077,13 +1077,12 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
     // Vouched device facts that name someone other than the owner (a member's chain device) never pass, with or without a session.
     if (dev && dev.person && typeof d.ownerId === "function" && String(dev.person) !== String(d.ownerId())) return false;
     if (meta && meta.person && meta.person.id) {
-      // The session's id is the box's own session row (presence_people: a random id, never the owner's person id), so what counts is who makes such a session: only the owner's key, the owner's paired device or
-      // the owner's terminal (kind cookie, bearer, cli: set by the daemon from its own table, never from the call). A surface that names the owner itself passes too.
+      // The session's id is the box's own session row (presence_people: a random id, never a person id), so the session itself says nothing about WHO. What names the person is the daemon's own proof for this same call:
+      // the device facts built from the device row and Wink's record (callerFacts, which also carry this session's id), whose person must be the owner. A member signed in on the box has the same session kinds and a
+      // device row that names her, so she never gets here. The owner's terminal session (kind cli, made by a terminal login on the box) and a surface that names the owner itself also stand.
       const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
-      if (!owner || (String(meta.person.id) !== String(owner) && !["cookie", "bearer", "cli"].includes(String(meta.person.kind)))) return false;
+      if (!owner || (String(meta.person.id) !== String(owner) && String(meta.person.kind) !== "cli" && !ownersDevice)) return false;
     }
-    // Only a paired phone's key, a passkey or a Lumen key turns approvals on (Presence.notPhoneKeyIds says which device keys are not a phone's).
-    if (typeof presence.hasPresenceDevice === "function") return !presence.hasPresenceDevice();
     return (await presence.keys()).length === 0;
   } catch { return false; }
 }

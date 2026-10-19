@@ -102,22 +102,29 @@ test("no enrolled device: the owner's own act passes; an enrolled device brings 
     assert.equal(await ask(), false, "a passkey always counts");
     presence.remove(pk.id); presence.remove(a.id); presence.remove(b.id);
   }
-  // 4f. the real shape of a signed-in session: meta.person is the box's own session row ({ id: a random session id, kind: cookie }), never the owner's person id. The walk's log: owner device yes, facts yes, session
-  // yes, every key ignored, and the floor still asked. It must pass; a member's device facts, a session with no kind, and an unnamed id must not.
+  // 4f. the real shape of a signed-in session: meta.person is the box's own session row ({ id: a random session id, kind: cookie }), never a person id, so it counts only WITH the daemon's vouched device facts naming
+  // the owner (the walk's log: owner device yes, facts yes, session yes, every key ignored, and the floor still asked). A member signed in on the box has the same session kinds and device facts naming her.
   {
     const session = { id: "sess_" + "q".repeat(20), kind: "cookie" };
+    const MEMBER = "per_" + "z".repeat(26);
+    const memberFacts = { ...devFacts, person: MEMBER };
     const hooks = (/** @type {any} */ meta) => d.registry.noPresenceDevice("device:abcdefghijklmnop", meta, "hooks.open", { name: "nw" });
     assert.equal(await hooks({ kernelFacts: devFacts, person: session }), true, "the owner's device with a real session passes hooks.open");
     assert.equal(await hooks({ kernelFacts: devFacts, person: { ...session, kind: "bearer" } }), true);
-    assert.equal(await hooks({ person: session }), true, "a session alone passes for the owner's device label");
-    assert.equal(await hooks({ kernelFacts: devFacts, person: { id: "x" } }), false, "an id that names nobody and has no session kind does not");
-    assert.equal(await hooks({ kernelFacts: { ...devFacts, person: "per_" + "z".repeat(26) }, person: session }), false, "a member's device facts never pass, session or not");
+    assert.equal(await hooks({ person: session }), false, "a session with no vouched facts says nothing about who: not the owner");
+    assert.equal(await hooks({ kernelFacts: devFacts, person: { id: "x" } }), true, "the facts name the owner");
+    assert.equal(await hooks({ kernelFacts: memberFacts, person: session }), false, "a member's session and device facts never pass");
+    assert.equal(await hooks({ kernelFacts: memberFacts }), false);
     assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts, person: session }, "spaces.invites.create", {}), true, "and an invite");
     assert.equal(await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: devFacts, person: session }, "spaces.owner.transfer", {}), false, "ownership still asks");
-    // through Registry.call itself: the floor and the retrofit gate must not answer a presence step for these facts (any other refusal, say a bad input, is not what this checks)
-    for (const [tool, input] of /** @type {[string, any][]} */ ([["hooks.open", { name: "nw", scheme: "hmac-sha256", header: "x-sig", secret: "s".repeat(24) }], ["spaces.invites.create", { space: K.id.space, role: "member" }]])) {
-      const r = await d.registry.call(tool, input, "device:abcdefghijklmnop", { kernelFacts: devFacts, person: session, thread: "t1" });
-      assert.ok(!(r.error && ["presence_required", "person_session_required", "held_for_approval", "needs_presence"].includes(String(r.error.code))), `${tool} through Registry.call: ${JSON.stringify(r).slice(0, 300)}`);
+    // through Registry.call itself: the owner's session shape passes the floor and the gate; a member's, with the same session kind and device facts naming her, is refused
+    const calls = /** @type {[string, any][]} */ ([["hooks.open", { name: "nw", scheme: "hmac-sha256", header: "x-sig", secret: "s".repeat(24) }], ["spaces.invites.create", { space: K.id.space, role: "member" }]]);
+    const asked = (/** @type {any} */ r) => Boolean(r.error && ["presence_required", "person_session_required", "held_for_approval", "needs_presence", "denied", "not_found"].includes(String(r.error.code)));
+    for (const [tool, input] of calls) {
+      const owner = await d.registry.call(tool, input, "device:abcdefghijklmnop", { kernelFacts: devFacts, person: session, thread: "t1" });
+      assert.ok(!(owner.error && ["presence_required", "person_session_required", "held_for_approval", "needs_presence"].includes(String(owner.error.code))), `${tool} for the owner through Registry.call: ${JSON.stringify(owner).slice(0, 300)}`);
+      const member = await d.registry.call(tool, input, "device:abcdefghijklmnop", { kernelFacts: memberFacts, person: session, thread: "t1" });
+      assert.ok(asked(member) && !(member.data && (member.data.token || member.data.route)), `${tool} for a member's session is refused: ${JSON.stringify(member).slice(0, 300)}`);
     }
   }
   // 5. a device is enrolled (the server's records now say so): the proof is asked again, however the call is labelled
