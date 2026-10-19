@@ -5,6 +5,7 @@ import { callT } from "../../src/real/call-tool";
 import { RecordScreen } from "./RecordScreen";
 import { needsIdFill, defineInputOf } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
+import { useRecordsOpen } from "./records-open";
 import { useTypeLayout } from "./layout-state";
 import { LayoutControls } from "./LayoutControls";
 import { TableControls } from "./TableControls";
@@ -33,7 +34,7 @@ import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
@@ -59,7 +60,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const scopes = scopesFor(type);
   const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : defaultScope(type);
   const sf = scopeFilter(scope);
-  const { data: world, loading, error, reload } = useRecordsWorld(sf && type !== "note" ? { [type]: sf } : undefined);
+  // Opens from this device's last copy of the type, then its first page, then every type behind them (records-open.ts): no loading rows once a type has been opened here before.
+  const { data: world, loading, error, reload, stale } = useRecordsOpen(type, sf && type !== "note" ? { [type]: sf } : undefined);
+  /** How many records a tab's type holds: the whole world counts its rows, a copy or a first page says what the box counted, or nothing is shown. */
+  const countOf = (t: string) => (world?.partial ? world.counts?.[t] : (world?.byType[t] || []).length);
   const { phone } = useUiTheme();
   const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length), world?.byType?.[type] ?? []);
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
@@ -95,7 +99,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // Older records without their ID (a type that gained the field): an owner or admin opening the type asks for its own definition again, unchanged, which gives them their IDs (core/records-tools); once for a type in a visit
   const idAsked = useRef(new Set<string>());
   useEffect(() => {
-    if (!world || idAsked.current.has(type)) return;
+    // judged on every record of the type, so never on a copy or a first page
+    if (!world || world.partial || idAsked.current.has(type)) return;
     const def = world.types.find((t) => t.name === type);
     if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
     idAsked.current.add(type);
@@ -170,7 +175,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const typeTabs = (
     <View className="flex-row items-center gap-s2">
       <View className="min-w-0 flex-1">
-        <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
+        <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : countOf(t.name))] as [string, string])} />
       </View>
       <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
     </View>
@@ -182,7 +187,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         <>
           {/* One header row: Import and Settings as quiet buttons, an overflow for the rest, and one primary New (the approved design). */}
           <View className="flex-row items-center gap-s2">
-            <View className="flex-1" />
+            <View className="flex-1">{stale ? <Text size="caption" tone="label">Updating</Text> : null}</View>
             <Button kind="ghost" size="sm" label="Import" onPress={() => setImporting(true)} />
             <Button kind="ghost" size="sm" label="Settings" onPress={() => setPane(pane === "records" ? "fields" : "records")} />
             <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" />
@@ -195,7 +200,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
             ]} />
             <Button kind="primary" size="sm" icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
           </View>
-          <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
+          <FirstVisit show={!world.partial && isDayOne(world)} samples={sampleCount(world)} reload={reload} />
           {typeTabs}
           {pane !== "records" ? (
             <View className="flex-row items-center gap-s3">
@@ -214,7 +219,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>
       ) : null}
       {phone || pane === "records" ? (
-      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
+      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
@@ -257,7 +262,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         )}
       </View>
       ) : null}
-      {phone ? <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}
+      {phone ? <FirstVisit show={!world.partial && isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}
+      {phone && stale ? <Text size="caption" tone="label">Updating</Text> : null}
       {phone ? typeTabs : null}
       {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
       {phone ? <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} /> : null}

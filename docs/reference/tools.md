@@ -10288,6 +10288,7 @@ One page of records of a type: filter, sort, a cursor from the last page. includ
 
 - Input:
   - `type` string, required
+  - `count` boolean
   - `cursor` string
   - `filter` any
   - `include_deleted` boolean

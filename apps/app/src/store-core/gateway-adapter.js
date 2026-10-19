@@ -39,6 +39,9 @@ const one = (d, k) => (d && typeof d === "object" && k in d ? d[k] : d);
 /** The rows of a page. @param {any} d */
 const rowsOf = (d) => (Array.isArray(d) ? d : d?.rows ?? d?.tasks ?? d?.records ?? d?.items ?? []);
 
+/** The page a list asks for: records.list's largest. */
+export const LIST_PAGE = 200;
+
 /** The StoreError codes the screens know. */
 const CODES = new Set(["version_conflict", "not_found", "sealed_value_refused", "invalid"]);
 
@@ -93,7 +96,8 @@ export function createGatewayStore({ rpc }) {
       /** @type {any[]} */ const out = [];
       let cursor;
       do {
-        const d = await rpc.read(TOOLS.list, { ...sp(q.space), type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), ...(cursor ? { cursor } : {}) });
+        // the largest page records.list gives (200): a long type is read in a quarter of the round trips the default page of 50 took, each one a wait on the box and its store
+        const d = await rpc.read(TOOLS.list, { ...sp(q.space), type, ...(q.filter ? { filter: q.filter } : {}), ...(q.sort ? { sort: q.sort } : {}), limit: LIST_PAGE, ...(cursor ? { cursor } : {}) });
         out.push(...rowsOf(d));
         cursor = d?.next_cursor;
       } while (cursor);

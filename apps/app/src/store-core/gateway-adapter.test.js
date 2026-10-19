@@ -30,6 +30,7 @@ test("list follows the cursor and sends no actor, chain or proof in the body", a
   const rows = await s.list("matter", { space: "juniper" });
   assert.deepEqual(rows.map((r) => r.id), ["a", "b"]);
   assert.equal(f.calls[1].input.cursor, "c1");
+  for (const c of f.calls) assert.equal(c.input.limit, 200, "the largest page, so a long type takes fewer round trips");
   for (const c of f.calls) assert.ok(!("actor" in c.input) && !("chain" in c.input) && !("proof" in c.input));
 });
 

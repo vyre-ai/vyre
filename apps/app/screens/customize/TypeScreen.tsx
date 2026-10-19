@@ -12,6 +12,7 @@ import { PipelinesEditor } from "./PipelinesEditor";
 import { InlineTitle } from "./InlineTitle";
 import { moveField, parseRule, putField, regroup } from "../../ui/setup/typeedit.js";
 import { fieldTokens, tokenList } from "../../ui/setup/fieldtokens.js";
+import { ID_NOTE, isRecordIdField } from "../../ui/records/record-id.js";
 
 // The roles a field can be hidden from (kernel/contracts/fields.d.ts hidden_from). The owner always sees every field.
 const ROLES: [string, string][] = [["admin", "Admins"], ["manager", "Managers"], ["member", "Members"], ["temp", "Temporary members"]];
@@ -67,7 +68,7 @@ export function TypeFields({ type }: { type: string }) {
         onChange={({ groups: g, items }) => save({ ...def, groups: g.length ? g : undefined, fields: regroup(def.fields, items) } as Def)}
         renderItems={(items, group) => (
           <View className="gap-s2">
-            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} onOpen={(n) => open(def.fields.find((f) => f.name === n))} onMove={(n, dir) => save({ ...def, fields: moveField(def.fields, n, dir) } as Def)} />
+            <FieldRows fields={items} types={types} tokens={tokens} onCopy={copy} selected={edit?.orig?.name} locked={(f) => (isRecordIdField(f) ? ID_NOTE : undefined)} onOpen={(n) => { const f = def.fields.find((x) => x.name === n); if (!isRecordIdField(f)) open(f); }} onMove={(n, dir) => save({ ...def, fields: moveField(def.fields, n, dir) } as Def)} />
             <View className="flex-row"><Button kind="ghost" size="sm" icon="plus" label="Add a field" onPress={() => open(undefined, group)} /></View>
           </View>
         )} />

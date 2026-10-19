@@ -1,5 +1,6 @@
 // @ts-check
 import { fmtDate } from "../fields/logic.js";
+import { isRecordIdField } from "./record-id.js";
 // The pure half of the create form, the one timeline and the import wizard (Records).
 
 /** @typedef {{ name: string, label: string, kind: string, required?: boolean, hidden?: boolean, unique?: boolean, options?: string[] }} F */
@@ -8,7 +9,8 @@ const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !
 
 /** The fields a create form asks for: hidden ones left out, required ones first, the rest in the type's order. @param {F[]} fields */
 export function formOrder(fields) {
-  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by && !(/** @type {any} */ (f)).read_only);
+  // the record's ID is never asked for: Vyre makes it when the record is made (record-id.js)
+  const shown = fields.filter((f) => !f.hidden && f.kind !== "stage" && !(/** @type {any} */ (f)).computed && !(/** @type {any} */ (f)).owned_by && !(/** @type {any} */ (f)).read_only && !isRecordIdField(f));
   return [...shown.filter((f) => f.required), ...shown.filter((f) => !f.required)];
 }
 
@@ -16,7 +18,7 @@ export function formOrder(fields) {
 export function formErrors(fields, values) {
   /** @type {Record<string, string>} */ const out = {};
   for (const f of fields) {
-    if (f.hidden || f.kind === "sealed") continue;
+    if (f.hidden || f.kind === "sealed" || isRecordIdField(f)) continue;
     const v = values[f.name];
     if (f.required && blank(v)) out[f.name] = `${f.label} is required.`;
     else if (f.kind === "choice" && f.options?.length && !blank(v) && !f.options.includes(v)) out[f.name] = `${f.label} must be one of the options.`;

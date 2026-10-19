@@ -11,9 +11,13 @@ import type { RecordsWorld } from "./shared";
 /** `filters` names a records.list filter for a type, so the box cuts that one list (the Notes a person wrote); every other type, and every caller that names none, reads whole. */
 export function useRecordsWorld(filters?: Record<string, object | undefined>) {
   return useStoreQuery<RecordsWorld>(async (s) => {
+    // The people and who "me" is do not wait on the types, and every type's list starts at once: one round trip for the types, then one for the lists, never a chain of them.
+    const actorsP = Promise.resolve(s.actors());
+    const meP = Promise.resolve((s as { me?: () => Promise<string> }).me?.()).catch(() => "");
+    actorsP.catch(() => undefined);
     const types = (await s.types()).filter((t: any) => !isHiddenType(t));
     const lists = await Promise.all(types.map((t: any) => s.list(t.name, listQuery(t.name, filters))));
-    return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await s.actors()) as any[], me: await (s as { me?: () => Promise<string> }).me?.().catch(() => "") };
+    return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await actorsP) as any[], me: (await meP) ?? "" };
   }, [filtersKey(filters)]);
 }
 
@@ -24,7 +28,8 @@ export function useRecordEvents(urn: string | undefined) {
 
 /** The env every field renderer on a screen gets: who the actors are, what a link points at, the clock, where a link goes. */
 export function useFieldEnv(world: RecordsWorld | undefined, open: (urn: string) => void, openTag?: (tag: string) => void): FieldEnv {
-  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? linkIndex(world.types, world.byType) : {}, now: Date.now(), open, openTag, tags: world ? spaceTags(world) : [] }), [world, open, openTag]);
+  // a partial world (Records opening from its kept copy) brings the titles its rows point at; the records it holds add theirs
+  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? { ...(world.links ?? {}), ...linkIndex(world.types, world.byType) } : {}, now: Date.now(), open, openTag, tags: world ? spaceTags(world) : [] }), [world, open, openTag]);
 }
 
 /** Every tag the Space's records carry, most used first (the suggestions of a tag field and the picks of a tag filter). */

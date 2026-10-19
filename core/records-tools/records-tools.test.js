@@ -211,11 +211,27 @@ test("records.create gives a record of a type with an ID field the next ID (PER-
   assert.equal(first.data.ref, "PER-0001");
   const two = await Promise.all([ok("records.create", { type: "contact", data: { name: "Ann" } }), ok("records.create", { type: "contact", data: { name: "Bo" } })]);
   assert.deepEqual(two.map(r => r.record.data.ref).sort(), ["PER-0002", "PER-0003"], "two at once do not share an ID");
-  const forged = (await ok("records.create", { type: "contact", data: { name: "Cy", ref: "PER-0001" } })).record;
-  assert.equal(forged.data.ref, "PER-0004", "an ID the caller names is not used");
+  // an ID the caller names is refused in words, not quietly replaced; the store's own id and address are never the caller's either, on any type
+  for (const [type, data] of [["contact", { name: "Cy", ref: "PER-0001" }], ["contact", { name: "Cy", id: "0190a000-0000-4000-8000-000000000000" }], ["plain", { name: "Cy", urn: "vyre://x/plain/y" }]]) {
+    const given = await call("records.create", { type, data }, { root, caller: "cli" });
+    assert.equal(given.error && given.error.code, "field_not_allowed", JSON.stringify(given));
+    assert.match(String(given.error.message), /made by Vyre when the record is made/);
+  }
+  const blankId = (await ok("records.create", { type: "contact", data: { name: "Cy", ref: "" } })).record;
+  assert.equal(blankId.data.ref, "PER-0004", "an empty ID counts as left out: the record gets the next one");
   const refused = await call("records.update", { urn: first.urn, patch: { ref: "PER-0099" }, base_version: first.version }, { root, caller: "cli" });
   assert.equal(refused.error && refused.error.code, "field_not_allowed", JSON.stringify(refused));
   assert.match(String(refused.error.message), /never changes/);
+  for (const patch of [{ ref: null }, { id: "0190a000-0000-4000-8000-000000000000" }]) {
+    const no = await call("records.update", { urn: first.urn, patch, base_version: first.version }, { root, caller: "cli" });
+    assert.equal(no.error && no.error.code, "field_not_allowed", `${JSON.stringify(patch)}: ${JSON.stringify(no)}`);
+  }
+  // a list asked for its count says how many there are, beside the first page
+  const counted = await ok("records.list", { type: "contact", limit: 2, count: true });
+  assert.equal(counted.rows.length, 2);
+  assert.equal(counted.total, 4, "the count is of every contact, not the page");
+  assert.equal((await ok("records.list", { type: "contact", limit: 50, count: true })).total, 4, "a page that holds them all is its own count");
+  assert.equal((await ok("records.list", { type: "contact", limit: 2 })).total, undefined, "no count unless asked for");
   assert.ok(!(await call("records.update", { urn: first.urn, patch: { name: "Jane Doe" }, base_version: first.version }, { root, caller: "cli" })).error, "other fields still change");
   // a record made before the type had an ID: listing it changes nothing (a read does not write), and the define that adds the ID field gives the older records theirs, oldest first, once
   await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "oldtype", label: "Old", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
