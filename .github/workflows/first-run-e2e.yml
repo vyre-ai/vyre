@@ -98,14 +98,14 @@ jobs:
           retention-days: 14
 
   # The owner's walk on a fresh real box, in a real browser (scripts/lib/proof/owner-walk-real.mjs): the release gate of 0.6.2. Only on a dispatch with owner_walk. It runs in the protected environment `eval`
-  # (a required reviewer approves each run) because walk 2 gives the Assistant a model through the repository's eval key, one cheap model and one message. The pictures of every walk are the artifact
+  # Walk 2's real reply needs a model key: the repository's OPENROUTER_EVAL_KEY is held by the protected environment `eval` (branches main and work/stage-0.2 only, a required reviewer), so this job reads it only when
+  # the run is allowed that environment; without it the key is empty and walk 2's reply is pending (a failure under strict). The pictures of every walk are the artifact
   # owner-walk-linux (14 days). The log starts with the commit under test (REF and git log -1). Dispatch it for a ref with:
   #   gh workflow run first-run-e2e.yml --ref <branch or tag at the candidate> -f owner_walk=true -f strict=true
   owner-walk:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_walk }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    environment: eval
     env:
       VYRE_NO_DIALOGS: "1"
     steps:
