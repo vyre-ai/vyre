@@ -1011,3 +1011,42 @@ export class Presence {
 
 /** The Presence vyred builds, with every OS touch point real. */
 export const defaultPresence = ({ db, events, log }) => new Presence({ db, events, log });
+
+// ---- No presence device enrolled
+// The owner's ruling (19 Oct): a person who has NO presence device enrolled (no phone, no passkey, no Lumen key: the server's own records say so) has nothing to prove presence with, so every presence step for
+// their own act passes, the floor's HUMAN_ONLY list included. Once a device is enrolled, the proof is asked as before. Never for an agent, a model, a module or a guest, and never for another person's session.
+// The decision is made from the enrolment records, not from anything the call carries. The registry asks this before it refuses (Registry.noPresenceDevice in core/modules/index.js, kernel/retrofit/gates.js).
+
+/** The tools that make an owner or hand the Space over. */
+const OWNERSHIP_TOOLS = new Set(["spaces.owner.transfer", "spaces.members.transfer", "spaces.owner.adopt"]);
+
+/**
+ * Does this person's own call pass the presence floor because they have no presence device to prove with? The person is a person surface or the owner's own paired device/tailnet node WITH its signed-in session
+ * (a module relaying a model, an agent, a guest or a module is never the person), the session names the Space's owner when it names anyone, vyre-core is not holding the keys, and the server's table of
+ * enrolled presence keys is empty. Fails closed on any doubt.
+ * @param {{ presence: any, ownerId?: () => string | null, isPerson: (c: string) => boolean, ownerDevice: (c: string) => boolean, core: { link: any } }} d the registry's own pieces
+ * Making an owner or handing the Space to someone else is never covered: those keep their presence step with no device enrolled too (the owner's list), as does anything that cannot be told from the tool and input.
+ * @param {string} caller @param {any} meta @param {string} [tool] @param {any} [input]
+ */
+export async function noPresenceDevice(d, caller, meta, tool, input) {
+  try {
+    if (typeof tool !== "string" || OWNERSHIP_TOOLS.has(tool) || (tool === "spaces.members.set-role" && !(input && typeof input === "object" && typeof input.role === "string" && input.role !== "owner"))) return false;
+    const presence = /** @type {any} */ (d.presence);
+    if (!presence || typeof presence.keys !== "function" || d.core.link) return false;
+    const label = String(caller);
+    if (!d.isPerson(label)) return false;
+    if (meta && meta.origin && !d.isPerson(String(meta.origin))) return false;
+    // The owner's own paired device is the person without a signed-in session when the daemon vouched it (callerFacts: Wink's record says its person IS this home's owner, never a member's or limited device).
+    const dev = /** @type {any} */ (meta && meta.kernelFacts);
+    const ownersDevice = Boolean(dev && dev.kind === "device" && dev.limited !== true && typeof d.ownerId === "function" && d.ownerId() && String(dev.person) === String(d.ownerId()));
+    if (d.ownerDevice(label) && !ownersDevice && !(meta && meta.person && meta.person.id)) return false;
+    // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open, and the daemon's ancestry measure can be dodged by a process that detaches from its
+    // session, so those labels never get the no-device pass: it is the owner's signed-in session (the app) or the owner's vouched paired device, and nothing else.
+    if (!d.ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
+    if (meta && meta.person && meta.person.id) {
+      const owner = typeof d.ownerId === "function" ? d.ownerId() : null;
+      if (!owner || String(meta.person.id) !== String(owner)) return false;
+    }
+    return (await presence.keys()).length === 0;
+  } catch { return false; }
+}

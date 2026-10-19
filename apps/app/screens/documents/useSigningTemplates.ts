@@ -12,9 +12,17 @@ export function useSigningTemplates(enabled: boolean) {
       const s = appState(l);
       setApp(s);
       if (s.running) tool<any>("connectors.operation.run", { connection: "documents", operation: "templates.list", input: { query: { limit: 50 } } }).then((r) => setSigning(signingTemplates(r))).catch(() => setSigning([])); else setSigning([]);
-    }).catch(() => setApp(appState(null)));
+    // A list that did not answer says nothing about the app: keep what the card showed (it used to turn into "Not installed" with an Install button for an app that was up)
+    }).catch(() => {});
   }, [enabled]);
   useEffect(reload, [reload]);
+  // While the app is installing, ask again every few seconds, so the card turns to Running by itself (an install outlasts the call that started it)
+  const installing = Boolean(app && app.installing);
+  useEffect(() => {
+    if (!installing) return undefined;
+    const t = setInterval(reload, 5000);
+    return () => clearInterval(t);
+  }, [installing, reload]);
   return { app, signing, reload };
 }
 
