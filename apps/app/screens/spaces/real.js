@@ -57,7 +57,7 @@ export function shapeMembers(data, self, now, projects = {}) {
       id: m.person,
       name: personName(m.person, self),
       role: m.role,
-      ...(typeof m.role_label === "string" && m.role_label ? { label: m.role_label } : {}),
+      ...(typeof m.custom === "string" && m.custom ? { custom: m.custom } : {}),
       ...(m.role === "temp" ? { scope, end: typeof m.expires === "number" ? dateOf(m.expires) : undefined, left: daysLeft(m.expires, now) } : {}),
     };
   });

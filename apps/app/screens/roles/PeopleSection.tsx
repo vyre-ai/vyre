@@ -20,8 +20,8 @@ export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { 
   const [pick, setPick] = useState<null | { id: string; role: string }>(null);
   const [busy, setBusy] = useState(false);
   const who = pick ? members.find((m) => m.id === pick.id) : undefined;
-  // A member who holds a role of the space's own is listed by its name (the box's label); the sheet starts on that role, else on their built-in one.
-  const heldId = (m: { role: string; label?: string }) => custom.find((c) => c.name === m.label)?.id ?? m.role;
+  // A member who holds a role of the space's own has its id in `custom` (spaces.members.list: role is the built-in one it stands on); the sheet starts on that role, else on their built-in one.
+  const heldId = (m: { role: string; custom?: string }) => (m.custom && custom.some((c) => c.id === m.custom) ? m.custom : m.role);
   const save = () => {
     if (!pick || !who || pick.role === heldId(who)) return;
     setBusy(true);
@@ -46,7 +46,7 @@ export function PeopleSection({ mine, invites, onInvite, custom, onChanged }: { 
               return (
                 <View key={m.id}>
                   {i ? <Divider inset={68} /> : null}
-                  <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name} sub={m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : m.role === "temp" ? roleLabel(m.role) : m.label || roleLabel(m.role)}
+                  <Row dense lead={<Avatar of={markRef("person", m.name, m.id)} size={40} />} title={m.name} sub={m.role === "temp" && m.scope ? `Guest, only ${m.scope}` : m.role === "temp" ? roleLabel(m.role) : custom.find((c) => c.id === m.custom)?.name ?? roleLabel(m.role)}
                     chevron={can} onPress={can ? () => setPick({ id: m.id, role: heldId(m) }) : undefined} accessibilityLabel={`${m.name}, ${roleLabel(m.role)}${can ? ", change role" : ""}`} />
                 </View>
               );

@@ -2,7 +2,7 @@
 import type { Role } from "./roles.js";
 
 export type SpaceCard = { id: string; name: string; /** the tag that goes on everything from this space: "Personal - Home", "Personal - Cloud" or the team space's name (src/state/space-name.js placeTag) */ tag?: string; address: string; role: string; home: string; setup?: { step: string; device: { id: string; name: string }; [k: string]: unknown } | null };
-export type Member = { id: string; name: string; sub?: string; role: Role; /** the box's name for the role, which is a role of the space's own by its name */ label?: string; scope?: string; end?: string; left?: number };
+export type Member = { id: string; name: string; sub?: string; role: Role; /** the id of the role of the space's own this person holds (role is the built-in one it stands on) */ custom?: string; scope?: string; end?: string; left?: number };
 export type Teammate = { id: string; name: string; sub: string };
 
 export function loadSpaces(): SpaceCard[] {
