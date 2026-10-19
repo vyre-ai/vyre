@@ -27,7 +27,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate, open as openStore } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof, noPresenceDevice } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/module-sdk/manifest.js";
@@ -1358,34 +1358,7 @@ export class Registry {
     return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
-  /**
-   * Does this person's own call pass the presence floor because they have no presence device to prove with? The person is a person surface or the owner's own paired device/tailnet node WITH its signed-in session
-   * (a module relaying a model, an agent, a guest or a module is never the person), the session names the Space's owner when it names anyone, vyre-core is not holding the keys, and the server's table of
-   * enrolled presence keys is empty. Fails closed on any doubt.
-   * @param {string} caller @param {any} meta
-   */
-  async noPresenceDevice(caller, meta) {
-    try {
-      const presence = /** @type {any} */ (this.deps.presence);
-      if (!presence || typeof presence.keys !== "function" || coreHolder.link) return false;
-      const label = String(caller);
-      if (!isPerson(label)) return false;
-      if (meta && meta.origin && !isPerson(String(meta.origin))) return false;
-      // The owner's own paired device is the person without a signed-in session when the daemon vouched it (callerFacts: Wink's record says its person IS this home's owner, never a member's or limited device).
-      const dev = /** @type {any} */ (meta && meta.kernelFacts);
-      const ownersDevice = Boolean(dev && dev.kind === "device" && dev.limited !== true && typeof this.deps.ownerId === "function" && this.deps.ownerId() && String(dev.person) === String(this.deps.ownerId()));
-      if (ownerDevice(label) && !ownersDevice && !(meta && meta.person && meta.person.id)) return false;
-      // A plain surface label ("cli", "local", "capsule") is only a claim on a socket any process under the owner's uid can open, and the daemon's ancestry measure can be dodged by a process that detaches from its
-      // session, so those labels never get the no-device pass: it is the owner's signed-in session (the app) or the owner's vouched paired device, and nothing else.
-      if (!ownerDevice(label) && !(meta && meta.person && meta.person.id)) return false;
-      if (meta && meta.person && meta.person.id) {
-        const owner = typeof this.deps.ownerId === "function" ? this.deps.ownerId() : null;
-        if (!owner || String(meta.person.id) !== String(owner)) return false;
-      }
-      return (await presence.keys()).length === 0;
-    } catch { return false; }
-  }
-
+  noPresenceDevice(caller, meta) { return noPresenceDevice({ presence: this.deps.presence, ownerId: this.deps.ownerId, isPerson, ownerDevice, core: coreHolder }, caller, meta); } // core/presence/index.js
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
   flowTriggers() {
     return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
@@ -1576,10 +1549,8 @@ export class Registry {
       // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
-      // With no presence device enrolled the owner's own paired device needs no passkey sign-in for their own acts (the owner's ruling, noPresenceDevice); an agent or another person's device never does.
-      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))
-        && !(await this.noPresenceDevice(caller, meta))) {
+      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input) && !(await this.noPresenceDevice(caller, meta)) // no device enrolled: the owner's paired device needs no passkey sign-in (noPresenceDevice, core/presence/index.js)
+        && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: "Sign in on this device with your passkey first. This is something only you can do, and Vyre cannot do it for you." } };
       }
     }
@@ -1698,12 +1669,7 @@ export class Registry {
     // The person's own switch (Settings > Privacy: confirm.pairing, confirm.vault, confirm.outward, on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
     // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
     const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && this.deps.config.confirm[{ pair: "pairing", vault: "vault", outward: "outward" }[moment]] === false);
-    if (switchedOff) meta = { ...meta, presence: { method: "switch", keyId: null } };
-    // The owner's ruling (19 Oct): a person who has NO presence device enrolled (no phone, no passkey, no Lumen key: the server's own records say so) has nothing to prove presence with, so every presence step for
-    // their own act passes on their signed-in session, the floor's HUMAN_ONLY list included. Once a device is enrolled, the proof is asked as before. Never for an agent, a model, a module or a guest, and never for
-    // another person's session. The decision is made here from the enrolment records, not from anything the call carries (an incoming meta.presence is not read).
-    const noDevice = !switchedOff && !(def.core && coreHolder.link) && await this.noPresenceDevice(caller, meta);
-    if (noDevice) meta = { ...meta, presence: { method: "no-device", keyId: null } };
+    const noDevice = !switchedOff && !(def.core && coreHolder.link) && await this.noPresenceDevice(caller, meta); if (switchedOff || noDevice) meta = { ...meta, presence: { method: switchedOff ? "switch" : "no-device", keyId: null } }; // the owner's ruling; a caller's meta.presence is never read
     // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
     // itself, over the exact input, so vyred passes it through untouched rather than checking (and
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
