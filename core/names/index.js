@@ -7,7 +7,7 @@
 import dns from "node:dns";
 import * as config from "../config/index.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
-import { names } from "./service.js";
+import { names, withIngress } from "./service.js";
 import { directory, DEFAULT_BASE } from "./directory.js";
 
 const HOUR = 3_600_000;
@@ -53,7 +53,12 @@ export default {
     ctx.tool("names.status", {
       description: "This box's name and whether it is held: the name, its address once the built-in network publishes one, and why not when it cannot.",
       input: obj(),
-      run: async () => svc.status(),
+      run: async () => {
+        const s = svc.status();
+        // what the public gate says about the name (network.wink.status ingress): without it, "named" is all this module knows
+        const r = /** @type {any} */ (await ctx.call("network.wink.status", {}).catch(() => null));
+        return withIngress(s, r && r.data ? r.data.ingress : null);
+      },
     });
     ctx.tool("names.check", {
       description: "Is <name>.vyre.run a valid name, and is it free (or already this box's)?",

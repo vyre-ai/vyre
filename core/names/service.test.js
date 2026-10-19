@@ -6,7 +6,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as config from "../config/index.js";
-import { names, checkName } from "./service.js";
+import { names, checkName, withIngress } from "./service.js";
 import { tempHome } from "../../test/helpers.js";
 
 /** A service on a fake directory. `directory` overrides what the directory answers. */
@@ -73,4 +73,21 @@ test("names: a box whose name support moved to another server is told once, and 
   await w.svc.watch();
   await w.svc.watch();
   assert.deepEqual(w.emitted.filter(e => e.type === "name.moved").map(e => e.payload), [{ name: "alex.vyre.run", at: 5 }]);
+});
+
+test("names: the status says what the public gate says (serving, waiting, getting a certificate, failed), and stays 'named' when the gate was never started or there is no name", () => {
+  const named = { name: "tess", via: "vyre.run", address: null, phase: "named", why: null, certificate: null, listening: false, port: null, domain: null };
+  const up = withIngress(named, { state: "up", base: "https://tess.vyre.run:7443" });
+  assert.deepEqual([up.phase, up.address, up.listening, up.port, up.why], ["serving", "tess.vyre.run:7443", true, 7443, null]);
+  assert.equal(withIngress(named, { state: "up", base: "https://tess.vyre.run" }).port, 443);
+  const waiting = withIngress(named, { state: "waiting", why: "the gate is up but the name does not point at it yet" });
+  assert.deepEqual([waiting.phase, waiting.listening], ["waiting", false]);
+  assert.match(waiting.why, /does not point/);
+  assert.equal(withIngress(named, { state: "getting-cert" }).phase, "getting-cert");
+  assert.deepEqual([withIngress(named, { state: "failed", why: "dns" }).phase, withIngress(named, { state: "failed", why: "dns" }).why], ["failed", "dns"]);
+  for (const state of ["off", "no-name", "unknown", "mystery"]) assert.equal(withIngress(named, { state }).phase, "named", state);
+  assert.equal(withIngress(named, null), named);
+  const unnamed = { ...named, name: null };
+  assert.equal(withIngress(unnamed, { state: "up", base: "https://x.vyre.run:7443" }), unnamed, "no name: nothing to report");
+  assert.equal(withIngress({ ...named, via: "tailscale" }, { state: "up", base: "https://x" }).phase, "named", "a name not served through vyre.run");
 });
