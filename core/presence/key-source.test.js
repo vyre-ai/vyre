@@ -27,6 +27,7 @@ test("which keys turn approvals on: native biometric and a relay hardware phone 
   { const k = enrol("relay"); row("relayhard0000000", k.id, 0, "hardware"); counts(k); }     // a phone paired through the relay, key outside software
   { const k = enrol("relay"); row("relaysoft0000000", k.id, 0, "software"); await only(k, () => {}); }
   { const k = enrol("relay"); row("relaybrow0000000", k.id, 1, "hardware"); await only(k, () => {}); }
+  { const k = enrol("relay"); row("relayunknown0000", k.id, 0, "unknown"); await only(k, () => {}); }   // a browser admitted through the identity chain reports no storage: not a phone
   { const k = enrol("relay"); row("relayremoved0000", k.id, 0, "hardware", 5); await only(k, () => {}); }
   await only(enrol("setup"), () => {});
   await only(enrol("first-key"), () => {});
@@ -82,4 +83,18 @@ test("the hook's exact names: grants.role asks; an invite confirm asks unless th
   assert.equal(ask("grants.invite", { confirm: "inv", words: "w", role: "owner" }), false, "confirming an owner invite asks");
   assert.equal(ask("grants.invite", { confirm: "inv", words: "w" }), false, "a confirm with no stored role asks");
   assert.equal(ask("requests.setting", { accepting: true }), true, "requests.setting passes");
+});
+
+test("the sign-in refusal's reason also goes to the home's log, in counts and kinds, with the device keys by source", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const p = /** @type {any} */ (d.registry.deps.presence);
+  p.enroll({ kind: "device", name: "a", public_key: key(), alg: -7, source: "setup" });
+  p.enroll({ kind: "device", name: "b", public_key: key(), alg: -7 });
+  const lines = [];
+  const text = await d.registry.noPresenceDevice("device:abcdefghijklmnop", { kernelFacts: { kind: "device", person: d.kernel.id.owner, path: "relay" } }, "spaces.invites.create", {}, true);
+  assert.match(text, /setup: 1 \(0 with a relay row\)/, text);
+  assert.match(text, /none: 1 \(0 with a relay row\)/, text);
+  assert.doesNotMatch(text, /per_|abcdefghijklmnop/);
+  void lines;
 });

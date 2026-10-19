@@ -228,3 +228,15 @@ test("the owner turns asking on or off through the Space's door with one presenc
   assert.equal((await w.tool("requests.accepting", { space: SPACE })).data.accepting, true);
   assert.equal(await go(chain(OWNER), { accepting: true }, { nonce: "c", expires_at: 5000 }), "needs_presence", "a proof is used once");
 });
+
+test("turning requests on or off: with no counted presence device the home's answer lets the owner's own call through with no proof; without it the proof is asked; a member never", async () => {
+  const calls = [];
+  const registry = { call: async (tool, input) => { calls.push({ tool, input }); return { data: { ok: true } }; } };
+  const roles = { [OWNER]: "owner", [ASKER2]: "member" };
+  const mk = (free) => createRequestsService({ space: SPACE, kernel: { gateway: { members: { roleOf: ({ id }) => roles[id] ?? null } }, presence: { check: async () => "no_proof" }, ...(free ? { presenceNotNeeded: ({ action }) => action === "requests.setting" } : {}) }, registry });
+  const chain = (id) => ({ space: SPACE, hops: [{ actor: { kind: "person", id } }] });
+  await mk(true).setting(chain(OWNER), { accepting: true });
+  assert.equal(calls.at(-1).input.call, "setting", "the owner's call ran with no proof");
+  await assert.rejects(() => mk(false).setting(chain(OWNER), { accepting: true }), (e) => e.code === "needs_presence");
+  await assert.rejects(() => mk(true).setting(chain(ASKER2), { accepting: true }), (e) => e.code === "not_found");
+});

@@ -911,12 +911,21 @@ export class Presence {
   /**
    * The ids of the device keys that do NOT turn approvals on: this one place decides what counts as an enrolled phone (the module floor, the kernel's remote path and the cards all ask it). A passkey and a Lumen
    * key always count. A device key counts when it was enrolled by the native app (source native: the biometric key, hardware-bound), or when it came through the relay (source relay, or none: made before the source
-   * was recorded) AND a relay row that is not removed names it, was not paired from a browser and holds its key outside software. The setup page's key and a Mac server's first key (setup, first-key) never count
+   * was recorded) AND a relay row that is not removed names it, was not paired from a browser and holds its key in hardware (an app that reports no storage, or software, is not a phone: a browser admitted through the identity chain reports none). The setup page's key and a Mac server's first key (setup, first-key) never count
    * (BACKLOG: count first-key once the app records hardware storage), and neither does a device key with no source and no such relay row (the first-run browser's identity key, the in-page host's). A table that
    * cannot be read gives an empty set, so every key counts.
    */
   notPhoneKeyIds() {
-    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND COALESCE(k.source, '') <> 'native' AND NOT (COALESCE(k.source, 'relay') = 'relay' AND EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage <> 'software'))").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+    try { return new Set(this.db.prepare("SELECT k.id AS id FROM presence_keys k WHERE k.kind = 'device' AND COALESCE(k.source, '') <> 'native' AND NOT (COALESCE(k.source, 'relay') = 'relay' AND EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL AND r.from_browser = 0 AND r.key_storage = 'hardware'))").all().map((/** @type {any} */ r) => r.id)); } catch { return new Set(); }
+  }
+
+  /** Counts only, for the sign-in refusal's reason and the home's log: the device keys by where they came from, and how many have a live relay row. No ids, no keys. */
+  describeKeys() {
+    try {
+      const rows = this.db.prepare("SELECT COALESCE(k.source, 'none') AS s, COUNT(*) AS n, SUM(EXISTS (SELECT 1 FROM relay_devices r WHERE r.presence_key = k.id AND r.removed_at IS NULL)) AS rows_ FROM presence_keys k WHERE k.kind = 'device' GROUP BY 1").all();
+      const other = this.db.prepare("SELECT kind, COUNT(*) AS n FROM presence_keys WHERE kind <> 'device' GROUP BY 1").all();
+      return [...rows.map((/** @type {any} */ r) => `${r.s}: ${r.n} (${r.rows_ || 0} with a relay row)`), ...other.map((/** @type {any} */ r) => `${r.kind}: ${r.n}`)].join(", ") || "none";
+    } catch { return "unreadable"; }
   }
 
   /** Does any enrolled key turn approvals on? (the keys list less notPhoneKeyIds) */
@@ -1078,13 +1087,16 @@ export async function noPresenceDevice(d, caller, meta, tool, input) {
 /**
  * Why noPresenceDevice said no, in counts and kinds only, never an id or a key: shown after the sign-in refusal so a walk can say which condition failed. @param {any} d @param {string} caller @param {any} meta
  */
-export async function noPresenceWhy(d, caller, meta) {
+export async function noPresenceWhy(d, caller, meta, tool) {
   try {
     const f = meta && meta.kernelFacts, presence = d.presence;
     const keys = presence && typeof presence.keys === "function" ? await presence.keys() : [];
     const soft = presence && typeof presence.notPhoneKeyIds === "function" ? presence.notPhoneKeyIds() : new Set();
     const kind = f && f.web === true ? "web" : f && f.path === "relay" ? "app" : f && f.path === "wink" ? "tailnet" : "other";
-    return `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"})`;
+    const text = `(keys enrolled: ${keys.length}, keys ignored (not a phone): ${keys.filter((/** @type {any} */ k) => soft.has(k.id)).length}; caller kind: ${kind}; owner device: ${f && f.kind === "device" && f.person === (typeof d.ownerId === "function" ? d.ownerId() : null) ? "yes" : "no"}; facts: ${f ? "yes" : "no"}; session: ${meta && meta.person ? "yes" : "no"}; device keys: ${presence && typeof presence.describeKeys === "function" ? presence.describeKeys() : "unknown"})`;
+    // the home's own log says it too (counts and kinds only), so a walk can read which condition failed even where the app swallows the refusal's words
+    if (typeof d.log === "function") d.log(`presence: ${typeof tool === "string" ? tool : "a call"} refused as person_session_required ${text}`);
+    return text;
   } catch { return "(reason unavailable)"; }
 }
 
