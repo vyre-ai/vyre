@@ -38,7 +38,7 @@ export const userNameOf = uid => `ag${uid}`;
 /**
  * @typedef {{ createUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   removeUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   startScreen(u: { agentId: string, user: string, uid: number, display: number, name?: string }): Promise<void>,
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   wipeAgentHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
@@ -103,7 +103,7 @@ export class AgentUsers {
       if (r.state === "live") { this.touchNow(id); return this.row(id); }
       this.set(id, { state: "waking", last_active: this.now() });
       this.emit("computer.agent-waking", { agent: id });
-      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }); }
+      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display, name: r.agent_name }); }
       catch (e) { this.set(id, { state: "asleep" }); throw e; }
       this.set(id, { state: "live", woke_at: this.now(), last_active: this.now() });
       this.emit("computer.agent-live", { agent: id });

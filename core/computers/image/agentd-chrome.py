@@ -5,7 +5,7 @@
 # connection is refused, never allowed to replace the first. CDP messages are NUL-terminated JSON; one message is capped, so is what waits to be written to a slow client, and a client that says nothing for
 # ten minutes is dropped. When Chrome ends, this ends, and so does the socket. The password manager, autofill and sync are off in the profile (and by Chrome's managed policy); downloads go to a folder
 # the agent can read and the browser cannot open anything from.
-import json, os, select, signal, socket, subprocess, sys, time
+import json, os, re, select, signal, socket, subprocess, sys, time, urllib.parse
 
 uid = os.geteuid()
 if uid < 21000 or uid > 21063 or uid != os.getuid() or len(sys.argv) != 1:
@@ -16,8 +16,13 @@ PROFILE = BASE + "/profile"
 SOCK = BASE + "/cdp.sock"
 DOWNLOADS = "/var/lib/vyre/downloads/ag%d" % N
 # The dock's Chrome button (agentd-dock.py, the agent's uid): a FIFO in the folder that already carries the agent's X cookie (the browser's, group = the agent's, 2750, so the agent cannot
-# replace it). The agent may write to it and nothing it writes is read: any byte means "show Chrome", at most once every two seconds, and the holder then opens one blank tab itself.
+# replace it). The agent may write to it and nothing it writes is read: any byte means "show Chrome", at most once every two seconds, and the holder then opens one new tab itself (the Vyre page).
 SHOW = "/var/lib/vyre/x/ag%d/show-chrome" % N
+# The page Chrome opens for a new tab (Chrome's managed policy names it too, Dockerfile): the Vyre page, shipped in the image, root's and read only.
+NEWTAB = "file:///usr/share/vyre-desk/newtab.html"
+# The agent's name, written by agentd into this folder (the browser uid's own 0700) when the screen starts. Chrome is given it once, in the address of the first page, and the page keeps it in this profile's storage.
+NAME_FILE = BASE + "/agent-name"
+PRIMED = BASE + "/agent-name-shown"
 SHOW_ID = 2147000001                # far above any id a client of the pipe counts up to; its answer is dropped by the client (no such pending call)
 MAX_MSG = 16 * 1024 * 1024
 MAX_PENDING = 32 * 1024 * 1024
@@ -56,6 +61,34 @@ with open(prefs_file, "w") as f:
     json.dump(prefs, f)
 os.chmod(prefs_file, 0o600)
 
+def agent_name():
+    # letters, digits, spaces, dot, apostrophe and hyphen only, 32 characters at most (agentd cleaned it already; this does not trust the file)
+    try:
+        with open(NAME_FILE, encoding="utf-8") as f:
+            return re.sub(r"[^A-Za-z0-9\u00C0-\u024F .'-]", "", f.read(256)).strip()[:32]
+    except (OSError, ValueError):
+        return ""
+
+
+def shown_name():
+    try:
+        with open(PRIMED, encoding="utf-8") as f:
+            return f.read(256)
+    except (OSError, ValueError):
+        return None
+
+
+# The first page of a profile that has not yet shown this name carries it in its address (once per name, so a woken Chrome does not add a tab each time)
+first_page = []
+who = agent_name()
+if who and shown_name() != who:
+    first_page = [NEWTAB + "?name=" + urllib.parse.quote(who)]
+    try:
+        with open(PRIMED, "w", encoding="utf-8") as f:
+            f.write(who)
+    except OSError:
+        pass
+
 os.umask(0o027)   # a download is readable by the agent (the folder's group), never writable by it
 
 to_chrome_r, to_chrome_w = os.pipe()
@@ -73,7 +106,7 @@ chrome = subprocess.Popen(
      # closing the last window leaves Chrome running (the holder, the agent's hands and the dock's Chrome button keep working); sleep still ends it with Browser.close
      "--keep-alive-for-test",
      # the computer is the sandbox: Docker's default seccomp refuses the namespaces Chrome's own sandbox needs ("No usable sandbox!"), exactly as for the computer's Chrome in entrypoint.sh
-     "--no-sandbox", "--test-type", "--disable-gpu"],
+     "--no-sandbox", "--test-type", "--disable-gpu"] + first_page,
     env=ENV, preexec_fn=into_place, pass_fds=(3, 4), close_fds=True)
 os.close(to_chrome_r)
 os.close(from_chrome_w)
@@ -164,7 +197,7 @@ while chrome.poll() is None:
     # only between two of the client's messages, so the tab request is never written into the middle of one
     if show_due and since_nul == 0:
         show_due = False
-        os.write(to_chrome_w, b'{"id":%d,"method":"Target.createTarget","params":{"url":"about:blank"}}\0' % SHOW_ID)
+        os.write(to_chrome_w, b'{"id":%d,"method":"Target.createTarget","params":{"url":"%s"}}\0' % (SHOW_ID, NEWTAB.encode()))
     if srv in ready:
         c, _ = srv.accept()
         if client is None:
