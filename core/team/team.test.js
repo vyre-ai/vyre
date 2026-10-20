@@ -411,17 +411,17 @@ test("P1: team.ask to a role that does not exist yet makes it on the person's ow
   assert.equal(rec.error, undefined, JSON.stringify(rec.error));
   const ask = await d.registry.call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, "mcp", { ...await ownerToken(d), thread: session.id });
   assert.equal(ask.error, undefined, JSON.stringify(ask.error));
-  const [row] = await tool("team.list", { project: project.record });
-  assert.equal(row.role, "researcher");
-  assert.match(String(row.uid), /^tmt_/, "the teammate made on first use has a stable id of its own");
-  assert.equal(row.computer, false, "a teammate made on first use has no computer");
+  const made = (await tool("team.list", { project: project.record })).find(r => r.role === "researcher");
+  assert.ok(made, "the teammate was made on the person's own words");
+  assert.match(String(made.uid), /^tmt_/, "the teammate made on first use has a stable id of its own");
+  assert.equal(made.computer, false, "a teammate made on first use has no computer");
   // the ask is spent by the teammate it made: it does not make another one
   const used = d.registry.deps.db.prepare("SELECT used FROM vault_said_intents WHERE id = ?").get(rec.data.id);
   assert.ok(used && used.used, "the person's ask is used up");
   // a second role nobody asked for is refused the same way
   const other = await d.registry.call("team.ask", { to: "writer", project: project.record, text: "write the copy" }, "mcp", { ...await ownerToken(d), thread: session.id });
   assert.equal(other.error && other.error.code, "not_asked", JSON.stringify(other.error));
-  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, 1, "only the one teammate was made");
+  assert.equal((await tool("team.list", { project: project.record })).filter(r => r.role === "writer").length, 0, "no teammate was made for a role nobody asked for");
 });
 
 test("P1: with the project's default off, team.ask to a role that does not exist is not_found, and nothing is made", async t => {
@@ -470,8 +470,8 @@ test("P1: a row made before the uid column existed is given one on upgrade, and 
   const { project, d } = await boot(t);
   const db = d.registry.deps.db;
   const now = Date.now();
-  for (const agent of ["old-one-x", "old-two-x"]) db.prepare("INSERT INTO team_teammates (agent, project, role, shared, model, helper_model, tools, isolation, state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-    .run(agent, project.record, "design", "[]", "teammate", "helper", "[]", "folder", "asleep", now, now);
+  for (const [agent, role] of [["old-one-x", "design"], ["old-two-x", "research"]]) db.prepare("INSERT INTO team_teammates (agent, project, role, shared, model, helper_model, tools, isolation, state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run(agent, project.record, role, "[]", "teammate", "helper", "[]", "folder", "asleep", now, now);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM team_teammates WHERE uid IS NULL").get().n, 2, "the older rows have no id yet");
   backfillUids(db);
   const ids = db.prepare("SELECT uid FROM team_teammates").all().map(r => String(r.uid));

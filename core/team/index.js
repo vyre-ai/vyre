@@ -1571,6 +1571,9 @@ export default {
           if (callerTm) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
           if (!NAME.test(String(i.to || ""))) throw Object.assign(new Error("a role is lowercase letters, digits and dashes (team.list shows the roles here)"), { code: "bad_input" });
           if (i.to === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate (team.list shows the roles here)`), { code: "denied" });
+          // A retired teammate stays retired: an ask does not bring it back (team.add does). This is
+          // checked before the said-match, so the person's words are not spent on a refusal.
+          if (retiredRole(project, i.to)) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}: it was retired, and team.add brings it back`), { code: "not_found" });
           if (!defaultEnabled(project)) throw Object.assign(new Error(`${await slugOf(project)} has no teammate ${i.to}, and this project's teammate default is off (team.default.set turns it on; team.list shows the roles)`), { code: "not_found" });
           // The same said-check team.add stands behind: a model, a session or the assistant may only
           // make a teammate the person's own words asked for (the same team.add:<project>/<role> ask,
