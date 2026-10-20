@@ -3,7 +3,8 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { explainText, APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { explainText, APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWarnings, shrunkNote, stageLine, titleOf, versionWaits } from "./real-model.js";
+import { fromDefinition as flowFromDefinition, toDefinition as flowDefinition } from "../../ui/flows/logic.js";
 
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
@@ -82,4 +83,35 @@ test("a Flow is never shown by its id: no name means words, in the list rows, th
   assert.equal(cards.length, 1);
   assert.equal(cards[0].title, UNTITLED, "the attention card says words");
   for (const text of [cards[0].title, cards[0].sub, titleOf(null, ID), rowName(null)]) assert.doesNotMatch(text, /fl_[0-9a-f-]{8,}/);
+});
+
+// A Playbook stage opens in the Flow builder (kernel/flows/stage-flow.js): it says what it is, and opening and saving it keeps its stage, its slots and what the builder has no field for.
+const STAGE = {
+  format: 1, name: "stage-0123456789ab", label: "Ticket: Open", authorship: "kit",
+  playbook: { key: "type:ticket::Open", type: "ticket", stage: "Open", from: "abc" },
+  trigger: { on: "stage", type: "ticket", stage: "Open" },
+  steps: [
+    { id: "task_1", kind: "assign", label: "Draft the reply", title: "Draft the reply", to: "teammate:research", output: { kind: "note" }, reviewer: { who: "person:per_bob" }, await: true, task: { due_offset_ms: 86400000 } },
+    { id: "move", kind: "stage", label: "Move on to Closed", type: "ticket", record: { expr: "trigger.id" }, to: "Closed" },
+  ],
+};
+
+test("a Playbook stage's Flow says it runs when a record enters the stage, and other Flows say nothing", () => {
+  assert.equal(stageLine(STAGE), "A Playbook stage. It runs when a ticket enters Open. Its steps are the stage's to-dos, and the last one moves it on when they are done.");
+  assert.match(String(stageLine({ ...STAGE, playbook: { ...STAGE.playbook, template: "tpl_sample", version: 1 } })), /when a project enters Open/);
+  assert.equal(stageLine({ format: 1, name: "x", trigger: { on: "manual" }, steps: [] }), null);
+  for (const v of [stageLine(STAGE)]) assert.doesNotMatch(String(v), /[\u2014\u00a7]/, "plain words: no long dash, no section sign");
+});
+
+test("opening a Playbook stage in the Flow builder and saving it keeps its trigger, its slots, its to-do's details and what makes it a stage", () => {
+  const back = flowDefinition(flowFromDefinition(STAGE));
+  assert.deepEqual(back.trigger, STAGE.trigger);
+  assert.deepEqual(back.playbook, STAGE.playbook);
+  assert.equal(back.name, STAGE.name);
+  const step = back.steps.find((s) => s.id === "task_1");
+  assert.deepEqual(step.reviewer, { who: "person:per_bob" }, "Reviewer");
+  assert.equal(step.to, "teammate:research", "Assigned");
+  assert.deepEqual(step.task, { due_offset_ms: 86400000 }, "the to-do's details the builder has no field for");
+  assert.equal(step.await, true);
+  assert.deepEqual(back.steps.find((s) => s.id === "move"), STAGE.steps[1], "the move on");
 });

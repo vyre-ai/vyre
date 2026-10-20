@@ -18,6 +18,8 @@ export function templatesSource(call: Call) {
     test: (template: string, version: number, sample?: Record<string, unknown>) => ask<{ ok: boolean; lines?: string[]; totals?: string; errors?: { path: string; message: string }[] }>("work.template.test", { template, version, ...(sample ? { sample } : {}) }),
     library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number; outline?: { name: string; tasks: string[] }[] }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
     install: (id: string) => ask<Version>("work.template.install", { id }),
+    /** One stage of a version as its Flow, for the Flow builder (made the first time it is opened). */
+    stageFlow: (template: string, version: number, stage: string) => ask<{ id: string; version: number }>("work.template.stage-flow", { template, version, stage }),
     /** The Flows of this Space a template can attach (only the running ones run for a project). */
     flows: async (): Promise<{ id: string; name: string; active: boolean }[]> => {
       const r = await ask<any>("flows.list");

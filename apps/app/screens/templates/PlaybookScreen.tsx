@@ -76,6 +76,8 @@ export default function PlaybookScreen() {
     try { const r = await templates.start(template, name, extras); setStartOpen(false); showToast(startWords(name, r)); router.push(`/u/project/${projectIdOf(r.project)}` as never); } catch (e) { showToast(errWords(e)); } finally { setStarting(false); }
   };
   const chat = () => openEngineer(router, { source: "playbook", ref: template, words: "" });
+  // a stage is a Flow: it opens in the Flow builder with its stage trigger, its to-dos as task steps and its runs
+  const openStage = (stage: string) => act("flow", async () => { const f = await templates.stageFlow(template, shown!.version, stage); router.push(`/u/flows/${f.id}` as never); });
   // a direct edit: the new body is saved in place when the newest version is a draft, else as a new draft; nothing goes live until "Go live"
   const commit = (next: Body, what = "edited on the page") => act("save", async () => {
     const inPlace = !!shown && shown.state === "draft";
@@ -114,6 +116,7 @@ export default function PlaybookScreen() {
                       onDown={mayMake && k < cards.length - 1 ? () => void commit(moveStage(body, c.index, 1), "moved a stage") : undefined}
                       onRemove={mayMake && cards.length > 1 ? () => void commit(removeStage(body, c.index), "removed a stage") : undefined}>
                       {mayMake ? <InlineName value={c.name} size="body" label={`stage ${c.index + 1}`} onCommit={(v) => void commit(renameStage(body, c.index, v), "renamed a stage")} /> : null}
+                      {mayMake ? <View className="self-start"><Button kind="ghost" size="sm" label="Open in the Flow builder" loading={busy === "flow"} onPress={() => void openStage(c.name)} /></View> : null}
                       {c.todos.map((t, n) => (
                         <View key={`${n}:${t.title}`} className="gap-s1">
                           <View className="flex-row items-center gap-s2">
