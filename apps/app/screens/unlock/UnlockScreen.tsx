@@ -110,14 +110,14 @@ export function UnlockScreen({ view, username, onDone, onRetry, still, greeting:
               }}
               extra={recoveryMode ? null : (
                 <Pressable accessibilityRole="button" accessibilityLabel={eye} onPress={() => setShown(!shown)} hitSlop={8}
-                  style={{ width: 36, height: 36, marginRight: 4, alignItems: "center", justifyContent: "center" }} {...({ title: eye } as object)}>
+                  style={{ width: 44, height: 44, marginRight: 2, alignItems: "center", justifyContent: "center" }} {...({ title: eye } as object)}>
                   <Icon name={shown ? "eye-off" : "eye"} size={18} tone={T.link} />
                 </Pressable>
               )} />
             {failure ? <Text size="secondary" tone="err" style={{ marginTop: 10, textAlign: "center" }} accessibilityLiveRegion="polite">{failure}</Text> : null}
           </Appear>
           <Appear index={7} style={{ alignItems: "center", gap: 12, marginTop: 20, maxWidth: 440 }}>
-            <Pressable accessibilityRole="button" onPress={flip}><Text size="secondary" tone="label">{recoveryMode ? UNLOCK_COPY.usePassword : UNLOCK_COPY.useRecovery}</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={flip} style={{ minHeight: 44, justifyContent: "center" }}><Text size="secondary" tone="label">{recoveryMode ? UNLOCK_COPY.usePassword : UNLOCK_COPY.useRecovery}</Text></Pressable>
             <Text size="caption" tone="label" style={{ textAlign: "center" }}>{UNLOCK_COPY.note}</Text>
           </Appear>
         </View>

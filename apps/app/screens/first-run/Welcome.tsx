@@ -69,7 +69,7 @@ export function PillField({ lead, tail, extra, value, onChangeText, onGo, goLabe
       {tail ? <RNText style={{ color: color[T.fieldLead], fontSize: 16, marginLeft: 1, marginRight: 8 }}>{tail}</RNText> : null}
       {extra}
       <Pressable accessibilityRole="button" accessibilityLabel={goLabel} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onGo}
-        style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: color[T.go], opacity: disabled ? 0.45 : 1, alignItems: "center", justifyContent: "center" }}>
+        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: color[T.go], opacity: disabled ? 0.45 : 1, alignItems: "center", justifyContent: "center" }}>
         <RNText style={{ color: color[T.goInk], fontSize: 18, fontWeight: "600" }}>{"→"}</RNText>
       </Pressable>
     </View>
