@@ -43,7 +43,7 @@ export function stoppedState(reason) {
 const EDITS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const turnNo = (/** @type {unknown} */ t) => { const m = /:(\d+)$/.exec(String(t ?? "")); return m ? m[1] : null; };
 /** Why a turn failed, as one short line a person can read: redacted (never a key), one line, at most 160 characters, no closing full stop. @param {unknown} err */
-export const failNote = (err) => redact(String(err || "it gave no reason")).text.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160).replace(/[.\s]+$/, "");
+export const failNote = (err) => redact(String(err || "no answer came back")).text.replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 160).replace(/[.\s]+$/, "");
 
 /**
  * @typedef {{ kind: string, data: any, turn?: string|null, author?: string }} Spec

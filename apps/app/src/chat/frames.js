@@ -22,7 +22,7 @@ import { personWords } from "./notice-words.js";
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
 /** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
-const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again." };
+const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again.", "no answer came back": "Couldn't answer. Nothing came back." };
 const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "Couldn't answer." };
 
 /** The states in which a message you send is queued, not taken. @param {string} state */

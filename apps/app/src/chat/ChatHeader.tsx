@@ -46,7 +46,7 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project, sub, place }: {
+export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, onOpenWho, menu, project, sub, place }: {
   /** Where the chat runs: the compact "Runs on" switch, beside the "..." menu (placement.tsx). */
   place?: React.ReactNode;
   /** A quiet word after the name: an agent chat's current thread. */
@@ -60,6 +60,8 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
   onBack?: () => void;
   /** One tap on the header opens the side panel. */
   onOpen: () => void;
+  /** The name and avatar open the who's side pane (WhoPane) instead of the details panel; the details stay in the ... menu. */
+  onOpenWho?: () => void;
   /** The ... menu: everything that is not the name. */
   menu?: MenuItem[];
 }) {
@@ -77,8 +79,8 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
       </View>
       <View style={{ flex: 1, alignItems: "center", minWidth: 0 }}>
         {/* One small centred chip: the face (or the group's stack), the name and, quieter, the project. A tap opens the side panel. */}
-        <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. Open details`} onPress={onOpen}
-          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. ${onOpenWho ? "Open the side pane" : "Open details"}`} onPress={onOpenWho ?? onOpen}
+          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: phone ? 44 : 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
           {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
           <Text numberOfLines={1} style={{ flexShrink: 1 }}>
             <Text medium>{title}</Text>

@@ -187,6 +187,7 @@ export const MIGRATIONS = [
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 import { providerName, switchedLine } from "./switched.js";
+import { shouldStartFresh } from "./no-session.js";
 export { providerName, switchedLine };
 
 /** Words a model wrote, quoted into a Vyre line: every line indented, so a line of its own that looks like the end of the block or a new Vyre line stays inside the quote. @param {string} text */
@@ -2276,9 +2277,9 @@ export class Switchboard {
 
   onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
     if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
-    // A resume of a session that never wrote a transcript (its first start failed at the sandbox self-test, so Claude never began): Claude says "No conversation found with session ID".
+    // A resume of a session that never began (its first start failed, say at the sandbox self-test, so the provider has no transcript): any provider's process that ends before it speaks, with no finished turn behind it or saying the session is missing (no-session.js).
     // The thread starts that session now under the same id, and the message that was waiting goes in again.
-    if (st.launch && st.launch.resume && !st.stopping && !st.fresh1 && !this.closing && this.live.get(id) === st && /No conversation found with session ID/.test(String(stderr || ""))) { void this.startFresh(id, st); return; }
+    if (st.launch && st.launch.resume && this.live.get(id) === st && shouldStartFresh({ resume: true, heard: Boolean(st.heard), stopping: Boolean(st.stopping), fresh: Boolean(st.fresh1), closing: Boolean(this.closing), code, stderr: String(stderr || ""), turns: Number((this.record(id) || {}).turns) || 0 })) { void this.startFresh(id, st); return; }
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end

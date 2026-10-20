@@ -20,3 +20,12 @@ test("an error result with no text gives its errors as the reason", () => {
   const fin = r.events.find(e => e.type === "thread.finished");
   assert.match(String(fin && fin.payload.error), /No conversation found with session ID: abc/);
 });
+
+test("every provider's failed turn reaches the thread as its own words: an ACP agent's refusal, an API driver's plain line", () => {
+  for (const why of ["Codex did not accept its sign-in (invalid key)", "OpenRouter refused the key. Check it in Settings, AI accounts.", "The model is overloaded. Try again in a minute."]) {
+    const r = translate({ type: "result", subtype: "error", is_error: true, result: why, total_cost_usd: 0 });
+    const fin = r.events.find(e => e.type === "thread.finished");
+    assert.equal(fin && fin.payload.ok, false);
+    assert.equal(fin && fin.payload.error, why);
+  }
+});
