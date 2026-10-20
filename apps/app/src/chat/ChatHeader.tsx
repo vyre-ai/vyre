@@ -1,5 +1,5 @@
 // The chat header: ONE compact row. A back chevron, stacked faces (three, then "+n"), a one-line
-// title, and one quiet line for the record and the space. Nothing else: no chips, no state, no
+// title, and one quiet line for the record and the space; on the right, where the chat runs ("Runs on") and the "..." menu. No state, no
 // Stop. State and Stop live in the status line under the transcript (StatusLine.tsx). Tapping the
 // row opens "About this chat" (AboutSheet.tsx).
 
@@ -46,7 +46,9 @@ export function HeaderStack({ faces, more }: { faces: readonly Person[]; more: n
   );
 }
 
-export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project, sub }: {
+export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen, menu, project, sub, place }: {
+  /** Where the chat runs: the compact "Runs on" switch, beside the "..." menu (placement.tsx). */
+  place?: React.ReactNode;
   /** A quiet word after the name: an agent chat's current thread. */
   sub?: string;
   /** The project the chat is in; its name follows the title on the same line. */
@@ -84,7 +86,8 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
           </Text>
         </Pressable>
       </View>
-      <View style={{ width: 88, flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
+      <View style={{ minWidth: 88, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+        {place}
         {menu && menu.length ? <Menu align="end" trigger={<IconButton icon="more" label="More" kind="ghost" />} items={menu} /> : null}
         {!phone && onBack ? <IconButton icon="x" label="Close this chat" kind="ghost" onPress={onBack} /> : null}
       </View>

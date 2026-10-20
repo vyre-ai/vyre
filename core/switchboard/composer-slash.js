@@ -46,7 +46,8 @@ export function registerComposerSlashTools(tool, o) {
         const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread: i.chat }).catch(() => null));
         thread = named && named.data && named.data.thread ? String(named.data.thread) : "";
       }
-      if (!thread) throw Object.assign(new Error("name the chat or the session"), { code: "bad_input" });
+      // said under the composer, so in plain words with what to do: a chat with no run yet has no session for a command to reach
+      if (!thread) throw Object.assign(new Error(typeof i.chat === "string" && i.chat ? "This chat has not started yet. Send a message first, then try that command." : "Name the chat or the session for this command."), { code: "bad_input" });
       const route = routeComposerLine(String(i.line || ""), Boolean(i.raw));
       const surface = surfaceOf(i, caller);
       const extra = { thread, surface, ...(i.mode ? { mode: i.mode } : {}), ...(Array.isArray(i.mentions) ? { mentions: i.mentions } : {}), ...(Array.isArray(i.pasted) ? { pasted: i.pasted.filter((/** @type {unknown} */ x) => typeof x === "string").slice(0, 20) } : {}) };

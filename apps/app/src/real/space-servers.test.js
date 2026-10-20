@@ -147,6 +147,20 @@ test("with B offline, A's chats still resolve and B's chat is refused rather tha
   m.setPorts(null);
 });
 
+test("one server that never answers its chat list holds the list back only for the budget: the other server's chats show", { skip: !strip, timeout: 20_000 }, async () => {
+  const m = await load();
+  const w = wire({ boxa: ["chat_a"], boxb: ["chat_b"] });
+  const call = w.ports.peerCall;
+  w.ports.peerCall = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string | undefined} */ box) => (tool === "work.chat.list" && box === "boxb" ? new Promise(() => {}) : call(tool, input, box));
+  m.setPorts(/** @type {any} */ (w.ports));
+  const t0 = Date.now();
+  const all = await m.listAllChats({});
+  const took = Date.now() - t0;
+  assert.ok(took < m.CHATS_SERVER_MS + 2000, `the list came in ${took} ms, inside the budget, not never`);
+  assert.deepEqual(all?.chats.map((c) => [c.chat, c.server]), [["chat_a", "boxa"]], "what answered is listed");
+  m.setPorts(null);
+});
+
 test("a chat just made on a server is known to be there without asking", { skip: !strip }, async () => {
   const m = await load();
   const w = wire({});

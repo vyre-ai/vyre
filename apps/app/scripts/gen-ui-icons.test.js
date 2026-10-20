@@ -37,6 +37,21 @@ test("gen-ui-icons: an alias to a missing drawing, or one that shadows a drawing
   assert.throws(() => renderIcons(set, { a: "a" }), /also a drawing/);
 });
 
+test("gen-ui-icons: a brand mark is one filled path, and the AI providers' marks are in the set", () => {
+  assert.deepEqual(parseFragment("logo-x", '<fill d="M0 0h24v24H0z"/>'), [{ el: "fill", d: "M0 0h24v24H0z" }]);
+  assert.throws(() => parseFragment("logo-x", '<fill cx="1"/>'), /gives <fill> a cx/);
+  const set = new Map(parseSet(SRC));
+  for (const n of ["logo-claude", "logo-openai", "logo-grok", "logo-openrouter"]) {
+    const els = set.get(n);
+    assert.ok(els && els.length === 1 && els[0].el === "fill" && /^[Mm]/.test(String(/** @type {any} */ (els[0]).d)), `${n} is one filled path`);
+  }
+});
+
+test("gen-ui-icons: the committed icons.generated.ts is what the source makes", () => {
+  const committed = readFileSync(new URL("../src/ui/icons.generated.ts", import.meta.url), "utf8");
+  assert.equal(isStale(committed, renderIcons(parseSet(SRC))), false, "run the generator on a runner and commit its output");
+});
+
 test("gen-ui-icons: stale only when the text differs", () => {
   assert.equal(isStale("a", "a"), false);
   assert.equal(isStale(null, "a"), true);

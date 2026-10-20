@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, IconButton, LoadingState, ProviderLogo, Row, Segmented, Sheet, SortableList, Text, markRef, showToast } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { pickFile } from "../vault/pick-file";
 import { dayOf } from "../../src/time/show.js";
@@ -147,7 +147,7 @@ export function Models({ name }: { name: string }) {
           {addable(plan, accounts).length ? (
             <Card flush>
               {addable(plan, accounts).map((a, i) => (
-                <View key={a.id}>{i ? <Divider /> : null}<Row title={a.label} sub={a.kind === "login" ? "Your sign-in" : a.kind === "setup-token" ? "Setup token" : "API token"} onPress={() => { setPlan(add(plan, { provider: a.provider, account: a.id })); setAdding(false); }} /></View>
+                <View key={a.id}>{i ? <Divider /> : null}<Row lead={<ProviderLogo provider={a.provider} size={20} />} title={a.label} sub={a.kind === "login" ? "Your sign-in" : a.kind === "setup-token" ? "Setup token" : "API token"} onPress={() => { setPlan(add(plan, { provider: a.provider, account: a.id })); setAdding(false); }} /></View>
               ))}
             </Card>
           ) : <Text tone="muted">Every account you have is already on the plan.</Text>}

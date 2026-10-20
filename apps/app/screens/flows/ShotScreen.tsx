@@ -7,6 +7,7 @@ import type { FlowDraft } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { SlotsSheet } from "../templates/SlotsSheet";
 import type { TriggerSources } from "@vyre/ui";
+import type { FlowHookState } from "./watchers-source";
 import { RunSteps } from "./RunSteps";
 import { REFUND_DRAFT, SAMPLE_OPTIONS } from "./starters.js";
 
@@ -38,8 +39,10 @@ const HOSTILE = "\"# Heading **bold** [click here](https://evil.example/x) https
 const LONG = `"${"Greet the person, find the matter and say what is next. ".repeat(36)}" [cut: 2500 characters in all]`;
 const KIT = { adds: { teammates: [{ name: "desk-helper", instructions_quoted: HOSTILE }, { name: "intake-helper", instructions_quoted: LONG }] } };
 
-const HOOKS = { enabled: false, listening: false, routes: [{ name: "northwind-orders", scheme: "hmac-sha256", header: "x-signature", secret: "northwind-orders-hook" }], public: { available: false, why: "The box has no public address yet." }, urls: { "northwind-orders": null } };
-const SOURCES: TriggerSources = { hooks: async () => HOOKS, enableHooks: async () => {}, openRoute: async () => {} };
+const HOOK: FlowHookState = { open: true, address: { path: "/hooks/refund-request-4f9c", url: "https://team.example/hooks/refund-request-4f9c0b7e1d2a" }, why: null, last: { when: "Today 10:05", ok: true, bytes: 412 }, check: null };
+const HOOK_WAIT: FlowHookState = { ...HOOK, address: { path: "/hooks/refund-request-4f9c", url: null }, why: "The public address is not up yet: the server's name does not point at it. Senders on the internet reach it once the server has its public address.", last: null };
+const hookSources = (h: FlowHookState): TriggerSources => ({ flowHook: async () => h, renewHook: async () => {}, testHook: async () => ({ ok: true, line: "The test reached the address and its token checked. A test does not start the Flow." }), signHook: async () => {} });
+const SOURCES = hookSources(HOOK);
 
 function KitShot() {
   const [read, setRead] = useState(false);
@@ -59,7 +62,9 @@ export default function ShotScreen() {
   const [draft, setDraft] = useState<FlowDraft>(EDITOR);
   if (!allowsMock()) return <Frame title="Not here" back="/u/flows"><EmptyState title="Not here" body="This page is only for the sample world." /></Frame>;
   if (k === "kit") return <KitShot />;
-  if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook", route: "northwind-orders" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
+  if (k === "webhook") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
+  if (k === "webhookwait") return <Frame back="/u/flows" title="Refund request" sub="Starts when a webhook is called."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Refund request", trigger: { kind: "webhook" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={hookSources(HOOK_WAIT)} /></Frame>;
+  if (k === "formhook") return <Frame back="/u/flows" title="Contact form" sub="Starts when a form is submitted."><FlowBuilder draft={{ ...(REFUND_DRAFT as FlowDraft), name: "Contact form", trigger: { kind: "form", path: "contact" } }} onChange={() => {}} options={SAMPLE_OPTIONS as never} initialOpen="trigger" triggerSources={SOURCES} /></Frame>;
   if (k === "run") {
     return (
       <Frame back="/u/flows" title="Refund request, run of Today 10:05" sub="Every step with what went in and came out.">

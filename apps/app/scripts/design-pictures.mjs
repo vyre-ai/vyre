@@ -1,6 +1,7 @@
 // Picture tests: every fixture of the gallery (apps/app/ui/blocks/fixtures.generated.json) in headless Chromium at each surface, light and dark, compared with the reference pictures in
 // design-refs/. A picture that changed is a design change: it writes before, after and diff images and exits 1, and the screen's owner says yes (--update) or no. The rules checker runs on
-// every render: no sideways scroll, text of 12 or more (the uppercase section labels are the system's own micro size), touch targets of 44 on a phone, no console errors.
+// every render: no sideways scroll, text of 12 or more (the uppercase section labels are the system's own micro size), touch targets of 44 on a phone, no console errors. A fixture with `press`
+// and `expect` (the folded rail's menus) is pressed first: its item must show whole and on top, and after the picture Escape and a press outside must close it.
 //
 //   node scripts/design-pictures <out> [--dist dist-mock] [--refs ../../design-refs] [--only id,id] [--surface app,phone,chat] [--update] [--budget-mb 12]
 // Surfaces: app (1280, full form), phone (390, compact), chat (390, glance). Themes: dark, paper. Files: <refs>/<id>/<surface>-<theme>.png.
@@ -97,6 +98,39 @@ const open = async (s, t) => {
   page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text()); });
   return { ctx, page };
 };
+/**
+ * The menu items showing that read `want`, each with whether the point at its middle is the item itself (nothing drawn over it, nothing clipping it). An open menu turns off pointer events on the body,
+ * which hit-testing skips, so they are on for the moment of the test: a pane drawn over the menu is then found.
+ */
+const menuItems = (page, want) => page.evaluate((want) => {
+  const was = document.body.style.pointerEvents;
+  document.body.style.pointerEvents = "auto";
+  try {
+    return [...document.querySelectorAll('[role="menuitem"]')].filter((e) => e.textContent.includes(want)).map((e) => {
+      const r = e.getBoundingClientRect();
+      const top = r.width && r.height ? document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) : null;
+      return { seen: Boolean(top && (top === e || e.contains(top))), inside: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
+    });
+  } finally { document.body.style.pointerEvents = was; }
+}, want);
+/** A fixture that names a trigger (press) and an item (expect): pressing the trigger shows the item, whole and on top. @returns {Promise<string[]>} its faults */
+const pressOpen = async (page, scr) => {
+  await page.click(scr.press, { timeout: 10000 });
+  for (let i = 0; i < 20; i++) { const got = await menuItems(page, scr.expect); if (got.length) return got.every((x) => x.seen && x.inside) ? [] : [`"${scr.expect}" is covered or cut off after pressing ${scr.press}`]; await page.waitForTimeout(150); }
+  return [`pressing ${scr.press} did not open a menu with "${scr.expect}"`];
+};
+/** After the picture: Escape closes the menu, and so does a press outside it (the open is pressed again first). @returns {Promise<string[]>} */
+const closeFaults = async (page, scr) => {
+  const bad = [];
+  const shut = async () => { for (let i = 0; i < 20; i++) { if (!(await menuItems(page, scr.expect)).length) return true; await page.waitForTimeout(150); } return false; };
+  await page.keyboard.press("Escape");
+  if (!(await shut())) bad.push("Escape did not close the menu");
+  bad.push(...(await pressOpen(page, scr)));
+  const box = await page.locator("#fixture").boundingBox();
+  if (box) await page.mouse.click(box.x + box.width - 40, box.y + box.height - 40);
+  if (!(await shut())) bad.push("a press outside did not close the menu");
+  return bad;
+};
 /** In the page: is this PNG one flat colour (nothing was drawn)? */
 const isFlat = (page, png) => page.evaluate(async (d) => {
   const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = "data:image/png;base64," + d; });
@@ -117,6 +151,8 @@ const shoot = async (cur, s, t, id) => {
         await page.waitForFunction(() => document.getElementById("fixture")?.innerText?.includes("house-style"), { timeout: 15000 }).catch(() => {});
       }
       await page.waitForTimeout(id === "skills-real" ? 1200 : 400);
+      const scr = FIX[id]?.screens?.[s.form] ?? {};
+      const pressed = scr.press ? await pressOpen(page, scr) : [];
       const el = page.locator("#fixture");
       if (!(await el.count())) { const seen = await page.evaluate(() => `${location.pathname}${location.search} | ${(document.body.innerText || "").replace(/\s+/g, " ").slice(0, 200)}`).catch(() => "page gone"); errors.push(`page showed: ${seen}`); return { missing: true }; }
       // A screen that fades or loads in is drawn only once it holds still: two pictures in a row the same.
@@ -127,6 +163,8 @@ const shoot = async (cur, s, t, id) => {
       let flat = await isFlat(page, after);
       for (let wait = 1; flat && wait <= 6; wait++) { await page.waitForTimeout(wait * 500); after = await el.screenshot(); flat = await isFlat(page, after); }
       const bad = await rules(page, s.name !== "app");
+      bad.push(...pressed);
+      if (scr.press && !pressed.length) bad.push(...(await closeFaults(page, scr)));
       if (flat) bad.push("the fixture drew nothing (one flat colour)");
       return { after, rules: bad };
     } catch (e) {

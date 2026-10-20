@@ -39,7 +39,7 @@ await d.start(id);
 const ip = sh(["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", CONTAINER]);
 
 const ctl = agentdCtl({ transport: execTransport(input => d.execIn(id, input)), vncKey: async () => "k".repeat(32) });
-const U = n => ({ agentId: `agent-${n}`, user: `ag${20000 + n}`, uid: 20000 + n, display: 20 + n });
+const U = n => ({ agentId: `agent-${n}`, name: ["Ada", "Bo"][n] || `Agent ${n}`, user: `ag${20000 + n}`, uid: 20000 + n, display: 20 + n });
 const [A, B] = [U(0), U(1)];
 
 try {
@@ -298,29 +298,49 @@ try {
   // the probe window from the keystroke checks is the owner's and still up; close it so the picture is the desk
   shOk([...asOwner, CONTAINER, "sh", "-c", `xdotool windowkill ${wid} 2>/dev/null; true`]);
   await sleep(1000);
-  check((await shoot("agent-desk.png")) > 1000, "a picture of agent A's desk is saved (agent-desk.png)");
-  // the wallpaper itself (Chrome's window covers the middle of the screen in the picture)
+  // the wallpaper itself (Chrome's window covers the middle of the screen in the pictures) and the picture of it at the screen's size
   shOk(["cp", `${CONTAINER}:/var/lib/vyre/browsers/agb21000/wallpaper.png`, path.join(OUT, "agent-wallpaper.png")]);
-  check(fs.existsSync(path.join(OUT, "agent-wallpaper.png")), "the wallpaper was made at the screen's size (agent-wallpaper.png)");
-  // press the dock as a person would: it is centred at the bottom, three 76 px tiles (agentd-dock.py), on a 1440x900 screen
+  check(fs.existsSync(path.join(OUT, "agent-wallpaper.png")), "the wallpaper was made (agent-wallpaper.png)");
+  const wallSize = shOk(["exec", "-u", "21000", CONTAINER, "identify", "-format", "%wx%h", "/var/lib/vyre/browsers/agb21000/wallpaper.png"]);
+  check(wallSize === "1440x900", "the wallpaper has the screen's size", wallSize);
+  const wallName = shOk(["exec", "-u", "21000", CONTAINER, "cat", "/var/lib/vyre/browsers/agb21000/agent-name"]);
+  check(wallName.length > 0 && !/^ERR/.test(wallName), "the agent's name was handed to its desk (the wallpaper's corner and the new tab show it)", wallName);
+  // the dock is centred at the bottom: a 276 x 84 bar, its icons 84 px apart, 14 px above the edge, on a 1440x900 screen
   const pages = async () => (await a2.send("Target.getTargets", {})).targetInfos.filter(t => t.type === "page").length;
+  const urls = async () => (await a2.send("Target.getTargets", {})).targetInfos.filter(t => t.type === "page").map(t => t.url);
+  const press = x => shOk([...asOwner, CONTAINER, "xdotool", "mousemove", String(x), "844", "click", "1"]);
+  // Chrome first: the dock's button brings Chrome to the front on the new tab (the Vyre page), and the picture shows the desk as a person sees it
   const tabsBefore = await pages().catch(e => `ERR ${e.message}`);
-  const press = x => shOk([...asOwner, CONTAINER, "xdotool", "mousemove", String(x), "843", "click", "1"]);
+  press(636); await sleep(4000);
+  const tabsAfter = await pages().catch(e => `ERR ${e.message}`);
+  check(typeof tabsBefore === "number" && typeof tabsAfter === "number" && tabsAfter === tabsBefore + 1, "Chrome brings Chrome to the front with a new tab (the holder opens it; the agent never reaches Chrome's pipe)", `${tabsBefore} -> ${tabsAfter}`);
+  const tabUrls = await urls().catch(e => [`ERR ${e.message}`]);
+  console.log("--- Chrome's tabs\n" + tabUrls.join("\n"));
+  check(tabUrls.some(u => /^file:\/\/\/usr\/share\/vyre-desk\/newtab\.html/.test(u)), "the new tab is the Vyre page shipped in the image", tabUrls);
+  const policy = shOk(["exec", "-u", "0", CONTAINER, "cat", "/etc/chromium/policies/managed/vyre.json"]);
+  check(/"NewTabPageLocation": "file:\/\/\/usr\/share\/vyre-desk\/newtab\.html"/.test(policy) && /"ExtensionInstallBlocklist": \["\*"\]/.test(policy) && /"file:\/\/\*"/.test(policy), "Chrome's policy sets the new tab and still blocks extensions and file://", policy.slice(0, 200));
+  check((await shoot("agent-desk.png")) > 1000, "a picture of agent A's desk, with Chrome on the new tab and the dock in view, is saved (agent-desk.png)");
+  // the dock close up, the pointer on Terminal (the icon grows and its name shows above it)
+  shOk([...asOwner, CONTAINER, "xdotool", "mousemove", "715", "850"]); await sleep(300); shOk([...asOwner, CONTAINER, "xdotool", "mousemove", "720", "846"]); await sleep(900);
+  shOk([...asOwner, CONTAINER, "import", "-window", "root", "-crop", "460x175+490+715", "+repage", "/var/lib/vyre/browsers/agb21000/agent-dock.png"]);
+  shOk(["cp", `${CONTAINER}:/var/lib/vyre/browsers/agb21000/agent-dock.png`, path.join(OUT, "agent-dock.png")]);
+  check(fs.existsSync(path.join(OUT, "agent-dock.png")) && fs.statSync(path.join(OUT, "agent-dock.png")).size > 1000, "a close-up of the dock is saved (agent-dock.png)");
+  // press the other two as a person would
   press(720); await sleep(3000);
   const term = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 '^/usr/bin/xterm'"]);
   check(/tmux -S \/var\/lib\/vyre\/agents\/ag20000\/tmux\.sock new-session -A -s desk -c \/var\/lib\/vyre\/agents\/ag20000\/home/.test(term), "Terminal opens a terminal as the agent, in its folder, on its own tmux", term);
   console.log("--- what the dock's terminal shows\n" + shOk(["exec", "-u", "20000", CONTAINER, "/usr/bin/tmux", "-S", "/var/lib/vyre/agents/ag20000/tmux.sock", "capture-pane", "-p", "-t", "desk"]).slice(0, 600));
   const sessions = await ctl.terminals(A).catch(e => `ERR ${e.message}`);
   check(Array.isArray(sessions) && sessions.some(s => s.name === "desk"), "the dock's terminal is one of the agent's terminals in Vyre", sessions);
-  press(802); await sleep(4000);
+  press(804); await sleep(4000);
   const fm = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", "ps -u 20000 -o args= | grep -m1 pcmanfm"]);
   check(/pcmanfm \/var\/lib\/vyre\/agents\/ag20000\/home$/.test(fm), "Files opens the file manager as the agent, on its folder", fm);
   check((await shoot("agent-desk-terminal-files.png")) > 1000, "a picture with the terminal and the file manager in front is saved (agent-desk-terminal-files.png)");
-  press(638); await sleep(3000);
-  const tabsAfter = await pages().catch(e => `ERR ${e.message}`);
-  check(typeof tabsBefore === "number" && typeof tabsAfter === "number" && tabsAfter === tabsBefore + 1, "Chrome brings Chrome to the front with a new tab (the holder opens it; the agent never reaches Chrome's pipe)", `${tabsBefore} -> ${tabsAfter}`);
-  await sleep(1000);
-  check((await shoot("agent-desk-open.png")) > 1000, "a picture of the desk with Terminal, Files and Chrome open is saved (agent-desk-open.png)");
+  // the running dots: all three apps are up now
+  shOk([...asOwner, CONTAINER, "xdotool", "mousemove", "1200", "300"]); await sleep(1200);
+  shOk([...asOwner, CONTAINER, "import", "-window", "root", "-crop", "460x175+490+715", "+repage", "/var/lib/vyre/browsers/agb21000/agent-dock-running.png"]);
+  shOk(["cp", `${CONTAINER}:/var/lib/vyre/browsers/agb21000/agent-dock-running.png`, path.join(OUT, "agent-dock-running.png")]);
+  check(fs.existsSync(path.join(OUT, "agent-dock-running.png")), "a close-up of the dock with all three apps running is saved (agent-dock-running.png)");
 
   await b.close(); await a2.close(); await adapter.close();
   fs.writeFileSync(path.join(OUT, "agents-proof.txt"), "all agent computer checks passed\n");

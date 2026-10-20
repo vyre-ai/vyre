@@ -187,6 +187,7 @@
   "records.define",
   "records.dev-seed",
   "records.forget",
+  "records.field.seal",
   "records.forget.propose",
   "records.reveal",
   "records.seal-put",

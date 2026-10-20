@@ -6,7 +6,7 @@
 /** @typedef {{ name: string, label: string }} Named */
 /** @typedef {{ name: string, label: string, kind?: string, options?: string[] }} FieldOpt  a field of an object; `kind` is its type ("date" and "datetime" are written as people read them inside text) */
 /** @typedef {{ name: string, label: string, fields?: FieldOpt[] }} TypeOpt  an object (record table) and its fields */
-/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, route?: string, path?: string, field?: string, again?: string, raw?: any, where?: string }} Trigger  `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
+/** @typedef {{ kind: string, type?: string, stage?: string, every?: string, at?: string, event?: string, watcher?: string, route?: string, path?: string, address?: boolean, field?: string, again?: string, raw?: any, where?: string }} Trigger  `address` is false only for a form, sign-up or webhook trigger saved before Flows had their own webhook address (it is kept as it was until the person gives it one); `route` is a webhook route opened by hand (the older way). `field` and `again` belong to "changed": the field to watch, and what a second change does ("replace" starts over, "keep" keeps both runs) */
 /** @typedef {{ id: string, kind: string, [k: string]: any }} DraftStep */
 /** @typedef {{ name: string, id?: string, group?: string, trigger: Trigger, steps: DraftStep[], moreTriggers?: Trigger[], onFailure?: DraftStep[], rest?: Record<string, any> }} Draft  `moreTriggers` is every trigger after the first (stored as `triggers`, any of them starts a run); `id` is the stored name (kept when a stored Flow is edited); `onFailure` is the steps to run when the run is about to fail (stored as `on_failure`); `rest` is every other key the stored Flow had, kept as is */
 /** @typedef {{ id: string, name: string, stages: { name: string, tasks: { title: string, doer: string }[] }[] }} TemplateOpt */
@@ -28,11 +28,11 @@ export const TRIGGERS = /** @type {const} */ ([
   { id: "changed", icon: "records", label: "A record is created or updated", hint: "For example an appointment is booked or moved" },
   { id: "removed", icon: "trash", label: "A record is removed", hint: "For example a client is deleted" },
   { id: "stage", icon: "board", label: "A record moves to a stage", hint: "For example a matter enters Drafting" },
-  { id: "signup", icon: "person", label: "A person signs up", hint: "From your sign-up form" },
-  { id: "form", icon: "list", label: "A form is submitted", hint: "Any form or link that calls the Flow" },
+  { id: "signup", icon: "person", label: "A person signs up", hint: "Your sign-up form posts to the Flow's own address" },
+  { id: "form", icon: "list", label: "A form is submitted", hint: "A form posts to the Flow's own address" },
   { id: "schedule", icon: "clock", label: "At a set time", hint: "Every few minutes, every day or weekday at a time, every Monday, every month" },
   { id: "event", icon: "bolt", label: "Something happens in Vyre", hint: "A document is signed, a message is sent or held" },
-  { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service calls a web address, checked by its signature" },
+  { id: "webhook", icon: "globe", label: "A webhook is called", hint: "Another service posts to the Flow's own address" },
   { id: "manual", icon: "play", label: "I press Run", hint: "A person or an agent presses Run" },
 ]);
 
@@ -117,7 +117,7 @@ export function triggerPhrase(t, o) {
     case "stage": return `${type ? `a ${type} record` : "a record"} enters ${t.stage || "a stage"}`;
     case "event": return (EVENT_CHOICES.find(([v]) => v === t.event)?.[1] || "something happens in Vyre").replace(/^A /, "a ").replace(/^An /, "an ");
     case "watcher": return t.watcher ? `the watcher ${t.watcher} finds something new` : "a watcher finds something new";
-    case "webhook": return t.route ? `the webhook /hooks/${t.route} is called` : "a webhook is called";
+    case "webhook": return t.route ? `the webhook /hooks/${t.route} is called` : "its webhook address is called";
     case "signup": return "a person signs up";
     case "form": return t.path ? `the form ${t.path} is submitted` : "a form is submitted";
     case "schedule": return t.every ? `it is ${t.every.toLowerCase()}${TIMED.has(t.every) ? ` at ${t.at || "09:00"}` : ""}` : "it is time";
@@ -267,7 +267,7 @@ export function triggerProblems(t) {
   if (t.kind === "removed" && !t.type) out.push("Choose the object that starts it.");
   if (t.kind === "event" && !t.event) out.push("Choose what happens.");
   if (t.kind === "watcher" && !(t.watcher || "").trim()) out.push("Name the watcher.");
-  if (t.kind === "webhook" && !/^[a-z0-9][a-z0-9-]*$/.test((t.route || "").trim())) out.push("Choose the webhook route that starts it.");
+  if (t.kind === "webhook" && t.route !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test((t.route || "").trim())) out.push("Choose the webhook route that starts it.");
   return out;
 }
 
@@ -489,10 +489,11 @@ function triggerBase(t) {
     case "removed": return { on: "event", event: `${t.type}.removed` };
     case "event": return { on: "event", event: String(t.event) };
     case "watcher": return { on: "watcher", watcher: String(t.watcher).trim() };
-    case "webhook": return { on: "web", path: webhookPath(String(t.route).trim()) };
+    // The Flow's own address (core/hooks opens it while the Flow is on, bound to it by id); a route opened by hand keeps the older path hook-<route>.
+    case "webhook": return t.route !== undefined ? { on: "web", path: webhookPath(String(t.route).trim()) } : { on: "web", path: "hook", address: true };
     case "stage": return { on: "stage", type: String(t.type), stage: String(t.stage) };
-    case "signup": return { on: "web", path: "signup" };
-    case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-") };
+    case "signup": return { on: "web", path: "signup", ...(t.address === false ? {} : { address: true }) };
+    case "form": return { on: "web", path: slug(t.path || "form").replace(/_/g, "-"), ...(t.address === false ? {} : { address: true }) };
     case "schedule": { const e = EVERY[t.every || ""] ? t.every || "" : "Every day"; return EVERY[e].every_ms ? { on: "time", every_ms: EVERY[e].every_ms } : { on: "time", cron: TIMED.has(e) ? cronAt(e, t.at) : EVERY[e].cron }; }
     default: return { on: "manual" };
   }
@@ -845,10 +846,10 @@ function triggerFromKind(t) {
     if (t.kind === "event" && keys(t, ["kind", "event"])) return { kind: "event", event: t.event };
     // a watcher trigger (Watchers belong to agents now): kept exactly as stored, under Advanced
     if (t.kind === "watcher" && keys(t, ["kind", "watcher"])) return { kind: "advanced", raw: { on: "watcher", watcher: t.watcher } };
-    if (t.kind === "webhook" && keys(t, ["kind", "route"])) return { kind: "webhook", route: t.route };
+    if (t.kind === "webhook" && keys(t, ["kind", "route"])) return t.route === undefined ? { kind: "webhook" } : { kind: "webhook", route: t.route };
     if (t.kind === "stage" && keys(t, ["kind", "type", "stage"])) return { kind: "stage", type: t.type, stage: t.stage };
-    if (t.kind === "signup" && keys(t, ["kind"])) return { kind: "signup" };
-    if (t.kind === "form" && keys(t, ["kind", "path"])) return { kind: "form", path: t.path };
+    if (t.kind === "signup" && keys(t, ["kind", "address"])) return t.address === false ? { kind: "signup", address: false } : { kind: "signup" };
+    if (t.kind === "form" && keys(t, ["kind", "path", "address"])) return t.address === false ? { kind: "form", path: t.path, address: false } : { kind: "form", path: t.path };
     if (t.kind === "schedule") return { kind: "schedule", every: t.every, at: t.at };
     if (t.kind === "advanced" && keys(t, ["kind", "raw"])) return { kind: "advanced", raw: t.raw };
   }
@@ -863,7 +864,11 @@ function triggerFromKind(t) {
     const m = /^([a-z][a-z0-9_]*)\.created$/.exec(t.event || ""), r = /^([a-z][a-z0-9_]*)\.removed$/.exec(t.event || "");
     return m ? { kind: "created", type: m[1] } : r ? { kind: "removed", type: r[1] } : raw;
   }
-  if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
+  // a stored watcher trigger falls through to Advanced below: Watchers belong to agents now, a Flow no longer picks one
+  // the Flow's own address: "hook" is a webhook, "signup" a sign-up, any other path a form
+  if (t.on === "web" && t.address === true && keys(t, ["on", "path", "address"])) return t.path === "hook" ? { kind: "webhook" } : t.path === "signup" ? { kind: "signup" } : { kind: "form", path: t.path };
+  // saved before Flows had their own address: kept as it was until the person gives it one
+  if (t.on === "web" && keys(t, ["on", "path"])) return t.path === "signup" ? { kind: "signup", address: false } : { kind: "form", path: t.path, address: false };
   if (t.on === "time" && keys(t, ["on", "every_ms"])) { const hit = Object.entries(EVERY).find(([, v]) => v.every_ms === t.every_ms); return hit ? { kind: "schedule", every: hit[0] } : raw; }
   if (t.on === "time" && keys(t, ["on", "cron"]) && typeof t.cron === "string") {
     for (const [name, v] of Object.entries(EVERY)) {

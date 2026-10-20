@@ -4209,6 +4209,34 @@
     }
    }
   },
+  "flow-webhook": {
+   "title": "A Flow's webhook address",
+   "screens": {
+    "full": {
+     "component": "flow-webhook"
+    },
+    "compact": {
+     "component": "flow-webhook"
+    },
+    "glance": {
+     "component": "flow-webhook"
+    }
+   }
+  },
+  "flow-webhook-wait": {
+   "title": "A Flow's webhook address, not reachable yet",
+   "screens": {
+    "full": {
+     "component": "flow-webhook-wait"
+    },
+    "compact": {
+     "component": "flow-webhook-wait"
+    },
+    "glance": {
+     "component": "flow-webhook-wait"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {
@@ -4223,19 +4251,23 @@
     }
    }
   },
-  "agent-routines": {
-   "title": "An agent's Routines and Watchers",
+  "shell-folded-account": {
+   "title": "Folded rail, account menu open",
    "screens": {
-    "compact": {
-     "component": "agent-routines"
+    "full": {
+     "component": "shell-folded-account",
+     "press": "[aria-label^='Alex Morgan:']",
+     "expect": "Your profile"
     }
    }
   },
-  "watcher-card": {
-   "title": "A Watcher's card in the chat",
+  "shell-folded-space": {
+   "title": "Folded rail, Space switcher open",
    "screens": {
-    "glance": {
-     "component": "watcher-card"
+    "full": {
+     "component": "shell-folded-space",
+     "press": "[aria-label^='Space: Juniper Studio']",
+     "expect": "Northwind Studio"
     }
    }
   },

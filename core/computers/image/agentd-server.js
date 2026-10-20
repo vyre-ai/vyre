@@ -66,7 +66,7 @@ export function createAgentd(o) {
     req.on("end", async () => {
       try {
         const body = JSON.parse(raw || "{}");
-        const u = { user: String(body.user), uid: Number(body.uid), display: Number(body.display) };
+        const u = { user: String(body.user), uid: Number(body.uid), display: Number(body.display), name: typeof body.name === "string" ? body.name.slice(0, 200) : "" };   // name: shown on the agent's desk only (agentd.js deskNameOf cleans it)
         if (action === "ticket") {
           // a viewer's one-use way to this agent's screen: checked as an agent triple like every action, then held for the relay
           planCreate(u);
