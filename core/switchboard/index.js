@@ -2258,8 +2258,27 @@ export class Switchboard {
     if (st.lastPrompt) this.write(id, st.lastPrompt, { askedBy: this.turnAsker.get(id) || null });
   }
 
+  /**
+   * Start the session over as a new one under the same id (no transcript to resume), once, and send again the words the failed start was carrying.
+   * @param {string} id @param {any} st
+   */
+  async startFresh(id, st) {
+    st.switching = true;
+    try {
+      const rec = this.must(id);
+      const words = st.lastPrompt || null;
+      this.deps.log(`threads: ${String(id).slice(0, 8)} had no session to resume; starting it as a new one`);
+      this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}, id), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), lentSpawn: await lentOf(this, id, rec), gitEnv: await this.gitEnv(rec && rec.project, id), resume: false, lastPrompt: words });
+      const now = this.live.get(id); if (now) now.fresh1 = true;
+      if (words) this.write(id, words, { askedBy: this.turnAsker.get(id) || null });
+    } catch (e) { this.deps.log(`threads: ${String(id).slice(0, 8)} could not start as a new session: ${/** @type {Error} */ (e).message}`); st.switching = false; this.onExit(id, st, 1, null, "", null); }
+  }
+
   onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
     if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
+    // A resume of a session that never wrote a transcript (its first start failed at the sandbox self-test, so Claude never began): Claude says "No conversation found with session ID".
+    // The thread starts that session now under the same id, and the message that was waiting goes in again.
+    if (st.launch && st.launch.resume && !st.stopping && !st.fresh1 && !this.closing && this.live.get(id) === st && /No conversation found with session ID/.test(String(stderr || ""))) { void this.startFresh(id, st); return; }
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end

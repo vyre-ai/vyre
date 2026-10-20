@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { failedTurnLine } from "./translate.js";
+import { failedTurnLine, translate } from "./translate.js";
 
 test("a failed turn's log line names the thread, provider and model, and holds no key-shaped text", () => {
   const KEYS = ["sk-or-v1-" + "a".repeat(40), "sk-ant-api03-" + "b".repeat(40), "Bearer " + "c".repeat(40), "ghp_" + "d".repeat(36)];
@@ -13,4 +13,10 @@ test("a failed turn's log line names the thread, provider and model, and holds n
   assert.ok(!/\n/.test(line), "one line");
   assert.ok(line.length < 300, "capped");
   assert.match(failedTurnLine("x", {}, undefined), /turn failed on claude\/default: no reason given$/);
+});
+
+test("an error result with no text gives its errors as the reason", () => {
+  const r = translate({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["No conversation found with session ID: abc"] });
+  const fin = r.events.find(e => e.type === "thread.finished");
+  assert.match(String(fin && fin.payload.error), /No conversation found with session ID: abc/);
 });

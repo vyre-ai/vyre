@@ -284,6 +284,8 @@ export function translate(m) {
 
   if (m.type === "result") {
     const text = typeof m.result === "string" ? m.result : "";
+    // An error result with no text (Claude Code's error_during_execution) carries its reason in `errors`.
+    const why = text || (Array.isArray(m.errors) ? m.errors.map(String).join("; ") : "") || (m.is_error && m.subtype ? String(m.subtype) : "");
     // A turn that failed on the subscription's limit reads as an error result naming the limit.
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
@@ -299,7 +301,7 @@ export function translate(m) {
     const n = v => (typeof v === "number" && v >= 0 ? v : 0);
     const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };
     out.events.push({ type: "thread.finished", payload: { ok: !m.is_error, stop_reason: m.stop_reason || m.subtype || null,
-      cost_usd: out.turn.cost_usd, duration_ms: m.duration_ms || null, turns: m.num_turns || null, tokens, ...(m.is_error ? { error: cut(text) } : {}) } });
+      cost_usd: out.turn.cost_usd, duration_ms: m.duration_ms || null, turns: m.num_turns || null, tokens, ...(m.is_error ? { error: cut(why) } : {}) } });
     return out;
   }
   return out;
