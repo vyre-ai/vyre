@@ -12,8 +12,8 @@ import type { PanelDef } from "./SidebarPanel";
 const SAMPLE_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOQ13IhCTGMahjVMHw1AADSqY0BZKST9AAAAABJRU5ErkJggg==";
 
 const SPACES: ShellSpace[] = [
-  { id: "spc_juniperstudi", name: "Juniper Studio", sub: "6 people", logo: SAMPLE_LOGO },
-  { id: "spc_northwindst", name: "Northwind Studio", sub: "3 people" },
+  { id: "spc_juniperstudi", name: "Juniper Studio", sub: "Owner", address: "juniper.vyre.run", logo: SAMPLE_LOGO },
+  { id: "spc_northwindst", name: "Northwind Studio", sub: "Member" },
 ];
 
 const NAV: NavDef = {
@@ -47,7 +47,7 @@ const RECORDS: PanelDef = {
 };
 
 /** The real Shell around a sample page, in the state asked for: main, folded, or a place's panel. folded-account and folded-space are the folded rail for the picture tests that press its face or its Space. */
-export function ShellSample({ state = "main", logo = true }: { state?: "main" | "folded" | "projects" | "records" | "projects-folded" | "folded-account" | "folded-space"; logo?: boolean }) {
+export function ShellSample({ state = "main", logo = true }: { state?: "main" | "folded" | "projects" | "records" | "projects-folded" | "folded-account" | "folded-space" | "menu"; logo?: boolean }) {
   const spaces = logo ? SPACES : SPACES.map((s) => ({ ...s, logo: null }));
   const panel = state === "projects" || state === "projects-folded" ? PROJECTS : state === "records" ? RECORDS : null;
   const current = panel ? (panel.id === "projects" ? "/u/project/p2" : "/u/records/contact") : "/u/projects";
