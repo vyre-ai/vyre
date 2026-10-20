@@ -331,7 +331,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
     </>, { own: true, onRefresh: reload })}
     </View>
-    {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
+    {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record" resizeKey={`record.${type}`}>
       {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn || null)} /> : null}
     </SidePanel> : null}
     </View>

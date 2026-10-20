@@ -4,13 +4,14 @@ import { elevation } from "../lib/elevation";
 import { useUiTheme } from "../theme";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { Sheet } from "./Sheet";
-import { NARROW, closesPanel, sidePanelBox, sidePanelMode } from "./side-panel.js";
+import { NARROW, closesPanel, panelLimits, sidePanelBox, sidePanelMode } from "./side-panel.js";
+import { ResizeHandle, useStoredWidth } from "../shell/ResizeHandle";
 
 /**
  * A panel that slides in beside the view it was opened from, on the right, so the list stays visible and in place next to it: one record, one thing opened from a list. The caller puts it in a row after the view (flex-row); it is never laid over the view. Escape closes it. On a phone it is a Sheet,
  * the one way a thing opens from the bottom there. The caller draws what is inside, with its own header and close button.
  */
-export function SidePanel({ open, onClose, title, children, width = 520 }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode; width?: number }) {
+export function SidePanel({ open, onClose, title, children, width = 520, resizeKey }: { open: boolean; onClose: () => void; title?: string; children: React.ReactNode; width?: number; /** Given, a drag handle on the left edge resizes the panel (360 to 60% of the window), and the width is kept under this name. */ resizeKey?: string }) {
   const { phone, color, resolved } = useUiTheme();
   const reduced = useReducedMotion();
   const x = useRef(new Animated.Value(0)).current;
@@ -20,7 +21,12 @@ export function SidePanel({ open, onClose, title, children, width = 520 }: { ope
     x.setValue(reduced ? 0 : 56);
     Animated.timing(x, { toValue: 0, duration: reduced ? 0 : 180, useNativeDriver: true }).start();
   }, [mode, reduced, x]);
-  const narrow = useWindowDimensions().width < NARROW;
+  const win = useWindowDimensions().width;
+  const narrow = win < NARROW;
+  const lim = panelLimits(win);
+  const kept = useStoredWidth(`panel.${resizeKey ?? "none"}`, width, lim.min, lim.max);
+  const resizable = Boolean(resizeKey) && Platform.OS === "web" && !narrow;
+  const shown = resizable ? kept.width : width;
   const box = useRef<any>(null);
   const back = useRef<HTMLElement | null>(null);
   // Escape and a press outside close it, and focus goes back to where it was (the row that opened it).
@@ -41,7 +47,8 @@ export function SidePanel({ open, onClose, title, children, width = 520 }: { ope
   if (mode === "closed") return null;
   if (mode === "sheet") return <Sheet open onClose={onClose} title={title} scroll={false}>{children}</Sheet>;
   return (
-    <Animated.View ref={box} accessibilityViewIsModal={false} accessibilityLabel={title} style={{ ...(sidePanelBox(width, narrow) as object), backgroundColor: color["surface-3"], borderLeftWidth: 1, borderColor: color["edge-strong"], ...elevation(resolved.scheme, 2), zIndex: 2, transform: [{ translateX: x }] } as any}>
+    <Animated.View ref={box} accessibilityViewIsModal={false} accessibilityLabel={title} style={{ ...(sidePanelBox(shown, narrow, resizable ? 60 : 50) as object), backgroundColor: color["surface-3"], borderLeftWidth: 1, borderColor: color["edge-strong"], ...elevation(resolved.scheme, 2), zIndex: 2, transform: [{ translateX: x }] } as any}>
+      {resizable ? <ResizeHandle width={shown} onChange={kept.set} onReset={kept.reset} min={lim.min} max={lim.max} def={width} edge="left" label="Resize the record panel" /> : null}
       <View className="min-h-0 flex-1">{children}</View>
     </Animated.View>
   );

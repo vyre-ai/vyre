@@ -8,6 +8,7 @@ import type { FieldEnv } from "../fields/types";
 import { isHiddenType, linkIndex } from "./logic.js";
 import { tally } from "../tags/model.js";
 import { filtersKey, listQuery } from "./world-load.js";
+import { haveTemplateNames, keepTemplateNames, onTemplateNames } from "../records/template-names.js";
 import { createShare } from "./world-share.js";
 import type { RecordsWorld } from "./shared";
 
@@ -20,13 +21,18 @@ type Share = {
   users(): number;
 };
 
-/** Every type the views show, every record of each, the people and who "me" is. The people and "me" do not wait on the types, and every type's list starts at once. */
+/** Every type the views show, every record of each, the people and who "me" is. The people and "me" do not wait on the types, and the lists are read four at a time. */
 async function readAll(s: Store, filters: Filters): Promise<RecordsWorld> {
   const actorsP = Promise.resolve(s.actors());
   const meP = Promise.resolve((s as { me?: () => Promise<string> }).me?.()).catch(() => "");
   actorsP.catch(() => undefined);
   const types = (await s.types()).filter((t: any) => !isHiddenType(t));
-  const lists = await Promise.all(types.map((t: any) => s.list(t.name, listQuery(t.name, filters))));
+  // At most four types are read at a time: every type at once put a dozen full reads on the box together, and the first page the screen asked for beside them waited behind all of them.
+  const lists: any[][] = new Array(types.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, types.length) }, async () => {
+    while (next < types.length) { const i = next++; lists[i] = await s.list(types[i].name, listQuery(types[i].name, filters)); }
+  }));
   return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await actorsP) as any[], me: (await meP) ?? "" };
 }
 
@@ -37,6 +43,7 @@ async function readTypes(s: Store, filters: Filters, prev: RecordsWorld, types: 
 }
 
 /** The current store, or null where there is none yet (the app before it is paired). */
+const useStoreOrNull = (): Store | null => storeNow();
 const storeNow = (): Store | null => { try { return getStore(); } catch { return null; } };
 
 const shares = new Map<string, { store: Store | null; share: Share; stop: (() => void) | null }>();
@@ -83,8 +90,16 @@ export function useRecordEvents(urn: string | undefined) {
 
 /** The env every field renderer on a screen gets: who the actors are, what a link points at, the clock, where a link goes. */
 export function useFieldEnv(world: RecordsWorld | undefined, open: (urn: string) => void, openTag?: (tag: string) => void): FieldEnv {
+  // a project's Template shows the template's name: the names are read once (the templates are not in the world), kept, and every screen redraws when they arrive
+  const store = useStoreOrNull();
+  const [tick, redraw] = useState(0);
+  useEffect(() => {
+    const off = onTemplateNames(() => redraw((n) => n + 1));
+    if (!haveTemplateNames() && store) void Promise.resolve(store.list("project-template")).then((rows) => keepTemplateNames(rows as any[])).catch(() => undefined);
+    return off;
+  }, [store]);
   // a partial world (Records opening from its kept copy) brings the titles its rows point at; the records it holds add theirs
-  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? { ...(world.links ?? {}), ...linkIndex(world.types, world.byType) } : {}, now: Date.now(), open, openTag, tags: world ? spaceTags(world) : [] }), [world, open, openTag]);
+  return useMemo(() => ({ actors: world?.actors ?? [], me: world?.me, links: world ? { ...(world.links ?? {}), ...linkIndex(world.types, world.byType) } : {}, now: Date.now(), open, openTag, tags: world ? spaceTags(world) : [] }), [world, open, openTag, tick]);
 }
 
 /** Every tag the Space's records carry, most used first (the suggestions of a tag field and the picks of a tag filter). */

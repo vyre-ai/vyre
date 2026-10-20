@@ -280,16 +280,28 @@ export class TwentyStore {
     return done;
   }
   /** @type {Map<string, Promise<boolean>>} */ #attrRuns = new Map();
+  /** One read of every object's field names, shared by the types that ask together at start (each used to read it alone, 3 to 5 s apiece, one after another). Kept 20 s; a define or a new column drops it. */
+  #colsRead() {
+    if (this.#colsKept && Date.now() - this.#colsAt < 20_000) return this.#colsKept;
+    const kept = this.#t(() => this.client.gql("metadata", `query Cols { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { name } } } } } } }`));
+    this.#colsKept = kept; this.#colsAt = Date.now();
+    kept.catch(() => { if (this.#colsKept === kept) { this.#colsKept = null; this.#colsAt = 0; } });
+    return kept;
+  }
+  /** @type {Promise<any> | null} */ #colsKept = null;
+  #colsAt = 0;
+  /** @type {{ at: number, h: any } | null} */ #healthKept = null;
   /** @param {import("./plan.js").TypePlan} p */
   async #attrColumnsNow(p) {
     if (this.attrCols.has(p.vyre)) return true;
-    const cur = await this.#t(() => this.client.gql("metadata", `query Cols { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { name } } } } } } }`));
+    const cur = await this.#colsRead();
     const obj = cur.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
     if (!obj) return false;
     const have = new Set(obj.fields.edges.map((/** @type {any} */ e) => e.node.name));
     let added = false;
     for (const [k, col] of Object.entries(ATTR_COLUMNS)) {
       if (have.has(col)) continue;
+      this.#colsAt = 0; // a column is about to be made: the kept read is stale
       await this.#t(() => this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: obj.id, type: "TEXT", name: col, label: `Vyre ${k}`, isNullable: true } } }));
       added = true;
     }
@@ -331,6 +343,13 @@ export class TwentyStore {
     return { ...rest, filter: rest.filter ? { and: [rest.filter, attr] } : attr };
   }
   async health() {
+    // asked by the status page and every member's page: an ok answer is kept 10 s, a failure never is
+    if (this.#healthKept && Date.now() - this.#healthKept.at < 10_000) return { ...this.#healthKept.h, checked_at: this.now() };
+    const r = await this.#healthNow();
+    this.#healthKept = r.ok ? { at: Date.now(), h: r } : null;
+    return r;
+  }
+  async #healthNow() {
     const h = await twentyGet(this.client, "/healthz");
     if (h.status !== 200) return { ok: false, detail: `Records is not answering (${h.status || "no reply"})`, checked_at: this.now() };
     try { await this.client.gql("metadata", "query Health { objects(paging: { first: 1 }) { edges { node { id } } } }"); } catch (e) { return { ok: false, detail: /** @type {Error} */ (e).message, checked_at: this.now() }; }
@@ -364,7 +383,7 @@ export class TwentyStore {
   /** @type {Set<string>} types a define made but could not finish the mirror columns of */ #halfMade = new Set();
   /** One define at a time on this store: Twenty rebuilds a table for each field it adds and two at once fail with a lock timeout (55P03), so every caller (modules, Kits, Flows, a person's records.define) waits its turn here. */
   define(diff, o = {}) {
-    const run = async () => { const t0 = this.now(); try { return await this.#defineNow(diff, o); } finally { this.say(defineLine(diff, this.now() - t0)); } };
+    const run = async () => { const t0 = this.now(); try { return await this.#defineNow(diff, o); } finally { this.#colsAt = 0; this.#colsKept = null; this.say(defineLine(diff, this.now() - t0)); } };
     const next = this.#defineLine.then(run, run);
     this.#defineLine = next.catch(() => {});
     return next;

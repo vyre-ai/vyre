@@ -87,7 +87,7 @@ export function FilesTreePanel() {
   return (
     <>
     <Places />
-    <Tree<TreeNode> data={data} childrenAccessor="kids" idAccessor="id" width="100%" height={Math.max(200, height - 190 - 290)} rowHeight={36} indent={14} openByDefault={false} selection={place}
+    <Tree<TreeNode> data={data} childrenAccessor="kids" idAccessor="id" width="100%" height={Math.max(200, height - 190 - 290)} rowHeight={32} indent={16} openByDefault={false} selection={place}
       disableDrag={(n) => n.root !== "linked" || !n.id.includes(":")} disableDrop={(a) => !(a.parentNode?.data?.root === "linked" && a.parentNode.data.id.includes(":"))} disableEdit
       onSelect={(ns) => { if (ns[0]) go(ns[0].id); }} onToggle={(id) => openNode(id)} onMove={onMove}>
       {TreeRow}
@@ -99,8 +99,8 @@ export function FilesTreePanel() {
 function TreeRow({ node, style, dragHandle }: NodeRendererProps<TreeNode>) {
   const top = !node.id.includes(":") && ROOT_ICON[node.id];
   return (
-    <div ref={dragHandle} style={{ ...style, display: "flex", alignItems: "center", gap: 8, marginLeft: RAIL.rowInset, width: `calc(100% - ${RAIL.rowInset * 2}px)`, paddingLeft: ((style as { paddingLeft?: number }).paddingLeft ?? 0) + (RAIL.gutter - RAIL.rowInset), paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: RAIL.rowRadius, cursor: "pointer" }}>
-      <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
+    <div ref={dragHandle} style={{ ...style, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 8, marginLeft: RAIL.rowInset, width: `calc(100% - ${RAIL.rowInset * 2}px)`, paddingLeft: ((style as { paddingLeft?: number }).paddingLeft ?? 0) + (RAIL.gutter - RAIL.rowInset), paddingRight: 8, background: node.isSelected ? "var(--surface-3)" : "transparent", borderRadius: RAIL.rowRadius, cursor: "pointer" }}>
+      <span onClick={(e) => { e.stopPropagation(); node.toggle(); }} style={{ width: 16, flex: "none", display: "inline-flex", justifyContent: "center", opacity: node.isLeaf && !node.data.kids ? 0 : 0.7 }}><Icon name={(node.isOpen ? "chevron-down" : "chevron") as never} size={14 as never} tone="label" /></span>
       <Icon name={(top ? ROOT_ICON[node.id] : "folder") as never} size={16 as never} tone={node.isSelected ? "text" : "text-2"} />
       <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><Text medium={node.isSelected || !!top} style={{ fontSize: RAIL.labelSize, lineHeight: RAIL.labelLine }}>{node.data.label}</Text></div>
     </div>

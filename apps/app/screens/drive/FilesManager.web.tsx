@@ -6,7 +6,7 @@ import { openFind } from "../find/FindHost";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, IconTile, ListHeader, LoadingState, Row, Segmented, Sheet, Text, listRows, showToast, type FilterChip, FileViewer, useVirtualRows, Icon, IconButton, ResizeHandle, useStoredWidth } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import RealDrive from "./RealDrive";
 import { SharedLinks } from "./SharedLinks";
@@ -59,7 +59,9 @@ function Manager({ wide }: { wide: boolean }) {
   const router = useRouter();
   const { place, folders, status, tick, go: setPlace, loadRoots, setKids, invalidate } = useFilesNav();
   // /u/files?agent=engineer (an agent's "Open in Vyre Files"): open that agent's own folder, the same place as Agents > Engineer in the sidebar.
-  const { agent } = useLocalSearchParams<{ agent?: string }>();
+  const { agent, folder } = useLocalSearchParams<{ agent?: string; folder?: string }>();
+  // /u/files?folder=Projects/<path> (a project's Drive folder link): open that folder of the Space's Drive.
+  useEffect(() => { if (folder) setPlace(`space:${String(folder).replace(/^\/+|\/+$/g, "")}`); }, [folder, setPlace]);
   useEffect(() => {
     if (!agent) return;
     let live = true;
@@ -310,6 +312,8 @@ function Manager({ wide }: { wide: boolean }) {
   const uploadButton = ability.upload && canOpenFolder ? <Button kind="primary" size="sm" icon="upload" label="Upload" onPress={pickUpload} /> : null;
   const folderButton = canMakeFolder ? <Button kind="secondary" size="sm" icon="plus" label="New folder" onPress={() => setNewName("")} /> : null;
   // With the detail panel open the middle is narrower, so Kind (which the panel shows) steps aside and the rest keep their widths.
+  // the preview pane keeps the width it was dragged to (260 to 560), on this device
+  const pane = useStoredWidth("files-detail", 320, 260, 560);
   const showDetail = !!one && (one.root === "space" || one.root === "linked" || one.root === "box");
   const GRID_COLS = showDetail ? "minmax(140px, 1fr) 104px 72px 36px" : "minmax(240px, 1fr) 120px 140px 80px 36px";
   // Moving by dragging: a file or folder (or the whole selection) dropped on a folder row, a folder tile or a crumb of the path moves into it (the same move the "Move to..." picker makes).
@@ -396,7 +400,7 @@ function Manager({ wide }: { wide: boolean }) {
   const BIG = 200;
   const emptyState = (
     <View className="gap-s3">
-    <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Add a file, or drop one here." : "Nothing is here, or everything in it is kept away from you."}
+    <Card flush><EmptyState title={q || chips.length ? "Nothing matches" : "This folder is empty"} body={q || chips.length ? "Nothing in this folder fits the search." : ability.upload ? "Drop a file anywhere on this page, or upload one to start." : "Nothing is here, or everything in it is kept away from you."}
       action={!q && !chips.length && uploadButton ? { label: "Upload", onPress: pickUpload } : undefined} /></Card>
     {!q && !chips.length && folderButton ? <View className="flex-row">{folderButton}</View> : null}
     </View>
@@ -410,7 +414,7 @@ function Manager({ wide }: { wide: boolean }) {
     : rows === null ? <LoadingState rows={4} />
     : !shown.length ? emptyState
     : view === "grid" ? (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 16 }}>
         {shown.map((r, i) => (
           <div key={r.key} data-tile onClick={(e) => click(r, i, e)} onDoubleClick={() => open(r)} {...dragProps(r)} onContextMenu={(e) => rightClick(r, i, e)} ref={(el) => { rowEls.current[r.key] = el; }} style={{ cursor: "pointer", borderRadius: 14, padding: "20px 12px 12px", textAlign: "center", border: "1px solid var(--edge)", opacity: dragRows?.some((x) => x.key === r.key) ? 0.5 : 1, outline: moveOver === r.key ? "2px solid var(--edge-strong)" : "none", background: sel.set.has(r.key) || moveOver === r.key ? "var(--surface-3)" : "var(--surface-2)" }}>
             <div style={{ display: "flex", justifyContent: "center", height: 56, alignItems: "center" }}><Thumb row={r} fallback={ICON[r.kind]} /></div>
@@ -440,7 +444,7 @@ function Manager({ wide }: { wide: boolean }) {
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }} onKeyDown={onKey} tabIndex={0}>
         <div style={{ flex: 1, minWidth: 0 }} onDragOver={(e) => { if (carriesFiles(e.dataTransfer) && targetNow()) { e.preventDefault(); setDropping(true); } }} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropping(false); setOverRow(null); } }}
           onDrop={(e) => { if (!carriesFiles(e.dataTransfer)) return; const t = targetNow(); setDropping(false); setOverRow(null); if (t) { e.preventDefault(); void uploadTo(t as unknown as Place, Array.from(e.dataTransfer.files), t.place === place ? rows : null); } }}>
-          <View className="gap-s3">
+          <View className="gap-s4">
             <View className="flex-row items-center gap-s3">
               <View className="min-w-0 flex-1"><Breadcrumb crumbs={crumbs.map((c) => ({ name: c.name, key: c.place }))} onPress={go} wrap={(key, node) => <div {...crumbDrop(key, crumbs.find((c) => c.place === key)?.name ?? "")} style={{ borderRadius: 6, padding: "0 2px", outline: moveOver === `crumb:${key}` ? "2px solid var(--edge-strong)" : "none", background: moveOver === `crumb:${key}` ? "var(--surface-3)" : "transparent" }}>{node}</div>} /></View>
               <View className="flex-row items-center gap-s2">
@@ -451,7 +455,6 @@ function Manager({ wide }: { wide: boolean }) {
               </View>
             </View>
             {inAgent && agentOpen?.folder === inAgent && agentOpen.note ? <Text size="caption" tone="faint">{agentOpen.note}</Text> : null}
-            {root === "space" || place === "recent" ? <View className="flex-row"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
             {newName !== null ? (
               <div onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void makeFolder(); } else if (e.key === "Escape") { e.stopPropagation(); setNewName(null); } }}>
                 <Card><View className="gap-s2">
@@ -460,7 +463,13 @@ function Manager({ wide }: { wide: boolean }) {
                 </View></Card>
               </div>
             ) : null}
-            <ListHeader onSearch={() => openFind("files")} noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
+            {/* one calm toolbar row: where to search, the count, the search box and the filter */}
+            <View className="flex-row flex-wrap items-center gap-s3">
+              {root === "space" || place === "recent" ? <View className="flex-none"><Segmented label="Search in" value={scopeAll ? "all" : "here"} onChange={(v: string) => setScopeAll(v === "all")} options={[["here", "This folder"], ["all", "All files"]]} /></View> : null}
+              <View className="min-w-[280px] flex-1">
+  <ListHeader onSearch={() => openFind("files")} noun={(rows?.length ?? 0) === 1 ? "item" : "items"} shown={shown.length} total={rows?.length ?? 0} query={q} onQuery={setQ} chips={chips} onChips={setChips} def={FILE_DEF} ctx={{}} title={null} />
+              </View>
+            </View>
             {bar.length ? (
               <Card><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{picked.length} selected</Text>{bar.map((a) => <Button key={a.id} kind={a.id === "delete" ? "holdText" : "ghost"} size="sm" label={a.label} onPress={() => runBulk(a.id)} />)}<Button kind="ghost" size="sm" label="Clear" onPress={() => setSel({ set: new Set(), anchor: null })} /></View></Card>
             ) : null}
@@ -471,7 +480,7 @@ function Manager({ wide }: { wide: boolean }) {
             </div>
           </View>
         </div>
-        {showDetail ? <div style={{ width: 320, flex: "none", maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div> : null}
+        {showDetail ? <div style={{ width: pane.width, flex: "none", position: "relative" }}><ResizeHandle edge="left" label="Resize the preview" width={pane.width} onChange={pane.set} onReset={pane.reset} min={260} max={560} def={320} /><div style={{ maxHeight: 640, overflow: "auto" }}><Detail row={one} ability={ability} onChanged={() => load(place)} /></div></div> : null}
       </div>
       <Sheet open={publishing !== null} onClose={() => setPublishing(null)} title="Publish this folder as a site">
         {publishing ? (

@@ -185,6 +185,30 @@ export const FLOW_TYPES = Object.freeze([
 export class RecordsFlowStore {
   /** @param {{ kernel: any, chain: any, space: string }} o */
   constructor(o) { this.k = o.kernel; this.chain = o.chain; this.space = o.space; /** @type {Map<string, string>} */ this.ids = new Map(); }
+  /**
+   * Reads the host asks for again and again within a moment (the active and paused Flows, the runs in one state): at start the recover, the timer's first look and the first tick each asked
+   * for the same rows, 3 to 14 s apiece on a small server. An answer is kept 2 s and shared by callers that ask while it is being read; every write through this store drops them all (before
+   * and after it lands), so the next read sees it.
+   * @type {Map<string, { at: number, gen: number, p: Promise<any> }>}
+   */
+  #memo = new Map();
+  #gen = 0;
+  #bump() { this.#gen++; this.#memo.clear(); }
+  /** @template T @param {string} key @param {() => Promise<T>} fn @returns {Promise<T>} */
+  #kept(key, fn) {
+    const hit = this.#memo.get(key);
+    if (hit && Date.now() - hit.at < 2000) return hit.p.then((/** @type {any} */ v) => structuredClone(v));
+    const gen = this.#gen;
+    const p = fn();
+    this.#memo.set(key, { at: Date.now(), gen, p });
+    p.catch(() => { if (this.#memo.get(key)?.p === p) this.#memo.delete(key); });
+    return p.then((/** @type {any} */ v) => { if (gen !== this.#gen && this.#memo.get(key)?.p === p) this.#memo.delete(key); return structuredClone(v); });
+  }
+  /** The record writes of this store: each drops the kept reads when it starts and again when it lands. */
+  #w = {
+    create: async (/** @type {any[]} */ ...a) => { this.#bump(); try { return await /** @type {any} */ (this.k.records).create(...a); } finally { this.#bump(); } },
+    update: async (/** @type {any[]} */ ...a) => { this.#bump(); try { return await /** @type {any} */ (this.k.records).update(...a); } finally { this.#bump(); } },
+  };
 
   async define() { return this.k.records.define(this.chain, { add_types: FLOW_TYPES }); }
 
@@ -202,7 +226,7 @@ export class RecordsFlowStore {
     const same = rows.find((/** @type {any} */ r) => r.data.hash === hash);
     if (same) return { id: flowId, version: Number(same.data.version), hash, same: true };
     const version = rows.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, Number(r.data.version)), 0) + 1;
-    await this.k.records.create(this.chain, "def-flow", { flow_id: flowId, name: flow.name, space, version, hash, body: canonical(flow), authorship: flow.authorship, by: `${by.kind}:${by.id}` });
+    await this.#w.create(this.chain, "def-flow", { flow_id: flowId, name: flow.name, space, version, hash, body: canonical(flow), authorship: flow.authorship, by: `${by.kind}:${by.id}` });
     return { id: flowId, version, hash, same: false };
   }
 
@@ -216,7 +240,7 @@ export class RecordsFlowStore {
     const v = (await this.#find("def-flow", "flow_id", id)).find((/** @type {any} */ r) => Number(r.data.version) === version);
     if (!v) throw Object.assign(new Error("no such Flow version"), { code: "not_found" });
     if (v.data.hash !== hash) throw Object.assign(new Error("the approval is for different content than this version"), { code: "hash_mismatch" });
-    await this.k.records.create(this.chain, "flow-approval", { flow_id: id, version, hash, approver: `${approver.kind}:${approver.id}`, at });
+    await this.#w.create(this.chain, "flow-approval", { flow_id: id, version, hash, approver: `${approver.kind}:${approver.id}`, at });
     await this.#setState(id, { status: "active", active: version, reason: "", since: at });
     return { flow: id, version, hash, approver, at };
   }
@@ -228,8 +252,8 @@ export class RecordsFlowStore {
   async #setState(id, s) {
     const rows = await this.#find("flow-state", "flow_id", id);
     const data = { flow_id: id, status: s.status, active: s.active ?? null, reason: s.reason || "", since: s.since || 0 };
-    if (rows[0]) await this.k.records.update(this.chain, "flow-state", rows[0].id, { ...data, active: s.active === undefined ? rows[0].data.active : s.active }, rows[0].version);
-    else await this.k.records.create(this.chain, "flow-state", data);
+    if (rows[0]) await this.#w.update(this.chain, "flow-state", rows[0].id, { ...data, active: s.active === undefined ? rows[0].data.active : s.active }, rows[0].version);
+    else await this.#w.create(this.chain, "flow-state", data);
   }
 
   /** @param {any} row @param {number} version */
@@ -252,19 +276,23 @@ export class RecordsFlowStore {
   /** @param {string} id @param {number} version */
   async getVersion(id, version) { const st = (await this.#find("flow-state", "flow_id", id))[0] || { data: { flow_id: id, status: "draft" } }; return this.#viewOf(st, version); }
   async activeFlows() {
-    const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "active" }, page: { limit: 1000 } });
-    const out = [];
-    for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push(v); }
-    return out;
+    return this.#kept("active", async () => {
+      const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "active" }, page: { limit: 1000 } });
+      const out = [];
+      for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push(v); }
+      return out;
+    });
   }
   /** @param {string} id @param {string} reason @param {number} at */
   async pause(id, reason, at) { await this.#known(id); await this.#setState(id, { status: "paused", reason, since: at, active: undefined }); }
   /** Flows with an approved version that are paused: a trigger that arrives for one is held, not lost. */
   async pausedFlows() {
-    const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "paused" }, page: { limit: 1000 } });
-    const out = [];
-    for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push({ ...v, paused: true }); }
-    return out;
+    return this.#kept("paused", async () => {
+      const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "paused" }, page: { limit: 1000 } });
+      const out = [];
+      for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push({ ...v, paused: true }); }
+      return out;
+    });
   }
   /** @param {string} flow */
   async getTests(flow) { const r = (await this.#find("flow-tests", "flow_id", flow))[0]; return r ? JSON.parse(r.data.body) : []; }
@@ -272,7 +300,7 @@ export class RecordsFlowStore {
   async putTests(flow, cases) {
     const r = (await this.#find("flow-tests", "flow_id", flow))[0];
     const data = { flow_id: flow, body: JSON.stringify(cases) };
-    if (r) await this.k.records.update(this.chain, "flow-tests", r.id, data, r.version); else await this.k.records.create(this.chain, "flow-tests", data);
+    if (r) await this.#w.update(this.chain, "flow-tests", r.id, data, r.version); else await this.#w.create(this.chain, "flow-tests", data);
   }
   /** The Space-wide switch (pause all, drain): null when nothing was ever set. */
   async getControl() { const r = (await this.#find("flow-control", "key", "space"))[0]; return r ? JSON.parse(r.data.body) : null; }
@@ -289,8 +317,8 @@ export class RecordsFlowStore {
       for (let tries = 0; tries < 8; tries++) {
         const r = (await this.#find("flow-control", "key", key))[0];
         try {
-          if (r) { const n = Number(r.data.since) + 1; await this.k.records.update(this.chain, "flow-control", r.id, { key, mode: "seq", since: n, body: "" }, r.version); return n; }
-          await this.k.records.create(this.chain, "flow-control", { key, mode: "seq", since: 1, body: "" });
+          if (r) { const n = Number(r.data.since) + 1; await this.#w.update(this.chain, "flow-control", r.id, { key, mode: "seq", since: n, body: "" }, r.version); return n; }
+          await this.#w.create(this.chain, "flow-control", { key, mode: "seq", since: 1, body: "" });
           return 1;
         } catch (e) { if (!e || /** @type {any} */ (e).code !== "version_conflict") throw e; }
       }
@@ -305,7 +333,7 @@ export class RecordsFlowStore {
   async putControl(c) {
     const r = (await this.#find("flow-control", "key", "space"))[0];
     const data = { key: "space", mode: c.mode, since: c.since || 0, body: JSON.stringify(c) };
-    if (r) await this.k.records.update(this.chain, "flow-control", r.id, data, r.version); else await this.k.records.create(this.chain, "flow-control", data);
+    if (r) await this.#w.update(this.chain, "flow-control", r.id, data, r.version); else await this.#w.create(this.chain, "flow-control", data);
   }
   /** @param {string} id */
   async resume(id) { await this.#known(id); await this.#setState(id, { status: "active", reason: "", since: 0, active: undefined }); }
@@ -343,8 +371,8 @@ export class RecordsFlowStore {
   /** @param {string} flow @param {number} lastFire */
   async putSchedule(flow, lastFire) {
     const r = (await this.#find("flow-schedule", "flow_id", flow))[0];
-    if (r) await this.k.records.update(this.chain, "flow-schedule", r.id, { last_fire: lastFire }, r.version);
-    else await this.k.records.create(this.chain, "flow-schedule", { flow_id: flow, last_fire: lastFire });
+    if (r) await this.#w.update(this.chain, "flow-schedule", r.id, { last_fire: lastFire }, r.version);
+    else await this.#w.create(this.chain, "flow-schedule", { flow_id: flow, last_fire: lastFire });
   }
 
   /** @param {Run} run */
@@ -356,11 +384,11 @@ export class RecordsFlowStore {
     const write = async (/** @type {any} */ d) => {
       if (known) {
         const cur = await this.k.records.get(this.chain, "flow-run", known);
-        if (cur) { await this.k.records.update(this.chain, "flow-run", known, d, cur.version); return; }
+        if (cur) { await this.#w.update(this.chain, "flow-run", known, d, cur.version); return; }
       }
       const found = (await this.#find("flow-run", "run_id", run.id))[0];
-      if (found) { this.ids.set(run.id, found.id); await this.k.records.update(this.chain, "flow-run", found.id, d, found.version); return; }
-      const rec = await this.k.records.create(this.chain, "flow-run", d);
+      if (found) { this.ids.set(run.id, found.id); await this.#w.update(this.chain, "flow-run", found.id, d, found.version); return; }
+      const rec = await this.#w.create(this.chain, "flow-run", d);
       this.ids.set(run.id, rec.id);
     };
     try { await write(data); }
@@ -373,7 +401,9 @@ export class RecordsFlowStore {
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const f = (await this.#find("flow-run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }
   /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} [f] @returns {Promise<Run[]>} */
-  async listRuns(f = {}) {
+  async listRuns(f = {}) { return this.#kept(`runs:${JSON.stringify(f)}`, () => this.#listRuns(f)); }
+  /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} f @returns {Promise<Run[]>} */
+  async #listRuns(f) {
     /** @type {any[]} */ const and = [];
     if (f.flow) and.push({ field: "flow_id", op: "eq", value: f.flow });
     if (f.state) and.push({ field: "state", op: "eq", value: f.state });

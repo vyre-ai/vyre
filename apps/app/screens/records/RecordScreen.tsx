@@ -11,6 +11,7 @@ import { Connections } from "./Connections";
 import { HeaderFields } from "./HeaderFields";
 import { useTypeLayout } from "./layout-state";
 import { pinnedFacts } from "../../ui/records/logic.js";
+import { templateLabel } from "../../ui/records/template-names.js";
 import { useMoveStage } from "./MoveStage";
 import { DocumentsBar } from "./DocumentsBar";
 import { Roles } from "./Roles";
@@ -71,8 +72,16 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   }, [isContact]);
   const email = emailOf(rec?.data);
   const back = () => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
-  if (error && !world) return <ErrorState title="This record did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />;
-  if ((loading && !world) || (waiting && !rec)) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
+  // Every wait has a limit: loading rows that have not turned into a record after 20 s become a plain error with Try again.
+  const stillWaiting = Boolean((loading && !world) || (waiting && !rec));
+  const [tired, setTired] = useState(false);
+  useEffect(() => {
+    if (!stillWaiting) { setTired(false); return; }
+    const t = setTimeout(() => setTired(true), 20_000);
+    return () => clearTimeout(t);
+  }, [stillWaiting]);
+  if ((error && !world) || (tired && stillWaiting)) return <ErrorState title="This record did not load" reason={error ? plainError(error, "Records did not answer.") : "Records is taking too long to answer."} retry={() => { setTired(false); reload(); }} />;
+  if (stillWaiting) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);
   if (!world || !rec || !def) return <EmptyState title="That record is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Go back", onPress: back }} />;
   const title = titleOf(def, rec);
@@ -91,13 +100,13 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Job \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} /><Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
-      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
-      {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
-      <View className="px-s4 pt-s2"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
-      <View className="px-s4 pt-s2"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} />{typeof rec.data?.drive_path === "string" && rec.data.drive_path.trim() ? <Button kind="secondary" size="sm" icon="folder" label="Open files" onPress={() => router.push(`/u/files?folder=${encodeURIComponent(String(rec.data.drive_path).trim())}` as never)} /> : null}<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
+      {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s3"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
+      {isShareable(rec.type) ? <View className="px-s4 pt-s3"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
+      <View className="px-s4 pt-s3"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
+      <View className="px-s4 pt-s3"><DocumentsBar def={def} rec={rec} related={relatedRecords(world.types, world.byType, def, rec)} email={email} canSend={canSend || allowsMock()} /></View>
       <View className="flex-row flex-wrap items-start gap-x-s8 gap-y-s3 px-s4 pt-s3">
-        {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => (
+        {(pinned ? pinnedFacts(def, rec, pinned) : factsOf(def, rec)).map(([l, v]) => [l, rec.type === "project" && l === def.fields.find((x: any) => x.name === "template")?.label ? templateLabel(v) : v] as [string, any]).map(([l, v]) => (
           <View key={l} className="min-w-[96px] gap-s1">
             <Text size="caption" tone="label">{l}</Text>
             {v === null ? <Text tone="faint">Add</Text> : <Text strong numberOfLines={1}>{String(v)}</Text>}
@@ -108,7 +117,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
           <HeaderFields fields={def.fields.filter((f: any) => f.kind !== "sealed" && !f.seal).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} names={pinned ?? factsOf(def, rec).map(([l]) => def.fields.find((f: any) => f.label === l)?.name).filter(Boolean) as string[]} spaceScope={lay.scope === "space"} onNames={(n) => void lay.save("header_fields", { ...(lay.layout.header_fields ?? {}), default: n })} />
         </View>
       </View>
-      <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
+      <ScrollView contentContainerClassName="gap-s5 px-s4 pb-s12 pt-s3 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} canCustomize={access.admin} canSeal={access.ownServer} canSeeAsAgent={!access.joined} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
       {mv.sheet}
