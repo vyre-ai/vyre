@@ -49,7 +49,7 @@ export function exchange(at, body, max) {
       const all = Buffer.concat(parts), nl = all.indexOf(10);
       if (nl < 0) return end(Object.assign(new Error("the agent's computer closed the connection without an answer: try again"), { code: "unavailable" }), null);
       let head; try { head = JSON.parse(all.subarray(0, nl).toString("utf8")); } catch { head = null; }
-      if (!head || !Number.isInteger(head.status)) return end(Object.assign(new Error("the agent's computer gave an answer that is not one: try again, and if it repeats ask the owner to run computers.update"), { code: "unavailable" }), null);
+      if (!head || !Number.isInteger(head.status)) return end(Object.assign(new Error("the agent's computer gave an answer that is not one: try again, and if it repeats ask the owner to update the agent computer"), { code: "unavailable" }), null);
       end(null, { status: head.status, headers: head.headers && typeof head.headers === "object" ? head.headers : {}, body: all.subarray(nl + 1) });
     }
   });
@@ -77,7 +77,7 @@ export function makeAgentFiles(d) {
     if (r.status >= 400) { let json = null; try { json = JSON.parse(r.body.toString("utf8")); } catch {} throw refusal(r.status, json); }
     return r;
   }
-  const json = (/** @type {{ body: Buffer }} */ r) => { try { return JSON.parse(r.body.toString("utf8")); } catch { throw Object.assign(new Error("the agent's computer gave an answer that is not one: try again, and if it repeats ask the owner to run computers.update"), { code: "unavailable" }); } };
+  const json = (/** @type {{ body: Buffer }} */ r) => { try { return JSON.parse(r.body.toString("utf8")); } catch { throw Object.assign(new Error("the agent's computer gave an answer that is not one: try again, and if it repeats ask the owner to update the agent computer"), { code: "unavailable" }); } };
   return {
     /** The entries directly in a folder: { entries: [{ name, kind: "dir"|"file"|"link"|"other", size, mtime, to?, readOnly? }], truncated }. @param {string} agent @param {string} path */
     list: async (agent, path) => json(await op(agent, { op: "list", path })),

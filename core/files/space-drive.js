@@ -39,7 +39,7 @@ export function registerSpaceDrive(ctx) {
     if (name === "files.drive.upload") {
       const text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
-      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
+      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB: send a smaller file, or put it there from the agent's computer`, "too_large");
       // with `base` the person had this file open and is saving over it; without, an existing file is never replaced
       return agents.upload(d, meta, p, text, i.base !== undefined);
     }

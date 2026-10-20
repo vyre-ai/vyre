@@ -24,7 +24,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { isAgent } from "../../lib/caller.js";
 import { whereIs, agentDir } from "../../lib/files/layout.js";
-import { filesMigrations } from "./migrations.js";
 import { createDoor } from "../../lib/gateway-door.js";
 
 export const KEPT_NOTE = "Kept on this agent's computer: not in the Space Drive, so without the Drive's extra encryption and version history.";
@@ -94,7 +93,8 @@ export function createAgentFolder(ctx, o = {}) {
     return pd || null;   // the same base core/agents/index.js uses for an agent's working folder (agentsBase)
   });
   let ready = false;
-  const db = () => { if (!ready) { ctx.store.migrate(filesMigrations()); ready = true; } return ctx.store.db; };
+  // the files module's one migration list, loaded when first needed: migrations.js imports this file, so a static import back would be a cycle
+  const db = async () => { if (!ready) { const { filesMigrations } = await import("./migrations.js"); ctx.store.migrate(filesMigrations()); ready = true; } return ctx.store.db; };
   /** @type {Map<string, Promise<any>>} */ const moving = new Map();
 
   /** The computers module's answer, or its refusal as an error with its code. @param {any} input */
@@ -168,7 +168,7 @@ export function createAgentFolder(ctx, o = {}) {
    * @param {any} d @param {string} uid @param {string} agent @param {string} by
    */
   async function moveIn(d, uid, agent, by) {
-    const done = /** @type {any} */ (db().prepare("SELECT * FROM files_agent_moves WHERE agent_uid = ?").get(uid));
+    const done = /** @type {any} */ ((await db()).prepare("SELECT * FROM files_agent_moves WHERE agent_uid = ?").get(uid));
     if (done && done.state === "done") return { moved: Number(done.moved), already: true };
     if (moving.has(uid)) return moving.get(uid);
     const run = (async () => {
@@ -207,7 +207,7 @@ export function createAgentFolder(ctx, o = {}) {
       const failed = notes.filter(n => n.why && n.why !== "already there" && !/too large/.test(n.why));
       // done only when everything that can be carried was: a failure (or a Drive this person may not read) is tried again at the next open
       const state = failed.length || !driveRead ? "partial" : "done";
-      db().prepare("INSERT INTO files_agent_moves (agent_uid, state, at, by, moved, detail, keep_until) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(agent_uid) DO UPDATE SET state = excluded.state, at = excluded.at, by = excluded.by, moved = files_agent_moves.moved + excluded.moved, detail = excluded.detail")
+      (await db()).prepare("INSERT INTO files_agent_moves (agent_uid, state, at, by, moved, detail, keep_until) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(agent_uid) DO UPDATE SET state = excluded.state, at = excluded.at, by = excluded.by, moved = files_agent_moves.moved + excluded.moved, detail = excluded.detail")
         .run(uid, state, Date.now(), by, moved, JSON.stringify({ notes: notes.slice(0, 500), drive_read: driveRead }), KEEP_UNTIL);
       if (state === "done" && plain) { try { fs.writeFileSync(path.join(plain, ".vyre-moved"), JSON.stringify({ to: "the agent's computer, Inbox", at: Date.now() }) + "\n", { flag: "wx" }); } catch { /* a mark only */ } }
       return { moved, state, notes: notes.length };
@@ -217,7 +217,7 @@ export function createAgentFolder(ctx, o = {}) {
   }
 
   /** Has this agent's Drive copy been moved (and so is read-only)? @param {string} uid */
-  const wasMoved = uid => Boolean(db().prepare("SELECT 1 FROM files_agent_moves WHERE agent_uid = ?").get(uid));
+  const wasMoved = async uid => Boolean((await db()).prepare("SELECT 1 FROM files_agent_moves WHERE agent_uid = ?").get(uid));
 
   return {
     agentPathOf, wasMoved,
