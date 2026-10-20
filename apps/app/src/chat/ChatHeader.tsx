@@ -80,7 +80,7 @@ export function ChatHeader({ title, participants, viewer, phone, onBack, onOpen,
       <View style={{ flex: 1, alignItems: "center", minWidth: 0 }}>
         {/* One small centred chip: the face (or the group's stack), the name and, quieter, the project. A tap opens the side panel. */}
         <Pressable accessibilityRole="button" accessibilityLabel={`${title}${project ? `, ${project.name}` : ""}. ${onOpenWho ? "Open the side pane" : "Open details"}`} onPress={onOpenWho ?? onOpen}
-          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
+          style={({ hovered }: any) => [{ flexDirection: "row", alignItems: "center", gap: 8, maxWidth: "100%", minHeight: phone ? 44 : 40, paddingLeft: 6, paddingRight: 14, borderRadius: 20, backgroundColor: hovered ? color.hover : color["surface-3"] }]}>
           {lone ? <Face name={lone.name} family={fam(lone.family)} size={28} id={lone.id} /> : <HeaderStack faces={stack.shown} more={stack.more} />}
           <Text numberOfLines={1} style={{ flexShrink: 1 }}>
             <Text medium>{title}</Text>

@@ -79,7 +79,7 @@ function PersonPane({ id }: { id: string }) {
   if (!who) return <EmptyState title="Someone" body="Vyre has no profile for this person yet." />;
   return (
     <View style={{ gap: 12 }} accessibilityLabel={`About ${who.name}`}>
-      <Head name={who.name} family="person" id={`person:${pid}`} line={who.role || whoLabel("person")} />
+      <Head name={who.name} family="person" id={`person:${pid}`} line={whoLabel("person")} />
       <Card><View style={{ gap: 4 }}><Text size="caption" tone="label">Role</Text><Text>{who.role || "No role set"}</Text></View></Card>
     </View>
   );

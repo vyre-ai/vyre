@@ -108,7 +108,7 @@ function Sample({ name }: { name: string }) {
   if (name === "chat-empty") return <View style={{ height: 640, borderRadius: 12, overflow: "hidden" }}><NewThreadScreen /></View>;
   if (name.startsWith("who-")) {
     const [, kind, tab] = name.split("-");
-    return <View style={{ maxWidth: 360 }}><WhoPane kind={kind === "agent" ? "agent" : kind === "person" ? "person" : "group"} id={kind === "agent" ? (tab === "computer" ? "ads" : "kit") : kind === "person" ? "person:dana" : "chat_group"} tab={(tab as any) || undefined} /></View>;
+    return <View style={{ maxWidth: 360, padding: 12 }}><WhoPane kind={kind === "agent" ? "agent" : kind === "person" ? "person" : "group"} id={kind === "agent" ? (tab === "computer" ? "ads" : "kit") : kind === "person" ? "person:dana" : "chat_group"} tab={(tab as any) || undefined} /></View>;
   }
   if (name === "watcher-card") {
     const card = watcherCardOf({ name: "northwind-invoices", hash: "h1", state: "paused", waiting: true, kind: "watcher", owner: { kind: "agent", agent: "scout", person: "per_self", thread: "t1" },
