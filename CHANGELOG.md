@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- feat(sidebar): a screen of the Space's own can sit in the sidebar, and an entry can say which roles it is for. A new entry kind `screen` names a design screen (core/design); it opens at /u/module/space/<id>, where Vyre draws the screen itself, and the Space's screens are in the catalogue as the module "space" so the app can offer them. The Space's default sidebar may name the roles each entry is for: an entry with roles is drawn only for a person who holds one of them, an entry with none is for everyone, and a hidden entry stays hidden. The role is the kernel's, never the request's: the Space's sidebar service states it, and the app passes it to the layout that draws the sidebar. The roles are named as a person sees them (lib/roles/catalogue.js), so the kernel's temp is the guest; a role no person has is refused. Tests: lib/sidebar/model.test.js, core/sidebar/sidebar.test.js, core/sidebar/service.test.js.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

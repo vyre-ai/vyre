@@ -9,7 +9,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { createSidebarService, } from "./service.js";
-import { keyOf } from "../../lib/sidebar/model.js";
+import { keyOf, layout } from "../../lib/sidebar/model.js";
 import { CALLS } from "../../kernel/remote/wire.js";
 
 const SP = "spc_aaaaaaaaaaaa";
@@ -68,6 +68,27 @@ test("only the Space's owner or admin role sets the default; a member, a manager
   await as("per_ben", "edit", { op: "show", what: "Vault" });
   assert.deepEqual(hidden(await as("per_ben", "get")), [], "Ben showed it again for himself");
   assert.deepEqual(hidden(await as("per_ana", "get")), ["vault"], "Ana still starts from the team's");
+});
+
+test("the role that comes back is the kernel's, and a member sees only the entries for their role", async t => {
+  const { as } = await world(t);
+  const set = await as("per_admin", "team", { op: "set", entries: [
+    { kind: "place", id: "now" },
+    { kind: "place", id: "records", roles: ["member"] },
+    { kind: "place", id: "vault", roles: ["admin"] },
+  ]});
+  assert.equal(set.scope, "team", JSON.stringify(set));
+  const shown = (/** @type {any} */ g) => { const l = layout(g.entries, { modules: g.modules, role: g.role }); return [...l.items, ...l.more, ...l.bottom].map((i) => i.id); };
+  const ana = await as("per_ana", "get");
+  assert.equal(ana.role, "member", "the role is the kernel's, never the request's");
+  assert.ok(shown(ana).includes("records"), "a member sees the member entry");
+  assert.ok(!shown(ana).includes("vault"), "an admin's entry is not drawn for a member");
+  const admin = await as("per_admin", "get");
+  assert.equal(admin.role, "admin");
+  assert.ok(shown(admin).includes("vault"), "an admin sees the admin entry");
+  const guest = await as("per_temp", "get");
+  assert.equal(guest.role, "temp", "the kernel's temp is the guest a person sees");
+  assert.ok(!shown(guest).includes("vault"), "and it is not an admin's entry");
 });
 
 test("a request from someone who is not a member, from another Space, or from more than one person's chain gets nothing", async t => {

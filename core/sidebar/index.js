@@ -8,7 +8,9 @@
 // The settings hub reads and writes the box person's lists as ordinary settings (a tool store, like the planner's): `sidebar.default` and `sidebar.mine` (as { entries }).
 // With nothing stored the built-in places are the default (PLACES, the app's old NAV).
 //
-// sidebar.get   the default for a Space, the caller's own list, the two merged, whether the caller may set the default, and the module screens installed here with their own origin.
+// An entry may name the roles it is for (`roles`, the roles a person sees): it is drawn only for a person who holds one of them. The viewer is the person the kernel names, never the request.
+//
+// sidebar.get   the default for a Space, the caller's own list, the two merged, whether the caller may set the default, the caller's role and the module screens installed here with their own origin.
 // sidebar.edit  one change to the caller's OWN list: add, remove, hide, show, move, group or set. An assistant may make it at once ("put Documents in my sidebar").
 // sidebar.team  the same changes to the Space's default. Only the Space's owner or admin role (the person at their own surface). It is a held change for an assistant (ASK_FIRST): the person
 //               says yes before it happens.
@@ -18,13 +20,17 @@
 
 import { isPerson } from "../../lib/caller.js";
 import { createSidebarService } from "./service.js";
-import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES } from "../../lib/sidebar/model.js";
+import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES, PERSON_ROLES, SPACE_MODULE } from "../../lib/sidebar/model.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 /** The caller the daemon's own sidebar service arrives as. */
 const DOOR = "module:vyred";
 const SPACE = /^(\*|spc_[a-z2-7]{12}|[a-z0-9][a-z0-9._-]{0,63})$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** The shape of a screen of the Space's own (core/design): lowercase letters, digits and dashes. */
+const SCREEN = /^[a-z][a-z0-9-]{0,30}$/;
+/** The role of the box's own person in the Space they are on: they own it. A team member's role comes from the kernel instead. */
+const BOX_ROLE = "owner";
 const str = { type: "string" };
 /** Who may call: the person's surfaces and devices, a module, and an assistant (a model session or the harness). What each may change is checked in the tool. */
 const WHO = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
@@ -56,6 +62,16 @@ export default {
     const mineOf = (/** @type {string} */ who) => cleanList(read(`mine:${who}`));
     /** The box's own person: the identity that owns this box, or "self" before there is one. */
     const ownerId = async () => { const id = ctx.config && ctx.config.owner && ctx.config.owner.id; return typeof id === "string" && PERSON.test(id) ? id : "self"; };
+    /** The Space's own screens (core/design): the pseudo-module "space" holds them, and the app draws them itself (they are views, not pages on another origin). Without the design module there are none. */
+    const spaceScreens = async () => {
+      if (!ctx.modules.status().some((/** @type {any} */ m) => m.name === "design" && m.state === "running")) return [];
+      try {
+        const r = await ctx.call("design.screens", {});
+        const screens = r && !r.error && r.data && Array.isArray(r.data.screens) ? r.data.screens : [];
+        return screens.filter((/** @type {any} */ s) => s && typeof s.id === "string" && SCREEN.test(s.id)).slice(0, 60)
+          .map((/** @type {any} */ s) => ({ id: s.id, label: String(s.title || s.id).slice(0, 40), view: true }));
+      } catch { return []; }
+    };
     /** The module screens installed here, from their manifests, each with the origin it is served on (appmods.origin) when that is known. */
     const modules = async () => {
       /** @type {any[]} */ const out = [];
@@ -71,21 +87,34 @@ export default {
         if (own.length) try { const o = /** @type {any} */ (await ctx.call("appmods.origin", { module: m.name })); if (o && !o.error && o.data && typeof o.data.origin === "string" && /^https:\/\//.test(o.data.origin)) origin = o.data.origin; } catch { /* no app-module host on this box */ }
         out.push({ module: m.name, label: m.name, screens, ...(origin ? { origin } : {}) });
       }
+      const space = await spaceScreens();
+      if (space.length) out.push({ module: SPACE_MODULE, label: "Space", screens: space });
       return out;
     };
     const spaceArg = (/** @type {any} */ i) => { const s = i && i.space === undefined ? "*" : String(i.space); if (!SPACE.test(s)) throw refuse("That is not a Space.", "bad_input"); return s; };
 
     // ---- what each call does, for a given person and whether they may set the default -----------------------------------------------------------------------------------
 
-    const doGet = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i) => {
+    /** The role the person has in this Space, as the kernel states it (the box's own person owns the Space they are on). */
+    const doGet = async (/** @type {string} */ person, /** @type {boolean} */ can, /** @type {any} */ i, /** @type {string} */ role) => {
       const sp = spaceArg(i), def = defaultFor(sp), own = mineOf(person);
-      return { space: sp, default: def, mine: own, entries: merge(def || builtinEntries(), own), modules: await modules(), can_set_default: can };
+      return { space: sp, default: def, mine: own, entries: merge(def || builtinEntries(), own), modules: await modules(), can_set_default: can, role };
     };
+
+    /** The roles an entry names must be roles a person sees; anything else is refused with the ones that are. @param {any} e */
+    const checkRoles = (e) => {
+      if (!e || !Array.isArray(e.roles)) return;
+      if (e.roles.some((/** @type {any} */ r) => typeof r !== "string" || !PERSON_ROLES.includes(r))) throw refuse(`roles must name the roles a person sees: ${PERSON_ROLES.join(", ")}.`, "bad_input");
+    };
+
+    /** The entries of a stored list, as they were written (a list or { entries }). @param {any} v */
+    const rawEntries = (v) => (Array.isArray(v) ? v : v && typeof v === "object" && Array.isArray(v.entries) ? v.entries : []);
 
     /** One change to a list: `cur` is the list as it stands. */
     const apply = async (/** @type {any} */ i, /** @type {any[]} */ cur, /** @type {string} */ sp, /** @type {string} */ person) => {
       const cat = { modules: await modules() };
       if (i.op === "set") {
+        for (const e of Array.isArray(i.entries) ? i.entries : []) checkRoles(e);
         const next = cleanList(i.entries);
         if (!next.length) throw refuse("A sidebar needs at least one entry.", "bad_input");
         return { next, key: null };
@@ -94,7 +123,7 @@ export default {
       // Which entry the person means: a key, an entry, or a name (the assistant's "Documents").
       let target = null;
       if (typeof i.key === "string") target = cur.find(e => keyOf(e) === i.key) || null;
-      if (!target && i.entry) target = cleanList([i.entry])[0] || null;
+      if (!target && i.entry) { checkRoles(i.entry); target = cleanList([i.entry])[0] || null; }
       if (!target && typeof i.what === "string") {
         const f = find(i.what, cat, /** @type {any} */ (views));
         if (!f) throw refuse(`I could not tell which one "${i.what}" is: nothing has that name, or more than one does. Give the exact name, or its key.`, "not_found");
@@ -102,7 +131,9 @@ export default {
       }
       if (!target) throw refuse("Say which entry: its name, or its key.", "bad_input");
       const key = keyOf(target);
+      checkRoles(target);
       if (i.op === "add" && target.kind === "module" && !cat.modules.some(m => m.module === target.module && m.screens.some((/** @type {any} */ s) => s.id === target.screen))) throw refuse("That screen is not installed here. Pick another place or screen.", "not_found");
+      if (i.op === "add" && target.kind === "screen" && !cat.modules.some(m => m.module === SPACE_MODULE && m.screens.some((/** @type {any} */ s) => s.id === target.id))) throw refuse("That screen is not in this Space. Pick another place or screen.", "not_found");
       let next;
       switch (i.op) {
         case "add": next = add(cur, target, i.group ? { group: String(i.group) } : {}); break;
@@ -155,10 +186,10 @@ export default {
         const owner = await ownerId();
         const shown = () => (i.key === "default" ? defaults() : { entries: mineOf(owner) });
         if (!("value" in i)) return { value: shown() };
-        if (i.key === "mine") write(`mine:${owner}`, cleanList(i.value));
+        if (i.key === "mine") { for (const e of rawEntries(i.value)) checkRoles(e); write(`mine:${owner}`, cleanList(i.value)); }
         else {
           if (i.value !== null && (typeof i.value !== "object" || Array.isArray(i.value))) throw refuse("sidebar.default is an object by Space", "bad_input");
-          const d = {}; for (const [sp, l] of Object.entries(i.value || {})) { if (!SPACE.test(sp)) throw refuse(`${sp} is not a Space`, "bad_input"); const c = cleanList(l); if (c.length) /** @type {any} */ (d)[sp] = c; }
+          const d = {}; for (const [sp, l] of Object.entries(i.value || {})) { if (!SPACE.test(sp)) throw refuse(`${sp} is not a Space`, "bad_input"); for (const e of rawEntries(l)) checkRoles(e); const c = cleanList(l); if (c.length) /** @type {any} */ (d)[sp] = c; }
           write("default", Object.keys(d).length ? d : null);
         }
         ctx.events.emit("sidebar.changed", { scope: i.key });
@@ -170,9 +201,9 @@ export default {
 
     ctx.tool("sidebar.get", {
       effect: "read", callers: WHO,
-      description: "The Space's default sidebar, the caller's own list, the merged result, whether the caller may set the default, and addable module screens.",
+      description: "The Space's default sidebar, the caller's own list, the merged result, whether the caller may set the default, the caller's role in the Space, and addable module screens.",
       input: { type: "object", properties: { space: str } },
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doGet(await ownerId(), isPerson(meta), i),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doGet(await ownerId(), isPerson(meta), i, BOX_ROLE),
     });
 
     ctx.tool("sidebar.edit", {
@@ -224,7 +255,8 @@ export default {
         if (!PERSON.test(person)) throw refuse("That is not a person.", "bad_input");
         const input = { ...(i.input || {}), space: i.space };
         const can = roleSetsDefault(i.role);
-        if (i.call === "get") return doGet(person, can, input);
+        // The role is the kernel's, never the request's: it says who the person is in this Space.
+        if (i.call === "get") return doGet(person, can, input, String(i.role));
         if (i.call === "edit") return doEdit(person, input);
         if (i.call === "team") return doTeam(person, can, input);
         throw refuse("call is get, edit or team", "bad_input");

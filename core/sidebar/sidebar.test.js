@@ -10,7 +10,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { validate } from "../modules/index.js";
 import { tempHome } from "../../test/helpers.js";
-import { keyOf } from "../../lib/sidebar/model.js";
+import { keyOf, layout } from "../../lib/sidebar/model.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
@@ -160,4 +160,53 @@ test("R031-48: pin anything: a project, a Flow, a Connection and a records list 
   const view = await c("sidebar.pin", { what: "view", id: "open-matters", label: "Open matters", href: "/u/records/matter?view=open" });
   assert.equal(view.data.ok, true);
   assert.match((await c("sidebar.pin", { what: "view", id: "x", href: "https://evil.example" })).error.message, /cannot pin that/);
+});
+
+const SCREEN = { v: 2, title: "Overview", layout: { col: [{ block: "who" }, { block: "n" }] }, blocks: {
+  who: { type: "list", data: { tool: "agents.list", map: { rows: "agents", id: "name", title: "name", subtitle: "kind" } }, actions: [{ id: "show", title: "Show", do: { copy: "{title}" } }] },
+  n: { type: "text", props: { style: "note" }, data: { static: { text: "Everyone Vyre works with." } } },
+} };
+
+test("sidebar: the Space's own screens are the module \"space\" in the catalogue, and one opens from the sidebar", async t => {
+  const { c } = await world(t);
+  assert.ok(!(await c("sidebar.get", {})).data.modules.some((/** @type {any} */ m) => m.module === "space"), "no screens yet: no module");
+  const p = (await c("design.propose", { id: "overview", title: "Overview", screen: SCREEN, why: "A page for the team" }, "mcp")).data.proposal;
+  assert.equal(p.status, "pending");
+  assert.equal((await c("sidebar.get", {})).data.modules.some((/** @type {any} */ m) => m.module === "space"), false, "a proposal is not a screen yet");
+  await c("design.decide", { id: p.id, yes: true });
+  const space = (await c("sidebar.get", {})).data.modules.find((/** @type {any} */ m) => m.module === "space");
+  assert.deepEqual(space.screens.map((/** @type {any} */ s) => [s.id, s.label, s.view]), [["overview", "Overview", true]], "Vyre draws it itself, so it is a view");
+  // it opens from the sidebar: the entry is a screen, at the app route a screen of the Space's own opens at
+  const added = await c("sidebar.edit", { op: "add", what: "Overview" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  const mine = (await c("sidebar.get", {})).data.mine;
+  assert.ok(mine.map(keyOf).includes("screen:overview"), "the screen is in the person's own list");
+  assert.equal((await c("sidebar.edit", { op: "add", what: "Overview" })).error, undefined, "twice is fine");
+  assert.match(String((await c("sidebar.edit", { op: "add", entry: { kind: "screen", id: "nope" } })).error?.message), /not in this Space/);
+});
+
+test("sidebar: an entry may name the roles it is for; a role no person has is refused", async t => {
+  const { c } = await world(t);
+  const set = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now" }, { kind: "place", id: "records", roles: ["member", "guest"] }] });
+  assert.equal(set.error, undefined, JSON.stringify(set.error));
+  assert.deepEqual((await c("sidebar.get", {})).data.default.map((/** @type {any} */ e) => [keyOf(e), e.roles]), [["place:now", undefined], ["place:records", ["member", "guest"]]], "the roles are kept");
+  const bad = await c("sidebar.edit", { op: "add", entry: { kind: "place", id: "vault", roles: ["nonsense"] } });
+  assert.ok(bad.error, JSON.stringify(bad));
+  assert.match(String(bad.error.message), /roles must name the roles a person sees/);
+  const badSet = await c("sidebar.team", { op: "set", entries: [{ kind: "place", id: "now", roles: ["wizard"] }] });
+  assert.ok(badSet.error, JSON.stringify(badSet.error));
+  assert.match(String(badSet.error.message), /roles must name the roles a person sees/);
+  assert.deepEqual((await c("sidebar.get", {})).data.default.map((/** @type {any} */ e) => keyOf(e)), ["place:now", "place:records"], "nothing changed");
+  // a person's own list may name roles too
+  const mine = await c("sidebar.edit", { op: "set", entries: [{ kind: "place", id: "records", roles: ["admin"] }] });
+  assert.equal(mine.error, undefined, JSON.stringify(mine.error));
+  assert.deepEqual((await c("sidebar.get", {})).data.mine.map((/** @type {any} */ e) => [keyOf(e), e.roles]), [["place:records", ["admin"]]]);
+});
+
+test("sidebar: the caller's role comes back with the list, so an entry for other roles is not drawn", async t => {
+  const { c } = await world(t);
+  assert.equal((await c("sidebar.get", {})).data.role, "owner", "the box's own person owns the Space they are on");
+  const g = (await c("sidebar.get", {})).data;
+  const drawn = layout(g.entries, { modules: g.modules, role: g.role });
+  assert.ok([...drawn.items, ...drawn.more, ...drawn.bottom].some((i) => i.id === "now"), "the built-in places are drawn");
 });

@@ -3,7 +3,7 @@ import { Platform, View } from "react-native";
 import { Banner, Button, Card, Divider, Field, Menu, Row, Segmented, Text } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
 import { MOCK, said } from "../../src/real/box";
-import { add, builtinEntries, keyOf, moveBefore, move, remove, resolve, setGroup, setHidden, REGIONS } from "../../../../lib/sidebar/model.js";
+import { add, builtinEntries, keyOf, moveBefore, move, remove, resolve, screenEntry, setGroup, setHidden, REGIONS } from "../../../../lib/sidebar/model.js";
 import { catalogOf, effective, saveList, sidebarCall, useSidebar, type Entry } from "./sidebar";
 import { useSpaces } from "./state";
 
@@ -24,14 +24,14 @@ function Draggable({ k, onDropOn, children }: { k: string; onDropOn: (from: stri
 /** Settings, Sidebar: the places in order, each with Up, Down, Hide or Show and a group; add the ones that are not there; for you or, if you are an admin, for the team. */
 export function SidebarEditor() {
   const space = useSpaces((s) => s.space);
-  const { base, mine, modules, load, canSetDefault } = useSidebar();
+  const { base, mine, modules, load, canSetDefault, role } = useSidebar();
   const [scope, setScope] = useState<"me" | "team">("me");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   useEffect(() => { void load(space); }, [load, space]);
-  const cat = useMemo(() => catalogOf(modules), [modules]);
+  const cat = useMemo(() => catalogOf(modules, false, role), [modules, role]);
   const list: Entry[] = useMemo(() => (scope === "team" ? (base ?? (builtinEntries() as Entry[])) : effective(base, mine)), [scope, base, mine]);
   const labelOf = (e: Entry) => (resolve(e as never, cat) as { label: string } | null)?.label ?? keyOf(e as never);
   const present = (e: Entry) => resolve(e as never, cat) !== null;
@@ -43,12 +43,12 @@ export function SidebarEditor() {
   const key = (e: Entry) => keyOf(e as never);
   const nextTo = (k: string, d: number) => { const i = list.findIndex((e) => key(e) === k); return i < 0 ? list : (move(list as never, k, i + d) as Entry[]); };
 
-  // What can still be added: built-in places not in the list or hidden, and installed module screens not in it.
+  // What can still be added: built-in places not in the list or hidden, and installed module screens not in it. A screen of the Space's own is added as a screen, not as a module's.
   const addable: { entry: Entry; label: string }[] = useMemo(() => {
     const have = new Set(list.filter((e) => !e.hidden).map(key));
     const out: { entry: Entry; label: string }[] = [];
     for (const e of builtinEntries() as Entry[]) if (!have.has(key(e)) && resolve(e as never, cat)) out.push({ entry: { kind: "place", id: (e as { id: string }).id }, label: labelOf(e) });
-    for (const m of modules) for (const s of m.screens) { const e: Entry = { kind: "module", module: m.module, screen: s.id }; if (!have.has(key(e))) out.push({ entry: e, label: s.label }); }
+    for (const m of modules) for (const s of m.screens) { const e = screenEntry(m.module, s.id) as never; if (!have.has(key(e))) out.push({ entry: e, label: s.label }); }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, modules, cat]);
