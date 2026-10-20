@@ -2016,6 +2016,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.unlink opened to a model or a module in b1efe5dd1 (10 Oct 2026); the body decides: callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
  },
  {
+  "tool": "vault.use.env",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.use.env opened to a model or a module in 8df2c2434 (20 Oct 2026); the body decides: callers list in code (mcp, harness: an agent's session only) and the owner check: only items the agent may use AND the person marked Allowed in scripts; the values are sealed to the run's own key, never in a tool result"
+ },
+ {
+  "tool": "vault.use.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.use.find opened to a model or a module in 8df2c2434 (20 Oct 2026); the body decides: read-only, behind the owner check (member-gate.js) and the kernel's Can use grant per item: names, field names and plain values, never a secret value"
+ },
+ {
   "tool": "vault.used-by",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.used-by opened to a model or a module in 3bff38f14 (10 Oct 2026); the body decides: callers list in code (capsule, cli, deck, device, local): no model caller; read-only: the names and kinds of what uses a credential, never a value"
  },
@@ -2056,12 +2064,36 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops and forgets a watcher; a duty's folder goes, filed items stay"
  },
  {
+  "tool": "watchers.own.delete",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.delete opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent deletes its own watcher only: the body refuses any other caller and any other agent's watcher (core/watchers/agent-tools.test.js)"
+ },
+ {
+  "tool": "watchers.own.resume",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.resume opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent resumes its own watcher only: the body refuses any other caller and any other agent's watcher (core/watchers/agent-tools.test.js)"
+ },
+ {
+  "tool": "watchers.own.run",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.run opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent runs its own watcher only: the body refuses any other caller and any other agent's watcher (core/watchers/agent-tools.test.js)"
+ },
+ {
   "tool": "watchers.resume",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): resumes a paused watcher and clears its failure count"
  },
  {
+  "tool": "watchers.revise",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.revise opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent changes its own watcher's definition only: the body refuses any caller that is not the verified agent that owns it"
+ },
+ {
+  "tool": "watchers.routine.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.routine.create opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent sets up its own Routine only after the person asked in their own words (reach asked): the body refuses any caller that is not the verified agent"
+ },
+ {
   "tool": "watchers.run",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): runs a turned-on watcher now and returns what happened"
+ },
+ {
+  "tool": "watchers.write",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.write opened to a model or a module in 0ad22e09e (20 Oct 2026); the body decides: an agent sets up its own watcher only after the person asked in their own words (reach asked): the body refuses any caller that is not the verified agent, and a name that is not free or its own"
  },
  {
   "tool": "wink.card",
