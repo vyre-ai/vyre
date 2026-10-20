@@ -70,7 +70,7 @@ function all(/** @type {string} */ space) {
   return [
     { title: "You", rows: [
       ["Account and recovery", "Your name, sign-in, recovery code and GitHub link", "/u/settings/account", "face"],
-      ["AI accounts", "Connect Claude, OpenAI and others, each with a budget", "/u/settings/ai", "spark"],
+      ["AI accounts", "Every AI account your agents use, from any provider", "/u/settings/ai", "spark"],
       ["Appearance", "Theme, accent colour, density and font", "/u/appearance", "sun"],
       ["Notifications", "Choose what can reach you, and when", "/u/settings/notifications", "bell"],
       ["Sidebar", "Choose and order the places in your sidebar", "/u/sidebar", "menu"],
