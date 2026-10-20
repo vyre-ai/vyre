@@ -2260,6 +2260,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.template.list opened to a model or a module in 5d02ed44b (9 Oct 2026); the body decides: read-only: the templates of this Space, read under the caller's own kernel chain"
  },
  {
+  "tool": "work.template.stage-flow",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.template.stage-flow opened to a model or a module in cfadc8060 (20 Oct 2026); the body decides: person check: personOf() needs a person's chain and only the Playbook's owner or an admin opens its stage; it makes that version's stage Flow (the one a record entering the stage would make) as that person, which only makes the stage's to-dos when a record enters it; starting it by hand is refused"
+ },
+ {
   "tool": "work.template.test",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.template.test opened to a model or a module in 5d02ed44b (9 Oct 2026); the body decides: read-only: tries a template version with nothing created, sent or changed, read under the caller's own kernel chain"
  },

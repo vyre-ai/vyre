@@ -108,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 223 | 63 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 223 | 64 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -116,7 +116,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 60 | 25 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 94 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 96 | 0 | cli |
 
 ## about
 
@@ -675,6 +675,7 @@ The model registry: every model Vyre can offer, filled live from each provider's
 - Requires: none
 - Tools: [9](tools.md#models)
 - Emits: [3 events](events.md#models)
+- Listens for: `account.changed`
 - Shows on: cli
 
 ## modules
@@ -939,6 +940,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Tools: [44](tools.md#sessions), 14 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
+- Needs daemon: `modelDoor`, `doorChain`
 - Needs kernel: `{"actions":[]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -1182,7 +1184,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [223](tools.md#vault), 38 of them only for other modules
-- Emits: [63 events](events.md#vault)
+- Emits: [64 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true,"membership":true,"mints":[{"prefix":"vault","actions":["vault.fill","vault.totp","vault.read","vault.call","vault.reveal","vault.edit","vault.rotate"]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1282,7 +1284,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [94](tools.md#work), 24 of them only for other modules
+- Tools: [96](tools.md#work), 25 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`, `agentActor`
