@@ -4192,9 +4192,6 @@
    "screens": {
     "full": {
      "component": "vault-mine"
-    },
-    "compact": {
-     "component": "vault-mine"
     }
    }
   },
@@ -4203,9 +4200,6 @@
    "screens": {
     "full": {
      "component": "vault-shared"
-    },
-    "compact": {
-     "component": "vault-shared"
     }
    }
   },
@@ -4213,9 +4207,6 @@
    "title": "Vault: Add, three ways in",
    "screens": {
     "full": {
-     "component": "vault-add"
-    },
-    "compact": {
      "component": "vault-add"
     }
    }
