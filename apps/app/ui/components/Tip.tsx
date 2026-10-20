@@ -5,7 +5,7 @@ import { Text } from "./Text";
 
 /**
  * A name on hover or focus, for an icon with no label (the folded rail). Web only; a phone has no hover. The bubble is drawn fixed to the window, so a scrolling list around the icon
- * cannot clip it. `hint` is the shortcut, shown after the name.
+ * cannot clip it. `hint` is the shortcut, shown after the name. A press hides it: the menu a press opens says the name itself.
  */
 export function Tip({ label, hint, children, side = "right" }: { label: string; hint?: string; children: React.ReactNode; side?: "right" | "top" }) {
   const { color } = useUiTheme();
@@ -15,7 +15,7 @@ export function Tip({ label, hint, children, side = "right" }: { label: string; 
   const show = () => ref.current?.measureInWindow((x, y, w, h) => setAt({ x, y, w, h }));
   const place: ViewStyle | null = at ? ({ position: "fixed", zIndex: 1000, ...(side === "right" ? { left: at.x + at.w + 8, top: at.y + at.h / 2 - 14 } : { left: at.x + at.w / 2, top: at.y - 34 }) } as unknown as ViewStyle) : null;
   return (
-    <View ref={ref} onPointerEnter={show} onPointerLeave={() => setAt(null)} onFocus={show} onBlur={() => setAt(null)} style={{ alignSelf: "stretch" }}>
+    <View ref={ref} onPointerEnter={show} onPointerLeave={() => setAt(null)} onPointerDown={() => setAt(null)} onFocus={show} onBlur={() => setAt(null)} style={{ alignSelf: "stretch" }}>
       {children}
       {place ? (
         <View pointerEvents="none" style={[place, { flexDirection: "row", gap: 8, alignItems: "center", paddingHorizontal: 10, height: 28, borderRadius: 8, backgroundColor: color.primary }]}>

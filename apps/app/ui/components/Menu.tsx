@@ -19,7 +19,8 @@ export type MenuItem = {
 export function Menu({ trigger, items, align, header, side }: { trigger: React.ReactNode; items: MenuItem[]; /** A block above the choices that is not a choice (a name and a space). */ header?: React.ReactNode; /** Which side of the trigger it opens on (default: below, flipping when there is no room). */ side?: "top" | "bottom"; /** Which edge of the trigger the menu lines up with (default: centred). A trigger at the left of a card uses "start" so the menu stays inside it; the menu flips above when there is no room below. */ align?: "start" | "center" | "end" }) {
   const { resolved, color, map } = useUiTheme();
   const content = (
-    <P.Content align={align} side={side} sideOffset={4} avoidCollisions style={{ ...elevation(resolved.scheme, 2), minWidth: px(map, "--s-12") * 4, borderRadius: px(map, "--r-card"), borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["surface-3"], padding: px(map, "--s-1") }}>
+    // Portalled to the document's end, kept 8 off the window's edges, and above every pane (Radix lifts its wrapper to the content's zIndex): a trigger in the folded rail opens it whole, over the page.
+    <P.Content align={align} side={side} sideOffset={4} avoidCollisions insets={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ ...elevation(resolved.scheme, 2), zIndex: 1000, minWidth: px(map, "--s-12") * 4, borderRadius: px(map, "--r-card"), borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["surface-3"], padding: px(map, "--s-1") }}>
       {header}
       {items.map((i) => (
         <Fragment key={i.id ?? i.label}>
