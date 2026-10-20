@@ -11,6 +11,7 @@ import { AddSheet, type Call } from "./AddSheet";
 import { VAULT_PANEL_MIN, useVaultNav } from "./vault-nav";
 import ImportPage from "./ImportPage";
 import { ItemSharing } from "./ItemSharing";
+import { ScriptsSetting } from "./ScriptsSetting";
 import { MoveItem } from "./MoveItem";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE } from "../../src/real/on-phone.js";
@@ -201,6 +202,7 @@ export default function VaultRedesign({ data }: { data: VaultData }) {
             <View className="gap-s2"><Text tone="muted">Only you. Your own vault is not shared.</Text></View>
           )}
         </Sec>}
+        {scope === "space" && data.scripts && cur.kind !== "provisioned" && cur.kind !== "connection" && cur.kind !== "api-credential" ? <Sec title="Scripts"><ScriptsSetting api={data.scripts} item={cur} /></Sec> : null}
         <Sec title="Activity">
           <Card flush>{[...local.filter((e) => e.item === cur.id), ...events].slice(0, 6).map((e) => <Row key={e.id} dense lead={<Avatar of={who(e.who)} size={24} />} title={e.what} sub={`${e.who}, ${e.when}`} />)}
             {local.some((e) => e.item === cur.id) || events.length ? null : <View className="p-s3"><Text tone="muted">No activity yet.</Text></View>}</Card>

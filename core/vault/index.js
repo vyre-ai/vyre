@@ -55,6 +55,7 @@ import * as memberShareTools from "./tools/member-share.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
+import * as useTools from "./use.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -341,11 +342,18 @@ export default {
 
     // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
     tool("vault.pending", [...SURFACES, "mcp", "module"], "Grants and passes an agent asked for, waiting for a person.",
-      obj({}), () => vault.pending());
+      // useHosts: an agent asked to send an item's secret to a host not yet on its Used with (use.js)
+      obj({}), () => ({ ...vault.pending(), useHosts: /** @type {any} */ (vault).use ? /** @type {any} */ (vault).use.pending() : [] }));
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, meta) => { windowUse(meta.presence, "approve", input.id, meta.caller); return vault.approve(input, meta.caller, meta); },
+      obj({ id: str }, ["id"]), (input, meta) => {
+        windowUse(meta.presence, "approve", input.id, meta.caller);
+        if (String(input.id).startsWith("vu_") && /** @type {any} */ (vault).use) return /** @type {any} */ (vault).use.approve(String(input.id), String(meta.caller));
+        return vault.approve(input, meta.caller, meta);
+      },
       presence("Approve a pending grant or pass", ({ id }) => {
+        const u = /** @type {any} */ (vault).use ? /** @type {any} */ (vault).use.one(String(id)) : null;
+        if (u) return `Use ${quoted(u.item)} with ${String(u.host)}: its secrets may be sent there from now on, and you trust that host with them fully`;
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
         if (g) return grantPrompt(g, vault.row(g.name)?.vault === "personal");
@@ -374,17 +382,24 @@ export default {
     });
 
     // A webhook route's signing secret, made for a person's hooks.open (core/hooks): 32 random bytes from the system CSPRNG, stored as the item hooks-<route> and granted to the hooks module, for fetch only.
-    // Only module:hooks may ask, only a hooks- name is made, an existing item is never touched, and the value is never returned, logged or emitted: the person reads it from the Vault's own reveal.
+    // Only module:hooks may ask, only a hooks- name is made, an item the person made is never touched, and the value is never returned, logged or emitted: the person reads it from the Vault's own reveal.
+    // The same tool makes a Flow's webhook address token (hooks-<route>), and with renew: true replaces the value of an item it made before (a new address: the old token stops working).
     ctx.tool("vault.make-hook-secret", {
       internal: true,
-      description: "For the hooks module's hooks.open: make a webhook route's signing secret as the Vault item hooks-<route> and grant it to hooks. Never returns the value; never replaces an item.",
-      input: obj({ name: str }, ["name"]),
+      description: "For the hooks module: make a webhook route's signing secret or address token as the Vault item hooks-<route> and grant it to hooks; renew: true gives an item the hooks module made a new value. Never returns the value; never replaces an item a person made.",
+      input: obj({ name: str, renew: { type: "boolean" } }, ["name"]),
       run: async (input, { caller }) => {
         if (String(caller) !== "module:hooks") throw new Error("only the hooks module makes a webhook secret");
         const name = String(input.name ?? "");
         if (!/^hooks-[a-z0-9][a-z0-9-]{0,40}$/.test(name)) throw new Error("a webhook secret is named hooks- and the route's name, like hooks-northwind-orders");
-        if (vault.row(name)) throw new Error(`${name} is already in the Vault; it is not replaced. Name that item as the route's secret, or close the route and retire the item first`);
+        const had = /** @type {any} */ (vault.row(name));
+        if (had && !(input.renew === true && had.origin === "module:hooks" && had.kind === "secret")) throw new Error(input.renew === true ? `${name} was not made by Vyre for a webhook, so it is not replaced. Retire it in the Vault and turn the Flow on again` : `${name} is already in the Vault; it is not replaced. Name that item as the route's secret, or close the route and retire the item first`);
         const value = crypto.randomBytes(32).toString("hex");
+        if (had) {
+          // Putting the item again is how it is rotated; its grant to hooks stays.
+          await vault.put({ name, kind: "secret", description: String(had.description || `Token for the webhook route ${name.slice(6)}`), fields: { value }, origin: String(caller) }, String(caller));
+          return { item: name, renewed: true };
+        }
         // the origin is stamped from the caller, as vault.put does for a module: a module grants only items it put
         await vault.put({ name, kind: "secret", description: `Signing secret for the webhook route ${name.slice(6)}`, fields: { value }, origin: String(caller) }, String(caller));
         await vault.grant({ name, module: "hooks" }, String(caller));
@@ -612,6 +627,8 @@ export default {
     try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
+    // Agents use items by placeholder and never see a secret: vault.use.find, {{vault:Item.FIELD}} in vault.request, Used with, Allowed in scripts (use.js).
+    /** @type {any} */ (vault).use = useTools.register({ vault, api: requests, said, tool, emit: (t, p) => ctx.events.emit(t, p) });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

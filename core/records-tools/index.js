@@ -22,8 +22,9 @@ import { registerSample } from "./sample.js";
 import { registerStats } from "./stats.js";
 import { withMe, withOwner } from "./me.js";
 import { seesNote } from "../../lib/note-share.js";
-import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
+import { registerQuick, quickFieldsOf, quickFieldsByType, withFastFields, withoutFastFields, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
+import { startPhotoSweep } from "./photo-sweep.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -80,9 +81,11 @@ export default {
       const list = await d.gateway.grants.members.list(d.chain);
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
+    // A field added with records.field.add that is not a real field yet is listed with its type, marked fast: true with its state (bag or promoting), so a new column shows at once.
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
-      const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : t));
+      const quick = await quickFieldsByType(d);
+      const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : withFastFields(t, quick.get(String(t.name)) || [])));
       return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
     });
     // What an address is, for the composer that turns a reference in instructions into a line a model reads. Answered from the TYPE DEFINITIONS alone, never a row: a first segment that is a record type the
@@ -105,7 +108,9 @@ export default {
         } catch { return { kind: "record", unknown: true }; }
       },
     });
+    // A field marked fast: true (as records.types lists one) is left out of the change: it is a quick-field row until records.field.promote makes it a field of the store.
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may. A type that gains an ID field gives its older records their IDs, oldest first.", obj({ space: str, diff: { type: "object" } }, ["diff"]), async (i, d) => {
+      i = { ...i, diff: withoutFastFields(i.diff) };
       const out = await d.gateway.records.define(d.chain, i.diff);
       // the person who defined it may update these records, so the IDs are given under their own chain, once; records that have one are left alone
       for (const t of [...((i.diff && i.diff.add_types) || []), ...((i.diff && i.diff.change_types) || [])]) {
@@ -276,6 +281,22 @@ export default {
       return { proposed: true, task: task.id, message: "Nothing was forgotten. The person has a task to decide it with their presence." };
     }, byUrn);
 
+    // Sealing a field for every record of a type: the kernel's own migration (gateway.migrate.sealField), never a flag on the definition. The plain values move into a new sealed field (<field>_sealed), the
+    // plain field is emptied and removed from view, and the old values are scrubbed from the change log, the snapshots, the event log and the task texts that quote them. It cannot be undone, so it is an
+    // owner's or an admin's own act with their presence: a model or an agent never runs it, and the kernel still checks records.define, records.update on every record and seal.put under the caller's chain.
+    ctx.tool("records.field.seal", {
+      description: "Seal a plain text field for every record of a type: its values move into a new sealed field, the plain field is removed from view and the old values are scrubbed from the history. Agents then see only a placeholder. Cannot be undone. An owner's or admin's own act with their presence. { type, field, class? (default free) }.",
+      input: obj({ space: str, type: str, field: str, class: str }, ["type", "field"]), callers: CALLERS, presence: true,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const d = await door.open({ ...(i.space ? { space: i.space } : {}) }, meta);
+        let role = null; try { role = d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { role = null; }
+        if (role !== "owner" && role !== "admin") throw refuse("Only an owner or an admin seals a field. Ask one of them.", "not_allowed");
+        if (!d.gateway.migrate || !d.gateway.seal) throw refuse("this Space has no sealing process, so a field cannot be sealed here; ask the owner to seal it on the Space's server", "unavailable");
+        const out = await d.gateway.migrate.sealField(d.chain, { type: String(i.type || ""), field: String(i.field || ""), class: i.class ? String(i.class) : "free" });
+        return { ...out, acted_in: await actedIn(d.space) };
+      },
+    });
+
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
       const u = parseUrn(i.urn);
@@ -411,6 +432,8 @@ export default {
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
     ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
-    return { async stop() {} };
+    // the Space's profile photos that no profile names any more are removed now and then, under this module's own service chain (photo-sweep.js)
+    const sweep = ctx.kernel && ctx.kernel.records && typeof ctx.kernel.serviceChain === "function" ? startPhotoSweep(ctx.kernel, (/** @type {string} */ m) => { if (typeof ctx.log === "function") ctx.log(m); }) : null;
+    return { async stop() { if (sweep) sweep.stop(); } };
   },
 };

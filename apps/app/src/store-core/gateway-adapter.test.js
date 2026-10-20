@@ -68,15 +68,18 @@ test("a create names no space unless the screen did, and me reads the person", a
   assert.equal(await s.me(), "per_x");
 });
 
-test("adding a field and sealing one are definition changes on the type", async () => {
-  const f = fake({ [TOOLS.types]: [{ name: "matter", fields: [{ name: "title", label: "Title", kind: "text" }] }], [TOOLS.define]: { applied: true, changes: [] } });
+test("adding a field is a definition change; sealing one is the kernel's migration, never a flag on the definition", async () => {
+  const f = fake({ [TOOLS.types]: [{ name: "matter", fields: [{ name: "title", label: "Title", kind: "text" }] }], [TOOLS.define]: { applied: true, changes: [] }, [TOOLS.fieldSeal]: { sealed_field: "title_sealed", moved: 2, erased_events: 0 } });
   const s = createGatewayStore({ rpc: f.rpc });
   const made = await s.addField?.("matter", { label: "Plan year", kind: "text" });
   assert.equal(made.name, "plan_year");
   const d = f.calls.find((c) => c.tool === TOOLS.define).input.diff;
   assert.deepEqual(d.change_types[0].fields.map((x) => x.name), ["title", "plan_year"]);
-  const sealed = await s.sealField?.("matter", "title");
-  assert.equal(sealed.seal.level, "ai");
+  const defines = f.calls.filter((c) => c.tool === TOOLS.define).length;
+  const sealed = await s.sealField?.("matter", "title", "spc_aaaaaaaaaaaa");
+  assert.equal(sealed.name, "title_sealed");
+  assert.deepEqual(f.calls.find((c) => c.tool === TOOLS.fieldSeal).input, { space: "spc_aaaaaaaaaaaa", type: "matter", field: "title" }, "the record's own space");
+  assert.equal(f.calls.filter((c) => c.tool === TOOLS.define).length, defines, "no definition change carries a seal flag");
 });
 
 test("an error answer becomes a StoreError code the screens know", () => {

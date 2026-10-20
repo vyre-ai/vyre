@@ -172,6 +172,10 @@ runs on the same runtime and the same wall, and shows the same card.
 - **Enable and pause.** In the **Team** tab, a duty's button switches it on or off, and **Run now**
   fires an enabled duty once. `vyre watchers pause <name>` and `vyre watchers resume <name>` work on
   its watcher too (its name is `duty-<role>-<id>`). Changing a running duty asks you again.
+- **Whose duty it is.** A duty runs as the person who made it running, or who last turned it on or
+  changed what it does, on that person's own AI account. A duty made before Vyre recorded that is
+  paused and says "Paused: made before Vyre recorded who it runs for. Turn it on to run it as you."
+  Turning it on makes it yours. One you made yourself on this computer keeps running as yours.
 - **What a firing does.** The duty's fixed code files one item per firing, so what it did shows in
   `vyre watchers items` like any watcher's. The teammate reads what its duties filed with its next
   request. A firing does not start the teammate by itself.

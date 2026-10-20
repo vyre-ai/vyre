@@ -303,6 +303,19 @@ An agent, or your assistant, calls an API credential only through a grant in you
 
 A credential's older `scope` (`projects` and `agents`) is converted to grants once, when this version first runs: each named agent gets its credential, a scope of projects gives it to those projects, a scope of everyone gives it to the agents there are now, and your assistant keeps every credential it could reach. Each conversion is in the audit log (`vault audit`, action `scope-converted`) and announced as `vault.scope-converted`. After that the scope in a credential's config is ignored: change who can use it by changing the grants.
 
+## Agents use an item by placeholder
+
+An agent never sees a secret. It asks the Vault what it may use, and writes the fields it needs as placeholders; the Vault puts the values in on the server and hides them in the answer.
+
+- **What an agent finds.** `vault.use.find` lists the items the agent may use: each item's name, its app, the hosts it is used with, its field names, and the value of each plain field. A secret field shows only its name. When several items match, all come back, and the agent picks one or asks you which.
+- **Who may use what.** An agent uses an item you shared with it at Can use it, without seeing it, or one you tagged with `#` in the chat. Your own assistant uses your items only on a chat turn you are at: a Flow, a schedule, a job or a run made to act as someone needs a grant like any agent. An agent working for another member of your Space reaches nothing in your Vault.
+- **Placeholders.** The agent writes `{{vault:Northwind CRM.NORTHWIND_API_KEY}}` anywhere in a `vault.request`: the address, a header or the body. Names match whatever their case or punctuation (`northwind-crm` and `Northwind CRM` are the same item). A placeholder for an item or field the agent may not use stops the whole request, and the refusal names it.
+- **The answer.** Every secret the request used is hidden in the response as `[hidden: NORTHWIND_API_KEY]`, in its base64, URL-encoded, JSON, HTML and reversed forms too. A compressed answer is withheld.
+- **Used with.** Each item lists the hosts its secrets may be sent to: the hosts written on the item, plus each one you allowed. The first time an agent sends an item's secret to a new host, the request waits and you get one question in your approvals: "Use northwind-crm with api.example.com?". Allow puts the host on the list and the agent sends the request again; Decline sends nothing. Allowing a host means trusting it fully with that item: whatever runs there gets the secret every time an agent sends it. A host under a domain anyone can rent a name under (`workers.dev`, `vercel.app` and the like) says so on the card. An agent has at most five of these questions waiting at once, and an item used more than 60 times in a minute rests for the rest of the minute (shown in its activity). A secret never goes to a host that is not on the list, to a bare address, or over plain http. Plain fields go anywhere.
+- **Writes still wait.** A send, a payment or a delete waits at the Gate for your yes, as it does with an API credential. The card shows the placeholder, never the value.
+- **Your rules for an item.** `vault.use.set` sets which fields are plain, the hosts the item is used with, and Allowed in scripts. Loosening any of them asks for your presence; tightening never does.
+- **The record.** Every use is on the item's activity (`vault uses`, action `use`): which agent, for whom, which host or command, and whether it went or was refused. Never a value.
+
 ## Connecting a key
 
 A module says what it needs in its manifest (`needs.credentials`), and you fill each need in one
@@ -396,6 +409,12 @@ An item before `--` is `<name>`, `<name>.<field>`, `VAR=<name>` or `VAR=<name>.<
 variable is the name in capitals (`stripe-live` becomes `STRIPE_LIVE`). A value the child prints
 shows as `<concealed by vyre>`. These need presence, so Claude's own shell cannot use them to read
 a value.
+
+An agent's own session runs a script with an item only when you turned on **Allowed in scripts** for that item. When this is on, the agent can read this value: the program gets every field in its environment under the field's name in capitals, and the agent can read it there. Only the program's output is hidden (`[hidden: NAME]`). It is off by default, and turning it on asks for your proof.
+
+```
+vyre vault run --item "northwind-crm" -- ./sync.sh
+```
 
 ## Sharing inside your Space
 

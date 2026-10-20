@@ -509,6 +509,29 @@ test("isolation (static): Chrome keeps no passwords, addresses or sync, and its 
   assert.equal(json.DownloadDirectory, undefined, "the downloads folder is the holder's, per agent");
 });
 
+test("isolation (static): Chrome's new tab and home page are the Vyre page shipped in the image, opened by one allowed file:// address, and every existing block and limit stays", () => {
+  const m = /printf '%s\\n' (.*?)\n\s+> \/etc\/chromium\/policies\/managed\/vyre\.json/s.exec(DOCKERFILE);
+  assert.ok(m);
+  const json = JSON.parse([...m[1].matchAll(/'([^']*)'/g)].map(x => x[1]).join(""));
+  const PAGE = "file:///usr/share/vyre-desk/newtab.html";
+  assert.equal(json.NewTabPageLocation, PAGE);
+  assert.equal(json.HomepageLocation, PAGE);
+  assert.equal(json.HomepageIsNewTabPage, true);
+  assert.equal(json.RestoreOnStartup, 1, "the last session comes back");
+  assert.deepEqual(json.URLAllowlist, [PAGE], "exactly one address is let through the file:// block");
+  assert.ok(json.URLBlocklist.includes("file://*"), "every other file:// address stays blocked");
+  assert.ok(json.URLBlocklist.includes("chrome-extension://*"));
+  assert.deepEqual(json.ExtensionInstallBlocklist, ["*"], "still no extension of any kind");
+  assert.equal(json.PasswordManagerEnabled, false);
+  assert.equal(json.SyncDisabled, true);
+  assert.equal(json.BrowserSignin, 0);
+  assert.equal(json.PromptForDownloadLocation, false);
+  assert.equal(json.DeveloperToolsAvailability, undefined, "DevTools stay as the owner ruled");
+  assert.match(DOCKERFILE, /python3 -c 'import json; json\.load\(open\("\/etc\/chromium\/policies\/managed\/vyre\.json"\)\)'/, "the build refuses a policy file that is not JSON");
+  // the page is root's and read-only, like all of the desk
+  assert.match(DOCKERFILE, /chown -R root:root \/etc\/vyre-desk \/usr\/share\/vyre-desk && chmod -R a\+rX,go-w \/etc\/vyre-desk \/usr\/share\/vyre-desk/);
+});
+
 test("isolation (static): the screen is the browser uid's, never the agent's: Xvnc, its cookie and password, the window manager and the screen relay, and the agent's own cookie is an untrusted one", () => {
   const agentd = fs.readFileSync(path.join(HERE_DIR, "agentd.js"), "utf8");
   const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
@@ -526,4 +549,14 @@ test("isolation (static): the screen is the browser uid's, never the agent's: Xv
   assert.match(server, /asBrowser\(u, body\.limits \|\| \{\}\), "\/usr\/local\/bin\/agentd-vncpass", browserOf\(u\)\.vncPass/, "the password file is written by the browser uid into its folder");
   assert.doesNotMatch(relay, /asAgent\(u\), "\/usr\/bin\/python3"/, "the screen relay's pipe is not the agent's");
   assert.match(relay, /XAUTHORITY: browserOf\(u\)\.xauth/, "a terminal gets the untrusted cookie");
+});
+
+test("isolation (static): a file ticket runs one operation as the agent itself, through computerd's own path guard, never as the browser or with a shell", () => {
+  const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8"), helper = fs.readFileSync(path.join(HERE_DIR, "agentd-fs.js"), "utf8");
+  assert.match(relay, /u\.kind === "fs" \? \[\.\.\.asAgent\(u, \{ noAddressCap: true, dataMb: 2048, cpuSeconds: 600 \}\), "\/usr\/bin\/node", FS\]/, "the agent's own uid, no capability, a fixed helper and no argument");
+  assert.match(relay, /if \(spec !== null\) spec = kind === "fs" \? validateFs\(spec\)/, "the operation is checked when the ticket is held");
+  assert.match(helper, /uid < 20000 \|\| uid > 20063/, "it refuses to run as anything but an agent's uid");
+  assert.match(helper, /createFs\(\{ root: o\.root, downloads: o\.downloads/, "computerd's own routes, on the uid's home");
+  assert.doesNotMatch(helper, /child_process|spawn|exec\(/, "it starts nothing");
+  assert.match(DOCKERFILE, /^COPY computerd\/fs\.js \/opt\/agentd\/computerd\/fs\.js$/m, "the guard is in the image beside it, root's");
 });

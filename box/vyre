@@ -796,6 +796,18 @@ verify_release_images() {
   say "images checked against Vyre's release workflow"
 }
 
+# pull_computer: the agents' computers' image, by the digest release.json names, after verify_release_images has cosign-checked it. It is not a
+# service of the stack, so compose pull leaves it out, and the Engine never pulls on create (the docker-api proxy allows no pull): without this
+# a box has no image to start an agent's computer from. A failed pull does not undo the update; the Computer tab then says the image is missing,
+# and the next update pulls it again.
+pull_computer() {
+  [ -n "${computer_ref:-}" ] || return 0
+  if docker image inspect "$computer_ref" >/dev/null 2>&1; then return 0; fi
+  if docker pull -q "$computer_ref" >/dev/null; then say "agents' computer image pulled by digest"
+  else echo "vyre: the agents' computer image ($computer_ref) could not be pulled; agents' computers start once an update pulls it" >&2
+  fi
+}
+
 update() {
   CHANNEL=${VYRE_CHANNEL:-stable}
   TO=""
@@ -921,6 +933,7 @@ update() {
   if [ "$BUILD" = 1 ]; then ok=0; compose build --pull && ok=1
   else ok=0; compose pull && ok=1
   fi
+  if [ "$ok" = 1 ] && [ "$BUILD" = 0 ]; then pull_computer; fi
   if [ "$ok" = 0 ]; then
     # Nothing new ran, so the database is untouched: put the files back only.
     if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi

@@ -41,7 +41,6 @@ import { redact as redactText } from "../../lib/credential-shapes.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
-
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, agent_due_ms: 86_400_000, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /**
  * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
@@ -63,7 +62,6 @@ const INLINE_KINDS = new Set(["decide", "repeat"]);
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 /** Actions only a Flow run holds (a person is never asked for them, so an adder is not judged by them): a code step, a model call, and a send that is held for a yes each time. */
 const RUN_ONLY = new Set(["fn.run", "model.call", "service.call"]);
-
 import { Suspend, StepFail, Hold, PauseFlow, portFail, failOf } from "./runner-faults.js";
 import { showable } from "./runner-faults.js";
 import { STEP_INPUT_CAP, inputOf, testStepOf, retryFrom } from "./step-test.js";
@@ -793,14 +791,16 @@ export class FlowRunner {
 
   /**
    * An inbound web call. The host (the Ingress door) has already authenticated it and labelled its trust; the body is data and the run is tainted
-   * unless the host says `member`. `key` makes a retried delivery the same run.
-   * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted' }} [req]
+   * unless the host says `member`. `key` makes a retried delivery the same run. `flow` binds the call to one Flow by id (its own web address, core/hooks): only that Flow's trigger that asked for an
+   * address answers, and the path is not read.
+   * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted', flow?: string }} [req]
    */
   async handleWeb(path, req = {}) {
-    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
+    const byId = typeof req.flow === "string" && req.flow ? req.flow : null;
+    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && (byId ? x.id === byId && x.flow.trigger.address === true : x.flow.trigger.path === path));
     if (!f) throw Object.assign(new Error("no Flow answers that address"), { code: "not_found" });
     const trust = req.trust || "untrusted";
-    return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path }, { trust, data: req.body ?? {} });
+    return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path: f.flow.trigger.path }, { trust, data: req.body ?? {} });
   }
 
   /**

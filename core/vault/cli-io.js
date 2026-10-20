@@ -11,7 +11,9 @@
 
 import readline from "node:readline";
 import { Transform } from "node:stream";
-import { CONCEALED } from "../../lib/scrub.js";
+import { CONCEALED, valueForms } from "../../lib/scrub.js";
+// `vyre vault run --item` in an agent's session (core/cli/session.js) makes a key for one run and opens the sealed answer with it: the vault's one sealing mechanism, offered here with the rest of the CLI's vault I/O.
+export { newIdentity as runKeys, openFrom as openRun } from "./crypto.js";
 
 export { CONCEALED };
 
@@ -89,17 +91,25 @@ function readAll(input) {
  * tail that could still be the start of a value.
  */
 export class Scrubber extends Transform {
-  /** @param {string[]} values */
+  /**
+   * A value is a string (hidden as <concealed by vyre>), or { value, mark } (hidden as its own mark, "[hidden: NORTHWIND_API_KEY]", in every form use.js hide() covers).
+   * @param {(string | { value: string, mark: string })[]} values
+   */
   constructor(values) {
     super();
-    const bytes = [...new Set((values || []).map(v => String(v ?? "")))]
-      .map(v => Buffer.from(v, "utf8").toString("latin1"))
-      .filter(v => v.length >= 4)
-      .sort((a, b) => b.length - a.length);
+    /** @type {Map<string, string>} */ const marks = new Map();
+    const mark = Buffer.from(CONCEALED).toString("latin1");
+    for (const v of values || []) {
+      const own = Boolean(v) && typeof v === "object";
+      const text = String(own ? /** @type {any} */ (v).value ?? "" : v ?? "");
+      for (const f of own ? valueForms(text, { wide: true, deep: true }) : [text]) { const b = Buffer.from(f, "utf8").toString("latin1"); if (b.length >= 4 && !marks.has(b)) marks.set(b, own ? Buffer.from(String(/** @type {any} */ (v).mark)).toString("latin1") : mark); }
+    }
+    const bytes = [...marks.keys()].sort((a, b) => b.length - a.length);
     /** @private */ this.values = bytes;
+    /** @private */ this.marks = marks;
     /** @private */ this.max = bytes.length ? bytes[0].length : 0;
     /** @private */ this.pending = "";
-    /** @private */ this.mark = Buffer.from(CONCEALED).toString("latin1");
+    /** @private */ this.mark = mark;
   }
 
   /** Scan `s`; unless `final`, stop at a tail that could still become a value. @private */
@@ -107,7 +117,7 @@ export class Scrubber extends Transform {
     let outp = "", run = 0, i = 0;
     while (i < s.length) {
       const hit = this.values.find(v => s.startsWith(v, i));
-      if (hit) { outp += s.slice(run, i) + this.mark; i += hit.length; run = i; continue; }
+      if (hit) { outp += s.slice(run, i) + (this.marks.get(hit) ?? this.mark); i += hit.length; run = i; continue; }
       if (!final && s.length - i < this.max) {
         const rest = s.slice(i);
         if (this.values.some(v => v.startsWith(rest))) break;

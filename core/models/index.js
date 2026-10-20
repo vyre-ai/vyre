@@ -5,14 +5,15 @@
 //     api         each provider's own /models, fetched by the switchboard with the account's key (threads.models-fetch: it returns the answer, never the key)
 //     cli         what a CLI or a subscription login reported when a session started (sessions.providers.snapshot): Claude Code, Codex with a ChatGPT login, the Grok CLI
 //     openrouter  openrouter.ai/api/v1/models, public and keyless: price, context and capabilities, joined to an entry by id, and the entries of provider openrouter
-//     fallback    the aliases the Claude CLI takes, only when nothing else is known
+//     catalogue   OpenRouter's public list of Anthropic's, OpenAI's and xAI's own models, under each provider's own id: what a sign-in (a Claude or ChatGPT login, Grok) can pick before its CLI reports
+//   There is no built-in list of model names: a model is offered only when one of these sources lists it.
 //   A refresh runs daily and on demand (at most once a minute). A source that fails keeps its last rows and the failure is on `models.status`. The first fill is silent; a model first seen after it
 //   is `models.new`, and writes ONE pending eval proposal for the owner. Approving writes a queue; nothing here runs an eval or spends anything.
 
 import { isPerson } from "../../lib/caller.js";
 import { httpFetch } from "../../lib/http.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
-import { normalizeApi, mergeSource, joinOpenRouter, ageMissing, proposeEvals, EVAL_TYPES, keyOf, PROVIDERS } from "../../lib/model-registry.js";
+import { normalizeApi, mergeSource, joinOpenRouter, ageMissing, proposeEvals, EVAL_TYPES, keyOf, PROVIDERS, catalogueRows, CATALOGUE_PROVIDERS, modelView } from "../../lib/model-registry.js";
 
 const DAY = 24 * 3600_000;
 const FIRST_LOOK_MS = 3 * 60_000;
@@ -58,8 +59,8 @@ export default {
       let entries = load();
       /** @type {Set<string>} */ const seen = new Set();
       /** @type {string[]} */ let added = [];
-      const merge = (/** @type {string} */ provider, /** @type {string} */ source, /** @type {any[]} */ rows) => {
-        const r = mergeSource(entries, provider, source, rows, at);
+      const merge = (/** @type {string} */ provider, /** @type {string} */ source, /** @type {any[]} */ rows, /** @type {string | undefined} */ account = undefined) => {
+        const r = mergeSource(entries, provider, source, rows, at, account);
         entries = r.entries; added.push(...r.added);
         for (const row of rows) seen.add(keyOf(provider, row.id));
       };
@@ -78,8 +79,8 @@ export default {
           if (!f || !PROVIDERS.hasOwnProperty(String(f.provider))) continue;
           if (f.error) { errors.push(`${f.provider}: ${String(f.error).slice(0, 100)}`); continue; }
           // the door answers each model as { id, label? } (the provider's own name for it when it differs from the id); OpenRouter's public list joins price and context beside it
-          const rows = (Array.isArray(f.models) ? f.models : []).filter((/** @type {any} */ x) => x && typeof x.id === "string" && x.id).map((/** @type {any} */ x) => ({ id: x.id.slice(0, 120), label: String(x.label || x.id).slice(0, 120), context: null, price: null, capabilities: null }));
-          if (rows.length) { merge(String(f.provider), "api", rows); n += rows.length; }
+          const rows = normalizeApi(String(f.provider), { data: (Array.isArray(f.models) ? f.models : []).filter((/** @type {any} */ x) => x && typeof x.id === "string" && x.id).map((/** @type {any} */ x) => ({ id: x.id, ...(x.label ? { display_name: x.label } : {}) })) });
+          if (rows.length) { merge(String(f.provider), "api", rows, f.account ? String(f.account) : undefined); n += rows.length; }
         }
         noteSource("api", errors.length === 0, errors.join("; ") || null, n, undefined);
       } else noteSource("api", false, "no way to fetch with the accounts' keys here", 0, undefined);
@@ -97,11 +98,12 @@ export default {
         try { orRows = last && last.body ? JSON.parse(String(last.body)) : null; } catch { orRows = null; }
       }
       if (orRows && orRows.length) entries = joinOpenRouter(entries, orRows, at);
-      // fallback: only when nothing else knows a model
-      if (!entries.size) {
-        const got = await quiet(() => ctx.call("sessions.models.get", {}));
-        const rows = (got && Array.isArray(got.aliases) ? got.aliases : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id), context: null, price: null, capabilities: null }));
-        if (rows.length) { const r = mergeSource(entries, "claude", "fallback", rows, at); entries = r.entries; added = []; noteSource("fallback", true, null, rows.length, undefined); }
+      // catalogue: each sign-in provider's own models as OpenRouter re-lists them (Anthropic's, OpenAI's, xAI's), under the provider's own id, with their details. Not a new-model card: the list is
+      // large and changes often, as OpenRouter's own is.
+      if (orRows && orRows.length) for (const p of CATALOGUE_PROVIDERS) {
+        const rows = catalogueRows(p, orRows);
+        entries = mergeSource(entries, p, "catalogue", rows, at).entries;
+        if (orFresh) for (const row of rows) seen.add(keyOf(p, row.id));
       }
       // OpenRouter's own models (#275): its public list is what an OpenRouter account can run, so each row is also an entry of provider "openrouter". The list is large and changes often, so a model
       // first seen there proposes no eval card; it ages like any live source only when the list was read this time.
@@ -114,6 +116,8 @@ export default {
       const toAge = new Map([...entries].filter(([, e]) => live.has(e.provider)));
       const aged = ageMissing(toAge, seen);
       for (const [k, e] of aged) entries.set(k, e);
+      // an entry that only the old built-in alias list ever named (opus, sonnet, haiku before 0.6.4) is not a model any source offers: it goes
+      for (const [k, e] of entries) if (Array.isArray(e.sources) && e.sources.length && e.sources.every((/** @type {string} */ x) => x === "fallback")) { entries.delete(k); db.prepare("DELETE FROM models_entries WHERE k = ?").run(k); }
       save(entries);
       // the first fill is silent: everything is new to an empty registry
       const filled = meta("filled") === "1";
@@ -131,15 +135,16 @@ export default {
     }
     const refreshOnce = () => { if (!looking) looking = refresh().finally(() => { looking = null; }); return looking; };
 
-    const shape = (/** @type {any} */ e) => ({ id: e.id, provider: e.provider, label: e.label, available: e.available, context: e.context, price: e.price, capabilities: e.capabilities, evals: e.evals || {}, sources: e.sources, first_seen: e.first_seen, last_seen: e.last_seen });
+    // The one shape (lib/model-registry.js modelView), with what the registry itself keeps: whether a source still lists it, its sources, its evals and when it was seen.
+    const shape = (/** @type {any} */ e) => { const { accounts: _a, ...v } = modelView(e); return { ...v, available: e.available, capabilities: e.capabilities, evals: e.evals || {}, sources: e.sources, first_seen: e.first_seen, last_seen: e.last_seen }; };
     const all = () => [...load().values()];
 
     ctx.tool("models.list", {
       effect: "read", callers: WHO,
-      description: "Every model Vyre knows: id, provider, label, available, context, price (USD per million tokens), capabilities, evals, sources. Filter with provider or available.",
-      input: { type: "object", properties: { provider: str, available: { type: "boolean", description: "true leaves out models no source lists any more." }, limit: { type: "integer" } } },
+      description: "Every model Vyre knows: name, provider, version, context, max output, price per million tokens, capabilities, efforts, evals. Filter by provider, account or available.",
+      input: { type: "object", properties: { provider: str, account: { type: "string", description: "Only the models this AI account's own list gave (an API key's /models)." }, available: { type: "boolean", description: "true leaves out models no source lists any more." }, limit: { type: "integer" } } },
       run: async (/** @type {any} */ i) => {
-        const rows = all().filter((e) => (!i || !i.provider || e.provider === String(i.provider)) && (!i || i.available !== true || e.available)).sort((a, b) => (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : (b.first_seen - a.first_seen)));
+        const rows = all().filter((e) => (!i || !i.provider || e.provider === String(i.provider)) && (!i || i.available !== true || e.available) && (!i || !i.account || (Array.isArray(e.accounts) && e.accounts.includes(String(i.account))))).sort((a, b) => (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : (b.first_seen - a.first_seen)));
         return { models: rows.slice(0, Math.min(500, Math.max(1, (i && i.limit) || 200))).map(shape), count: rows.length, refreshed_at: Number(meta("refreshed_at")) || null };
       },
     });
@@ -157,7 +162,7 @@ export default {
     });
     ctx.tool("models.status", {
       effect: "read", callers: WHO,
-      description: "When each source was last read and what failed: api, cli, openrouter, fallback.",
+      description: "When each source was last read and what failed: api, cli, openrouter.",
       input: { type: "object", properties: {} },
       run: async () => ({ refreshed_at: Number(meta("refreshed_at")) || null, count: all().length,
         sources: /** @type {any[]} */ (db.prepare("SELECT name, at, ok, error, rows FROM models_sources ORDER BY name").all()).map((r) => ({ name: r.name, at: r.at, ok: Boolean(r.ok), ...(r.error ? { error: r.error } : {}), rows: r.rows })) }),

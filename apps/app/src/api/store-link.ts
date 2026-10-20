@@ -12,8 +12,8 @@ const named = (tool: string, input: Record<string, unknown>) => withSpace(tool, 
 
 (globalThis as { __VYRE_APP__?: boolean }).__VYRE_APP__ = true;
 
-/** The calls that touch a sealed value: held for the owner's yes. */
-const HELD = new Set(["records.seal-put", "records.reveal"]);
+/** The calls that touch a sealed value, and sealing a field for good: held for the owner's yes. */
+const HELD = new Set(["records.seal-put", "records.reveal", "records.field.seal"]);
 
 /** The box connection as the adapter's rpc: reads now, writes through the outbox, a human-only call's proof as the call's presence. */
 export const boxRpc = {

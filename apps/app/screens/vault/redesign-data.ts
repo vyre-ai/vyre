@@ -39,6 +39,8 @@ export interface VaultData {
   connectionSharing?: { load(item: VItem): Promise<{ shares: Share[]; dir: Directory; me: string | null; info?: { account: string; how: string } }>; set(item: VItem, w: { id: string; kind: Who["kind"] }, level: Level | null): Promise<void> };
   /** Space: take an item away from a module or watcher (vault.revoke). */
   revokeModule?(item: VItem, who: string): Promise<void>;
+  /** Space: whether an agent's script may have the item (Allowed in scripts: vault.use.find reads it, vault.use.set changes it). */
+  scripts?: { load(item: VItem): Promise<boolean>; set(item: VItem, on: boolean): Promise<void> };
   /** Mine only: save the site a login signs in to (vault.me.update merges the url field), so an agent can be lent it. Returns the bare origin saved. */
   addSite?(item: VItem, site: string): Promise<string>;
 }
@@ -194,5 +196,9 @@ export function realData(call: Call): VaultData {
       async set(item, w, level) { await ask("vault.access.set", { name: item.id, kind: w.kind === "group" ? "team" : w.kind, subject: w.id, level }); },
     },
     async revokeModule(item, who) { const [module, watcher] = who.split("/"); await ask("vault.revoke", { name: item.id, module, ...(watcher ? { watcher } : {}) }); },
+    scripts: {
+      async load(item) { const r = await ask<{ items: { name: string; scripts?: boolean }[] }>("vault.use.find", { q: item.id, limit: 50 }); return Boolean((r.items ?? []).find((x) => x.name === item.id)?.scripts); },
+      async set(item, on) { await ask("vault.use.set", { name: item.id, scripts: on }); },
+    },
   };
 }

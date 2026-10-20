@@ -5,7 +5,7 @@
 //   const onEvent = createAgentWake({ space, gw, chain, editChain, callModule, log });
 //   k.log.subscribe("agent-wake", {}, onEvent);
 
-import { connectOwn, isConnectOwn } from "../../lib/own-account.js";
+import { connectOwn, isConnectOwn, isNoPerson, NO_PERSON } from "../../lib/own-account.js";
 
 /** A task older than this is never woken by a replayed event (a restart reading the log from the start must not wake what was left long ago). */
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -235,6 +235,8 @@ export function createAgentWake(o) {
 export function sayWhy(agent, why) {
   const clean = String(why || "").replace(/[A-Za-z0-9_\-./+=]{24,}/g, "[removed]").replace(/\s+/g, " ").trim().slice(0, 160);
   // the person the job was for has no AI account of their own: nobody else's is used, and the next step is theirs to take
+  // nobody was recorded as the person it is for (Rule 2): nothing started, and the next step is the giver's
+  if (isNoPerson(clean)) return { reason: NO_PERSON, suggested_fix: `Give the task to ${agent} again from your own signed-in Vyre, so it runs for you.` };
   if (isConnectOwn(clean)) return { reason: `${agent} did not start: it runs on the AI account of the person it works for, and they have none here yet.`, suggested_fix: `${connectOwn(agent)} Then retry.` };
   const auth = AUTH.test(clean);
   if (auth) return { reason: `${agent}'s AI sign-in has expired.${clean ? ` (${clean})` : ""}`.slice(0, 400), suggested_fix: `Reconnect the AI account for ${agent} in Settings, then retry.` };

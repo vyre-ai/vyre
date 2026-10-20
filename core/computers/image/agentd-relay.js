@@ -9,7 +9,7 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs";
-import { asAgent, asBrowser, browserOf, validateRun, RUN_ARGV_BYTES } from "./agentd.js";
+import { asAgent, asBrowser, browserOf, validateRun, validateFs, RUN_ARGV_BYTES } from "./agentd.js";
 
 export const RELAY_PORT = 5910;
 /** The address vyred has, written by computerd when it pins it (computerd/peer-file.js). */
@@ -19,7 +19,9 @@ export const peerFromFile = (/** @type {string} */ file = PEER_FILE) => () => { 
 export const PIPE = "/opt/agentd/agentd-pipe.py";
 export const TERM = "/opt/agentd/agentd-term.py";
 export const RUN = "/opt/agentd/agentd-run.py";
-export const KINDS = Object.freeze(["vnc", "cdp", "term", "run"]);
+/** One file operation in the agent's own home, as the agent (agentd-fs.js): Files > Agents > <agent>. */
+export const FS = "/opt/agentd/agentd-fs.js";
+export const KINDS = Object.freeze(["vnc", "cdp", "term", "run", "fs"]);
 export const SESSION_RE = /^[A-Za-z0-9_.-]{1,40}$/;
 const TICKET_RE = /^[A-Za-z0-9_-]{32,64}$/;
 export const TICKET_MS = 30_000;
@@ -31,13 +33,13 @@ const hash = (/** @type {string} */ t) => crypto.createHash("sha256").update(t).
 export class Tickets {
   /** @param {() => number} [now] */
   constructor(now = Date.now) { this.now = now; /** @type {Map<string, { u: { user: string, uid: number, display: number }, kind: string, session: string | null, spec: any, expires: number }>} */ this.map = new Map(); }
-  /** @param {string} ticket @param {{ user: string, uid: number, display: number }} u @param {"vnc" | "cdp" | "term" | "run"} [kind] the agent's screen, its Chrome's debugging pipe, or one terminal @param {string | null} [session] a terminal's name */
+  /** @param {string} ticket @param {{ user: string, uid: number, display: number }} u @param {"vnc" | "cdp" | "term" | "run" | "fs"} [kind] the agent's screen, its Chrome's debugging pipe, one terminal, a run, or one file operation @param {string | null} [session] a terminal's name */
   add(ticket, u, kind = "vnc", session = null, spec = null) {
     if (!KINDS.includes(kind)) throw new Error("not a ticket kind");
-    // a run ticket carries what to run, checked here and again by the helper as the agent; no other ticket carries anything but its agent
-    if ((kind === "run") !== (spec !== null)) throw new Error("a run ticket names what to run, and no other ticket does");
-    if (spec !== null && session !== null) throw new Error("a run ticket names no terminal");
-    if (spec !== null) spec = validateRun(u, spec, RUN_ARGV_BYTES);
+    // a run ticket carries what to run and a file ticket the one file operation, each checked here and again by its helper as the agent; no other ticket carries anything but its agent
+    if ((kind === "run" || kind === "fs") !== (spec !== null)) throw new Error("a run ticket names what to run and a file ticket its one operation, and no other ticket names either");
+    if (spec !== null && session !== null) throw new Error("a run or file ticket names no terminal");
+    if (spec !== null) spec = kind === "fs" ? validateFs(spec) : validateRun(u, spec, RUN_ARGV_BYTES);
     if ((kind === "term") !== (session !== null)) throw new Error("a terminal ticket names its terminal, and no other ticket does");
     if (!TICKET_RE.test(ticket)) throw new Error("not a ticket");
     if (session !== null && !SESSION_RE.test(session)) throw new Error("not a terminal name");
@@ -90,14 +92,20 @@ export function createRelay(o) {
       // a harness session needs more room than a screen helper: a Node process reserves a lot of address space
       const argv = u.kind === "term" ? [...asAgent(u, {}, { TERM: "xterm-256color", DISPLAY: `:${u.display}`, XAUTHORITY: browserOf(u).xauth }), "/usr/bin/python3", "-I", TERM, String(u.session)]
         : u.kind === "run" ? [...asAgent(u, { memoryMb: 8192, procs: 1024, nofile: 8192, fsizeMb: 8192, cpuSeconds: 7 * 86400 }), "/usr/bin/python3", "-I", RUN]
+        // one file operation: Node, which reserves more address space than it uses, so its data size is capped instead of its address space (as Chrome's is), and ten minutes of processor at most
+        : u.kind === "fs" ? [...asAgent(u, { noAddressCap: true, dataMb: 2048, cpuSeconds: 600 }), "/usr/bin/node", FS]
         : [...asBrowser(u), "/usr/bin/python3", "-I", PIPE, u.kind === "cdp" ? "cdp" : "vnc"];
       const child = spawn(argv);
       let done = false;
-      const finish = () => { if (done) return; done = true; open.set(u.uid, Math.max(0, (open.get(u.uid) || 1) - 1)); try { child.stdin?.end(); } catch {} try { sock.destroy(); } catch {} };
-      child.on("error", finish); child.on("exit", finish); sock.on("close", finish);
+      // A file answer is short and ends with the helper: the socket is ended once the helper has closed its output (never cut while a read's last bytes are still on their way); every other kind ends with its child.
+      const files = u.kind === "fs";
+      const finish = () => { if (done) return; done = true; open.set(u.uid, Math.max(0, (open.get(u.uid) || 1) - 1)); try { child.stdin?.end(); } catch {} try { if (files) { sock.end(); setTimeout(() => sock.destroy(), 5000).unref(); } else sock.destroy(); } catch {} };
+      child.on("error", finish); child.on(files ? "close" : "exit", finish); sock.on("close", finish);
       child.stdin?.on("error", () => {}); child.stdout?.on("error", () => {});
       // the run helper is told what to run as its first frame (type 4); it is not on its command line, in a file or in its environment
       if (u.kind === "run") child.stdin?.write(frame(4, Buffer.from(JSON.stringify(u.spec))));
+      // the file helper is told its one operation as its first line, the same way: never on its command line, in a file or in its environment
+      if (files) child.stdin?.write(JSON.stringify(u.spec) + "\n");
       if (rest.length) child.stdin?.write(rest);
       sock.pipe(/** @type {any} */ (child.stdin)); /** @type {any} */ (child.stdout).pipe(sock);
       sock.resume();

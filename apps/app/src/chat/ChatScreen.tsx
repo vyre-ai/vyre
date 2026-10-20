@@ -51,6 +51,7 @@ import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
+import { sampleGroups, sampleNow } from "../models/mock-models.js";
 import { LinkSuggestion } from "../../screens/chat-tools/LinkSuggestion";
 import { FilesPane } from "../../screens/chat-tools/FilesPane";
 import { readDraft, writeDraft } from "./drafts";
@@ -386,11 +387,9 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
-      if (why) setNote(why);
-      else {
-        att.clear();
-        if (/^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
-      }
+      // A send the box did not take stays in the thread as "Not sent", with its reason, Retry and Delete (store.ts), so the composer lets go of it either way.
+      att.clear();
+      if (!why && /^\/later\b/i.test(body.trim())) later.noteFromSend(body.trim());
     },
     [store, editing, actions, replyTo, highlights, att, later],
   );
@@ -657,9 +656,11 @@ export function ChatScreen(p: ChatScreenProps) {
           onCancelEdit={() => setEditing(null)}
           people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant", doing: "Waiting on your answer" }, { name: "kit", family: "assistant", doing: "Working on Northwind Bakery" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
           records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Juniper Studio intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
-          models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this computer", fit: 61 }] : []}
-          model={realComposer ? realComposer.model : "fast"}
+          models={realComposer ? realComposer.models : allowsMock() ? sampleGroups() : null}
+          model={realComposer ? realComposer.model : sampleNow()}
           onModel={realComposer?.onModel}
+          effort={realComposer?.effort}
+          onEffort={realComposer?.onEffort}
           slots={answerSlots}
           peopleOnly={peopleChat}
           onLocalCommand={(name) => {

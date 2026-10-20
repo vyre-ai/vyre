@@ -38,7 +38,7 @@ export const userNameOf = uid => `ag${uid}`;
 /**
  * @typedef {{ createUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   removeUser(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
- *   startScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
+ *   startScreen(u: { agentId: string, user: string, uid: number, display: number, name?: string }): Promise<void>,
  *   stopScreen(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   wipeAgentHome(u: { agentId: string, user: string, uid: number, display: number }): Promise<void>,
  *   screenTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string): Promise<void>,
@@ -46,6 +46,7 @@ export const userNameOf = uid => `ag${uid}`;
  *   terminalTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, session: string): Promise<void>,
  *   runTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, spec: { argv: string[], cwd?: string, env?: Record<string, string> }): Promise<void>,
  *   exec?(u: { agentId: string, user: string, uid: number, display: number }, req: { argv: string[], cwd?: string, env?: Record<string, string>, stdin?: string, timeoutMs?: number }): Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string, truncated: boolean }>,
+ *   fsTicket?(u: { agentId: string, user: string, uid: number, display: number }, ticket: string, spec: any): Promise<void>,
  *   terminals?(u: { agentId: string, user: string, uid: number, display: number }): Promise<Array<{ name: string, windows: number }>> }} Ctl
  */
 
@@ -103,7 +104,7 @@ export class AgentUsers {
       if (r.state === "live") { this.touchNow(id); return this.row(id); }
       this.set(id, { state: "waking", last_active: this.now() });
       this.emit("computer.agent-waking", { agent: id });
-      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }); }
+      try { await this.ctl.startScreen({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display, name: r.agent_name }); }
       catch (e) { this.set(id, { state: "asleep" }); throw e; }
       this.set(id, { state: "live", woke_at: this.now(), last_active: this.now() });
       this.emit("computer.agent-live", { agent: id });
@@ -145,6 +146,14 @@ export class AgentUsers {
     if (typeof this.ctl.exec !== "function") throw new Error("this computer cannot run commands as an agent");
     this.touchNow(id);
     return this.ctl.exec({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, req);
+  }
+
+  /** Register a one-use ticket for one file operation in this agent's home (its folder in Files). The screen need not be up, and this does not wake it or keep it awake: the folder is there while the agent sleeps. @param {string} id @param {string} ticket @param {any} spec */
+  async fsTicket(id, ticket, spec) {
+    const r = this.row(id);
+    if (!r) throw new Error(`${id} has no place on this computer yet`);
+    if (typeof this.ctl.fsTicket !== "function") throw new Error("this computer cannot open an agent's folder");
+    await this.ctl.fsTicket({ agentId: id, user: userNameOf(r.uid), uid: r.uid, display: r.display }, ticket, spec);
   }
 
   /** The agent's terminals (tmux sessions; they outlive the screen). @param {string} id */

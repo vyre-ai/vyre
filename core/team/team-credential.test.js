@@ -122,9 +122,39 @@ test("a duty runs as the person who turned it on, on their own account, never on
   assert.equal(JSON.parse(String(run.opts || "{}")).runas, ADA, "acting as her");
   const launched = await until(() => launches().find((/** @type {any} */ l) => Array.isArray(l.argv) && l.argv.includes(req.thread)), "her duty session's launch");
   assert.equal(launched.oauth, false, "NEGATIVE: the filler's picked sign-in (the owner's) is not in her duty's session");
-  // a duty with nobody stored (made before duties kept a person) is the owner's own setting, as before
+  // a duty with nobody stored (made before duties kept a person, missed by the upgrade) runs as no one: Rule 2, it is held when it fires and nothing is queued, never as the owner's automation
   put("d0old002", null);
   d.events.emit("watchers", "watcher.fired", { name: "duty-design-d0old002", items: 1, seen: 1, trigger: "schedule" });
-  const old = await until(() => db.prepare("SELECT asker FROM team_requests WHERE from_label = ?").get("duty:d0old002"), "the older duty's request");
-  assert.equal(old.asker, "automation");
+  const held = await until(() => { const r = db.prepare("SELECT enabled, held FROM team_duties WHERE id = ?").get("d0old002"); return r && r.held ? r : null; }, "the older duty to be held");
+  assert.equal(held.enabled, 0, "paused");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM team_requests WHERE from_label = ?").get("duty:d0old002").n, 0, "NEGATIVE: nothing queued for it");
+});
+
+test("Rule 2: team.ask with no person on the call is refused and queues nothing; a queued request with nobody behind it starts no session; the owner's own call runs as before", { timeout: 150_000 }, async t => {
+  const { tool, project, d } = await boot(t);
+  const OWNER = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" });
+  const ownerToken = { token: (await d.kernel.surfaces.open(ownerChain, {})).token };
+  const db = d.registry.deps.db;
+  const tm = await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
+  const count = () => db.prepare("SELECT COUNT(*) n FROM team_requests").get().n;
+
+  // a call whose chain names nobody (a surface label with no person proved): refused in words, nothing queued, never run on the standing thread as the owner's
+  const before = count();
+  const nobody = await d.registry.call("team.ask", { to: "design", project: project.record, text: "redesign the intake" }, "cli", {});
+  assert.equal(nobody.error && nobody.error.code, "denied", JSON.stringify(nobody));
+  assert.match(nobody.error.message, /No person asked for this, so no agent was started\. Ask from your own signed-in Vyre\. Nothing was queued\./);
+  assert.equal(count(), before, "NEGATIVE: nothing queued");
+
+  // a request queued before Vyre recorded who asked (no asker), ahead of the owner's: it fails in words and starts no session
+  db.prepare("INSERT INTO team_requests (id, teammate, project, from_kind, from_label, text, priority, state, attempt, created_at) VALUES (?,?,?,?,?,?,?,'queued',1,?)")
+    .run("r_old00001", tm.agent, db.prepare("SELECT project FROM team_teammates WHERE agent = ?").get(tm.agent).project, "session", "an old session", "check the copy", "urgent", Date.now() - 60_000);
+  // the owner's own direct call (the owner first on its chain): runs on the standing thread, as before
+  const mine = await d.registry.call("team.ask", { to: "design", project: project.record, wait: true, text: 'vyre team.done {"result":"owner","notes":"unchanged","reason":"test"}' }, "deck", ownerToken);
+  assert.equal(mine.error, undefined, JSON.stringify(mine.error));
+  assert.equal(db.prepare("SELECT asker FROM team_requests WHERE id = ?").get(mine.data.request).asker, OWNER);
+  const old = await until(() => { const r = db.prepare("SELECT state, result, thread FROM team_requests WHERE id = ?").get("r_old00001"); return r && r.state !== "queued" && r.state !== "running" ? r : null; }, "the old request to close");
+  assert.equal(old.state, "failed");
+  assert.match(String(old.result), /No person asked for this, so no agent was started\./);
+  assert.equal(old.thread, null, "NEGATIVE: no session was started for it");
 });

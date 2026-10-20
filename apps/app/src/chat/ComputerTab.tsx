@@ -21,7 +21,7 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
     if (!who) return null;
     const r = await agentComputer.status(who);
     if (!live.current) return null;
-    if ("view" in r) { setView(r.view); setProblem(""); return r.view; }
+    if ("view" in r) { setView(r.view); setProblem(r.problem ?? ""); return r.view; }
     setProblem(r.problem);
     return null;
   }, [who]);
@@ -30,9 +30,12 @@ export function ComputerTab({ agents, onLeave }: { agents: readonly string[]; /*
   const settle = async (tries = 3) => { for (let i = 0; i < tries && live.current; i++) { await new Promise((r) => setTimeout(r, 4000)); const v = await load(); if (v && v.state !== "waking") return; } };
   const act = async (fn: () => Promise<string | null>, follow?: boolean) => {
     setBusy(true); setProblem("");
+    // a first start shows its own words while the computer is made and boots
+    if (follow && view?.first) setView({ ...view, state: "waking" });
     const why = await fn();
     setBusy(false);
-    if (why) { setProblem(why); return; }
+    // a failed start goes back to what the server says (so Wake is there to try again), with the reason over it
+    if (why) { await load(); setProblem(why); return; }
     await load();
     if (follow) void settle();
   };

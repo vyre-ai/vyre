@@ -8,6 +8,8 @@
  * assistant) turns it on, so a proposal can never run, spend or act.
  */
 import crypto from "node:crypto";
+import { MADE_BEFORE } from "../../lib/own-account.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 
 export const DUTIES_MIGRATION = `CREATE TABLE team_duties (
   id TEXT PRIMARY KEY, teammate TEXT NOT NULL, project TEXT NOT NULL, role TEXT NOT NULL, watcher TEXT NOT NULL,
@@ -22,6 +24,25 @@ export const TITLE_MAX = 60;
 export const DUTIES_TITLE_MIGRATION = `ALTER TABLE team_duties ADD COLUMN title TEXT`;
 /** The person a duty runs as: who made it running, or who turned it on or changed what it does. Its requests are queued as them and run on their own AI account; none (an older duty, a call with no person) is the owner's setting. */
 export const DUTIES_RUNAS_MIGRATION = `ALTER TABLE team_duties ADD COLUMN run_as TEXT`;
+/** Why a duty is held off with no one to run as: "made_before" (on upgrade it had no run_as and nothing shows the owner made it). Cleared when a person turns it on as themselves. */
+export const DUTIES_HELD_MIGRATION = `ALTER TABLE team_duties ADD COLUMN held TEXT`;
+
+/**
+ * The upgrade for duties made before Vyre recorded who a duty runs as (no run_as). Rule 2: none runs as the owner by default. One whose own row shows the owner made it (created_by is one of the owner's own
+ * socket surfaces, lib/person-surfaces.js: cli, local, deck or capsule, the caller label the registry set when it was made, never an input, and the labels the kernel reads as the owner's, kernel/retrofit/gates.js
+ * parseCaller) is stamped as the owner's and keeps running. Any other (a teammate's proposal someone turned on, a duty made from a paired device or over the tailnet, which may be a member's) is turned off and
+ * held with MADE_BEFORE until a person turns it on, which stamps them. With no owner to name (no kernel, an owner that cannot be read), nothing is changed: there the one person is the owner.
+ * Safe to run on every start: a stamped or held duty is not picked again. @param {any} db @param {string} owner @returns {{ stamped: string[], held: string[] }}
+ */
+export function holdUnstamped(db, owner) {
+  const out = { stamped: /** @type {string[]} */ ([]), held: /** @type {string[]} */ ([]) };
+  if (!owner) return out;
+  for (const r of /** @type {any[]} */ (db.prepare("SELECT id, created_by, enabled FROM team_duties WHERE run_as IS NULL AND held IS NULL").all())) {
+    if (PERSON_SURFACES.includes(String(r.created_by))) { db.prepare("UPDATE team_duties SET run_as = ? WHERE id = ?").run(owner, r.id); out.stamped.push(String(r.id)); }
+    else if (r.enabled) { db.prepare("UPDATE team_duties SET enabled = 0, held = 'made_before' WHERE id = ?").run(r.id); out.held.push(String(r.id)); }
+  }
+  return out;
+}
 
 /**
  * A short fingerprint of what a duty will run: its trigger, instruction and whether it acts, as stored. The approval for a
@@ -37,7 +58,7 @@ const bad = (message, code = "bad_input") => Object.assign(new Error(message), {
 const row = r => { if (!r) return r; const d = { id: String(r.id), teammate: String(r.teammate), project: String(r.project), role: String(r.role),
   watcher: String(r.watcher), trigger: String(r.trigger), instruction: String(r.instruction), act: Boolean(r.act),
   enabled: Boolean(r.enabled), started: Boolean(r.started), created_by: String(r.created_by), at: Number(r.at) };
-  return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d), run_as: r.run_as ? String(r.run_as) : null }; };
+  return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d), run_as: r.run_as ? String(r.run_as) : null, held: r.held ? MADE_BEFORE : null }; };
 
 /** @param {{ db: any, call: (tool: string, input: any) => Promise<any>, emit: (event: string, payload: any) => void, slugOf: (project: string) => Promise<string> }} deps slugOf: a project's short name for its record id, which the watchers module still keys by */
 export function duties({ db, call, emit, slugOf }) {
@@ -92,7 +113,7 @@ export function duties({ db, call, emit, slugOf }) {
       if (d.started && edited) await watchers("watchers.duty.update", { name: d.watcher, when: next.trigger, instruction: next.instruction, act: next.act });
       db.prepare("UPDATE team_duties SET trigger = ?, instruction = ?, act = ? WHERE id = ?").run(next.trigger, next.instruction, next.act ? 1 : 0, id);
       // whoever turns it on or changes what a running one does is who it runs as from now on (null: the owner's own setting)
-      if (patch.run_as !== undefined) db.prepare("UPDATE team_duties SET run_as = ? WHERE id = ?").run(patch.run_as ? String(patch.run_as) : null, id);
+      if (patch.run_as !== undefined) db.prepare("UPDATE team_duties SET run_as = ?, held = CASE WHEN ? IS NULL THEN held ELSE NULL END WHERE id = ?").run(patch.run_as ? String(patch.run_as) : null, patch.run_as ? String(patch.run_as) : null, id);
       if (next.enabled !== d.enabled) {
         const after = { ...d, ...next };
         if (next.enabled) { if (d.started) await watchers("watchers.duty.resume", { name: d.watcher }); else await start(after); }
@@ -132,6 +153,14 @@ export function duties({ db, call, emit, slugOf }) {
         out.push({ duty: d.id, trigger: d.trigger, items: fresh.map(x => x.it) });
       }
       return out;
+    },
+    /** Turn off a running duty that has no one to run as (made before Vyre recorded it) and say why: it waits for a person to turn it on as themselves (Rule 2). Its watcher keeps filing; nothing runs. */
+    hold(id) {
+      const d = must(id);
+      if (d.run_as) return d;
+      db.prepare("UPDATE team_duties SET enabled = 0, held = 'made_before' WHERE id = ?").run(d.id);
+      changed(d, "off");
+      return must(id);
     },
     /** Every duty of a teammate goes with it when the teammate is retired for good (undo of a fresh one). */
     async removeAll(agent) { for (const d of db.prepare("SELECT id FROM team_duties WHERE teammate = ?").all(agent)) await this.remove(String(d.id)).catch(() => {}); },

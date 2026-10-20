@@ -127,7 +127,8 @@ test("a Flow's AI step runs on a member's own Claude sign-in, with her token in 
     assert.ok(launches("MARK-d3").length >= 1);
     assert.ok(launches("MARK-d3").every(l => l.got === sha(BEN_TOKEN)), "every try was on his own sign-in");
     assert.deepEqual(keyCalls, [], "no fall back to his OpenRouter key");
-    const cards = await until(async () => { const l = await K.gateway.ask.list(chain(BEN), { state: ["waiting", "ready", "working", "needs_check"] }); const c = l.filter((/** @type {any} */ x) => String(x.title).includes(EXPIRED_WORDS)); return c.length ? c : null; }, "his card");
+    // the card is the one every failing main account gets (kernel/flows/runs-as.js): "Your <account> for <Flow> is signed out or its key no longer works"; the step itself keeps the sign-in's own words
+    const cards = await until(async () => { const l = await K.gateway.ask.list(chain(BEN), { state: ["waiting", "ready", "working", "needs_check"] }); const c = l.filter((/** @type {any} */ x) => /^Your .+ for .+ is signed out or its key no longer works$/.test(String(x.title))); return c.length ? c : null; }, "his card");
     assert.equal(cards[0].doer.id, BEN, "the card is his");
   });
 });
