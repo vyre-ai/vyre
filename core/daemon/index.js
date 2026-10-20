@@ -1469,7 +1469,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (socket && people && !policy.caller && !shell.model && /^(cli|local)$/.test(caller) && carried(req.headers)) {
     const t = terminalOf ? await terminalOf(req.socket).catch(() => null) : null;
     const key = t && typeof t === "object" ? t.key : t;
-    const c = key ? people.check({ headers: req.headers, node: `cli:${key}`, method: req.method, path: url.pathname + url.search, raw: "" }) : null;
+    // A session made by username and password (`vyre signin`, core/signin) is pinned to the node `cli:password`, which needs no terminal login: it is what a server in a container has, where no terminal can be read.
+    const check = (/** @type {string} */ node) => people.check({ headers: req.headers, node, method: req.method, path: url.pathname + url.search, raw: "" });
+    const c = (key ? check(`cli:${key}`) : null) || (carried(req.headers) ? check("cli:password") : null);
     if (c && c.ok && c.kind === "cli") { cliSession = true; via.person = { id: c.id, kind: "cli" }; }
   }
   caller = shell.caller;

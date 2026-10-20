@@ -15,6 +15,10 @@
 // that left the login (setsid, a daemon) gets no login key. Same uid does not help: the key is a property of the process tree, not of the file or the user.
 
 import { newPrefixedId } from "../../lib/id.js";
+import { loginService } from "../../lib/login-door.js";
+
+/** The node a password-made command-line session is pinned to (core/daemon reads it beside the terminal login key). */
+export const PASSWORD_NODE = "password";
 
 const ASK_MS = 5 * 60_000;
 /** One new ask per this long, so a terminal cannot nag the owner's phone. */
@@ -116,8 +120,37 @@ export default {
       run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
         need();
         const key = loginKey(meta && meta.terminal);
-        if (!key) throw refuse(needsTerminal(), "no_terminal");
-        return { ended: ctx.cliSessions.end(key) };
+        // A terminal the daemon cannot read (a container's) holds only a password session: sign-out ends that one.
+        if (!key) return { ended: ctx.cliSessions.end(PASSWORD_NODE) };
+        return { ended: ctx.cliSessions.end(key) + ctx.cliSessions.end(PASSWORD_NODE) };
+      },
+    });
+
+    // ---- password sign-in (v0.6.5, "password only"): the space door, from the terminal ----
+    // `vyre signin` types the username and password at the terminal and runs the SAME door the app does (kernel/identity/space-login.js): the daemon hands out the salt, the KDF and a one-use challenge,
+    // the CLI derives K itself (Argon2id, in its own process) and signs the challenge, and the daemon checks the signature against the login public key. The password and K never reach the daemon.
+    // A good answer starts a person session pinned to the node `cli:password` (not to a terminal login: a container cannot read one). It counts, as every command-line session does, only for a cli or local
+    // label that is not inside a model (core/daemon), and only for the home's owner: a member's password gives nothing here.
+    const door = () => { const svc = loginService(); if (!svc) throw refuse("This computer has no space address to sign in to. Sign in from the Vyre app, or use `vyre signin` on your server.", "unavailable"); return svc; };
+    const nameOf = (/** @type {any} */ i) => String(i && i.username || "").trim().toLowerCase();
+    ctx.tool("signin.password.begin", {
+      description: "Step 1 of a terminal sign-in with the space's username and password: the salt, the KDF and a one-use challenge. Same answer whether or not the name exists.",
+      input: obj({ username: { type: "string" } }, ["username"]),
+      callers: ["cli", "local"],
+      run: async (/** @type {any} */ i) => { need(); const r = door().begin({ username: nameOf(i) }, "terminal"); if (r.error) throw refuse(r.error.message, r.error.code); return { ...r, space: String((ctx.config && ctx.config.name) || "") }; },
+    });
+    ctx.tool("signin.password.finish", {
+      description: "Step 2: the signed challenge. On a good signature from the home's owner, this terminal holds a person session until `vyre signout` or 30 days unused. Every failure is the same answer.",
+      input: obj({ username: { type: "string" }, challenge: { type: "string" }, sig: { type: "string" } }, ["username", "challenge", "sig"]),
+      callers: ["cli", "local"],
+      run: async (/** @type {any} */ i) => {
+        need();
+        const r = await door().finish({ username: nameOf(i), challenge: String(i.challenge || ""), sig: String(i.sig || ""), device: { label: "command line" } }, "terminal");
+        if (r.error) throw refuse(r.error.message, r.error.code);
+        // The door says who the username is; a command-line session is the owner's only.
+        if (r.role !== "owner") throw refuse("That username and password do not match.", "bad_login");
+        const s = ctx.cliSessions.start(PASSWORD_NODE);
+        return { token: s.token, expires: s.expires };
       },
     });
 
