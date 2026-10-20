@@ -52,7 +52,10 @@ export { Avatar, AvatarStack, SpaceMark, kindOf, badgePx } from "./components/Av
 export type { AvatarKind, AvatarRef, AvatarSize } from "./components/Avatar";
 export type AvatarFamily = import("./components/Avatar").AvatarKind;
 export { markRef, spaceRef } from "./marks/useMark";
-export { usePersonLooks } from "./marks/usePersonLooks";
+export { usePersonLooks, usePersonPhoto, photoCache } from "./marks/usePersonLooks";
+export { PhotoCropSheet } from "./components/PhotoCropSheet";
+export type { CropPick, Crop } from "./components/PhotoCropSheet";
+export { PHOTO_SIDE, PHOTO_MAX_BYTES, QUALITIES, outputSide, base64Bytes, nextQuality, stripMeta, sniff } from "./components/photo-crop-model.js";
 export { IconTile } from "./components/IconTile";
 export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";

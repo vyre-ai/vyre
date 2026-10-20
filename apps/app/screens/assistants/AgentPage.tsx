@@ -216,7 +216,7 @@ export function LookSheet({ a, open, onClose, onSaved, person, onSave }: { a: Ag
   return (
     <Sheet open={open} onClose={onClose} title={person ? "Your look" : `How ${a.name} looks`}>
       <View className="gap-s4">
-        <View className="items-center"><Avatar of={markRef(person ? "person" : "agent", a.name, undefined, look)} size={56} /></View>
+        <View className="items-center"><Avatar of={markRef(person ? "person" : "agent", a.name, undefined, look)} size={56} face /></View>
         <AgentLookPicker shape={v.shape} color={v.color} parts={v.parts} onChange={(p) => setV((x) => ({ ...x, ...p }))} onPart={(key, value) => setV((x) => ({ ...x, parts: { ...x.parts, [key]: value } }))} />
         {problem ? <Banner tone="warn">{problem}</Banner> : null}
         <View className="flex-row justify-end gap-s2"><Button kind="ghost" label="Cancel" onPress={onClose} /><Button kind="primary" label={busy ? "Saving" : "Save"} disabled={busy} onPress={save} /></View>
