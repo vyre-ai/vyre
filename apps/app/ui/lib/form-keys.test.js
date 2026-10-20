@@ -80,8 +80,12 @@ test("every first-run and sign-in step is a FlowStep, which wires Enter to its p
   for (const screen of ["id.name", "id.signin", "id.signin.spaces", "id.create", "id.password", "join.link", "create.kind"]) {
     const at = first.indexOf(`if (screen === "${screen}")`);
     assert.ok(at > 0, screen);
-    assert.match(first.slice(at, at + 900), /<FlowStep [^]*primary=\{\{/, `${screen} draws a FlowStep with a primary`);
+    // the two sign-in steps are the views in SignInSteps.tsx (the gallery draws them too), which are FlowSteps with a primary
+    const sign = screen === "id.signin" || screen === "id.signin.spaces";
+    assert.match(first.slice(at, at + 1100), sign ? /<(SignInStep|SpacesStep) [^]*onSubmit=\{/ : /<FlowStep [^]*primary=\{\{/, `${screen} draws a FlowStep with a primary`);
   }
+  const steps = src("../../screens/first-run/SignInSteps.tsx");
+  assert.equal((steps.match(/<FlowStep [^]*?primary=\{\{/g) || []).length, 2, "both sign-in views are a FlowStep with a primary");
   // the welcome's Space field has the caret on the web, and its round arrow goes on with Enter
   const welcome = src("../../screens/first-run/Welcome.tsx");
   assert.match(welcome, /accessibilityLabel: "Space name", autoFocus: Platform\.OS === "web"/);
