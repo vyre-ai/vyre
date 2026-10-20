@@ -72,3 +72,18 @@ test("a photo is one small picture: over 200 KB, not base64, or not WebP, JPEG o
   assert.equal(ok.data.mime, "image/webp", "200 KB is the limit, not over it");
   assert.equal(await code(R.update(as(BOB), T, ok.id, { mime: "text/html" }, ok.version)), "not_allowed", "changed to another kind");
 });
+
+test("the records module's own sweep may remove a photo, and nothing else: not a profile, not a change; another service with the same grant may not", async () => {
+  const { k, as, R } = await rig();
+  const grants = [{ prefix: "*/*", actions: ["records.read"] }, { prefix: "member-photo/*", actions: ["records.read", "records.remove", "records.update"] }, { prefix: "member-profile/*", actions: ["records.read", "records.remove", "records.update"] }];
+  const records = k.kernelFor({ name: "records", needs: { kernel: { grants } } });
+  const other = k.kernelFor({ name: "notes", needs: { kernel: { grants } } });
+  // each module's grant is written as it is made: a call through its handle waits for it (the rule, not a missing grant, is what is tested here)
+  for (const h of [records, other]) await h.records.query(h.serviceChain(), "member-profile", { page: { limit: 1 } });
+  const pic = await R.create(as(BOB), T, { person: BOB, image: PIC, mime: "image/jpeg", bytes: 12 });
+  const prof = await R.create(as(BOB), "member-profile", { person: BOB, name: "Bob" });
+  assert.equal(await code(R.update(records.serviceChain(), T, pic.id, { image: "" }, pic.version)), "not_allowed", "a change");
+  assert.equal(await code(R.remove(records.serviceChain(), "member-profile", prof.id, prof.version)), "not_allowed", "a profile");
+  assert.equal(await code(R.remove(other.serviceChain(), T, pic.id, pic.version)), "not_allowed", "another service");
+  assert.equal(await code(records.records.remove(records.serviceChain(), T, pic.id, pic.version)), null, "the sweep removes a photo");
+});

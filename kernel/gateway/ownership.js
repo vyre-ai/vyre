@@ -154,9 +154,11 @@ export async function mayWrite(chain, type, row, patch, ctx) {
  */
 function mayWriteProfile(chain, row, patch, ctx, photo = false) {
   if (ctx.op === "remove" && ctx.trusted) return true;
+  // the records module's own sweep removes a photo no profile names (core/records-tools/photo-sweep.js): a remove, of a photo, by that one service hop, and nothing else
+  const hops = actorsOf(chain);
+  if (photo && ctx.op === "remove" && hops.length === 1 && hops[0].kind === "service" && hops[0].id === "records") return true;
   // exactly one hop, the person's own: a person calling through a module, a hook, a Flow step or an agent carries a service or agent hop and is refused
-  const acting = actorsOf(chain);
-  const me = acting.length === 1 && acting[0].kind === "person" ? acting[0] : null;
+  const me = hops.length === 1 && hops[0].kind === "person" ? hops[0] : null;
   if (!me) throw no("a profile is changed only by its person, from their own device. A module, a Flow or an agent cannot change it.");
   const person = String(me.id), p = patch && typeof patch === "object" ? patch : {};
   if (photo && p.image != null && p.image !== "" && !(typeof p.image === "string" && p.image.length <= PHOTO_B64_MAX && /^[A-Za-z0-9+/]+={0,2}$/.test(p.image))) throw no("a profile photo is one small picture of at most 200 KB. Pick it again on your profile page.");

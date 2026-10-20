@@ -24,6 +24,7 @@ import { withMe, withOwner } from "./me.js";
 import { seesNote } from "../../lib/note-share.js";
 import { registerQuick, quickFieldsOf, mergeOut, splitIn, bagInQuery, bagOf } from "./quick.js";
 import { nextRef, refNumber, refPrefix, formatRef, mintRef } from "./ref.js";
+import { startPhotoSweep } from "./photo-sweep.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -411,6 +412,8 @@ export default {
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
     ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
-    return { async stop() {} };
+    // the Space's profile photos that no profile names any more are removed now and then, under this module's own service chain (photo-sweep.js)
+    const sweep = ctx.kernel && ctx.kernel.records && typeof ctx.kernel.serviceChain === "function" ? startPhotoSweep(ctx.kernel, (/** @type {string} */ m) => { if (typeof ctx.log === "function") ctx.log(m); }) : null;
+    return { async stop() { if (sweep) sweep.stop(); } };
   },
 };
