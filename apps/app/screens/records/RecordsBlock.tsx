@@ -75,6 +75,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);
   const [panelId, setPanelId] = useState<string | null>(null);
+  // The gallery's picture of a record open beside the list (props.openFirst): opens the first row once the list is here. Nothing in the app sets it.
+  const openFirst = Boolean(b.props?.openFirst);
+  const firstUrn = (world?.byType?.[type] ?? [])[0]?.urn;
+  useEffect(() => { if (openFirst && firstUrn) setPanelId((cur) => cur ?? String(firstUrn)); }, [openFirst, firstUrn]);
   // A layout the person picked in the switcher; until then the named view's own layout stands.
   const [picked, setPicked] = useState<ViewKind | null>(null);
   const [making, setMaking] = useState(false);
@@ -205,8 +209,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {access.admin ? <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} /> : null}
     </View>
   );
+  // The panel sits in a row beside the list (SidePanel): the list keeps its own header and toolbar, the record has its own.
   return (
-    <View className="min-h-0 flex-1">
+    <View className={phone ? "min-h-0 flex-1" : "min-h-0 flex-1 flex-row"}>
+    <View className="min-h-0 min-w-0 flex-1">
     {frame(phone ? vd.plural : "Records", <>
       {!phone ? (
         <>
@@ -324,6 +330,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       <NewViewSheet open={making} preset={preset} onClose={() => { setMaking(false); setPreset(undefined); }} types={world.types} type={type} space={space} canShare={canShare}
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
     </>, { own: true, onRefresh: reload })}
+    </View>
     {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
       {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn || null)} /> : null}
     </SidePanel> : null}

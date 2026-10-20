@@ -2,6 +2,13 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.4
+
+- fix(records): a record opened from a list sits in a row beside the list (SidePanel is a box in the flow with its own width, at most half the row) instead of laid over the list's header and toolbar. New picture: records-side-panel.
+- fix(records): a project's page no longer shows its short name, Drive folder, memory scope or stage track (ids and JSON the kernel writes); they are the project type's bookkeeping in ui/records/logic.js.
+- fix(shell): the account at the foot of the sidebar reads the name this computer has when the server holds no identity of its own (the Mac app on a server's address), so it shows the person's name, not "You" and the Space's name.
+- fix(files): a folder opens from this device's last copy and is read behind it, the listing and the folder names lookup each have a time limit, and a folder that does not answer says so with a Try again, never four loading rows for ever.
+
 ## 0.6.3
 
 - feat(vault): an item's page has Used with, the hosts its secrets may go to (read with vault.use.find, changed with vault.use.set; the hosts written on the item stay, the ones you allow can be removed), next to its plain fields and Allowed in scripts. No second store. Merged the train's placeholder review fixes with the simple Vault; the four reds of run 39350707365 fixed in place: vault.templates and vault.template.suggest in the presence list, hooks.flow tools in the door's owner list, the web-address bind in kernel/flows/runner.js back to its size, the web-address approver check reads roleAtLeast, and read-tools.generated.js named as a tool-name list.

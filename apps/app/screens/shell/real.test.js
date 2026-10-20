@@ -40,6 +40,14 @@ test("the person is their identity on this box, and a missing identity still sho
   assert.equal(none.spaces.length, 1);
 });
 
+test("a box with no identity of its own shows the name this computer has, never You", { skip: !strip }, async () => {
+  const { pickIdentity, meFrom } = await import("./real-model.ts");
+  const host = { exists: true, name: "sam.vyre.run", label: "Sam" };
+  assert.deepEqual(meFrom(pickIdentity(null, host)), { name: "Sam", sub: "sam.vyre.run", vyreName: "sam.vyre.run" });
+  assert.equal(pickIdentity({ name: "devbox.vyre.run" }, host)?.name, "devbox.vyre.run", "the box's own wins");
+  assert.equal(pickIdentity(null, null), null);
+});
+
 test("a space still being created says so, and an empty box has only All spaces", { skip: !strip }, async () => {
   const { shellSource } = await import("./real-source.ts");
   const m = await import("./real-model.ts");
