@@ -13,7 +13,7 @@ import { createAgentd } from "./agentd-server.js";
 import { callAgentd } from "./agentd-client.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
-const U = { user: "ag20003", uid: 20003, display: 23 };
+const U = { user: "ag20003", uid: 20003, display: 23, name: "" };
 const T1 = "a".repeat(32), T2 = "b".repeat(40);
 
 async function world(t, o = {}) {

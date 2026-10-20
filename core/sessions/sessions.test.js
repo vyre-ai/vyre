@@ -1432,6 +1432,9 @@ for (const driver of ["cli", "sdk"]) {
     const saved = process.env.VYRE_OPENROUTER_URL;
     process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
     t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
+    // A home with no inference door (a development file key, no sealing process): the kernel is on by default now, so a home built here has the door, and an API-key turn then goes through it as the person the turn is
+    // for (0104de03, door-wire; test/door-wire-daemon.test.js). This test is the direct path, under VYRE_LEGACY_DIRECT_MODEL.
+    { const fk = process.env.VYRE_KERNEL_FILE_KEY; process.env.VYRE_KERNEL_FILE_KEY = "1"; t.after(() => { if (fk === undefined) delete process.env.VYRE_KERNEL_FILE_KEY; else process.env.VYRE_KERNEL_FILE_KEY = fk; }); }
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value", "or-key": "sk-or" } });
     const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Fallback", kind: "api-key", vault_item: "or-key" });
     assert.equal(acct.error, undefined, JSON.stringify(acct));

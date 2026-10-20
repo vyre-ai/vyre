@@ -388,6 +388,7 @@ shardTest("a paired device opens a chat's stream over the peer wire: frames for 
 
 shardTest("PS-A, real daemon: a web device with a software session may open a chat's stream, but a call that needs presence is refused over the same wire", async t => {
   const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software", realPresence: true });
+  enrolDevice(f.w.d); // a hardware phone is enrolled, so presence applies: with no presence device enrolled the owner's own call passes by design (core/presence noPresenceDevice, owner's ruling 19 Oct), and a web session's software key never counts
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const k = f.w.d.kernel;

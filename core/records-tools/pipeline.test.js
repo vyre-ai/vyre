@@ -37,5 +37,7 @@ test("a move writes through the same update as records.update, so the ID cannot 
   assert.doesNotMatch(src, /records\.update\(/, "the move has no write of its own");
   const idx = readFileSync(new URL("./index.js", import.meta.url), "utf8");
   assert.match(idx, /registerPipeline\(\{[^}]*update: applyUpdate/);
-  assert.match(idx, /A record's ID is made when the record is made and never changes/);
+  assert.match(idx, /idOnUpdate\(inPatch/, "the one update refuses an ID in the patch");
+  const ref = readFileSync(new URL("./ref.js", import.meta.url), "utf8");
+  assert.match(ref, /A record's ID is made when the record is made and never changes/);
 });

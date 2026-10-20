@@ -176,7 +176,10 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
     // the turn's end and the book's row are two events: wait (bounded) for the placement instead of reading it once
     await until(async () => where() === "mac", "the owner's next turn is back on their own computer, with no move by hand", 15_000);
     assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
-    { const said = await lastSaid(); assert.match(said, new RegExp(`bob round ${round}`)); assert.match(said, new RegExp(`carol round ${round}`), "back on the computer, the turn starts from what the chat held, her turn included"); }
+    // A switch hands over the whole conversation (core/switchboard/carry.js, da3ae6a2), and this fake Claude echoes its whole prompt, so the echo grows turn on turn and the chat's text event is cut at 20,000 characters
+    // (translate.js): the end of it, Bob's words, is cut off. What the computer was given is read from the stored transcript instead, which holds the lines whole: a line with Bob's words and Carol's turn both in it.
+    { const both = async () => (await r.home.view(th.id).transcript(1, 1_000_000)).map((/** @type {any} */ e) => String(e.line)).some((/** @type {string} */ l) => l.includes(`bob round ${round}`) && l.includes(`carol round ${round}`));
+      await until(both, `back on the computer, bob round ${round}'s turn starts from what the chat held, her turn included`, 15_000); }
   }
 
 
