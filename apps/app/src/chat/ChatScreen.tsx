@@ -68,6 +68,9 @@ import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 import { secureSecrets } from "./secure-paste.js";
+import { whoOfChat } from "../../screens/chats/who-model.js";
+import type { WhoKind } from "../../screens/chats/who-model.js";
+import { openWho } from "../../screens/chats/who-open";
 import { GIVE_UP_MS, idle as idleAwaiting, moved as movedAwaiting, refused as refusedAwaiting, sent as sentAwaiting, workingLine, type Awaiting } from "./working-model.js";
 import { useAttachments } from "./useAttachments";
 import { useAttachDrop } from "./useAttachDrop";
@@ -94,6 +97,8 @@ export type ChatScreenProps = {
   /** Under the header, above the transcript (the session's computer card). */
   belowHeader?: React.ReactNode;
   autoFocusComposer?: boolean;
+  /** The name or avatar in the title was pressed: open that who's side pane (WhoPane). Without it the shell's registered opener is used, else the pane opens as a page. */
+  onOpenWho?: (kind: WhoKind, id: string) => void;
   handlers?: Partial<BlockCtx>;
   composer?: Partial<ComposerProps>;
   onKey?: (t: number) => void;
@@ -403,7 +408,10 @@ export function ChatScreen(p: ChatScreenProps) {
       const body = withQuotes(text, highlights);
       setHighlights([]);
       setAwaiting(sentAwaiting(meta.state));
-      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
+      const sendP = (o && (o.to.length || o.fanout)) || parent ? store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
+      // Your own message always brings the transcript to the newest row, even when you had scrolled up (the optimistic row is there already).
+      { const last = store.rows()[store.rows().length - 1]; if (last) setJump((j) => ({ key: last.key, n: (j?.n ?? 0) + 1 })); }
+      const why = await sendP;
       // A send the box did not take stays in the thread as "Not sent", with its reason, Retry and Delete (store.ts), so the composer lets go of it either way.
       att.clear();
       if (why) setAwaiting(refusedAwaiting());
@@ -433,6 +441,7 @@ export function ChatScreen(p: ChatScreenProps) {
     ...(p.sampleGroup ? [{ id: "per_sam", name: "Sam Reyes", family: "person" as const }, { id: "assistant:scout", name: "scout", family: "assistant" as const }] : [])];
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
+  const who = whoOfChat(faces, viewerId, p.sessionId);
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   // What kind of chat this is decides the side panel's tabs and what /threads opens.
   const others = faces.filter((f) => f.id !== viewerId);
@@ -527,7 +536,7 @@ export function ChatScreen(p: ChatScreenProps) {
   );
   const body = (
     <View onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); setThreadW((o) => (Math.abs(o - w) > 8 ? w : o)); }} style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
+      <ChatHeader onOpenWho={who ? () => (p.onOpenWho ?? ((k: WhoKind, i: string) => openWho(k, i, (path) => router.push(path as never))))(who.kind, who.id) : undefined} title={agentTitle || head.title} sub={agentTitle ? threadSub(head.title, agentNames[0]) : undefined} participants={faces} viewer={viewerId} phone={phone} onBack={p.onBack} onOpen={togglePanel} project={chatProject.current && chatProject.current.slug !== "general" ? chatProject.current : null}
         place={<PlacementSwitch placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         menu={[
           { label: "Details", onPress: () => { setPanelTab("details"); setPanel("root"); } },
