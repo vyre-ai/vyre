@@ -36,7 +36,7 @@ const THEMES = [{ name: "dark", scheme: "dark" }, { name: "paper", scheme: "ligh
 // agent-routines and watcher-card (0.6.4) keep their dark picture only, from the start, for the same budget.
 const PAPER_SKIP = new Set(["agent-routines", "watcher-card", "setup-type-editing", "setup-field-seal", "design-changes", "setup-field-link", "setup-field-choice", "setup-field-errors", "setup-field-access", "record-page", "setup-field-new", "markdown", "assistant-access",
   // the simple Vault (20 Oct 2026): five new families, dark only, so the references stay under 12 MB
-  "vault-mine", "vault-shared", "vault-add", "vault-paste", "vault-advanced"]);
+  "records-side-panel", "vault-mine", "vault-shared", "vault-add", "vault-paste", "vault-advanced"]);
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");

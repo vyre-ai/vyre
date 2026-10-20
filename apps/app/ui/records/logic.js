@@ -7,8 +7,11 @@ import { isKeptField } from "./record-id.js";
 
 const blank = (/** @type {any} */ v) => v == null || (typeof v === "string" && !v.trim()) || (Array.isArray(v) && !v.length);
 
-/** A type's own bookkeeping fields, kept by the service that owns the type: nobody's to read or fill. The task's are the planner's (records/core-types.js). */
-const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({ task: new Set(["planner", "wall", "floating", "source"]) });
+/** A type's own bookkeeping fields, kept by the service that owns the type: nobody's to read or fill. The task's are the planner's; a project's are the addresses the kernel writes (its short name, Drive folder and memory scope hold ids, the stage track is JSON) (records/core-types.js). */
+const BOOKKEEPING = /** @type {Record<string, Set<string>>} */ ({
+  task: new Set(["planner", "wall", "floating", "source"]),
+  project: new Set(["slug", "drive_path", "memory_scope", "template_stage", "template_snapshot", "template_version"]),
+});
 
 /**
  * A field that is the system's own, not a person's: removed from view (hidden), the fast-field bag (`extra`, JSON text), hidden from every role down to the owner (hidden_from, as the task's planner bookkeeping is), or a type's own bookkeeping. A field hidden from some roles only is

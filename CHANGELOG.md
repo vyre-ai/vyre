@@ -15,6 +15,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - feat(app): on unlock, a Space the person owns in the directory that the app's list lacks, and that a paired server says is its name, is added back with its pairing and listed (host-core.js ensureOwned). It is not selected.
 - fix(app): typing the name of a Space you own ("harbor" or harbor.vyre.run) in Join a Space adds it as your own Space (owner, with the server this app already paired with, selected and listed), not a member join. A Space you own with no pairing says what to do next.
 - fix(app): Make a new Space and Join a Space opened from the Space menu have Cancel on the first step and Back on every other; Escape does the same (FlowStep).
+- fix(records): a record opened from a list sits in a row beside the list (SidePanel is a box in the flow with its own width, at most half the row) instead of laid over the list's header and toolbar. New picture: records-side-panel.
+- fix(records): a project's page no longer shows its short name, Drive folder, memory scope or stage track (ids and JSON the kernel writes); they are the project type's bookkeeping in ui/records/logic.js.
+- fix(shell): the account at the foot of the sidebar reads the name this computer has when the server holds no identity of its own (the Mac app on a server's address), so it shows the person's name, not "You" and the Space's name.
+- fix(files): a folder opens from this device's last copy and is read behind it, the listing and the folder names lookup each have a time limit, and a folder that does not answer says so with a Try again, never four loading rows for ever.
 
 ## 0.6.3
 

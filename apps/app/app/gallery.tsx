@@ -7,6 +7,7 @@ import { AgentComputerPane, ConversationHeader, ConversationList, NewAgentDialog
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
+import { RecordsBlock } from "../screens/records/RecordsBlock";
 import fx from "../screens/vault/real-box.fixture.json";
 import skillsFx from "../screens/skills/real-box.fixture.json";
 import { RealSkills } from "../screens/skills/RealSkills";
@@ -143,6 +144,7 @@ function Sample({ name }: { name: string }) {
   if (name === "record-form") return <RecordFormDemo />;
   if (name === "record-form-errors") return <RecordFormDemo tried values={{ title: "", kind: "Real estate" }} />;
   if (name === "record-page") return <RecordPageDemo />;
+  if (name === "records-side-panel") return <RecordsBlock b={{ k: "r", props: { page: true, openFirst: true }, data: { records: { type: "project" } } }} />;
   if (name === "import-1") return <ImportDemo start={0} />;
   if (name === "import-2") return <ImportDemo start={1} />;
   if (name === "import-3") return <ImportDemo start={2} />;

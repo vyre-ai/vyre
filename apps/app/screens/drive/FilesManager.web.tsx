@@ -22,6 +22,10 @@ import { ComputerPage } from "./ComputerPage";
 import { canDrop, carriesFiles, dropTarget, dropWords, plan, progressLine } from "./drop-model.js";
 import { Thumb } from "./Thumb";
 import { warm } from "./preload";
+import { LIST_MS, SLOW_WORDS, filesKey, packRows, pickRows } from "./files-keep.js";
+import { withTimeout } from "../../src/real/with-timeout.js";
+import { viewCache } from "../../src/state/cache";
+import { useSpaces } from "../shell/state";
 import { FileContextMenu } from "./FileContextMenu";
 import { actOn, boxSelect, copyName, editCalls, fileMenu } from "./file-menu-model.js";
 import { DRAG_TYPE, carriesRows, dragWords, movedLine, plan as movePlan, takesMoves } from "./move-model.js";
@@ -88,6 +92,7 @@ function Manager({ wide }: { wide: boolean }) {
   const [waking, setWaking] = useState(false);
   const placeNow = useRef(place);
   placeNow.current = place;
+  const keptRows = useRef(new Map<string, FileRow[]>());
 
   // the roots (linked folders and box shares) and the open place are shared with the sidebar tree (files-nav.ts)
   useEffect(loadRoots, [loadRoots]);
@@ -101,12 +106,24 @@ function Manager({ wide }: { wide: boolean }) {
   // the open folder
   const load = useCallback((p: string) => {
     const pp = parsePlace(p);
-    setErr(""); setRows(null);
+    // The last copy of this folder draws at once (this visit's, else the device's) and the box is read behind it; only a first open shows the loading rows.
+    setErr(""); setRows(keptRows.current.get(p) ?? null);
+    const key = filesKey(useSpaces.getState().space, p);
+    if (!keptRows.current.has(p)) void viewCache.get(key).then((raw) => { const k = pickRows(raw); if (k && placeNow.current === p && !keptRows.current.has(p)) { keptRows.current.set(p, k); setRows((cur) => cur ?? k); } }).catch(() => {});
     if (p === "recent") { loader.recent().then(setRows).catch((e) => { setErr(say(e)); setRows([]); }); return; }
     if (!pp) { setRows([]); return; }
     if (pp.root === "linked" && !pp.link) { setRows(folders.map((f) => ({ key: `linked:${f.id}`, place: `linked:${f.id}`, root: "linked" as const, name: f.name, dir: true, kind: "folder" as const, size: 0, modified: f.at, link: f.id, path: "" }))); return; }
     if (pp.root === "box" && !pp.share) { setRows((status?.shares ?? []).map((s) => ({ key: `box:${s.name}`, place: `box:${s.name}`, root: "box" as const, name: s.name, dir: true, kind: "folder" as const, size: 0, modified: 0, share: s.name, path: "" }))); return; }
-    const rowsOf = () => loader.rows(p).then((r) => { setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] }))); }).catch((e) => { setErr(say(e)); setRows([]); });
+    const rowsOf = () => withTimeout(loader.rows(p), LIST_MS).then((r) => {
+      if (placeNow.current !== p) return;
+      keptRows.current.set(p, r); void viewCache.set(key, packRows(r)).catch(() => {});
+      setRows(r); setKids(p, r.filter((x) => x.dir).map((x) => ({ id: x.place, label: x.name, root: x.root, kids: [] })));
+    }).catch((e) => {
+      if (placeNow.current !== p) return;
+      // a copy already on screen stays (the folder is only not refreshed); with none, the screen says why and offers a retry, never loading rows for ever
+      if (keptRows.current.has(p)) { showToast(say(e)); return; }
+      setErr((e as { code?: string })?.code === "server_offline" ? SLOW_WORDS : say(e)); setRows([]);
+    });
     const folder = pp.root === "space" ? agentFolderOf(pp.path) : null;
     if (!folder) { setWaking(false); rowsOf(); return; }
     const open = () => driveTool<{ state?: string; note?: string; can?: string }>("files.agent.open", { path: folder }).then((r) => {

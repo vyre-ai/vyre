@@ -35,6 +35,9 @@ export function meFrom(i: IdentityRow | null | undefined): Me {
   return { name, sub: addr || (i?.pending ? "Setting up" : ""), vyreName: addr };
 }
 
+/** The identity to show: the box's own when it has one, else this computer's (a page on a server's address has none on the box, yet the person has a name). */
+export const pickIdentity = (box: IdentityRow | null | undefined, host: IdentityRow | null | undefined): IdentityRow | null => (box && (box.name || box.label) ? box : host && (host.name || host.label) ? host : box ?? null);
+
 export const shellFrom = (rows: SpaceRow[], i: IdentityRow | null | undefined): ShellData => ({ me: meFrom(i), spaces: spacesFrom(rows) });
 
 /** The space the shell opens on: All spaces when there is more than one, else the only space. */

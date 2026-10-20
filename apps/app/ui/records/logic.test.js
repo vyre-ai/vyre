@@ -125,6 +125,9 @@ test("a field is internal, locked, or a person's", () => {
   assert.equal(isInternalField({ name: "wall", kind: "text" }, "task"), true);
   assert.equal(isInternalField({ name: "wall", kind: "text" }, "contact"), false, "only the task's own bookkeeping");
   assert.equal(isInternalField({ name: "title", kind: "text" }, "task"), false);
+  for (const n of ["slug", "drive_path", "memory_scope", "template_snapshot"]) assert.equal(isInternalField({ name: n, kind: "text" }, "project"), true, `a project's ${n} holds an id, never shown`);
+  assert.equal(isInternalField({ name: "slug", kind: "text" }, "contact"), false, "only the project's own addresses");
+  assert.equal(isInternalField({ name: "name", kind: "text" }, "project"), false);
   assert.equal(isLockedField({ name: "status", owned_by: "kernel" }), true);
   assert.equal(isLockedField({ name: "ref", read_only: true }), true);
   assert.equal(isLockedField({ name: "total", computed: { expr: "1" } }), true);
