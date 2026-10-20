@@ -10,6 +10,7 @@
 
 import { StepFail } from "./runner-faults.js";
 import { runsOnProblem } from "./schema.js";
+import { modelErrorKind, FALLBACK_KINDS, kindWords } from "../../lib/model-errors.js";
 
 export const NO_ACCOUNT = "Connect an AI account to run this Flow";
 
@@ -23,14 +24,21 @@ export async function makerOf(store, id) {
 /** The person a Flow version's AI turns are for: Runs on's person, else the maker, else the approver. @param {any} store @param {any} view { id, flow, approver } */
 export async function runsAsOf(store, view) {
   const set = view && view.flow && view.flow.runs_on;
-  if (set && typeof set.person === "string" && set.person) return set.person;
+  if (set && typeof set.person === "string" && set.person) return set.person;   // (the main and fallback accounts are that person's own: kernel/flows/runs-as.js settleRunsOn)
   const maker = view && view.id ? await makerOf(store, view.id) : null;
   if (maker) return maker;
   return view && view.approver && view.approver.kind === "person" ? String(view.approver.id) : null;
 }
 
+/** A Flow's AI accounts as { main, fallback }, each { account, provider?, model? } or null; the first form ({ account, provider }) is the main account. @param {any} r */
+export function accountsOf(r) {
+  const pick = (/** @type {any} */ x) => (x && typeof x.account === "string" ? { account: x.account, ...(x.provider ? { provider: String(x.provider) } : {}), ...(x.model ? { model: String(x.model) } : {}) } : null);
+  if (!r || typeof r !== "object") return { main: null, fallback: null };
+  return { main: pick(r.main) || pick(r.account ? { account: r.account, provider: r.provider } : null), fallback: pick(r.fallback) };
+}
+
 /**
- * Settle a new version's Runs on before it is stored. Returns { flow } with runs_on settled, or { errors }.
+ * Settle a new version's AI accounts (Runs on) before it is stored. Returns { flow } with runs_on settled, or { errors }. Stored as { person, main?, fallback? }.
  * @param {{ before: any, flow: any, by: any, id: string | null, store: any, isOwner: (person: string) => Promise<boolean>, accountOk?: (q: { person: string, account: string, provider?: string }) => Promise<boolean> }} o
  */
 export async function settleRunsOn(o) {
@@ -41,16 +49,19 @@ export async function settleRunsOn(o) {
   const no = (/** @type {string} */ path, /** @type {string} */ message) => ({ errors: [{ path, message }] });
   const bad = runsOnProblem(asked);
   if (bad) return no("runs_on", bad);
-  // the same account as before (with or without the person): unchanged
-  if (was && asked.account === was.account && asked.provider === was.provider && (asked.person === undefined || asked.person === was.person)) return { flow: { ...o.flow, runs_on: was } };
+  const want = accountsOf(asked);
+  // the same accounts as before (with or without the person): unchanged
+  if (was && JSON.stringify(want) === JSON.stringify(accountsOf(was)) && (asked.person === undefined || asked.person === was.person)) return { flow: { ...o.flow, runs_on: was } };
   if (!o.by || o.by.kind !== "person") return no("runs_on", "only a person sets what a Flow runs on, for themselves");
   const me = String(o.by.id);
   if (asked.person !== undefined && asked.person !== me) return no("runs_on.person", "Runs on is always your own account: a Flow cannot be set to run on someone else's");
   const maker = (o.id ? await makerOf(o.store, o.id) : null) || me;
   if (maker !== me && !(await o.isOwner(me))) return no("runs_on", "only the person who made this Flow, or the owner for themselves, changes what it runs on");
-  if (asked.account !== undefined && !(o.accountOk && (await o.accountOk({ person: me, account: asked.account, ...(asked.provider ? { provider: asked.provider } : {}) }).catch(() => false))))
-    return no("runs_on.account", "that is not one of your own AI accounts");
-  return { flow: { ...o.flow, runs_on: { person: me, ...(asked.account !== undefined ? { account: asked.account } : {}), ...(asked.provider !== undefined ? { provider: asked.provider } : {}) } } };
+  for (const [slot, x] of /** @type {[string, any][]} */ ([["main", want.main], ["fallback", want.fallback]])) {
+    if (x && !(o.accountOk && (await o.accountOk({ person: me, account: x.account, ...(x.provider ? { provider: x.provider } : {}) }).catch(() => false))))
+      return no(`runs_on.${slot}.account`, "that is not one of your own AI accounts");
+  }
+  return { flow: { ...o.flow, runs_on: { person: me, ...(want.main ? { main: want.main } : {}), ...(want.fallback ? { fallback: want.fallback } : {}) } } };
 }
 
 /**
@@ -67,8 +78,10 @@ export async function runsAsChecked(store, ctx) {
 }
 
 /**
- * One model call of a step, as the Flow's runs-as person, on their account. With no `model` port (an in-memory kernel in a test) the kernel's own model door is called as the run's chain, as before.
- * @param {{ ports: any, k: any, store: any, ctx: any, chain: any, alert: (title: string, form: any, idem: string) => Promise<any>, purpose: string, max_tokens: number, messages: any[], day: string }} o
+ * One model call of a step, as the Flow's runs-as person, on their main account, or on their fallback account when the main one is out of credits, rate limited, signed out or not answering (the host's port
+ * decides, core/daemon/flow-model.js, by lib/model-errors.js). The answer says which account answered and why (`answered`), and the runs-as person gets one card a day while the main account fails.
+ * With no `model` port (an in-memory kernel in a test) the kernel's own model door is called as the run's chain, as before.
+ * @param {{ ports: any, k: any, store: any, ctx: any, chain: any, alert: (title: string, form: any, idem: string) => Promise<any>, purpose: string, max_tokens: number, messages: any[], day: string, model?: string }} o
  */
 export async function modelCall(o) {
   const { ctx } = o;
@@ -77,18 +90,29 @@ export async function modelCall(o) {
     return o.k.model.call({ chain: o.chain, purpose: o.purpose, provider: m.provider, model: m.model, max_tokens: o.max_tokens, messages: o.messages });
   }
   const who = await runsAsChecked(o.store, ctx);
-  const set = ctx.view.flow.runs_on || {};
+  const set = accountsOf(ctx.view.flow.runs_on);
+  const name = ctx.view.flow.label || ctx.view.flow.name;
+  /** The card that says the main account is failing, once a day per Flow. @param {string} label @param {string | null} kind */
+  const failing = (label, kind) => o.alert(`Your ${label} for ${name} ${kindWords(kind)}`, { kind: "ai_account_failing", flow: ctx.run.flow, run: ctx.run.id, why: kind }, `main-failing:${ctx.run.flow}:${o.day}`).catch(() => {});
   try {
     // the run's own chain goes to the door (its first person is the runs-as person, checked above), so the door's record shows the Flow run
-    return await o.ports.model({ person: who, chain: o.chain, ...(set.account ? { account: set.account } : {}), ...(set.provider ? { provider: set.provider } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, run: ctx.run.id });
+    const r = await o.ports.model({ person: who, chain: o.chain, ...(set.main ? { main: set.main } : {}), ...(set.fallback ? { fallback: set.fallback } : {}), ...(o.model ? { model: o.model } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, run: ctx.run.id });
+    if (r && r.answered && r.answered.which === "fallback") await failing(String(r.answered.main_label || "main AI account"), r.answered.main_kind || null);
+    return r;
   } catch (e) {
-    const code = e && /** @type {any} */ (e).code;
+    const x = /** @type {any} */ (e) || {}, code = x.code;
     if (code === "no_account" || code === "no_credential") {
-      const name = ctx.view.flow.label || ctx.view.flow.name;
       // the runs-as person (the approver, checked above) is told once a day per Flow, in the Needs-you list
-      await o.alert(`${name}: ${code === "no_account" ? NO_ACCOUNT : String(/** @type {any} */ (e).message)}`, { kind: "no_ai_account", flow: ctx.run.flow, run: ctx.run.id }, `no-account:${ctx.run.flow}:${o.day}`).catch(() => {});
-      throw new StepFail(code, code === "no_account" ? NO_ACCOUNT : String(/** @type {any} */ (e).message));
+      await o.alert(`${name}: ${code === "no_account" ? NO_ACCOUNT : String(x.message)}`, { kind: "no_ai_account", flow: ctx.run.flow, run: ctx.run.id }, `no-account:${ctx.run.flow}:${o.day}`).catch(() => {});
+      throw new StepFail(code, code === "no_account" ? NO_ACCOUNT : String(x.message));
     }
+    const kind = modelErrorKind(x);
+    if (kind && FALLBACK_KINDS.includes(kind) && x.account_label) await failing(String(x.account_label), kind);
     throw e;
   }
+}
+
+/** What the step's log keeps of who answered: the account's name, its provider, main or fallback, and why the fallback answered. Never a key. @param {any} a */
+export function answeredBy(a) {
+  return { account: String(a.label || ""), provider: String(a.provider || ""), which: a.which === "fallback" ? "fallback" : "main", ...(a.which === "fallback" ? { why: `Main ${kindWords(a.main_kind || null).replace(/^is /, "was ")}, so the fallback answered` } : {}) };
 }

@@ -3,32 +3,43 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runsOnChoices, runsOnLine, withRunsOn } from "./runs-on-model.js";
+import { AI_ACCOUNTS_LINE, aiChoices, hasAiStep, pickWords, storedAccounts, withAccounts } from "./runs-on-model.js";
 
 const ACCOUNTS = [
   { id: "k1", provider: "openrouter", kind: "api-key", label: "My OpenRouter" },
-  { id: "k2", provider: "openai-compatible", kind: "api-key", label: "My OpenAI" },
-  { id: "l1", provider: "codex", kind: "login", label: "My Codex" },
-  { id: "k3", provider: "claude", kind: "api-key", label: "My Anthropic key" },
+  { id: "l1", provider: "codex", kind: "login", label: "My Codex", signed_in_at: 5 },
+  { id: "l2", provider: "claude", kind: "login", label: "Not signed in", needs: "sign-in" },
   { id: "k4", provider: "openrouter", kind: "api-key", label: "Not finished", pending: true },
   { id: "default", provider: "claude", kind: "login", label: "Default", synthetic: true },
 ];
 
-test("Runs on offers only the viewer's own finished API key accounts a Flow's AI step can use", () => {
-  assert.deepEqual(runsOnChoices(ACCOUNTS).map((c) => c.id), ["k1", "k2"]);
-  assert.deepEqual(runsOnChoices(/** @type {any} */ (null)), []);
+test("the AI accounts tab shows only for a Flow with an AI step, wherever the step sits", () => {
+  assert.equal(hasAiStep({ steps: [{ id: "f", kind: "find" }] }), false);
+  assert.equal(hasAiStep({ steps: [{ id: "k", kind: "classify", labels: ["a", "b"] }] }), true);
+  assert.equal(hasAiStep({ steps: [{ id: "d", kind: "decide", if: "x", then: [{ id: "e", kind: "extract", fields: [] }], else: [] }] }), true);
+  assert.equal(hasAiStep(null), false);
 });
 
-test("the line says what it runs on now, in plain words", () => {
-  const c = runsOnChoices(ACCOUNTS);
-  assert.equal(runsOnLine(undefined, c), "Its AI steps run on the default key of the person who made it.");
-  assert.equal(runsOnLine({ person: "per_a" }, c), "Its AI steps run on the default key of the person it runs as.");
-  assert.equal(runsOnLine({ person: "per_a", account: "k2" }, c), "Its AI steps run on your account My OpenAI.");
-  assert.equal(runsOnLine({ person: "per_b", account: "zz" }, c), "Its AI steps run on an account of the person it runs as.");
+test("the choices are the viewer's own finished accounts, sign-ins and keys of every provider", () => {
+  assert.deepEqual(aiChoices(ACCOUNTS).map((c) => c.id), ["k1", "l1"]);
+  assert.deepEqual(aiChoices({ accounts: ACCOUNTS }).map((c) => c.id), ["k1", "l1"]);
+  assert.deepEqual(aiChoices(null), []);
 });
 
-test("picking an account sends the account and provider only: the server sets the person to whoever saves", () => {
-  const f = withRunsOn({ name: "x", steps: [], runs_on: { person: "per_someone", account: "old" } }, { id: "k1", provider: "openrouter", label: "My OpenRouter" });
-  assert.deepEqual(f.runs_on, { account: "k1", provider: "openrouter" });
+test("what is stored is read back, the first form as the main account, and said in plain words", () => {
+  const c = aiChoices(ACCOUNTS);
+  assert.deepEqual(storedAccounts({ runs_on: { person: "per_a", account: "k1", provider: "openrouter" } }), { main: { account: "k1", provider: "openrouter" }, fallback: null });
+  const both = storedAccounts({ runs_on: { person: "per_a", main: { account: "k1", model: "x/y" }, fallback: { account: "l1" } } });
+  assert.deepEqual(both, { main: { account: "k1", model: "x/y" }, fallback: { account: "l1" } });
+  assert.equal(pickWords(both.main, c), "My OpenRouter, x/y");
+  assert.equal(pickWords({ account: "theirs" }, c), "An account of the person it runs as");
+  assert.equal(pickWords(null, c), "Your default AI account");
+  assert.equal(AI_ACCOUNTS_LINE, "Runs on these accounts no matter who or what starts it.");
+});
+
+test("saving sends the picks only: the server sets the person to whoever saves, and a fallback that is the main one is dropped", () => {
+  const f = withAccounts({ name: "x", steps: [], runs_on: { person: "per_someone", account: "old" } }, { account: "k1", provider: "openrouter", model: "x/y" }, { account: "l1", provider: "codex" });
+  assert.deepEqual(f.runs_on, { main: { account: "k1", provider: "openrouter", model: "x/y" }, fallback: { account: "l1", provider: "codex" } });
   assert.equal(/** @type {any} */ (f).name, "x");
+  assert.deepEqual(withAccounts({}, { account: "k1" }, { account: "k1" }).runs_on, { main: { account: "k1" } });
 });

@@ -132,6 +132,11 @@ test("a Flow's AI step runs through the door as the person it runs as, on that p
     assert.equal(theirs.ok, false, JSON.stringify(theirs)); assert.match(JSON.stringify(theirs.errors), /not one of your own AI accounts/);
     const named = await svc.define(chain(BEN), { id: df.id, flow: triage("bens_triage", "case two", { runs_on: { person: OWNER, account: BEN_ACCT2 } }) });
     assert.equal(named.ok, false); assert.match(JSON.stringify(named.errors), /someone else's/);
+    // nor as the main or the fallback of the AI accounts tab
+    for (const runs_on of [{ main: { account: OWNER_ACCT, provider: "openrouter" } }, { main: { account: BEN_ACCT, provider: "openrouter" }, fallback: { account: OWNER_ACCT, provider: "openrouter" } }]) {
+      const r = await svc.define(chain(BEN), { id: df.id, flow: triage("bens_triage", "case two", { runs_on }) });
+      assert.equal(r.ok, false, JSON.stringify(r)); assert.match(JSON.stringify(r.errors), /not one of your own AI accounts/);
+    }
     const second = await svc.define(chain(BEN), { id: df.id, flow: triage("bens_triage", "case two b", { runs_on: { account: BEN_ACCT2, provider: "openrouter" } }) });
     assert.ok(second.ok, JSON.stringify(second));
     await svc.approve(chain(BEN), { id: df.id, version: second.version, hash: second.hash });

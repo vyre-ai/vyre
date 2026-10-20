@@ -20,7 +20,7 @@ test("Runs on is the writer's own account: stamped with them, refused for someon
   const w = await aiWorld(async () => ({ content: "refund" }));
   const d = await w.runner.define(null, classify({ runs_on: { account: "k-alex", provider: "openrouter" } }), ALEX);
   assert.ok(d.ok, JSON.stringify(d));
-  assert.deepEqual((await w.store.getVersion(d.id, d.version)).flow.runs_on, { person: ALEX.id, account: "k-alex", provider: "openrouter" }, "the person is the writer, never what was sent");
+  assert.deepEqual((await w.store.getVersion(d.id, d.version)).flow.runs_on, { person: ALEX.id, main: { account: "k-alex", provider: "openrouter" } }, "the person is the writer, never what was sent");
   const other = await w.runner.define(d.id, classify({ runs_on: { person: BOB.id, account: "k-alex" } }), ALEX);
   assert.equal(other.ok, false); assert.match(JSON.stringify(other.errors), /cannot be set to run on someone else's/);
   const notMine = await w.runner.define(d.id, classify({ runs_on: { account: "k-bob" } }), ALEX);
@@ -29,7 +29,7 @@ test("Runs on is the writer's own account: stamped with them, refused for someon
   assert.equal(bobs.ok, false); assert.match(JSON.stringify(bobs.errors), /only the person who made this Flow, or the owner for themselves/, "someone who did not make it cannot move it to their account");
   const kept = await w.runner.define(d.id, classify({ label: "Triage 2" }), BOB);
   assert.ok(kept.ok, JSON.stringify(kept));
-  assert.deepEqual((await w.store.getVersion(d.id, kept.version)).flow.runs_on, { person: ALEX.id, account: "k-alex", provider: "openrouter" }, "an edit that leaves it out keeps it");
+  assert.deepEqual((await w.store.getVersion(d.id, kept.version)).flow.runs_on, { person: ALEX.id, main: { account: "k-alex", provider: "openrouter" } }, "an edit that leaves it out keeps it");
   const viaAgent = await w.runner.define(d.id, classify({ runs_on: { account: "k-bob" } }), { kind: "agent", id: "research", space: ALEX.space });
   assert.equal(viaAgent.ok, false, "an assistant never sets it");
 });
@@ -76,10 +76,11 @@ test("a model step asks the host as the runs-as person, on the account Runs on n
   assert.equal(run.state, "done", JSON.stringify(run.error));
   assert.equal(run.steps.k.output.label, "refund");
   assert.equal(asked.length, 1);
-  assert.deepEqual([asked[0].person, asked[0].account, asked[0].provider, asked[0].purpose], [ALEX.id, "k-alex", "openrouter", "classify"]);
-  // the door is called as the run's own chain, so its record shows the Flow run: the runs-as person first, then the automation hop
+  assert.deepEqual([asked[0].person, asked[0].main.account, asked[0].main.provider, asked[0].purpose], [ALEX.id, "k-alex", "openrouter", "classify"]);
+  assert.deepEqual(run.steps.k.output.answered_by, undefined, "a port that says nothing of who answered adds nothing");
+  // the door is called as the run's own chain, so its record shows the Flow run: the runs-as person and the automation hop (the host checks the person comes first: core/daemon/flows-host.js)
   const hops = asked[0].chain.hops.map((/** @type {any} */ h) => h.actor);
-  assert.deepEqual([hops[0].kind, hops[0].id], ["person", ALEX.id]);
+  assert.ok(hops.some((/** @type {any} */ a) => a.kind === "person" && a.id === ALEX.id), JSON.stringify(hops));
   assert.ok(hops.some((/** @type {any} */ a) => a.kind === "automation" && a.id === d.id), JSON.stringify(hops));
 });
 
@@ -143,4 +144,55 @@ test("an owner approves a member's Flow with no Runs on: the model step AND an a
   const tasks = await w.kernel.allTasks();
   for (const title of ["Draft the reply", "Check the reply", "Do the reply"]) assert.ok(!tasks.some((/** @type {any} */ t) => t.title === title), `no task was made for "${title}", so no agent was woken on the approver's account`);
   assert.notEqual(runs.person.error && runs.person.error.code, "runs_as", "a task with no agent in it is not this rule's business");
+});
+
+test("main and fallback are both the saver's own: stamped with them, refused for someone else's, the fallback checked like the main one", async () => {
+  const w = await aiWorld(async () => ({ content: "refund" }));
+  const ACC = { per_alex: ["k-alex", "k-alex-2"], per_bob: ["k-bob"] };
+  const ok = async (/** @type {any} */ q) => (/** @type {any} */ (ACC)[q.person] || []).includes(q.account);
+  w.runner.ports.accountOk = ok;
+  const d = await w.runner.define(null, classify({ runs_on: { main: { account: "k-alex", model: "x/main" }, fallback: { account: "k-alex-2", model: "x/back" } } }), ALEX);
+  assert.ok(d.ok, JSON.stringify(d));
+  assert.deepEqual((await w.store.getVersion(d.id, d.version)).flow.runs_on, { person: ALEX.id, main: { account: "k-alex", model: "x/main" }, fallback: { account: "k-alex-2", model: "x/back" } });
+  const theirs = await w.runner.define(d.id, classify({ runs_on: { main: { account: "k-alex" }, fallback: { account: "k-bob" } } }), ALEX);
+  assert.equal(theirs.ok, false); assert.match(JSON.stringify(theirs.errors), /runs_on.fallback.account.*not one of your own/);
+  const bobs = await w.runner.define(d.id, classify({ runs_on: { main: { account: "k-bob" } } }), BOB);
+  assert.equal(bobs.ok, false, "a member who did not make it cannot move it to her account"); assert.match(JSON.stringify(bobs.errors), /only the person who made this Flow/);
+  const same = await w.runner.define(d.id, classify({ runs_on: { main: { account: "k-alex" }, fallback: { account: "k-alex" } } }), ALEX);
+  assert.equal(same.ok, false, "the fallback is another account");
+});
+
+test("the step's run log says which account answered and why the fallback did; the runs-as person gets one card a day while the main one fails", async () => {
+  const w = await aiWorld(async () => ({ content: "refund", answered: { which: "fallback", label: "Grok key", provider: "openai-compatible", main_label: "Claude sign-in", main_kind: "credits" } }));
+  const d = await install(w, { ...classify(), steps: [{ id: "k", kind: "classify", input: "refund please", labels: ["refund", "other"], model: "x/step" }] });
+  for (const key of ["c1", "c2"]) await w.runner.start(d.id, {}, w.kernel.as(ALEX), key).catch(() => null);
+  await settle(w);
+  const runs = await w.runner.listRuns({ flow: d.id });
+  assert.equal(runs.length, 2);
+  for (const run of runs) {
+    assert.equal(run.state, "done", JSON.stringify(run.error));
+    assert.deepEqual(run.steps.k.output.answered_by, { account: "Grok key", provider: "openai-compatible", which: "fallback", why: "Main was out of credits, so the fallback answered" });
+  }
+  const cards = (await w.kernel.allTasks()).filter((/** @type {any} */ t) => t.title === "Your Claude sign-in for Triage is out of credits");
+  assert.equal(cards.length, 1, "one card a day, however many runs");
+  assert.equal(cards[0].doer.id, ALEX.id);
+});
+
+test("an AI step's own model goes to the port, for the main account", async () => {
+  /** @type {any[]} */ const asked = [];
+  const w = await aiWorld(async (q) => { asked.push(q); return { content: "refund" }; });
+  const d = await install(w, { ...classify(), steps: [{ id: "k", kind: "classify", input: "refund please", labels: ["refund", "other"], model: "x/step" }] });
+  await w.runner.start(d.id, {}, w.kernel.as(ALEX), "m").catch(() => null);
+  await settle(w);
+  assert.equal(asked[0].model, "x/step");
+});
+
+test("when the main account fails with a kind a fallback could help and none answers, the step fails and the card still says so", async () => {
+  const w = await aiWorld(async () => { throw Object.assign(new Error("OpenRouter answered 402: no credits"), { kind: "credits", status: 402, account_label: "My key" }); });
+  const d = await install(w, classify());
+  await w.runner.start(d.id, {}, w.kernel.as(ALEX), "f").catch(() => null);
+  await settle(w);
+  const run = (await w.runner.listRuns({ flow: d.id }))[0];
+  assert.equal(run.state, "failed");
+  assert.ok((await w.kernel.allTasks()).some((/** @type {any} */ t) => t.title === "Your My key for Triage is out of credits"));
 });
