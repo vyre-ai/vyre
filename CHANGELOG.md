@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## 0.6.5
+
+- perf(settings): Settings, Agents and Flows open from a kept copy. A new hook, apps/app/src/state/kept.ts (rules in kept.js, tests in kept.test.js), draws this Space's last answer in the first frame, reads behind it and replaces it in place; a read past 20 seconds ends in a plain error with Try again unless a copy is showing. Used by the Flows list, Agents, Account and recovery, What my agents can see, Privacy and sealing, Updates and Notifications. The Flows list asks the project names and the list together, the Flow page no longer reads the whole list (one graph call per Flow) to find its own row, and a Flow opened again draws at once. Notifications switches move at once and go back with the reason on a refusal. Agents holds the list until it knows who is asking, so a row never shows and then goes. Devices and the Vault list stop waiting after 20 seconds, show Try again, and use the steady loading rows; a device's spaces no longer show a raw id, and the Settings list leaves a wider gap between its groups.
+
 ## 0.6.4
 
 - fix(computers): one docker events stream for the module's life. The watcher was opened inside the sweep timer, so every tick added a stream; the proxy allows four and answered 429, and the server ran hot retrying. Reconnects now close the old request first, run one at a time, back off with jitter to a minute, and log only when the reason changes.

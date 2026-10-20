@@ -1,5 +1,6 @@
 // The Flows list from the real vyred (flows.list, with each Flow's trigger line from flows.graph). The switch pauses and resumes a Flow (a person's own call).
 import { useEffect, useState } from "react";
+import { useKept } from "../../src/state/kept";
 import { openEngineer } from "../engineer/openEngineer";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
@@ -16,24 +17,24 @@ import { PlaceTag } from "../../src/real/PlaceTag";
 export function RealFlows() {
   const router = useRouter();
   const phone = usePhone();
-  const [flows, setFlows] = useState<RealFlow[] | null>(null);
-  const [err, setErr] = useState("");
+  const kept = useKept<RealFlow[]>("flows", listReal, "Flows did not answer.");
+  const flows = kept.data;
+  const err = kept.err;
   const [wish, setWish] = useState("");
   const att = attentionSource(callT);
   const [rows, setRows] = useState<AttentionRow[]>([]);
   const [why, setWhy] = useState<{ run: string; text: string } | null>(null);
-  const loadRows = () => { void att.list().then(setRows); };
+  const loadRows = () => { void att.list().then(setRows).catch(() => {}); };
   useEffect(loadRows, []);
   const answer = async (run: string, action: "retry" | "skip" | "stop" | "advance", reason?: string) => {
     const o = await att.settle(run, action, reason);
     if (o.message) showToast(o.message);
-    if (o.refresh) { setWhy(null); loadRows(); load(); }
+    if (o.refresh) { setWhy(null); loadRows(); kept.reload(); }
   };
-  const load = () => { setErr(""); listReal().then(setFlows).catch((e) => setErr(e instanceof Error ? e.message : "Flows did not answer.")); };
-  useEffect(load, []);
+  const load = kept.reload;
   const needsYou = (flows ?? []).filter((f) => listWaits(f) || healthRow(f).chip);
   const toggle = (f: RealFlow, on: boolean) =>
-    setPausedReal(f.id, !on).then(() => setFlows((xs) => xs && xs.map((x) => (x.id === f.id ? { ...x, paused: on ? null : "paused" } : x)))).catch((e) => showToast(e instanceof Error ? e.message : "That did not work."));
+    setPausedReal(f.id, !on).then(() => kept.put((xs) => xs && xs.map((x) => (x.id === f.id ? { ...x, paused: on ? null : "paused" } : x)))).catch((e) => showToast(e instanceof Error ? e.message : "That did not work."));
   return (
     <Frame title="Flows" sub="Jobs Vyre does on its own. When something happens, it follows the steps.">
       <PlaceTag of="showing" />

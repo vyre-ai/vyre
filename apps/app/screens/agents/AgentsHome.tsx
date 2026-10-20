@@ -1,5 +1,5 @@
 import { openFind } from "../find/FindHost";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, EmptyState, ErrorState, GroupedList, IconButton, Icon, ListHeader, LoadingState, Menu, Segmented, Sheet, SpaceTag, Text, allowsMock, listRows, markRef, showToast, useStore, useUiTheme } from "@vyre/ui";
@@ -9,6 +9,7 @@ import { PlaceTag, usePlaceText } from "../../src/real/PlaceTag";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { useSettings } from "../settings/state";
 import { AUTONOMY } from "../settings/logic.js";
+import { useKept } from "../../src/state/kept";
 import { agentDelete, agentResume, agentStop, agentsList } from "../settings/real";
 import { ageOf } from "../chats/chat-model.js";
 import { AGENT_GROUPS, agentRow, agentsDef, asRecords, byRecent, chatHas, loadGroups, newChatRoute, rowActions, saveGroups, visibleAgents } from "./home-model.js";
@@ -19,6 +20,7 @@ import { teammates } from "../teammates/teammates";
 import { assistantChatRoute, startChat } from "../../src/state/start-chat";
 
 type Row = ReturnType<typeof agentRow>;
+let meMemo: string | null = null;
 const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
 const store = () => { try { return typeof localStorage !== "undefined" ? localStorage : null; } catch { return null; } };
 
@@ -29,21 +31,23 @@ export function AgentsHome() {
   const { phone } = useUiTheme();
   const mock = allowsMock();
   const sample = useSettings();
-  const [live, setLive] = useState<any[] | null>(null);
-  const [err, setErr] = useState("");
+  const kept = useKept<any[]>("agents", agentsList, "Agents did not answer.");
+  const live = kept.data;
+  const err = kept.err;
   const [busy, setBusy] = useState<string | null>(null);
-  const [me, setMe] = useState<string>("");
+  const [meRead, setMe] = useState<string | null>(meMemo);
+  const me = meRead ?? "";
   const [confirm, setConfirm] = useState<string | null>(null);
   const st = useStore();
-  useEffect(() => { void (st.me?.() as Promise<string> | undefined)?.then((m) => setMe(String(m ?? ""))).catch(() => {}); }, [st]);
+  // who is asking is known before the list draws, so a row that is not theirs never shows and then goes
+  useEffect(() => { const done = (m: string) => { meMemo = m; setMe(m); }; const p = st.me?.() as Promise<string> | undefined; if (!p) { done(""); return; } void p.then((m) => done(String(m ?? ""))).catch(() => done("")); }, [st]);
   const [tab, setTab] = useState<"agents" | "teammates">("agents");
   const [query, setQuery] = useState("");
   const [chips, setChips] = useState<FilterChip[]>([]);
   const saved = useMemo(() => { const s = store(); return s ? loadGroups(s) : { groups: [], placed: {} }; }, []);
   const [groups, setGroups] = useState<Group[]>(saved.groups.length ? saved.groups : AGENT_GROUPS.map(([, t]) => ({ name: t })));
   const [placed, setPlaced] = useState<Record<string, string>>(saved.placed);
-  const load = useCallback(() => { setErr(""); agentsList().then(setLive).catch((e) => setErr(say(e))); }, [mock]);
-  useEffect(load, [load]);
+  const load = kept.reload;
   // Owners and admins may share and delete any agent; anyone else only the agents they made. The sample world is the owner's.
   const role = useMembers((m) => m.spaces.find((x) => x.id === m.space)?.role);
   const staff = mock || role === "owner" || role === "admin";
@@ -52,7 +56,7 @@ export function AgentsHome() {
   const persist = (g: Group[], p: Record<string, string>) => { const s = store(); if (s) saveGroups(s, { groups: g, placed: p }); };
 
   // The sample world answers the same agents.list the page reads (mock-agents.ts); only the pause and autonomy a person sets here are layered on it.
-  const agents: any[] | null = live && mock ? live.map((a) => { const x = sample.assistants.find((y) => y.name === a.name); return x ? { ...a, status: x.paused ? "stopped" : "idle", autonomy: x.autonomy } : a; }) : live;
+  const agents: any[] | null = meRead === null ? null : live && mock ? live.map((a) => { const x = sample.assistants.find((y) => y.name === a.name); return x ? { ...a, status: x.paused ? "stopped" : "idle", autonomy: x.autonomy } : a; }) : live;
   // the projects' own names, so "Works on" says Juniper Studio and not its id
   const [names, setNames] = useState<Record<string, string>>({});
   const slugs = [...new Set((agents ?? []).flatMap((a) => (Array.isArray(a.projects) ? a.projects.map(String) : [])))].join(",");

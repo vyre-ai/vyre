@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Card, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Avatar, Card, Divider, Row, Switch, Text, showToast, markRef, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useDevices } from "./state";
 import { deviceSub, spacesLine } from "./wink.js";
@@ -23,12 +23,14 @@ export function DevicesScreen() {
             <View key={d.id}>
               {i ? <Divider inset={68} /> : null}
               <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={d.name}
-                sub={<View>{deviceSub(d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer", d.last, d.software).concat(spacesLine((devSpaces[d.id] ?? []).map((s) => spaceNames[s] ?? s))).map((l, n) => <Text key={n} size="secondary" tone="label">{l}</Text>)}</View>} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
+                sub={<View>{deviceSub(d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer", d.last, d.software).concat(spacesLine((devSpaces[d.id] ?? []).map((s) => spaceNames[s] ?? "a space"))).map((l, n) => <Text key={n} size="secondary" tone="label">{l}</Text>)}</View>} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
                 chevron />
             </View>
           ))}
         </Card>
-      ) : <Card><Text tone={error ? "warn" : "muted"}>{error ?? (loading ? "Reading your devices." : "No devices. Add one to reach your spaces from it.")}</Text></Card>}
+      ) : error ? <Card flush><ErrorState title="Devices did not load" reason={error} retry={() => void load()} /></Card>
+        : loading ? <Card flush><LoadingState rows={2} /></Card>
+        : <Card><Text tone="muted">No devices. Add one to reach your spaces from it.</Text></Card>}
       <Group>
         <Card flush><Row dense title="Make it faster" sub="Let your devices talk to each other directly when they can." end={<Switch label="Make it faster" on={faster} onChange={(v) => { setFaster(v); showToast(v ? "Direct connections are on." : "Direct connections are off."); }} />} /></Card>
       </Group>

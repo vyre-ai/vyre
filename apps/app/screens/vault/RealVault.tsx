@@ -1,5 +1,6 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
+import { within } from "../../src/state/kept.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Menu, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
@@ -67,7 +68,7 @@ export default function RealVault() {
 
   const load = useCallback(() => {
     setErr("");
-    listReal().then((r) => { setRows(r.items); setLocked(r.locked && !savedOpen.current); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
+    within(listReal()).then((r) => { setRows(r.items); setLocked(r.locked && !savedOpen.current); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
     stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
   }, []);
   useEffect(load, [load]);
@@ -225,7 +226,7 @@ export default function RealVault() {
         </>}
       </View></Card> : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {!err && rows === null ? <Card flush><LoadingState rows={3} /></Card> : null}
       {!err && rows && locked ? (
         unlock === "passphrase" ? (
           <Card><View className="gap-s3">
@@ -239,7 +240,7 @@ export default function RealVault() {
       ) : null}
       {tab === "Held" ? (
         records.error && !records.data ? <Card flush><EmptyState title="Records did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
-        : records.loading && !records.data ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card>
+        : records.loading && !records.data ? <Card flush><LoadingState rows={3} /></Card>
         : <><Text size="caption" tone="label">Some fields on a record, such as a tax ID, are kept here instead. The record shows that one is on file, and an agent sees the same, never the value.</Text><Card flush>
             {held.length ? heldByRecord(held).map((g, gi) => (
               <View key={g.urn}>{gi ? <Divider /> : null}

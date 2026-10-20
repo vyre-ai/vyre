@@ -24,7 +24,8 @@ import { cancelReal, retryFromReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
-import { listReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
+import { within, saidError } from "../../src/state/kept.js";
+import { rowReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
 import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, stageLine, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
@@ -32,27 +33,32 @@ const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "pl
   waiting: { note: "Waiting on someone", tone: "accent" }, running: { note: "Running", tone: "accent" }, done: { note: "Done", tone: "ok" }, failed: { note: "Failed", tone: "warn" },
 };
 
+/** This visit's last answer per Space and Flow, so a Flow opened again draws in its first frame and the fresh answer replaces it in place. */
+const seen = new Map<string, { g: Graph; def: unknown; meta: any; runs: RunRow[]; health: { level: string; line: string } | null; row: RealFlowRow | null }>();
+
 export function RealFlow({ id }: { id: string }) {
   const router = useRouter();
   // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
   const { run: wanted } = useLocalSearchParams<{ run?: string }>();
-  const [g, setG] = useState<Graph | null>(null);
+  const spaceNow = useSpaces((s) => s.space);
+  const kept = seen.get(`${spaceNow}.${id}`);
+  const [g, setG] = useState<Graph | null>(kept?.g ?? null);
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
-  const [def, setDef] = useState<unknown>(null);
+  const [def, setDef] = useState<unknown>(kept?.def ?? null);
   const [nver, setNver] = useState<{ versions: number; active: number | null }>({ versions: 0, active: null });
-  const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(null);
+  const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; by?: unknown; title: string } | null>(kept?.meta ?? null);
   const showing = useSpaces((s) => s.space);
   const role = useMembers((s) => s.spaces.find((x) => x.id === showing)?.role);
   const [me, setMe] = useState<string | null>(null);
   useEffect(() => { tool<{ person?: string; me?: string; id?: string }>("records.me", {}).then((m) => setMe(m?.person ?? m?.me ?? m?.id ?? null)).catch(() => {}); }, []);
   const [card, setCard] = useState<FlowCard | null>(null);
-  const [runs, setRuns] = useState<RunRow[]>([]);
+  const [runs, setRuns] = useState<RunRow[]>(kept?.runs ?? []);
   const [runId, setRunId] = useState<string | undefined>(wanted ? String(wanted) : undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
   const [shrunk, setShrunk] = useState<string | null>(null);
   const [ledger, setLedger] = useState<Record<string, any> | undefined>(undefined);
   const [explain, setExplain] = useState("");
-  const [health, setHealth] = useState<{ level: string; line: string } | null>(null);
+  const [health, setHealth] = useState<{ level: string; line: string } | null>(kept?.health ?? null);
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,18 +69,19 @@ export function RealFlow({ id }: { id: string }) {
   const [runFilter, setRunFilter] = useState<"all" | "failed" | "waiting">("all");
   const [runQuery, setRunQuery] = useState("");
   const [tab, setTab] = useState<"steps" | "runs" | "settings" | "ai">("steps");
-  const [row, setRow] = useState<RealFlowRow | null>(null);
+  const [row, setRow] = useState<RealFlowRow | null>(kept?.row ?? null);
 
   useEffect(() => {
     let live = true;
     (async () => {
       try {
-        const [graph, m, rs, hl] = await Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null)]);
+        const [graph, m, rs, hl, r] = await within(Promise.all([graphReal(id), getReal(id), runsReal(id), healthReal(id).catch(() => null), rowReal(id).catch(() => null)]));
         if (!live) return;
         setHealth(hl);
-        setG(graph); setDef(m.flow ?? null); listReal().then((rows) => { const r = rows.find((x) => x.id === id); if (r) setRow(r); if (r) setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); }).catch(() => {}); setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((r) => !r.parent));
+        setG(graph); setDef(m.flow ?? null); if (r) { setRow(r); setNver({ versions: r.versions, active: r.active ? (m as any).version ?? null : null }); } setMeta({ version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }); setRuns(rs.filter((x) => !x.parent));
+        seen.set(`${showing}.${id}`, { g: graph, def: m.flow ?? null, meta: { version: m.version, hash: m.hash, status: m.status, approver: m.approver, by: m.by, title: titleOf(m.flow, id) }, runs: rs.filter((x) => !x.parent), health: hl, row: r });
         if (versionWaits(m)) setCard(await cardReal(id, m.version));
-      } catch (e) { if (live) setErr(e instanceof Error ? e.message : "Flows did not answer."); }
+      } catch (e) { if (live && !seen.has(`${showing}.${id}`)) setErr(saidError(e, "Flows did not answer.")); }
     })();
     return () => { live = false; };
   }, [id, n]);

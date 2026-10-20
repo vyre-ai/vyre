@@ -22,14 +22,16 @@ import { lockChanged, readLockMinutes, writeLockMinutes } from "../../src/shell/
 import { lockIdentity } from "../unlock/real.js";
 import { callT } from "../../src/real/call-tool";
 import { openExternal } from "../../src/shell/open-external";
+import { useKept } from "../../src/state/kept";
 import { LabsSwitch } from "./labs";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
 export function RealAccount() {
-  const [id, setId] = useState<Identity | null>(null);
-  const [es, setEs] = useState<Entry[] | null>(null);
-  const [err, setErr] = useState("");
+  const kept = useKept<{ id: Identity; es: Entry[] }>("account", async () => { const [id, es] = await Promise.all([loadIdentity(), loadEntries().catch(() => [] as Entry[])]); return { id, es }; }, "Account did not answer.");
+  const id = kept.data?.id ?? null;
+  const es = kept.data?.es ?? null;
+  const err = kept.err;
   const [fresh, setFresh] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pw, setPw] = useState("");
@@ -42,7 +44,7 @@ export function RealAccount() {
   useEffect(() => { void readLockMinutes().then((m) => setAutoLock(String(m))); }, []);
   const chooseLock = (v: string) => { setAutoLock(v); void writeLockMinutes(v); };
   const lockNow = () => { void lockIdentity().then((r) => { if (r.ok) lockChanged(); else showToast(r.message); }); };
-  const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); void chatSetupProblem().then(setChatProblem).catch(() => {}); void listingProblem().then(setListing).catch(() => {}); }, []);
+  const load = useCallback(() => { kept.reload(); void chatSetupProblem().then(setChatProblem).catch(() => {}); void listingProblem().then(setListing).catch(() => {}); }, [kept.reload]);
   useEffect(load, [load]);
   const newCode = () => { setBusy(true); replaceCode(pw).then((r) => { const c = codeOf(r); setPw(""); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const remove = (e: Entry) => removeEntry(e.eid).then(() => { showToast(`${entryTitle(e)} is off your list.`); load(); }).catch((x) => showToast(say(x)));
@@ -116,12 +118,12 @@ export function RealAccount() {
 }
 
 export function RealSeeing() {
-  const [list, setList] = useState<Agent[] | null>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => { agentsList().then(setList).catch((e) => setErr(say(e, "Agents did not answer."))); }, []);
+  const k = useKept<Agent[]>("agents", agentsList as () => Promise<Agent[]>, "Agents did not answer.");
+  const list = k.data;
+  const err = k.err;
   return (
     <Page title="What my agents can see" back="/u/settings">
-      {err ? <Card flush><ErrorState title="Agents did not load" reason={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Agents did not load" reason={err} retry={k.reload} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No agents yet" body="Your agent and any agents you make appear here, with the projects each works in." /></Card> : null}
       {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("agent", a.name, undefined, (a as { look?: string }).look || undefined)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
       <Banner>Sealed fields stay hidden from every agent. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
@@ -130,16 +132,16 @@ export function RealSeeing() {
 }
 
 export function RealPrivacy() {
-  const [ts, setTs] = useState<TypeDef[] | null>(null);
-  const [err, setErr] = useState("");
+  const kt = useKept<TypeDef[]>("types", loadTypes, "Types did not answer.");
+  const ts = kt.data;
+  const err = kt.err;
   const [approvals, setApprovals] = useState<string | null>(null);
-  useEffect(() => { loadTypes().then(setTs).catch((e) => setErr(say(e, "Types did not answer."))); }, []);
   useEffect(() => { callT("presence.keys", {}).then((r) => setApprovals(approvalsLine(r.data))).catch(() => setApprovals(null)); }, []);
   const sealed = ts ? sealedFields(ts) : [];
   return (
     <Page title="Privacy and sealing" back="/u/settings">
       {approvals ? <Banner>{approvals}</Banner> : null}
-      {err ? <Card flush><ErrorState title="Types did not load" reason={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Types did not load" reason={err} retry={kt.reload} /></Card> : null}
       {ts ? (
         <Group title="Sealed fields">
           <Card flush>
