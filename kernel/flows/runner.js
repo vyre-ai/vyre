@@ -21,7 +21,7 @@ import { LinkError } from "../../lib/link/path.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter, slim, OUTWARD } from "./runner-util.js";
 import { simulate as simulateFlow } from "./simulate.js";
 export { resolveValue, toFilter };
-import { stampAdders } from "./adders.js"; import { modelCall, runsAsOf, runsAsChecked, settleRunsOn } from "./runs-as.js";
+import { stampAdders } from "./adders.js"; import { modelCall, runsAsOf, runsAsChecked, settleRunsOn, answeredBy } from "./runs-as.js"; import { jsonAnswer } from "../../lib/model-answer.js";
 import { resolveTagsFor } from "./tags.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
 import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
@@ -1864,7 +1864,7 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
-      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (doer && doer.kind === "agent" && typeof this.ports.model === "function") await runsAsChecked(this.store, ctx);   // an agent's job runs as the task's assigner: the runs-as person
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (typeof this.ports.model === "function" && ([doer, ...helpers].some((/** @type {any} */ x) => x && x.kind === "agent") || [s.checker, s.reviewer && s.reviewer.who, s.approver && s.approver.who].some((/** @type {any} */ r) => typeof r === "string" && r.startsWith("teammate:")))) await runsAsChecked(this.store, ctx);   // an agent in ANY slot (doer, helper, checker, reviewer, approver) works as the task's assigner: the runs-as person
       // What each person on the task is told: tags in a box are resolved now, through THAT reader's own chain (a role: each holder's), so a record is read as it is at this moment, a sealed field stays
       // sealed, and nobody is handed a record through someone else's reach.
       const ioOf = (/** @type {any} */ actor) => {
@@ -1980,13 +1980,13 @@ export class FlowRunner {
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       // The door's refusal (a budget, a residency rule, a value it would not let through) is the step's failure with its own code, so the owner reads the rule and not "error".
-      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "classify", max_tokens: 64,
+      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "classify", max_tokens: 64, ...(s.model ? { model: s.model } : {}), expect: { kind: "label", labels: s.labels },
         messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: text }] }).catch(portFail);
       const u = r && r.usage || {};
       const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
       await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
       const label = String(r.content || "").trim();
-      return { label: s.labels.includes(label) ? label : null, raw_ok: s.labels.includes(label) };
+      return { label: s.labels.includes(label) ? label : null, raw_ok: s.labels.includes(label), ...(r && r.answered ? { answered_by: answeredBy(r.answered) } : {}) };
     }, { input_class: "text" });
   }
 
@@ -2003,17 +2003,17 @@ export class FlowRunner {
       await this.#aiGuard(ctx);
       const text = String(val(s.input) ?? "").slice(0, 16_000);
       const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");
-      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "extract", max_tokens: 400,
+      const r = await modelCall({ ports: this.ports, k: this.k, store: this.store, ctx, chain: this.#chain(ctx), alert: (t, f, i) => this.#alert(ctx, t, f, i), day: this.#day(this.now()), purpose: "extract", max_tokens: 400, ...(s.model ? { model: s.model } : {}), expect: { kind: "json" },
         messages: [{ role: "system", content: `Read the user's text and answer with ONE JSON object and nothing else. Its keys are exactly these fields; a value is null when the text does not say. Dates are YYYY-MM-DD.\n${spec}` }, { role: "user", content: text }] }).catch(portFail);
       const u = r && r.usage || {};
       const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
       await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
       /** @type {any} */ let parsed = null;
-      try { const raw = String(r.content || "").trim().replace(/^```(?:json)?\s*|\s*```$/g, ""); parsed = JSON.parse(raw); } catch { parsed = null; }
+      parsed = jsonAnswer(r.content);   // the one reading of a JSON answer (lib/model-answer.js), which a sign-in driver also checks before it answers
       const ok = parsed && typeof parsed === "object" && !Array.isArray(parsed);
       /** @type {Record<string, any>} */ const fields = {};
       for (const f of s.fields) fields[f.name] = ok ? coerce(parsed[f.name], f.kind || "text") : null;
-      return { fields, found: names.filter((/** @type {string} */ n) => fields[n] !== null), raw_ok: Boolean(ok) };
+      return { fields, found: names.filter((/** @type {string} */ n) => fields[n] !== null), raw_ok: Boolean(ok), ...(r && r.answered ? { answered_by: answeredBy(r.answered) } : {}) };
     }, { input_class: "text" });
   }
 

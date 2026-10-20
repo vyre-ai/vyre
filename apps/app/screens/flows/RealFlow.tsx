@@ -14,7 +14,8 @@ import { usePhone } from "../places/Page";
 import { FlowHistory, RunLines, TryIt } from "./FlowHistory";
 import { FlowTests } from "./FlowTests";
 import { FlowLimits } from "./FlowLimits";
-import { FlowRunsOn } from "./FlowRunsOn";
+import { FlowAiAccounts } from "./FlowAiAccounts";
+import { hasAiStep } from "./runs-on-model.js";
 import { openEngineer } from "../engineer/openEngineer";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
@@ -61,7 +62,7 @@ export function RealFlow({ id }: { id: string }) {
   const phone = usePhone();
   const [runFilter, setRunFilter] = useState<"all" | "failed" | "waiting">("all");
   const [runQuery, setRunQuery] = useState("");
-  const [tab, setTab] = useState<"steps" | "runs" | "settings">("steps");
+  const [tab, setTab] = useState<"steps" | "runs" | "settings" | "ai">("steps");
   const [row, setRow] = useState<RealFlowRow | null>(null);
 
   useEffect(() => {
@@ -153,7 +154,8 @@ export function RealFlow({ id }: { id: string }) {
         </Sec>
       ) : null}
       {hb && hb.tone === "quiet" ? <Text tone="muted">{hb.text}</Text> : null}
-      <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ["settings", "Settings"]]} value={tab} onChange={setTab} />
+      <Tabs items={[["steps", "Steps"], ["runs", "Runs"], ...(hasAiStep(def) ? [["ai", "AI accounts"] as ["ai", string]] : []), ["settings", "Settings"]]} value={tab} onChange={setTab} />
+      {tab === "ai" && def && hasAiStep(def) ? <View className="gap-s4 pt-s3"><FlowAiAccounts id={id} flow={def} onSaved={() => setN((x) => x + 1)} /></View> : null}
       {tab === "steps" ? (
         <View className={phone ? "gap-s4 pt-s3" : "flex-row items-start gap-s5 pt-s3"}>
           <View className="min-w-0 flex-1 gap-s4">
@@ -210,7 +212,6 @@ export function RealFlow({ id }: { id: string }) {
       ) : null}
       {tab === "settings" ? (
         <View className="gap-s4 pt-s3">
-        {def ? <FlowRunsOn id={id} flow={def} onSaved={() => setN((x) => x + 1)} /> : null}
         <FlowLimits id={id} />
         <Switch label="Show the map of this Flow" on={mapOn} onChange={setMapOn} />
         {mapOn ? <View className="gap-s3">

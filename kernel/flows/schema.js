@@ -114,7 +114,7 @@ export const STEP_KEYS = {
   wait: ["for_ms", "until", "offset_ms", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record", "reviewer", "approver"], assign: ["to", "title", "record", "output", "how", "template", "checker", "reviewer", "approver", "await", "skills", "followers", "notes", "brief"],
   call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
-  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels"], extract: ["input", "fields"],
+  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills", "checker", "followers", "notes"], classify: ["input", "labels", "model"], extract: ["input", "fields", "model"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input", "approve"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
@@ -239,11 +239,14 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         if (s.with !== undefined && !(typeof s.with === "string" && ID_RE.test(s.with))) out.push({ path: `${p}.with`, message: "with is the id of an earlier send step, whose yes this step rides" });
         break;
       case "stage": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); need("to", v => typeof v === "string" && v.length > 0, "name the stage"); break;
-      case "classify": need("input", () => true, "give the text to classify"); value("input"); need("labels", v => Array.isArray(v) && v.length >= 2 && v.every((x/** @type {any} */) => typeof x === "string"), "give at least two labels"); break;
-      case "extract":
+      // an AI step may name its own model: used on the Flow's main account (kernel/flows/runs-as.js); the fallback account uses its own
+      case "classify": case "extract": if (s.model !== undefined && !(typeof s.model === "string" && s.model.trim() && s.model.length <= 100)) out.push({ path: `${p}.model`, message: "model is a model's id, up to 100 characters" });
+        if (s.kind === "extract") {
         need("input", () => true, "give the text to read"); value("input");
         need("fields", v => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((x/** @type {any} */) => x && typeof x === "object" && typeof x.name === "string" && ID_RE.test(x.name) && (x.kind === undefined || ["text", "number", "date", "boolean"].includes(x.kind)) && (x.description === undefined || (typeof x.description === "string" && x.description.length <= 200))) && new Set(v.map((x/** @type {any} */) => x.name)).size === v.length, "name 1 to 20 fields (each a name, optionally a kind of text, number, date or boolean, and a short description)");
         break;
+        }
+        need("input", () => true, "give the text to classify"); value("input"); need("labels", v => Array.isArray(v) && v.length >= 2 && v.every((x/** @type {any} */) => typeof x === "string"), "give at least two labels"); break;
       case "service":
         // The Flow names a connector (a vault credential and its route), never a web address or a credential: the home's vault holds the host and the key.
         // A step may instead name a Connection and one of its operations ({ connection, operation, input }); compileFlow writes it out as the step below before anything else reads it (connection-step.js).
@@ -366,14 +369,30 @@ function checkOutput(o, path, out) {
 /** @param {string} source */
 export const sourceHash = source => crypto.createHash("sha256").update(source).digest("base64url");
 
-const RUNS_ON = { person: /^per_[a-z0-9]{1,64}$/, account: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, provider: /^[a-z][a-z0-9-]{0,31}$/ };
-/** A Flow's Runs on (kernel/flows/runs-as.js): { person?, account?, provider? }, the person stamped by the runner from who wrote the version. @param {any} r @returns {string} the problem, or "" */
-export function runsOnProblem(r) {
-  if (!r || typeof r !== "object" || Array.isArray(r)) return "runs_on is { account?, provider? }: the account the Flow's AI steps use";
+const RUNS_ON = { person: /^per_[a-z0-9]{1,64}$/, account: /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, provider: /^[a-z][a-z0-9-]{0,31}$/, model: /^\S.{0,99}$/ };
+/** One account of Runs on: { account, provider?, model? }. @param {any} r @param {string} at @returns {string} */
+function pickProblem(r, at) {
+  if (!r || typeof r !== "object" || Array.isArray(r) || typeof r.account !== "string") return `${at} is { account, provider?, model? }: one of your own AI accounts`;
   for (const [k, v] of Object.entries(r)) {
-    if (!Object.hasOwn(RUNS_ON, k)) return "runs_on has only person, account and provider";
+    if (!["account", "provider", "model"].includes(k)) return `${at} has only account, provider and model`;
+    if (!(typeof v === "string" && /** @type {any} */ (RUNS_ON)[k].test(v))) return `${at}.${k} is ${k === "account" ? "an account's id" : k === "provider" ? "a provider's name" : "a model's id, up to 100 characters"}`;
+  }
+  return "";
+}
+/**
+ * A Flow's AI accounts (kernel/flows/runs-as.js): { person?, main?: { account, provider?, model? }, fallback?: { ... } }, the person stamped by the runner from who wrote the version. The first form,
+ * { person?, account?, provider? }, is still read as the main account. @param {any} r @returns {string} the problem, or ""
+ */
+export function runsOnProblem(r) {
+  if (!r || typeof r !== "object" || Array.isArray(r)) return "runs_on is { main: { account, model? }, fallback?: { account, model? } }: the accounts the Flow's AI steps use";
+  for (const [k, v] of Object.entries(r)) {
+    if (k === "main" || k === "fallback") { const bad = pickProblem(v, `runs_on.${k}`); if (bad) return bad; continue; }
+    if (!["person", "account", "provider"].includes(k)) return "runs_on has only person, main and fallback";
     if (!(typeof v === "string" && /** @type {any} */ (RUNS_ON)[k].test(v))) return `runs_on.${k} is ${k === "person" ? "a person's id" : k === "account" ? "an account's id" : "a provider's name"}`;
   }
+  if (r.fallback && !r.main && !r.account) return "runs_on.fallback needs a main account first";
+  if (r.main && r.account) return "runs_on has a main account, or the older account, not both";
+  if (r.fallback && r.main && r.fallback.account === r.main.account) return "the fallback is a different account from the main one";
   return "";
 }
 

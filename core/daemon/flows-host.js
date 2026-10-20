@@ -198,7 +198,7 @@ export function createFlowsHost(o) {
         return r ? r.data : null;
       },
       // A Flow's AI step runs on the account of the person the Flow runs as (kernel/flows/runs-as.js decides who), through this Space's inference door as that person's own chain (core/daemon/flow-model.js).
-      ...(o.flowModel ? { model: (/** @type {any} */ q) => o.flowModel.call({ ...q, space, door: gw.model, chainFor: personChain }), accountOk: (/** @type {any} */ q) => o.flowModel.accountOk(q) } : {}),
+      ...(o.flowModel ? { model: (/** @type {any} */ q) => o.flowModel.call({ ...q, space, door: gw.model, chainFor: (/** @type {string} */ p) => (q.chain && q.chain.hops && q.chain.hops[0] && q.chain.hops[0].actor.kind === "person" && q.chain.hops[0].actor.id === p ? q.chain : personChain(p)) }), accountOk: (/** @type {any} */ q) => o.flowModel.accountOk(q) } : {}),
       // Runs on may be changed by the Flow's maker, or by the Space's owner for themselves.
       isOwner: async (/** @type {string} */ p) => p === ownerOf() || (await roleHolders("owner")).some((/** @type {any} */ h) => h && h.id === p),
       // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
