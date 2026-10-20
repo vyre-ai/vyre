@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { allowsMock, showToast, useStore } from "@vyre/ui";
 import { isOwn } from "./real-model.js";
+import { plainError } from "../../src/real/error-note.js";
 
 export type Def = { name: string; label: string; icon?: string; fields: any[]; stages?: { name: string }[]; groups?: { name: string; collapsed?: boolean }[]; [k: string]: unknown };
 type S = { defs: Def[]; /** Types being set up or changed in Records right now (a type on Twenty takes about a minute): name to its label. */ busy: Record<string, string>; loading: boolean; error: string; load: (space?: string) => Promise<void>; save: (d: Def) => void; create: (d: Def) => void };
@@ -10,7 +11,7 @@ type S = { defs: Def[]; /** Types being set up or changed in Records right now (
 const real = () => !allowsMock();
 /** Writes go one after another: each is the whole type as the person left it, so a later one is never overtaken by an earlier. */
 let tail: Promise<unknown> = Promise.resolve();
-const say = (e: unknown) => (e instanceof Error ? e.message : "That did not save.");
+const say = (e: unknown) => plainError(e, "That did not save.");
 
 export const useKernelTypes = create<S>((set, get) => {
   const done = (name: string) => set((s) => { const { [name]: _x, ...rest } = s.busy; return { busy: rest }; });

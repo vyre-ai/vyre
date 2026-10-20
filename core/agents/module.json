@@ -303,6 +303,7 @@
           "name": "agent",
           "label": "Agent",
           "icon": "IconRobot",
+          "hidden_in_records": true,
           "fields": [
             {
               "name": "name",

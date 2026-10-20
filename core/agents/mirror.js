@@ -9,7 +9,7 @@ import { agentDir } from "../../lib/files/layout.js";
 
 /** The Agent record type, declared in the module's manifest too (needs.kernel.types), which is where the Space gets it. */
 export const AGENT = Object.freeze({
-  name: "agent", label: "Agent", icon: "IconRobot",
+  name: "agent", label: "Agent", icon: "IconRobot", hidden_in_records: true,
   fields: [
     { name: "name", kind: "text", label: "Name", required: true },
     { name: "uid", kind: "text", label: "Id", unique: true, hidden_from: ["member", "manager", "temp"] },

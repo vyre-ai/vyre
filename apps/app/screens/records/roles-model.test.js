@@ -44,3 +44,15 @@ test("every holder's chips are worked out from the role kinds and who holds each
   assert.equal(m.c, undefined);
   assert.deepEqual(chipsByHolder(undefined, undefined), {});
 });
+
+test("+ Role offers a person only a person's roles, each label once (the Space's own role before a Kit's copy), and none it holds", async () => {
+  const { freeRoles } = await import("./roles-model.js");
+  const kinds = [
+    { role: "role-lead", label: "Lead", holder: "contact" }, { role: "lead", label: "Lead", holder: "contact" }, { role: "role-vendor", label: "Vendor", holder: "contact" },
+    { role: "role-vendor-org", label: "Vendor", holder: "organization" }, { role: "role-customer", label: "Customer", holder: "organization" }, { role: "role-client", label: "Client", holder: "contact" },
+  ];
+  assert.deepEqual(freeRoles(kinds, new Set(), "contact").map((k) => k.role), ["role-lead", "role-vendor", "role-client"]);
+  assert.deepEqual(freeRoles(kinds, new Set(), "organization").map((k) => k.role), ["role-vendor-org", "role-customer"]);
+  assert.deepEqual(freeRoles(kinds, ["lead"], "contact").map((k) => k.role), ["role-vendor", "role-client"], "holding the Kit's Lead, no second Lead is offered");
+  assert.deepEqual(freeRoles([{ role: "x", label: "X" }], [], "contact").map((k) => k.role), ["x"], "a box that does not name the holder is taken at its word");
+});

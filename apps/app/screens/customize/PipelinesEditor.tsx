@@ -4,6 +4,7 @@ import { Button, Card, Chip, Divider, Field, SectionLabel, Text, showToast } fro
 import { callT } from "../../src/real/call-tool";
 import { askable, toggleLost, toggleNeed } from "./stage-rules.js";
 import { COLOURS, addPipeline, addStageIn, chanceOf, colourInput, moveStageIn, patchStage, pipelinesInput, pipelinesOf, removeStageIn, stageColour } from "./pipelines.js";
+import { plainError } from "../../src/real/error-note.js";
 
 /**
  * The stages of a type: one or several pipelines, and for each stage its name, chance of closing (0 to 100), colour, the fields it needs and whether it counts as lost. Every change is one
@@ -17,8 +18,8 @@ export function PipelinesEditor({ def, reload }: { def: any; reload: () => void 
   useEffect(() => { if (on >= pipelines.length) setOn(0); }, [pipelines.length, on]);
   const cur = pipelines[Math.min(on, pipelines.length - 1)];
   const p = Math.min(on, pipelines.length - 1);
-  const put = (next: ReturnType<typeof pipelinesOf>) => callT("records.pipeline.set", pipelinesInput(def.name, next)).then((r) => { if (r.error) showToast(r.error.message || "That did not save."); else { setNames({}); setChances({}); reload(); } });
-  const colour = (stage: string, c: string) => void callT("records.type.update", colourInput(def, stage, c)).then((r) => { if (r.error) showToast(r.error.message || "That did not save."); else reload(); });
+  const put = (next: ReturnType<typeof pipelinesOf>) => callT("records.pipeline.set", pipelinesInput(def.name, next)).then((r) => { if (r.error) showToast(plainError(r.error, "That did not save.")); else { setNames({}); setChances({}); reload(); } });
+  const colour = (stage: string, c: string) => void callT("records.type.update", colourInput(def, stage, c)).then((r) => { if (r.error) showToast(plainError(r.error, "That did not save.")); else reload(); });
   const rename = (i: number) => {
     const k = `${p}:${i}`, n = (names[k] ?? cur.stages[i].name).trim();
     if (!n || cur.stages.some((s, j) => j !== i && s.name.toLowerCase() === n.toLowerCase())) { showToast("A stage needs a name that no other stage has."); setNames({}); return; }

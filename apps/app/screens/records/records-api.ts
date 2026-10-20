@@ -49,4 +49,9 @@ export const recordsApi = {
   sampleAdd: () => callT<unknown>("records.sample.add", {}),
   sampleRemove: () => callT<unknown>("records.sample.remove", {}),
   typeUpdate: (name: string, patch: { hidden_in_records?: boolean }) => callT<unknown>("records.type.update", { name, ...patch }),
+  /** Move a record to the bin, and bring it back (records.remove, records.restore): whoever may change it may do both. */
+  remove: (urn: string, version: number) => callT<{ removed: string }>("records.remove", { urn, base_version: version }),
+  restore: (urn: string) => callT<{ restored: string }>("records.restore", { urn }),
+  /** The bin of one type: the removed records this person may see (their own; every one for an owner or an admin). records.list with include_deleted lists the live ones too, so they are left out here. */
+  bin: (type: string) => callT<{ rows: any[] }>("records.list", { type, include_deleted: true, limit: 200 }).then((r) => (r.error ? r : { data: { rows: (r.data?.rows ?? []).filter((x: any) => x && x.deleted_at) } })),
 };

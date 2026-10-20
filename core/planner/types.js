@@ -27,7 +27,7 @@ const MADE = [hide(text("source", "Added by (caller)")), hide(text("person", "Ma
 
 /** An alarm, a timer, a reminder, or a /later task that runs an instruction at a time. */
 export const REMINDER = {
-  name: "reminder", label: "Reminder", icon: "IconBell", protected: true,
+  name: "reminder", label: "Reminder", icon: "IconBell", protected: true, hidden_in_records: true,
   // The views a client offers for this type before anyone makes one: the same shape as defineView (records/language/sdk.js). A calendar needs the date field it is laid out by.
   views: [{ name: "reminders_calendar", type: "calendar", of: "reminder", label: "Calendar", dateField: "at" }, { name: "reminders_list", type: "list", of: "reminder", label: "List", sort: [{ field: "at", dir: "asc" }] }],
   fields: [

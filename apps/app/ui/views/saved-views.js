@@ -154,4 +154,13 @@ export function sharedEntry(def, view) {
   if (have.some(v => v.name === view.name)) return { ok: /** @type {const} */ (false), errors: ["The space already has a view with that name."] };
   return { ok: /** @type {const} */ (true), errors: [], type: { ...def, views: [...have, view] } };
 }
+/** A view of the space renamed: the type with that view's label changed (the change records.define takes), or null when the name is empty or the type has no such view. @param {{ views?: readonly any[] }} def @param {string} name @param {string} label */
+export function renameShared(def, name, label) {
+  const l = String(label || "").trim().slice(0, 60);
+  if (!l || !(def.views || []).some(v => v.name === name)) return null;
+  return { ...def, views: (def.views || []).map(v => (v.name === name ? { ...v, label: l } : v)) };
+}
+
+/** A view of the space deleted: the type without it. Its records are not touched. @template {{ views?: readonly any[] }} T @param {T} def @param {string} name @returns {T} */
+export const deleteShared = (def, name) => ({ ...def, views: (def.views || []).filter(v => v.name !== name) });
 export { viewDefOf, keyOf };

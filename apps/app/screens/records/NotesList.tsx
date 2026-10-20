@@ -4,6 +4,7 @@ import { Button, Card, Chip, Field, Row, Sheet, Text, showToast } from "@vyre/ui
 import { recordsApi, type NoteRow } from "./records-api";
 import { ShareControl } from "./ShareControl";
 import { NoteSheet } from "./NoteSheet";
+import { plainError } from "../../src/real/error-note.js";
 
 const WORDS: Record<string, string> = { private: "Only me", record: "Whoever can see the record", space: "Everyone in the Space" };
 const first = (s?: string) => String(s ?? "").split("\n")[0].slice(0, 120);
@@ -22,13 +23,13 @@ export function NotesList({ scope, me }: { scope: "mine" | "shared" | "space"; m
     setBusy(true);
     const r = await recordsApi.noteAdd(title.trim(), body.trim());
     setBusy(false);
-    if (r.error) { showToast(r.error.message || "That did not save."); return; }
+    if (r.error) { showToast(plainError(r.error, "That did not save.")); return; }
     setAdding(false); setTitle(""); setBody(""); setN((c) => c + 1);
   };
   useEffect(() => {
     let live = true;
     setRows(null); setProblem("");
-    void recordsApi.notes(scope).then((r) => { if (!live) return; if (r.error) { setRows([]); setProblem(r.error.message || ""); } else setRows(r.data?.items ?? []); });
+    void recordsApi.notes(scope).then((r) => { if (!live) return; if (r.error) { setRows([]); setProblem(plainError(r.error, "Notes did not load.")); } else setRows(r.data?.items ?? []); });
     return () => { live = false; };
   }, [scope, n]);
   if (rows === null) return <Text tone="label">Loading</Text>;

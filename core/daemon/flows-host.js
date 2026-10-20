@@ -266,7 +266,7 @@ export function createFlowsHost(o) {
       const kitStorage = [...CORE_TYPES, ...KIT_STORAGE_TYPES.map(t => JSON.parse(JSON.stringify(t)))].filter(Boolean);
       const missing = kitStorage.filter(t => !have.has(t.name) && !adding.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the core and Kit storage record types for ${space}: ${e && e.message}`); });
-      // A new Space (one with no contact type yet) also starts with the base Kit's types: the owner's setup act, no card, once. A Space on its own Records store has had them since its store was made.
+      // A new Space (one with no contact type yet) also starts with the base Kit's types (Contact, Appointment, Subscriber, Project): the owner's setup act, no card, once. A Space on its own Records store has had them since its store was made.
       if (!have.has("contact")) {
         try {
           const { kitFromLibrary } = await import("../../records/kits/library.js");
@@ -275,6 +275,19 @@ export function createFlowsHost(o) {
           await gw.records.define(owner(), { add_types: base.filter((/** @type {any} */ t) => !now.has(t.name)), change_types: base.filter((/** @type {any} */ t) => now.has(t.name)) });
         } catch (/** @type {any} */ e) { log(`flows: could not define the base Kit's types for ${space}: ${e && e.message}`); }
       }
+      // A Space made before 0.6.4 got its own Lead and Client from the base Kit beside the core role-lead and role-client, so a person was offered two Leads. Each that is still the Kit's (only its fields)
+      // and holds no record, live or in the bin, is taken away; one that holds records, or that a person changed, stays as it is (the app offers the core role, not the copy).
+      try {
+        const KIT_ONLY = /** @type {Record<string, string[]>} */ ({ lead: ["contact", "source", "summary", "lost_reason", "stage"], client: ["contact", "since", "stage"] });
+        const gone = [];
+        for (const t of await k.store.types()) {
+          const own = KIT_ONLY[String(t && t.name)];
+          if (!own || !t.role || t.role.link !== "contact" || !(t.fields || []).every((/** @type {any} */ f) => own.includes(f.name))) continue;
+          const held = await gw.records.query(owner(), t.name, { include_deleted: true, page: { limit: 1 } }).catch(() => null);
+          if (held && Array.isArray(held.rows) && held.rows.length === 0) gone.push(t.name);
+        }
+        if (gone.length) { await gw.records.define(owner(), { remove_types: gone }); log(`flows: took away the base Kit's second ${gone.join(" and ")} for ${space}; the Space's own roles stand`); }
+      } catch (e) { log(`flows: the base Kit's second Lead and Client for ${space} were not taken away: ${e && /** @type {Error} */ (e).message}`); }
       // A Space made before seat levels has the old team-member type: it gains `level` (the core definition is additive; a row with none is a contributor).
       try {
         const seat = (await k.store.types()).find((/** @type {any} */ t) => t.name === "team-member"), wantSeat = CORE_TYPES.find((/** @type {any} */ t) => t.name === "team-member");

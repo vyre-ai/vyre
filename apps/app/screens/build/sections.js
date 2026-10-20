@@ -2,11 +2,11 @@
 // The sections of Build, as rules: which section a path is in, the next and previous one for the arrow keys. Build is one footer place that drills the sidebar into this list, the way Settings does
 // (ui/shell/sidebar-stack.js), with the section on the right. The old routes are the sections' own routes, so every link to them keeps working. Pure, so Node tests it.
 
-/** [id, label, icon, route, prefixes]. Playbooks (templates-ux's board), Objects (the record-type editor), Kits. */
+/** [id, label, icon, route, prefixes]. Playbooks (templates-ux's board), Types (the record-type editor), Kits. */
 export const BUILD_SECTIONS = /** @type {readonly [string, string, string, string, readonly string[]][]} */ ([
   ["playbooks", "Playbooks", "file", "/u/playbooks", ["/u/playbooks", "/u/templates"]],
   ["skills", "Skills and plugins", "spark", "/u/skills", ["/u/skills"]],
-  ["objects", "Objects", "list", "/u/settings/customize", ["/u/settings/customize"]],
+  ["objects", "Types", "list", "/u/settings/customize", ["/u/settings/customize"]],
   ["documents", "Documents", "file", "/u/documents?tab=templates", ["/u/documents"]],
   ["kits", "Kits", "box", "/u/kits", ["/u/kits"]],
 ]);

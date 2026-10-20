@@ -1,29 +1,32 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Card, Divider, EmptyState, ErrorState, LoadingState, Row, SectionLabel, Segmented, Select, Text, useRecordsWorld } from "@vyre/ui";
+import { Card, Divider, EmptyState, ErrorState, LoadingState, Row, SectionLabel, Segmented, Select, Text, titleOf, useRecordsWorld } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { useRoles } from "../roles/state";
-import { useSidebar } from "../shell/sidebar";
-import { accessRows, holderRows, tabRefusal } from "./type-tabs.js";
+import { useRecordsAccess } from "../records/records-access";
+import { accessRows, holderRows, seenRows, tabRefusal } from "./type-tabs.js";
 
 /** A type's Access tab: my part in it, what each role may do with it, who holds its roles (a role type only), and the record as a person or their assistant sees it. */
 export function TypeAccess({ type, label }: { type: string; label: string }) {
   const { world, error, reload } = useRoles();
-  const admin = useSidebar((s) => s.canSetDefault);
+  const { admin, joined } = useRecordsAccess();
   const { data: records } = useRecordsWorld();
   const rows = records?.byType[type] ?? [];
+  // a record's name from its address, for the holders and the links "See it as" shows: never the raw id
+  const nameOf = (urn: string) => { const t = urn.split("/")[3]; const def = records?.types.find((x: any) => x.name === t); const rec = def ? (records?.byType[t] ?? []).find((r: any) => r.urn === urn) : undefined; return def && rec ? titleOf(def, rec) : undefined; };
+  const typeDef = records?.types.find((x: any) => x.name === type);
   const [holders, setHolders] = useState<ReturnType<typeof holderRows> | null>(null);
   const [who, setWho] = useState<"person" | "assistant">("person");
   const [urn, setUrn] = useState("");
   const [seen, setSeen] = useState<{ data?: Record<string, unknown> | null; error?: string } | null>(null);
   // Only a role type has holders; the box refuses any other type, and then there is nothing to show.
-  useEffect(() => { void callT<{ rows?: any[] }>("records.holders", { role: type }).then((r) => setHolders(r.error ? null : holderRows(r.data?.rows ?? []))).catch(() => setHolders(null)); }, [type]);
+  useEffect(() => { void callT<{ rows?: any[] }>("records.holders", { role: type }).then((r) => setHolders(r.error ? null : holderRows(r.data?.rows ?? [], nameOf))).catch(() => setHolders(null)); }, [type, records]);
   useEffect(() => { if (!urn && rows[0]) setUrn(String(rows[0].urn ?? rows[0].id ?? "")); }, [rows.length]);
   useEffect(() => {
-    if (!urn) { setSeen(null); return; }
+    if (!urn || joined) { setSeen(null); return; }
     setSeen(null);
     void callT<{ data?: Record<string, unknown> | null }>("records.sees-as", { urn, who }).then((r) => setSeen(r.error ? { error: tabRefusal(r.error.code, r.error.message) } : { data: r.data?.data ?? null })).catch(() => setSeen({ error: tabRefusal() }));
-  }, [urn, who]);
+  }, [urn, who, joined]);
   if (error && !world) return <Card flush><ErrorState title="Roles did not load" reason={error} retry={reload} /></Card>;
   if (!world) return <LoadingState rows={3} />;
   const lines = accessRows(world.roles, type);
@@ -39,15 +42,15 @@ export function TypeAccess({ type, label }: { type: string; label: string }) {
       {holders ? (
         <>
           <SectionLabel>Who holds it</SectionLabel>
-          {holders.length ? <Card flush>{holders.map((h, i) => <View key={h.urn}>{i ? <Divider /> : null}<Row title={h.id} sub={h.stage || undefined} /></View>)}</Card> : <Card><EmptyState title="Nobody holds it yet" /></Card>}
+          {holders.length ? <Card flush>{holders.map((h, i) => <View key={h.urn}>{i ? <Divider /> : null}<Row title={h.name} sub={h.stage || undefined} /></View>)}</Card> : <Card><EmptyState title="Nobody holds it yet" /></Card>}
         </>
       ) : null}
-      <SectionLabel>See it as</SectionLabel>
-      {rows.length ? (
+      {joined ? null : <SectionLabel>See it as</SectionLabel>}
+      {joined ? null : rows.length ? (
         <Card className="gap-s3">
-          <Segmented label="See it as" value={who} onChange={(v) => setWho(v as "person" | "assistant")} options={[["person", "You"], ["assistant", "Your assistant"]]} />
+          <Segmented label="See it as" value={who} onChange={(v) => setWho(v as "person" | "assistant")} options={[["person", "You"], ["assistant", "Your agent"]]} />
           <Select label={label} value={urn} options={rows.slice(0, 50).map((r: any) => [String(r.urn ?? r.id), String(r.data?.name ?? r.data?.title ?? r.id)] as [string, string])} onChange={setUrn} />
-          {seen?.error ? <Text tone="muted">{seen.error}</Text> : seen?.data ? Object.entries(seen.data).map(([k, v]) => <Row key={k} title={k} sub={typeof v === "object" ? JSON.stringify(v).slice(0, 80) : String(v)} />) : seen ? <Text tone="muted">Nothing of it is shown to them.</Text> : <LoadingState rows={2} />}
+          {seen?.error ? <Text tone="muted">{seen.error}</Text> : seen?.data ? seenRows(typeDef, seen.data, nameOf).map((r) => <Row key={r.key} title={r.label} sub={r.value} />) : seen ? <Text tone="muted">Nothing of it is shown to them.</Text> : <LoadingState rows={2} />}
           <Text size="caption" tone="label">Sealed values show only as placeholders. This changes nothing.</Text>
         </Card>
       ) : <Card><EmptyState title={`No ${label.toLowerCase()} to look at yet`} /></Card>}

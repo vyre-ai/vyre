@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Card, Divider, EmptyState, ErrorState, LoadingState, Row, Text } from "@vyre/ui";
+import { Card, Divider, EmptyState, ErrorState, LoadingState, Row, Text, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { useSidebar } from "../shell/sidebar";
 import { auditReal } from "../audit/real";
@@ -16,13 +16,18 @@ export function TypeHistory({ type }: { type: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [err, setErr] = useState("");
   const [more, setMore] = useState(false);
+  // people by name, and the type's own word, so a line reads "Sam changed a person", never a piece of an id
+  const { data: world } = useRecordsWorld();
+  const nameOf = (id: string) => (world?.actors as { id: string; name?: string }[] | undefined)?.find((a) => a.id === id)?.name;
+  const def = world?.types.find((t: any) => t.name === type);
+  const noun = def ? String(def.label || type).toLowerCase() : undefined;
   const load = () => {
     setErr(""); setItems(null);
     if (admin) {
       auditReal({ type }).then((r) => { setItems(r.changes.map((c: Change) => ({ key: c.seq, title: line(c), sub: `${when(c.time)} · ${fieldLines(c).join(" · ") || "no field values"}` }))); setMore(r.more || r.truncated); }).catch((e) => setErr(refusal((e as { code?: string }).code, e instanceof Error ? e.message : "")));
       return;
     }
-    void callT<{ events?: any[] }>("records.events", { limit: 200 }).then((r) => { if (r.error) setErr(tabRefusal(r.error.code, r.error.message)); else { setItems(eventLines(r.data?.events ?? [], type).map((e) => ({ key: e.seq, title: e.title, sub: when(e.time) }))); setMore(false); } });
+    void callT<{ events?: any[] }>("records.events", { limit: 200 }).then((r) => { if (r.error) setErr(tabRefusal(r.error.code, r.error.message)); else { setItems(eventLines(r.data?.events ?? [], type, nameOf, noun).map((e) => ({ key: e.seq, title: e.title, sub: when(e.time) }))); setMore(false); } });
   };
   useEffect(load, [type, admin]);
   if (err) return <Card flush><ErrorState title="History did not load" reason={err} retry={load} /></Card>;

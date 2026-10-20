@@ -158,3 +158,13 @@ test("a view shared with the space is written to the type, with no personal pref
   assert.equal(sharedEntry(full, view).ok, false);
   assert.equal(sharedEntry({ ...lead, views: [{ name: "pipeline", type: "list" }] }, view).ok, false, "a name the type already has");
 });
+
+test("a view of the space is renamed or deleted on the type itself, by name; an empty name or an unknown view changes nothing", async () => {
+  const { renameShared, deleteShared } = await import("./saved-views.js");
+  const def = { name: "deal", views: [{ name: "open", type: "list", label: "Open deals" }, { name: "won", type: "board", label: "Won" }] };
+  assert.deepEqual(renameShared(def, "open", "  Open now ")?.views.map((v) => v.label), ["Open now", "Won"]);
+  assert.equal(renameShared(def, "open", "  "), null);
+  assert.equal(renameShared(def, "nope", "X"), null);
+  assert.deepEqual(deleteShared(def, "open").views.map((v) => v.name), ["won"]);
+  assert.equal(def.views.length, 2, "the type given is not changed");
+});

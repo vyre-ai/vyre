@@ -62,7 +62,8 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
   const prefs = useTablePrefs();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const tick = (id: string) => { const n = new Set(picked); if (n.has(id)) n.delete(id); else n.add(id); setPicked(n); };
-  const selection = { has: (id: string) => picked.has(id), toggle: tick, all: shown.length > 0 && shown.every((r) => picked.has(r.id)), some: shown.some((r) => picked.has(r.id)), toggleAll: () => setPicked(shown.length > 0 && shown.every((r) => picked.has(r.id)) ? new Set() : new Set(shown.map((r) => r.id))) };
+  // Ticks only where the host does something with them (h.picked: "Set a field for N", "Delete N"); a tick that does nothing is not drawn.
+  const selection = h.picked ? { has: (id: string) => picked.has(id), toggle: tick, all: shown.length > 0 && shown.every((r) => picked.has(r.id)), some: shown.some((r) => picked.has(r.id)), toggleAll: () => setPicked(shown.length > 0 && shown.every((r) => picked.has(r.id)) ? new Set() : new Set(shown.map((r) => r.id))) } : undefined;
   const groups = groupRows(shown, cols, b.props?.group);
   const flip = (name: string, opt: string) => {
     const next = new Set(filters[name] || []);
@@ -128,7 +129,7 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
     <View className="gap-s3">
       {controls}
       {chips}
-      {picked.size ? <View className="flex-row items-center gap-s3"><Text size="caption" tone="label">{`${picked.size} selected`}</Text><Button kind="ghost" size="sm" label="Clear" onPress={() => setPicked(new Set())} /></View> : null}
+      {picked.size && h.picked ? <View className="flex-row flex-wrap items-center gap-s3"><Text size="caption" tone="label">{`${picked.size} selected`}</Text>{h.picked(k, all.filter((r) => picked.has(r.id)), () => setPicked(new Set()))}<Button kind="ghost" size="sm" label="Clear" onPress={() => setPicked(new Set())} /></View> : null}
       {phone ? phoneList : groups ? groups.map((g, i) => (
         <View key={g.label} className="gap-s1">
           <Text size="caption" strong tone="label">{`${g.label} \u00B7 ${g.rows.length}`}</Text>

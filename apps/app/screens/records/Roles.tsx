@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { allowsMock, Chip, Menu, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-import { roleChips, summaryChips } from "./roles-model.js";
+import { freeRoles, roleChips, summaryChips } from "./roles-model.js";
 import { SAMPLE_KINDS, sampleHeld } from "./roles-sample.js";
+import { plainError } from "../../src/real/error-note.js";
 
-type Kind = { role: string; label: string; color?: string; stages?: string[] };
+type Kind = { role: string; label: string; holder?: string | null; color?: string; stages?: string[] };
 type Held = { role: string; label: string; stage?: string; current: boolean; color?: string; urn: string };
 
 const NAMED: Record<string, "warn" | "ok" | "accent" | "err"> = { lead: "warn", client: "ok", partner: "accent", vendor: "err" };
@@ -29,13 +30,13 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
   useEffect(() => { setHeld(null); setPlain(null); load(); }, [load]);
   const move = async (r: Held, stage: string) => {
     const x = await callT<{ needs?: string[] }>("records.move", { urn: r.urn, stage });
-    if (x.error) { showToast(x.error.message || "That did not move."); return; }
+    if (x.error) { showToast(plainError(x.error, "That did not move.")); return; }
     if (x.data?.needs?.length) { showToast(`To move ${r.label} to ${stage}, fill in: ${x.data.needs.join(", ")}. Open the role to do it.`); return; }
     load();
   };
   const add = async (k: Kind) => {
     const x = await callT("records.role.set", { urn, role: k.role });
-    if (x.error) { showToast(x.error.message || "That did not save."); return; }
+    if (x.error) { showToast(plainError(x.error, "That did not save.")); return; }
     load();
   };
   if (plain) {
@@ -47,7 +48,8 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
   }
   if (!held) return null;
   const mine = new Set(held.filter((r) => r.current).map((r) => r.role));
-  const free = kinds.filter((k) => !mine.has(k.role));
+  // only the roles a record of this type can hold, each label once (roles-model.js)
+  const free = freeRoles(kinds, mine, urn.split("/")[3] ?? "") as Kind[];
   const chips = summaryChips(held);
   const roleOf = (i: number) => [...held.filter((r) => r.current), ...held.filter((r) => !r.current)][i];
   if (!chips.length && !free.length) return null;

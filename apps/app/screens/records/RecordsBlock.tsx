@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
 import { callT } from "../../src/real/call-tool";
 import { RecordScreen } from "./RecordScreen";
-import { needsIdFill, defineInputOf } from "./records-screen.js";
+import { needsIdFill, defineInputOf, tabOrder } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
 import { useTypeLayout } from "./layout-state";
 import { LayoutControls } from "./LayoutControls";
@@ -28,15 +28,20 @@ import { TypeFields } from "../customize/TypeScreen";
 import { TypeAccess } from "../customize/TypeAccess";
 import { TypeHistory } from "../customize/TypeHistory";
 import { useEffectiveList } from "./views-actions";
-import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
+import { renameShared, deleteShared } from "../../ui/views/saved-views.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
+import { plainError } from "../../src/real/error-note.js";
+import { useRecordsAccess } from "./records-access";
+import { Bin } from "./Bin";
+import { BulkActions } from "./BulkActions";
+import { RecordsSetup } from "../now/RecordsSetup";
 
 type ViewKind = "list" | "gallery" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
@@ -81,10 +86,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const [chips, setChips] = useState<any[]>([]);
   const [preset, setPreset] = useState<{ filters: any[] } | undefined>(undefined);
   const space = useSpaces((s) => s.space);
-  const canShare = useSidebar((s) => s.canSetDefault);
+  // What the server lets this person do here: an owner or an admin makes types, edits fields, adds columns and shares views; on the person's own server they also delete for good (records-access.ts)
+  const access = useRecordsAccess();
+  const canShare = access.admin;
+  const [binOpen, setBinOpen] = useState(false);
   const entries = useEffectiveList();
   // The pins (sidebar links) open this screen with a view in the address: follow it.
-  useEffect(() => { setViewName(openedView); setScopePicked(""); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
+  useEffect(() => { setViewName(openedView); setScopePicked(""); setPicked(null); setCleared(false); setQuery(""); setChips([]); setBinOpen(false); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   const mv = useMoveStage(env, reload);
@@ -109,12 +117,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A new type finishes setting up in the background: when the last one is done, the tabs read it in.
   const wasSettingUp = useRef(0);
   useEffect(() => { if (wasSettingUp.current > 0 && settingUp === 0) reload(); wasSettingUp.current = settingUp; }, [settingUp, reload]);
-  if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
+  // A first start: while the Space's records are being set up, the same calm card Now shows, and the list loads by itself when they are ready; any other failure says why in plain words
+  if (error && !world) return <RecordsSetup onReady={reload} otherwise={<ErrorState title="Records did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
   if (loading && !world) return frame("Records", <LoadingState rows={5} />);
   const def = world?.types.find((t) => t.name === type);
-  if (!world || !def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
+  if (!world || !def) return <EmptyState title="That type is not here" body={`This space has no record type called "${type}". It may have been removed, or it is kept out of Records.`} action={{ label: "Go to People", onPress: () => router.replace("/u/records/contact" as never) }} />;
   // The person's own views of this type are laid over the type's own; they decide how the screen is drawn only when one of them is open, so they never change what the type opens as.
   const mineViews = personalViewsOf(type, entries);
   const full = withPersonalViews(def, mineViews);
@@ -124,7 +133,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
-  const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
+  const tabTypes = tabOrder(world.types.filter((t: any) => !t.hidden_in_records || t.name === type));
   const everyone = world.byType[def.name] || [];
   // Notes are the planner's and are listed by it (NotesList); every other scoped type is cut here as well as on the box.
   const all = scopes.length && def.name !== "note" ? filterByScope(everyone, scope, (world as any).me) : everyone;
@@ -141,10 +150,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     if (def.name === "task" && g === "status") {
       const d: any = taskDrop(String(rec.data?.status ?? ""), to);
       if (d.say) showToast(d.say);
-      else if (d.call) { const r = await callT("tasks.move", { id: rec.id, ...d.call }); if (r.error) showToast(r.error.message || "That did not move."); else reload(); }
+      else if (d.call) { const r = await callT("tasks.move", { id: rec.id, ...d.call }); if (r.error) showToast(plainError(r.error, "That did not move.")); else reload(); }
       return;
     }
-    try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
+    try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(plainError(e, "That did not move.")); }
   };
   // One scope-style control, with icons only on a phone.
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
@@ -164,15 +173,24 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     showToast(`${table.content.rows.length} ${vd.plural.toLowerCase()} exported.`);
   };
   const tableColumns = (table.content.columns as any[]).filter((c) => c.id !== "_title" && c.id !== "_roles" && c.role !== "sortOnly" && c.role !== "endDate").map((c) => String(c.id));
-  const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
+  const addColumn = (compact: boolean) => (!access.admin ? null : <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />);
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
+  // Ticked rows: set a field for all of them, or delete them to the bin (BulkActions); the table's rows name their record by id
+  const byId = new Map(everyone.map((r: any) => [String(r.id), r]));
+  const bulk = (_k: string, ticked: any[], clear: () => void) => <BulkActions def={def} records={ticked.map((r) => byId.get(String(r.id))).filter(Boolean)} noun={vd.plural.toLowerCase()} clear={clear} reload={reload} />;
+  // A view of the whole Space (stored with the type) is renamed or deleted by an owner or an admin: one records.define of the type with the view changed (saved-views.js)
+  const vn = viewName ?? "";
+  const sharedEdit = access.admin && vn && !vn.startsWith(MINE) && (def.views ?? []).some((v: any) => v.name === vn) ? {
+    rename: async (label: string) => { const next = renameShared(def, vn, label); if (next) { try { await store.define({ change_types: [defineInputOf(next)] } as any); reload(); showToast(`Renamed to ${label.trim()}.`); } catch (e) { showToast(plainError(e, "That did not save.")); } } },
+    remove: async () => { try { await store.define({ change_types: [defineInputOf(deleteShared(def, vn))] } as any); setViewName(undefined); reload(); showToast("View deleted."); } catch (e) { showToast(plainError(e, "That did not delete.")); } },
+  } : undefined;
   // Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one.
   const typeTabs = (
     <View className="flex-row items-center gap-s2">
       <View className="min-w-0 flex-1">
         <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
       </View>
-      <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
+      {access.admin ? <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} /> : null}
     </View>
   );
   return (
@@ -185,11 +203,11 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
             <View className="flex-1" />
             <Button kind="ghost" size="sm" label="Import" onPress={() => setImporting(true)} />
             <Button kind="ghost" size="sm" label="Settings" onPress={() => setPane(pane === "records" ? "fields" : "records")} />
-            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" />
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" shared={sharedEdit} />
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               ...(Platform.OS === "web" ? [{ label: "Export CSV", onPress: exportCsv }] : []),
               { label: "New view", onPress: () => setMaking(true) },
-              { label: "New type", onPress: () => setAddingType(true) },
+              ...(access.admin ? [{ label: "New type", onPress: () => setAddingType(true) }] : []),
               { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
               { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
             ]} />
@@ -205,8 +223,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           ) : (
           <View className="flex-row flex-wrap items-center gap-s2">
           <Text size="caption" tone="label">Views</Text>
-          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
-          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+          <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip>
           <View className="flex-1" />
           {switcher}
         </View>
@@ -225,22 +244,23 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         saveNote={chipsToFilters(chips, def).skipped ? `${chipsToFilters(chips, def).skipped} of these filters cannot be kept by a saved view yet and are left out.` : undefined} />
       ) : null}
       {/* The views of the type as a row of chips, a person's own marked with a lock, and the layout (Table, Board, Calendar) at the right of the same row (the approved design). */}
-      {phone ? (named.length ? (
+      {phone ? (
         <View className="flex-row flex-wrap items-center gap-s2">
           <Text size="caption" tone="label">Views</Text>
-          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
-          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+          <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip>
         </View>
-      ) : null) : null}
+      ) : null}
       {phone ? (
       <View className="flex-row gap-s2">
         <Button kind="primary" size={phone ? "md" : "sm"} icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
         {phone ? (
           <>
-            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" shared={sharedEdit} />
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               { label: "New view", onPress: () => setMaking(true) },
-              { label: "New type", onPress: () => setAddingType(true) },
+              ...(access.admin ? [{ label: "New type", onPress: () => setAddingType(true) }] : []),
               { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
               { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
             ]} />
@@ -250,7 +270,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         <Button kind="secondary" size={phone ? "md" : "sm"} icon="plus" label="New view" onPress={() => setMaking(true)} />
         {shown === "list" ? addColumn(false) : null}
         <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed").map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} sheetOpen={colsOpen} onSheet={setColsOpen} />
-        <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} />
+        <ViewControls type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size={phone ? "md" : "sm"} shared={sharedEdit} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size={phone ? "md" : "sm"} icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
           </>
@@ -261,7 +281,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
       {phone ? typeTabs : null}
       {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
       {phone ? <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} /> : null}
-      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
+      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : binOpen ? <Bin def={def} plural={vd.plural} canForget={access.ownServer} onChanged={reload} /> : <>
       {filter && !cleared ? (
         <Card>
           <View className="flex-row items-center gap-s3 px-s4 py-s3">
@@ -290,7 +310,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           groupBy={lay.layout?.group_by} onGroup={(n) => void lay.save("group_by", n)}
           density={prefs.density} onDensity={prefs.setDensity} freeze={prefs.freezeFirst} onFreeze={prefs.setFreezeFirst} scope={lay.scope} mine={lay.mine} />
       ) : null}
-      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" && phone ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : phone ? switcher : null}
+      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, picked: bulk, slot: (_k, name) => (name === "lead" && phone ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : phone ? switcher : null}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardWithStats def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}

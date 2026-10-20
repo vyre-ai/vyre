@@ -205,6 +205,18 @@ export default {
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict). A record's ID never changes.", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       return applyUpdate(d, parseUrn(i.urn), i.patch, i.base_version);
     }, byUrn);
+    // The bin: a removed record keeps its data and history until it is restored, or deleted for good with records.forget. Whoever may change a record may remove it and bring it back (the kernel's
+    // records.remove and records.restore, which every member role but a temporary one holds); a stale base_version is refused, as an update's is.
+    tool("records.remove", "Move a record to the bin: { urn, base_version }. It keeps its data and history there and records.list with include_deleted lists it; records.restore brings it back, records.forget deletes it for good. A stale base_version is refused (version_conflict).", obj({ urn: str, base_version: { type: "integer" } }, ["urn", "base_version"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      const out = await d.gateway.records.remove(d.chain, u.type, u.id, i.base_version);
+      return { removed: String(i.urn), version: out && typeof out === "object" ? out.version : undefined };
+    }, byUrn);
+    tool("records.restore", "Bring a record back from the bin: { urn }. It comes back with its data as it was when it was removed.", obj({ urn: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      const out = await d.gateway.records.restore(d.chain, u.type, u.id);
+      return { restored: String(i.urn), record: out && typeof out === "object" ? mergeOut(out, (await quickFieldsOf(d, u.type)).filter((f) => f.state !== "real")) : null };
+    }, byUrn);
 
     registerPipeline({ tool, obj, str, refuse, parseUrn, update: applyUpdate });
     registerRelationships({ tool, obj, str, refuse, parseUrn });
@@ -380,7 +392,15 @@ export default {
       "relationship.add": ["from", "to", "kind", "since", "until", "note"], "relationship.remove": ["id"], "layout.set": ["type", "scope", "layout"],
       // a member reads a record's history, a board's totals, the Busy blocks and her roles, and logs a call or a meeting (or a note) on a record she can read: each is the same tool body the owner runs, under her chain
       history: ["urn", "limit"], stats: ["type", "group_by", "sum", "filter"], busy: ["from", "to"], "roles.summary": ["urn"], log: ["urn", "kind", "text"],
+      // (0.6.4) a member reads a record's roles and who holds one, gives a record a role, shares her own synced event, undoes a change in a record's history, and removes or restores a record she may change; an
+      // owner's or an admin's own field and link additions reach the team the same way, and the tools refuse every other member (link-fields.js, quick.js)
+      roles: ["urn", "include_ended"], holders: ["role", "stage", "include_ended", "cursor", "limit"], "role.set": ["urn", "role", "stage", "since"], share: ["urn", "visibility"], "history.undo": ["id"],
+      remove: ["urn", "base_version"], restore: ["urn"], "link.add": ["type", "label", "to", "many", "inverse_label"], "field.add": ["type", "label", "kind", "options", "to", "inverse", "many"],
     });
+    /** The calls of the member door that only read. */
+    const READS = ["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary", "roles", "holders"];
+    /** The calls of the member door that change a record. */
+    const WRITES = ["update", "move", "relationship.add", "relationship.remove", "layout.set", "log", "role.set", "share", "history.undo", "remove", "restore", "link.add", "field.add"];
     const serve = (/** @type {string[]} */ calls) => async (/** @type {any} */ i, /** @type {any} */ extra) => {
       if (!extra || !extra.in_space_chain || !extra.in_space) throw refuse("only the team server's member door runs this", "denied");
       if (!i || !calls.includes(i.call)) throw refuse(`call is one of ${calls.join(", ")}`, "bad_input");
@@ -396,20 +416,27 @@ export default {
       // The types the team's own tools keep (skills, Flows, project templates...) are not a member's through this door, as they are not through the gateway's calls (kernel/remote/member-guard.js); the owner and admins keep theirs.
       const role = (() => { try { return d.gateway.members.roleOf(d.chain.hops[0].actor); } catch { return null; } })();
       const trusted = role === "owner" || role === "admin";
-      const ref = typeof clean.urn === "string" ? clean.urn : typeof clean.record === "string" ? clean.record : "";
-      const urnType = (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(ref) || [])[1];
-      for (const ty of [clean.type, urnType]) {
+      const ref = typeof clean.urn === "string" ? clean.urn : typeof clean.record === "string" ? clean.record : typeof clean.id === "string" ? clean.id : "";
+      const typeOfUrn = (/** @type {string} */ x) => (/^vyre:\/\/[^/]+\/([^/]+)\//.exec(x) || [])[1];
+      // the types a call names: its type, the role type it gives or lists, the type a new link goes to (a `to` that is a record address is a relationship's other end, not a type), the type its record address
+      // names, and for an undo by history id the type of the record that change was on
+      const named = [clean.type, clean.role, typeof clean.to === "string" && !clean.to.startsWith("vyre://") ? clean.to : undefined, typeOfUrn(ref)];
+      if (!trusted && i.call === "history.undo" && /^[0-9]+$/.test(String(clean.id || ""))) {
+        const ev = (await d.gateway.events.read(d.chain, { since: Number(clean.id) - 1, limit: 1 }).catch(() => []))[0];
+        if (ev && Number(ev.seq) === Number(clean.id)) named.push(typeOfUrn(String(ev.subject || "")));
+      }
+      for (const ty of named) {
         if (typeof ty !== "string" || trusted) continue;
         if (MEMBER_BLOCKED_TYPES.has(ty)) throw refuse("no such record type; pick one from the types your screen lists, or ask the owner", "not_found");
-        if (i.call !== "audit" && !["me", "actors", "types", "list", "get", "events", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"].includes(i.call) && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
+        if (!READS.includes(i.call) && MEMBER_READ_ONLY_TYPES.has(ty)) throw refuse("that is kept by the team's own tools; ask the owner or an admin", "not_allowed");
       }
       const out = await op.fn(clean, d);
       return !trusted && i.call === "types" && out && Array.isArray(out.types) ? { ...out, types: out.types.filter((/** @type {any} */ x) => !MEMBER_BLOCKED_TYPES.has(String(x && x.name))) } : out;
     };
     const serveInput = (/** @type {string[]} */ calls) => obj({ call: { type: "string", enum: calls }, input: { type: "object" } }, ["call"]);
-    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, history, stats, busy, roles.summary, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"]), run: serve(["me", "actors", "types", "list", "get", "events", "audit", "layout.get", "relationship.list", "relationship.kinds", "history", "stats", "busy", "roles.summary"]) });
+    ctx.tool("records.serve", { effect: "read", internal: true, callers: ["module"], description: "A team member's reads of the team's records (me, actors, types, list, get, events, history, stats, busy, roles.summary, roles, holders, and the audit for an owner or an admin), as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(READS), run: serve(READS) });
     ctx.tool("records.serve-create", { effect: "write", internal: true, callers: ["module"], description: "A team member makes a record of a type, as that member, in that Space. Only the daemon's member door runs it.", input: serveInput(["create"]), run: serve(["create"]) });
-    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space (a stale base_version is refused). Only the daemon's member door runs it.", input: serveInput(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]), run: serve(["update", "move", "relationship.add", "relationship.remove", "layout.set", "log"]) });
+    ctx.tool("records.serve-update", { effect: "write", internal: true, callers: ["module"], description: "A team member changes a record, as that member, in that Space: an update, a move, a relationship, her layout, a log, a role, her event's sharing, an undo, a removal to the bin or a restore (a stale base_version is refused); an owner's or an admin's field or link addition. Only the daemon's member door runs it.", input: serveInput(WRITES), run: serve(WRITES) });
     registerDevSeed(ctx, door, () => typeof ctx.devStandIn === "function" && ctx.devStandIn() === true);
     return { async stop() {} };
   },

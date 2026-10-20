@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, allowsMock, Banner, Button, IconButton, Menu, Sheet, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, allowsMock, Button, IconButton, Menu, Text, showToast, factsOf, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { href } from "../../../../lib/tags.js";
 import { useShell } from "../shell/shared";
 import { RecordHistory } from "./RecordHistory";
@@ -19,6 +19,9 @@ import { relatedRecords } from "../../ui/views/logic.js";
 import { tool } from "../../src/real/box";
 import { emailOf } from "../shell/module-view.js";
 import { openExternal } from "../../src/shell/open-external";
+import { plainError } from "../../src/real/error-note.js";
+import { recordsApi } from "./records-api";
+import { useRecordsAccess } from "./records-access";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
@@ -37,7 +40,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const events = useRecordEvents(rec?.urn);
   // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
   const [canSend, setCanSend] = useState(false);
-  const [forgetting, setForgetting] = useState<null | { busy: boolean; problem: string }>(null);
+  const access = useRecordsAccess();
   const isContact = rec?.type === "contact";
   useEffect(() => {
     if (!isContact) { setCanSend(false); return; }
@@ -47,7 +50,7 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   }, [isContact]);
   const email = emailOf(rec?.data);
   const back = () => (onClose ? onClose() : router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
-  if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
+  if (error && !world) return <ErrorState title="This record did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);
   if (!world || !rec || !def) return <EmptyState title="That record is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Go back", onPress: back }} />;
@@ -55,10 +58,19 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
   const space = SPACES.find((s) => s.id === rec.labels?.source_spaces?.[0])?.name;
   const vd = viewDefOf(def);
   const pinned: string[] | undefined = Array.isArray(lay.layout?.header_fields?.default) ? lay.layout.header_fields.default : undefined;
-  // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
+  // Delete moves the record to the bin, with Undo; Delete for good is in the Bin (records-api.ts, Bin.tsx)
+  const remove = () => {
+    const urn = rec.urn;
+    void recordsApi.remove(urn, rec.version).then((r) => {
+      if (r.error) { showToast(plainError(r.error, "That did not delete.")); return; }
+      showToast(`${title} moved to the bin.`, { label: "Undo", run: () => { void recordsApi.restore(urn).then((x) => { if (x.error) showToast(plainError(x.error, "That did not come back.")); else reload(); }); } });
+      back();
+    });
+  };
+  // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Job \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete for good...", onPress: () => setForgetting({ busy: false, problem: "" }) }]} /><Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<View className="flex-row items-center gap-s2"><Menu trigger={<IconButton icon="more" label="More" />} items={[{ label: "Delete", danger: true, onPress: remove }]} /><Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>} />
       {rec.type === "contact" || rec.type === "organization" ? <View className="px-s4 pt-s2"><Roles urn={rec.urn} name={title} onOpen={open} /></View> : null}
       {isShareable(rec.type) ? <View className="px-s4 pt-s2"><ShareControl urn={rec.urn} type={rec.type} record={typeof rec.data?.record === "object" ? rec.data.record?.urn : typeof rec.data?.record === "string" ? rec.data.record : undefined} value={String(rec.data?.visibility ?? "private")} onDone={reload} /></View> : null}
       <View className="px-s4 pt-s2"><QuickActions email={email || undefined} urn={rec.urn} onLogged={() => setLogged((n) => n + 1)} /></View>
@@ -76,25 +88,9 @@ export function RecordScreen({ id, onClose, onOpen }: { id: string; onClose?: ()
         </View>
       </View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
-        <Appear index={1}><RecordPage def={def} rec={rec} world={world} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
+        <Appear index={1}><RecordPage def={def} rec={rec} world={world} canCustomize={access.admin} canSeal={access.ownServer} canSeeAsAgent={!access.joined} onStage={(st) => { void mv.go(rec, def, st); }} events={events.data ?? []} env={env} onOpen={open} story={<View className="gap-s4"><Connections urn={rec.urn} env={env} onOpen={open} /><RecordHistory urn={rec.urn} refresh={logged} me={(world as { me?: string }).me} /></View>} onNew={(t, via) => router.push(`/u/record/new?type=${t}&via=${encodeURIComponent(via)}&to=${encodeURIComponent(rec.urn)}` as never)} /></Appear>
       </ScrollView>
       {mv.sheet}
-      <Sheet open={!!forgetting} onClose={() => setForgetting(null)} title={`Forget ${title} for good?`}>
-        {forgetting ? (
-          <View className="gap-s3">
-            <Text tone="muted">It cannot be undone. The text of every task about it is emptied, the record and its history are destroyed, its events lose their data and any sealed values are destroyed. Files linked to it stay in Files.</Text>
-            <Text tone="muted">You approve it with your phone. An agent can only propose it.</Text>
-            {forgetting.problem ? <Banner tone="warn">{forgetting.problem}</Banner> : null}
-            <View className="flex-row gap-s2">
-              <Button kind="primary" label="Forget it" loading={forgetting.busy} disabled={forgetting.busy} onPress={() => {
-                setForgetting({ busy: true, problem: "" });
-                tool<{ message?: string }>("records.forget", { urn: rec.urn }).then((r) => { setForgetting(null); showToast(r?.message?.split(".")[0] ? `${title} is forgotten.` : "Forgotten."); back(); }).catch((e) => setForgetting({ busy: false, problem: e instanceof Error ? e.message : "That did not work." }));
-              }} />
-              <Button kind="ghost" label="Cancel" onPress={() => setForgetting(null)} />
-            </View>
-          </View>
-        ) : null}
-      </Sheet>
     </View>
   );
 }

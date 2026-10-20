@@ -5,6 +5,7 @@ import { RecordTimeline } from "./RecordTimeline";
 import { isMissing, recordsApi, type HistoryItem } from "./records-api";
 import { actorWords, filterHistory, filtersFor } from "./history-model.js";
 import { ago } from "../../ui/views/logic.js";
+import { plainError } from "../../src/real/error-note.js";
 
 const ICON: Record<string, any> = { chat: "chat", email: "mail", task: "task", flow: "flows", file: "file", note: "edit", call: "phone", meeting: "cal", agent: "spark", edit: "edit" };
 
@@ -19,7 +20,7 @@ export function RecordHistory({ urn, me, refresh = 0 }: { urn: string; me?: stri
   useEffect(() => { setItems(null); load(); }, [load, refresh]);
   const undo = async (id: string) => {
     const r = await recordsApi.undo(id);
-    if (r.error) { showToast(r.error.message || "That could not be undone."); return; }
+    if (r.error) { showToast(plainError(r.error, "That could not be undone.")); return; }
     showToast("Undone. It is back the way it was.");
     load();
   };

@@ -73,7 +73,7 @@ export function registerQuick({ tool, obj, str, refuse, addLink }) {
       admin(d);
       if (i.kind === LINK_KIND) return addLink(i, d);
       const type = String(i.type), kind = String(i.kind);
-      if (!QUICK_KINDS.includes(kind)) throw refuse(`A fast field is one of: ${QUICK_KINDS.join(", ")}. Other kinds are added from Settings, Objects.`, "bad_input");
+      if (!QUICK_KINDS.includes(kind)) throw refuse(`A fast field is one of: ${QUICK_KINDS.join(", ")}. Other kinds are added in Settings, Types.`, "bad_input");
       const name = nameOfLabel(i.label);
       if (!NAME.test(name) || RESERVED.has(name)) throw refuse(`"${i.label}" cannot be a field name. Pick another label.`, "bad_input");
       const t = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ x) => x.name === type);

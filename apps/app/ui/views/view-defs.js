@@ -55,18 +55,6 @@ export const viewDefs = {
     plural: "Notes", titleField: "title",
     list: { columns: ["ref", "state", "list"], sort: "title" },
   },
-  matter: {
-    plural: "Jobs", titleField: "title", holdsWork: true,
-    list: { columns: ["client", "stage", "fee", "owner"], sort: "closing" },
-    board: { groupBy: "stage", card: ["title", "client", "fee", "owner"] },
-    calendar: { date: "closing" },
-    dashboard: { widgets: [
-      { kind: "sum", field: "fee", where: "stage != Closed" },
-      { kind: "countBy", field: "stage" },
-      { kind: "funnel", field: "stage", where: "Intake..Review" },
-      { kind: "recent" },
-    ] },
-  },
   project: {
     plural: "Projects", titleField: "title", holdsWork: true,
     list: { columns: ["stage", "owner", "priority", "due"], sort: "due" },
@@ -86,6 +74,14 @@ export const viewDefs = {
     board: { groupBy: "kind", card: ["owner", "uses"] },
   },
 };
+
+/**
+ * Add the view definitions a sample world brings for its own types (the sample world's Jobs, src/store-core/types.js). This table names no type of one trade; a world that shows one registers it here.
+ * A name the table has already is left as it is. @param {Record<string, ViewDefinition>} more
+ */
+export function addViewDefs(more) {
+  for (const [k, v] of Object.entries(more || {})) if (!Object.prototype.hasOwnProperty.call(viewDefs, k)) viewDefs[k] = v;
+}
 
 /** The view definition of a type: the table's entry or a plain one, with the type's stored views laid over it. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[], views?: readonly StoredView[] }} def @param {Record<string, ViewDefinition>} [table] @param {string} [viewName] a stored view of one kind, by name, to use instead of the first @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs, viewName) {
@@ -125,7 +121,7 @@ function defaultViewDef(def, table) {
   if (known) return { ...known, titleField: "name", ...(known.board ? { board: { ...known.board, card: known.board.card.map(c => (c === "title" ? "name" : c)) } } : {}) };
   // A type this table does not know (a space's own, or one a Kit added): a plain list. It holds work, and shows under Projects, only when its definition says so
   // (`kind: "project"`, set in Customize or by a Kit). Having a stage is not enough: a role such as a Prospect has stages and is not a project.
-  // A board groups by the stage field, or by the first choice field when there is no stage (a Lead by its Practice area).
+  // A board groups by the stage field, or by the first choice field when there is no stage (a Lead by its Source).
   const group = def.fields.find(f => f.kind === "stage") || def.fields.find(f => f.kind === "choice");
   return {
     plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) },
