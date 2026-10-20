@@ -40,8 +40,8 @@ test("one list: the agent's own Routines and Watchers and its duties, Routines f
 test("the page's detail: next run, last run with its result, items found, failures; a waiting Watcher says so", () => {
   const rows = routineRows(OWN, null, "per_me");
   const by = (t) => rows.find((r) => r.title.startsWith(t));
-  assert.deepEqual(detailLines(by("Tells you when")).map((l) => l.replace(/\d+ Oct, \d\d:\d\d/, "T")), ["Next run T", "Last run T: Ran", "3 items found"]);
-  assert.deepEqual(detailLines(by("Check my inbox")).map((l) => l.replace(/\d+ Oct, \d\d:\d\d/, "T")), ["Last run T: Failed: the inbox answered 500", "2 failures in a row"]);
+  assert.deepEqual(detailLines(by("Tells you when")).map((l) => l.replace(/\d+ Oct(?: \d{4})?, \S+(?: [ap]m)?/, "T")), ["Next run T", "Last run T: Ran", "3 items found"]);
+  assert.deepEqual(detailLines(by("Check my inbox")).map((l) => l.replace(/\d+ Oct(?: \d{4})?, \S+(?: [ap]m)?/, "T")), ["Last run T: Failed: the inbox answered 500", "2 failures in a row"]);
   assert.deepEqual(detailLines(by("Tells you about")), ["Waiting for its first test to pass"]);
 });
 

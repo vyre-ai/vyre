@@ -403,7 +403,7 @@ test("Flows no longer offer a watcher trigger: an older Flow started by a watche
   const { TRIGGERS, advancedWords } = await import("./logic.js");
   assert.equal(TRIGGERS.some((t) => t.id === "watcher" || /watch/i.test(t.label + t.hint)), false, "the builder's menu has no watcher");
   for (const stored of [{ on: "watcher", watcher: "new-mail" }, { on: "watcher", watcher: "new-mail", where: "trigger.item.from != \"\"" }]) {
-    const def = { format: 1, name: "t", label: "T", authorship: "builder", trigger: stored, steps: [{ id: "wait1", kind: "wait", amount: 1, unit: "days" }] };
+    const def = { format: 1, name: "t", label: "T", authorship: "builder", trigger: stored, steps: [{ id: "c1", kind: "create", type: "matter", set: { client: "x" } }] };
     assert.deepEqual(checkFlow(def), [], "the engine still runs it");
     const d = fromDefinition(def);
     assert.equal(d.trigger.kind, "advanced");

@@ -33,7 +33,8 @@ test("an agent's own Watcher and Routine: made only from the person's words, own
   assert.equal(made.error, undefined, JSON.stringify(made.error));
   assert.deepEqual([made.data.state, made.data.waiting, made.data.problems], ["paused", true, undefined]);
   const json = JSON.parse(fs.readFileSync(path.join(root, "watchers", "northwind-invoices", "watcher.json"), "utf8"));
-  assert.deepEqual(json.owner, { kind: "agent", agent: "scout", thread: "t-1" }, "the owner is the calling agent and its chat, never what the agent wrote");
+  assert.deepEqual([json.owner.kind, json.owner.agent, json.owner.thread], ["agent", "scout", "t-1"], "the owner is the calling agent and its chat, never what the agent wrote");
+  assert.match(String(json.owner.person), /^per_/, "and the person the call is for (here the Space's owner, read from the call's chain)");
   assert.equal(json.act, undefined, "what only Vyre may say is dropped");
   assert.equal((await scout("watchers.write", { name: "another-one", spec: SPEC, code: CODE })).error?.code, "not_asked", "one ask, one watcher");
 

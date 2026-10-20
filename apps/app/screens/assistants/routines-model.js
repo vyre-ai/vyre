@@ -11,14 +11,13 @@
  *   next: string, last: string, result: string, items: number | null, failures: number, why: string, actions: Act[] }} Row
  */
 
+import { dayTimeOf } from "../../src/time/show.js";
+
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** "20 Oct, 09:00" in the viewer's own time, or "" for no time. @param {unknown} iso */
+/** "20 Oct, 9:00 am" in the viewer's own zone (lib/time, through the app's one way to show a time), or "" for no time. @param {unknown} iso */
 export function whenWords(iso) {
   const t = typeof iso === "string" ? Date.parse(iso) : NaN;
-  if (!Number.isFinite(t)) return "";
-  const d = new Date(t);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return Number.isFinite(t) ? dayTimeOf(t) : "";
 }
 
 /** The person a row runs for, in words: "you" for the signed-in person, else a short form of the id. @param {string} id @param {string | null} self */
