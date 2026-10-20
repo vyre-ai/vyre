@@ -6,13 +6,14 @@ import { allowsMock, showToast, useStore } from "@vyre/ui";
 import { loadTypes } from "./data";
 import type { TypeDef } from "./logic.js";
 import { diffFor, isOwn, toTypeDef } from "./real-model.js";
+import { plainError } from "../../src/real/error-note.js";
 
 type S = { types: TypeDef[]; loading: boolean; error: string; load: (space?: string) => Promise<void>; update: (t: TypeDef) => void; add: (t: TypeDef) => void };
 
 /** The kernel's definitions as last read, by type name: what a change is applied onto. */
 let kernel: Record<string, unknown> = {};
 const real = () => !allowsMock();
-const say = (e: unknown) => (e instanceof Error ? e.message : "That did not save.");
+const say = (e: unknown) => plainError(e, "That did not save.");
 
 export const useTypes = create<S>((set, get) => ({
   types: real() ? [] : loadTypes(),

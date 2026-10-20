@@ -27,6 +27,7 @@ import { drive } from "./drive.js";
 import { registerSpaceDrive } from "./space-drive.js";
 import { registerPlaces } from "./places.js";
 import { registerSpaceEdit } from "./space-edit.js";
+import { registerAgentFolder } from "./agent-folder.js";
 import { registerSpaceMentions } from "./space-mentions.js";
 import { registerSpaceLinks } from "./space-links.js";
 import { registerLinked } from "./linked.js";
@@ -420,6 +421,7 @@ export default {
     registerSpaceDrive(ctx);
     registerPlaces(ctx);
     registerSpaceEdit(ctx);
+    registerAgentFolder(ctx);
     registerSpaceMentions(ctx);
     // Shared links to a file in it, read only until they expire (core/files/space-links.js).
     registerSpaceLinks(ctx);

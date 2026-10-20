@@ -91,10 +91,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CHROME_TEST_NOFETCH` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/harness/frames-suite.mjs` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
 | `VYRE_CODEX_HOME` | Not described yet. | `core/import/formats/index.js` |
-| `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
-| `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |
-| `VYRE_COMPUTERS_LABEL_PREFIX` | The label prefix that marks Vyre's containers. Default `run.vyre.computers`. | `core/dockerproxy/main.js` |
-| `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
 | `VYRE_CORE_DATA` | vyre-core's data directory (ADR 0040). Default `/Library/Application Support/Vyre/data`. | `core/vyre-core/main.js` |
 | `VYRE_CORE_SOCKET` | vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns. | `core/vyre-core/main.js` |
 | `VYRE_CORE_STRICT` | `0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac. | `core/vyre-core/main.js` |

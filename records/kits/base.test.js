@@ -21,7 +21,8 @@ async function rig(law = false) {
 test("the base Kit installs on a Space and the types are there with their views stored", async () => {
   const { host } = await rig();
   const types = new Map(Object.entries(host.catalog().types));
-  for (const n of ["contact", "lead", "appointment", "client", "subscriber", "project"]) assert.ok(types.has(n), n);
+  for (const n of ["contact", "appointment", "subscriber", "project"]) assert.ok(types.has(n), n);
+  for (const n of ["lead", "client"]) assert.equal(types.has(n), false, `no second ${n} beside the core role`);
   assert.equal(types.get("project").views[0].groupBy, "stage");
   assert.equal(types.get("project").kind, "project");
 });
@@ -29,12 +30,13 @@ test("the base Kit installs on a Space and the types are there with their views 
 test("one Contact, many roles: a person who is a Lead and then a Client is still one Contact", async () => {
   const { R, o } = await rig();
   const c = await R.create(o, "contact", { name: "Jordan Reyes", email: "jordan@example.com" });
-  const lead = await R.create(o, "lead", { contact: { urn: c.urn }, stage: "New" });
-  const client = await R.create(o, "client", { contact: { urn: c.urn }, stage: "Onboarding" });
+  const lead = await R.create(o, "role-lead", { holder: { urn: c.urn }, stage: "New" });
+  const client = await R.create(o, "role-client", { holder: { urn: c.urn }, stage: "Active" });
+  const sub = await R.create(o, "subscriber", { contact: { urn: c.urn }, stage: "Subscribed" });
   const roles = await R.roles(o, c.urn);
-  assert.deepEqual(roles.map((r) => r.role).sort(), ["client", "lead"]);
-  assert.ok(lead.urn && client.urn);
-  await assert.rejects(() => R.create(o, "lead", { stage: "New" }), "a lead without a contact is refused");
+  assert.deepEqual(roles.map((r) => r.role).sort(), ["role-client", "role-lead", "subscriber"]);
+  assert.ok(lead.urn && client.urn && sub.urn);
+  await assert.rejects(() => R.create(o, "role-lead", { stage: "New" }), "a lead without a contact is refused");
 });
 
 test("the Law firm Kit: a Project follows the stages of its practice area, and the fields that apply only there are required only there", async () => {
@@ -90,12 +92,12 @@ test("re-seeding a core type that carries a person-added field is not refused, a
   await assert.rejects(() => host.defineTypes([{ name: `${note.name}_mine`, label: note.label, fields: note.fields }]), { code: "type_exists" });
 });
 
-test("a Contact shows Leads, Clients, Appointments and Projects: every link to it in the base Kit and the core types has a named inverse", () => {
+test("a Contact shows Appointments, Subscriptions and Projects: every link to it in the base Kit and the core types has a named inverse", () => {
   const types = [...CORE_TYPES, ...BASE.types.filter((t) => !CORE_TYPES.some((c) => c.name === t.name))];
   const toContact = types.flatMap((t) => t.fields.filter((f) => f.kind === "link" && f.to === "contact").map((f) => ({ at: `${t.name}.${f.name}`, inverse: f.inverse })));
   for (const l of toContact) assert.ok(l.inverse && l.inverse.name && l.inverse.label, `${l.at} has a named inverse`);
   const labels = toContact.map((l) => l.inverse.label);
-  for (const want of ["Leads", "Clients", "Appointments", "Projects"]) assert.ok(labels.includes(want), `a Contact shows ${want}`);
+  for (const want of ["Appointments", "Subscriptions", "Projects"]) assert.ok(labels.includes(want), `a Contact shows ${want}`);
   // every link in core and base that names a target has an inverse (a link with no target points at any record and has none)
   for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.to) assert.ok(f.inverse, `${t.name}.${f.name} has a named inverse`);
   // no two links to one type share an inverse name

@@ -16,6 +16,7 @@ import { SPACE_NAME_SAY, commandOk, passwordOk, personRoutes, placeKind, spaceAd
 import { resolveInviteLink } from "../../../../lib/invite-link.js";
 import { createAddServer } from "../real/add-server.js";
 import { trail } from "./trail.js";
+import { modelOf } from "../models/model-choice.js";
 import { createMasterRecord, openMasterRecord } from "./master-web.js";
 import { makeDeviceKey } from "./device-key.js";
 import * as C from "../../../../kernel/identity/chain.js";
@@ -1017,7 +1018,8 @@ export function createHost(o) {
         try { r = await ports.call("sessions.accounts.models", { account: a.id }, box); } catch { r = null; }
         let models = r && Array.isArray(r.models) ? r.models : null;
         if (!models || !models.length) { try { const p = /** @type {any} */ (await ports.call("sessions.models", { provider: String(a.provider || "claude") }, box)); models = Array.isArray(p) ? p : p && Array.isArray(p.models) ? p.models : []; } catch { models = []; } }
-        return models.filter((/** @type {any} */ m) => m && typeof m.id === "string").slice(0, 60).map((/** @type {any} */ m) => ({ id: String(m.id).slice(0, 120), label: String(m.label || m.id).slice(0, 120) }));
+        // the one shape the model service answers (lib/model-registry.js modelView), its details kept by name and type only
+        return models.filter((/** @type {any} */ m) => m && typeof m.id === "string").slice(0, 200).map((/** @type {any} */ m) => modelOf(m, String(a.provider || ""))).filter(Boolean);
       };
       const accounts = [];
       for (const a of rows.slice(0, 12)) accounts.push({ id: String(a.id), label: String(a.label || a.provider || "AI account").slice(0, 80), provider: String(a.provider || ""), models: await modelsOf(a) });
@@ -1028,12 +1030,16 @@ export function createHost(o) {
       const { box } = await serverOfThisRun("Pick a model once your space is online.", true);
       const model = String((input && input.model) || "").trim();
       if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw bad("That is not a model name.", "bad_model");
+      // the provider the model is on, as the model service names it, and the effort when the model takes one
+      const provider = String((input && input.provider) || "").trim(), effort = String((input && input.effort) || "").trim();
+      if (provider && !/^[a-z][a-z0-9-]{0,39}$/.test(provider)) throw bad("That is not a provider.", "bad_model");
+      if (effort && !/^[a-z]{2,10}$/.test(effort)) throw bad("That is not an effort level.", "bad_model");
       const ports = await o.space.load();
       const l = /** @type {any} */ (await ports.call("agents.list", {}, box));
       const a = (Array.isArray(l) ? l : l && Array.isArray(l.agents) ? l.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant");
       if (!a || !a.name) throw bad("Your Assistant is not made yet.", "assistant_not_made");
-      await ports.call("agents.update", { name: String(a.name), model }, box);
-      return { name: String(a.name), model };
+      await ports.call("agents.update", { name: String(a.name), model, ...(provider ? { model_provider: provider } : {}), ...(effort ? { effort } : {}) }, box);
+      return { name: String(a.name), model, ...(provider ? { provider } : {}), ...(effort ? { effort } : {}) };
     },
 
     "onboard.space.list": async () => {

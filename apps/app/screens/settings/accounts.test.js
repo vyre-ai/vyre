@@ -169,5 +169,7 @@ test("no Claude-only card, copy or logic is left in AI accounts, first run's AI 
   for (const f of files) for (const bad of banned) assert.doesNotMatch(read(f), bad, `${f}: ${bad}`);
   assert.doesNotMatch(read("./RealAgents.tsx"), /markRef\("agent"|providers\(\)/, "no face for a provider, and no second list of providers");
   assert.match(read("./AccountsCard.tsx"), /ProviderLogo/);
-  assert.match(read("../assistants/AgentParts.tsx"), /ProviderLogo/);
+  // the agent page chooses its model with the one model picker, which draws each account's provider mark (the sign-in plan that listed accounts is gone: an agent runs on whoever uses it)
+  assert.match(read("../assistants/AgentPage.tsx"), /ModelPicker/);
+  assert.match(read("../../ui/components/ModelPicker.tsx"), /ProviderLogo/);
 });

@@ -3,9 +3,12 @@ import { View } from "react-native";
 import { Banner, Button, Chip, Field, Segmented, Sheet, Switch, Text, showToast, useStore } from "@vyre/ui";
 import { OPS, buildView, fieldChoices, layoutsFor, personalEntry, personalViewsOf, sharedEntry } from "../../ui/views/saved-views.js";
 import { editList, useEffectiveList } from "./views-actions";
+import { plainError } from "../../src/real/error-note.js";
 
 type Filter = { field: string; op: string; value: string };
 const ICONS = ["list", "board", "cal", "users", "chart", "star", "pin", "records"] as const;
+/** What each icon chip reads as: a word a person knows, never the icon's own name. */
+const ICON_WORDS: Record<(typeof ICONS)[number], string> = { list: "List", board: "Board", cal: "Calendar", users: "People", chart: "Chart", star: "Star", pin: "Pin", records: "Records" };
 
 /**
  * "New view": pick a type, a layout (List, Table, Board, Calendar), its grouping or date, filters, a sort, a name and an icon, then save it as your own or (an owner or admin) for the whole space,
@@ -35,13 +38,13 @@ export function NewViewSheet({ open, onClose, types, type: first, space, canShar
   if (!def) return null;
   const pick = (t: string) => { setType(t); setLayout("list"); setGroupBy(""); setDateField(""); setColumns([]); setFilters([]); setSortField(""); setErrors([]); };
   const taken = personalViewsOf(type, list).map((v) => v.name.replace(/^mine-/, ""));
-  const draft = () => buildView(def, { name, layout, groupBy: groupBy || fields.groupBy[0]?.name, dateField: dateField || fields.dateField[0]?.name, columns, filters, sort: sortField ? { field: sortField, dir: desc ? "desc" : "asc" } : undefined }, { taken: shared ? [] : taken });
+  const draft = () => buildView(def, { name, layout, groupBy: groupBy || fields.groupBy[0]?.name, dateField: dateField || fields.dateField[0]?.name, columns, filters, sort: sortField ? { field: sortField, dir: desc ? "desc" : "asc" } : undefined }, { taken: shared && canShare ? [] : taken });
   const save = async () => {
     const built = draft();
     if (!built.ok) { setErrors(built.errors); return; }
     setBusy(true); setErrors([]);
     try {
-      if (shared) {
+      if (shared && canShare) {
         const diff = sharedEntry(def, built.view);
         if (!diff.ok) { setErrors(diff.errors); return; }
         await store.define({ change_types: [diff.type] } as any);
@@ -54,7 +57,7 @@ export function NewViewSheet({ open, onClose, types, type: first, space, canShar
       }
       showToast(`${built.view.label} saved${pin ? " and pinned" : ""}.`);
       setName(""); onClose();
-    } catch (e) { setErrors([e instanceof Error ? e.message : "That did not save."]); } finally { setBusy(false); }
+    } catch (e) { setErrors([plainError(e, "That did not save.")]); } finally { setBusy(false); }
   };
   const chips = (items: { name: string; label: string }[], value: string, onPick: (v: string) => void) => (
     <View className="flex-row flex-wrap gap-s2">{items.map((f) => <Chip key={f.name} tone={value === f.name ? "accent" : "plain"} icon={value === f.name ? "check" : undefined} onPress={() => onPick(f.name)}>{f.label}</Chip>)}</View>
@@ -98,10 +101,11 @@ export function NewViewSheet({ open, onClose, types, type: first, space, canShar
         <Field label="Name" value={name} onChangeText={setName} placeholder="Sales pipeline" />
         <View className="gap-s1">
           {label("Icon")}
-          <View className="flex-row flex-wrap gap-s2">{ICONS.map((i) => <Chip key={i} tone={icon === i ? "accent" : "plain"} icon={i as any} onPress={() => setIcon(i)}>{i === "cal" ? "calendar" : i}</Chip>)}</View>
+          <View className="flex-row flex-wrap gap-s2">{ICONS.map((i) => <Chip key={i} tone={icon === i ? "accent" : "plain"} icon={i as any} onPress={() => setIcon(i)}>{ICON_WORDS[i]}</Chip>)}</View>
         </View>
-        <Segmented<string> label="Who sees it" value={shared ? "space" : "me"} onChange={(v) => setShared(v === "space")} options={[["me", "Just me"], ["space", "Everyone in the space"]]} />
-        {shared ? <Text size="caption" tone="label">Everyone sees it, and each person still sees only the records their role allows.</Text> : null}
+        {/* Only an owner or an admin shares a view with the whole Space (it is stored on the type); anyone else saves their own. */}
+        {canShare ? <Segmented<string> label="Who sees it" value={shared ? "space" : "me"} onChange={(v) => setShared(v === "space")} options={[["me", "Just me"], ["space", "Everyone in the space"]]} /> : null}
+        {shared && canShare ? <Text size="caption" tone="label">Everyone sees it, and each person still sees only the records their role allows.</Text> : null}
         <View className="flex-row items-center gap-s2"><Switch label="Pin to the sidebar" on={pin} onChange={setPin} /><Text>Pin to the sidebar</Text></View>
         {errors.length ? <Banner tone="warn">{errors[0]}</Banner> : null}
         <View className="flex-row gap-s2"><Button kind="primary" label="Save view" disabled={busy} onPress={() => void save()} /><Button kind="ghost" label="Cancel" onPress={onClose} /></View>

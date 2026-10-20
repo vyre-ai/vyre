@@ -54,30 +54,24 @@ test("page: job and model go through agents.update by name, talk through agents.
   const b = box({ "agents.ask": { data: { thread: "t1" } } });
   const s = agentSource(b.call);
   await s.setJob("kit", "  Research.  ");
-  await s.setModel("kit", "claude-sonnet-5", "high");
+  await s.setModel("kit", "claude-sonnet-5", "claude", "high");
   const t = await s.talk("kit", " hello ");
   assert.equal(t.thread, "t1");
   assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [
     ["agents.update", { name: "kit", instructions: "Research." }],
-    ["agents.update", { name: "kit", model: "claude-sonnet-5", effort: "high" }],
+    ["agents.update", { name: "kit", model: "claude-sonnet-5", model_provider: "claude", effort: "high" }],
     ["agents.ask", { agent: "kit", text: "hello" }],
   ]);
 });
 
-test("page: the model picker offers only what the person's own AI accounts offer, each once, and keeps the agent's own model", { skip: !strip }, async () => {
+test("page: a model is saved with the provider the one model service names, and with no effort when the model takes none", { skip: !strip }, async () => {
   const { agentSource } = await import("./agent-source.ts");
-  const { accountModelsFor } = await import("./agent-model.ts");
-  const b = box({
-    "sessions.accounts.list": { data: [{ id: "ac_or", provider: "openrouter", label: "Router" }, { id: "ac_x", provider: "codex", label: "Broken" }] },
-    "sessions.accounts.models": (/** @type {any} */ i) => (i.account === "ac_or" ? { data: { models: [{ id: "acme/small-1", label: "Acme Small" }, { id: "acme/large-2" }] } } : { error: { code: "failed", message: "no" } }),
-  });
-  const groups = await agentSource(b.call).accountModels();
-  assert.deepEqual(groups, [{ account: "ac_or", label: "Router", models: [{ id: "acme/small-1", label: "Acme Small" }, { id: "acme/large-2", label: "acme/large-2" }] }, { account: "ac_x", label: "Broken", models: [] }]);
-  assert.deepEqual(accountModelsFor(null, groups), [{ id: "acme/small-1", name: "Acme Small" }, { id: "acme/large-2", name: "acme/large-2" }], "only the OpenRouter account's models, not another provider's aliases");
-  assert.deepEqual(accountModelsFor("acme/large-2", groups).map((m) => m.id), ["acme/small-1", "acme/large-2"], "the agent's model is not listed twice");
-  assert.deepEqual(accountModelsFor("old-model", []), [{ id: "old-model", name: "old-model" }], "no account offers anything: only what it runs on now");
-  const two = [{ account: "a", label: "Work", models: [{ id: "m1", label: "M1" }] }, { account: "b", label: "Home", models: [{ id: "m1", label: "M1" }, { id: "m2", label: "M2" }] }];
-  assert.deepEqual(accountModelsFor(null, two), [{ id: "m1", name: "M1 (Work)" }, { id: "m2", name: "M2 (Home)" }], "with several accounts each row says whose it is");
+  const b = box({});
+  const s = agentSource(b.call);
+  await s.setModel("kit", "x-ai/grok-4.7", "openrouter", "");
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["agents.update", { name: "kit", model: "x-ai/grok-4.7", model_provider: "openrouter" }]]);
+  assert.equal(/** @type {any} */ (s).accountModels, undefined, "the page reads the one hook (src/models/useMyModels.ts), not a list of its own");
+  assert.equal(/** @type {any} */ (s).models, undefined);
 });
 
 test("usage: money only on an API key, turns otherwise, a limit says when it resets", { skip: !strip }, async () => {

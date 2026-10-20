@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ViewControls } from "./ViewControls";
 import { callT } from "../../src/real/call-tool";
 import { RecordScreen } from "./RecordScreen";
-import { needsIdFill, defineInputOf } from "./records-screen.js";
+import { needsIdFill, defineInputOf, tabOrder } from "./records-screen.js";
 import { useMoveStage } from "./MoveStage";
+import { useRecordsOpen } from "./records-open";
 import { useTypeLayout } from "./layout-state";
 import { LayoutControls } from "./LayoutControls";
 import { TableControls } from "./TableControls";
@@ -28,15 +29,20 @@ import { TypeFields } from "../customize/TypeScreen";
 import { TypeAccess } from "../customize/TypeAccess";
 import { TypeHistory } from "../customize/TypeHistory";
 import { useEffectiveList } from "./views-actions";
-import { useSidebar } from "../shell/sidebar";
 import { useSpaces } from "../shell/state";
 import { tableFromRecords } from "../../ui/views/records-table.js";
+import { renameShared, deleteShared } from "../../ui/views/saved-views.js";
 import { Platform, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, isInternalField, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
+import { allowsMock, BlockScreen, BoardView, GalleryView, SidePanel, ListHeader, chipsToFilters, listRows, Button, CalendarView, tableToCsv, Card, Chip, DashboardView, EmptyState, Icon, IconButton, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Tabs, Text, filterWords, isInternalField, showToast, storedViewsOf, useFieldEnv, useStore, useUiTheme, viewDefOf, viewRows, viewsOf, MINE, personalViewsOf, withPersonalViews } from "@vyre/ui";
 import { usePlaceText } from "../../src/real/PlaceTag";
 import { tagFor, spaceOfUrn } from "../../src/real/place-tag.js";
 import { useMembers } from "../spaces/state";
+import { plainError } from "../../src/real/error-note.js";
+import { useRecordsAccess } from "./records-access";
+import { Bin } from "./Bin";
+import { BulkActions } from "./BulkActions";
+import { RecordsSetup } from "../now/RecordsSetup";
 
 type ViewKind = "list" | "gallery" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
@@ -59,7 +65,10 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const scopes = scopesFor(type);
   const scope = scopes.some(([k]) => k === scopePicked) ? scopePicked : defaultScope(type);
   const sf = scopeFilter(scope);
-  const { data: world, loading, error, reload } = useRecordsWorld(sf && type !== "note" ? { [type]: sf } : undefined);
+  // Opens from this device's last copy of the type, then its first page, then every type behind them (records-open.ts): no loading rows once a type has been opened here before.
+  const { data: world, loading, error, reload, stale } = useRecordsOpen(type, sf && type !== "note" ? { [type]: sf } : undefined);
+  /** How many records a tab's type holds: the whole world counts its rows, a copy or a first page says what the box counted, or nothing is shown. */
+  const countOf = (t: string) => (world?.partial ? world.counts?.[t] : (world?.byType[t] || []).length);
   const { phone } = useUiTheme();
   const roleChips = useRoleChips(type, String((world?.byType?.[type] ?? []).length), world?.byType?.[type] ?? []);
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
@@ -81,10 +90,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const [chips, setChips] = useState<any[]>([]);
   const [preset, setPreset] = useState<{ filters: any[] } | undefined>(undefined);
   const space = useSpaces((s) => s.space);
-  const canShare = useSidebar((s) => s.canSetDefault);
+  // What the server lets this person do here: an owner or an admin makes types, edits fields, adds columns and shares views; on the person's own server they also delete for good (records-access.ts)
+  const access = useRecordsAccess();
+  const canShare = access.admin;
+  const [binOpen, setBinOpen] = useState(false);
   const entries = useEffectiveList();
   // The pins (sidebar links) open this screen with a view in the address: follow it.
-  useEffect(() => { setViewName(openedView); setScopePicked(""); setPicked(null); setCleared(false); setQuery(""); setChips([]); }, [openedView, type]);
+  useEffect(() => { setViewName(openedView); setScopePicked(""); setPicked(null); setCleared(false); setQuery(""); setChips([]); setBinOpen(false); }, [openedView, type]);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   const mv = useMoveStage(env, reload);
@@ -95,7 +107,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // Older records without their ID (a type that gained the field): an owner or admin opening the type asks for its own definition again, unchanged, which gives them their IDs (core/records-tools); once for a type in a visit
   const idAsked = useRef(new Set<string>());
   useEffect(() => {
-    if (!world || idAsked.current.has(type)) return;
+    // judged on every record of the type, so never on a copy or a first page
+    if (!world || world.partial || idAsked.current.has(type)) return;
     const def = world.types.find((t) => t.name === type);
     if (!needsIdFill({ def, rows: world.byType[type] || [], canDefine: canShare })) return;
     idAsked.current.add(type);
@@ -109,12 +122,13 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // A new type finishes setting up in the background: when the last one is done, the tabs read it in.
   const wasSettingUp = useRef(0);
   useEffect(() => { if (wasSettingUp.current > 0 && settingUp === 0) reload(); wasSettingUp.current = settingUp; }, [settingUp, reload]);
-  if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
+  // A first start: while the Space's records are being set up, the same calm card Now shows, and the list loads by itself when they are ready; any other failure says why in plain words
+  if (error && !world) return <RecordsSetup onReady={reload} otherwise={<ErrorState title="Records did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />} />;
   const page = Boolean(b.props?.page);
   const frame = (title: string, children: React.ReactNode, more: { own?: boolean; onRefresh?: () => void } = {}) => (page ? <LargeTitleScreen title={title} {...more}>{children}</LargeTitleScreen> : <View className="gap-s3">{children}</View>);
   if (loading && !world) return frame("Records", <LoadingState rows={5} />);
   const def = world?.types.find((t) => t.name === type);
-  if (!world || !def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
+  if (!world || !def) return <EmptyState title="That type is not here" body={`This space has no record type called "${type}". It may have been removed, or it is kept out of Records.`} action={{ label: "Go to People", onPress: () => router.replace("/u/records/contact" as never) }} />;
   // The person's own views of this type are laid over the type's own; they decide how the screen is drawn only when one of them is open, so they never change what the type opens as.
   const mineViews = personalViewsOf(type, entries);
   const full = withPersonalViews(def, mineViews);
@@ -124,7 +138,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const views = viewsOf(drawn, vd) as ViewKind[];
   const own = (full.views ?? []).find((v: any) => v.name === viewName)?.type as ViewKind | undefined;
   const shown: ViewKind = picked && views.includes(picked) ? picked : own && views.includes(own) ? own : (vd as any).open && views.includes((vd as any).open) ? (vd as any).open : "list";
-  const tabTypes = world.types.filter((t: any) => !t.hidden_in_records || t.name === type);
+  const tabTypes = tabOrder(world.types.filter((t: any) => !t.hidden_in_records || t.name === type));
   const everyone = world.byType[def.name] || [];
   // Notes are the planner's and are listed by it (NotesList); every other scoped type is cut here as well as on the box.
   const all = scopes.length && def.name !== "note" ? filterByScope(everyone, scope, (world as any).me) : everyone;
@@ -141,15 +155,16 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
     if (def.name === "task" && g === "status") {
       const d: any = taskDrop(String(rec.data?.status ?? ""), to);
       if (d.say) showToast(d.say);
-      else if (d.call) { const r = await callT("tasks.move", { id: rec.id, ...d.call }); if (r.error) showToast(r.error.message || "That did not move."); else reload(); }
+      else if (d.call) { const r = await callT("tasks.move", { id: rec.id, ...d.call }); if (r.error) showToast(plainError(r.error, "That did not move.")); else reload(); }
       return;
     }
-    try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
+    try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(plainError(e, "That did not move.")); }
   };
   // One scope-style control, with icons only on a phone.
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setPicked} iconsOnly={phone} icons={{ list: "list", gallery: "grid", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   // a record opens in a panel that slides in over the view (the list stays where it was); its own page is still /u/record/<id>
-  const openRec = (rec: any) => (page ? setPanelId(String(rec.id)) : router.push(`/u/record/${rec.id}` as never));
+  // the panel is given the record's address, so it reads that one record (records.get) instead of waiting for every record to find it
+  const openRec = (rec: any) => (page ? setPanelId(String(rec.urn || rec.id)) : router.push(`/u/record/${rec.id}` as never));
   // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
   const table = tableFromRecords(drawn, rows, { controls: phone, roles: roleChips, view: viewName, noFilter: cleared, layout: lay.layout, env: { actors: world.actors, links: env.links } });
   // each row says where it lives (placeTag): the space its address names, else the space showing
@@ -157,6 +172,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // Export CSV: the table content above is what the list draws (the view's rows, filters and search, a sealed value already stopped), so the file holds nothing the person cannot see.
   const exportCsv = () => {
     if (typeof document === "undefined") return;
+    // a copy or a first page holds only the first rows: the file waits for the whole list
+    if (world.partial) { showToast(`The full list of ${vd.plural.toLowerCase()} is still loading. Export again in a moment.`); return; }
     const url = URL.createObjectURL(new Blob(["\uFEFF" + tableToCsv(table.content as any)], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${vd.plural.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`; a.click();
@@ -168,15 +185,24 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   const layoutControls = shown === "list" && def.name !== "note"
     ? <LayoutControls fields={def.fields.filter((f: any) => f.kind !== "sealed" && !isInternalField(f, def.name)).map((f: any) => ({ name: f.name, label: String(f.label ?? f.name) }))} columns={tableColumns} scope={lay.scope} onScope={lay.setScope} mine={lay.mine} onColumns={(c) => void lay.save("columns", c)} onReset={() => void lay.reset()} sheetOpen={colsOpen} onSheet={setColsOpen} />
     : null;
-  const addColumn = (compact: boolean) => <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />;
+  const addColumn = (compact: boolean) => (!access.admin ? null : <AddColumn compact={compact} type={type} types={world.types.map((t: any) => ({ name: t.name, label: String(t.label ?? t.name) }))} onAdded={(n) => { reload(); if (n) void lay.save("columns", [...tableColumns, n]); }} />);
   const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tagged } } };
+  // Ticked rows: set a field for all of them, or delete them to the bin (BulkActions); the table's rows name their record by id
+  const byId = new Map(everyone.map((r: any) => [String(r.id), r]));
+  const bulk = (_k: string, ticked: any[], clear: () => void) => <BulkActions def={def} records={ticked.map((r) => byId.get(String(r.id))).filter(Boolean)} noun={vd.plural.toLowerCase()} clear={clear} reload={reload} />;
+  // A view of the whole Space (stored with the type) is renamed or deleted by an owner or an admin: one records.define of the type with the view changed (saved-views.js)
+  const vn = viewName ?? "";
+  const sharedEdit = access.admin && vn !== "" && !vn.startsWith(MINE) && (def.views ?? []).some((v: any) => v.name === vn) ? {
+    rename: async (label: string) => { const next = renameShared(def, vn, label); if (next) { try { await store.define({ change_types: [defineInputOf(next)] } as any); reload(); showToast(`Renamed to ${label.trim()}.`); } catch (e) { showToast(plainError(e, "That did not save.")); } } },
+    remove: async () => { try { await store.define({ change_types: [defineInputOf(deleteShared(def, vn))] } as any); setViewName(undefined); reload(); showToast("View deleted."); } catch (e) { showToast(plainError(e, "That did not delete.")); } },
+  } : undefined;
   // Every type is a tab with its count, in a strip that scrolls sideways (the approved Records design). A type the Space keeps out of Records (Files, Templates, Playbooks) is not a tab; a "+" at the end makes a new one.
   const typeTabs = (
     <View className="flex-row items-center gap-s2">
       <View className="min-w-0 flex-1">
-        <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : (world.byType[t.name] || []).length)] as [string, string])} />
+        <Tabs value={type} onChange={(t) => router.replace(`/u/records/${t}` as never)} items={tabTypes.map((t) => [t.name, tabLabel(viewDefOf(t).plural, t.name === type && sf ? undefined : countOf(t.name))] as [string, string])} />
       </View>
-      <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} />
+      {access.admin ? <IconButton icon="plus" label="New type" onPress={() => setAddingType(true)} /> : null}
     </View>
   );
   return (
@@ -186,21 +212,21 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         <>
           {/* One header row: Import and Settings as quiet buttons, an overflow for the rest, and one primary New (the approved design). */}
           <View className="flex-row items-center gap-s2">
-            <View className="flex-1" />
+            <View className="flex-1">{stale ? <Text size="caption" tone="label">Updating</Text> : null}</View>
             <Button kind="ghost" size="sm" label="Import" onPress={() => setImporting(true)} />
             <Button kind="ghost" size="sm" label="Settings" onPress={() => setPane(pane === "records" ? "fields" : "records")} />
-            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" />
+            <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="sm" shared={sharedEdit} />
             {pane === "records" ? layoutControls : null}
             <Menu trigger={<IconButton icon="more" label="More" />} items={[
               ...(Platform.OS === "web" ? [{ label: "Export CSV", onPress: exportCsv }] : []),
               { label: "New view", onPress: () => setMaking(true) },
-              { label: "New type", onPress: () => setAddingType(true) },
+              ...(access.admin ? [{ label: "New type", onPress: () => setAddingType(true) }] : []),
               { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
               { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
             ]} />
             <Button kind="primary" size="sm" icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
           </View>
-          <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} />
+          <FirstVisit show={!world.partial && isDayOne(world)} samples={sampleCount(world)} reload={reload} />
           {typeTabs}
           {pane !== "records" ? (
             <View className="flex-row items-center gap-s3">
@@ -210,8 +236,9 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           ) : (
           <View className="flex-row flex-wrap items-center gap-s2">
           <Text size="caption" tone="label">Views</Text>
-          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
-          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+          <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
           <View className="flex-1" />
           {switcher}
         </View>
@@ -219,7 +246,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         </>
       ) : null}
       {phone || pane === "records" ? (
-      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
+      <ListHeader askBar compact={!phone} onSearch={() => openFind("records")} noun={vd.plural.toLowerCase()} shown={rows.length} total={world.partial && !query && !chips.length ? Math.max(countOf(def.name) ?? all.length, all.length) : all.length} query={query} onQuery={setQuery} chips={chips} onChips={setChips} def={def} ctx={lctx} onImport={() => setImporting(true)} onExport={Platform.OS === "web" ? exportCsv : undefined}
         title={<>
           {named.length > 1 ? (
             <Menu trigger={<Pressable accessibilityRole="button" accessibilityLabel={`${vd.plural}, choose a view`} className="flex-row items-center gap-s1 self-start"><Text size="page" strong>{viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : `All ${vd.plural.toLowerCase()}`}</Text><Icon name="chevron-down" size={16} tone="label" /></Pressable>}
@@ -230,31 +257,33 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         saveNote={chipsToFilters(chips, def).skipped ? `${chipsToFilters(chips, def).skipped} of these filters cannot be kept by a saved view yet and are left out.` : undefined} />
       ) : null}
       {/* The views of the type as a row of chips, a person's own marked with a lock, and the layout (Table, Board, Calendar) at the right of the same row (the approved design). */}
-      {phone ? (named.length ? (
+      {phone ? (
         <View className="flex-row flex-wrap items-center gap-s2">
           <Text size="caption" tone="label">Views</Text>
-          <Chip selected={!viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
-          {named.map((n) => <Chip key={n.name} selected={viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); }}>{n.label}</Chip>)}
+          <Chip selected={!binOpen && !viewName} onPress={() => { setViewName(undefined); setPicked(null); setCleared(false); setBinOpen(false); }}>{`All ${vd.plural.toLowerCase()}`}</Chip>
+          {named.map((n) => <Chip key={n.name} selected={!binOpen && viewName === n.name} icon={n.name.startsWith(MINE) ? "lock" : undefined} onPress={() => { setViewName(n.name); setPicked(null); setCleared(false); setBinOpen(false); }}>{n.label}</Chip>)}
+          {def.name !== "note" ? <Chip selected={binOpen} icon="trash" onPress={() => setBinOpen(!binOpen)}>Bin</Chip> : null}
         </View>
-      ) : null) : null}
+      ) : null}
       {phone ? (
       <View className="flex-row gap-s2">
         <Button kind="primary" size="md" icon="plus" label={`New ${def.label.toLowerCase()}`} onPress={() => router.push(`/u/record/new?type=${type}` as never)} />
-        <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" />
+        <ViewControls compact type={type} viewName={viewName} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} personal={!!viewName?.startsWith(MINE)} space={space} size="md" shared={sharedEdit} />
         {layoutControls}
         <Menu trigger={<IconButton icon="more" label="More" />} items={[
           { label: "New view", onPress: () => setMaking(true) },
-          { label: "New type", onPress: () => setAddingType(true) },
+          ...(access.admin ? [{ label: "New type", onPress: () => setAddingType(true) }] : []),
           { label: "Reminders", onPress: () => router.push("/u/records/reminder" as never) },
           { label: "Notes", onPress: () => router.push("/u/records/note" as never) },
         ]} />
       </View>
       ) : null}
-      {phone ? <FirstVisit show={isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}
+      {phone ? <FirstVisit show={!world.partial && isDayOne(world)} samples={sampleCount(world)} reload={reload} /> : null}
+      {phone && stale ? <Text size="caption" tone="label">Updating</Text> : null}
       {phone ? typeTabs : null}
       {/* The type's own tabs, as on a Flow: its records, its fields, who may do what with it, and what changed. */}
       {phone ? <Tabs value={pane} onChange={setPane} items={[["records", vd.plural], ["fields", "Fields"], ["access", "Access"], ["history", "History"]]} /> : null}
-      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : <>
+      {pane === "fields" ? <TypeFields type={type} /> : pane === "access" ? <TypeAccess type={type} label={vd.plural} /> : pane === "history" ? <TypeHistory type={type} /> : binOpen ? <Bin def={def} plural={vd.plural} canForget={access.ownServer} onChanged={reload} /> : <>
       {filter && !cleared ? (
         <Card>
           <View className="flex-row items-center gap-s3 px-s4 py-s3">
@@ -283,7 +312,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           groupBy={lay.layout?.group_by} onGroup={(n) => void lay.save("group_by", n)}
           density={prefs.density} onDensity={prefs.setDensity} freeze={prefs.freezeFirst} onFreeze={prefs.setFreezeFirst} scope={lay.scope} mine={lay.mine} />
       ) : null}
-      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: (_k, name) => (name === "lead" && phone ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : phone ? switcher : null}
+      {shown === "list" && def.name !== "note" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, picked: bulk, slot: (_k, name) => (name === "lead" && phone ? switcher : name === "header-end" ? addColumn(true) : null) }} /> : phone ? switcher : null}
       {shown === "gallery" ? <GalleryView def={drawn} rows={rows} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
       {shown === "board" ? <BoardWithStats def={drawn} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
@@ -296,7 +325,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
         onSaved={(name, t) => { if (t === type) { setViewName(name); setPicked(null); } else router.replace(`/u/records/${t}?view=${encodeURIComponent(name)}` as never); }} />
     </>, { own: true, onRefresh: reload })}
     {page ? <SidePanel open={panelId !== null} onClose={() => setPanelId(null)} title="Record">
-      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn.split("/").pop() || null)} /> : null}
+      {panelId ? <RecordScreen id={panelId} onClose={() => setPanelId(null)} onOpen={(urn) => setPanelId(urn || null)} /> : null}
     </SidePanel> : null}
     </View>
   );

@@ -179,6 +179,8 @@
   "records.link.add",
   "records.pipeline.set",
   "records.relationship.kinds.set",
+  "records.remove",
+  "records.restore",
   "records.rollup.add",
   "records.sample.add",
   "records.sample.remove",

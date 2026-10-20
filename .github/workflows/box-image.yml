@@ -51,7 +51,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.run == 'true'
     runs-on: ${{ (vars.CI_SELF_HOSTED == '1' && (github.ref_type == 'tag' || github.ref_name == 'main' || startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'integrate/') || endsWith(github.ref_name, '/train') || startsWith(github.ref_name, 'work/lead-'))) && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: 55
     env:
       IMAGE: vyre-box:ci
       C: vyre-box-smoke
@@ -248,9 +248,68 @@ jobs:
             echo "$svc: Init=$init entrypoint=$ep" | tee -a "$GITHUB_STEP_SUMMARY"
             [ "$init" != true ] && [ "$ep" = "/usr/bin/tini --" ]
           done
+      # A fresh box starts an agent's computer with NO config.json edit (lib/computers-env.js): vyred is told only VYRE_SUPERVISOR=docker and the VYRE_COMPUTERS_*
+      # lines compose hands both services from one anchor each, so it uses the docker-api proxy with exactly the proxy's create policy and an agent user each.
+      # docker-api is started FIRST, before vyred has written the bearer, and must take the bearer without a restart (lib/bearer watch). The person then wakes
+      # one agent from the Computer tab's own tool (computers.agent.wake), which brings the Space's computer up through the proxy. The computer image is built
+      # here and tagged as compose's default (a release pins it by digest instead; box/vyre and install-box.sh pull that).
+      - name: A fresh box starts an agent computer, with no config edit
+        if: hashFiles('core/computers/image/Dockerfile') != '' && hashFiles('lib/computers-env.js') != ''
+        env:
+          VYRE_IMAGE: vyre-box:ci
+          COMPOSE_PROJECT_NAME: vyreci
+        run: |
+          set -eu
+          export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+          F="-f box/compose.yml --profile computers"
+          docker build -q -t vyre/computer:0.1 core/computers/image
+          docker compose $F down -v >/dev/null 2>&1 || true
+          docker compose $F up -d docker-api
+          sleep 5
+          api=$(docker compose $F ps -q docker-api)
+          echo "docker-api before vyred: $(docker logs "$api" 2>&1 | tail -2)"
+          docker compose $F up -d vyre
+          V=$(docker compose $F ps -q vyre); export V
+          # every look inside is as uid vyre (1000): the box's container drops every capability, so root there cannot open vyred's home or the bearer's folder
+          health() {
+            i=0
+            until docker exec -u 1000:1000 "$V" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))' 2>/dev/null; do
+              i=$((i + 1)); [ $i -lt 300 ] || { echo "no health in 300 s"; exit 1; }
+              [ "$(docker inspect -f '{{.State.Running}}' "$V")" = true ] || { echo "the vyre container stopped"; exit 1; }
+              sleep 1
+            done
+            echo "vyred answers after ${i} s"
+          }
+          health
+          # nothing was edited: the home's config.json names no computers
+          if docker exec -u 1000:1000 "$V" sh -c 'test -f /home/vyre/.vyre/config.json && grep -q "\"computers\"" /home/vyre/.vyre/config.json'; then echo "config.json names computers"; exit 1; fi
+          echo "config.json has no computers key"
+          docker exec -u 1000:1000 "$V" test -s /var/lib/vyre-secrets/docker-api-bearer || { echo "vyred wrote no bearer for docker-api"; exit 1; }
+          echo "vyred wrote docker-api's bearer"
+          # Pressing Wake needs a person, and on a box a person is a real login (sshd or login, as `who` lists it): a docker exec never is one, by design. So "a fresh box: Wake makes
+          # the computer" is proved by scripts/computers-proof/space.mjs (security-live, computers-isolation), a vyred with default settings on the real driver and this same proxy.
+          # Here: vyred stays up with docker-api for a minute, and its event stream is not refused.
+          sleep 60
+          [ "$(docker inspect -f '{{.State.Running}}' "$V")" = true ] || { echo "the vyre container stopped"; exit 1; }
+          [ "$(docker inspect -f '{{.RestartCount}}' "$api")" = 0 ] || { echo "docker-api was restarted"; exit 1; }
+          if docker compose $F logs docker-api 2>&1 | grep -q '"status":429'; then echo "docker-api refused an event stream (429): vyred holds more streams than it should"; exit 1; fi
+          echo "fresh box: vyred up with docker-api and its bearer, no config edit, no restart, no refused event stream" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Agent computer logs
+        if: failure()
+        env:
+          VYRE_IMAGE: vyre-box:ci
+          COMPOSE_PROJECT_NAME: vyreci
+        run: |
+          docker compose -f box/compose.yml --profile computers logs --tail 60 docker-api 2>&1 || true
+          docker compose -f box/compose.yml --profile computers logs --tail 150 vyre 2>&1 || true
+          v=$(docker compose -f box/compose.yml --profile computers ps -aq vyre)
+          [ -n "$v" ] && docker exec -u 1000:1000 "$v" sh -c 'ls -la /home/vyre/.vyre /home/vyre/.vyre/logs 2>&1; for f in /home/vyre/.vyre/logs/*; do echo "== $f"; tail -n 80 "$f"; done; ps -eo user,pid,args | head -30' 2>&1 | tail -250 || true
+          for c in $(docker ps -aq --filter label=run.vyre.computers.managed=true); do docker logs --tail 60 "$c" 2>&1 || true; done
       - name: Compose down
         if: always() && hashFiles('core/daemon/loop.sh') != ''
         env:
           VYRE_IMAGE: vyre-box:ci
           COMPOSE_PROJECT_NAME: vyreci
-        run: docker compose -f box/compose.yml --profile computers down -v || true
+        run: |
+          for c in $(docker ps -aq --filter label=run.vyre.computers.managed=true); do docker rm -f "$c" >/dev/null 2>&1 || true; done
+          docker compose -f box/compose.yml --profile computers down -v || true

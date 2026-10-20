@@ -15,8 +15,8 @@ export function moreToolsSource(call: Call) {
   return {
     /** A watcher's card: what it will do, before it runs on its own. */
     watcherCard: async (name: string): Promise<WatcherCard | null> => watcherCardOf(await ask("watchers.card", { name })),
-    /** Turn on, pause or turn back on. `changed` is set when the code moved after the card was shown. */
-    watcher: async (act: "on" | "pause" | "resume", card: Pick<WatcherCard, "name" | "hash">): Promise<{ ok: true } | { ok: false; reason: string; changed?: boolean }> => {
+    /** Turn on, pause, turn back on or delete. `changed` is set when the code moved after the card was shown. */
+    watcher: async (act: "on" | "pause" | "resume" | "delete", card: Pick<WatcherCard, "name" | "hash">): Promise<{ ok: true } | { ok: false; reason: string; changed?: boolean }> => {
       const c = watcherCall(act, card);
       try { await ask(c.tool, c.input); return { ok: true }; } catch (e) {
         const f: any = failure(e);

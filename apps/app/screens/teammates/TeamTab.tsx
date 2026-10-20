@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Select, Switch, Text, markRef, showToast } from "@vyre/ui";
-import { ROLE, dutyLine, errWords, fillLine, plural, rosterOnly, rowLine, stateWord, type Pane, type Teammate } from "./model";
+import { ROLE, errWords, fillLine, plural, rosterOnly, rowLine, stateWord, type Pane, type Teammate } from "./model";
 import { teammates } from "./teammates";
 import { useTeam } from "./useTeam";
 
-/** One teammate, opened: what it is doing, its last result, notes, and its setup (who fills it, charter, duties). Every value is drawn as text. */
+/** One teammate, opened: what it is doing, its last result, notes, and its setup (who fills it; its Routines, Watchers and job are on its agent's page). Every value is drawn as text. */
 function TeammatePane({ t, project, done }: { t: Teammate; project: string; done: () => void }) {
+  const router = useRouter();
   const [p, setP] = useState<Pane | null>(null);
   const [fillers, setFillers] = useState<string[]>([]);
-  const [edit, setEdit] = useState<"" | "notes" | "charter">("");
+  const [edit, setEdit] = useState<"" | "notes">("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState("");
   const [sure, setSure] = useState(false);
@@ -20,7 +22,7 @@ function TeammatePane({ t, project, done }: { t: Teammate; project: string; done
     try { await fn(); after?.(); read(); done(); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); }
   };
   if (!p) return <LoadingState rows={2} />;
-  const open = (kind: "notes" | "charter") => { setText((kind === "notes" ? p.notes : p.charter) || ""); setEdit(kind); };
+  const open = (kind: "notes") => { setText(p.notes || ""); setEdit(kind); };
   return (
     <View className="gap-s4 p-s3">
       <View className="gap-s1">
@@ -44,34 +46,8 @@ function TeammatePane({ t, project, done }: { t: Teammate; project: string; done
       <View className="gap-s3">
         <Text size="caption" strong tone="label">Setup</Text>
         <Select label={`Who fills ${t.role}`} value={t.filler || ""} options={[["", "The project's helper"], ...fillers.map((a): [string, string] => [a, a])]} onChange={(v: string) => void act("fill", () => teammates.fill(t.agent, v))} />
-        <View className="gap-s2">
-          <Text strong>Charter</Text>
-          {edit === "charter" ? (
-            <>
-              <Field name={`${t.role} charter`} value={text} onChangeText={setText} multiline lines={8} />
-              <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save charter" loading={busy === "charter"} onPress={() => void act("charter", () => teammates.setCharter(t.agent, text), () => setEdit(""))} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setEdit("")} /></View>
-            </>
-          ) : (
-            <>
-              <Text>{p.charter || "No charter yet."}</Text>
-              <View className="flex-row flex-wrap gap-s2"><Button kind="ghost" size="sm" label="Edit" onPress={() => open("charter")} /><Button kind="ghost" size="sm" label={busy === "draft" ? "Drafting" : "Draft it from the project"} disabled={busy === "draft"} onPress={() => void act("draft", () => teammates.draftCharter(t.agent))} /></View>
-            </>
-          )}
-        </View>
-        <View className="gap-s2">
-          <Text strong>Duties</Text>
-          {p.duties.length ? p.duties.map((d) => (
-            <View key={d.id} className="gap-s1">
-              {d.title ? <Text strong>{d.title}</Text> : null}
-              <Text>{d.instruction}</Text>
-              {dutyLine(d) ? <Text size="caption" tone="label">{dutyLine(d)}</Text> : null}
-              <View className="flex-row flex-wrap gap-s2">
-                <Button kind="ghost" size="sm" label={d.enabled ? "Pause" : "Turn on"} disabled={busy === `duty${d.id}`} onPress={() => void act(`duty${d.id}`, () => (d.enabled ? teammates.dutyOff(d) : teammates.dutyOn(d)))} />
-                {d.enabled ? <Button kind="ghost" size="sm" label="Run now" onPress={() => void act(`run${d.id}`, () => teammates.dutyRun(d))} /> : null}
-              </View>
-            </View>
-          )) : <Text tone="muted">No duties.</Text>}
-        </View>
+        {/* A teammate's duties are its agent's Routines and Watchers now, listed on the agent's page and its panel beside a chat with the rest; its job words are the agent's instructions there too. */}
+        <Row dense title="Routines, watchers and its job" sub={`On ${t.agent}'s page, with everything else ${t.agent} does`} chevron onPress={() => router.push(`/u/agents/${encodeURIComponent(t.agent)}` as never)} />
         {sure ? (
           <View className="gap-s2">
             <Text tone="muted">{`Retire ${t.role}? Its notes and history are kept, and adding ${t.role} again brings it back.`}</Text>

@@ -4,8 +4,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Banner, Button, EmptyState, Text, titleOf, ErrorState, LoadingState, PageHeader, RecordForm, createPayload, prefillFromLink, formErrors, personFields, showToast, taskRequestOf, useFieldEnv, useRecordsWorld, useStore, viewDefOf } from "@vyre/ui";
 
 import { findDupes } from "./dupes.js";
+import { plainError } from "../../src/real/error-note.js";
 
-const say = (e: unknown) => (e instanceof Error ? e.message : "That did not save.");
+const say = (e: unknown) => plainError(e, "That did not save.");
 
 /**
  * /u/record/new?type=<name>: the create form of any type, drawn from its definition, in its groups. A sealed value is put after the record exists, through the same putSealed a sealed field always used.
@@ -24,10 +25,10 @@ export function RecordNewScreen() {
   // Started from another record's page: it begins linked to that record.
   useEffect(() => { const d = world?.types.find((t: any) => t.name === type); if (d && via && to) setValues((v) => ({ ...prefillFromLink(d, String(via), String(to)), ...v })); }, [ready]);
   const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${type}` as never));
-  if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
+  if (error && !world) return <ErrorState title="Records did not load" reason={plainError(error, "Records did not answer.")} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="New" onBack={back} /><LoadingState rows={4} /></View>;
   const def = world?.types.find((t: any) => t.name === type);
-  if (!def) return <EmptyState title="No such object" body={`This space has no object called "${type}".`} action={{ label: "Go back", onPress: back }} />;
+  if (!def) return <EmptyState title="That type is not here" body={`This space has no record type called "${type}".`} action={{ label: "Go back", onPress: back }} />;
   const fields = personFields(def).map((f: any) => ({ ...f, sealed: f.kind === "sealed" || !!f.seal }));
   const errors = tried ? formErrors(fields, values) : {};
   const noun = def.label.toLowerCase();

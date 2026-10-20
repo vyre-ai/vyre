@@ -271,7 +271,7 @@ test("watchers: a run that hangs is stopped at its timeout", async t => {
   assert.match(r.error, /took longer than 1s/);
 });
 
-test("watchers: the network is reachable, and a webhook watcher gets the body and checks its token", async t => {
+test("watchers: the network is reachable, and a watcher webhook is retired", async t => {
   const server = http.createServer((req, res) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify([{ id: 11, title: "SQLite 4.0 released" }])); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => server.close());
@@ -294,22 +294,11 @@ test("watchers: the network is reachable, and a webhook watcher gets the body an
   }`, { net: { "feed.test": {} } });
   assert.deepEqual((await rt.test("feed")).items.map(i => i.title), ["SQLite 4.0 released"]);
 
+  // A watcher webhook is retired: a webhook starts a Flow. The folder says so, and the old door runs nothing.
   write("harlow-forms", `export default async function watch({ hook, emit }) { if (hook) emit({ id: hook.submission, title: hook.subject }); }`, { schedule: "webhook" });
-  await rt.test("harlow-forms");
-  const on = await rt.create("harlow-forms");
-  await rt.settle();
-  assert.equal(on.hook.path, "/v1/watchers/harlow-forms/hook");
-  assert.ok(on.hook.token.length >= 30);
-  await assert.rejects(rt.hook("harlow-forms", "wrong", {}), /wrong token/);
-  await rt.hook("harlow-forms", on.hook.token, { submission: "s-9", subject: "New intake form" });
-  await rt.settle();
-  assert.deepEqual(rt.items({ name: "harlow-forms" }).map(i => i.title), ["New intake form"]);
-  // Calls that arrive during a run are queued, not dropped: each body is an item.
-  await Promise.all(["s-10", "s-11", "s-12"].map(id => rt.hook("harlow-forms", on.hook.token, { submission: id, subject: id })));
-  await rt.settle();
-  assert.equal(rt.items({ name: "harlow-forms" }).length, 4);
-  assert.equal(rt.tick().length, 0, "a webhook watcher has no schedule to run on");
-  assert.ok(!JSON.stringify(rt.list()).includes(on.hook.token), "the list shows the webhook token");
+  assert.match((await rt.test("harlow-forms")).problems.join(), /schedule "webhook" is retired: a webhook starts a Flow/);
+  await assert.rejects(rt.hook("harlow-forms", "any", {}), /watcher webhooks are retired/);
+  assert.deepEqual(rt.items({ name: "harlow-forms" }), []);
 });
 
 test("watchers: an event watcher names its event and where; hook.received must name a route, and only matching events run it", async t => {

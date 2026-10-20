@@ -6,6 +6,7 @@ import { listKits, listLibrary, libraryKit, proposeKit } from "../flows/kits";
 import { proposeNote } from "../flows/kits-model";
 import { TEMPLATES, buildType, kitStarters, templateBlurb, templateName } from "./logic.js";
 import { toKernelType } from "./real-model.js";
+import { plainError } from "../../src/real/error-note.js";
 
 const TEMPLATE_STARTERS: Starter[] = [
   { id: "blank", label: "Blank", blurb: "Two fields, Name and ID. Add the rest yourself.", fields: ["Name", "ID"] },
@@ -31,7 +32,7 @@ export function AddTypeSheet({ open, onClose, space, taken, onAdd }: { open: boo
       try {
         const r = proposeNote(await proposeKit(await libraryKit(kit)));
         if (r.ok) { onClose(); showToast("Waiting for your yes in Now."); } else setNote(r.text);
-      } catch (e) { setNote(e instanceof Error ? e.message : "That did not go through."); }
+      } catch (e) { setNote(plainError(e, "That did not go through.")); }
       return;
     }
     const t = buildType(picked, name, work, space, taken);

@@ -7,6 +7,8 @@ const list = (d: any, key: string): any[] => (Array.isArray(d) ? d : Array.isArr
 
 export type WatcherCard = {
   name: string; hash: string; state: "draft" | "on" | "paused" | string; owner: string; described: "by its author" | "by Vyre";
+  /** An agent's own Routine or Watcher: the agent, whether it waits for its first test, and the Vault items it names that are not lent to the agent. */
+  agent: string; waiting: boolean; routine: boolean; needs: { item: string; host: string }[];
   lines: { when: string; check: string; do: string };
   facts: { reads: string[]; readsText: string; credentials: { host: string; item: string }[]; acts: string; cost: string; schedule: string };
 };
@@ -18,18 +20,21 @@ export function watcherCardOf(d: any): WatcherCard | null {
   const creds = (Array.isArray(f.credentials) ? f.credentials : []).filter((c: any) => c && (c.item || c.host)).map((c: any) => ({ host: str(c.host), item: str(c.item) }));
   return {
     name: d.name, hash: str(d.hash), state: str(d.state) || "draft", owner: ownerWords(d.owner),
+    agent: d.owner && d.owner.kind === "agent" ? str(d.owner.agent) : "", waiting: d.waiting === true, routine: d.kind === "routine",
+    needs: (Array.isArray(d.needs) ? d.needs : []).filter((n: any) => n && typeof n.item === "string").map((n: any) => ({ item: n.item, host: str(n.host) })),
     described: d.described === "by its author" ? "by its author" : "by Vyre",
     lines: { when: str(l.when), check: str(l.check), do: str(l.do) },
     facts: { reads: Array.isArray(f.reads) ? f.reads.map(String) : [], readsText: str(f.readsText), credentials: creds, acts: str(f.acts), cost: str(f.cost), schedule: str(f.schedule) },
   };
 }
 /** "Owned by kit" / "Owned by the intake project". */
-export const ownerWords = (o: any) => (!o || typeof o !== "object" ? "" : o.kind === "teammate" ? `Owned by ${o.teammate}` : `Owned by the ${o.project} project`);
+export const ownerWords = (o: any) => (!o || typeof o !== "object" ? "" : o.kind === "agent" ? `${o.agent}'s, set up when you asked` : o.kind === "teammate" ? `Owned by ${o.teammate}` : o.kind === "session" ? "Owned by this chat" : `Owned by the ${o.project} project`);
 /** The box refuses a turn on when the code moved after the card was shown; the card offers the new one and never turns on unseen code. */
 export const changedAfterCard = (message: string) => /changed after its card was shown/i.test(message);
 /** The watchers call for a state change, with the card's own hash on a turn on or back on. */
-export function watcherCall(act: "on" | "pause" | "resume", card: Pick<WatcherCard, "name" | "hash">): { tool: string; input: Record<string, unknown> } {
+export function watcherCall(act: "on" | "pause" | "resume" | "delete", card: Pick<WatcherCard, "name" | "hash">): { tool: string; input: Record<string, unknown> } {
   if (act === "pause") return { tool: "watchers.pause", input: { name: card.name } };
+  if (act === "delete") return { tool: "watchers.delete", input: { name: card.name } };
   return { tool: act === "resume" ? "watchers.resume" : "watchers.create", input: { name: card.name, hash: card.hash } };
 }
 

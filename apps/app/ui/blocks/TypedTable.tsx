@@ -21,6 +21,7 @@ import { groupRows } from "../views/records-table.js";
 import { orderRows } from "../views/records-table.js";
 import type { Block, Handlers } from "./types";
 import { SpaceTag } from "../components/SpaceTag";
+import { WINDOW, windowOf } from "../views/windowing.js";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dayMonth = (v: any) => { const d = toDate(v); return d ? `${d.getDate()} ${MON[d.getMonth()]}` : ""; };
@@ -62,8 +63,13 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
   const prefs = useTablePrefs();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const tick = (id: string) => { const n = new Set(picked); if (n.has(id)) n.delete(id); else n.add(id); setPicked(n); };
-  const selection = { has: (id: string) => picked.has(id), toggle: tick, all: shown.length > 0 && shown.every((r) => picked.has(r.id)), some: shown.some((r) => picked.has(r.id)), toggleAll: () => setPicked(shown.length > 0 && shown.every((r) => picked.has(r.id)) ? new Set() : new Set(shown.map((r) => r.id))) };
+  // Ticks only where the host does something with them (h.picked: "Set a field for N", "Delete N"); a tick that does nothing is not drawn.
+  const selection = h.picked ? { has: (id: string) => picked.has(id), toggle: tick, all: shown.length > 0 && shown.every((r) => picked.has(r.id)), some: shown.some((r) => picked.has(r.id)), toggleAll: () => setPicked(shown.length > 0 && shown.every((r) => picked.has(r.id)) ? new Set() : new Set(shown.map((r) => r.id))) } : undefined;
   const groups = groupRows(shown, cols, b.props?.group);
+  // a long list draws its first rows and a "Show more"; sort, filters, selection and the count still work on every row
+  const [limit, setLimit] = useState(WINDOW);
+  const win = windowOf(shown, limit);
+  const moreButton = win.more ? <Button kind="ghost" size="sm" label={win.label} onPress={() => setLimit(limit + WINDOW)} /> : null;
   const flip = (name: string, opt: string) => {
     const next = new Set(filters[name] || []);
     if (next.has(opt)) next.delete(opt); else next.add(opt);
@@ -96,7 +102,7 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
   const phoneList = shown.length ? (
     <Card flush>
       <Stagger>
-        {shown.map((r, i) => {
+        {win.rows.map((r, i) => {
           const fee = end ? r.cells?.[end.id]?.v : null;
           const when = dateCol ? dayMonth(r.cells?.[dateCol.id]?.v) : "";
           return (
@@ -128,13 +134,14 @@ export function TypedTable({ k, b, h }: { k: string; b: Block; h: Handlers }) {
     <View className="gap-s3">
       {controls}
       {chips}
-      {picked.size ? <View className="flex-row items-center gap-s3"><Text size="caption" tone="label">{`${picked.size} selected`}</Text><Button kind="ghost" size="sm" label="Clear" onPress={() => setPicked(new Set())} /></View> : null}
+      {picked.size && h.picked ? <View className="flex-row flex-wrap items-center gap-s3"><Text size="caption" tone="label">{`${picked.size} selected`}</Text>{h.picked(k, all.filter((r) => picked.has(r.id)), () => setPicked(new Set()))}<Button kind="ghost" size="sm" label="Clear" onPress={() => setPicked(new Set())} /></View> : null}
       {phone ? phoneList : groups ? groups.map((g, i) => (
         <View key={g.label} className="gap-s1">
           <Text size="caption" strong tone="label">{`${g.label} \u00B7 ${g.rows.length}`}</Text>
           <Table columns={columns} headerEnd={i === 0 ? h.slot?.(k, "header-end") : undefined} density={prefs.density} freezeFirst={prefs.freezeFirst} selection={selection} rows={g.rows} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty="" />
         </View>
-      )) : <Table columns={columns} headerEnd={h.slot?.(k, "header-end")} density={prefs.density} freezeFirst={prefs.freezeFirst} selection={selection} rows={shown} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
+      )) : <Table columns={columns} headerEnd={h.slot?.(k, "header-end")} density={prefs.density} freezeFirst={prefs.freezeFirst} selection={selection} rows={win.rows} rowKey={(r) => r.id} onRow={h.open ? (r) => h.open!(k, r) : undefined} empty={String(b.content?.empty ?? "")} />}
+      {phone || !groups ? moreButton : null}
       {shown.length ? <Text size="caption" tone="label">{shown.length} of {b.content?.total ?? all.length}</Text> : null}
     </View>
   );

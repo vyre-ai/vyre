@@ -5,8 +5,9 @@ import { Banner, Button, Card, Chip, Field, Row, Segmented, Select, Sheet, Text,
 import { tool } from "../../src/real/box";
 import { signingLabel, useSigningTemplates } from "../documents/useSigningTemplates";
 import { aliasesFor, unfilled, waitingFor, whenWords } from "./documents-model.js";
+import { plainError } from "../../src/real/error-note.js";
 
-const say = (e: unknown) => (e instanceof Error ? e.message : "That did not work.");
+const say = (e: unknown) => plainError(e, "That did not work.");
 
 /**
  * The Documents bar of a record page: Make document (a Word template from the Drive, filled from this record and the ones linked to it), Send for signature (when the Documents app is here and the

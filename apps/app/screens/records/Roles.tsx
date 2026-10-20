@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { allowsMock, Chip, Menu, Text, showToast } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-import { roleChips, summaryChips } from "./roles-model.js";
+import { useSpaces } from "../shell/state";
+import { roleKinds } from "./useRoleChips";
+import { freeRoles, roleChips, summaryChips } from "./roles-model.js";
 import { SAMPLE_KINDS, sampleHeld } from "./roles-sample.js";
+import { plainError } from "../../src/real/error-note.js";
 
-type Kind = { role: string; label: string; color?: string; stages?: string[] };
+type Kind = { role: string; label: string; holder?: string | null; color?: string; stages?: string[] };
 type Held = { role: string; label: string; stage?: string; current: boolean; color?: string; urn: string };
 
 const NAMED: Record<string, "warn" | "ok" | "accent" | "err"> = { lead: "warn", client: "ok", partner: "accent", vendor: "err" };
@@ -18,24 +21,26 @@ const toneFor = (c: { ended: boolean; tone: string }) => (c.ended ? "plain" : ((
 export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string) => void; /** The record's name, used only by the sample world (roles-sample.js). */ name?: string }) {
   const [held, setHeld] = useState<Held[] | null>(null);
   const [kinds, setKinds] = useState<Kind[]>([]);
+  const space = useSpaces((s) => s.space) || "home";
   const [plain, setPlain] = useState<{ key: string; label: string; urn: string; ended: boolean; tone: string }[] | null>(null);
   const load = useCallback(() => {
     if (allowsMock()) { setHeld(sampleHeld(name ?? "", urn) as Held[]); setKinds(SAMPLE_KINDS as Kind[]); setPlain(null); return; }
-    void Promise.all([callT<{ roles: Held[] }>("records.roles.summary", { urn }), callT<{ roles: Kind[] }>("records.roles.summary", {})]).then(([mine, all]) => {
-      if (mine.data) { setHeld(mine.data.roles); setKinds(all.data?.roles ?? []); setPlain(null); return; }
+    // the Space's role kinds are the same for every record: kept a minute (useRoleChips.ts), never counted again for each record opened
+    void Promise.all([callT<{ roles: Held[] }>("records.roles.summary", { urn }), roleKinds(space)]).then(([mine, all]) => {
+      if (mine.data) { setHeld(mine.data.roles); setKinds((all ?? []) as Kind[]); setPlain(null); return; }
       return callT<{ roles: any[] }>("records.roles", { urn }).then((q) => { setHeld(null); setPlain(roleChips(q.data?.roles ?? [])); });
     });
-  }, [urn, name]);
+  }, [urn, name, space]);
   useEffect(() => { setHeld(null); setPlain(null); load(); }, [load]);
   const move = async (r: Held, stage: string) => {
     const x = await callT<{ needs?: string[] }>("records.move", { urn: r.urn, stage });
-    if (x.error) { showToast(x.error.message || "That did not move."); return; }
+    if (x.error) { showToast(plainError(x.error, "That did not move.")); return; }
     if (x.data?.needs?.length) { showToast(`To move ${r.label} to ${stage}, fill in: ${x.data.needs.join(", ")}. Open the role to do it.`); return; }
     load();
   };
   const add = async (k: Kind) => {
     const x = await callT("records.role.set", { urn, role: k.role });
-    if (x.error) { showToast(x.error.message || "That did not save."); return; }
+    if (x.error) { showToast(plainError(x.error, "That did not save.")); return; }
     load();
   };
   if (plain) {
@@ -47,7 +52,8 @@ export function Roles({ urn, onOpen, name }: { urn: string; onOpen: (urn: string
   }
   if (!held) return null;
   const mine = new Set(held.filter((r) => r.current).map((r) => r.role));
-  const free = kinds.filter((k) => !mine.has(k.role));
+  // only the roles a record of this type can hold, each label once (roles-model.js)
+  const free = freeRoles(kinds, mine, urn.split("/")[3] ?? "") as Kind[];
   const chips = summaryChips(held);
   const roleOf = (i: number) => [...held.filter((r) => r.current), ...held.filter((r) => !r.current)][i];
   if (!chips.length && !free.length) return null;

@@ -8,6 +8,8 @@
 // (both name a record type in `to`); a field's key became its `name`; a stage field's list became its `options`; sealed became a `seal` config on a sealed field
 // (level "human": only the reveal roles, each reveal with fresh presence; level "ai": no model ever, people per grant).
 
+import { addViewDefs } from "./view-defs.js";
+
 /** @typedef {import("./contracts.js").TypeDefinition} TypeDefinition */
 /** @typedef {import("./contracts.js").FieldDefinition} FieldDefinition */
 /** @typedef {import("./contracts.js").StageDef} StageDef */
@@ -129,6 +131,22 @@ export const template = {
 
 /** @type {TypeDefinition[]} */
 export const types = [contact, matter, project, trip, template];
+
+// How the sample world's Jobs are shown: the sample world's own view definition, registered with the one table, so shipped code names no trade's type (ui/views/view-defs.js addViewDefs).
+addViewDefs({
+  matter: {
+    plural: "Jobs", titleField: "title", holdsWork: true,
+    list: { columns: ["client", "stage", "fee", "owner"], sort: "closing" },
+    board: { groupBy: "stage", card: ["title", "client", "fee", "owner"] },
+    calendar: { date: "closing" },
+    dashboard: { widgets: [
+      { kind: "sum", field: "fee", where: "stage != Closed" },
+      { kind: "countBy", field: "stage" },
+      { kind: "funnel", field: "stage", where: "Intake..Review" },
+      { kind: "recent" },
+    ] },
+  },
+});
 export const TYPES = types;
 export default types;
 

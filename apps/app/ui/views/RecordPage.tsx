@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Platform, Pressable, View } from "react-native";
 import { Text } from "../components/Text";
+import { ID_NOTE, isRecordIdField, recordIdOf } from "../records/record-id.js";
 import { Card, Divider } from "../components/Card";
 import { GroupedList } from "../components/GroupedList";
 import { RelatedSection } from "../records/RelatedSection";
@@ -30,15 +31,25 @@ import { useShowEmpty } from "../../src/state/record-prefs";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { actorWords, ago, assistantNote, canSealField, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
+import { plainError } from "../../src/real/error-note.js";
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errText = (e: unknown) => plainError(e, "That did not save.");
+
+/** Copy a record's ID: the browser's clipboard on the web, the phone's otherwise. */
+async function copyId(text: string) {
+  if (Platform.OS === "web") { if (typeof navigator !== "undefined" && navigator.clipboard) { await navigator.clipboard.writeText(text); return; } throw new Error("no clipboard"); }
+  const mod = await import("expo-clipboard");
+  await mod.setStringAsync(text);
+}
 
 /**
  * The record page: all the fields in order (press one to change it), the stage steps, You or Your assistant sees, Add a field, the timeline from the Event log,
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
  * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
-export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void }) {
+export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew, onStage, canCustomize = true, canSeal = true, canSeeAsAgent = true }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void; story?: React.ReactNode; /** Given, each type that links here gets "Add a <type>" under its list: the type, and the field of it that links to this record. */ onNew?: (type: string, via: string) => void; /** Given, a tap on the stage strip goes through it (the move rule: a stage that needs fields asks for them) instead of writing the stage field directly. */ onStage?: (stage: string) => void;
+  /** An owner or an admin: Add a field shows (the server refuses anyone else). */ canCustomize?: boolean; /** An owner or an admin on their own server: "Seal this field" shows. */ canSeal?: boolean;
+  /** "Your agent sees" shows (not in a team joined as a member: that look stays on the owner's own server). */ canSeeAsAgent?: boolean }) {
   const store = useStore();
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
@@ -90,22 +101,39 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
   const empty = listed.filter((f: any) => isBlank(f) && !isLockedField(f));
 
   const fieldRow = (f: any) => {
+    // The record's ID is Vyre's (record-id.js): a quiet line with a copy button, never an editor, never sealed.
+    if (isRecordIdField(f)) {
+      const id = recordIdOf(rec);
+      return (
+        <View key={f.name} className={cn("gap-s1 px-s4 py-s3", !phone && "flex-row items-center gap-s3")}>
+          <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}><Text tone="label">{f.label}</Text></View>
+          <View className={cn("min-w-0 flex-row items-center gap-s2", !phone && "flex-[3]")}>
+            <Text selectable>{id || "Given when saved"}</Text>
+            {id ? <IconButton icon="copy" label={`Copy ${f.label}`} onPress={() => void copyId(id).then(() => showToast(`${f.label} copied.`), () => showToast("Copying did not work here. Select the text and copy it."))} /> : null}
+            <Text size="caption" tone="label">{ID_NOTE}</Text>
+          </View>
+        </View>
+      );
+    }
     const isEditing = editing === f.name && !ai;
     const value = valueFor(f);
     const sealed = isSealedField(f);
-    // A field the kernel owns, computes or keeps read-only (a task's status, an ID) is shown and never offered for editing: the gateway refuses a person's write to it.
+    // A field Vyre keeps (the kernel's own, computed, read-only, an ID, a weighted value) is shown, never edited, and never offered to be sealed (isLockedField includes isKeptField).
     const locked = isLockedField(f);
     const plainEditable = !ai && !locked && f.kind !== "sealed" && f.kind !== "link" && f.kind !== "ref" && f.kind !== "file";
     const shown = renderField({ kind: f.kind, definition: f, value, mode: "view", read_only: true, reveal: ai ? undefined : revealFor(f) }, env);
-    const items = [
-      ...(locked ? [] : [{ label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } }]),
-      ...(canSealField(f) ? [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }] : []),
+    const items = locked ? [] : [
+      { label: "Edit", onPress: () => { setEditing(f.name); setDraft(undefined); } },
+      ...(sealed || !canSeal || !canSealField(f) ? [] : [{ label: `Seal this field for all ${vd.plural.toLowerCase()}`, onPress: () => setConfirm({ f }) }]),
     ];
     // Desktop: the menu shows on hover (or while the row is being edited). Phone: tap the row to edit, long-press for the menu.
-    const menuNode = !ai && !phone && items.length ? (
-      <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
-        <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
-      </View>
+    // a locked field has nothing to offer: its menu keeps its place, unseen and not pressable, so the rows line up
+    const menuNode = !ai && !phone ? (
+      items.length ? (
+        <View className="flex-none" style={{ opacity: hover === f.name || isEditing ? 1 : 0 }}>
+          <Menu trigger={<IconButton icon="more" label={`${f.label}, more`} />} items={items} />
+        </View>
+      ) : <View className="flex-none" style={{ opacity: 0 }} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><IconButton icon="more" label={`${f.label}, more`} /></View>
     ) : null;
     return (
       <Pressable key={f.name} disabled={ai || !phone || isEditing} onPress={plainEditable ? () => { setEditing(f.name); setDraft(undefined); } : undefined} onLongPress={items.length ? () => setRowMenu({ f, items }) : undefined}
@@ -206,9 +234,9 @@ export function RecordPage({ def, rec, world, events, env, onOpen, story, onNew,
     <View className="gap-s4">
       {sf ? <StageSteps strip={phone} stages={stages} current={stages.indexOf(String(val(rec, sf.name) ?? ""))} onSelect={ai ? undefined : (s) => (onStage ? onStage(s) : change(sf, s))} /> : null}
       <View className="flex-row flex-wrap items-center gap-s3">
-        <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} />
+        {canSeeAsAgent ? <Segmented<"person" | "assistant"> label="Who is looking" value={who} onChange={(v) => { setWho(v); setEditing(null); }} options={[["person", "You"], ["assistant", "Your agent sees"]]} /> : null}
         <View className="flex-1" />
-        {ai ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
+        {ai || !canCustomize ? null : phone ? <IconButton icon="plus" label="Add a field" kind="secondary" onPress={() => setAdding(true)} /> : <Button size="sm" icon="plus" label="Add a field" onPress={() => setAdding(true)} />}
       </View>
       {ai ? (
         <Banner tone="warn">

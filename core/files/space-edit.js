@@ -6,6 +6,7 @@
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
+import { agentFolderOf, agentPathOf } from "./agent-folder.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -35,11 +36,33 @@ async function kindOf(drive, chain, p) {
 export function registerSpaceEdit(ctx) {
   const door = createDoor(ctx);
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
+  const agents = agentFolderOf(ctx);
   const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
+    // an agent's folder is on its computer, not in the Drive (agent-folder.js): the same calls reach it there
+    const routed = await toAgentFolder(name, i || {}, d, meta);
+    if (routed !== undefined) return routed;
     if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
     return fn(i || {}, d, d.gateway.drive);
   } });
+
+  /** The edit, done in the agent's folder on its computer when a path is under agents/<id>/; undefined for every other path. A move between the Drive and an agent's folder is refused. @param {string} name @param {any} i @param {any} d @param {any} meta */
+  async function toAgentFolder(name, i, d, meta) {
+    if (name === "files.drive.space.move" || name === "files.drive.space.rename") {
+      const from = pathOf(i.from ?? i.path), to = name === "files.drive.space.rename" ? (parent(from) ? `${parent(from)}/${nameOf(i.name)}` : nameOf(i.name)) : pathOf(i.to);
+      if (!agentPathOf(from) && !agentPathOf(to)) return undefined;
+      return agents.move(d, meta, from, to);
+    }
+    if (name === "files.drive.space.mkdir") {
+      const up = i.parent === undefined || i.parent === "" ? "" : pathOf(i.parent);
+      if (!up || !agentPathOf(up)) return undefined;
+      const n = nameOf(i.name).trim();
+      if (!n || n.length > MAX_FOLDER_NAME || n.startsWith(".")) throw refuse(`a folder name is 1 to ${MAX_FOLDER_NAME} characters and does not start with a dot`, "bad_input");
+      return agents.mkdir(d, meta, `${up}/${n}`);
+    }
+    if (name === "files.drive.space.delete") { const p = pathOf(i.path); return agentPathOf(p) ? agents.remove(d, meta, p) : undefined; }
+    return undefined;
+  }
 
   /** @param {any} d @param {any} drive @param {string} from @param {string} to */
   async function move(d, drive, from, to) {

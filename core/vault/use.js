@@ -23,11 +23,11 @@ import { scrub } from "../../lib/scrub.js";
 import { isPerson } from "../../lib/caller.js";
 import { vaultFieldIsSecret } from "../../lib/secret-schema.js";
 import { SPEC } from "../../lib/vault-kinds/kinds.js";
-import { isAsker } from "./asker.js";
+import { isAsker, requestCap } from "./asker.js";
 import { canon } from "../../lib/env-name.js";
 import { sealFor } from "./crypto.js";
 import { presence, quoted } from "./tools/presence.js";
-import { checkTarget, classify, presetFor, parseFields, summarize, approvalHash, buildUrl, checkQuery } from "./api-request.js";
+import { checkTarget, classify, presetFor, parseFields, summarize, approvalHash, buildUrl, checkQuery, SHARED_SUFFIXES } from "./api-request.js";
 
 /** Per item: the hosts the person allowed, whether scripts may have it, which fields are plain. MACed (vault.js MACED): each one decides where a value may go. */
 export const USE_MIGRATION = `CREATE TABLE vault_item_use (
@@ -44,10 +44,14 @@ const PURPOSE = "vault-run";
 const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"];
 const GATE_KINDS = { send: "send", spend: "spend", delete: "delete" };
 const NOT_HERE = new Set(["api-credential", "ssh-key", "passkey"]);
+/** How many times one item may be used in a minute before it rests (an audit alert, vault.refused). */
+export const USE_PER_MINUTE = 60;
+/** A host under a domain anyone can rent a name under (api-request.js SHARED_SUFFIXES): its card says so. @param {string} h */
+export const sharedHost = h => SHARED_SUFFIXES.some(s => String(h).toLowerCase() === s || String(h).toLowerCase().endsWith("." + s));
 const MAX_BODY = 1_000_000, MAX_RESPONSE = 2_000_000, MAX_RESULT = 256 * 1024, MAX_HOPS = 5;
 const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified", "retry-after", "x-request-id", "request-id", "ratelimit-remaining"];
 /** Headers a request never sets: framing, forwarding and method overrides. Authentication is allowed here, because the value in it comes from a placeholder. */
-const NEVER_HEADERS = new Set(["host", "content-length", "transfer-encoding", "connection", "keep-alive", "upgrade", "te", "trailer", "expect", "x-forwarded-for", "x-forwarded-host", "forwarded",
+const NEVER_HEADERS = new Set(["accept-encoding", "host", "content-length", "transfer-encoding", "connection", "keep-alive", "upgrade", "te", "trailer", "expect", "x-forwarded-for", "x-forwarded-host", "forwarded",
   "x-http-method-override", "x-http-method", "x-method-override"]);
 /** `{{vault:Item.FIELD}}`: the item is everything up to the last dot, the field a plain name. */
 const PH = /\{\{\s*vault:([^{}\r\n]{1,160}?)\.([A-Za-z0-9_-]{1,64})\s*\}\}/g;
@@ -95,7 +99,11 @@ function fillUrl(s, value) {
     PH.lastIndex = 0;
     const m = PH.exec(text);
     PH.lastIndex = 0;
-    return m && m[0] === text ? encodeURIComponent(value(m[1].trim(), m[2])) : raw;
+    if (!m || m[0] !== text) return raw;
+    const v = value(m[1].trim(), m[2]);
+    // a value with ".." in it would change which path the request reaches, after it was classified: it is not put in an address
+    if (v.includes("..")) throw bad(`{{vault:${printable(m[1].trim(), 80)}.${printable(m[2], 64)}}}: its value has ".." in it, which would change the address; it is not sent`);
+    return encodeURIComponent(v);
   });
 }
 
@@ -124,12 +132,14 @@ const bodyEnc = ctype => (/json/i.test(ctype) ? v => JSON.stringify(v).slice(1, 
  */
 export function hide(text, secrets) {
   let out = String(text ?? "");
-  for (const s of [...secrets].sort((a, b) => b.value.length - a.value.length)) out = scrub(out, [s.value], { marker: `[hidden: ${s.label}]`, wide: true });
+  for (const s of [...secrets].sort((a, b) => b.value.length - a.value.length)) out = scrub(out, [s.value], { marker: `[hidden: ${s.label}]`, wide: true, deep: true });
   return out;
 }
 /** @param {any} v @param {{ value: string, label: string }[]} secrets @returns {any} */
 const hideAll = (v, secrets) => {
   if (typeof v === "string") return hide(v, secrets);
+  // a number in a JSON answer is text too (a numeric key or PIN echoed back)
+  if (typeof v === "number") { const t = String(v), h = hide(t, secrets); return h === t ? v : h; }
   if (Array.isArray(v)) return v.map(x => hideAll(x, secrets));
   if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [hide(k, secrets), hideAll(x, secrets)]));
   return v;
@@ -140,7 +150,22 @@ export class VaultUse {
    * @param {import("./vault.js").Vault} vault @param {any} api the vault.request engine (request.js ApiRequests): its transport, lookup, Gate sender and seal
    * @param {any} said @param {(type: string, payload: any) => void} emit
    */
-  constructor(vault, api, said, emit = () => {}) { this.v = /** @type {any} */ (vault); this.api = api; this.said = said; this.emit = emit; this.db = this.v.db; }
+  constructor(vault, api, said, emit = () => {}) {
+    this.v = /** @type {any} */ (vault); this.api = api; this.said = said; this.emit = emit; this.db = this.v.db;
+    /** Uses of each item in the last minute (in memory): past `perMinute` the item rests for the rest of the minute and the refusal is an audit alert. @type {Map<string, number[]>} */ this.uses = new Map();
+    this.perMinute = USE_PER_MINUTE;
+  }
+
+  /** Count one use of each item, or refuse when one is past its rate (an agent looping on a key, or a script leaking it a piece at a time). @param {string[]} names @param {any} meta */
+  rate(names, meta) {
+    const t = Date.now();
+    for (const n of names) {
+      const recent = (this.uses.get(n) || []).filter(x => t - x < 60_000);
+      if (recent.length >= this.perMinute) { this.v.refuse("use", n, this.whoOf(meta), `more than ${this.perMinute} uses in a minute: paused until the minute is over`); throw bad(`${n} was used more than ${this.perMinute} times in a minute, so it rests until the minute is over; the person sees this in the item's activity`, "rate_limited"); }
+      this.uses.set(n, recent);
+    }
+    for (const n of names) /** @type {number[]} */ (this.uses.get(n)).push(t);
+  }
 
   // ---- the item's own rules ----
 
@@ -188,13 +213,19 @@ export class VaultUse {
 
   /** The person's own assistant running a turn for the owner: the person's reach (agentKind comes from the registry, the chain from the kernel; every person hop must be the owner). @param {any} meta */
   async ownRun(meta) {
-    if (meta.agentKind !== "assistant") return false;
+    if (meta.agentKind !== "assistant" || typeof meta.thread !== "string" || !meta.thread) return false;
     const K = this.v.access && this.v.access.K;
-    if (!K || !K.owner || typeof K.chain !== "function") return false;
+    const call = this.api && this.api.deps && this.api.deps.call;
+    if (!K || !K.owner || typeof K.chain !== "function" || typeof call !== "function") return false;
     try {
       const c = await K.chain(meta);
       const ps = (c && Array.isArray(c.hops) ? c.hops : []).filter((/** @type {any} */ h) => h && h.actor && h.actor.kind === "person").map((/** @type {any} */ h) => String(h.actor.id));
-      return ps.length > 0 && ps.every(p => p === String(K.owner));
+      if (!(ps.length > 0 && ps.every(p => p === String(K.owner)))) return false;
+      // Only a turn the owner is at: the Switchboard says whether the thread's running turn is an attended chat turn of theirs. A Flow, a schedule, a job or a run made to act as someone (run_as) is
+      // not, even with the owner on its chain (the same rule as ownerDirect, core/switchboard/asker-account.js): an unattended step that reads outside text gets nothing without a grant of its own.
+      const r = await call("threads.turn-asker", { thread: meta.thread });
+      const d = r && !r.error ? r.data : null;
+      return Boolean(d && d.attended === true && String(d.asker) === String(K.owner));
     } catch { return false; }
   }
 
@@ -217,7 +248,8 @@ export class VaultUse {
     return { mode: "grant", may: async row => {
       if (meta.thread && this.said && (await this.said.match({ kind: "use", to: [row.name], hosts: json(row.hosts, []) }, { thread: String(meta.thread) }).catch(() => null))) return true;
       if (!access || !access.K || typeof access.effectFor !== "function") return false;
-      return (await access.effectFor(who, row.name, "vault.read", undefined, meta.thread)) !== "deny";
+      // "allow" only: "ask" (the act waits for a person) is not a grant to use it now, and a lent login (vault.fill at one site) is not vault.read
+      return (await access.effectFor(who, row.name, "vault.read", undefined, meta.thread)) === "allow";
     } };
   }
 
@@ -282,10 +314,12 @@ export class VaultUse {
       const shown = `{{vault:${printable(r.item, 80)}.${printable(r.field, 64)}}}`;
       let row = rows.get(canon(r.item));
       if (!row) {
-        const hits = all.filter((/** @type {any} */ x) => canon(x.name) === canon(r.item));
-        if (hits.length > 1) throw bad(`${shown}: ${hits.length} items are called ${canon(r.item)}; ask the person to rename one`, "ambiguous");
-        row = hits.length ? this.v.row(hits[0].name) : null;
-        if (!row || NOT_HERE.has(row.kind) || !(await j.may(row))) throw bad(`${shown}: there is no item called ${printable(r.item, 80)} that you may use. vault.use.find lists the ones you can; the person shares one with Can use it, without seeing it.`, "not_found");
+        // only the items this caller may use are counted, so a refusal never tells it that an item it may not use exists
+        const hits = [];
+        for (const x of all.filter((/** @type {any} */ x) => canon(x.name) === canon(r.item))) { const rw = this.v.row(x.name); if (rw && !NOT_HERE.has(rw.kind) && (await j.may(rw))) hits.push(rw); }
+        if (hits.length > 1) throw bad(`${shown}: ${hits.length} items you may use are called ${canon(r.item)}; ask the person to rename one`, "ambiguous");
+        row = hits[0] || null;
+        if (!row) throw bad(`${shown}: there is no item called ${printable(r.item, 80)} that you may use. vault.use.find lists the ones you can; the person shares one with Can use it, without seeing it.`, "not_found");
         rows.set(canon(r.item), row);
       }
       const names = json(row.fields, []).map(String);
@@ -347,10 +381,13 @@ export class VaultUse {
     const host = parsed.hostname.toLowerCase();
     if (parsed.protocol !== "https:") throw bad(secrets.length ? "a secret is never sent over plain http: use https" : "Vyre sends these requests over https only");
     if (isAddress(host)) throw bad("a request goes to a named host, never to a bare address");
+    if (host.length > 100) throw bad("that host name is longer than 100 characters, which Vyre does not send to");
     const card = `${CARD}:${j.mode}:${j.mode === "grant" ? this.agentOf(meta) || "" : ""}`;
     const hash = approvalHash({ credential: card, method, url: templUrl, headers: templHeaders, body: templBody });
     const shown = new URL(templUrl);
-    const cls = classify(method, shown.pathname + shown.search, []);
+    const written = classify(method, shown.pathname + shown.search, []), filled = classify(method, parsed.pathname + parsed.search, []);
+    // judged on both the address as written and as filled: a read only when both are
+    const cls = written.kind === "read" ? filled : written;
     const preset = presetFor(method, shown.pathname + shown.search);
     const fields = cls.kind === "read" ? { recipients: [] } : parseFields(preset, { body: templBody, contentType: ctype });
     const names = [...new Set([...used.values()].map(u => u.row.name))];
@@ -382,6 +419,7 @@ export class VaultUse {
       this.v.audit("use", null, this.whoOf(meta), false, `refused: ${printable(/** @type {Error} */ (e).message.replace(/\{\{[^}]*\}\}/g, "{{...}}"), 120)}`);
       throw e;
     }
+    this.rate(plan.names, meta);
     // Used with: every item whose secret goes along must have this host on its list.
     const ask = [];
     for (const row of new Map(plan.secrets.map(s => [s.row.id, s.row])).values()) {
@@ -433,7 +471,7 @@ export class VaultUse {
     /** @type {{ mode: string, may: (row: any) => Promise<boolean> }} */
     const j = { mode, may: async row => {
       if (mode !== "grant") return true;   // the owner approved this exact request with their own items: their own act
-      return Boolean(access && access.K && typeof access.effectFor === "function" && (await access.effectFor(agent, row.name, "vault.read", undefined, it.thread)) !== "deny");
+      return Boolean(access && access.K && typeof access.effectFor === "function" && (await access.effectFor(agent, row.name, "vault.read", undefined, it.thread)) === "allow");
     } };
     const plan = await this.plan({ method: c.method, url: c.url, headers: held.headers, body: held.body }, { caller: meta.caller, agent: meta.agent, agentKind: undefined }, j);
     // the card names who it was for; the plan's own card text is rebuilt from that, so the hash covers it
@@ -449,6 +487,8 @@ export class VaultUse {
   hold(row, host, meta) {
     const old = /** @type {any} */ (this.db.prepare("SELECT id FROM vault_use_requests WHERE item_id = ? AND host = ?").get(String(row.id), host));
     if (old) return String(old.id);
+    // a few at most per agent: each one is a question on the person's approvals list, and a flood is a way to get one approved unread
+    try { requestCap(this.db, meta.caller, "vault_use_requests"); } catch (e) { throw bad(String(/** @type {Error} */ (e).message), "denied"); }
     const id = newPrefixedId("vu");
     this.db.prepare("INSERT INTO vault_use_requests (id, item, item_id, host, agent, by, at) VALUES (?,?,?,?,?,?,?)").run(id, String(row.name), String(row.id), host, this.agentOf(meta) || "you", String(meta.caller || ""), Date.now());
     this.emit("vault.use-asked", { item: String(row.name), host });
@@ -457,7 +497,7 @@ export class VaultUse {
 
   /** What waits for the person, for vault.pending (useHosts). Names and hosts only. */
   pending() {
-    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_use_requests ORDER BY at").all()).map(r => ({ id: r.id, item: r.item, host: r.host, agent: r.agent, by: r.by, at: r.at }));
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_use_requests ORDER BY at").all()).map(r => ({ id: r.id, item: r.item, host: r.host, agent: r.agent, by: r.by, at: r.at, ...(sharedHost(r.host) ? { shared: true } : {}) }));
   }
 
   /** One waiting request, or null. @param {string} id */
@@ -500,7 +540,7 @@ export class VaultUse {
       checkQuery(t.url);
       let hops = 0, reply;
       for (;;) {
-        reply = await transport({ url: t.url, address: t.addresses[0], method: plan.method, headers: { accept: "application/json", ...plan.headers }, ...(plan.body !== undefined ? { body: plan.body } : {}), timeoutMs: 30_000, maxBytes: MAX_RESPONSE });
+        reply = await transport({ url: t.url, address: t.addresses[0], method: plan.method, headers: { accept: "application/json", ...plan.headers, "accept-encoding": "identity" }, ...(plan.body !== undefined ? { body: plan.body } : {}), timeoutMs: 30_000, maxBytes: MAX_RESPONSE });
         if (reply.status >= 300 && reply.status < 400 && reply.headers.location) {
           if (plan.method !== "GET" && plan.method !== "HEAD") throw bad("the API answered a redirect to a write, which is refused; call the address it names directly", "redirect");
           let next;
@@ -526,7 +566,12 @@ export class VaultUse {
     const type = String(reply.headers["content-type"] || "");
     /** @type {Record<string, string>} */ const heads = {};
     for (const k of KEEP_HEADERS) if (reply.headers[k] !== undefined) heads[k] = hide(String(reply.headers[k]), secrets);
-    const buf = Buffer.isBuffer(reply.body) ? reply.body : Buffer.from(reply.body || "");
+    // A compressed answer could carry a secret no form of it matches: only an uncompressed one comes back.
+    const enc = String(reply.headers["content-encoding"] || "identity").trim().toLowerCase();
+    if (enc && enc !== "identity") throw bad(`the answer came ${printable(enc, 40)}-encoded, which Vyre cannot check for secrets, so it is withheld`, "withheld");
+    let buf = Buffer.isBuffer(reply.body) ? reply.body : Buffer.from(reply.body || "");
+    // A cut answer may end inside a secret: drop the tail a secret's longest form could start in, so no piece of one is left at the cut.
+    if (reply.truncated && secrets.length) buf = buf.subarray(0, Math.max(0, buf.length - (Math.max(...secrets.map(x => Buffer.byteLength(x.value))) * 12 + 16)));
     const textual = /json|text|xml|javascript|x-www-form-urlencoded|csv|yaml|html/i.test(type) || (!type && !buf.includes(0));
     /** @type {any} */ let body = "";
     if (buf.length && !textual) {
@@ -579,6 +624,7 @@ export class VaultUse {
         env[n] = v;
         if (!this.plain(row, k, rules)) hidden.push(n);
       }
+      this.rate([row.name], meta);
       this.note([row.name], meta, true, `run ${command}`, `command ${command}`, person);
     }
     return { box: sealFor(String(input.key), { env, hidden }, PURPOSE, PURPOSE), names: Object.keys(env) };

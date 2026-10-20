@@ -33,6 +33,10 @@ const TRACKED = [
   { id: "approve.collapse p95", get: r => r.metrics?.["approve.collapse"], stat: "p95" },
   { id: "frames.droppedPct", get: r => r.frames, stat: "droppedPct", always: true },
   { id: "longTasks.over50", get: r => r.longTasks, stat: "over50", always: true },
+  // Records opened twice: the first open draws the first page, the second the copy this device kept (records.open.kept; aimed at about 100 ms from the screen asking, CPU 4x).
+  // Shown beside the last green run but never failing it yet: two samples a run are too few to judge a 20% move on.
+  { id: "records.open p95", get: r => r.metrics?.["records.open"], stat: "p95", soft: true },
+  { id: "records.open.kept p95", get: r => r.metrics?.["records.open.kept"], stat: "p95", soft: true },
 ];
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -129,7 +133,25 @@ async function drive(page) {
     } else notes.push("no chat row to open");
   }
   await sleep(1000);
-  return { report: await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report()), notes };
+  const report = await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report());
+  // Records, last, so nothing above changes: opened, left, opened again. A page load starts a fresh meter, so each open's report is read before the next load and the samples joined.
+  const opens = [];
+  for (let i = 0; i < 2; i++) {
+    await page.goto(`http://127.0.0.1:${PORT}/app/u/records/contact`, { waitUntil: "domcontentloaded" }).catch(() => notes.push("Records did not load"));
+    const got = await page.waitForFunction(() => (/** @type {any} */ (window).__vyrePerf?.report().metrics?.["records.open"]?.n || 0) > 0, null, { timeout: 30_000 }).then(() => true).catch(() => false);
+    if (!got) { notes.push(`records.open never marked on open ${i + 1}: Records did not draw`); continue; }
+    await sleep(2500);   // the copy is written a moment after the box answers
+    opens.push(await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report().metrics));
+  }
+  for (const name of ["records.open", "records.open.kept"]) {
+    const ss = opens.map(m => m?.[name]).filter(Boolean);
+    if (!ss.length) continue;
+    report.metrics = report.metrics || {};
+    // one or two samples: the larger is the p95 that is shown
+    report.metrics[name] = { n: ss.reduce((n, s) => n + (s.n || 0), 0), p95: Math.max(...ss.map(s => s.p95 ?? s.max ?? 0)), p50: Math.min(...ss.map(s => s.p50 ?? s.p95 ?? 0)) };
+  }
+  if (!opens.some(m => m?.["records.open.kept"])) notes.push("the second Records open did not draw from the kept copy");
+  return { report, notes };
 }
 
 function compare(report, base) {
@@ -143,7 +165,7 @@ function compare(report, base) {
     // over50 and droppedPct start at 0: from 0, any new long task or dropped frame counts as worse only past a floor.
     const floor = t.stat === "over50" ? 1 : t.stat === "droppedPct" ? 1 : 0;
     const worse = b !== null && b !== undefined && v > Math.max(b * 1.2, b + floor);
-    rows.push({ id: t.id, value: v, baseline: b ?? null, pass: !worse });
+    rows.push({ id: t.id, value: v, baseline: b ?? null, pass: !worse, ...(t.soft ? { soft: true } : {}) });
   }
   return rows;
 }
@@ -162,9 +184,9 @@ async function main() {
     const rows = compare(report, base);
     fs.writeFileSync(OUT, JSON.stringify({ report, rows, notes, at: new Date().toISOString() }, null, 2));
     console.log(`app perf (Chromium, 390x844, CPU 4x)${base ? "" : ", no baseline yet"}`);
-    for (const r of rows) console.log(`  ${r.value === null ? "----" : r.pass ? "PASS" : "FAIL"}  ${r.id.padEnd(22)} ${r.value === null ? r.note : `${round(r.value)}${r.baseline !== null && r.baseline !== undefined ? `  (last green ${round(r.baseline)})` : ""}`}`);
+    for (const r of rows) console.log(`  ${r.value === null ? "----" : r.pass ? "PASS" : r.soft ? "SLOW" : "FAIL"}  ${r.id.padEnd(22)} ${r.value === null ? r.note : `${round(r.value)}${r.baseline !== null && r.baseline !== undefined ? `  (last green ${round(r.baseline)})` : ""}`}`);
     for (const n of notes) console.log("  note: " + n);
-    process.exitCode = rows.some(r => r.pass === false) ? 1 : 0;
+    process.exitCode = rows.some(r => r.pass === false && !r.soft) ? 1 : 0;
   } finally {
     await browser.close().catch(() => {});
     server.close();

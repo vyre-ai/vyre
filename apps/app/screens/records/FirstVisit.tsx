@@ -5,6 +5,7 @@ import { Banner, Button, Card, Field, Text, showToast } from "@vyre/ui";
 import { openEngineer } from "../engineer/openEngineer";
 import { kvGet, kvSet } from "../../src/state/kv";
 import { isMissing, recordsApi } from "./records-api";
+import { plainError } from "../../src/real/error-note.js";
 
 const KEY = "vyre.records.firstVisit.done";
 
@@ -22,7 +23,7 @@ export function FirstVisit({ show, samples, reload }: { show: boolean; samples: 
     setBusy(true);
     const r = on ? await recordsApi.sampleAdd() : await recordsApi.sampleRemove();
     setBusy(false);
-    if (r.error) { showToast(isMissing(r.error) ? "Sample data is not available on this box yet." : r.error.message || "That did not work."); return; }
+    if (r.error) { showToast(isMissing(r.error) ? "Sample data is not available on this server yet." : plainError(r.error, "That did not work.")); return; }
     showToast(on ? "Sample data is on." : "Sample data removed.");
     reload();
   };

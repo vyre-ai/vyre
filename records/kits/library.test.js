@@ -29,23 +29,25 @@ test("a Kit's views are stored with the type they show", () => {
   assert.equal(k.includes.views.length, 1, "the Kit's own view list stays for the install card");
 });
 
-test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Project, with roles linked to the contact and practice area a choice", () => {
+test("the base Kit ships: Contact, Appointment, Subscriber and Project, with its role linked to the contact; Lead and Client are the Space's own roles, not a second copy", () => {
   const lib = kitLibrary();
   const base = lib.find((k) => k.id === "base");
   assert.ok(base, "the base Kit is on offer");
-  assert.deepEqual(base.adds.types, ["contact", "lead", "appointment", "client", "subscriber", "project"]);
+  assert.deepEqual(base.adds.types, ["contact", "appointment", "subscriber", "project"]);
   const k = kitFromLibrary("base");
   const t = (n) => k.includes.types.find((x) => x.name === n);
-  for (const r of ["lead", "client", "subscriber"]) {
+  assert.equal(t("lead"), undefined, "no second Lead beside the core role-lead");
+  assert.equal(t("client"), undefined, "no second Client beside the core role-client");
+  for (const r of ["subscriber"]) {
     assert.equal(t(r).role.link, "contact", `${r} is a role held by a contact`);
     const link = t(r).fields.find((f) => f.name === "contact");
     assert.deepEqual([link.kind, link.to, link.required], ["link", "contact", true]);
   }
-  for (const n of ["lead", "appointment", "client", "project"]) assert.equal(t(n).fields.some((x) => x.name === "practice_area"), false, `${n} has no practice area in the base Kit`);
+  for (const n of ["appointment", "project"]) assert.equal(t(n).fields.some((x) => x.name === "practice_area"), false, `${n} has no practice area in the base Kit`);
   assert.equal(t("project").kind, "project");
   assert.equal(t("project").stage_sets, undefined, "the base Kit is generic: per-area stages are the Law firm Kit's");
   assert.equal(t("project").fields.find((f) => f.name === "accident_date"), undefined);
-  assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);
+  assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["appointment", ["calendar"]], ["project", ["board"]]]);
 });
 
 test("the Law firm Kit adds per-area stages and the fields that apply to one area, on the same Project", () => {
@@ -56,7 +58,7 @@ test("the Law firm Kit adds per-area stages and the fields that apply to one are
   assert.equal(p.views.length, 1, "the base board is kept when the type is replaced");
   for (const n of ["lead", "appointment", "client", "project"]) {
     const base = kitFromLibrary("base").includes.types.find((x) => x.name === n), law = kitFromLibrary("law-firm").includes.types.find((x) => x.name === n);
-    for (const f of base.fields) assert.ok(law.fields.some((x) => x.name === f.name), `${n}.${f.name} is still there`);
+    for (const f of base ? base.fields : []) assert.ok(law.fields.some((x) => x.name === f.name), `${n}.${f.name} is still there`);
     const pa = law.fields.find((x) => x.name === "practice_area");
     assert.equal(pa.kind, "choice", `${n}.practice_area is a choice`);
     assert.ok(pa.options.includes("Personal Injury") && pa.options.includes("Estate Planning"));

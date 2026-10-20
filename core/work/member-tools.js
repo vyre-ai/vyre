@@ -47,7 +47,7 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.relationship.add": { tool: "records.serve-update", call: "relationship.add", keys: ["from", "to", "kind", "since", "until", "note"], types: [] },
   "records.relationship.remove": { tool: "records.serve-update", call: "relationship.remove", keys: ["id"], types: [] },
   "records.layout.set": { tool: "records.serve-update", call: "layout.set", keys: ["type", "scope", "layout"], types: [] },
-  // a joined member reads a record's history, board totals, Busy blocks and roles, and logs a call, a meeting or a note (0.6.2); undo, role.set, share and the type, field and link edits wait for 0.6.3
+  // a joined member reads a record's history, board totals, Busy blocks and roles, and logs a call, a meeting or a note (0.6.2)
   "records.history": { tool: "records.serve", call: "history", keys: ["urn", "limit"], types: [] },
   "records.stats": { tool: "records.serve", call: "stats", keys: ["type", "group_by", "sum", "filter"], types: [] },
   "records.busy": { tool: "records.serve", call: "busy", keys: ["from", "to"], types: [] },
@@ -56,6 +56,19 @@ export const MEMBER_TOOLS = Object.freeze({
   "records.layout.get": { tool: "records.serve", call: "layout.get", keys: ["type"], types: [] },
   "records.relationship.list": { tool: "records.serve", call: "relationship.list", keys: ["urn"], types: [] },
   "records.relationship.kinds": { tool: "records.serve", call: "relationship.kinds", keys: [], types: [] },
+  // (0.6.4) a joined member reads a record's roles and who holds one, gives a record a role, shares her own synced event, undoes a change, and moves a record she may change to the bin and back; the same tool
+  // bodies the owner runs, under her chain, so the kernel's grants and write rules decide each (a temporary member holds no records.remove or records.restore). Adding a field or a link to a type is an owner's
+  // or an admin's act: the tools refuse any other member (link-fields.js, quick.js), so a joined admin reaches it and a member is told who decides. Filling a sealed value, seeing a record as the assistant
+  // and deleting for good stay on the owner's own server: they need the person's presence there, so they have no row.
+  "records.roles": { tool: "records.serve", call: "roles", keys: ["urn", "include_ended"], types: [] },
+  "records.holders": { tool: "records.serve", call: "holders", keys: ["role", "stage", "include_ended", "cursor", "limit"], types: [] },
+  "records.role.set": { tool: "records.serve-update", call: "role.set", keys: ["urn", "role", "stage", "since"], types: [] },
+  "records.share": { tool: "records.serve-update", call: "share", keys: ["urn", "visibility"], types: [] },
+  "records.history.undo": { tool: "records.serve-update", call: "history.undo", keys: ["id"], types: [] },
+  "records.remove": { tool: "records.serve-update", call: "remove", keys: ["urn", "base_version"], types: [] },
+  "records.restore": { tool: "records.serve-update", call: "restore", keys: ["urn"], types: [] },
+  "records.link.add": { tool: "records.serve-update", call: "link.add", keys: ["type", "label", "to", "many", "inverse_label"], types: [] },
+  "records.field.add": { tool: "records.serve-update", call: "field.add", keys: ["type", "label", "kind", "options", "to", "inverse", "many"], types: [] },
   // a joined member's NOTES in the team's planner (core/planner/index.js, planner.serve): the exact keys each call takes, and nothing else of the planner
   "planner.list": { tool: "planner.serve", call: "list", keys: ["scope", "record", "state", "limit"], types: [] },
   "planner.get": { tool: "planner.serve", call: "get", keys: ["item"], types: [] },
@@ -113,13 +126,16 @@ export const MEMBER_TOOLS = Object.freeze({
 });
 
 /**
- * Door names the kernel's gateway also serves (records.get(type, id), tasks.get(id), tasks.request(spec)): a member's HOME reaches the team through the gateway's shapes, her APP through the Store's. A call whose
+ * Door names the kernel's gateway also serves (records.get(type, id), records.remove(type, id, base), records.restore(type, id), tasks.get(id), tasks.request(spec)): a member's HOME reaches the team through the gateway's shapes, her APP through the Store's. A call whose
  * first argument is not the Store's object goes to the gateway untouched, and every call of these two groups the table does not name passes through to the gateway as before.
  */
 const SHARED = Object.freeze({
   "records.get": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
   "records.create": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.type === "string" && a.data && typeof a.data === "object",
   "records.update": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
+  // the gateway's own remove and restore take (type, id, ...): a member's app sends the Store's { urn }
+  "records.remove": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
+  "records.restore": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.urn === "string",
   "tasks.get": (/** @type {any} */ a) => a && typeof a === "object" && typeof a.id === "string",
   "tasks.request": (/** @type {any} */ a) => a && typeof a === "object" && a.task && typeof a.task === "object",
 });

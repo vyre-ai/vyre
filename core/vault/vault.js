@@ -1501,6 +1501,16 @@ export class Vault {
   granted({ name, module, watcher = "", project }) { return this.releases.allowed({ name, module, watcher, project }); }
 
   /**
+   * An agent's own watcher (core/watchers, owner kind agent) uses what is lent to its agent, with no grant of its own: the item must be one the agent may read
+   * right now by its standing kernel grant (never a lease held to a conversation). Only the watchers module asks, for a named watcher.
+   * @param {string} name @param {string} module @param {string} watcher @param {string} agent
+   */
+  async lentToAgent(name, module, watcher, agent) {
+    if (module !== "watchers" || !watcher || !agent || !this.access || typeof this.access.effectFor !== "function") return false;
+    return (await this.access.effectFor(String(agent), String(name), "vault.read")) === "allow";
+  }
+
+  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1511,15 +1521,16 @@ export class Vault {
    *   session-credentials.md). Nothing passes this yet - modules run process-wide, not scoped to
    *   one project - so today it is always absent and this filters nothing.
    */
-  async release({ name, field, watcher = "", project, deployment }, caller) {
+  async release({ name, field, watcher = "", project, deployment, agent = "" }, caller) {
     const mod = moduleOf(caller);
     const who = watcher ? `${caller}/${watcher}` : deployment ? `${caller}/${deployment}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
     // Publish asks for a deployment, and a deployment holds its secret as its own kernel grant: that grant, and not a grant to the module, is what lets the value out (R032-11).
-    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project });
+    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project }) || (await this.lentToAgent(name, mod, watcher, agent));
     if (!g) {
       this.audit("release", name, who, false, "no grant");
+      if (mod === "watchers" && watcher && agent) throw new Error(`Needs access to ${name}: let ${agent} use it in the Vault (Can use it, without seeing it)`);
       throw new Error(mod === "publish" ? `${name} is not granted to this deployment · give it from the deployment's secrets` : `${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
     const r = this.row(name);

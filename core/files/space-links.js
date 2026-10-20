@@ -13,6 +13,7 @@ import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
 import { MAX_UPLOAD } from "./space-drive.js";
 import { filesMigrations } from "./migrations.js";
+import { agentPathOf, NOT_IN_DRIVE } from "./agent-folder.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -54,6 +55,7 @@ export function registerSpaceLinks(ctx, o = {}) {
     { presence: { summary: async (/** @type {any} */ i) => `Share ${String(i && i.path || "a file")} with a link` } },
     async (i, meta) => {
       let p; try { p = safePath(String(i.path ?? "")); } catch { throw refuse("that is not a path in the Drive", "bad_input"); }
+      if (agentPathOf(p)) throw refuse(NOT_IN_DRIVE, "unavailable");
       if (i.version !== undefined && (!Number.isInteger(i.version) || i.version < 1)) throw refuse("name a version number", "bad_input");
       const days = i.days === undefined ? DEFAULT_DAYS : i.days;
       if (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) throw refuse(`a link lasts 1 to ${MAX_DAYS} days`, "bad_input");

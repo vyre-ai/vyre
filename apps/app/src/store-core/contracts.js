@@ -123,12 +123,19 @@
  *   define(diff: DefineDiff): Promise<DefineResult>,
  *   addField?(type: string, spec: { label: string, kind: FieldKind, to?: string, options?: string[] }): Promise<FieldDefinition>,
  *   sealField?(type: string, field: string, space?: string): Promise<FieldDefinition|undefined>,
- *   subscribe(fn: () => void): () => void,
+ *   subscribe(fn: (hint?: ChangeHint) => void): () => void,
+ *   batch?<T>(work: () => Promise<T>): Promise<T>,
  *   me?(): Promise<string>,
  *   calendar?(q?: { day?: number }): Promise<{ id: string, at: number, title: string, sub?: string, record?: Urn }[]>,
  * }} Store
  * Optional (UI-side, until the kernel has them): `me` (the actor id of the person using this Deck; the chain's first hop), `calendar` (today's events; Now shows an
- * empty calendar when it is missing), `addField` (a records.define call) and `sealField` (records.field.seal, the kernel's migration).
+ * empty calendar when it is missing), `addField` (a records.define call) and `sealField` (records.field.seal, the kernel's migration). `batch` runs many writes (an import) with one change told at the end.
+ */
+
+/**
+ * What a change touched, when the store knows: `type` is the one record type that changed (a reader may re-read that type only), `soon` is a change from the box that
+ * may not touch records at all (a reader may wait a moment and read once for a burst). No hint: anything may have changed.
+ * @typedef {{ type?: string, soon?: boolean }} ChangeHint
  */
 
 /**

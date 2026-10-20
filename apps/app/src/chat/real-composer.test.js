@@ -2,27 +2,13 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { doingLine, memberNames, modelChoices, peopleFor, recordPicks, shownName, switchCall } from "./real-composer.js";
+import { doingLine, memberNames, peopleFor, recordPicks, shownName, switchCall } from "./real-composer.js";
 
-const ROWS = [
-  { id: "claude", label: "Claude", accounts: [{ id: "default", label: "Default", signed_in: true, default: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] },
-  { id: "codex", label: "Codex", accounts: [{ id: "x1", label: "Work", signed_in: true }], models: [{ id: "gpt-5", label: "GPT-5" }] },
-  { id: "grok", label: "Grok", accounts: [], models: [{ id: "grok-4", label: "Grok 4" }] },
-];
-
-test("the models offered are those of the signed-in accounts, with the answering one marked", () => {
-  const { models, model } = modelChoices(ROWS, { provider: "claude", account: "default", model: "sonnet" });
-  assert.deepEqual(models.map((m) => m.label), ["Claude · Opus", "Claude · Sonnet", "Codex · GPT-5"]);
-  assert.equal(model, "claude|default|sonnet");
-  assert.equal(modelChoices([ROWS[0]], { provider: "claude", model: "opus" }).models[0].label, "Opus", "one account: the plain model name");
-  assert.deepEqual(modelChoices(null), { models: [], model: undefined });
-});
-
-test("switching a model asks threads.chat-switch with the slot, provider, model and account", () => {
-  const cur = { provider: "claude", account: "default" };
-  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur), { tool: "threads.chat-switch", input: { chat: "t1", provider: "claude", account: "default", model: "opus" } });
-  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur, "model:codex/gpt-5#1").input, { chat: "t1", slot: "model:codex/gpt-5#1", provider: "claude", model: "opus", account: "default" });
-  assert.equal(switchCall("t1", "bad", ROWS, cur), null);
+test("a person's model pick asks threads.chat-switch with the slot, the provider, the model, their own account and the effort", () => {
+  const pick = { account: { id: "ac_1" }, model: { id: "lab-deep-2", provider: "claude" } };
+  assert.deepEqual(switchCall("t1", pick), { tool: "threads.chat-switch", input: { chat: "t1", provider: "claude", model: "lab-deep-2", account: "ac_1" } });
+  assert.deepEqual(switchCall("t1", { account: { id: "ac_2" }, model: { id: "x-ai/grok-4.7", provider: "openrouter" } }, "model:codex/gpt-5#1", "high")?.input, { chat: "t1", slot: "model:codex/gpt-5#1", provider: "openrouter", model: "x-ai/grok-4.7", account: "ac_2", effort: "high" });
+  assert.equal(switchCall("t1", null), null);
 });
 
 test("people to mention: this chat's first, then the space's actors and the person's agents, once each, never the viewer", () => {

@@ -2,7 +2,7 @@
 // Roles on a record: what a person or a company is to the Space, each role with its own stage (a Lead who is Talking, a Client who is Active). The kernel keeps a role as a record of a role type that points at its
 // holder (records.roles lists them, records.holders lists who has one). This file adds the plain calls the Records screens use:
 //   records.role.set { urn, role, stage? }   put a role on a record, or move the one it has to another stage
-//   records.roles.summary { urn? }           for a record: its roles as short labels; for the Space: how many hold each role, by stage
+//   records.roles.summary { urn? }           for a record: its roles as short labels; for the Space: how many hold each role, by stage, and the type that holds it (`holder`)
 
 const DAY = 86_400_000;
 const STRIP = / role( \(company\))?$/;
@@ -74,8 +74,8 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
         const roles = held.map((/** @type {any} */ h) => labelled(types.find((/** @type {any} */ t) => t.name === h.role) || { name: h.role, label: h.role }, h));
         return { roles, line: lineOf(roles) };
       }
-      const out = [];
-      for (const t of types) {
+      // every role type is read at once (each one's pages follow its own cursor), so the summary waits for the slowest role, not the sum of them
+      const out = await Promise.all(types.map(async (/** @type {any} */ t) => {
         const sf = (t.fields || []).find((/** @type {any} */ f) => f.kind === "stage");
         /** @type {any[]} */ const rows = [];
         let cursor;
@@ -85,8 +85,10 @@ export function registerRoles({ tool, obj, str, refuse, parseUrn }) {
           if (!r.next_cursor) break;
           cursor = r.next_cursor;
         }
-        out.push({ role: t.name, label: roleLabel(t), color: t.color || null, stages: sf ? sf.options || [] : [], ...countsOf(rows) });
-      }
+        // `holder` is the type that holds the role (a contact or an organization), so a screen offers a person only a person's roles
+        const link = (t.fields || []).find((/** @type {any} */ f) => f.name === t.role.link);
+        return { role: t.name, label: roleLabel(t), holder: (link && link.to) || null, color: t.color || null, stages: sf ? sf.options || [] : [], ...countsOf(rows) };
+      }));
       return { roles: out };
     }, (/** @type {any} */ i) => (i.urn ? { space: parseUrn(i.urn).space } : i));
 }

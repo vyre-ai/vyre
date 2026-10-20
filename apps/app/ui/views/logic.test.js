@@ -252,7 +252,7 @@ test("a type with no stage gets a board on its first choice field", () => {
 
 test("the Space's own bookkeeping types are not a screen of the person's", () => {
   for (const n of ["def-flow", "flow-state", "kit-proposal", "kit-install", "goal"]) assert.equal(isHiddenType({ name: n }), true, n);
-  for (const n of ["quick-field", "record-layout", "template", "playbook", "file-share", "contact_point", "team-member", "member-profile", "skill", "chat-record"]) assert.equal(isHiddenType({ name: n }), true, n);
+  for (const n of ["quick-field", "record-layout", "template", "playbook", "file-share", "contact_point", "team-member", "member-profile", "member-photo", "skill", "chat-record"]) assert.equal(isHiddenType({ name: n }), true, n);
   for (const n of ["contact", "organization", "deal", "project", "task", "event", "note", "communication", "relationship", "kit", "flowers", "lead"]) assert.equal(isHiddenType({ name: n }), false, n);
   assert.equal(isHiddenType({ name: "x", internal: true }), true);
   assert.equal(isHiddenType({ name: "project-template" }), true, "a template's JSON body is read in the Templates screen, never as a table of records");

@@ -76,3 +76,29 @@ test("the Flows host leaves the core types an update is adding to the store, so 
   assert.deepEqual(added.filter((n) => pending.includes(n)), [], "the Flows host added none of the core types the store is adding");
   assert.ok(added.length > 0, "it still added the Flow, Kit and Kit storage types");
 });
+
+test("a Space made before 0.6.4 loses the base Kit's second Lead when it holds no record; a second Client that holds one, and a Lead a person changed, stay", async (t) => {
+  const { newKernel, prepareKernel, OWNER, SPACE } = await import("../planner/testing.js");
+  const k = await newKernel(null);
+  await prepareKernel(k);
+  const contact = CORE_TYPES.find((c) => c.name === "contact");
+  const stage = (/** @type {string[]} */ o) => ({ name: "stage", kind: "stage", label: "Stage", options: o });
+  const link = { name: "contact", kind: "link", label: "Contact", required: true, to: "contact" };
+  // the base Kit's own Lead and Client as an older Space has them, with the core Contact (so the Kit is not installed again)
+  const lead = { name: "lead", label: "Lead", fields: [link, { name: "source", kind: "choice", label: "Source", options: ["Website", "Other"] }, { name: "summary", kind: "rich_text", label: "What they need" }, stage(["New", "Lost"])], stages: [{ name: "New" }, { name: "Lost" }], role: { link: "contact", ended: ["Lost"] } };
+  const client = { name: "client", label: "Client", fields: [link, { name: "since", kind: "date", label: "Client since" }, stage(["Active", "Closed"])], stages: [{ name: "Active" }, { name: "Closed" }], role: { link: "contact", ended: ["Closed"] } };
+  await k.store.define({ add_types: [contact, lead, client] });
+  const chain = k.chains.fromFacts({ kind: "device", device_key_id: "d", person: OWNER, path: "direct", session: "s" });
+  const person = await k.gateway.records.create(chain, "contact", { name: "Sample Person" });
+  await k.gateway.records.create(chain, "client", { contact: { urn: person.urn }, stage: "Active" });
+  /** @type {string[]} */ const log = [];
+  const host = createFlowsHost({ log: (m) => log.push(m), retryMs: 10 });
+  t.after(() => host.stop());
+  await host.attach(SPACE, k, OWNER);
+  for (let i = 0; i < 300 && !log.some((l) => /other record types for .* (are up to date|were not)/.test(l)); i++) await sleep(20);
+  const names = new Set((await k.store.types()).map((/** @type {any} */ x) => x.name));
+  assert.ok(!names.has("lead"), `the empty second Lead is gone: ${log.join(" | ")}`);
+  assert.ok(names.has("client"), "the second Client holds a record, so it stays");
+  assert.ok(names.has("role-lead") && names.has("role-client"), "the Space's own roles stand");
+  assert.ok(log.some((l) => /took away the base Kit's second lead/.test(l)), log.join(" | "));
+});

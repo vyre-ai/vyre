@@ -301,7 +301,7 @@ export async function defineCore(store, log = () => {}) {
   const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
   const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
   if (fresh.length) await store.define({ add_types: [...fresh] });
-  // A new Space starts with the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
+  // A new Space starts with the base Kit (Contact, Appointment, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
   if (fresh.length === CORE_TYPES.length) {
     const base = kitFromLibrary("base").includes.types;
     await store.define({ add_types: base.filter((/** @type {any} */ t) => !known.has(t.name) && !CORE_TYPES.some((c) => c.name === t.name)), change_types: base.filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)) });

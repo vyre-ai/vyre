@@ -4,6 +4,7 @@ import { Button, Sheet, Text, editField, showToast, titleOf, viewDefOf } from "@
 import type { FieldEnv } from "../../ui/fields/types";
 import { callT } from "../../src/real/call-tool";
 import { fieldFor, moveInput, needSentence, readNeeds, readyToGo } from "./move-rule.js";
+import { plainError } from "../../src/real/error-note.js";
 
 type Ask = { rec: any; def: any; stage: string; needs: string[]; patch: Record<string, any> };
 
@@ -17,7 +18,7 @@ export function useMoveStage(env: FieldEnv, onMoved?: () => void) {
   const [busy, setBusy] = useState(false);
   const go = useCallback(async (rec: any, def: any, stage: string, patch?: Record<string, any>): Promise<boolean> => {
     const r = await callT<any>("records.move", moveInput(rec.urn, stage, patch));
-    if (r.error) { showToast(r.error.message || "That did not move."); return false; }
+    if (r.error) { showToast(plainError(r.error, "That did not move.")); return false; }
     const needs = readNeeds(r.data);
     if (needs) { setDraft({}); setAsk({ rec, def, stage, needs, patch: patch ?? {} }); return false; }
     onMoved?.();

@@ -39,7 +39,7 @@ export function contextBrief(c) {
 /**
  * @param {any} ctx
  * @param {{ db: any, root: string, must: (n: string) => any, mayChange: (m: any, a: any) => Promise<boolean>, notYours: (w: string) => Error, guard: (c: any, w: string) => void,
- *   modelMay: (m: any) => boolean, personOf: (m: any) => Promise<string>, scope: (a: any) => Promise<{ projects: any, cwds: string[] }>,
+ *   modelMay: (m: any) => boolean, personOf: (m: any, upkeep?: any) => Promise<string>, scope: (a: any) => Promise<{ projects: any, cwds: string[] }>,
  *   setWords: (a: any, instructions: string, by: string) => void, seesFull: (m: any) => Promise<boolean>, chainPerson: (m: any) => Promise<string | null>, roleOf: (person: string) => Promise<string | null>, changed?: () => void, staffOf?: (person: string) => Promise<boolean> }} h
  */
 export function register(ctx, h) {
@@ -147,7 +147,7 @@ export function register(ctx, h) {
       // notes an older CLAUDE.md kept apart go into AGENTS.md once, under "Notes", and the separate file is retired
       const full = withNotes(text, readClaude(a));
       if (full.length > DOC_MAX) throw bad(`the text and the old notes together are over ${DOC_MAX / 1024} KB: shorten them`);
-      h.setWords(a, full, await h.personOf(meta));
+      h.setWords(a, full, await h.personOf(meta, "agents.docs.set"));
       try { fs.rmSync(claudeFile(a), { force: true }); } catch { /* nothing kept apart */ }
       return { ok: true, file };
     },
@@ -203,7 +203,7 @@ export function register(ctx, h) {
       const { cwds } = await h.scope(a);
       if (!cwds.some(c => { try { return inside(fs.realpathSync(c), real); } catch { return false; } })) throw Object.assign(new Error(`${a.name} cannot see that folder: it is not inside one of its projects. Add the folder to a project ${a.name} works in first`), { code: "denied" });
       // A link is judged against the person ADDING it: she can link only a folder of a project she can read herself.
-      const person = await h.personOf(meta);
+      const person = await h.personOf(meta, "agents.context.link");
       if (person) {
         const pl = await ctx.call("projects.list", {}).catch(() => null);
         const owning = (pl && !pl.error && pl.data && Array.isArray(pl.data.projects) ? pl.data.projects : []).filter((/** @type {any} */ p) => (a.projects === "*" || a.projects.includes(p.slug)) && [p.home, ...(p.workspaces || p.folders || [])].filter(Boolean).some((/** @type {string} */ c) => { try { return inside(fs.realpathSync(c), real); } catch { return false; } }));
@@ -212,7 +212,7 @@ export function register(ctx, h) {
           if (!(may && !may.error && may.data && may.data.ok === true)) throw Object.assign(new Error(`you cannot read the project ${p.slug} yourself, so you cannot link its folders for an agent. Ask the project's owner to add you, or link a folder of a project you can open`), { code: "denied" });
         }
       }
-      db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, by, at) VALUES (?,?,?,?)").run(a.name, real, await h.personOf(meta), Date.now());
+      db.prepare("INSERT OR IGNORE INTO agents_context_links (agent, path, by, at) VALUES (?,?,?,?)").run(a.name, real, await h.personOf(meta, "agents.context.link"), Date.now());
       return { ok: true, path: real };
     },
   });
@@ -235,7 +235,7 @@ export function register(ctx, h) {
       await writeOk(meta, a);
       if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and takes no Vault items. Put the item on an agent you made, with agents.vault.assign`), { code: "denied" });
       if (typeof item !== "string" || !ITEM.test(item)) throw bad("that is not a Vault item name");
-      db.prepare("INSERT OR IGNORE INTO agents_vault_items (agent, item, by, at) VALUES (?,?,?,?)").run(a.name, item, await h.personOf(meta), Date.now());
+      db.prepare("INSERT OR IGNORE INTO agents_vault_items (agent, item, by, at) VALUES (?,?,?,?)").run(a.name, item, await h.personOf(meta, "agents.vault.assign"), Date.now());
       return { ok: true };
     },
   });
@@ -275,7 +275,7 @@ export function register(ctx, h) {
       if (typeof subject !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,80}$/.test(subject)) throw bad("name the person to share with");
       if (level !== null && level !== undefined && !["use", "edit"].includes(level)) throw bad("level is use, edit or null");
       if (!ctx.kernel || !ctx.kernel.mint) throw Object.assign(new Error("sharing an agent needs the kernel"), { code: "unavailable" });
-      const by = await h.personOf(meta);
+      const by = await h.personOf(meta, "agents.access.set");
       await ctx.kernel.mint.end({ source: sourceOf(a, subject), reason: "the sharing of this agent changed" });
       if (level) await ctx.kernel.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: subject, space: ctx.kernel.space } }, actions: level === "edit" ? ["agents.use", "agents.edit"] : ["agents.use"], resource: { prefix: urnOf(a) }, source: sourceOf(a, subject), reason: `shared by ${by || "the owner"}: ${level === "edit" ? "Can edit" : "Can use"}` });
       // the Vault keeps copies of a member's items for the agents she may instruct; when her access to one is taken away it ends her shares with it

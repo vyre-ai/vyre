@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { tempHome, present, kernelCaller } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
@@ -32,7 +32,8 @@ test("with the sandbox on and thread_socket auto, a person's session and an assi
   assert.ok(person.data && person.data.id, JSON.stringify(person));
   const made = await d.registry.call("agents.create", { name: "assistant", kind: "assistant", projects: "*" }, "cli");
   assert.ok(!made.error, JSON.stringify(made));
-  const ask = await d.registry.call("agents.ask", { agent: "assistant", text: "hello there", wait: false }, "cli");
+  // the owner's own call, with the owner's person proved (Rule 2: a call that names nobody starts no agent)
+  const ask = await kernelCaller(d, root)("agents.ask", { agent: "assistant", text: "hello there", wait: false });
   assert.ok(!(ask.error && /no socket of its own/.test(ask.error.message)), JSON.stringify(ask));
   assert.ok(!ask.error, JSON.stringify(ask));
 });

@@ -92,7 +92,7 @@ function readAll(input) {
  */
 export class Scrubber extends Transform {
   /**
-   * A value is a string (hidden as <concealed by vyre>), or { value, mark } (hidden as its own mark, "[hidden: GHL_API_KEY]", in its base64, URL-encoded and JSON forms too).
+   * A value is a string (hidden as <concealed by vyre>), or { value, mark } (hidden as its own mark, "[hidden: NORTHWIND_API_KEY]", in every form use.js hide() covers).
    * @param {(string | { value: string, mark: string })[]} values
    */
   constructor(values) {
@@ -102,7 +102,7 @@ export class Scrubber extends Transform {
     for (const v of values || []) {
       const own = Boolean(v) && typeof v === "object";
       const text = String(own ? /** @type {any} */ (v).value ?? "" : v ?? "");
-      for (const f of own ? valueForms(text) : [text]) { const b = Buffer.from(f, "utf8").toString("latin1"); if (b.length >= 4 && !marks.has(b)) marks.set(b, own ? Buffer.from(String(/** @type {any} */ (v).mark)).toString("latin1") : mark); }
+      for (const f of own ? valueForms(text, { wide: true, deep: true }) : [text]) { const b = Buffer.from(f, "utf8").toString("latin1"); if (b.length >= 4 && !marks.has(b)) marks.set(b, own ? Buffer.from(String(/** @type {any} */ (v).mark)).toString("latin1") : mark); }
     }
     const bytes = [...marks.keys()].sort((a, b) => b.length - a.length);
     /** @private */ this.values = bytes;

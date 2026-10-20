@@ -54,7 +54,10 @@ export function ImportSheet({ open, onClose, def, noun, onDone }: { open: boolea
     if (!parsed) return;
     const skip = new Set(issues.map((x) => x.row));
     setStep(3); setProgress({ done: 0, total: parsed.rows.length - skip.size });
-    const r = await runImport({ rows: parsed.rows, mapping, fields, skip, type: def.name, create: (t, d) => store.create(t, d as any), skipRepeats: dupe === "skip", onProgress: (done, total) => setProgress({ done, total }) });
+    // one batch: the rows are made one by one, and the lists read the type once at the end instead of once a row
+    const rows = parsed.rows;
+    const work = () => runImport({ rows, mapping, fields, skip, type: def.name, create: (t, d) => store.create(t, d as any), skipRepeats: dupe === "skip", onProgress: (done, total) => setProgress({ done, total }) });
+    const r = await (store.batch ? store.batch(work) : work());
     setProgress({ done: r.created + r.refused + (r.skipped - skip.size), total: r.created + r.refused + (r.skipped - skip.size) });
     setResult({ created: r.created, updated: 0, skipped: r.skipped, flagged: r.refused });
     setFailures(r.failures);
@@ -70,7 +73,7 @@ export function ImportSheet({ open, onClose, def, noun, onDone }: { open: boolea
           <View className="flex-row"><Button kind="primary" label="Read this sheet" onPress={() => readSheet(book.sheets, book.pick, book.file)} /></View>
         </View>
       ) : null}
-      <Field label="Or paste the rows" value={text} onChangeText={setText} multiline lines={5} placeholder={"Name,Kind,Estimated value\nFamily home,Real estate,640000"} mono />
+      <Field label="Or paste the rows" value={text} onChangeText={setText} multiline lines={5} placeholder={`${fields.slice(0, 3).map((f: any) => String(f.label ?? f.name)).join(",") || "Name"}\nOne record per line, in the same order`} mono />
       {problem ? <Text size="caption" tone="err">{problem}</Text> : <Text size="caption" tone="label">The first line is the column names. Nothing is added until you approve the check.</Text>}
       <View className="flex-row"><Button kind="primary" label="Read it" disabled={!text.trim()} onPress={() => read(text, "")} /></View>
     </Card>

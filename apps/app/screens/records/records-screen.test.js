@@ -27,3 +27,11 @@ test("a type as the box lists it is a valid define input again: nothing a listin
   assert.deepEqual(defineInputOf(null), {});
   assert.ok(input.fields.some((/** @type {any} */ f) => f.name === "ref" && f.read_only === true && f.unique === true), "the ID field keeps its marks");
 });
+
+test("Records opens with People, Companies, Tasks and Notes, then the rest in the Space's order, none added or dropped", async () => {
+  const { tabOrder } = await import("./records-screen.js");
+  const t = (/** @type {string} */ name) => ({ name });
+  assert.deepEqual(tabOrder([t("deal"), t("note"), t("contact"), t("event"), t("task"), t("organization")]).map((x) => x.name), ["contact", "organization", "task", "note", "deal", "event"]);
+  assert.deepEqual(tabOrder([t("deal")]).map((x) => x.name), ["deal"]);
+  assert.deepEqual(tabOrder(/** @type {any} */ (undefined)), []);
+});

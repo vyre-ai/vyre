@@ -667,7 +667,7 @@ test("the model step lists what each signed-in account offers (its own list, els
   pp.call = async (name, input, box) => {
     if (name === "models.refresh") { order.push(name); return { refreshed: true }; }
     if (name === "sessions.accounts.list" || name === "agents.list") return say[name];
-    if (name === "sessions.accounts.models") { order.push(name); if (input.account === "ac_1") return { models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }], secret: "S" }; throw new Error("not offered"); }
+    if (name === "sessions.accounts.models") { order.push(name); if (input.account === "ac_1") return { models: [{ id: "opus", label: "Opus" }, { id: "sonnet", name: "Sonnet", provider: "claude", vendor: "Anthropic", context: 1000000, price: { in: 3, out: 15 }, efforts: ["low", "high"], vault_item: "x" }], secret: "S" }; throw new Error("not offered"); }
     if (name === "sessions.models") { pp.seen.calls.push({ name, input, box }); return [{ id: "gpt-5", label: "GPT 5" }]; }
     if (name === "agents.update") { pp.seen.calls.push({ name, input, box }); return { ok: true }; }
     return first(name, input, box);
@@ -675,6 +675,8 @@ test("the model step lists what each signed-in account offers (its own list, els
   const r = await host.call("onboard.assistant.models", {});
   assert.deepEqual(r.accounts.map((a) => [a.id, a.label, a.provider, a.models.map((m) => m.id)]), [["ac_1", "Work", "claude", ["opus", "sonnet"]], ["ac_2", "Key", "codex", ["gpt-5"]]], "pending and synthetic accounts are left out; an account with no list of its own shows its provider's");
   assert.ok(!JSON.stringify(r).includes("SECRET") && !JSON.stringify(r).includes("vault_item"), "no credential or vault item comes back");
+  const sonnet = r.accounts[0].models[1];
+  assert.deepEqual([sonnet.name, sonnet.vendor, sonnet.context, sonnet.price, sonnet.efforts], ["Sonnet", "Anthropic", 1000000, { in: 3, out: 15 }, ["low", "high"]], "each model keeps its details for the one picker");
   assert.equal(order[0], "models.refresh", "the registry is asked to look before any account's models are read");
   pp.call = async (name, input, box) => (name === "models.refresh" ? Promise.reject(new Error("not yours")) : name === "sessions.accounts.list" ? say[name] : name === "sessions.accounts.models" ? { models: [{ id: "opus", label: "Opus" }] } : first(name, input, box));
   assert.equal((await host.call("onboard.assistant.models", {})).accounts.length, 2, "a refused look still lists what is known");
@@ -688,6 +690,10 @@ test("the model step lists what each signed-in account offers (its own list, els
   assert.deepEqual(m, { name: "juno", model: "opus" });
   const sent = pp.seen.calls.filter((c) => c.name === "agents.update").pop();
   assert.deepEqual([sent.box, sent.input], ["boxA", { name: "juno", model: "opus" }]);
+  // the one picker's pick: the provider the model is on and its effort go with it
+  assert.deepEqual(await host.call("onboard.assistant.model", { model: "x-ai/grok-4.7", provider: "openrouter", effort: "high" }), { name: "juno", model: "x-ai/grok-4.7", provider: "openrouter", effort: "high" });
+  assert.deepEqual(pp.seen.calls.filter((c) => c.name === "agents.update").pop().input, { name: "juno", model: "x-ai/grok-4.7", model_provider: "openrouter", effort: "high" });
+  await assert.rejects(() => host.call("onboard.assistant.model", { model: "m", provider: "Not A Provider" }), (e) => e.code === "bad_model");
 });
 
 test("a Mac window says on its online answer that fingerprint approvals are not there yet; a browser says nothing", async (t) => {

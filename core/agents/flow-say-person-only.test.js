@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 const INPUT = { agent: "juno", flow: "no-such-flow", text: "Why did run 8 fail?" };
 
@@ -31,7 +31,8 @@ test("agents.flow-say refuses an assistant and an MCP session, and runs for a pe
     assert.equal(r.error.code, "denied", `${who}: ${JSON.stringify(r.error).slice(0, 160)}`);
   }
   for (const surface of ["cli", "deck"]) {
-    const person = await d.registry.call("agents.flow-say", INPUT, surface);
+    // the person, proved (Rule 2: a surface label alone names nobody, so it starts no agent)
+    const person = await kernelCaller(d, root, surface)("agents.flow-say", INPUT);
     assert.ok(person.error, "no such Flow");
     // past the door and the handler's person check, the Flow's own layer answers: the box here has no Flow of that name, and no chain of a person's own (a plain surface, no kernel)
     const message = String(person.error.message);

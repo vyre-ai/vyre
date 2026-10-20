@@ -24,6 +24,8 @@ const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
 /** The person's own chain, for reading the records the planner keeps. */
 export const ownerChain = k => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
+/** The agent kit's own session, working for the owner, as vyred vouches it (its session token names the person it works for): a task it schedules runs as that person (Rule 2). */
+const kitFor = (/** @type {string} */ thread = "s1", person = OWNER) => ({ agent: "kit", thread, kernelFacts: { kind: "agent_session", agent: "kit", session: `s-kit-${thread}`, thread, vouched: true, person } });
 /** A kernel with the Event type defined (the connectors' calendar sync writes it), the planner's own types declared by its module. */
 export async function newKernel() {
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4) });
@@ -560,7 +562,7 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   // With a thread: an existing conversation gets a turn, never a new one. kit is calling FROM s1
   // itself (meta.thread) - taskScope requires a task's own thread match the creator's own calling
   // thread, so this is kit's own scope, not a confused deputy posting into someone else's.
-  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, { thread: "s1", agent: "kit" });
+  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, kitFor("s1"));
   w.advanceTo(T0 + HOUR);
   await new Promise(r => setImmediate(r)); // runTask() is async; the scheduler fires it, does not await it
   assert.equal(w.taskRuns.length, 1);
@@ -569,10 +571,10 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   assert.equal((await w.ok("planner.get", { item: withThread.id })).item.run_count, 1);
 
   // No thread: a fresh one, under the creator's own agent - rule 1, never more than that agent's own scope.
-  const launched = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 2 * HOUR }, kit);
+  const launched = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 2 * HOUR }, kit, kitFor("s1"));
   w.advanceTo(T0 + 2 * HOUR);
   await new Promise(r => setImmediate(r));
-  assert.deepEqual(w.calls.at(-1), { tool: "agents.job", input: { agent: "kit", prompt: "Draft the weekly digest", project: "harlow-legal" } });
+  assert.deepEqual(w.calls.at(-1), { tool: "agents.job", input: { agent: "kit", prompt: "Draft the weekly digest", project: "harlow-legal", person: OWNER } }, "as the person kit scheduled it for");
 
   // The person's own task: no agent at all, ambient, same as any session they start themselves.
   const own = await w.ok("planner.add", { kind: "task", title: "Renew the domain", project: "harlow-legal", at: T0 + 3 * HOUR });
@@ -617,7 +619,7 @@ test("planner: reviewer HIGH 2 - a task may only target the creator's OWN callin
   // the confused-deputy escape - module:planner would have posted there as itself, unquestioned.
   assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s2" }, kit, { thread: "s1", agent: "kit" })).error.code, "denied");
   // Its own calling thread is fine.
-  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, { thread: "s1", agent: "kit" });
+  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, kitFor("s1"));
   assert.equal(ok.thread, "s1");
   // Neither a thread nor a project at all: no scope to check against, refused rather than
   // defaulting to an ambient launch.
@@ -630,7 +632,7 @@ test("planner: reviewer MEDIUM - a task's project must be inside the creator age
   w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }];
   // Outside kit's own scope: refused at add time.
   assert.equal((await w.call("planner.add", { kind: "task", title: "x", project: "northwind" }, kit)).error.code, "denied");
-  const t1 = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + HOUR }, kit);
+  const t1 = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + HOUR }, kit, kitFor("s1"));
 
   // Reviewer HIGH 2's update-time twin: kit cannot redirect its own task to a project outside its
   // scope after the fact either (planner.update takes the same path as planner.add).
@@ -779,10 +781,73 @@ test("planner: an admin who changes a task's words or where it runs is who it ru
   assert.equal(second && second.input.prompt, "Run the report");
   assert.equal(second.input.person, OWNER, "a pin changes nothing it does: it still runs as its maker");
   // a call with no person on it (an agent's own session) cannot reword a task: refused, never left to run as nobody; its other fields it still may change
-  const kits = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 3 * HOUR }, "mcp:agent:kit");
+  const kits = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 3 * HOUR }, "mcp:agent:kit", kitFor("s1"));
   const reword = await w.call("planner.update", { item: kits.id, title: "Email the digest to everyone" }, "mcp:agent:kit");
   assert.equal(reword.error?.code, "denied", JSON.stringify(reword));
   assert.match(reword.error.message, /changed by a signed-in person/);
   assert.equal((await w.ok("planner.get", { item: kits.id })).item.title, "Draft the weekly digest", "NEGATIVE: nothing was changed");
   assert.ok((await w.call("planner.update", { item: kits.id, priority: 2 }, "mcp:agent:kit")).data, "a field that is not what it runs stays the agent's to change");
+});
+
+test("planner: Rule 2 on upgrade: a task with nobody recorded is paused, never run as the owner, and runs as whoever turns it on; one the owner made keeps running as the owner", async t => {
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const used = new Set();
+  const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, hasPresenceSession: () => true });
+  await k.gateway.records.define(ownerChain(k), { add_types: CORE_TYPES.filter(x => x.name === "event") });
+  const sign = (/** @type {string} */ call, /** @type {any} */ input) => ({ payload_hash: proofRequest(SPACE, call, input).payload_hash, nonce: Math.random().toString(36) });
+  const ADMIN = "per_" + "a".repeat(26);
+  const r0 = { person: ADMIN, role: "admin" }; await k.gateway.grants.setRole(ownerChain(k), r0, { presence: sign("setRole", r0) });
+  const w = await world(t, { kernel: k });
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const as = (/** @type {string} */ person) => ({ kernelFacts: { kind: "device", device_key_id: `d-${person.slice(4, 8)}`, person, path: "direct", session: "s2" } });
+
+  // a call that names nobody (an agent's own claim, no person proved) schedules no task: it would run as no one, or as the owner
+  const nobody = await w.call("planner.add", { kind: "task", title: "Run the digest", thread: "s1" }, "mcp:agent:kit", { thread: "s1", agent: "kit" });
+  assert.equal(nobody.error?.code, "denied", JSON.stringify(nobody));
+  assert.match(nobody.error.message, /No person asked for this, so no agent was started\./);
+  assert.equal((await w.ok("planner.list", { kind: "task" })).length, 0, "NEGATIVE: nothing was scheduled");
+
+  // two tasks as a planner wrote them before it kept who a task runs for: no person in the record. The kernel still wrote who each record was made for when it was made.
+  await w.stop();
+  const svc = k.gateway.serviceChain("planner");
+  const old = (/** @type {string} */ title, /** @type {number} */ at, /** @type {any} */ forChain) => k.gateway.records.create(svc, "reminder", { title, kind: "task", state: "open", at: new Date(at).toISOString(), next_fire: at,
+    project: "harlow-legal", source: "cli", tags: "[]", priority: 0, pinned: false, paused: false, run_count: 0, floating: false, created: T0 - DAY, updated: T0 - DAY }, { on_behalf: forChain });
+  const owners = await old("Run the owner's digest", T0 + HOUR, ownerChain(k));
+  const admins = await old("Run the admin's report", T0 + 2 * HOUR, k.chains.fromFacts(as(ADMIN).kernelFacts));
+  await w.boot();
+
+  // the owner's own (the record says the owner made it): kept running, as the owner
+  const kept = (await w.ok("planner.get", { item: owners.id })).item;
+  assert.equal(kept.paused, false, "the owner's schedule does not break");
+  // any other: paused, and it says why
+  const held = (await w.ok("planner.get", { item: admins.id })).item;
+  assert.equal(held.paused, true, "made before Vyre recorded who it runs for: paused, never run as the owner");
+  assert.equal(held.last_result, "Paused: made before Vyre recorded who it runs for. Turn it on to run it as you.");
+
+  const launches = () => w.calls.filter(c => c.tool === "threads.launch");
+  w.advanceTo(T0 + HOUR); await new Promise(r => setImmediate(r));
+  assert.equal(launches().length, 1);
+  assert.equal(launches()[0].input.prompt, "Run the owner's digest");
+  assert.equal(launches()[0].input.person, OWNER, "the owner's schedule runs as the owner");
+
+  // nobody can turn it on without being a person; the admin turns it on and it becomes hers
+  const noOne = await w.call("planner.update", { item: admins.id, paused: false }, "module:watchers");
+  assert.ok(noOne.error, "a module's own call turns nothing on");
+  const on = await w.call("planner.update", { item: admins.id, paused: false }, "cli", as(ADMIN));
+  assert.ok(on.data, JSON.stringify(on));
+  assert.equal(on.data.paused, false);
+  assert.equal((await w.ok("planner.get", { item: admins.id })).item.last_result, null, "the note goes once it is on");
+  w.advanceTo(T0 + 2 * HOUR); await new Promise(r => setImmediate(r));
+  const second = launches().at(-1);
+  assert.equal(second && second.input.prompt, "Run the admin's report");
+  assert.equal(second.input.person, ADMIN, "it runs as the person who turned it on, on her own account");
+  assert.notEqual(second.input.person, OWNER, "NEGATIVE: never as the owner");
+
+  // a restart keeps both: the stamped owner and the person who turned it on are saved in the records
+  await new Promise(r => setImmediate(r));
+  await w.stop(); await w.boot();
+  assert.equal((await w.ok("planner.get", { item: owners.id })).item.paused, false);
+  assert.equal((await w.ok("planner.get", { item: admins.id })).item.paused, false);
 });

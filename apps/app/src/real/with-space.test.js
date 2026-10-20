@@ -89,6 +89,9 @@ test("a member's daily Records and tasks go through the door under the same name
   for (const t of ["records.define", "records.sees-as", "records.seal-put", "records.reveal", "tasks.decide", "planner.delete", "planner.done", "planner.snooze", "planner.agenda"]) { assert.equal(memberWire(t), null, t); assert.ok(!isTeamWork(t), `${t} is not refused: it stays on her own home`); }
   // a joined member's Records reads and her call or meeting log go through the door too (history, totals, Busy blocks, roles, log)
   for (const t of ["records.history", "records.stats", "records.busy", "records.roles.summary", "records.log", "records.move", "records.layout.get", "records.layout.set", "records.relationship.list"]) assert.equal(memberWire(t), t, t);
+  // (0.6.4) roles, an undo, the bin, and an owner's or admin's field and link additions go through the door too; filling a sealed value, the agent's look and delete for good stay on her own home
+  for (const t of ["records.roles", "records.holders", "records.role.set", "records.share", "records.history.undo", "records.remove", "records.restore", "records.link.add", "records.field.add"]) assert.equal(memberWire(t), t, t);
+  for (const t of ["records.forget"]) assert.equal(memberWire(t), null, t);
   // the four planner NOTE calls have door rows (core/work/member-tools.js): reads go to planner.serve, writes to planner.serve-write
   const { MEMBER_TOOLS } = await import("../../../../core/work/member-tools.js");
   assert.equal(memberWire("planner.add"), "planner.add");

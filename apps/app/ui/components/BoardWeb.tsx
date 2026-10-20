@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { View } from "react-native";
+import { Button } from "./Button";
+import { WINDOW, windowOf } from "../views/windowing.js";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Text } from "./Text";
 import { cn } from "../lib/cn";
@@ -30,6 +33,8 @@ function Draggable({ id, children }: { id: string; children: React.ReactNode }) 
 export function Board<T>(props: BoardProps<T>) {
   const { phone } = useUiTheme();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // each column draws its first cards and a "Show more" (windowing.js)
+  const [limits, setLimits] = useState<Record<string, number>>({});
   if (phone) return <Stacked {...props} />;
   const { columns, items, columnOf, keyOf, renderCard, onMove, note, emptyHint } = props;
   const end = (e: DragEndEvent) => {
@@ -42,7 +47,10 @@ export function Board<T>(props: BoardProps<T>) {
       <View className={cn("flex-row items-start gap-s6")}>
         {columns.map((c) => {
           const here = items.filter((i) => columnOf(i) === c.id);
-          return <Column key={c.id} id={c.id} title={c.title} note={note ? note(c.id, here) : String(here.length)} hint={emptyHint}>{here.map((i) => <Draggable key={keyOf(i)} id={keyOf(i)}>{renderCard(i)}</Draggable>)}</Column>;
+          const win = windowOf(here, limits[c.id] ?? WINDOW);
+          const cards = win.rows.map((i) => <Draggable key={keyOf(i)} id={keyOf(i)}>{renderCard(i)}</Draggable>);
+          if (win.more) cards.push(<Button key="__more" kind="ghost" size="sm" label={win.label} onPress={() => setLimits({ ...limits, [c.id]: (limits[c.id] ?? WINDOW) + WINDOW })} />);
+          return <Column key={c.id} id={c.id} title={c.title} note={note ? note(c.id, here) : String(here.length)} hint={emptyHint}>{cards}</Column>;
         })}
       </View>
     </DndContext>

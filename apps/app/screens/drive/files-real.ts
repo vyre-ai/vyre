@@ -3,8 +3,8 @@ import { filesLoader } from "./files-source.ts";
 import { driveTool, linked, listReal, spaceList } from "./real";
 
 export const linkedNames: Record<string, string> = {};
-/** A project's folder is named by its id (Projects/<id>); files.places has its name. Filled once, then used by the listing, the tree and the path above it. */
+/** A project's folder is named by its id (Projects/<id>), an agent's too (agents/<id>); files.places has their names. Filled once, then used by the listing, the tree and the path above it. */
 export const folderNames: Record<string, string> = {};
 let named: Promise<void> | null = null;
-export const learnFolderNames = () => (named ??= driveTool<{ projects?: { name: string; path: string }[] }>("files.places", {}).then((r) => { for (const p of r?.projects ?? []) if (p.path && p.name) folderNames[p.path] = p.name; }).catch(() => {}));
+export const learnFolderNames = () => (named ??= driveTool<{ projects?: { name: string; path: string }[]; agents?: { name: string; path: string }[] }>("files.places", {}).then((r) => { for (const p of [...(r?.projects ?? []), ...(r?.agents ?? [])]) if (p.path && p.name) folderNames[p.path] = p.name; }).catch(() => {}));
 export const loader = filesLoader({ space: { list: spaceList }, linked, box: { list: listReal }, linkedNames: () => linkedNames, names: async () => { await learnFolderNames(); return folderNames; } });

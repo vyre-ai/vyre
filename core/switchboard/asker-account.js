@@ -301,7 +301,7 @@ export async function agentLaunchGuard(sb, i, who, owner) {
     if (how === undefined) throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. The owner can run it for you. Nothing was started.`), { code: "no_account" });
     throw Object.assign(new Error(`${i.agent}'s sign-in cannot be used for a teammate's request yet. Ask the owner to give it an API key or a setup token. Nothing was started.`), { code: "no_account" });
   }
-  throw Object.assign(new Error(`${connectOwn(i.agent)} Nothing was started.`), { code: "no_account" });
+  throw Object.assign(new Error(`${connectOwn(i.agent)} Nothing was started; retry once your own account is connected.`), { code: "no_account" });
 }
 
 /** The launch input with `for_person` kept only when a first-party module made the call (anyone else's is dropped: a person's own words never say who the work is for). @param {any} i @param {any} meta */

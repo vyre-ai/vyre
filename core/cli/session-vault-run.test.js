@@ -28,11 +28,11 @@ const collect = () => { const s = new PassThrough(); let text = ""; s.on("data",
 test("the program gets the fields under their canonical names; its output hides the secret in every form and keeps the plain value", async () => {
   const r = rig();
   const out = collect(), errOut = collect();
-  const script = "console.log(process.env.NORTHWIND_API_KEY, Buffer.from(process.env.NORTHWIND_API_KEY).toString('base64'), process.env.NORTHWIND_ACCOUNT_ID); console.error('key=' + encodeURIComponent(process.env.NORTHWIND_API_KEY))";
+  const script = "const k = process.env.NORTHWIND_API_KEY; console.log(k, Buffer.from(k).toString('base64'), process.env.NORTHWIND_ACCOUNT_ID); console.error('key=' + encodeURIComponent(k)); console.error(Buffer.from(k).toString('hex').toUpperCase(), [...k].reverse().join(''))";
   const code = await vaultRun(["--item", "Northwind CRM", "--", process.execPath, "-e", script], { req: /** @type {any} */ (r.req), ident: { caller: "mcp:agent:kit" }, err: r.err, stdout: out.s, stderr: errOut.s });
   assert.equal(code, 0, r.errs.join("\n"));
   assert.equal(out.text().trim(), "[hidden: NORTHWIND_API_KEY] [hidden: NORTHWIND_API_KEY] acct_042");
-  assert.equal(errOut.text().trim(), "key=[hidden: NORTHWIND_API_KEY]");
+  assert.equal(errOut.text().trim(), "key=[hidden: NORTHWIND_API_KEY]\n[hidden: NORTHWIND_API_KEY] [hidden: NORTHWIND_API_KEY]", "the wide and deep forms too: hex in capitals, reversed");
   assert.equal(r.seen.length, 1);
   assert.equal(r.seen[0].url, "/v1/tools/vault.use.env");
   assert.deepEqual(r.seen[0].body.items, ["Northwind CRM"]);

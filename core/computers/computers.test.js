@@ -17,6 +17,7 @@ import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { FakeDriver } from "./driver/fake.js";
+import { pickDriver } from "./index.js";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
@@ -100,8 +101,41 @@ test("computers: without a driver, list says none and a checkout says why", asyn
   const l = await s.cli("computers.list");
   assert.equal(l.data.driver, "none");
   assert.deepEqual(l.data.computers.map(c => [c.agent, c.state]), [["kit", "none"], ["pax", "none"]]);
-  assert.match((await s.cli("computers.checkout", { agent: "kit" })).error.message, /no computer driver is configured/);
+  assert.match((await s.cli("computers.checkout", { agent: "kit" })).error.message, /Agent computers aren't set up on this server yet\. Update the server to turn them on\./);
   assert.ok(s.logs.some(l => /no computer driver configured/.test(l)));
+});
+
+test("computers: on a box with no computers setting, the driver is the docker-api proxy with its create policy, and vyred writes the bearer docker-api reads", t => {
+  const dir = tempHome(t);
+  const bearer = path.join(dir, "secrets", "docker-api-bearer");
+  const env = { VYRE_SUPERVISOR: "docker", VYRE_COMPUTERS_IMAGE: "ghcr.io/vyre-ai/vyre-computer@sha256:" + "5".repeat(64), VYRE_COMPUTERS_NETWORK: "vyre-computers", VYRE_COMPUTERS_LABEL_PREFIX: "run.vyre.computers" };
+  const d = /** @type {any} */ (pickDriver({ dockerBearerFile: bearer }, "k", env));
+  assert.equal(d && d.name, "docker");
+  assert.deepEqual(d.target, { host: "docker-api", port: 2375 });
+  assert.equal(d.prefix, "run.vyre.computers");
+  assert.equal(d.network, "vyre-computers");
+  assert.match(fs.readFileSync(bearer, "utf8"), /^[0-9a-f]{64}$/, "the bearer exists as soon as the driver does");
+  assert.equal(pickDriver({ enabled: false, dockerBearerFile: bearer }, "k", env), null, "config.json can turn it off");
+  assert.equal(pickDriver({}, "k", {}), null, "and off a box nothing is implied");
+});
+
+test("computers: without a driver, the Computer tab's status and wake say so in plain words, never the driver's raw message", async t => {
+  const s = await boot(t, { computers: {} });
+  const st = await s.cli("computers.agent.status", { agent: "kit" });
+  assert.ok(!st.error, JSON.stringify(st.error));
+  assert.equal(st.data.problem, "Agent computers aren't set up on this server yet. Update the server to turn them on.");
+  assert.equal(st.data.problemCode, "unavailable");
+  const w = await s.cli("computers.agent.wake", { agent: "kit" });
+  assert.equal(w.error.message, "Agent computers aren't set up on this server yet. Update the server to turn them on.");
+  for (const r of [st, w]) assert.doesNotMatch(JSON.stringify(r), /container is not running|driver cannot run commands|computers\.docker/);
+});
+
+test("computers: on the fake driver (no commands in a computer), wake says this server cannot run them, in plain words", async t => {
+  const s = await boot(t, { computers: { driver: "fake", sweepMs: 0, waitMs: 100, browse: "desktop", agentUsers: true } });
+  const w = await s.cli("computers.agent.wake", { agent: "kit" });
+  assert.match(w.error.message, /^This server can't run agents' computers\./);
+  assert.doesNotMatch(w.error.message, /container is not running|driver cannot run commands/);
+  assert.equal((await s.cli("computers.agent.status", { agent: "kit" })).data.problemCode, "unavailable");
 });
 
 test("computers: without the agents module, a checkout is refused with a readable reason", async t => {

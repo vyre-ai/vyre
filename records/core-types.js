@@ -134,7 +134,7 @@ export const ORGANIZATION = {
 /** How two records relate: any record to any other (a person to a person, a person to a company, a deal to a project). `from_record` and `to_record` hold record addresses (not `from` and `to`: reserved words in a database); `kind` reads from `from` to `to` ("from is a Parent of to"). The kinds are the choice's options: the Space edits that list. */
 export const RELATIONSHIP_KINDS = ["Spouse", "Parent", "Child", "Sibling", "Partner", "Colleague", "Employee", "Employer", "Referrer", "Referral", "Other"];
 export const RELATIONSHIP = {
-  name: "relationship", label: "Relationship", icon: "IconLink",
+  hidden_in_records: true, name: "relationship", label: "Relationship", icon: "IconLink",
   fields: [
     text("from_record", "From", { required: true }),
     text("to_record", "To", { required: true }),
@@ -172,7 +172,7 @@ export const COMMUNICATION_KINDS = ["email", "meeting", "call", "text", "letter"
  * belong to (many to many, "Communications" on the Contact). What it concerns: `record`.
  */
 export const COMMUNICATION = {
-  name: "communication", label: "Communication", icon: "IconMessage",
+  hidden_in_records: true, name: "communication", label: "Communication", icon: "IconMessage",
   fields: [
     choice("kind", "Kind", COMMUNICATION_KINDS, { required: true }),
     choice("direction", "Direction", ["inbound", "outbound", "internal"]),
@@ -388,11 +388,21 @@ export const DEAL = {
 /**
  * A person's profile in this Space: how they look here and a line or two about them, shown to the people of the Space in People and in chats. One row per person, written only by that person
  * (kernel/gateway/ownership.js): the people of the Space read it, and an owner or an admin may remove a departed person's but never changes one. `person` is the person's id, `name` the name they had
- * when they last saved it, `look` a look seed from the look picker.
+ * when they last saved it, `look` a look seed from the look picker, `photo` the id of their member-photo record in this Space (empty: no photo, their look is drawn).
  */
 export const MEMBER_PROFILE = {
   name: "member-profile", label: "Member profile", icon: "IconUser", hidden_in_records: true,
-  fields: [text("person", "Person", { required: true }), text("name", "Name"), text("about", "About me"), text("look", "Look")],
+  fields: [text("person", "Person", { required: true }), text("name", "Name"), text("about", "About me"), text("look", "Look"), text("photo", "Photo")],
+};
+
+/**
+ * A person's profile photo in this Space: one small square picture the app cropped and encoded on the person's device (WebP or JPEG, about 512 pixels, under 200 KB, no EXIF or location), as base64 in
+ * `image`. Kept apart from the profile so reading the Space's profiles stays small: a face fetches its photo once, by id, and keeps it. Written by the same rule as the profile (kernel/gateway/ownership.js):
+ * only its person, from their own device; an owner or an admin may only remove one. Each new photo is a new record, so a photo's id names one picture for good.
+ */
+export const MEMBER_PHOTO = {
+  name: "member-photo", label: "Member photo", icon: "IconUser", hidden_in_records: true,
+  fields: [text("person", "Person", { required: true }), text("image", "Image"), text("mime", "Type"), f("number", "bytes", "Size")],
 };
 
 /** The addresses of the sample data records.sample.add made, so records.sample.remove takes away those and nothing else (core/records-tools/sample.js). */
@@ -437,4 +447,4 @@ export const RECORD_LAYOUT = {
 /** The bag every record type that people add fields to carries: the values of fast fields, as JSON text (core/records-tools/quick.js). */
 const WITH_BAG = new Set(["contact", "organization", "task", "relationship", "project", "deal"]);
 const withBag = (/** @type {any} */ t) => (WITH_BAG.has(t.name) && !t.fields.some((/** @type {any} */ x) => x.name === "extra") ? { ...t, fields: [...t.fields, text("extra", "Extra fields")] } : t);
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, SAMPLE_LEDGER, MEMBER_PROFILE, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK, RELATIONSHIP, DEAL, QUICK_FIELD, RECORD_LAYOUT, SAMPLE_LEDGER, MEMBER_PROFILE, MEMBER_PHOTO, ...ROLE_TYPES].map(withBag).map((t) => Object.freeze(t)));
