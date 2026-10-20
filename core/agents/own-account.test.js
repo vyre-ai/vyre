@@ -267,3 +267,14 @@ test("Rule 2: the onboarding greeting is asked as the owner who finishes onboard
   assert.equal(w.last().for_person, OWNER, "asked as the owner");
   assert.equal(w.last().account, undefined, "on the owner's own, no member account named");
 });
+
+test("a task given to the kernel's own assistant slot is worked from the person's chat: its wake starts no job and is not a failure", async t => {
+  const w = await world(t);
+  const before = w.count();
+  const r = await w.call("agents.wake", { task: "slot1", agent: "assistant", title: "Draft the engagement letter", approver: OWNER }, "module:vyred");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.thread, r.data.chat], [null, true]);
+  assert.equal(w.count(), before, "no job");
+  // a named agent that does not exist is still refused (the host marks that task stuck)
+  assert.ok((await w.call("agents.wake", { task: "slot2", agent: "nobody-here", title: "x", approver: OWNER }, "module:vyred")).error);
+});
