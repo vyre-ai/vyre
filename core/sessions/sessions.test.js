@@ -1437,7 +1437,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(acct.error, undefined, JSON.stringify(acct));
     const direct = (await w.tool("threads.start", { cwd: w.work, provider: "openrouter", model: "x/y", prompt: "hello there", surface: "deck" })).data;
     await w.finished(direct.id);
-    assert.deepEqual(await w.said(direct.id), ["router: hello there"]);
+    assert.deepEqual(await w.said(direct.id), ["router: hello there"], "DIAG " + JSON.stringify((await w.events(direct.id)).map(e => [e.type, e.payload && (e.payload.text || e.payload.error || e.payload.message || e.payload.reason)]).slice(-12)).slice(0, 1500));
     // Claude at its limit moves on to it.
     assert.equal((await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "openrouter", model: "x/y" }] })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;

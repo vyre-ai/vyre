@@ -402,7 +402,7 @@ shardTest("PS-A, real daemon: a web device with a software session may open a ch
   await until(async () => frames.some(d => JSON.stringify(d).includes("from the browser")), 8000);
   // a call that needs the person's presence: no proof, and a made-up one, are both refused (the session alone never counts)
   const code = e => String(e && e.code);
-  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail" }), e => /presence_required|presence|denied/.test(code(e)), "no proof: refused");
+  { const got = await peer.call("vault.reveal", { name: "northwind-mail" }).catch(e => e); assert.ok(got instanceof Error && /presence_required|presence|denied/.test(code(got)), "DIAG no proof: " + (got instanceof Error ? `${code(got)} / ${got.message}` : JSON.stringify(got).slice(0, 300))); }
   await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail", proof: { method: "passkey", id: "made-up" } }), e => /presence|denied|bad_proof|invalid/.test(`${code(e)} ${e.message}`), "a made-up proof: refused");
 });
 

@@ -99,7 +99,7 @@ test("api key: an OpenAI-compatible key is checked, vaulted, bound to its addres
   const th = (await w.tool("threads.start", { cwd: w.work, provider: "openai-compatible", account: rows[0].id, prompt: "hello", surface: "deck" })).data;
   await w.finished(th.id);
   const text = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.done).map(e => e.payload.text).join(" ");
-  assert.match(text, /echo m1: hello/, "the thread answered through the account's address and model");
+  assert.match(text, /echo m1: hello/, "DIAG the thread answered through the account's address and model " + JSON.stringify((await w.events(th.id)).map(e => [e.type, e.payload && (e.payload.text || e.payload.error || e.payload.message || e.payload.reason)]).slice(-12)).slice(0, 1500) + JSON.stringify(s.seen.map(x => [x.method, x.url])));
   assert.ok(s.seen.some(x => x.method === "POST" && x.auth), "the key reached the chat call");
   // The item is bound to its address (origin, port included), and removing the account removes the key from the Vault too.
   const listed = () => w.tool("vault.list", {}).then(r => (r.data.items || r.data).filter(x => x.name === rows[0].vault_item));

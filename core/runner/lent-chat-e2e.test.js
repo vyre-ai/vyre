@@ -176,7 +176,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
     // the turn's end and the book's row are two events: wait (bounded) for the placement instead of reading it once
     await until(async () => where() === "mac", "the owner's next turn is back on their own computer, with no move by hand", 15_000);
     assert.equal(where(), "mac", "the owner's next turn is back on their own computer, with no move by hand");
-    { const said = await lastSaid(); assert.match(said, new RegExp(`bob round ${round}`)); assert.match(said, new RegExp(`carol round ${round}`), "back on the computer, the turn starts from what the chat held, her turn included"); }
+    { const said = await lastSaid(); assert.match(said, new RegExp(`bob round ${round}`), `DIAG length ${said.length} head ${said.slice(0, 200)} tail ${said.slice(-300)}`); assert.match(said, new RegExp(`carol round ${round}`), "back on the computer, the turn starts from what the chat held, her turn included"); }
   }
 
 
