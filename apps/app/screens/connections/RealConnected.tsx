@@ -14,7 +14,7 @@ export default function RealConnected({ open }: { open: (tab: "any" | "mcp" | "a
     const failed: unknown[] = [];
     const soft = <T,>(p: Promise<T[]>) => p.catch((e) => { failed.push(e); return [] as T[]; });
     const [made, servers] = await Promise.all([soft(connections.madeList()), soft(connections.servers())]);
-    if (failed.length === 2) throw new Error(words(failed[0]));
+    if (failed.length === 2) throw new Error(words(failed[0] as { code?: string; message?: string }));
     return unifyConnected(made, servers);
   }, "Your connections did not load.");
   const list = kept.data;
