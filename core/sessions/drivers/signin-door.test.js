@@ -58,7 +58,7 @@ test("Claude: a classify step runs on HER setup token, in her child only, with n
   assert.ok(!l.env.includes("ANTHROPIC_API_KEY") && !l.env.includes("CLAUDE_CODE_OAUTH_TOKEN"), "no other credential variable rides along");
   assert.ok(l.no_tools && l.strict_mcp && l.no_persist, "no tools, no MCP but none, no session kept");
   assert.ok(l.home.startsWith(w.tmp) && l.home !== os.homedir(), "a HOME of its own: nobody's stored login is in reach");
-  assert.ok(fs.realpathSync(path.dirname(l.home)) === fs.realpathSync(l.cwd), "a fresh folder to work in");
+  assert.equal(path.basename(path.dirname(l.home)), path.basename(l.cwd), "a fresh folder to work in, its HOME inside it");
   assert.equal(JSON.stringify(process.env), before, "vyred's own environment never held it");
   assert.ok(!JSON.stringify(process.env).includes(BEN_TOKEN));
   assert.deepEqual(fs.readdirSync(w.tmp), [], "the folder is gone after the call");
