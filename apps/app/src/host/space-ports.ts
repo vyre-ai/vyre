@@ -67,6 +67,11 @@ export async function spacePorts(): Promise<SpacePorts> {
       if (!d) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
       return askStatus(d as never, address);
     },
+    // The servers this app is paired with: where the owner's listing finds the server of a Space whose row was kept without its pairing (host-core.js ensureServers).
+    pairings: async () => {
+      const { loadPairings } = await import("../api/relay");
+      return Object.values((await loadPairings()).items).map((p) => ({ box: p.box, route: p.route, relay: p.relay, name: String(p.name || "") }));
+    },
     forget: async (box) => {
       const { removePairingFor } = await import("../api/relay");
       await removePairingFor(box);

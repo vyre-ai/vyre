@@ -17,6 +17,7 @@ test("Now shows the card only when a newer release is known and nothing is insta
 test("the card says which version is out and what updating keeps, or how to update when the app cannot", () => {
   const n = noticeLines({ ...base, available: "0.2.11" });
   assert.equal(n.title, "Update available: version 0.2.11");
+  assert.equal(noticeLines({ ...base, available: "0.2.11" }, { server: true }).title, "Your server has an update: version 0.2.11", "beside the Mac app's own card, the server's says it is the server's");
   assert.match(n.detail, /You are on 0\.2\.10\. Updating keeps your data/);
   assert.match(noticeLines({ ...base, available: "0.2.11", canApply: false }).detail, /To update, run vyre update on your server\./);
   assert.match(howToLine({ ...base, canApply: false, command: null, how: "app" }), /Update from the app that installed Vyre/);

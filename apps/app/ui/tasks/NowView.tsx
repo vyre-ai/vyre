@@ -4,7 +4,6 @@ import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
 import { Banner } from "../components/Banner";
-import { Button } from "../components/Button";
 import { Card, Divider } from "../components/Card";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
@@ -140,7 +139,7 @@ export function NeedsList({ world, list, showSpace, onAction, onOpen, hero = 0 }
  * today's calendar and recent events. A phone is one short column: the next event as a strip, two hero cards, "5 more waiting" and "9 running" each push a page,
  * and Recent lives in Chat.
  */
-export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Props & { onEdit?: () => void; onMore?: (kind: "needs" | "doing") => void; notice?: string | null }) {
+export function NowView({ world, onAction, onOpen, onMore, notice }: Props & { onMore?: (kind: "needs" | "doing") => void; notice?: string | null }) {
   const { scope, setScope } = useNowScope();
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [moreDoing, setMoreDoing] = useState(false);
@@ -254,13 +253,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
 
   return (
     <View className="gap-s4">
-      <View className="flex-row items-start gap-s3">
-        <View className="min-w-0 flex-1 gap-s1">
-          <Text size="page" strong numberOfLines={1}>{m.greeting}</Text>
-          <Text size="caption" tone="label" numberOfLines={1}>{m.meta}</Text>
-        </View>
-        {!phone && onEdit ? <Button kind="ghost" size="sm" label="Edit Now" onPress={onEdit} /> : null}
-      </View>
+      {/* The greeting, the date and what needs the person are Home's one header (screens/now/HomeHeader.tsx), not repeated here. */}
       <Segmented fill={phone} label="Spaces" value={scope} onChange={setScope} options={[["all", "All spaces"], ...world.spaces.map((s: any) => [s.id, s.name] as [string, string])]} />
       {notice ? <Banner>{notice}</Banner> : null}
       {wide ? (
