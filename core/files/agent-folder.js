@@ -298,7 +298,7 @@ export function registerAgentFolder(ctx) {
   ctx.tool("files.agent.open", {
     description: `Open an agent's folder in Files: { space?, path } where path is agents/<agent id> (files.places lists them). Its files are kept on the agent's computer: this starts the computer when it is not running (answering { state: "waking" } until it answers; ask again in a few seconds), and the first time a person who may change the agent opens it, puts the agent's old Drive folder and sessions folder into its Inbox, never over a file that is there. Answers { state, note, can: "use" | "edit", moved? }. Needs Can use on the agent; the move needs Can edit.`,
     input: { type: "object", required: ["path"], properties: { space: { type: "string" }, path: { type: "string" } } },
-    callers: ["cli", "local", "deck", "capsule", "mobile", "device"],
+    callers: ["cli", "local", "deck", "capsule", "device"],
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const at = agentPathOf(String(i && i.path || ""));
       if (!at) throw refuse("path is an agent's folder, agents/<agent id>: files.places lists the ones you can open", "bad_input");

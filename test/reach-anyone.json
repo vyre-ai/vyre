@@ -1977,9 +1977,25 @@
    "module": "watchers",
    "reason": "read-only: a watcher's recent runs"
   },
+  "watchers.own.delete": {
+   "module": "watchers",
+   "reason": "guard: the body refuses any caller that is not the verified agent that owns the watcher, and any other agent's or person's watcher; what it found stays"
+  },
+  "watchers.own.resume": {
+   "module": "watchers",
+   "reason": "guard: the body refuses any caller that is not the verified agent that owns the watcher; one a person paused stays paused, and one waiting for its first test turns on only when watchers.test passes"
+  },
+  "watchers.own.run": {
+   "module": "watchers",
+   "reason": "guard: the body refuses any caller that is not the verified agent that owns the watcher; the run is inside the watcher wall (GET and HEAD to declared hosts only, ask() capped per day)"
+  },
   "watchers.pause": {
    "module": "watchers",
    "reason": "guard: stops a watcher only; it never starts anything (an agent cannot undo a person's pause: watchers.resume is the person's)"
+  },
+  "watchers.revise": {
+   "module": "watchers",
+   "reason": "guard: the body refuses any caller that is not the verified agent that owns the watcher, and a Watcher that already passed its test (the person asks again, through watchers.write, which is reach asked); the new code runs only inside the watcher wall"
   },
   "watchers.test": {
    "module": "watchers",

@@ -3465,7 +3465,7 @@ Open an agent's folder in Files: { space?, path } where path is agents/<agent id
 - Input:
   - `path` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `files.deliver`
 
@@ -18082,7 +18082,7 @@ Items watchers have filed, newest first: for one watcher (name), one project (pr
 
 ### `watchers.list`
 
-List watchers, drafts and turned-on ones, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. An agent's own watchers also say the person each runs for.
+List watchers with state, schedule, next and last run, and items filed. An agent's own also say the person each runs for.
 
 - Input:
   - `agent` string: only this agent's own watchers (an agent passes its own name to see the ones it set up)
@@ -18108,7 +18108,7 @@ Delete one of your own Routines or Watchers. What it found stays.
 
 ### `watchers.own.resume`
 
-Resume one of your own Routines or Watchers that you or Vyre paused. One a person paused stays paused until they resume it; a Watcher waiting for its first test turns on when watchers.test passes.
+Resume one of your own Routines or Watchers. One a person paused stays paused until they resume it.
 
 - Input:
   - `name` string, required
@@ -18177,7 +18177,7 @@ Resume a paused watcher, clearing its failure count. The person's (or teammates'
 
 ### `watchers.revise`
 
-Fix one of your own Watchers that is still waiting for its first passing test (after watchers.write, before it ever ran): the same spec and code as watchers.write. Once it is on, a change needs the person to ask again (watchers.write).
+Fix your own Watcher until its first test passes: same spec and code as watchers.write. Once it is on, the person must ask again.
 
 - Input:
   - `code` string, required
@@ -18187,7 +18187,7 @@ Fix one of your own Watchers that is still waiting for its first passing test (a
 
 ### `watchers.routine.create`
 
-Set up a Routine for yourself, when the person's own words in this chat asked for work at set times ("every weekday at 9, summarise my inbox"). A Routine runs on a schedule: at its time it starts you, for that person on their own AI account, with the instructions you give it, and you post the result in this chat. For something that happens or arrives, set up a Watcher with watchers.write instead. Give name, when (weekdays 09:00, daily 07:30, every 2 hours, hourly, or five-field cron; at most every 15 minutes) and instructions. It is on at once and first runs at its next time. Then confirm in the chat, for example: Done. I'll check your inbox every weekday at 9 and post here.
+Set up a Routine for yourself, only when the person's own words in this chat asked for work at set times. For arrivals use watchers.write.
 
 - Input:
   - `instructions` string, required: what to do each time, in the person's words
@@ -18223,12 +18223,12 @@ Dry-run a watcher folder once, filing nothing. Returns the items it would emit a
 
 ### `watchers.write`
 
-Set up a Watcher for yourself, when the person's own words in this chat asked you to watch something ("tell me when an invoice from Northwind arrives"). A Watcher runs when something new appears: it checks a source and wakes you, for that person, only when there is something new, quoted as outside data. For work at set times use watchers.routine.create instead. Give name, spec (watcher.json: schedule as cron like */15 * * * * or on and where for an event; net: the hosts it reads, each with the Vault item or Connection already lent to you; summary { when, check, do }; optional ask { dailyUsd }) and code (watch.js: export default async function watch({ since, emit, log, fetch, ask }), read only). It starts paused; dry-run it with watchers.test and it turns on when the test passes. Then confirm in the chat what you set up.
+Set up a Watcher for yourself, only when the person's own words in this chat asked. It starts paused: test it with watchers.test.
 
 - Input:
-  - `code` string, required: watch.js
+  - `code` string, required: watch.js: export default async function watch({ since, emit, log, fetch, ask }), read only
   - `name` string, required: lowercase words joined by dashes, like northwind-invoices
-  - `spec` object, required: watcher.json; Vyre sets name and owner
+  - `spec` object, required: watcher.json; Vyre sets name and owner. schedule as cron like */15 * * * *, or on and where for an event. net: the hosts it reads, each with the Vault item or Connection already lent to you. summary { when, check, do }. Optional ask { dailyUsd }.
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `tailnet`
 
 ## wink
@@ -19777,7 +19777,7 @@ work.template.list, run inside another Space by this module for the person (the 
 
 ### `work.template.stage-flow`
 
-Open one stage of a Playbook (a project template version) as its Flow, for the Flow builder: { id, version } of the stage's Flow, made from the stage if it is not there yet. The Playbook's owner or an admin.
+Open one stage of a Playbook as its Flow for the builder, made from the stage if missing. The Playbook's owner or an admin.
 
 - Input:
   - `stage` string, required: the stage's name

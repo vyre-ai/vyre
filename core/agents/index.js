@@ -1411,8 +1411,8 @@ export default {
         const resumeOf = async (/** @type {string} */ id) => {
           const row = /** @type {any} */ (db.prepare("SELECT person FROM agents_person_threads WHERE agent = ? AND thread = ?").get(a.name, String(id)));
           if (!row) return launch(a, { resume: id });
-          const forPerson = String(row.person), own = await accountFor(a, forPerson);
-          return launch(a, { resume: id, forPerson, runAs: forPerson, ...(own ? { own } : {}) });
+          const forWho = String(row.person), own = await accountFor(a, forWho);
+          return launch(a, { resume: id, forPerson: forWho, runAs: forWho, ...(own ? { own } : {}) });
         };
         if (String(caller || "").startsWith("module:")) {
           if (!thread) throw new Error("thread is required");

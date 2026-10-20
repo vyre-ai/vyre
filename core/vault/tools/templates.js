@@ -116,7 +116,7 @@ export function makeTemplates({ dir, call, now = Date.now }) {
 
 /** @param {{ ctx: any, vault: import("../vault.js").Vault, tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o */
 export function register({ ctx, vault, tool }) {
-  const t = makeTemplates({ dir: vault.dir, call: (name, input) => ctx.call(name, input) });
+  const t = makeTemplates({ dir: vault.dir, call: (_name, input) => ctx.call("threads.quick", input) });
   const person = (/** @type {any} */ meta) => { if (isAsker(String(meta && meta.caller))) throw bad("App templates are the person's own; an agent or a model does not ask for them.", "denied"); };
 
   tool("vault.templates", PEOPLE, "This Space's app templates for the Vault's Add sheet: each app's field names, plain or secret, and where to find each. Never a value.",

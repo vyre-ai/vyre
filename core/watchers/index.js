@@ -157,7 +157,7 @@ export default {
     const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
 
     tool("watchers.list", {
-      description: "List watchers, drafts and turned-on ones, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. An agent's own watchers also say the person each runs for.",
+      description: "List watchers with state, schedule, next and last run, and items filed. An agent's own also say the person each runs for.",
       input: { type: "object", properties: { project: { ...str, description: "only this project's watchers" }, agent: { ...str, description: "only this agent's own watchers (an agent passes its own name to see the ones it set up)" } } },
       run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(i.agent ? { agent: String(i.agent) } : {}); return { ...l, watchers: l.watchers.filter(w => visible(meta, can, w.name, w.project) && (!i.project || w.project === i.project)) }; },
     });
@@ -234,13 +234,13 @@ export default {
 
     tool("watchers.write", {
       callers: [...PEOPLE, ...MODEL],
-      description: "Set up a Watcher for yourself, when the person's own words in this chat asked you to watch something (\"tell me when an invoice from Northwind arrives\"). A Watcher runs when something new appears: it checks a source and wakes you, for that person, only when there is something new, quoted as outside data. For work at set times use watchers.routine.create instead. Give name, spec (watcher.json: schedule as cron like */15 * * * * or on and where for an event; net: the hosts it reads, each with the Vault item or Connection already lent to you; summary { when, check, do }; optional ask { dailyUsd }) and code (watch.js: export default async function watch({ since, emit, log, fetch, ask }), read only). It starts paused; dry-run it with watchers.test and it turns on when the test passes. Then confirm in the chat what you set up.",
-      input: { type: "object", required: ["name", "spec", "code"], properties: { name: { ...str, description: "lowercase words joined by dashes, like northwind-invoices" }, spec: { type: "object", description: "watcher.json; Vyre sets name and owner" }, code: { type: "string", maxLength: 200000, description: "watch.js" } } },
+      description: "Set up a Watcher for yourself, only when the person's own words in this chat asked. It starts paused: test it with watchers.test.",
+      input: { type: "object", required: ["name", "spec", "code"], properties: { name: { ...str, description: "lowercase words joined by dashes, like northwind-invoices" }, spec: { type: "object", description: "watcher.json; Vyre sets name and owner. schedule as cron like */15 * * * *, or on and where for an event. net: the hosts it reads, each with the Vault item or Connection already lent to you. summary { when, check, do }. Optional ask { dailyUsd }." }, code: { type: "string", maxLength: 200000, description: "watch.js: export default async function watch({ since, emit, log, fetch, ask }), read only" } } },
       run: async (i, meta = {}) => { const me = mustAgent(meta, "watchers.write"); freeOrMine(String(i.name), me); return writeOwnWatcher(meta, me, i); },
     });
     tool("watchers.revise", {
       callers: [...PEOPLE, ...MODEL],
-      description: "Fix one of your own Watchers that is still waiting for its first passing test (after watchers.write, before it ever ran): the same spec and code as watchers.write. Once it is on, a change needs the person to ask again (watchers.write).",
+      description: "Fix your own Watcher until its first test passes: same spec and code as watchers.write. Once it is on, the person must ask again.",
       input: { type: "object", required: ["name", "spec", "code"], properties: { name: str, spec: { type: "object" }, code: { type: "string", maxLength: 200000 } } },
       run: async (i, meta = {}) => {
         const me = mustOwn(meta, String(i.name));
@@ -251,7 +251,7 @@ export default {
     });
     tool("watchers.routine.create", {
       callers: [...PEOPLE, ...MODEL],
-      description: "Set up a Routine for yourself, when the person's own words in this chat asked for work at set times (\"every weekday at 9, summarise my inbox\"). A Routine runs on a schedule: at its time it starts you, for that person on their own AI account, with the instructions you give it, and you post the result in this chat. For something that happens or arrives, set up a Watcher with watchers.write instead. Give name, when (weekdays 09:00, daily 07:30, every 2 hours, hourly, or five-field cron; at most every 15 minutes) and instructions. It is on at once and first runs at its next time. Then confirm in the chat, for example: Done. I'll check your inbox every weekday at 9 and post here.",
+      description: "Set up a Routine for yourself, only when the person's own words in this chat asked for work at set times. For arrivals use watchers.write.",
       input: { type: "object", required: ["name", "when", "instructions"], properties: { name: { ...str, description: "lowercase words joined by dashes, like morning-inbox" }, when: { ...str, description: "weekdays 09:00, daily 07:30, every 2 hours, hourly or five-field cron, in the Space's time zone" }, instructions: { type: "string", maxLength: 2000, description: "what to do each time, in the person's words" } } },
       run: async (i, meta = {}) => {
         const me = mustAgent(meta, "watchers.routine.create");
@@ -277,7 +277,7 @@ export default {
     // The owning agent manages its own Routines and Watchers (never another agent's or a person's). Pausing is watchers.pause, open to anyone it is shown to.
     tool("watchers.own.resume", {
       callers: [...PEOPLE, "module", ...MODEL],
-      description: "Resume one of your own Routines or Watchers that you or Vyre paused. One a person paused stays paused until they resume it; a Watcher waiting for its first test turns on when watchers.test passes.",
+      description: "Resume one of your own Routines or Watchers. One a person paused stays paused until they resume it.",
       input: named,
       run: async ({ name }, meta = {}) => {
         mustOwn(meta, String(name));
