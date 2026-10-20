@@ -16,13 +16,19 @@ import { request } from "../daemon/client.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../presence/index.js";
 import { canonical } from "../../lib/tool-names.js";
 import { catalogOf, indexOf, find, shapeFind } from "../../harness/mcp/core-tools.js";
+import { spawn } from "node:child_process";
+import { finished } from "node:stream/promises";
+import path from "node:path";
+import { newIdentity, openFrom } from "../vault/crypto.js";
+import { Scrubber } from "../vault/cli-io.js";
 
 const MAX_INPUT = 64 * 1024;
 const MAX_OUT = 20_000;
 const TOOL = /^[a-z][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$/;
 const USAGE = `vyre tools find "<words>"      find the tool for what you want to do
 vyre tools describe <tool>   what a tool does and what it needs
-vyre call <tool> '<json>'    run a tool (a send is held for the person's approval)`;
+vyre call <tool> '<json>'    run a tool (a send is held for the person's approval)
+vyre vault run --item "<name>" -- <command>   run a command with a Vault item the person allowed in scripts`;
 const DRIVES = /^(threads|agents)\./;
 
 /** Is this process a session Vyre started? The same pair the client uses to talk on the session\'s own socket. @param {Record<string, string | undefined>} [env] */
@@ -52,6 +58,7 @@ export async function run(argv, d = {}) {
   if (!env.VYRE_SOCKET) { err("vyre: this is not a Vyre session, so there is nothing to reach."); return 1; }
   const usage = () => { err(`vyre: say what you want.\n${USAGE}`); return 2; };
   const [a, b, ...rest] = argv;
+  if (a === "vault" && b === "run") return vaultRun(rest, { req, ident, err });
 
   const catalog = async () => {
     const r = await req("GET", "/v1/tools", undefined, ident);
@@ -96,6 +103,7 @@ export async function run(argv, d = {}) {
       let input; try { input = JSON.parse(text); } catch { err("vyre: the input is not JSON. Write one object, for example '{\"to\":\"x@y.com\"}'."); return 2; }
       if (!input || typeof input !== "object" || Array.isArray(input)) { err("vyre: the input is one JSON object."); return 2; }
       if (name.startsWith("harness.") || PERSON_ONLY.has(name) || HUMAN_ONLY.has(name)) { err(`vyre: ${name} is the person's own; ask them to do it in Vyre.`); return 1; }
+      if (name === "vault.use.env") { err(`vyre: ${name} answers only vyre vault run: vyre vault run --item "<name>" -- <command>`); return 2; }
       const r = await req("POST", "/v1/tools/" + encodeURIComponent(name), input, ident);
       if (r.error) { err(`${r.error.code}: ${r.error.message}`); return 1; }
       const data = r.data;
@@ -107,9 +115,48 @@ export async function run(argv, d = {}) {
     err(`vyre: ${/** @type {Error} */ (e).message}`);
     return 1;
   }
-  if (a === undefined || a === "help" || a === "--help" || a === "-h") { out(`vyre, inside a session: three commands.\n${USAGE}`); return a === undefined ? 2 : 0; }
+  if (a === undefined || a === "help" || a === "--help" || a === "-h") { out(`vyre, inside a session: four commands.\n${USAGE}`); return a === undefined ? 2 : 0; }
   if (a === "version" || a === "--version" || a === "-v") { out((await import("../daemon/index.js")).VERSION); return 0; }
   if (a === "tools" || a === "call") return usage();
   err(`vyre ${a}: not available inside a session. Find the tool for what you want: vyre tools find "<words>"`);
   return 2;
+}
+
+/**
+ * `vyre vault run --item "<name>" [--item "<name>"] -- <command...>`: run one program with Vault items in its environment, each field under its canonical name (GHL_API_KEY). Only an item the
+ * person marked Allowed in scripts, and only one this session's agent may use: the daemon decides (vault.use.env). The values come sealed to a key made here for this one run, so no tool result
+ * carries them, and the program's output is shown with every secret hidden as [hidden: NAME], in its encoded forms too. The program itself can read them: that is what the setting allows.
+ * @param {string[]} args @param {{ req: typeof request, ident: any, err: (s: string) => void, spawnFn?: typeof spawn, stdout?: NodeJS.WritableStream, stderr?: NodeJS.WritableStream }} o
+ * @returns {Promise<number>}
+ */
+export async function vaultRun(args, { req, ident, err, spawnFn = spawn, stdout = process.stdout, stderr = process.stderr }) {
+  const usage = 'vyre vault run --item "<name>" -- <command...>';
+  const at = args.indexOf("--");
+  if (at < 0) { err(`vyre: put -- before the command: ${usage}`); return 2; }
+  const left = args.slice(0, at), cmd = args.slice(at + 1), items = [];
+  for (let i = 0; i < left.length; i++) {
+    const x = left[i];
+    if (x === "--item" && typeof left[i + 1] === "string" && left[i + 1]) items.push(left[++i]);
+    else if (x.startsWith("--item=") && x.length > 7) items.push(x.slice(7));
+    else { err(`vyre: name each item with --item: ${usage}`); return 2; }
+  }
+  if (!items.length || !cmd.length) { err(`vyre: ${usage}`); return 2; }
+  const box = newIdentity().box;
+  const r = await req("POST", "/v1/tools/vault.use.env", { items, key: box.public, command: path.basename(cmd[0]) }, ident);
+  if (r.error) { err(`${r.error.code}: ${r.error.message}`); return 1; }
+  /** @type {{ env?: Record<string, string>, hidden?: string[] }} */ let opened;
+  try { opened = openFrom(box.private, r.data && r.data.box, "vault-run", "vault-run"); } catch { err("vyre: the Vault's answer could not be opened, so nothing ran"); return 1; }
+  const env = opened.env || {}, hidden = new Set(opened.hidden || []);
+  const values = Object.entries(env).filter(([k]) => hidden.has(k)).map(([k, v]) => ({ value: String(v), mark: `[hidden: ${k}]` }));
+  const child = spawnFn(cmd[0], cmd.slice(1), { env: { ...process.env, ...env }, stdio: ["inherit", "pipe", "pipe"] });
+  const so = new Scrubber(values), se = new Scrubber(values);
+  /** @type {any} */ (child.stdout).pipe(so).pipe(stdout, { end: false });
+  /** @type {any} */ (child.stderr).pipe(se).pipe(stderr, { end: false });
+  const code = await new Promise(resolve => {
+    child.on("error", (/** @type {any} */ e) => { err(e && e.code === "ENOENT" ? `vyre: ${cmd[0]}: command not found` : `vyre: ${e && e.message}`); resolve(e && e.code === "ENOENT" ? 127 : 126); });
+    child.on("close", (/** @type {number | null} */ c, /** @type {string | null} */ sig) => resolve(c ?? (sig ? 128 : 1)));
+  });
+  await Promise.all([finished(so).catch(() => {}), finished(se).catch(() => {})]);
+  values.length = 0;
+  return /** @type {number} */ (code);
 }

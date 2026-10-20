@@ -4,7 +4,7 @@ summary: Why you see placeholders instead of secrets, how to use one, and what t
 audience: agents
 owner: docs
 status: stable
-tokens: 500
+tokens: 750
 when: A field shows a placeholder instead of a value, you need a password, key or number you cannot see, or you are about to write a secret into text.
 ---
 
@@ -19,6 +19,13 @@ A sealed field (a social security number, a card, a bank account, a passport, a 
 - **In a draft or a message.** Write the placeholder as it is. At the moment the person's approved act is sent, the system puts the real value in, outside you.
 - **In a tool call that needs a credential.** Do not pass one. Name the connection or vault item. The system attaches the key when it makes the call.
 - **In your own reasoning.** Treat a placeholder as an opaque token. Do not try to guess, reconstruct or search for the value, and do not paste text that might contain it into another tool.
+
+## Vault items by placeholder
+
+- Call `vault.find` (words for the app or the field) to see the items you may use: names, field names and plain values. A secret field shows only its name. If several match, pick the one that fits or ask the person.
+- Write `{{vault:Item.FIELD}}` where the value goes in a `vault.request` (url, header or body) and leave out `credential`. Secrets in the answer come back as `[hidden: FIELD]`.
+- A request to a host the item is not used with yet comes back `held`: tell the person, and send the same request again after they allow it.
+- In a session's shell, `vyre vault run --item "Item" -- <command>` works only for an item the person marked Allowed in scripts.
 
 ## What not to do
 
