@@ -78,13 +78,13 @@ async function boot(t, { door }) {
   assert.ok(made.data, `Ben makes his own vault: ${JSON.stringify(made.error)}`);
   const benPut = await asBen("vault.me.put", { name: "ben-openrouter", kind: "api-key", fields: { value: BEN_KEY } });
   assert.ok(benPut.data, `Ben's key is in his own vault: ${JSON.stringify(benPut.error)}`);
-  // sessions.accounts.add checks the item is in his own vault with a nested vault.me.has, which reads the person from the call's chain; a module's nested call does not carry the outer call's token in its
-  // meta (core/modules/index.js runInTurn passes the call's own meta to the tool), so on this daemon that check sees no person. This one nested call is handed Ben's token; the check itself is the real one.
-  const reg = /** @type {any} */ (d.registry), orig = reg.call.bind(reg);
-  reg.call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => orig(tool, input, caller, tool === "vault.me.has" && caller === "module:sessions" && !(meta && meta.token) ? { ...(meta || {}), token: benToken } : meta);
-  let benAcct;
-  try { benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" }); } finally { delete reg.call; }
+  // sessions.accounts.add checks the item is in his own vault with a nested vault.me.has, which reads the person from the chain: the sessions module relays Ben's own proof to it (relay-allowed.js), so the
+  // real check runs as Ben, with nothing handed to it by the test
+  const benAcct = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Ben's OpenRouter", kind: "api-key", vault_item: "ben-openrouter" });
   assert.equal(benAcct.error, undefined, JSON.stringify(benAcct.error));
+  // NEGATIVE: the same add naming an item that is not in HIS vault is refused (the check is his, never the home's vault, never the owner's item)
+  const notHis = await asBen("sessions.accounts.add", { provider: "openrouter", label: "Not his", kind: "api-key", vault_item: item });
+  assert.ok(notHis.error, `an item of the owner's vault is not his: ${JSON.stringify(notHis.data)}`);
   // the daemon lends her key for her own turn (core/daemon/lend-key.js -> vault.me.lend), and only hers
   const lent = await /** @type {any} */ (d.registry.deps).lendKey({ asker: BEN, account: String(benAcct.data.id || benAcct.data.account) });
   assert.equal(lent.error, undefined, `her key is lendable for her own turn: ${JSON.stringify(lent.error)}`);
@@ -105,7 +105,7 @@ async function boot(t, { door }) {
     const id = String(r.data.id);
     return { id, end: await until(() => finished.get(id), `the launch ${id} to end`) };
   };
-  return { d, K, OWNER, seen, scans, doorEvents, chatTurn, launch };
+  return { d, K, OWNER, seen, scans, doorEvents, chatTurn, launch, asOwner, asBen, finished, logs };
 }
 
 test("on a home with the inference door, every API-key chat turn goes through it as the person the turn is for", { timeout: 300_000 }, async t => {
@@ -173,6 +173,22 @@ test("on a home with the inference door, every API-key chat turn goes through it
     const scans = w.scans.filter(s => s.text.includes("case five"));
     assert.ok(scans.length >= 1, "the door scanned the job's prompt");
     assert.deepEqual([...new Set(scans.map(s => s.person))], [BEN], "as the person the job runs as, never the owner");
+  });
+
+  await t.test("a member whose only AI account is a key of her own talks to an agent on it: her thread, her key, her chain; NEGATIVE: never the owner's key", async () => {
+    assert.equal((await w.asOwner("agents.create", { name: "kit", kind: "agent", projects: [] })).error, undefined);
+    assert.equal((await w.asOwner("agents.access.set", { agent: "kit", kind: "person", subject: BEN, level: "use" })).error, undefined);
+    const before = w.seen.length;
+    const r = await w.asBen("agents.ask", { agent: "kit", text: "case eight: say ok", wait: false });
+    assert.equal(r.error, undefined, `${JSON.stringify(r.error)}\n${w.logs.slice(-25).join("\n")}`);
+    const end = await until(() => w.finished.get(String(r.data.thread)), "the agent's turn on her key to end");
+    assert.equal(end.ok, true, `${JSON.stringify(end)}\n${w.logs.slice(-25).join("\n")}`);
+    const sent = w.seen.slice(before);
+    assert.ok(sent.length >= 1, "her turn reached the model");
+    assert.deepEqual([...new Set(sent.map(s => s.auth))], [`Bearer ${BEN_KEY}`], "only her own key, lent from her own vault, never the owner's");
+    const scans = w.scans.filter(s => s.text.includes("case eight"));
+    assert.ok(scans.length >= 1, "through the door");
+    assert.deepEqual([...new Set(scans.map(s => s.person))], [BEN], "as her chain");
   });
 });
 

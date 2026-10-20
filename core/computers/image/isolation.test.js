@@ -419,7 +419,7 @@ test("isolation (static): agentd's control channel is a unix socket; the one TCP
   assert.match(relay, /\.\.\.asBrowser\(u\), "\/usr\/bin\/python3", "-I", PIPE, u\.kind === "cdp" \? "cdp" : "vnc"/, "the screen and Chrome pipes run as the screen's owner (the browser uid), with one fixed word and no path");
   assert.match(relay, /plain\(sock\.remoteAddress\) !== want\) return void sock\.destroy\(\)/, "only vyred's pinned address is let in, before a byte is read");
   assert.match(fs.readFileSync(path.join(HERE_DIR, "computerd", "index.js"), "utf8"), /gate\.pin\(req\.socket\.remoteAddress\); publishPeer\(gate\.pinned\)/, "computerd writes the pin the relay reads");
-  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-run\.py agentd-chrome\.py \/opt\/agentd\//, "both helpers are in the image, root's");
+  assert.match(DOCKERFILE, /agentd-pipe\.py agentd-term\.py agentd-run\.py agentd-chrome\.py (?:agentd-dock\.py )?\/opt\/agentd\//, "both helpers are in the image, root's");
   assert.match(relay, /"\/usr\/bin\/python3", "-I", TERM, String\(u\.session\)/, "a terminal runs as the agent with only its checked name");
   assert.doesNotMatch(relay, /vnc\.sock|socketOf/, "the relay never names a socket: the pipe builds it from its uid");
 });
@@ -514,7 +514,13 @@ test("isolation (static): the screen is the browser uid's, never the agent's: Xv
   const server = fs.readFileSync(path.join(HERE_DIR, "agentd-server.js"), "utf8");
   const relay = fs.readFileSync(path.join(HERE_DIR, "agentd-relay.js"), "utf8");
   const start = agentd.split("export function planStartScreen")[1].split("/** The agent's screen socket.")[0];
-  assert.doesNotMatch(start, /asAgent|as\(\)|as\(\{/, "no start step is built for the agent's uid");
+  assert.doesNotMatch(start, /as\(\)|as\(\{/, "no start step is built for the agent's uid by a shorthand");
+  // The agent's uid runs only its own dock on the screen (owner, 20 Oct 2026: the desk), with the UNTRUSTED cookie like any window the agent opens, and its folders (planFolders, no display).
+  // Xvnc, the window manager, Chrome and the wallpaper stay the browser uid's.
+  const agentSteps = start.split("\n").filter(l => /asAgent\(/.test(l));
+  assert.equal(agentSteps.length, 1, "one start step is the agent's: its dock");
+  assert.match(agentSteps[0], /asAgent\(u, lim, \{ DISPLAY: D, XAUTHORITY: b\.xauth \}\), "\/usr\/bin\/python3", "-I", "\/opt\/agentd\/agentd-dock\.py"/, "the dock has the agent's untrusted cookie, never b.trusted");
+  assert.doesNotMatch(agentSteps[0], /b\.trusted|Xvnc|fluxbox|agentd-chrome/, "nothing of the screen is the agent's");
   assert.match(start, /"generate", D, "\.", "untrusted"/, "the agent's cookie is generated as untrusted (the X SECURITY extension)");
   assert.match(start, /"-auth", b\.trusted/, "Xvnc is given the trusted cookie, which is the browser's");
   assert.match(server, /asBrowser\(u, body\.limits \|\| \{\}\), "\/usr\/local\/bin\/agentd-vncpass", browserOf\(u\)\.vncPass/, "the password file is written by the browser uid into its folder");

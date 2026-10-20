@@ -4,6 +4,16 @@
 
 /** @typedef {(tool: string, input?: Record<string, unknown>) => Promise<{ data?: any, error?: { code: string, message: string } }>} Call */
 
+/**
+ * What Account says when a Space's address could not be put on its server (identity.servers.status `failed`: "tess.vyre.run: the names directory could not be reached", one per Space, joined by "; "), or "" when
+ * nothing is wrong. Plain words: what is not live, why, and that Vyre keeps trying. @param {string | null | undefined} failed
+ */
+export function listingLine(failed) {
+  const f = typeof failed === "string" ? failed.trim() : "";
+  if (!f) return "";
+  return `Your Space's address is not live yet, because this app could not put your server on it (${f}). Vyre tries again when it reconnects. Press Retry to try now.`;
+}
+
 /** The person the server knows, or null. @param {Call} call */
 export async function personOfServer(call) {
   const r = await call("onboard.status", {});

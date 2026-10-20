@@ -19,6 +19,9 @@ import { loadSnoozed } from "../../src/state/snooze";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { RecordsSetup } from "./RecordsSetup";
 import { HomeHeader } from "./HomeHeader";
+import { useHomeName, useHomeWorld } from "./home-world";
+import { useNeedsCount } from "../../src/state/needs";
+import { nowModel } from "../../ui/tasks/model.js";
 import { HomeAgents } from "./HomeAgents";
 import { AskDock } from "./AskDock";
 import { SETUP_BANNER } from "../install/first-run.js";
@@ -35,13 +38,19 @@ export default function NowScreen() {
   const real = !allowsMock();
   const rw = useRecordsWorld();
   const calendar = useMemo(() => (real && rw.data && q.data ? today(collect(rw.data.types, rw.data.byType), q.data.now).map((i: any) => ({ id: `${i.urn}/${i.field}`, at: i.start.getTime(), title: i.title, sub: i.event ? i.typeLabel : `${i.typeLabel}: ${i.fieldLabel}`, record: i.urn })) : null), [real, rw.data, q.data]);
-  const world = q.data && calendar ? { ...q.data, calendar } : q.data;
-  // Edit Now opens Customize, which only an owner or admin can use: other roles are not offered it.
+  const fresh = useMemo(() => (q.data && calendar ? { ...q.data, calendar } : q.data), [q.data, calendar]);
+  // Stale while revalidate: the last good world for this Space draws at once and the box's answer replaces it in place; the placeholder rows show only when nothing is kept yet.
+  const home = useHomeWorld(fresh);
+  const world = home.world;
+  // The person's role in the showing Space decides which create cards Home offers.
   const members = useMembers();
   const showing = useSpaces((s) => s.space);
   const mine = members.spaces.find((x) => x.id === showing)?.role;
-  const canEdit = !real || !mine || mine === "owner" || mine === "admin";
   useEffect(() => { if (real) void members.load(); }, [real]);
+  // One greeting, named by the person's display name or username (never "You"), and one count of what waits: the tasks that need them and the Needs you list.
+  const name = useHomeName(real);
+  const waitingNeeds = useNeedsCount();
+  const waiting = (world ? nowModel(world).needs.length : 0) + (real ? waitingNeeds : 0);
   useEffect(() => { void loadSnoozed(); }, []);
   const setup = useSetupBanner();
   const gap = useGap() ?? setup;
@@ -53,7 +62,7 @@ export default function NowScreen() {
   const { run, sheets } = useTaskActions(world, go);
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} dock={real && ask.assistant ? <AskDock names={ask.names} assistant={ask.assistant} /> : undefined} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
-      <HomeHeader now={q.data?.now ?? Date.now()} today={calendar?.length} working={working} />
+      <HomeHeader name={name} waiting={waiting} now={world?.now ?? Date.now()} today={calendar?.length ?? (real && home.stale ? world?.calendar?.length : undefined)} working={working} updating={home.stale} />
       {real ? <HomeAgents onCount={setWorking} onNames={(names, assistant) => setAsk({ names, assistant })} /> : null}
       {real ? <RecordsSetup /> : null}
       {real ? <GapNotice gap={gap} /> : null}
@@ -64,9 +73,9 @@ export default function NowScreen() {
       {real ? <SignInAgain /> : null}
       {real ? <WaitingOnYou /> : null}
       {real ? <ModuleNowCards /> : null}
-      {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
-        : !q.data ? <LoadingState rows={4} />
-        : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
+      {q.error && !world ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
+        : !world ? <LoadingState rows={4} />
+        : <NowView world={world} notice={play.notice} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input, extra) => run(t, id, input, extra)} onOpen={(t) => void run(t, "open")} />}
       {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}

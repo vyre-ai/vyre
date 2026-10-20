@@ -26,6 +26,8 @@ export type MacShell = {
   };
   /** The version of this app, when the bridge says (a release candidate shows its own install line). */
   version?: string;
+  /** This Mac's chip in the release's dmg names ("aarch64" or "x86_64"), when the bridge says: the app's Update downloads the dmg made for it. */
+  arch?: string;
   /** The Capsule's key for a Mac server: its public half (SPKI, base64url) and the id vyre-core will give it. The pairing hands it to the server as the server's Capsule key; `presence` then signs with it behind Touch ID. Made on first use, sent nowhere. */
   presenceKey?(): Promise<{ public_key: string; id: string }>;
   notify(title: string, body: string): Promise<unknown>;

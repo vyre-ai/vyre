@@ -39,7 +39,7 @@ export default function Devices() {
     <Screen title="Devices" back>
       <ScrollView contentContainerStyle={styles.page}>
         {trust === "untrusted" ? (
-          <Text style={[type.meta, { color: color.text2 }]}>This browser is limited. Trust changes are made from your Mac or phone.</Text>
+          <Text style={[type.meta, { color: color.text2 }]}>This browser is limited. Trust changes are made from your computer or phone.</Text>
         ) : null}
         {list.length === 0 ? <Text style={[type.read, { color: color.label }]}>No devices paired yet.</Text> : null}
         {list.map((d) => (

@@ -67,6 +67,8 @@ export type { MenuItem } from "./components/Menu";
 export { showToast, comingSoon, ToastHost } from "./components/Toast";
 export { Table } from "./components/Table";
 export { useVirtualRows } from "./lib/useVirtualRows";
+// Every popover drawn as a plain view closes on a press outside and on Esc (Menu has it from its primitive).
+export { usePopoverDismiss } from "./lib/useDismiss";
 export type { Column, TableProps } from "./components/Table";
 export { Board } from "./components/Board";
 export type { BoardColumn, BoardProps } from "./components/BoardStacked";
@@ -152,6 +154,7 @@ export { PasswordStrength } from "./components/PasswordStrength";
 export { ProviderSignInButton } from "./components/ProviderSignInButton";
 export { NeedsYouCard, publicFacts } from "./components/NeedsYouCard";
 export { formatCode, codeComplete } from "./lib/code.js";
+export { focusFirst, selectField, wireFormKeys } from "./lib/form-keys.js";
 
 // The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
 export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";
@@ -210,6 +213,6 @@ export type { FileViewerProps } from "./files/FileViewer";
 export type { FileSource, FileBody, FileVersion, SaveResult } from "./files/source";
 export {
   SlashChips, LaterPlannerNote, laterWords, ChatForkPanel, BackgroundTasksCard, RewindSheet, SecondOpinionSheet, PanelCapabilityRows,
-  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
+  FEATURED_SLASHES, NATIVE_SLASHES, displayName, ConversationList, ConversationTypes, NewPopover, newMenuRows, newMenuAgents, ConversationHeader, NewAgentDialog, AgentLookPicker, lookSeed, lookOf, AgentComputerPane, computerOf, computerWords, computerActions, DOCK, convosFrom, convoChips, convosShown, convoKindWord, convoSections, CONVO_TYPES, agentLine, summaryLine, placeOf, PARTS, partsOf, withParts, setPart, rememberLook, lookFor,
 } from "./chat";
 export type { LaterPlannerState, BackgroundTask, RewindPoint, OpinionTarget, PanelCapabilityRowsProps, Convo, ComputerView, NewAgentValues } from "./chat";

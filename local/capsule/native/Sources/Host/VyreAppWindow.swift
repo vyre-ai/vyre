@@ -82,6 +82,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         if boxless { cfg.userContentController.addUserScript(WKUserScript(source: "window.__vyreBoxless = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         // The app's version, for the page to show the line that matches it (a release candidate's install line differs from a stable one's).
         cfg.userContentController.addUserScript(WKUserScript(source: Self.versionScript(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // This Mac's kind of chip, so the page's Update downloads the dmg made for it (Vyre-aarch64.dmg or Vyre-x86_64.dmg).
+        cfg.userContentController.addUserScript(WKUserScript(source: Self.archScript(Self.arch), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // A WebSocket cannot ride a custom scheme: the page's WebSocket is replaced by one the app opens on vyred's socket (a server Mac has no vyred socket to open).
         if !boxless { cfg.userContentController.addUserScript(WKUserScript(source: Self.wsShimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -113,6 +115,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         holder.addSubview(cover)
         splashView = cover; splashShownAt = Date(); pageLoaded = false
         w.contentView = holder
+        // The page takes the keys from the first moment (the unlock's password, the welcome's field): no click into the window first.
+        w.initialFirstResponder = view
         w.setFrameAutosaveName("VyreApp")
         if w.frame.origin == .zero { w.center() }
         window = w
@@ -265,7 +269,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
                 id0.forget(); reply(id, ["ok": true])
             }
         case "agree.public":
-            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
+            // Never a quiet nil: the page falls back to its own storage on this error, and shows the reason when that fails too.
+            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac could not keep its chat key: \(agreement?.lastError ?? "it has no agreement key")."]) }
             reply(id, ["publicKey": MacIdentity.b64url(pt)])
         case "agree.agree":
             guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
@@ -291,8 +296,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
         case "open":
-            if let s = args["url"] as? String, let u = URL(string: s), ["http", "https"].contains(u.scheme ?? "") { NSWorkspace.shared.open(u) }
-            reply(id, ["ok": true])
+            // Only http(s), opened in the person's browser. A refusal says so, so the page's button can tell the person instead of doing nothing.
+            guard let s = args["url"] as? String, let u = URL(string: s), ["http", "https"].contains(u.scheme ?? "") else { return reply(id, ["error": "That is not a web address."]) }
+            reply(id, NSWorkspace.shared.open(u) ? ["ok": true] : ["error": "Your Mac did not open your browser."])
         default:
             reply(id, ["error": "Unknown call \(op)."])
         }
@@ -357,6 +363,16 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     }
     /// Sets window.__vyreVersion before the bridge is made.
     static func versionScript(_ version: String) -> String { "window.__vyreVersion = \(js(version));" }
+    /// This build's chip, in the release's dmg names.
+    static var arch: String {
+        #if arch(arm64)
+        return "aarch64"
+        #else
+        return "x86_64"
+        #endif
+    }
+    /// Sets window.__vyreArch before the bridge is made.
+    static func archScript(_ arch: String) -> String { "window.__vyreArch = \(js(arch));" }
     static func js(_ s: String) -> String { json([s]).dropFirst().dropLast().description }
 
     // MARK: Navigation and files
@@ -441,6 +457,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
+        arch: window.__vyreArch || "",
         relayKey: {
           public: function (create) { return call("relay.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           dh: function (peer) { return call("relay.dh", { peer: peer }).then(function (r) { return r.shared; }); }

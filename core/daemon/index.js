@@ -676,7 +676,7 @@ async function startLocked(opts, root, p, release) {
     registry.deps.modelDoor = () => (kernel && kernel.gateway ? /** @type {any} */ (kernel.gateway).model : undefined);
     registry.deps.doorChain = async (/** @type {unknown} */ person) => {
       const p = String(person || "");
-      if (!/^per_[a-z0-9]+$/.test(p)) throw Object.assign(new Error("this turn has no person to act for, so nothing was sent"), { code: "no_person" });
+      if (!/^per_[a-z0-9]+$/.test(p)) throw Object.assign(new Error("this turn has no person to act for, so nothing was sent: send it again from your own signed-in chat"), { code: "no_person" });
       return personChainFor(p);
     };
     // A TEAM Space's chat turn (0.3.3 J9): the chat's record and people are that Space's own kernel's, so its session is opened by THAT kernel, for the asker as a member of that Space (a chain the home builds from vyred's
