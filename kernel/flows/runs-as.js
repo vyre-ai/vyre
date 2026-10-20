@@ -79,7 +79,8 @@ export async function modelCall(o) {
   const who = await runsAsChecked(o.store, ctx);
   const set = ctx.view.flow.runs_on || {};
   try {
-    return await o.ports.model({ person: who, ...(set.account ? { account: set.account } : {}), ...(set.provider ? { provider: set.provider } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, run: ctx.run.id });
+    // the run's own chain goes to the door (its first person is the runs-as person, checked above), so the door's record shows the Flow run
+    return await o.ports.model({ person: who, chain: o.chain, ...(set.account ? { account: set.account } : {}), ...(set.provider ? { provider: set.provider } : {}), purpose: o.purpose, max_tokens: o.max_tokens, messages: o.messages, run: ctx.run.id });
   } catch (e) {
     const code = e && /** @type {any} */ (e).code;
     if (code === "no_account" || code === "no_credential") {

@@ -1791,7 +1791,7 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
-      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (doer && doer.kind === "agent" && typeof this.ports.model === "function") await runsAsChecked(this.store, ctx);   // an agent's job runs as the task's assigner: the runs-as person
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record }); if (typeof this.ports.model === "function" && ([doer, ...helpers].some((/** @type {any} */ x) => x && x.kind === "agent") || [s.checker, s.reviewer && s.reviewer.who, s.approver && s.approver.who].some((/** @type {any} */ r) => typeof r === "string" && r.startsWith("teammate:")))) await runsAsChecked(this.store, ctx);   // an agent in ANY slot (doer, helper, checker, reviewer, approver) works as the task's assigner: the runs-as person
       // What each person on the task is told: tags in a box are resolved now, through THAT reader's own chain (a role: each holder's), so a record is read as it is at this moment, a sealed field stays
       // sealed, and nobody is handed a record through someone else's reach.
       const ioOf = (/** @type {any} */ actor) => {
