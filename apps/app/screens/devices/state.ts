@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { MOCK, said, tool } from "../../src/real/box";
 import { loadAccess, loadDeviceSpaces, loadLend, SPACE_NAMES, type AccessItem } from "./data";
-import { within } from "../../src/state/kept.js";
+import { within } from "../../src/state/kept-model.js";
 import { deviceRows, deviceSpaces, spaceNames } from "./real.js";
 
 type S = {

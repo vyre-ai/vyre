@@ -1,11 +1,11 @@
 // useKept: one list screen's data with a kept copy. The last answer for this Space draws in the first frame (this visit's memory, then the device's view cache), the read runs behind it, and the
-// fresh answer replaces it in place. A read past its budget with nothing to show is an error with Try again; with a copy showing, the copy stays and nothing flashes. Rules: src/state/kept.js.
+// fresh answer replaces it in place. A read past its budget with nothing to show is an error with Try again; with a copy showing, the copy stays and nothing flashes. Rules: src/state/kept-model.js.
 // Only lists a person may read on this device belong here: never a value a reveal guards.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { allowsMock } from "@vyre/ui";
 import { useSpaces } from "../../screens/shell/state";
 import { viewCache } from "./cache";
-import { keptKey, packKept, saidError, unpackKept, within } from "./kept.js";
+import { keptKey, packKept, saidError, unpackKept, within } from "./kept-model.js";
 
 const memory = new Map<string, unknown>();
 

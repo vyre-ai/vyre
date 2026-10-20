@@ -24,7 +24,7 @@ import { cancelReal, retryFromReal, retryReal, startReal } from "./run";
 import { ExplainCard } from "./ExplainCard";
 import { canRetry, canStop, retryLimits, startRefusal } from "./run-model";
 import { RunSteps } from "./RunSteps";
-import { within, saidError } from "../../src/state/kept.js";
+import { within, saidError } from "../../src/state/kept-model.js";
 import { rowReal, setPausedReal, approveReal, proposeReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow, type RealFlow as RealFlowRow } from "./real";
 import { filterRuns, retryFromRefusal, APPROVE_LABEL, PROPOSE_LABEL, approvalPath, explainText, healthBanner, shownWarnings, shrunkNote, stageLine, titleOf, versionWaits } from "./real-model.js";
 

@@ -1,6 +1,6 @@
 // Vault from the real vyred. A list of the box's own items (names, kinds, who has them, how they were used), and Reveal per field, which is a
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
-import { within } from "../../src/state/kept.js";
+import { within } from "../../src/state/kept-model.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Menu, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";

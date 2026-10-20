@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_AGE_MS, keptKey, packKept, saidError, unpackKept, within } from "./kept.js";
+import { MAX_AGE_MS, keptKey, packKept, saidError, unpackKept, within } from "./kept-model.js";
 
 test("a kept copy is per screen and per Space", () => {
   assert.equal(keptKey("flows", "s1"), "kept.flows.s1");
