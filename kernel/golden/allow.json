@@ -2016,14 +2016,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.unlink opened to a model or a module in b1efe5dd1 (10 Oct 2026); the body decides: callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
  },
  {
-  "tool": "vault.use.env",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.use.env answers an agent session's vault run with the fields of items the person marked Allowed in scripts, sealed to the run's own key; the body refuses every other item and caller"
- },
- {
-  "tool": "vault.use.find",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.use.find gives an agent the names, field names and plain values of the items it may use, never a secret; the body filters to what the caller may use under its own grants"
- },
- {
   "tool": "vault.used-by",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.used-by opened to a model or a module in 3bff38f14 (10 Oct 2026); the body decides: callers list in code (capsule, cli, deck, device, local): no model caller; read-only: the names and kinds of what uses a credential, never a value"
  },
@@ -2064,36 +2056,12 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops and forgets a watcher; a duty's folder goes, filed items stay"
  },
  {
-  "tool": "watchers.own.delete",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.delete lets an agent delete its own Routine or Watcher only; the body decides: another agent's, the owner's and a member's are refused (core/watchers/agent-tools.test.js)"
- },
- {
-  "tool": "watchers.own.resume",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.resume lets an agent resume its own Routine or Watcher only; the body decides: another agent's, the owner's and a member's are refused (core/watchers/agent-tools.test.js)"
- },
- {
-  "tool": "watchers.own.run",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.own.run lets an agent run its own Routine or Watcher only; the body decides: another agent's, the owner's and a member's are refused (core/watchers/agent-tools.test.js)"
- },
- {
   "tool": "watchers.resume",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): resumes a paused watcher and clears its failure count"
  },
  {
-  "tool": "watchers.revise",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.revise lets an agent change its own watcher's definition; the body (mustAgent) refuses any caller that is not the verified agent that owns it (core/watchers)"
- },
- {
-  "tool": "watchers.routine.create",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.routine.create lets an agent set up its own watcher or routine; reach is asked: the body (mustAgent, freeOrMine) acts only for a verified agent on its own, and only after the person asked in their own words (core/watchers)"
- },
- {
   "tool": "watchers.run",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): runs a turned-on watcher now and returns what happened"
- },
- {
-  "tool": "watchers.write",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; watchers.write lets an agent set up its own watcher or routine; reach is asked: the body (mustAgent, freeOrMine) acts only for a verified agent on its own, and only after the person asked in their own words (core/watchers)"
  },
  {
   "tool": "wink.card",
