@@ -4,7 +4,7 @@ import "../api/store-link";
 import { tool } from "../real/box";
 import { useThread } from "../state/threads";
 import { agentsList, providers } from "../../screens/settings/real";
-import { modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import { memberNames, modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
 import type { ModelChoice, Person, RecordPick } from "./ChatComposer";
 
 /**
@@ -18,17 +18,20 @@ export function useRealComposer(session: string | undefined, here: Person[] | un
   const [provRows, setProvRows] = useState<unknown>(null);
   const [actors, setActors] = useState<unknown>(null);
   const [agents, setAgents] = useState<unknown>(null);
+  // the Space's members by name (a username where no other name is known), so the @ list never shows an id
+  const [names, setNames] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!real) return;
     let live = true;
     void providers().then((r) => live && setProvRows(r)).catch(() => {});
     void tool("records.actors", {}).then((r) => live && setActors(r)).catch(() => {});
     void agentsList().then((r) => live && setAgents(r)).catch(() => {});
+    void tool<{ space?: string }>("records.me", {}).then((me) => (me?.space ? tool("spaces.members.list", { space: me.space }) : null)).then((m) => { if (live && m) setNames(memberNames(m)); }).catch(() => {});
     return () => { live = false; };
   }, [real]);
   const current = useMemo(() => ({ provider: (thread as { provider?: string | null } | null)?.provider ?? "claude", account: null as string | null, model: thread?.model ?? null }), [thread]);
   const { models, model } = useMemo(() => modelChoices(provRows, current), [provRows, current]);
-  const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [] }), [actors, agents, viewer, here]);
+  const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [], names }), [actors, agents, viewer, here, names]);
   const records: RecordPick[] = useMemo(() => (world ? recordPicks(world as never, (d: unknown, r: unknown) => titleOf(d as never, r as never)) : []), [world]);
   const onModel = useCallback((id: string, slot?: string) => {
     const c = session ? switchCall(session, id, provRows, current, slot) : null;
