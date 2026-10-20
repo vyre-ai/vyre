@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { neutralize, rotationContext, isAssistant } from "./index.js";
+import { neutralize, rotationContext, isAssistant, canTurnOnComputer } from "./index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { execFileSync } from "node:child_process";
@@ -345,4 +345,115 @@ test("work.project.ref answers a person and a first-party module, and nobody els
     assert.ok(r.error && !r.data, `${caller} is refused`);
   }
   assert.equal((await raw("work.project.ref", { project: "no-such-project" })).error.code, "not_found");
+});
+
+// --- P1 (v0.6.4): the stable id, the computer guard, and create-on-first-use ------------------------
+//
+// The three foundations of the owner's model of a teammate: it has an id of its own (a task, a
+// Flow or a Playbook names it by that, never by the label a person reads), it never gets a
+// computer unless the person turns one on, and it is made on first use behind the same "the
+// person's own words" check as team.add.
+
+test("P1: a teammate has a stable uid, minted once: it shows in team.add and team.list, a retired teammate keeps it when it comes back, and an undone one never lends it to the next", async t => {
+  const { tool, project } = await boot(t);
+  const first = await tool("team.add", { project: project.record, role: "design", brief: "visual design" });
+  assert.match(String(first.uid), /^tmt_[0-9a-f]{8}-/, "a teammate has an id of its own");
+  const [row] = await tool("team.list", { project: project.record });
+  assert.equal(row.uid, first.uid, "the list shows the same id");
+  assert.equal(row.computer, false, "no teammate has a computer until a person turns one on");
+  // a retired teammate that comes back is the same teammate, with the same id
+  await tool("team.retire", { teammate: first.agent });
+  const back = await tool("team.add", { project: project.record, role: "design" });
+  assert.equal(back.revived, true);
+  assert.equal(back.uid, first.uid, "the same teammate, the same id");
+  // an undone teammate is gone for good: the next one is another teammate, with another id
+  await tool("team.retire", { teammate: first.agent, undo: true });
+  const again = await tool("team.add", { project: project.record, role: "design" });
+  assert.equal(again.revived, undefined);
+  assert.notEqual(again.uid, first.uid, "an id is never reused");
+});
+
+test("P1: a teammate never gets a computer unless the person's own surface turns one on", async t => {
+  const { tool, root, project, launches, d } = await boot(t);
+  assert.equal(canTurnOnComputer({ computer: true }, true), true, "the person may turn one on");
+  assert.equal(canTurnOnComputer({ computer: true }, false), false, "nobody else may");
+  assert.equal(canTurnOnComputer({ tools: ["computer"] }, true), true, "naming the computer in the tools is the same act");
+  assert.equal(canTurnOnComputer({ tools: ["computer"] }, false), false, "and still the person's alone");
+  assert.equal(canTurnOnComputer({}, true), false, "a teammate has no computer by default");
+  const plain = await tool("team.add", { project: project.record, role: "design" });
+  assert.equal(plain.computer, false);
+  const withComputer = await tool("team.add", { project: project.record, role: "research", computer: true });
+  assert.equal(withComputer.computer, true, "the person turned one on");
+  // a model may not, even with the person's own words behind it: the words asked for a teammate, not for a machine
+  const { session } = await realSession(root, tool, launches, project.slug);
+  await d.registry.call("vault.said.record", { thread: session.id, said: "s-1", kind: "act_out", channel: "team",
+    to: [`team.add:${project.record}/writer`], what: "set up a writer teammate" }, "module:sessions");
+  const viaSession = await call("team.add", { project: project.record, role: "writer", computer: true }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(viaSession.error.code, "denied", JSON.stringify(viaSession.error));
+  assert.match(String(viaSession.error.message), /computer/);
+  assert.equal((await tool("team.list", { project: project.record })).map(x => x.role).includes("writer"), false, "no teammate was made");
+});
+
+test("P1: team.ask to a role that does not exist yet refuses in plain words without the person's words, and makes no teammate", async t => {
+  const { tool, root, project, launches, d } = await boot(t);
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const no = await call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(no.error.code, "not_asked", JSON.stringify(no.error));
+  assert.match(String(no.error.message), /person's own words/);
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, 0, "no teammate was made");
+});
+
+test("P1: team.ask to a role that does not exist yet makes it on the person's own words, and those words are used up", async t => {
+  const { tool, root, project, launches, d } = await boot(t);
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const rec = await d.registry.call("vault.said.record", { thread: session.id, said: "s-1", kind: "act_out", channel: "team",
+    to: [`team.add:${project.record}/researcher`], what: "set up a researcher teammate for this project" }, "module:sessions");
+  assert.equal(rec.error, undefined, JSON.stringify(rec.error));
+  const ask = await call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(ask.error, undefined, JSON.stringify(ask.error));
+  const [row] = await tool("team.list", { project: project.record });
+  assert.equal(row.role, "researcher");
+  assert.match(String(row.uid), /^tmt_/, "the teammate made on first use has a stable id of its own");
+  assert.equal(row.computer, false, "a teammate made on first use has no computer");
+  // the ask is spent by the teammate it made: it does not make another one
+  const used = d.registry.deps.db.prepare("SELECT used FROM vault_said_intents WHERE id = ?").get(rec.data.id);
+  assert.ok(used && used.used, "the person's ask is used up");
+  // a second role nobody asked for is refused the same way
+  const other = await call("team.ask", { to: "writer", project: project.record, text: "write the copy" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(other.error.code, "not_asked", JSON.stringify(other.error));
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, 1, "only the one teammate was made");
+});
+
+test("P1: with the project's default off, team.ask to a role that does not exist is not_found, and nothing is made", async t => {
+  const { tool, root, project, launches, d } = await boot(t);
+  await tool("team.default.set", { project: project.record, enabled: false });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  await d.registry.call("vault.said.record", { thread: session.id, said: "s-1", kind: "act_out", channel: "team",
+    to: [`team.add:${project.record}/researcher`], what: "set up a researcher teammate" }, "module:sessions");
+  const ask = await call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(ask.error.code, "not_found", JSON.stringify(ask.error));
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, 0, "no teammate was made");
+});
+
+test("P1: a call with no person behind it is refused before any teammate is made", async t => {
+  const { tool, project, d } = await boot(t);
+  const db = d.registry.deps.db;
+  const before = db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n;
+  const nobody = await d.registry.call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, "cli", {});
+  assert.equal(nobody.error && nobody.error.code, "denied", JSON.stringify(nobody));
+  assert.match(String(nobody.error.message), /No person asked for this/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, before, "no teammate was made");
+});
+
+test("P1: a person with no AI account of her own is refused before any teammate is made", async t => {
+  const { tool, project, d } = await boot(t);
+  const db = d.registry.deps.db;
+  const OWNER = d.kernel.id.owner, ADA = "per_" + "e".repeat(26);
+  await d.kernel.gateway.grants.setRole(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s" }), { person: ADA, role: "admin" }, { presence: { op: "x", fields: {}, n: 3 } });
+  const adaToken = { token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-ada", person: ADA, path: "direct", session: "sa" }), {})).token };
+  const before = db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n;
+  const refused = await d.registry.call("team.ask", { to: "researcher", project: project.record, text: "look into the intake form" }, "deck", adaToken);
+  assert.equal(refused.error && refused.error.code, "no_account", JSON.stringify(refused));
+  assert.match(String(refused.error.message), /Connect your own AI account/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM team_teammates").get().n, before, "no teammate was made");
 });
