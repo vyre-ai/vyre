@@ -39,7 +39,7 @@ export function summaryOf(items) {
   return { ...n, line: `${n.total} ${n.total === 1 ? "item" : "items"}${bits.length ? ": " + bits.join(", ") : ", all healthy"}` };
 }
 
-/** Items shown under a scope ("space" or "mine") and a search, as the GroupedList wants them: each carries its `group`. @param {VItem[]} items @param {'space'|'mine'} scope @param {string} q */
+/** Items shown under a scope ("mine", or "shared") and a search, as the GroupedList wants them: each carries its `group`. @param {VItem[]} items @param {'shared'|'space'|'mine'} scope @param {string} q */
 export function visible(items, scope, q = "", nav = ALL) {
   const f = q.trim().toLowerCase();
   const inScope = items.filter((v) => (scope === "mine" ? v.sp === "mine" : v.sp !== "mine") && inNav(v, nav));
