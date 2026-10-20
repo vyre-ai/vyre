@@ -41,7 +41,7 @@ export function SidePanel({ open, onClose, title, children, width = 520 }: { ope
   if (mode === "closed") return null;
   if (mode === "sheet") return <Sheet open onClose={onClose} title={title} scroll={false}>{children}</Sheet>;
   return (
-    <Animated.View ref={box} accessibilityViewIsModal={false} accessibilityLabel={title} style={{ ...(sidePanelBox(width, narrow) as object), backgroundColor: color["surface-3"], borderLeftWidth: 1, borderColor: color["edge-strong"], ...elevation(resolved.scheme, 2), zIndex: 2, transform: [{ translateX: x }] }}>
+    <Animated.View ref={box} accessibilityViewIsModal={false} accessibilityLabel={title} style={{ ...(sidePanelBox(width, narrow) as object), backgroundColor: color["surface-3"], borderLeftWidth: 1, borderColor: color["edge-strong"], ...elevation(resolved.scheme, 2), zIndex: 2, transform: [{ translateX: x }] } as any}>
       <View className="min-h-0 flex-1">{children}</View>
     </Animated.View>
   );
